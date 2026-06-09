@@ -1360,16 +1360,21 @@ pub(crate) async fn create_temp_provider(
 
     // Password is stored separately in credential store with key "server_{id}"
     // (migrated from inline password in profile: see ServerProfile.password DEPRECATED)
-    let password = store
-        .get(&format!("server_{}", server.id))
-        .unwrap_or_else(|_| {
-            // Fallback: check inline password in profile (legacy/pre-migration)
-            profile
-                .get("password")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string()
-        });
+    // MUV-3: prefer the active user's per-user store, fall back to the legacy
+    // vault, then to the inline profile password (legacy/pre-migration).
+    let password =
+        crate::user_partitions::resolve_active_credential(&store, &format!("server_{}", server.id))
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                // Fallback: check inline password in profile (legacy/pre-migration)
+                profile
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            });
 
     let creds = SavedCreds {
         server: profile

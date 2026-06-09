@@ -7685,6 +7685,144 @@ fn ensure_active_user_unlocked(
     }
 }
 
+// --- MUV-3: per-user `server_*` credential dual-write helpers (CLI) ---------
+//
+// The vault stays the source of truth + fallback; `server_<id>` secrets are
+// additionally mirrored into the scoped user's partition. Resolving the scoped
+// user id is best-effort and NEVER prompts for a passphrase (zero-password
+// invariant): a locked partition simply skips the mirror and keeps the vault
+// copy, and the reader falls back to the vault. `--user` selects the scoped
+// user per-invocation; contexts without a `Cli` use the persisted active user.
+
+/// Scoped user id for `--user`-aware credential reads/writes, resolved without
+/// unlocking. `None` means "no user resolvable" -> vault-only.
+fn scoped_credential_user_id(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Option<i64> {
+    use ftp_client_gui_lib::user_partitions;
+    if let Some(ref name) = cli.user {
+        user_partitions::cli_find_user_by_name(store, name)
+            .ok()
+            .map(|u| u.id)
+    } else {
+        user_partitions::cli_get_active_user(store)
+            .ok()
+            .flatten()
+            .map(|u| u.id)
+    }
+}
+
+/// Active user id for credential reads in contexts with no `Cli` in scope (the
+/// agent connect path, the export scaffold). `None` -> vault-only.
+fn active_credential_user_id(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Option<i64> {
+    ftp_client_gui_lib::user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+}
+
+/// Read a `server_<id>` secret preferring the user's partition (when `uid` is
+/// known) and falling back to the legacy vault.
+fn read_server_cred(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+) -> Option<String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::cli_read_credential_with_fallback(
+            store,
+            uid,
+            credential_id,
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string()),
+        None => store.get(credential_id).ok(),
+    }
+}
+
+/// Dual-write a `server_<id>` secret (vault + the user's partition when `uid` is
+/// known), returning the authoritative vault error. Use at sites that surface a
+/// hard error on a failed credential write.
+fn dual_store_server_cred_checked(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::store_credential_for_user_dual(
+            store,
+            uid,
+            credential_id,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| e.to_string()),
+    }
+}
+
+/// Dual-write with an EXPLICIT credential type (vault + the user's partition
+/// when `uid` is known), returning the authoritative vault error. For
+/// non-`server_` keys (OAuth tokens, Jottacloud refresh) the prefix classifier
+/// does not apply, so the type is supplied by the caller (MUV-4).
+fn dual_store_typed_cred_checked(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::store_credential_for_user_typed_dual(
+            store,
+            uid,
+            credential_id,
+            credential_type,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| e.to_string()),
+    }
+}
+
+/// Best-effort dual-write (ignores the result). Use at sites where a missing
+/// credential is acceptable (cloning, optional restore).
+fn dual_store_server_cred(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    secret: &str,
+) {
+    let _ = dual_store_server_cred_checked(store, uid, credential_id, secret);
+}
+
+/// Best-effort dual-delete a `server_<id>` secret (vault + the user's partition
+/// when `uid` is known).
+fn dual_delete_server_cred(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+) {
+    match uid {
+        Some(uid) => {
+            let _ = ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
+                store,
+                uid,
+                credential_id,
+            );
+        }
+        None => {
+            let _ = store.delete(credential_id);
+        }
+    }
+}
+
 /// Load the target user's server profiles. `--user` selects per-invocation,
 /// falling back to the persistent `active_user_id` when absent. Falls back
 /// to the legacy `config_server_profiles` blob only on partition errors
@@ -11848,10 +11986,11 @@ fn cmd_profile_duplicate(
 
     // Best-effort credential clone. Missing credentials are valid for many
     // protocols (OAuth, GitHub PAT-only flows) so we don't fail when the
-    // source key isn't present.
+    // source key isn't present. MUV-3: same scoped user, dual-write.
     if !source_id.is_empty() {
-        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-            let _ = store.store(&format!("server_{}", new_id), &cred);
+        let scoped_uid = scoped_credential_user_id(cli, &store);
+        if let Some(cred) = read_server_cred(&store, scoped_uid, &format!("server_{}", source_id)) {
+            dual_store_server_cred(&store, scoped_uid, &format!("server_{}", new_id), &cred);
         }
     }
 
@@ -12051,26 +12190,33 @@ fn cmd_profile_relocate_user(
         target_passphrase.as_deref(),
         remove_from_source,
     );
-    if let Some(p) = target_passphrase.as_mut() {
-        p.zeroize();
-    }
     let relocation = match relocation {
         Ok(r) => r,
         Err(e) => {
+            if let Some(p) = target_passphrase.as_mut() {
+                p.zeroize();
+            }
             let code = if e.contains("PASSPHRASE") { 6 } else { 5 };
             print_error(format, &format!("{} failed: {}", verb, e), code);
             return code;
         }
     };
 
-    // Credential bookkeeping (outside the partition DB).
-    if !relocation.already_present {
-        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-            let _ = store.store(&format!("server_{}", new_id), &cred);
-        }
+    // MUV-3: relocate the `server_<id>` secret while the target passphrase is
+    // still live. The vault stays in sync (copy onto the new id, drop the
+    // orphan on a Move) and the secret is mirrored onto the target user's
+    // partition under its scoped DEK.
+    let _ = user_partitions::cli_relocate_server_credential_dual(
+        &store,
+        source_user.id,
+        &relocation,
+        target_passphrase.as_deref(),
+    );
+    if let Some(p) = target_passphrase.as_mut() {
+        p.zeroize();
     }
+
     if relocation.moved {
-        let _ = store.delete(&format!("server_{}", source_id));
         // Drop the moved id from the favourites set (best effort).
         if let Ok(fav_raw) = store.get("config_favorite_servers") {
             if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
@@ -12441,11 +12587,13 @@ fn duplicate_or_convert_mode_in_vault(
     // Credential handling: explicit override wins; otherwise clone the
     // source's credential best-effort (works for same-credentials groups
     // like Koofr/OpenDrive; user must provide --password for the others).
+    // MUV-3: same scoped user, dual-write.
+    let scoped_uid = scoped_credential_user_id(cli, store);
     if let Some(pwd) = password {
-        let _ = store.store(&format!("server_{}", new_id), pwd);
+        dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), pwd);
     } else if !source_id.is_empty() {
-        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-            let _ = store.store(&format!("server_{}", new_id), &cred);
+        if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
+            dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
         }
     }
 
@@ -12453,7 +12601,7 @@ fn duplicate_or_convert_mode_in_vault(
     // profile is gone from the list, the credential would orphan). Best-
     // effort; ignore errors.
     if replace_in_slot && !source_id.is_empty() {
-        let _ = store.delete(&format!("server_{}", source_id));
+        dual_delete_server_cred(store, scoped_uid, &format!("server_{}", source_id));
     }
 
     // Carry the ⭐ favourite flag onto the new profile so switching a profile's
@@ -12617,7 +12765,12 @@ fn delete_profile_in_vault(
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
 
     // Orphan credential cleanup (matches MyServersPanel.tsx confirmDelete).
-    let _ = store.delete(&format!("server_{}", profile_id));
+    // MUV-3: dual-delete from vault + the scoped user's partition.
+    dual_delete_server_cred(
+        store,
+        scoped_credential_user_id(cli, store),
+        &format!("server_{}", profile_id),
+    );
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.
@@ -12914,7 +13067,10 @@ fn cmd_profile_set_password(
     }
 
     let key = format!("server_{}", target_id);
-    if let Err(e) = store.store(&key, &credential_value) {
+    // MUV-3: dual-write (vault is authoritative; the scoped user's partition is
+    // mirrored best-effort). The vault error is surfaced as a hard failure.
+    let scoped_uid = scoped_credential_user_id(cli, &store);
+    if let Err(e) = dual_store_server_cred_checked(&store, scoped_uid, &key, &credential_value) {
         print_error(
             format,
             &format!("Failed to write credential to vault: {}", e),
@@ -13000,8 +13156,10 @@ fn duplicate_profile_in_vault(
     profiles.insert(0, copy);
     save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
-    if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-        let _ = store.store(&format!("server_{}", new_id), &cred);
+    // MUV-3: clone the credential into vault + the scoped user's partition.
+    let scoped_uid = scoped_credential_user_id(cli, store);
+    if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
+        dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
     }
     Ok((new_id, resolved_name, profiles))
 }
@@ -13145,10 +13303,12 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
                         continue;
                     }
 
-                    // Check if API key exists for this provider
+                    // Check if API key exists for this provider. MUV-5: AI keys
+                    // are per-user now, so resolve through the scoped user's
+                    // partition (falling back to the dual-written vault).
                     let vault_key = format!("ai_apikey_{}", id);
-                    let has_vault_key = store
-                        .get(&vault_key)
+                    let ai_key_uid = scoped_credential_user_id(cli, &store);
+                    let has_vault_key = read_server_cred(&store, ai_key_uid, &vault_key)
                         .map(|v| !v.is_empty())
                         .unwrap_or(false);
                     let env_name = env_var_for(ptype);
@@ -13508,10 +13668,14 @@ async fn create_and_connect_for_agent(
         .and_then(|v| v.as_str())
         .unwrap_or("/");
 
-    // Resolve password from vault
-    let password = store
-        .get(&format!("server_{}", profile_id))
-        .unwrap_or_default();
+    // Resolve password from the active user's partition (profiles were listed
+    // for the active user above), falling back to the legacy vault (MUV-3).
+    let password = read_server_cred(
+        &store,
+        active_credential_user_id(&store),
+        &format!("server_{}", profile_id),
+    )
+    .unwrap_or_default();
 
     // Build provider config
     let provider_type = match protocol.to_uppercase().as_str() {
@@ -14549,11 +14713,16 @@ fn profile_to_provider_config(
         &username,
     );
 
-    // Load credentials from vault
-    // Password is stored as a raw string (not JSON) in server_{id}
+    // Load credentials from the scoped user's partition, falling back to the
+    // legacy vault (MUV-3). Password is stored as a raw string (not JSON) in
+    // server_{id}.
     let (cred_user, cred_pass) = if !id.is_empty() {
-        match store.get(&format!("server_{}", id)) {
-            Ok(password_str) => {
+        match read_server_cred(
+            &store,
+            scoped_credential_user_id(cli, &store),
+            &format!("server_{}", id),
+        ) {
+            Some(password_str) => {
                 // The vault stores just the password as a plain string
                 // Try to parse as JSON first (legacy format), fall back to raw string
                 if let Ok(cred) = serde_json::from_str::<serde_json::Value>(&password_str) {
@@ -14579,7 +14748,7 @@ fn profile_to_provider_config(
                     (username.clone(), password_str)
                 }
             }
-            Err(_) => (username.clone(), String::new()),
+            None => (username.clone(), String::new()),
         }
     } else {
         (username.clone(), String::new())
@@ -21627,11 +21796,18 @@ async fn apply_rclone_import_to_vault(
     let mut oauth_tokens_stored = 0usize;
     let mut jotta_refresh_stored = 0usize;
 
+    // MUV-3: dual-write each imported credential (vault + the scoped user's
+    // partition). The vault write stays authoritative (hard error on failure).
+    let scoped_uid = scoped_credential_user_id(cli, &store);
     for server in &result.servers {
         if let Some(ref cred) = server.credential {
-            store
-                .store(&format!("server_{}", server.id), cred)
-                .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+            dual_store_server_cred_checked(
+                &store,
+                scoped_uid,
+                &format!("server_{}", server.id),
+                cred,
+            )
+            .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
             passwords_stored += 1;
         }
     }
@@ -21653,17 +21829,28 @@ async fn apply_rclone_import_to_vault(
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = cli_oauth_vault_slug_for_protocol(protocol) {
-                store
-                    .store(&format!("oauth_{}_{}", slug, profile_id), oauth_json)
-                    .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
+                // MUV-4: dual-write into vault + the scoped user's partition.
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("oauth_{}_{}", slug, profile_id),
+                    "oauth",
+                    oauth_json,
+                )
+                .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
                 oauth_tokens_stored += 1;
             }
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                store
-                    .store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
-                    .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("jottacloud_refresh_{}", profile_id),
+                    "jottacloud_refresh",
+                    jotta_json,
+                )
+                .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
                 jotta_refresh_stored += 1;
             }
         }
@@ -22003,11 +22190,16 @@ fn collect_export_scaffold(
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
+        // MUV-3: active user's partition with fallback to the legacy vault.
         let secret = if id.is_empty() {
             String::new()
         } else {
-            match store.get(&format!("server_{}", id)) {
-                Ok(stored) => {
+            match read_server_cred(
+                store,
+                active_credential_user_id(store),
+                &format!("server_{}", id),
+            ) {
+                Some(stored) => {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
                         v.get("password")
                             .and_then(|x| x.as_str())
@@ -22017,7 +22209,7 @@ fn collect_export_scaffold(
                         stored
                     }
                 }
-                Err(_) => String::new(),
+                None => String::new(),
             }
         };
 
@@ -23277,7 +23469,12 @@ async fn cmd_aerorsync_probe(
         // fall back to the raw string. Missing credential is not a hard
         // error: we let the regular --password-* / TTY path take over.
         if !target_id.is_empty() {
-            if let Ok(blob) = store.get(&format!("server_{}", target_id)) {
+            // MUV-3: scoped user's partition with fallback to the legacy vault.
+            if let Some(blob) = read_server_cred(
+                &store,
+                scoped_credential_user_id(cli, &store),
+                &format!("server_{}", target_id),
+            ) {
                 let trimmed = blob.trim();
                 if !trimmed.is_empty() {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
@@ -38476,10 +38673,13 @@ fn resolve_vault_ai_provider(
             .sort_by_key(|(ptype, _, _, _)| priority.iter().position(|p| p == ptype).unwrap_or(99));
     }
 
-    // Find first candidate with a valid API key in vault
+    // Find first candidate with a valid API key. MUV-5: AI keys are per-user;
+    // this context has no `Cli`, so resolve against the persistent active user's
+    // partition (falling back to the dual-written vault).
+    let ai_key_uid = active_credential_user_id(store);
     for (ptype, id, url, _) in &candidates {
         let vault_key = format!("ai_apikey_{}", id);
-        if let Ok(key) = store.get(&vault_key) {
+        if let Some(key) = read_server_cred(store, ai_key_uid, &vault_key) {
             if !key.is_empty() {
                 eprintln!("Using AI provider '{}' from AeroFTP vault.", ptype);
                 return Some((ptype.clone(), key, url.clone()));

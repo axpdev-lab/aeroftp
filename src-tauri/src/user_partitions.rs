@@ -12,7 +12,7 @@ use crate::storage_dedup::{dedup_key, ProfileView};
 use crate::user_crypto::{self, SecretKey};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use secrecy::zeroize::Zeroize;
+use secrecy::zeroize::{Zeroize, Zeroizing};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 
 const DB_FILENAME: &str = "user_partitions.db";
-const SCHEMA_VERSION: &str = "3";
+const SCHEMA_VERSION: &str = "4";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
@@ -260,6 +260,20 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              updated_at      INTEGER NOT NULL,
              PRIMARY KEY(user_id, scope)
          );
+
+         CREATE TABLE IF NOT EXISTS user_credentials (
+             user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id   TEXT NOT NULL,
+             credential_type TEXT NOT NULL,
+             encrypted_blob  BLOB NOT NULL,
+             nonce           BLOB NOT NULL,
+             aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             updated_at      INTEGER NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+
+         CREATE INDEX IF NOT EXISTS idx_user_credentials_type
+             ON user_credentials(user_id, credential_type);
 
          CREATE TABLE IF NOT EXISTS global_state (
              key             TEXT PRIMARY KEY,
@@ -729,36 +743,32 @@ fn get_optional_store_entry(
     }
 }
 
+/// MUV-2: best-effort eager credential migration on the GUI side. Pulls the
+/// cached store; if the vault is locked behind a Master Password the store is
+/// unavailable and the migration simply runs on a later boot. Never fails the
+/// caller, and skips entirely when nothing is eager-pending so it adds no cost
+/// to the per-command boot path once the bulk copy is done.
+fn run_eager_credential_migration_gui(conn: &Connection) {
+    if !has_eager_pending_users(conn).unwrap_or(false) {
+        return;
+    }
+    if let Some(store) = CredentialStore::from_cache() {
+        let mut root_key = store.derive_user_partition_wrapping_key();
+        let _ = migrate_credentials_eager_all(conn, &store, &root_key);
+        root_key.zeroize();
+    }
+}
+
 pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
     let mut conn = open_or_init(app)?;
-    if matches!(
-        current_schema_version(&conn)?.as_deref(),
-        Some(SCHEMA_VERSION)
-    ) {
-        return Ok(MigrationReport {
-            schema_version: SCHEMA_VERSION.to_string(),
-            created_default_user: false,
-            migrated_profiles: 0,
-            migrated_settings_scopes: 0,
-            already_migrated: true,
-        });
-    }
-
-    // v2 -> v3: the schema CREATE TABLE already adds is_admin on fresh
-    // installs; existing v2 databases need a column add and a one-shot
-    // seed that promotes the lowest-id user (the legacy default) to
-    // admin so a returning operator keeps full control over the new
-    // account-management surface.
-    let stored_version = current_schema_version(&conn)?;
-    if stored_version.as_deref() == Some("2") {
-        upgrade_v2_to_v3(&mut conn)?;
-        return Ok(MigrationReport {
-            schema_version: SCHEMA_VERSION.to_string(),
-            created_default_user: false,
-            migrated_profiles: 0,
-            migrated_settings_scopes: 0,
-            already_migrated: true,
-        });
+    // Apply any pending in-place schema upgrades in cascade:
+    //   v2 -> v3 (is_admin column + admin seed),
+    //   v3 -> v4 (user_credentials table).
+    // A v2 database visits both steps in one startup. `Ok(true)` means the
+    // schema is current and there is nothing legacy to migrate.
+    if apply_pending_upgrades(&mut conn)? {
+        run_eager_credential_migration_gui(&conn);
+        return Ok(already_migrated_report());
     }
 
     // Multi-User is a first-class surface and does not require Master Password.
@@ -788,7 +798,11 @@ pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
         &root_key,
     );
     root_key.zeroize();
-    result
+    let report = result?;
+    // MUV-2: the legacy migration just created the `default` user; copy its
+    // raw secrets out of the vault into `user_credentials` in the same boot.
+    run_eager_credential_migration_gui(&conn);
+    Ok(report)
 }
 
 fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
@@ -832,10 +846,77 @@ fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
         [],
     )
     .map_err(|e| format!("Seed first user as admin: {e}"))?;
-    upsert_global_state(&tx, SCHEMA_VERSION_KEY, SCHEMA_VERSION, now_ms())?;
+    // Land exactly on "3"; the cascade in `apply_pending_upgrades` then runs
+    // v3 -> v4. Using the literal (not SCHEMA_VERSION) keeps the step bounded
+    // so chaining from an older database visits every intermediate version.
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, "3", now_ms())?;
     tx.commit()
         .map_err(|e| format!("Commit v2->v3 upgrade: {e}"))?;
     Ok(())
+}
+
+/// v3 -> v4: add the `user_credentials` table (per-user encrypted secrets under
+/// the user DEK). The table create is idempotent (`IF NOT EXISTS`) and a fresh
+/// install already gets it from [`init_db_schema`]; this upgrade exists so an
+/// existing v3 database gains the table and lands on schema "4". No data is
+/// moved here: migrating the legacy `vault.db` secrets is MUV-2.
+fn upgrade_v3_to_v4(conn: &mut Connection) -> Result<(), String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start v3->v4 upgrade: {e}"))?;
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS user_credentials (
+             user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id   TEXT NOT NULL,
+             credential_type TEXT NOT NULL,
+             encrypted_blob  BLOB NOT NULL,
+             nonce           BLOB NOT NULL,
+             aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             updated_at      INTEGER NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_user_credentials_type
+             ON user_credentials(user_id, credential_type);",
+    )
+    .map_err(|e| format!("Create user_credentials table: {e}"))?;
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, "4", now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit v3->v4 upgrade: {e}"))?;
+    Ok(())
+}
+
+fn already_migrated_report() -> MigrationReport {
+    MigrationReport {
+        schema_version: SCHEMA_VERSION.to_string(),
+        created_default_user: false,
+        migrated_profiles: 0,
+        migrated_settings_scopes: 0,
+        already_migrated: true,
+    }
+}
+
+/// Apply pending schema upgrades in cascade on an already-open connection.
+///
+/// Returns `Ok(true)` when the schema is now current (`SCHEMA_VERSION`) and no
+/// legacy-payload migration is required; `Ok(false)` when the database predates
+/// the user-partitions schema (version `None`/`"1"`) and the caller must run
+/// [`migrate_legacy_payloads`]. The cascade is written sequentially (not
+/// mutually exclusive) so a v2 database visits v3 then v4 in a single startup.
+fn apply_pending_upgrades(conn: &mut Connection) -> Result<bool, String> {
+    if matches!(
+        current_schema_version(conn)?.as_deref(),
+        Some(SCHEMA_VERSION)
+    ) {
+        return Ok(true);
+    }
+    if current_schema_version(conn)?.as_deref() == Some("2") {
+        upgrade_v2_to_v3(conn)?;
+    }
+    if current_schema_version(conn)?.as_deref() == Some("3") {
+        upgrade_v3_to_v4(conn)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
@@ -1284,6 +1365,61 @@ pub fn relocate_server_profile(
     })
 }
 
+/// MUV-3 cross-user credential relocation: the partition profile row is already
+/// moved by [`relocate_server_profile`]; this carries the matching `server_<id>`
+/// secret. The vault stays the source of truth (copy onto the new id, drop the
+/// orphan on a Move), and the secret is mirrored onto the TARGET user's
+/// partition under its own scoped DEK (resolved with `target_passphrase`, never
+/// the source session). Best-effort on the partition mirror: a locked/uncovered
+/// target falls back to the dual-written vault. Caller must invoke this while
+/// `root_key` / `target_passphrase` are still live (before zeroize).
+fn relocate_server_credential_dual(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    relocation: &ProfileRelocation,
+    target_passphrase: Option<&str>,
+) {
+    let source_key = format!("server_{}", relocation.source_profile_id);
+    let new_key = format!("server_{}", relocation.new_profile_id);
+
+    // Copy onto the new id only when a fresh target row was inserted; a dedup
+    // no-op leaves the target's existing secret untouched.
+    if !relocation.already_present {
+        if let Ok(Some(secret)) =
+            read_credential_with_fallback(conn, store, root_key, source_user_id, &source_key)
+        {
+            // Vault stays in sync (source of truth + fallback + downgrade safe).
+            let _ = store.store(&new_key, &secret);
+            // Mirror onto the target partition under its scoped DEK.
+            let root_secret = user_crypto::secret_key_from_bytes(root_key);
+            if let Ok(target_dek) = resolve_user_dek_scoped(
+                conn,
+                &root_secret,
+                relocation.target_user_id,
+                target_passphrase,
+            ) {
+                let _ = set_user_credential_with_dek(
+                    conn,
+                    relocation.target_user_id,
+                    &target_dek,
+                    &new_key,
+                    "server",
+                    &secret,
+                );
+            }
+        }
+    }
+
+    // Move/Cut: the source profile row is gone, so its orphaned secret is
+    // removed from both the vault and the source partition.
+    if relocation.moved {
+        let _ = store.delete(&source_key);
+        let _ = delete_user_credential_for(conn, source_user_id, &source_key);
+    }
+}
+
 /// Read a single user_settings scope for the given user, decrypted as JSON.
 /// Returns `Ok(None)` when no row exists. Internal/encryption scope names that
 /// are reserved (start with `__`) are filtered out at the CLI/Tauri boundary,
@@ -1395,6 +1531,773 @@ pub fn delete_active_user_setting(conn: &Connection, scope: &str) -> Result<(), 
 pub fn list_active_user_setting_scopes(conn: &Connection) -> Result<Vec<String>, String> {
     let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
     list_user_setting_scopes_for(conn, user_id)
+}
+
+// --- MUV-1: per-user credentials (raw secrets under the user DEK) -----------
+//
+// Companion of `user_settings`, but for raw secrets (server passwords, OAuth
+// token blobs, API keys, PEM). Secrets are updated one at a time (an OAuth
+// refresh rewrites a single key), so the storage model is upsert-per-key with a
+// composite primary key `(user_id, credential_id)`, NOT the delete-all + insert
+// pattern used for `server_profiles`. The secret is encrypted with the user's
+// DEK exactly like a profile blob; only the active user (or a primed session
+// for a passphrase account) can read or write its own credentials. MUV-1 builds
+// the store only: no existing caller is rewired and nothing is migrated yet
+// (that is MUV-2..6).
+
+/// Upsert one secret into a user's partition, encrypted with their DEK.
+///
+/// `secret` is treated as opaque bytes (it may be raw, e.g. a password, or
+/// JSON, e.g. an OAuth token blob). The row is keyed by
+/// `(user_id, credential_id)`; a second call with the same id overwrites the
+/// previous value. Requires the user's DEK: a passphrase account must already
+/// be unlocked in the session, otherwise this returns `USER_LOCKED`.
+pub fn set_user_credential_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    if credential_id.is_empty() {
+        return Err("CREDENTIAL_ID_REQUIRED".to_string());
+    }
+    if credential_type.is_empty() {
+        return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        set_user_credential_with_dek(conn, user_id, dek, credential_id, credential_type, secret)
+    })
+}
+
+/// Upsert one credential row with an already-resolved DEK. Lets callers that
+/// resolved the DEK out-of-session (e.g. a cross-user relocation that unwrapped
+/// the target via its passphrase, MUV-3) write a credential without going back
+/// through the session-based [`with_user_dek`].
+fn set_user_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    let (encrypted_blob, nonce) = user_crypto::encrypt_blob(dek, secret.as_bytes())?;
+    conn.execute(
+        "INSERT INTO user_credentials(
+             user_id, credential_id, credential_type, encrypted_blob, nonce,
+             aead_alg, updated_at
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5, 'aes-256-gcm', ?6)
+         ON CONFLICT(user_id, credential_id) DO UPDATE SET
+             credential_type = excluded.credential_type,
+             encrypted_blob  = excluded.encrypted_blob,
+             nonce           = excluded.nonce,
+             aead_alg        = excluded.aead_alg,
+             updated_at      = excluded.updated_at",
+        params![
+            user_id,
+            credential_id,
+            credential_type,
+            encrypted_blob,
+            nonce.to_vec(),
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Upsert user credential: {e}"))?;
+    Ok(())
+}
+
+/// Read one secret from a user's partition, decrypted with their DEK.
+///
+/// Returns `Ok(None)` when no row exists. The decrypted secret is wrapped in
+/// `Zeroizing<String>` so it is scrubbed from memory on drop, matching
+/// `CredentialStore::get_secret`. Requires the user's DEK (see
+/// [`set_user_credential_for`]).
+pub fn get_user_credential_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let row: Option<(Vec<u8>, Vec<u8>)> = conn
+            .query_row(
+                "SELECT encrypted_blob, nonce FROM user_credentials
+                 WHERE user_id = ?1 AND credential_id = ?2",
+                params![user_id, credential_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Read user credential: {e}"))?;
+        match row {
+            None => Ok(None),
+            Some((blob, nonce)) => {
+                let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)?;
+                let secret = String::from_utf8(plaintext.to_vec())
+                    .map_err(|_| "CREDENTIAL_NOT_UTF8".to_string())?;
+                Ok(Some(Zeroizing::new(secret)))
+            }
+        }
+    })
+}
+
+/// Delete one secret from a user's partition. No DEK is required: a row is
+/// removed by its `(user_id, credential_id)` key without decrypting anything.
+pub fn delete_user_credential_for(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+        params![user_id, credential_id],
+    )
+    .map_err(|e| format!("Delete user credential: {e}"))?;
+    Ok(())
+}
+
+/// List the `(credential_id, credential_type)` pairs stored for a user, without
+/// decrypting any secret. Used by MUV-2 (migration bookkeeping) and the tests.
+pub fn list_user_credential_ids_for(
+    conn: &Connection,
+    user_id: i64,
+) -> Result<Vec<(String, String)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT credential_id, credential_type FROM user_credentials
+             WHERE user_id = ?1 ORDER BY credential_id ASC",
+        )
+        .map_err(|e| format!("Prepare list user credentials: {e}"))?;
+    let rows = stmt
+        .query_map(params![user_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("Query list user credentials: {e}"))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Read user credential ids: {e}"))
+}
+
+/// Active-user wrapper for [`set_user_credential_for`].
+pub fn set_active_user_credential(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    set_user_credential_for(
+        conn,
+        root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    )
+}
+
+/// Active-user wrapper for [`get_user_credential_for`].
+pub fn get_active_user_credential(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    get_user_credential_for(conn, root_key, user_id, credential_id)
+}
+
+/// Active-user wrapper for [`delete_user_credential_for`].
+pub fn delete_active_user_credential(conn: &Connection, credential_id: &str) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    delete_user_credential_for(conn, user_id, credential_id)
+}
+
+// --- MUV-2: copy-only migration of legacy vault secrets into user_credentials -
+//
+// The bulk copy moves each user's raw secrets from the global `vault.db` into
+// `user_credentials`, re-encrypted under that user's DEK. It is copy-only
+// (never deletes from the vault; cleanup is MUV-6), idempotent (per-user marker
+// in global_state), eager for device-wrapped users (DEK reachable at boot) and
+// lazy for passphrase users (migrated at first unlock when the session DEK is
+// primed). The engine is closure-backed over the vault so it is unit-testable
+// without a real CredentialStore; production wires the closure to the store.
+
+const CREDS_MIGRATED_PREFIX: &str = "creds_migrated_";
+
+/// Closure that reads one secret from the legacy vault, mapping "absent" to
+/// `None`. Lets the migration engine run against a fake vault in tests.
+type SecretReader<'a> = dyn Fn(&str) -> Result<Option<Zeroizing<String>>, String> + 'a;
+
+fn creds_migrated_key(user_id: i64) -> String {
+    format!("{CREDS_MIGRATED_PREFIX}{user_id}")
+}
+
+fn is_creds_migrated(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![creds_migrated_key(user_id)],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read creds migration marker: {e}"))?;
+    Ok(value.as_deref() == Some("1"))
+}
+
+fn mark_creds_migrated(conn: &Connection, user_id: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, '1', ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![creds_migrated_key(user_id), now_ms()],
+    )
+    .map_err(|e| format!("Write creds migration marker: {e}"))?;
+    Ok(())
+}
+
+fn session_user_id() -> Option<i64> {
+    USER_SESSION
+        .lock()
+        .ok()
+        .and_then(|session| session.as_ref().map(|s| s.user_id))
+}
+
+/// Owner of the non-profile per-user globals (`ai_apikey_*`, github tokens):
+/// the lowest-id admin (the legacy `default`). Routing them to a single account
+/// avoids duplicating them across every admin (MUV-0 / sec 2.3).
+fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .optional()
+    .map_err(|e| format!("Read nonprofile secret owner: {e}"))
+}
+
+/// Read one optional secret from the live store, mapping NotFound to None.
+fn get_optional_secret(
+    store: &CredentialStore,
+    account: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    match store.get_secret(account) {
+        Ok(value) => Ok(Some(value)),
+        Err(CredentialError::NotFound(_)) => Ok(None),
+        Err(e) => Err(format!("Read legacy secret: {e}")),
+    }
+}
+
+/// Copy one legacy secret into `user_credentials` when it is not already there
+/// and the vault has it. Returns 1 on insert, 0 otherwise. Copy-only: the
+/// legacy vault entry is never touched.
+fn copy_one_credential(
+    tx: &Transaction<'_>,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<usize, String> {
+    let exists: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2)",
+            params![user_id, credential_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Check existing credential: {e}"))?;
+    if exists {
+        return Ok(0);
+    }
+    let Some(secret) = read_secret(credential_id)? else {
+        return Ok(0);
+    };
+    let (encrypted_blob, nonce) = user_crypto::encrypt_blob(dek, secret.as_bytes())?;
+    tx.execute(
+        "INSERT INTO user_credentials(
+             user_id, credential_id, credential_type, encrypted_blob, nonce,
+             aead_alg, updated_at
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5, 'aes-256-gcm', ?6)",
+        params![
+            user_id,
+            credential_id,
+            credential_type,
+            encrypted_blob,
+            nonce.to_vec(),
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Insert migrated credential: {e}"))?;
+    Ok(1)
+}
+
+/// Copy every legacy secret belonging to `user_id` under the resolved `dek`.
+/// Profile-bound secrets (`server_<id>`, `oauth_<slug>_<id>`,
+/// `jottacloud_refresh_<id>`) are matched against the user's own profile ids.
+/// When `owns_global_secrets` is true the user also receives the non-profile
+/// per-user globals (`ai_apikey_*`, `github_oauth_token`, `github_pat`).
+/// `github_pem_*` / `github_app_credentials` are machine-global (MUV-0) and are
+/// deliberately NOT migrated.
+fn copy_user_secrets_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    owns_global_secrets: bool,
+    vault_keys: &[String],
+    read_secret: &SecretReader<'_>,
+) -> Result<usize, String> {
+    let profiles = read_profiles_with_dek(conn, user_id, dek)?;
+    let profile_ids: Vec<String> = profiles
+        .iter()
+        .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]).map(str::to_string))
+        .collect();
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Start credential migration: {e}"))?;
+    let mut migrated = 0usize;
+
+    for id in &profile_ids {
+        migrated += copy_one_credential(
+            &tx,
+            user_id,
+            dek,
+            &format!("server_{id}"),
+            "server",
+            read_secret,
+        )?;
+        migrated += copy_one_credential(
+            &tx,
+            user_id,
+            dek,
+            &format!("jottacloud_refresh_{id}"),
+            "jottacloud_refresh",
+            read_secret,
+        )?;
+        let suffix = format!("_{id}");
+        for key in vault_keys
+            .iter()
+            .filter(|k| k.starts_with("oauth_") && k.ends_with(&suffix))
+        {
+            migrated += copy_one_credential(&tx, user_id, dek, key, "oauth", read_secret)?;
+        }
+    }
+
+    if owns_global_secrets {
+        for key in vault_keys.iter().filter(|k| k.starts_with("ai_apikey_")) {
+            migrated += copy_one_credential(&tx, user_id, dek, key, "ai_apikey", read_secret)?;
+        }
+        for key in ["github_oauth_token", "github_pat"] {
+            migrated += copy_one_credential(&tx, user_id, dek, key, "github", read_secret)?;
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Commit credential migration: {e}"))?;
+    Ok(migrated)
+}
+
+/// Migrate one user's legacy secrets (engine, closure-backed vault). Idempotent
+/// via the `creds_migrated_<id>` marker. A passphrase account without a primed
+/// session is skipped (`Ok(0)`, left unmarked) so it migrates lazily at first
+/// unlock. Copy-only.
+fn migrate_user_credentials_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    read_secret: &SecretReader<'_>,
+) -> Result<usize, String> {
+    if is_creds_migrated(conn, user_id)? {
+        return Ok(0);
+    }
+    let owns_global_secrets = nonprofile_secret_owner(conn)? == Some(user_id);
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        copy_user_secrets_with_dek(conn, uid, dek, owns_global_secrets, vault_keys, read_secret)
+    });
+    match outcome {
+        Ok(migrated) => {
+            mark_creds_migrated(conn, user_id)?;
+            Ok(migrated)
+        }
+        // A locked passphrase account has no DEK yet: defer to first unlock.
+        Err(e) if e == "USER_LOCKED" => Ok(0),
+        Err(e) => Err(e),
+    }
+}
+
+/// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
+/// store, fall back to the legacy vault when the per-user row is absent or the
+/// account is locked. MUV-3/4/5 point real readers here; MUV-6 drops the
+/// fallback once the vault is purged.
+fn read_credential_with_fallback_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    match get_user_credential_for(conn, root_key, user_id, credential_id) {
+        Ok(Some(value)) => return Ok(Some(value)),
+        Ok(None) => {}
+        // Locked passphrase account: the per-user row is unreadable right now,
+        // but the legacy vault copy still is. Fall back instead of failing.
+        Err(e) if e == "USER_LOCKED" => {}
+        Err(e) => return Err(e),
+    }
+    read_secret(credential_id)
+}
+
+/// True if any user can be migrated eagerly right now (device-wrapped, or a
+/// passphrase user already in session) and is not yet migrated. Cheap pre-check
+/// so the per-command boot path skips the vault read once everything reachable
+/// is done; a locked passphrase user is intentionally NOT "eager-pending".
+fn has_eager_pending_users(conn: &Connection) -> Result<bool, String> {
+    for user in list_users(conn)? {
+        if is_creds_migrated(conn, user.id)? {
+            continue;
+        }
+        if !user.has_passphrase || session_user_id() == Some(user.id) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Eager migration pass over every user whose DEK is reachable now. Best-effort
+/// per user: one account's failure leaves it unmarked (retried next boot) and
+/// never aborts the others. Reads the vault only when work remains.
+pub fn migrate_credentials_eager_all(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+) -> Result<usize, String> {
+    let users = list_users(conn)?;
+    let mut pending = Vec::new();
+    for user in &users {
+        if is_creds_migrated(conn, user.id)? {
+            continue;
+        }
+        if !user.has_passphrase || session_user_id() == Some(user.id) {
+            pending.push(user.id);
+        }
+    }
+    if pending.is_empty() {
+        return Ok(0);
+    }
+    let vault_keys = store
+        .list_accounts()
+        .map_err(|e| format!("List vault accounts: {e}"))?;
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    let mut total = 0usize;
+    for user_id in pending {
+        match migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret) {
+            Ok(migrated) => total += migrated,
+            // Leave unmarked; a transient failure is retried on the next boot.
+            Err(_) => continue,
+        }
+    }
+    Ok(total)
+}
+
+/// Lazy migration for one just-unlocked user. Called from the unlock bridges
+/// where the session DEK is primed and the store is available.
+pub fn migrate_credentials_for_user(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    user_id: i64,
+) -> Result<usize, String> {
+    if is_creds_migrated(conn, user_id)? {
+        return Ok(0);
+    }
+    let vault_keys = store
+        .list_accounts()
+        .map_err(|e| format!("List vault accounts: {e}"))?;
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)
+}
+
+/// Reader-fallback net (sec 3.3): store-backed wrapper of
+/// [`read_credential_with_fallback_inner`].
+pub fn read_credential_with_fallback(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, &read_secret)
+}
+
+// --- MUV-3: live cutover of `server_*` reader/writer call-sites -------------
+//
+// MUV-3 points the real `server_*` credential resolution at the per-user store
+// while keeping the legacy vault as source of truth + fallback during the
+// rollout (dual-write). Readers prefer the partition row and fall back to the
+// vault (a not-yet-migrated key or a locked passphrase account still resolves);
+// writers always write the vault first, then best-effort mirror the secret into
+// the active (GUI) or scoped (CLI `--user`) user's partition. No vault entry is
+// ever removed here (that is MUV-6). The mirror is confined to in-scope keys by
+// `muv3_credential_type` (`server_*`, and `ai_apikey_*` once MUV-5 lands), so the
+// generic `store_credential` / `delete_credential` Tauri commands mirror those by
+// prefix while OAuth and GitHub tokens are mirrored by their own type-explicit
+// call-sites (MUV-4/5) and never by prefix. The
+// partition DB is opened without an AppHandle (`open_or_init_cli`), which
+// resolves to the same file as the GUI (see `cli_db_path` / `db_path`), so a
+// shared reader in factory/agent/ai_tools sees exactly what the GUI wrote.
+
+/// Prefix scope classifier: `Some(credential_type)` for the keys whose namespace
+/// is unambiguous enough that the generic `store_credential`/`delete_credential`
+/// Tauri commands can mirror them by prefix alone. `server_*` (MUV-3) and
+/// `ai_apikey_*` (MUV-5) qualify: an AI key is always `ai_apikey_<provider>` with
+/// no `_client_id`-style sibling, so prefix matching never misfires. Everything
+/// else is `None`: OAuth tokens (`oauth_<p>_<id>` vs `oauth_<p>_client_id`) and
+/// the GitHub tokens are mirrored by call-sites that pass the type explicitly
+/// (MUV-4/5), and the machine-global `github_pem_*` / `github_app_credentials`
+/// stay vault-only on purpose (MUV-0).
+fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
+    if credential_id.starts_with("server_") {
+        Some("server")
+    } else if credential_id.starts_with("ai_apikey_") {
+        Some("ai_apikey")
+    } else {
+        None
+    }
+}
+
+/// Active user id resolved quietly without an AppHandle. Returns `None` on any
+/// error (DB unopenable, no active user): callers use it only to decide whether
+/// a best-effort mirror is possible, never to gate the authoritative vault write.
+fn active_user_id_quiet() -> Option<i64> {
+    let conn = open_or_init_cli().ok()?;
+    active_user_id(&conn).ok().flatten()
+}
+
+/// Best-effort mirror of one secret into `user_id`'s partition. Confined to
+/// in-scope keys, swallows `USER_LOCKED` (a locked passphrase account keeps only
+/// the vault copy; the MUV-2 lazy pass mirrors it at the next unlock) and any
+/// store/DB error: the vault copy written by the caller is authoritative, so a
+/// failed mirror must never fail the user's save. Zero-password safe (a
+/// device-wrapped account mirrors via the keyring-derived root_key, no prompt).
+fn mirror_credential_for_user_best_effort(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    secret: &str,
+) {
+    let Some(credential_type) = muv3_credential_type(credential_id) else {
+        return;
+    };
+    mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret);
+}
+
+/// Best-effort mirror with an EXPLICIT credential type. Used by call-sites that
+/// already know the type (OAuth tokens, Jottacloud refresh) and therefore
+/// bypass the prefix classifier, which cannot reliably tell `oauth_<p>_<id>`
+/// (a per-user token) from `oauth_<p>_client_id` (machine/app config). Same
+/// best-effort + zero-password semantics as the classifier-gated variant.
+fn mirror_credential_for_user_typed(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) {
+    let Ok(conn) = open_or_init_cli() else {
+        return;
+    };
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let _ = set_user_credential_for(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    );
+    root_key.zeroize();
+}
+
+/// Best-effort removal of one in-scope secret from `user_id`'s partition. No DEK
+/// is needed (DELETE by key); errors are swallowed because the vault delete is
+/// the part that matters during the dual-write rollout. This is the partition
+/// half of an explicit user delete, never a mass purge (that is MUV-6).
+fn unmirror_credential_for_user_best_effort(user_id: i64, credential_id: &str) {
+    if muv3_credential_type(credential_id).is_none() {
+        return;
+    }
+    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+}
+
+/// Like [`unmirror_credential_for_user_best_effort`] but without the prefix
+/// classifier gate. For explicitly-typed call-sites (OAuth/Jottacloud, MUV-4)
+/// that already know the key is in scope.
+fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id: &str) {
+    if let Ok(conn) = open_or_init_cli() {
+        let _ = delete_user_credential_for(&conn, user_id, credential_id);
+    }
+}
+
+/// Active-user reader (GUI + shared modules: factory/agent/ai_tools/mcp/AI core).
+/// Resolves `credential_id` for the active user from the per-user store, falling
+/// back to the legacy vault when the row is absent or the account is locked.
+/// With no active user (pre-MU / fresh install) it reads the vault only.
+pub fn resolve_active_credential(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    match active_user_id(&conn)? {
+        None => get_optional_secret(store, credential_id),
+        Some(user_id) => {
+            let mut root_key = store.derive_user_partition_wrapping_key();
+            let result =
+                read_credential_with_fallback(&conn, store, &root_key, user_id, credential_id);
+            root_key.zeroize();
+            result
+        }
+    }
+}
+
+/// Active-user dual writer (GUI): write the vault first, then mirror in-scope
+/// keys into the active user's partition. Out-of-scope keys (oauth/ai/github)
+/// land in the vault only, which is the correct MUV-3 behaviour for the generic
+/// `store_credential` command.
+pub fn store_active_credential_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    if muv3_credential_type(credential_id).is_some() {
+        if let Some(user_id) = active_user_id_quiet() {
+            mirror_credential_for_user_best_effort(store, user_id, credential_id, secret);
+        }
+    }
+    Ok(())
+}
+
+/// Explicit-user dual writer (CLI `--user`): same as
+/// [`store_active_credential_dual`] but mirrors into `user_id`'s partition. The
+/// caller resolves `user_id` from `ensure_active_user_unlocked` so the secret is
+/// scoped to the invocation's `--user`, not the persisted active user.
+pub fn store_credential_for_user_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    mirror_credential_for_user_best_effort(store, user_id, credential_id, secret);
+    Ok(())
+}
+
+/// Active-user dual delete (GUI): delete from the vault and best-effort from the
+/// active user's partition. Part of an explicit user delete, never a purge.
+pub fn delete_active_credential_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<(), String> {
+    store
+        .delete(credential_id)
+        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    if muv3_credential_type(credential_id).is_some() {
+        if let Some(user_id) = active_user_id_quiet() {
+            unmirror_credential_for_user_best_effort(user_id, credential_id);
+        }
+    }
+    Ok(())
+}
+
+/// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
+/// from `user_id`'s partition.
+pub fn delete_credential_for_user_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    store
+        .delete(credential_id)
+        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    unmirror_credential_for_user_best_effort(user_id, credential_id);
+    Ok(())
+}
+
+// --- MUV-4: OAuth / Jottacloud token cutover (explicit-type dual-write) ------
+//
+// OAuth tokens (`oauth_<provider>_<id>`) and Jottacloud refresh tokens
+// (`jottacloud_refresh_<id>`) rewrite themselves on refresh, so the same
+// dual-write + reader-fallback net as MUV-3 applies, with one twist: the
+// call-sites know the credential type, so they pass it explicitly instead of
+// relying on the `server_`-only prefix classifier. Readers use the shared
+// `resolve_active_credential` (partition first, vault fallback). The vault stays
+// source of truth + fallback during the rollout; no entry is removed (MUV-6).
+
+/// Best-effort mirror of an explicitly-typed secret into the active user's
+/// partition. For call-sites with bespoke vault-write logic (OAuth runtime,
+/// Jottacloud persist) that have already written the vault and only need the
+/// partition mirror. No active user / locked / error -> no-op.
+pub fn mirror_active_credential(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) {
+    if let Some(user_id) = active_user_id_quiet() {
+        mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret);
+    }
+}
+
+/// Best-effort removal of one secret from the active user's partition. The
+/// partition half of an explicit token delete (OAuth/Jottacloud logout).
+pub fn unmirror_active_credential(credential_id: &str) {
+    if let Some(user_id) = active_user_id_quiet() {
+        unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+    }
+}
+
+/// Explicitly-typed dual writer (active user): vault first, then mirror into the
+/// active user's partition. For import/bridge sites without bespoke vault logic.
+pub fn store_active_credential_typed_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    mirror_active_credential(store, credential_id, credential_type, secret);
+    Ok(())
+}
+
+/// Explicitly-typed dual writer (CLI `--user`): vault first, then mirror into
+/// `user_id`'s partition.
+pub fn store_credential_for_user_typed_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret);
+    Ok(())
 }
 
 /// MU-7: list other users that already store a profile with the SAME dedup
@@ -1739,6 +2642,16 @@ pub struct TransportRekeyReport {
 /// `root_key` is THIS machine's local wrapping key (the export runs on the
 /// source machine where the partitions are readable). `password` is the
 /// backup password; the transport key is `Argon2id(password, salt)`.
+///
+/// MUV-5 / R-MUV-3: this same transported DEK makes the per-user secrets
+/// portable, not just the profile metadata. The `user_credentials` rows ride
+/// along inside the bundled `user_partitions.db` and are encrypted under the
+/// user's DEK (`set_user_credential_with_dek` -> `encrypt_blob(dek, ...)`), the
+/// exact key this sidecar carries. Once [`rekey_transport_deks`] re-wraps the
+/// DEK to the destination's local `root_key`, the credential rows decrypt with
+/// no per-row change. No secret-specific wrapping is needed: the DEK is the
+/// single confidentiality boundary for both profiles and secrets. (Covered by
+/// `user_credentials_row_is_portable_via_transport_dek`.)
 ///
 /// Returns `Ok(None)` when there is no passphrase-less user to make portable
 /// (so the caller omits the section entirely and old readers stay happy).
@@ -2195,22 +3108,44 @@ pub fn debug_state(app: &AppHandle) -> Result<PartitionDebugState, String> {
     })
 }
 
+/// MUV-2: best-effort eager credential migration on the CLI side. The CLI has
+/// the store in hand (no Master-Password gate), so it just runs when there is
+/// eager-pending work. Never fails the caller.
+fn run_eager_credential_migration_cli(conn: &Connection, store: &CredentialStore) {
+    if !has_eager_pending_users(conn).unwrap_or(false) {
+        return;
+    }
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let _ = migrate_credentials_eager_all(conn, store, &root_key);
+    root_key.zeroize();
+}
+
 pub fn init_or_migrate_cli(store: &CredentialStore) -> Result<MigrationReport, String> {
     let mut conn = open_or_init_cli()?;
-    let profiles = store.get("config_server_profiles").ok();
-    let settings = store
-        .get("config_app_settings")
-        .ok()
-        .or_else(|| store.get("aeroftp_settings").ok());
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = migrate_legacy_payloads(
-        &mut conn,
-        profiles.as_deref(),
-        settings.as_deref(),
-        &root_key,
-    );
-    root_key.zeroize();
-    result
+    // Same cascade as the GUI path (`init_or_migrate`): bring an existing
+    // database forward (v2 -> v3 -> v4) before falling through to the
+    // legacy-payload migration that a v1/fresh database needs.
+    let report = if apply_pending_upgrades(&mut conn)? {
+        already_migrated_report()
+    } else {
+        let profiles = store.get("config_server_profiles").ok();
+        let settings = store
+            .get("config_app_settings")
+            .ok()
+            .or_else(|| store.get("aeroftp_settings").ok());
+        let mut root_key = store.derive_user_partition_wrapping_key();
+        let result = migrate_legacy_payloads(
+            &mut conn,
+            profiles.as_deref(),
+            settings.as_deref(),
+            &root_key,
+        );
+        root_key.zeroize();
+        result?
+    };
+    // MUV-2: eager credential copy for device-wrapped users (no-op once done).
+    run_eager_credential_migration_cli(&conn, store);
+    Ok(report)
 }
 
 pub fn cli_list_users(store: &CredentialStore) -> Result<Vec<UserMetadata>, String> {
@@ -2256,6 +3191,11 @@ pub fn cli_unlock_user(
     let conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = unlock_user(&conn, &root_key, user_id, passphrase);
+    // MUV-2 lazy: a passphrase account's DEK is now primed, so migrate its
+    // legacy secrets. Best-effort: a failure must not undo a good unlock.
+    if result.is_ok() {
+        let _ = migrate_credentials_for_user(&conn, store, &root_key, user_id);
+    }
     root_key.zeroize();
     result
 }
@@ -2271,6 +3211,9 @@ pub fn cli_unlock_user_transient(
     let conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = unlock_user_transient(&conn, &root_key, user_id, passphrase);
+    if result.is_ok() {
+        let _ = migrate_credentials_for_user(&conn, store, &root_key, user_id);
+    }
     root_key.zeroize();
     result
 }
@@ -2395,6 +3338,131 @@ pub fn cli_replace_server_profiles_for_user(
     result
 }
 
+/// MUV-5: resolve the active user's server profiles for the MCP subprocess.
+///
+/// The MCP server runs headless and must scope to the persisted active user
+/// instead of the legacy single-user `config_server_profiles` blob. A
+/// device-wrapped active user resolves with no prompt; a passphrase-protected
+/// active user is unlocked transiently from `AEROFTP_USER_PASSPHRASE` (the same
+/// env the CLI honours), priming the process session so the subsequent
+/// `resolve_active_credential` reads of `server_<id>` decrypt as well.
+///
+/// Falls back to the dual-maintained legacy blob only when the partition cannot
+/// serve the active user: no active user, a locked passphrase account with no
+/// usable env passphrase, or a partition error (downgrade). The fallback keeps
+/// MCP working during the rollout; MUV-6 drops it once the vault is purged.
+pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let active = match get_active_user(&conn)? {
+        Some(user) => user,
+        None => return read_legacy_server_profiles_blob(store),
+    };
+
+    // Unlock a passphrase-protected active user transiently from the env so the
+    // session DEK is primed for both this profile read and later credential
+    // reads. Best-effort: a wrong/absent passphrase just leaves the account
+    // locked and the legacy fallback below answers.
+    if active.has_passphrase && session_user_id() != Some(active.id) {
+        if let Ok(passphrase) = std::env::var("AEROFTP_USER_PASSPHRASE") {
+            if !passphrase.is_empty() {
+                let mut root_key = store.derive_user_partition_wrapping_key();
+                let _ = unlock_user_transient(&conn, &root_key, active.id, Some(&passphrase));
+                root_key.zeroize();
+            }
+        }
+    }
+
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = list_active_server_profiles(&conn, &root_key);
+    root_key.zeroize();
+    match result {
+        Ok(profiles) => Ok(profiles),
+        // Locked passphrase account (no usable env passphrase) or no active
+        // user: the partition cannot serve, so the dual-written legacy blob does.
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
+            read_legacy_server_profiles_blob(store)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Read and parse the legacy single-user `config_server_profiles` vault blob.
+/// The MUV-5 rollout fallback for [`mcp_list_active_server_profiles`]; removed
+/// with the rest of the legacy reads at MUV-6.
+fn read_legacy_server_profiles_blob(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {e}"))?;
+    serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {e}"))
+}
+
+/// CLI bridge: read one secret from a user's partition (MUV-1). MUV-3 will wire
+/// the CLI's credential resolution onto this; for now it is the binary the
+/// later cutover slices call. Same locking semantics as the profile readers.
+pub fn cli_get_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = get_user_credential_for(&conn, &root_key, user_id, credential_id);
+    root_key.zeroize();
+    result
+}
+
+/// CLI bridge: upsert one secret into a user's partition (MUV-1).
+pub fn cli_set_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = set_user_credential_for(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    );
+    root_key.zeroize();
+    result
+}
+
+/// CLI bridge: delete one secret from a user's partition (MUV-1).
+pub fn cli_delete_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    delete_user_credential_for(&conn, user_id, credential_id)
+}
+
+/// CLI bridge: read a credential preferring the per-user store and falling back
+/// to the legacy vault (MUV-2 rollout net). MUV-3 points the CLI's credential
+/// resolution at this.
+pub fn cli_read_credential_with_fallback(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = read_credential_with_fallback(&conn, store, &root_key, user_id, credential_id);
+    root_key.zeroize();
+    result
+}
+
 /// CLI bridge for the cross-user `profile-copy` / `profile-move` commands (N4).
 /// The active (source) user must already be unlocked by the caller, e.g. via
 /// `ensure_active_user_unlocked`; the target passphrase (if the target account
@@ -2425,6 +3493,32 @@ pub fn cli_relocate_server_profile(
     );
     root_key.zeroize();
     result
+}
+
+/// CLI bridge (MUV-3) for the credential half of a cross-user relocation: copies
+/// the `server_<id>` secret onto the new id (vault + the target user's partition
+/// under its scoped DEK) and, on a Move, drops the orphaned source secret from
+/// both stores. Call after [`cli_relocate_server_profile`] with the same
+/// `target_passphrase` still live.
+pub fn cli_relocate_server_credential_dual(
+    store: &CredentialStore,
+    source_user_id: i64,
+    relocation: &ProfileRelocation,
+    target_passphrase: Option<&str>,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    relocate_server_credential_dual(
+        &conn,
+        store,
+        &root_key,
+        source_user_id,
+        relocation,
+        target_passphrase,
+    );
+    root_key.zeroize();
+    Ok(())
 }
 
 /// Resolve a target user by name (CLI `--user` flag). Returns the user metadata
@@ -2651,25 +3745,28 @@ pub async fn user_partitions_relocate_server_profile(
         target_passphrase.as_deref(),
         move_profile,
     );
+    // MUV-3: relocate the per-profile `server_<id>` secret while the root_key and
+    // the target passphrase are still live. The vault stays in sync and the
+    // secret is mirrored onto the target user's partition under its scoped DEK.
+    let outcome = match result {
+        Ok(relocation) => {
+            relocate_server_credential_dual(
+                &conn,
+                &store,
+                &root_key,
+                source_user_id,
+                &relocation,
+                target_passphrase.as_deref(),
+            );
+            Ok(relocation)
+        }
+        Err(e) => Err(e),
+    };
     root_key.zeroize();
     if let Some(passphrase) = target_passphrase.as_mut() {
         passphrase.zeroize();
     }
-    let relocation = result?;
-
-    // Credentials live in the OS keyring (`server_<id>`), outside the partition
-    // DB. Copy the source secret onto the new id when a fresh row was inserted;
-    // a no-op dedup leaves the existing target secret untouched.
-    if !relocation.already_present {
-        if let Ok(secret) = store.get(&format!("server_{}", relocation.source_profile_id)) {
-            let _ = store.store(&format!("server_{}", relocation.new_profile_id), &secret);
-        }
-    }
-    // Move/Cut: the source row is gone, so its now-orphaned secret is removed.
-    if relocation.moved {
-        let _ = store.delete(&format!("server_{}", relocation.source_profile_id));
-    }
-    Ok(relocation)
+    outcome
 }
 
 /// Generic per-user setting access (MU-4 foundation). Settings are keyed by
@@ -2736,6 +3833,55 @@ pub async fn user_partitions_list_active_setting_scopes(
         .into_iter()
         .filter(|s| !s.starts_with("__"))
         .collect())
+}
+
+/// MUV-1: read one secret from the active user's encrypted partition. Returns
+/// JSON null when the credential does not exist. Errors with `USER_LOCKED` when
+/// the active user is a passphrase account that has not been unlocked. The
+/// secret crosses the IPC boundary as a plain string for the GUI to consume,
+/// the same way profile blobs already do; in-process it stays zeroize-on-drop.
+#[tauri::command]
+pub async fn user_partitions_get_user_credential(
+    app: AppHandle,
+    credential_id: String,
+) -> Result<Option<String>, String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let result = get_active_user_credential(&conn, &root_key, &credential_id);
+    root_key.zeroize();
+    Ok(result?.map(|secret| secret.to_string()))
+}
+
+/// MUV-1: upsert one secret into the active user's encrypted partition.
+#[tauri::command]
+pub async fn user_partitions_set_user_credential(
+    app: AppHandle,
+    credential_id: String,
+    credential_type: String,
+    mut secret: String,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let result =
+        set_active_user_credential(&conn, &root_key, &credential_id, &credential_type, &secret);
+    root_key.zeroize();
+    secret.zeroize();
+    result
+}
+
+/// MUV-1: delete one secret from the active user's encrypted partition.
+#[tauri::command]
+pub async fn user_partitions_delete_user_credential(
+    app: AppHandle,
+    credential_id: String,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    delete_active_user_credential(&conn, &credential_id)
 }
 
 /// MU-7: ask "is this profile already saved by another user account?". Used
@@ -2841,6 +3987,10 @@ pub async fn user_partitions_unlock_user(
     let result = unlock_user(&conn, &root_key, user_id, passphrase.as_deref());
     if let Some(passphrase) = passphrase.as_mut() {
         passphrase.zeroize();
+    }
+    // MUV-2 lazy: migrate the just-unlocked passphrase user's legacy secrets.
+    if result.is_ok() {
+        let _ = migrate_credentials_for_user(&conn, &store, &root_key, user_id);
     }
     root_key.zeroize();
     result
@@ -4424,8 +5574,10 @@ mod tests {
             })
             .expect("admin id");
         assert_eq!(admin_id, 1);
+        // upgrade_v2_to_v3 lands exactly on "3"; the v3 -> v4 step is a
+        // separate stage in the cascade (`apply_pending_upgrades`).
         let version = current_schema_version(&conn).expect("version");
-        assert_eq!(version.as_deref(), Some(SCHEMA_VERSION));
+        assert_eq!(version.as_deref(), Some("3"));
 
         // Idempotent: rerun must not crash and must not flip admin off.
         upgrade_v2_to_v3(&mut conn).expect("idempotent rerun");
@@ -4435,5 +5587,1215 @@ mod tests {
             })
             .expect("admin still");
         assert_eq!(still_admin, 1);
+    }
+
+    // --- MUV-1: user_credentials ------------------------------------------
+
+    #[test]
+    fn credential_round_trip_device_wrapped() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        set_user_credential_for(&conn, &root, default.id, "server_1", "server", "pw")
+            .expect("set credential");
+        let got = get_user_credential_for(&conn, &root, default.id, "server_1")
+            .expect("get credential")
+            .expect("credential present");
+        assert_eq!(got.as_str(), "pw");
+
+        // Missing credential reads back as None, not an error.
+        assert!(get_user_credential_for(&conn, &root, default.id, "absent")
+            .expect("get absent")
+            .is_none());
+    }
+
+    #[test]
+    fn credential_round_trip_passphrase_requires_session() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(
+            &mut conn,
+            &root,
+            "Bob",
+            Some("B"),
+            Some("#6366f1"),
+            Some("correct horse battery staple"),
+        )
+        .expect("create locked user");
+        assert!(bob.has_passphrase);
+
+        // No session yet: a passphrase account is locked.
+        let locked = set_user_credential_for(&conn, &root, bob.id, "server_2", "server", "secret")
+            .expect_err("locked write");
+        assert_eq!(locked, "USER_LOCKED");
+
+        // Unlock primes the DEK session; set/get now succeed.
+        unlock_user(&conn, &root, bob.id, Some("correct horse battery staple")).expect("unlock");
+        set_user_credential_for(&conn, &root, bob.id, "server_2", "server", "secret")
+            .expect("set after unlock");
+        let got = get_user_credential_for(&conn, &root, bob.id, "server_2")
+            .expect("get after unlock")
+            .expect("present");
+        assert_eq!(got.as_str(), "secret");
+
+        // Dropping the session re-locks the partition.
+        clear_user_session();
+        let relocked =
+            get_user_credential_for(&conn, &root, bob.id, "server_2").expect_err("relocked read");
+        assert_eq!(relocked, "USER_LOCKED");
+    }
+
+    #[test]
+    fn credential_isolation_across_users() {
+        // R3 for secrets: a credential set by user A is invisible to user B
+        // because the primary key includes user_id.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user_a = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let user_b =
+            create_passphrase_less_user(&mut conn, &root, "userb", Some("B"), Some("#10b981"))
+                .expect("create userb");
+
+        set_user_credential_for(&conn, &root, user_a.id, "server_1", "server", "a-secret")
+            .expect("set on A");
+        assert!(get_user_credential_for(&conn, &root, user_b.id, "server_1")
+            .expect("read on B")
+            .is_none());
+        // A still reads its own.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, user_a.id, "server_1")
+                .expect("read on A")
+                .expect("present")
+                .as_str(),
+            "a-secret"
+        );
+    }
+
+    #[test]
+    fn credential_upsert_keeps_single_row() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        set_user_credential_for(&conn, &root, default.id, "oauth_dropbox_1", "oauth", "v1")
+            .expect("first write");
+        set_user_credential_for(&conn, &root, default.id, "oauth_dropbox_1", "oauth", "v2")
+            .expect("second write");
+
+        let got = get_user_credential_for(&conn, &root, default.id, "oauth_dropbox_1")
+            .expect("get")
+            .expect("present");
+        assert_eq!(got.as_str(), "v2");
+
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list ids");
+        assert_eq!(
+            ids,
+            vec![("oauth_dropbox_1".to_string(), "oauth".to_string())]
+        );
+    }
+
+    #[test]
+    fn credential_cascade_on_user_delete() {
+        // R9 for secrets: deleting a user removes its credentials (FK cascade).
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let userb =
+            create_passphrase_less_user(&mut conn, &root, "userb", Some("B"), Some("#10b981"))
+                .expect("create userb");
+
+        set_user_credential_for(&conn, &root, userb.id, "server_9", "server", "doomed")
+            .expect("set credential");
+        assert_eq!(
+            list_user_credential_ids_for(&conn, userb.id)
+                .expect("list before")
+                .len(),
+            1
+        );
+
+        delete_user(&mut conn, userb.id).expect("delete user");
+        assert!(list_user_credential_ids_for(&conn, userb.id)
+            .expect("list after")
+            .is_empty());
+    }
+
+    #[test]
+    fn upgrade_v3_to_v4_creates_user_credentials_idempotently() {
+        let _guard = test_lock();
+        // Build a v3-shaped database: the v2 schema plus the is_admin column,
+        // and crucially WITHOUT user_credentials, so the upgrade has to create
+        // it (not init_db_schema).
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 name_canonical TEXT NOT NULL UNIQUE,
+                 wrapped_dek BLOB NOT NULL,
+                 dek_verifier BLOB NOT NULL,
+                 sort_order INTEGER NOT NULL DEFAULT 0,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL,
+                 is_admin INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE global_state (
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );",
+        )
+        .expect("v3 schema");
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '3', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v3");
+
+        upgrade_v3_to_v4(&mut conn).expect("upgrade v3->v4");
+
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                 WHERE type='table' AND name='user_credentials')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check table");
+        assert!(table_exists);
+        assert_eq!(
+            current_schema_version(&conn).expect("version").as_deref(),
+            Some("4")
+        );
+
+        // Rerun is a no-op, no error.
+        upgrade_v3_to_v4(&mut conn).expect("idempotent rerun");
+        assert_eq!(
+            current_schema_version(&conn).expect("version").as_deref(),
+            Some("4")
+        );
+    }
+
+    #[test]
+    fn apply_pending_upgrades_chains_v2_to_v4() {
+        let _guard = test_lock();
+        // A v2 database (no is_admin, no user_credentials) must reach v4 in a
+        // single startup: v2 -> v3 -> v4.
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 name_canonical TEXT NOT NULL UNIQUE,
+                 wrapped_dek BLOB NOT NULL,
+                 dek_verifier BLOB NOT NULL,
+                 sort_order INTEGER NOT NULL DEFAULT 0,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
+             CREATE TABLE global_state (
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );",
+        )
+        .expect("v2 schema");
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, created_at, updated_at)
+             VALUES ('default', 'default', X'00', X'00', ?1, ?1)",
+            params![now],
+        )
+        .expect("seed default");
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '2', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v2");
+
+        let current = apply_pending_upgrades(&mut conn).expect("apply upgrades");
+        assert!(current, "v2 must chain to current schema");
+        assert_eq!(
+            current_schema_version(&conn).expect("version").as_deref(),
+            Some("4")
+        );
+
+        // Both intermediate effects landed: is_admin seed (v3) and the
+        // user_credentials table (v4).
+        let admin_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("admin count");
+        assert_eq!(admin_count, 1);
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                 WHERE type='table' AND name='user_credentials')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check table");
+        assert!(table_exists);
+
+        // Idempotent: a second pass is a clean no-op.
+        assert!(apply_pending_upgrades(&mut conn).expect("rerun"));
+    }
+
+    // --- MUV-2: copy-only credential migration ----------------------------
+
+    /// Build a closure-backed fake vault: returns the key list and a reader.
+    #[allow(clippy::type_complexity)]
+    fn fake_vault(
+        entries: &[(&str, &str)],
+    ) -> (
+        Vec<String>,
+        impl Fn(&str) -> Result<Option<Zeroizing<String>>, String>,
+    ) {
+        let map: HashMap<String, String> = entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let keys: Vec<String> = map.keys().cloned().collect();
+        let reader = move |key: &str| Ok(map.get(key).map(|v| Zeroizing::new(v.clone())));
+        (keys, reader)
+    }
+
+    #[test]
+    fn eager_migration_copies_profile_and_owner_globals_only() {
+        let _guard = test_lock();
+        let conn = migrated_conn(2); // default (admin) owns profile-0, profile-1
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+
+        let (keys, read) = fake_vault(&[
+            ("server_profile-0", "pw0"),
+            ("server_profile-1", "pw1"),
+            ("oauth_dropbox_profile-0", "{\"access\":\"a\"}"),
+            ("jottacloud_refresh_profile-1", "jrt"),
+            ("ai_apikey_anthropic", "sk-ant"),
+            ("github_pat", "ghp_x"),
+            ("github_oauth_token", "gho_y"),
+            // machine-global (MUV-0): must NOT migrate
+            ("github_pem_app_1", "-----PEM-----"),
+            ("github_app_credentials", "{\"appId\":1}"),
+            ("totp_secret", "vault-reserved"),
+        ]);
+
+        let migrated = migrate_user_credentials_inner(&conn, &root, default.id, &keys, &read)
+            .expect("migrate");
+        assert_eq!(migrated, 7);
+
+        let ids: HashSet<String> = list_user_credential_ids_for(&conn, default.id)
+            .expect("list")
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        for present in [
+            "server_profile-0",
+            "server_profile-1",
+            "oauth_dropbox_profile-0",
+            "jottacloud_refresh_profile-1",
+            "ai_apikey_anthropic",
+            "github_pat",
+            "github_oauth_token",
+        ] {
+            assert!(ids.contains(present), "missing {present}");
+        }
+        for absent in ["github_pem_app_1", "github_app_credentials", "totp_secret"] {
+            assert!(!ids.contains(absent), "unexpected {absent}");
+        }
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "server_profile-0")
+                .expect("get")
+                .expect("present")
+                .as_str(),
+            "pw0"
+        );
+
+        // Idempotent: marked, second pass copies nothing, no duplicate rows.
+        assert!(is_creds_migrated(&conn, default.id).expect("marker"));
+        let again =
+            migrate_user_credentials_inner(&conn, &root, default.id, &keys, &read).expect("rerun");
+        assert_eq!(again, 0);
+        assert_eq!(
+            list_user_credential_ids_for(&conn, default.id)
+                .expect("list2")
+                .len(),
+            7
+        );
+    }
+
+    #[test]
+    fn eager_migration_excludes_globals_from_non_owner() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None)
+            .expect("create alice");
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            alice.id,
+            &[json!({"id":"ap1","name":"A","protocol":"sftp"})],
+        )
+        .expect("alice profile");
+
+        let (keys, read) = fake_vault(&[("server_ap1", "apw"), ("ai_apikey_openai", "sk-openai")]);
+        let migrated =
+            migrate_user_credentials_inner(&conn, &root, alice.id, &keys, &read).expect("migrate");
+        // Only the profile-bound secret; the AI key belongs to the lowest-id
+        // admin (default), not alice.
+        assert_eq!(migrated, 1);
+        let ids: HashSet<String> = list_user_credential_ids_for(&conn, alice.id)
+            .expect("list")
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert!(ids.contains("server_ap1"));
+        assert!(!ids.contains("ai_apikey_openai"));
+    }
+
+    #[test]
+    fn passphrase_user_migrates_lazily_at_unlock() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(&mut conn, &root, "Bob", None, None, Some("bobpass123"))
+            .expect("create bob");
+        // Write bob's profile while unlocked, then drop the session to simulate
+        // a locked account at migration time.
+        unlock_user(&conn, &root, bob.id, Some("bobpass123")).expect("unlock to seed");
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[json!({"id":"bp1","name":"B","protocol":"sftp"})],
+        )
+        .expect("seed profile");
+        clear_user_session();
+
+        let (keys, read) = fake_vault(&[("server_bp1", "bpw")]);
+
+        // Locked: no-op, not marked (deferred to unlock).
+        let deferred =
+            migrate_user_credentials_inner(&conn, &root, bob.id, &keys, &read).expect("deferred");
+        assert_eq!(deferred, 0);
+        assert!(!is_creds_migrated(&conn, bob.id).expect("marker off"));
+        assert!(list_user_credential_ids_for(&conn, bob.id)
+            .expect("empty")
+            .is_empty());
+
+        // Unlock primes the session DEK; now the lazy pass copies + marks.
+        unlock_user(&conn, &root, bob.id, Some("bobpass123")).expect("unlock");
+        let migrated =
+            migrate_user_credentials_inner(&conn, &root, bob.id, &keys, &read).expect("lazy");
+        assert_eq!(migrated, 1);
+        assert!(is_creds_migrated(&conn, bob.id).expect("marker on"));
+        assert_eq!(
+            get_user_credential_for(&conn, &root, bob.id, "server_bp1")
+                .expect("get")
+                .expect("present")
+                .as_str(),
+            "bpw"
+        );
+    }
+
+    #[test]
+    fn reader_fallback_prefers_user_store_then_vault() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+
+        set_user_credential_for(&conn, &root, default.id, "server_x", "server", "from-store")
+            .expect("seed store");
+        let (_keys, read) = fake_vault(&[("server_x", "from-vault"), ("server_y", "vault-only")]);
+
+        // Per-user row wins over the legacy vault.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, default.id, "server_x", &read)
+                .expect("read x")
+                .expect("present")
+                .as_str(),
+            "from-store"
+        );
+        // No per-user row -> fall back to the vault.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, default.id, "server_y", &read)
+                .expect("read y")
+                .expect("present")
+                .as_str(),
+            "vault-only"
+        );
+        // Absent everywhere -> None.
+        assert!(
+            read_credential_with_fallback_inner(&conn, &root, default.id, "server_z", &read)
+                .expect("read z")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn reader_fallback_uses_vault_for_locked_passphrase_user() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(&mut conn, &root, "Bob", None, None, Some("bobpass123"))
+            .expect("create bob");
+        clear_user_session(); // bob is locked: per-user read would be USER_LOCKED
+
+        let (_keys, read) = fake_vault(&[("server_bp1", "vault-bob")]);
+        // The locked per-user partition is skipped; the legacy vault still serves.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, bob.id, "server_bp1", &read)
+                .expect("read")
+                .expect("present")
+                .as_str(),
+            "vault-bob"
+        );
+    }
+
+    #[test]
+    fn reader_fallback_consults_vault_only_on_partition_miss_for_nondefault_user() {
+        // R-MUV-10 coverage: post-cutover, a non-default user is active and a
+        // server_* credential lives ONLY in the legacy vault (never mirrored into
+        // the partition). The reader must (a) return the vault value via fallback
+        // and (b) consult the vault ONLY on the partition miss, never when the
+        // per-user row is present. This pins down the partition-miss -> vault-
+        // fallback transition the live R-MUV-10 run could not observe directly
+        // (no explicit log line marked the fallback).
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user = create_passphrase_less_user(&mut conn, &root, "cutover", None, None)
+            .expect("create user");
+
+        // Only `server_hit` is mirrored into the user's partition; the
+        // `server_vaultonly` key is never written there.
+        set_user_credential_for(&conn, &root, user.id, "server_hit", "server", "from-store")
+            .expect("seed store");
+
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(match key {
+                "server_hit" => Some(Zeroizing::new("from-vault".to_string())),
+                "server_vaultonly" => Some(Zeroizing::new("vault-only".to_string())),
+                _ => None,
+            })
+        };
+
+        // Partition hit: the per-user row wins and the vault is NOT consulted.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "server_hit", &read)
+                .expect("read hit")
+                .expect("present")
+                .as_str(),
+            "from-store"
+        );
+        assert_eq!(
+            vault_reads.get(),
+            0,
+            "vault must not be read on a partition hit"
+        );
+
+        // Partition miss: the vault-only credential resolves via fallback and the
+        // vault is read exactly once.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "server_vaultonly", &read)
+                .expect("read vault-only")
+                .expect("present")
+                .as_str(),
+            "vault-only"
+        );
+        assert_eq!(
+            vault_reads.get(),
+            1,
+            "vault consulted exactly once on the partition miss"
+        );
+
+        // The partition genuinely has no row for it (it really was the fallback).
+        assert!(get_user_credential_for(&conn, &root, user.id, "server_vaultonly")
+            .expect("read partition")
+            .is_none());
+    }
+
+    #[test]
+    fn oauth_token_refresh_updates_partition_and_reader_resolves_with_vault_fallback() {
+        // R-MUV-4 coverage (Dropbox-style OAuth refresh cutover): an
+        // `oauth_<provider>_<id>` token is mirrored into the active user's
+        // partition via the typed write path, a refresh overwrites it in place
+        // (upsert), and the reader resolves the refreshed value from the
+        // partition. A token that was never mirrored still resolves via the
+        // legacy vault fallback. Mirrors the live R-MUV-4 GUI test (which needs an
+        // interactive Dropbox OAuth refresh) at the engine level.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user = create_passphrase_less_user(&mut conn, &root, "oauthuser", None, None)
+            .expect("create user");
+
+        // Initial token, then a refresh that rewrites it in place.
+        set_user_credential_for(&conn, &root, user.id, "oauth_dropbox_42", "oauth", "token-v1")
+            .expect("seed oauth");
+        set_user_credential_for(&conn, &root, user.id, "oauth_dropbox_42", "oauth", "token-v2")
+            .expect("refresh oauth");
+
+        let (_keys, read) = fake_vault(&[("oauth_dropbox_99", "vault-token")]);
+
+        // Refreshed value resolves from the partition (not the older vault copy).
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "oauth_dropbox_42", &read)
+                .expect("read refreshed")
+                .expect("present")
+                .as_str(),
+            "token-v2"
+        );
+        // A never-mirrored OAuth token resolves via the vault fallback.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "oauth_dropbox_99", &read)
+                .expect("read vault-only oauth")
+                .expect("present")
+                .as_str(),
+            "vault-token"
+        );
+    }
+
+    // --- MUV-3: server_* reader/writer cutover ----------------------------
+
+    #[test]
+    fn muv3_credential_type_classifies_server_and_ai_apikey_keys() {
+        // The prefix-mirrored namespaces: `server_*` (MUV-3) and `ai_apikey_*`
+        // (MUV-5, unambiguous so prefix matching is safe).
+        assert_eq!(muv3_credential_type("server_42"), Some("server"));
+        assert_eq!(muv3_credential_type("server_"), Some("server"));
+        assert_eq!(
+            muv3_credential_type("ai_apikey_anthropic"),
+            Some("ai_apikey")
+        );
+        assert_eq!(muv3_credential_type("ai_apikey_openai"), Some("ai_apikey"));
+        // OAuth/Jottacloud/GitHub stay out of the prefix classifier: they are
+        // mirrored by type-explicit call-sites, and `config_server_profiles` is
+        // never a secret.
+        assert_eq!(muv3_credential_type("oauth_dropbox_42"), None);
+        assert_eq!(muv3_credential_type("jottacloud_refresh_42"), None);
+        assert_eq!(muv3_credential_type("github_pat"), None);
+        assert_eq!(muv3_credential_type("github_oauth_token"), None);
+        assert_eq!(muv3_credential_type("config_server_profiles"), None);
+    }
+
+    #[test]
+    fn dek_based_insert_writes_to_target_user_only() {
+        // set_user_credential_with_dek (the relocation write path) lands the
+        // secret in the supplied user's partition and nowhere else (R3 on write).
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let user_a = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let user_b = create_passphrase_less_user(&mut conn, &root, "userb", None, None)
+            .expect("create userb");
+
+        let dek_b =
+            resolve_user_dek_scoped(&conn, &root_secret, user_b.id, None).expect("resolve B dek");
+        set_user_credential_with_dek(&conn, user_b.id, &dek_b, "server_x", "server", "b-secret")
+            .expect("dek insert");
+
+        // B reads its own; A sees nothing under the same key.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, user_b.id, "server_x")
+                .expect("read B")
+                .expect("present")
+                .as_str(),
+            "b-secret"
+        );
+        assert!(get_user_credential_for(&conn, &root, user_a.id, "server_x")
+            .expect("read A")
+            .is_none());
+    }
+
+    #[test]
+    fn relocate_credential_to_locked_passphrase_target_via_scoped_dek() {
+        // The cross-user relocation must be able to write the secret onto a
+        // passphrase-protected target that has NO active session, using the
+        // target's scoped DEK (unwrapped with its passphrase), without leaking
+        // into the active (source) partition.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let source = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active"); // device-wrapped, active
+        let target = create_user(&mut conn, &root, "Target", None, None, Some("targetpass1"))
+            .expect("create target");
+        assert!(target.has_passphrase);
+
+        set_user_credential_for(
+            &conn,
+            &root,
+            source.id,
+            "server_src",
+            "server",
+            "src-secret",
+        )
+        .expect("set source secret");
+
+        // Relocation write: scoped DEK for the locked target, no session.
+        clear_user_session();
+        let target_dek =
+            resolve_user_dek_scoped(&conn, &root_secret, target.id, Some("targetpass1"))
+                .expect("resolve target dek");
+        set_user_credential_with_dek(
+            &conn,
+            target.id,
+            &target_dek,
+            "server_new",
+            "server",
+            "src-secret",
+        )
+        .expect("mirror onto target");
+
+        // Without a session the target row is locked; after unlock it decrypts.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, target.id, "server_new").expect_err("locked"),
+            "USER_LOCKED"
+        );
+        unlock_user(&conn, &root, target.id, Some("targetpass1")).expect("unlock target");
+        assert_eq!(
+            get_user_credential_for(&conn, &root, target.id, "server_new")
+                .expect("read target")
+                .expect("present")
+                .as_str(),
+            "src-secret"
+        );
+        clear_user_session();
+
+        // The active (source) partition keeps its own secret and never received
+        // the relocated id.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, source.id, "server_src")
+                .expect("read source")
+                .expect("present")
+                .as_str(),
+            "src-secret"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root, source.id, "server_new")
+                .expect("read source new")
+                .is_none()
+        );
+    }
+
+    // --- MUV-4: OAuth / Jottacloud token cutover --------------------------
+
+    #[test]
+    fn oauth_and_jotta_tokens_use_explicit_type_outside_the_classifier() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        // The prefix classifier stays `server_`-only on purpose: it cannot tell a
+        // per-user token (`oauth_<p>_<id>`) from machine/app config
+        // (`oauth_<p>_client_id`), so the generic store_credential command never
+        // mirrors OAuth keys. MUV-4 call-sites pass the type explicitly instead.
+        assert_eq!(muv3_credential_type("oauth_dropbox_42"), None);
+        assert_eq!(muv3_credential_type("jottacloud_refresh_42"), None);
+        assert_eq!(muv3_credential_type("oauth_google_client_id"), None);
+
+        // An explicit-type write round-trips and is listed under its own type.
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "oauth_dropbox_42",
+            "oauth",
+            "{\"access\":\"a\"}",
+        )
+        .expect("store oauth");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "jottacloud_refresh_42",
+            "jottacloud_refresh",
+            "{\"refresh_token\":\"r\"}",
+        )
+        .expect("store jotta");
+
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "oauth_dropbox_42")
+                .expect("read oauth")
+                .expect("present")
+                .as_str(),
+            "{\"access\":\"a\"}"
+        );
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list");
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "oauth_dropbox_42" && t == "oauth"));
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "jottacloud_refresh_42" && t == "jottacloud_refresh"));
+    }
+
+    // --- MUV-5: ai_apikey + github cutover, transport portability ---------
+
+    #[test]
+    fn ai_apikey_mirrors_into_the_active_user_and_isolates_per_user() {
+        // ai_apikey is in the prefix classifier, so the generic dual-write
+        // mirrors it into the active user's partition and never into another's.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None)
+            .expect("create alice");
+
+        // Mirror into the active (default) user via the type derived from the
+        // classifier (mirrors what store_active_credential_dual does in prod).
+        let ctype = muv3_credential_type("ai_apikey_openai").expect("ai key is classified");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "ai_apikey_openai",
+            ctype,
+            "sk-openai",
+        )
+        .expect("store ai key");
+
+        // Round-trip on the owner; absent for another user (R3 on write).
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "ai_apikey_openai")
+                .expect("read default")
+                .expect("present")
+                .as_str(),
+            "sk-openai"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root, alice.id, "ai_apikey_openai")
+                .expect("read alice")
+                .is_none()
+        );
+        // Listed under its own type.
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list");
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "ai_apikey_openai" && t == "ai_apikey"));
+    }
+
+    #[test]
+    fn github_tokens_round_trip_typed_and_isolated() {
+        // GitHub tokens are out of the prefix classifier (so they never touch
+        // the machine-global github_pem_*), but the type-explicit writers store
+        // them per-user under a "github" type.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None)
+            .expect("create alice");
+
+        assert_eq!(muv3_credential_type("github_pat"), None);
+        assert_eq!(muv3_credential_type("github_oauth_token"), None);
+
+        set_user_credential_for(&conn, &root, default.id, "github_pat", "github", "ghp_x")
+            .expect("store pat");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "github_oauth_token",
+            "github",
+            "gho_y",
+        )
+        .expect("store oauth token");
+
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "github_pat")
+                .expect("read pat")
+                .expect("present")
+                .as_str(),
+            "ghp_x"
+        );
+        // Not leaked into another user.
+        assert!(
+            get_user_credential_for(&conn, &root, alice.id, "github_pat")
+                .expect("read alice")
+                .is_none()
+        );
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list");
+        assert!(ids.iter().any(|(k, t)| k == "github_pat" && t == "github"));
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "github_oauth_token" && t == "github"));
+    }
+
+    #[test]
+    fn user_credentials_row_is_portable_via_transport_dek() {
+        // R-MUV-3: a per-user secret is encrypted under the user's DEK, the same
+        // DEK the F-012 transport sidecar carries. After re-keying the DEK to a
+        // different machine's local root_key, the credential row decrypts with
+        // no per-row change. This is what makes a Full export's user_credentials
+        // portable cross-machine without secret-specific wrapping.
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root_a = test_root();
+        let root_b = [0x5au8; 32]; // another machine's local root_key
+
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        // Seed a device-wrapped secret on machine A.
+        set_user_credential_for(
+            &conn,
+            &root_a,
+            default.id,
+            "server_42",
+            "server",
+            "top-secret",
+        )
+        .expect("seed secret");
+        assert_eq!(
+            get_user_credential_for(&conn, &root_a, default.id, "server_42")
+                .expect("read on A")
+                .expect("present")
+                .as_str(),
+            "top-secret"
+        );
+
+        // Export the transport DEK under the backup password.
+        let transport = export_transport_deks(&conn, &root_a, "backup password 123")
+            .expect("export transport")
+            .expect("a passphrase-less user exists");
+        assert!(transport.wrapped_deks.contains_key(&default.id));
+
+        // Blind-overwrite import on machine B: same rows, different local root.
+        // Before re-keying, B cannot decrypt the secret.
+        assert!(
+            get_user_credential_for(&conn, &root_b, default.id, "server_42").is_err(),
+            "secret must be unreadable under the wrong root_key before rekey"
+        );
+
+        // Re-key the DEK to machine B's local root_key.
+        let report = rekey_transport_deks(
+            &conn,
+            &root_b,
+            "backup password 123",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .expect("rekey");
+        assert_eq!(report.rekeyed, 1);
+        assert_eq!(report.unreadable, 0);
+
+        // Machine B now decrypts the same secret (DEK unchanged, only rewrapped).
+        assert_eq!(
+            get_user_credential_for(&conn, &root_b, default.id, "server_42")
+                .expect("read on B")
+                .expect("present")
+                .as_str(),
+            "top-secret"
+        );
+    }
+
+    /// Headless end-to-end validation of the MUV-1..5 release surface against a
+    /// REAL on-disk `CredentialStore` (master mode, no keyring) and a REAL
+    /// `user_partitions.db`, isolated under a throwaway `XDG_CONFIG_HOME`.
+    ///
+    /// Unlike the other tests in this module (closure-backed engine + a fixed
+    /// `test_root`), this drives the production store-backed path:
+    /// `init_or_migrate_cli` -> `migrate_credentials_eager_all` /
+    /// `migrate_credentials_for_user`, the `resolve`/`read_credential_with_fallback`
+    /// readers, `mcp_list_active_server_profiles`, and the transport DEK
+    /// round-trip. It covers DoD #1/#4 with real output for R-MUV-1, R-MUV-3,
+    /// R-MUV-5 and R-MUV-8.
+    ///
+    /// `#[ignore]` because it mutates process-global state (`XDG_CONFIG_HOME`,
+    /// the `VAULT_CACHE`/`USER_SESSION` statics) and so must run ALONE:
+    ///   cargo test --lib user_partitions::tests::muv_release_e2e_validation \
+    ///       -- --ignored --nocapture --test-threads=1
+    #[test]
+    #[ignore = "headless MUV e2e; run alone with --ignored --test-threads=1 --nocapture"]
+    fn muv_release_e2e_validation() {
+        use crate::credential_store::CredentialStore;
+
+        fn count_prefix(conn: &Connection, uid: i64, prefix: &str) -> usize {
+            list_user_credential_ids_for(conn, uid)
+                .expect("list credential ids")
+                .into_iter()
+                .filter(|(id, _)| id.starts_with(prefix))
+                .count()
+        }
+
+        let _guard = test_lock();
+
+        // --- Isolation: a throwaway data root, master-mode vault (no keyring) --
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let prev_pp = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::bootstrap_master_password("muv-validation-pass")
+            .expect("bootstrap master vault");
+        CredentialStore::unlock_with_master("muv-validation-pass", None).expect("unlock master");
+        let store = CredentialStore::from_cache().expect("store cached");
+
+        // Schema v4 + the legacy `default` admin user.
+        init_or_migrate_cli(&store).expect("init_or_migrate_cli");
+        let mut conn = open_or_init_cli().expect("open partition db");
+        let root_key = store.derive_user_partition_wrapping_key();
+
+        // --- Build the pre-migration state: 3 users x 10 profiles = 30 --------
+        let alice = create_user(&mut conn, &root_key, "Alice", None, None, None).expect("alice");
+        let bob = create_user(&mut conn, &root_key, "Bob", None, None, None).expect("bob");
+        let carol = create_user(
+            &mut conn,
+            &root_key,
+            "Carol",
+            None,
+            None,
+            Some("carol-pass"),
+        )
+        .expect("carol");
+        assert!(!alice.has_passphrase && !bob.has_passphrase && carol.has_passphrase);
+
+        let make_profiles = |prefix: &str| -> Vec<serde_json::Value> {
+            (1..=10)
+                .map(|i| {
+                    json!({
+                        "id": format!("{prefix}{i}"),
+                        "name": format!("{prefix}-{i}"),
+                        "protocol": "ftp",
+                        "host": format!("{prefix}{i}.example.test"),
+                        "port": 21,
+                        "username": "tester"
+                    })
+                })
+                .collect()
+        };
+        replace_server_profiles_for(&mut conn, &root_key, alice.id, &make_profiles("a"))
+            .expect("alice profiles");
+        replace_server_profiles_for(&mut conn, &root_key, bob.id, &make_profiles("b"))
+            .expect("bob profiles");
+        // Carol is passphrase-protected: prime her session to seed, then re-lock.
+        unlock_user(&conn, &root_key, carol.id, Some("carol-pass")).expect("unlock carol to seed");
+        replace_server_profiles_for(&mut conn, &root_key, carol.id, &make_profiles("c"))
+            .expect("carol profiles");
+
+        // Legacy vault secrets (vault-only, the pre-MUV state).
+        for prefix in ["a", "b", "c"] {
+            for i in 1..=10 {
+                store
+                    .store(
+                        &format!("server_{prefix}{i}"),
+                        &format!("secret-{prefix}{i}"),
+                    )
+                    .expect("seed server secret");
+            }
+        }
+        // An orphan secret (profile deleted but secret left behind) + globals.
+        store
+            .store("server_orphan99", "orphan-secret")
+            .expect("orphan");
+        store
+            .store("ai_apikey_openai", "sk-test-key")
+            .expect("ai key");
+        store
+            .store("github_pat", "ghp_testpat")
+            .expect("github pat");
+
+        // Reset the idempotency gate + session to simulate a fresh upgrade boot.
+        conn.execute(
+            "DELETE FROM global_state WHERE key LIKE 'creds_migrated_%'",
+            [],
+        )
+        .expect("clear markers");
+        clear_user_session();
+
+        let admin_id = list_users(&conn)
+            .expect("list users")
+            .into_iter()
+            .filter(|u| u.is_admin)
+            .map(|u| u.id)
+            .min()
+            .expect("an admin exists");
+
+        // --- R-MUV-1: eager migration of device-wrapped users -----------------
+        let migrated = migrate_credentials_eager_all(&conn, &store, &root_key).expect("eager");
+        println!("[R-MUV-1] eager migrated {migrated} rows (alice+bob server_* + admin globals)");
+
+        assert_eq!(
+            count_prefix(&conn, alice.id, "server_"),
+            10,
+            "alice has 10 server_*"
+        );
+        assert_eq!(
+            count_prefix(&conn, bob.id, "server_"),
+            10,
+            "bob has 10 server_*"
+        );
+        assert_eq!(
+            count_prefix(&conn, carol.id, "server_"),
+            0,
+            "carol (locked passphrase) deferred, not eager-migrated"
+        );
+        // Value round-trips under the user DEK.
+        assert_eq!(
+            get_user_credential_for(&conn, &root_key, alice.id, "server_a1")
+                .expect("read alice")
+                .expect("present")
+                .as_str(),
+            "secret-a1"
+        );
+        // Isolation (R3): alice's partition never holds bob's secret.
+        assert!(
+            get_user_credential_for(&conn, &root_key, alice.id, "server_b1")
+                .expect("read cross")
+                .is_none(),
+            "no cross-user leak in user_credentials"
+        );
+        // Globals went to the lowest-id admin only.
+        assert!(
+            get_user_credential_for(&conn, &root_key, admin_id, "ai_apikey_openai")
+                .expect("admin ai key")
+                .is_some(),
+            "ai key owned by admin"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root_key, alice.id, "ai_apikey_openai")
+                .expect("alice ai key")
+                .is_none(),
+            "ai key NOT duplicated to non-owner"
+        );
+        // Orphan: readable via the vault fallback, but never in any partition.
+        assert_eq!(
+            read_credential_with_fallback(&conn, &store, &root_key, alice.id, "server_orphan99")
+                .expect("orphan fallback")
+                .expect("present")
+                .as_str(),
+            "orphan-secret"
+        );
+        assert_eq!(
+            count_prefix(&conn, alice.id, "server_orphan"),
+            0,
+            "orphan stays in vault"
+        );
+        println!("[R-MUV-1] OK: 30 profiles separated per-user, isolation + orphan-fallback hold");
+
+        // --- R-MUV-8: idempotent re-run (kill/restart safety) -----------------
+        let again = migrate_credentials_eager_all(&conn, &store, &root_key).expect("re-run");
+        assert_eq!(again, 0, "second eager pass is a no-op");
+        assert_eq!(
+            count_prefix(&conn, alice.id, "server_"),
+            10,
+            "no duplication on re-run"
+        );
+        println!("[R-MUV-8] OK: re-run migrated 0 rows, counts stable (idempotent)");
+
+        // --- Lazy migration for the passphrase user at unlock -----------------
+        unlock_user(&conn, &root_key, carol.id, Some("carol-pass")).expect("unlock carol");
+        let lazy = migrate_credentials_for_user(&conn, &store, &root_key, carol.id).expect("lazy");
+        assert_eq!(
+            count_prefix(&conn, carol.id, "server_"),
+            10,
+            "carol migrated lazily"
+        );
+        println!("[lazy] OK: carol migrated {lazy} rows at first unlock");
+
+        // --- R-MUV-5: MCP profile resolution per active user ------------------
+        set_active_user(&conn, alice.id).expect("active=alice"); // clears session
+        let p_alice = mcp_list_active_server_profiles(&store).expect("mcp alice");
+        assert_eq!(p_alice.len(), 10, "MCP auto-resolves a device-wrapped user");
+
+        set_active_user(&conn, carol.id).expect("active=carol"); // clears session, carol locked
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        let p_carol_noenv = mcp_list_active_server_profiles(&store);
+        assert!(
+            p_carol_noenv.is_err(),
+            "locked passphrase user without env fails clean (no silent leak)"
+        );
+        std::env::set_var("AEROFTP_USER_PASSPHRASE", "carol-pass");
+        let p_carol = mcp_list_active_server_profiles(&store).expect("mcp carol via env");
+        assert_eq!(
+            p_carol.len(),
+            10,
+            "MCP transient-unlocks a passphrase user via env"
+        );
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        println!("[R-MUV-5] OK: device-wrapped auto; passphrase via AEROFTP_USER_PASSPHRASE; clean fail without");
+
+        // --- R-MUV-3: transport DEK round-trip (store-backed) -----------------
+        let export = export_transport_deks(&conn, &root_key, "transport-pw-12345")
+            .expect("export")
+            .expect("transport section present");
+        let root_b = [0x42u8; 32]; // a different machine's local root key
+        let report = rekey_transport_deks(
+            &conn,
+            &root_b,
+            "transport-pw-12345",
+            &export.salt,
+            &export.kdf_params,
+            &export.wrapped_deks,
+        )
+        .expect("rekey");
+        assert!(report.rekeyed >= 1, "at least bob's DEK was rekeyed");
+        assert_eq!(
+            get_user_credential_for(&conn, &root_b, bob.id, "server_b1")
+                .expect("machine B read")
+                .expect("present")
+                .as_str(),
+            "secret-b1",
+            "secret decrypts on the second machine after rekey"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root_key, bob.id, "server_b1").is_err(),
+            "the original machine root key no longer unwraps after rekey"
+        );
+        println!(
+            "[R-MUV-3] OK: rekeyed {} DEK(s); secrets portable cross-machine",
+            report.rekeyed
+        );
+
+        println!("[MUV e2e] ALL SCENARIOS PASSED");
+
+        // Restore env (best-effort; the tempdir auto-cleans on drop).
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(v) = prev_pp {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", v);
+        }
     }
 }

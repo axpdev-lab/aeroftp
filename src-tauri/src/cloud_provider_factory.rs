@@ -142,14 +142,20 @@ async fn create_via_factory(
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
-    let creds_json = store
-        .get(&format!("server_{}", config.server_profile))
-        .map_err(|e| {
-            format!(
-                "No credentials for profile '{}': {}",
-                config.server_profile, e
-            )
-        })?;
+    // MUV-3: prefer the active user's per-user store, fall back to the legacy
+    // vault. Shared by GUI and CLI; under CLI `--user X` this resolves against
+    // the active user and falls back to the (dual-written) vault.
+    let creds_json = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("server_{}", config.server_profile),
+    )
+    .map_err(|e| {
+        format!(
+            "No credentials for profile '{}': {}",
+            config.server_profile, e
+        )
+    })?
+    .ok_or_else(|| format!("No credentials for profile '{}'", config.server_profile))?;
 
     #[derive(serde::Deserialize)]
     struct SavedCreds {

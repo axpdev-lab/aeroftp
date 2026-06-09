@@ -202,9 +202,14 @@ impl CredentialProvider for VaultCredentialProvider {
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open".to_string())?;
-        let json_str = store
-            .get(&format!("server_{}", server_id))
-            .map_err(|_| format!("No credentials stored for server '{}'", server_id))?;
+        // MUV-3: per-user store (active user) with fallback to the legacy vault.
+        let json_str = crate::user_partitions::resolve_active_credential(
+            &store,
+            &format!("server_{}", server_id),
+        )
+        .map_err(|e| format!("No credentials stored for server '{}': {}", server_id, e))?
+        .ok_or_else(|| format!("No credentials stored for server '{}'", server_id))?
+        .to_string();
 
         #[derive(serde::Deserialize)]
         struct Creds {
@@ -239,9 +244,15 @@ impl CredentialProvider for VaultCredentialProvider {
 
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open".to_string())?;
-        let json_str = store
-            .get(&format!("server_{}", server_id))
-            .unwrap_or_else(|_| "{}".to_string());
+        // MUV-3: per-user store (active user) with fallback to the legacy vault.
+        let json_str = crate::user_partitions::resolve_active_credential(
+            &store,
+            &format!("server_{}", server_id),
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "{}".to_string());
         let val: Value = serde_json::from_str(&json_str).unwrap_or(json!({}));
         let mut opts = ProviderExtraOptions::new();
         if let Some(obj) = val.as_object() {

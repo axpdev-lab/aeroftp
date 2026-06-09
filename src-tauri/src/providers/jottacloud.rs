@@ -323,6 +323,15 @@ impl JottacloudProvider {
         let account = self.refresh_token_account();
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if store.store(&account, &json).is_ok() {
+                // MUV-4: mirror into the active user's partition (per-profile only).
+                if !self.profile_id.is_empty() {
+                    crate::user_partitions::mirror_active_credential(
+                        &store,
+                        &account,
+                        "jottacloud_refresh",
+                        &json,
+                    );
+                }
                 jotta_log("Refresh token persisted to vault");
                 return;
             }
@@ -331,6 +340,14 @@ impl JottacloudProvider {
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 let _ = store.store(&account, &json);
+                if !self.profile_id.is_empty() {
+                    crate::user_partitions::mirror_active_credential(
+                        &store,
+                        &account,
+                        "jottacloud_refresh",
+                        &json,
+                    );
+                }
                 jotta_log("Refresh token persisted to auto-initialized vault");
             }
         }
@@ -362,6 +379,17 @@ impl JottacloudProvider {
         } else {
             format!("jottacloud_refresh_{}", profile_id)
         };
+        // MUV-4: prefer the active user's partition (vault fallback inside) for
+        // the per-profile key; fall through to the legacy singleton on a miss.
+        if !profile_id.is_empty() {
+            if let Ok(Some(json)) =
+                crate::user_partitions::resolve_active_credential(&store, &account)
+            {
+                if let Some(parsed) = parse(json.to_string()) {
+                    return Some(parsed);
+                }
+            }
+        }
         if let Ok(json) = store.get(&account) {
             return parse(json);
         }

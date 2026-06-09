@@ -13216,9 +13216,14 @@ async fn save_server_credentials(
         "password": password,
     });
 
-    store
-        .store(&format!("server_{}", profile_name), &value.to_string())
-        .map_err(|e| format!("Failed to save credentials: {}", e))?;
+    // MUV-3: dual-write the per-profile credential blob (vault + active user's
+    // partition).
+    user_partitions::store_active_credential_dual(
+        &store,
+        &format!("server_{}", profile_name),
+        &value.to_string(),
+    )
+    .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
     info!("Saved credentials for profile: {}", profile_name);
     Ok(())
@@ -13368,8 +13373,12 @@ async fn get_credential_store_status(
 async fn store_credential(account: String, password: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .store(&account, &password)
+    // Dual-write. The vault is written for every key (source of truth +
+    // fallback); `server_*` (MUV-3) and `ai_apikey_*` (MUV-5) keys are also
+    // mirrored into the active user's partition by the prefix classifier. OAuth
+    // and GitHub tokens stay vault-only on this generic path: they are mirrored
+    // by their own type-explicit call-sites (MUV-4/5).
+    user_partitions::store_active_credential_dual(&store, &account, &password)
         .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
@@ -13386,8 +13395,10 @@ async fn get_credential(account: String) -> Result<String, String> {
 async fn delete_credential(account: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .delete(&account)
+    // Dual-delete. Removes from the vault and, for the prefix-classified keys
+    // (`server_*`, `ai_apikey_*`), best-effort from the active user's partition.
+    // Not a mass purge (that is MUV-6).
+    user_partitions::delete_active_credential_dual(&store, &account)
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
@@ -13596,10 +13607,12 @@ fn collect_provider_secrets_for_server(
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
+    // MUV-4: read the per-profile token from the active user's partition (vault
+    // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
-        if let Ok(value) = store.get(&per_profile) {
-            out.oauth = Some(value);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+            out.oauth = Some(value.to_string());
         } else {
             // Legacy singleton key path: only honoured when nothing has been
             // migrated yet for this provider on this device.
@@ -13612,8 +13625,8 @@ fn collect_provider_secrets_for_server(
 
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
-        if let Ok(value) = store.get(&per_profile) {
-            out.jotta_refresh = Some(value);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+            out.jotta_refresh = Some(value.to_string());
         } else if let Ok(value) = store.get("jottacloud_refresh") {
             out.jotta_refresh = Some(value);
         }
@@ -13640,8 +13653,13 @@ async fn export_server_profiles(
         match credential_store::CredentialStore::from_cache() {
             Some(store) => {
                 for server in &mut servers {
-                    if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
-                        server.credential = Some(cred);
+                    // MUV-3: export the active user's per-user credential, with
+                    // fallback to the legacy vault.
+                    if let Ok(Some(cred)) = user_partitions::resolve_active_credential(
+                        &store,
+                        &format!("server_{}", server.id),
+                    ) {
+                        server.credential = Some(cred.to_string());
                     }
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
@@ -13682,7 +13700,13 @@ async fn import_server_profiles(
         Some(store) => {
             for server in &servers {
                 if let Some(ref cred) = server.credential {
-                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                    // MUV-3: dual-write the imported credential (vault + active
+                    // user's partition).
+                    if let Err(e) = user_partitions::store_active_credential_dual(
+                        &store,
+                        &format!("server_{}", server.id),
+                        cred,
+                    ) {
                         cred_errors.push(format!("{}: {}", server.id, e));
                     }
                 }
@@ -13709,7 +13733,10 @@ async fn import_server_profiles(
                 if let Some(ref oauth_json) = secrets.oauth {
                     if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
                         let key = format!("oauth_{}_{}", slug, profile_id);
-                        if let Err(e) = store.store(&key, oauth_json) {
+                        // MUV-4: dual-write into vault + active user's partition.
+                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                            &store, &key, "oauth", oauth_json,
+                        ) {
                             cred_errors.push(format!("{} oauth: {}", profile_id, e));
                         }
                     }
@@ -13717,7 +13744,12 @@ async fn import_server_profiles(
                 if let Some(ref jotta_json) = secrets.jotta_refresh {
                     if protocol == "jottacloud" {
                         let key = format!("jottacloud_refresh_{}", profile_id);
-                        if let Err(e) = store.store(&key, jotta_json) {
+                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                            &store,
+                            &key,
+                            "jottacloud_refresh",
+                            jotta_json,
+                        ) {
                             cred_errors.push(format!("{} jotta: {}", profile_id, e));
                         }
                     }
@@ -15201,6 +15233,9 @@ pub fn run() {
             user_partitions::user_partitions_set_active_setting,
             user_partitions::user_partitions_delete_active_setting,
             user_partitions::user_partitions_list_active_setting_scopes,
+            user_partitions::user_partitions_get_user_credential,
+            user_partitions::user_partitions_set_user_credential,
+            user_partitions::user_partitions_delete_user_credential,
             user_partitions::user_partitions_find_cross_user_dedup,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]

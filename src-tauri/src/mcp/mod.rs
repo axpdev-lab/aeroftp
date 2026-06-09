@@ -142,11 +142,10 @@ pub(crate) fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
     let store = CredentialStore::from_cache().ok_or_else(|| {
         "Vault not open. Set AEROFTP_MASTER_PASSWORD or open vault first.".to_string()
     })?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    // MUV-5: list the active user's profiles (env-passphrase unlock supported),
+    // keeping the MCP `list_servers` surface consistent with the connect pool;
+    // falls back to the legacy blob during the rollout.
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
 
     Ok(profiles
         .iter()
