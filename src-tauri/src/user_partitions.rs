@@ -653,9 +653,27 @@ pub fn migrate_legacy_payloads(
     let legacy_settings_backup =
         encrypt_global_state_value(&root_secret, legacy_settings_json.unwrap_or("{}"))?;
 
+    // Acquire the write lock up-front (IMMEDIATE) and wait, rather than erroring,
+    // if another process is mid-migration, so concurrent GUI + CLI first-runs on
+    // the same vault serialize instead of racing on the default-user INSERT.
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Set busy timeout: {e}"))?;
     let tx = conn
-        .transaction()
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start user partitions migration: {e}"))?;
+    // Re-check the schema version inside the transaction: a concurrent process may
+    // have completed the migration between our pre-transaction check above and our
+    // acquiring the write lock here. Without this re-check the loser of the race
+    // hit `UNIQUE constraint failed: users.name_canonical` on the default user.
+    if matches!(current_schema_version(&tx)?.as_deref(), Some(SCHEMA_VERSION)) {
+        return Ok(MigrationReport {
+            schema_version: SCHEMA_VERSION.to_string(),
+            created_default_user: false,
+            migrated_profiles: 0,
+            migrated_settings_scopes: 0,
+            already_migrated: true,
+        });
+    }
     let now = now_ms();
     let (default_user_id, default_dek) = insert_default_user(&tx, &root_secret, now)?;
     let mut seen_uids = HashSet::new();
@@ -4190,6 +4208,49 @@ mod tests {
         )
         .expect("migrate");
         conn
+    }
+
+    #[test]
+    fn second_connection_migration_is_idempotent_no_unique_failure() {
+        // Regression for the GUI + CLI race that surfaced as
+        // `Create default user: UNIQUE constraint failed: users.name_canonical`.
+        // Guards the observable end-state contract on a shared on-disk DB: a second
+        // independent connection must not fail on the default-user insert and must
+        // report already_migrated, leaving exactly one default user. (The truly
+        // simultaneous interleaving is prevented by the IMMEDIATE write lock plus
+        // the in-transaction schema re-check in migrate_legacy_payloads.)
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("user_partitions.db");
+        let profiles_json =
+            r#"[{"id":"p0","name":"P0","protocol":"sftp","host":"h","port":22,"username":"u"}]"#;
+        let settings_json = r#"{"theme":"dark"}"#;
+
+        let mut a = Connection::open(&db_path).expect("open a");
+        let r1 = migrate_legacy_payloads(
+            &mut a,
+            Some(profiles_json),
+            Some(settings_json),
+            &test_root(),
+        )
+        .expect("first migrate");
+        assert!(!r1.already_migrated);
+        assert!(r1.created_default_user);
+
+        let mut b = Connection::open(&db_path).expect("open b");
+        let r2 = migrate_legacy_payloads(
+            &mut b,
+            Some(profiles_json),
+            Some(settings_json),
+            &test_root(),
+        )
+        .expect("second migrate must not UNIQUE-fail");
+        assert!(r2.already_migrated);
+
+        let users = list_users(&b).expect("list users");
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].name, DEFAULT_USER_NAME);
     }
 
     #[test]

@@ -256,6 +256,14 @@ tauri-plugin-localhost = "2"
 # now lives in `InitFlags::FUSE_WRITEBACK_CACHE` and is always
 # compiled in.
 fuser = "0.17"
+# gtk: needed only to pin a stable GTK program name at startup via
+# `gtk::glib::set_prgname` so the X11/Wayland WM_CLASS is always
+# "aeroftp" regardless of how the binary is launched. This makes the
+# window match `StartupWMClass=aeroftp` in AeroFTP.desktop even when the
+# updater relaunches `current_exe()` (= /usr/lib/aeroftp/aeroftp.bin),
+# fixing the generic-icon-after-update bug. Already present transitively
+# via tauri/wry, so this adds no real build cost.
+gtk = "0.18"
 
 [dev-dependencies]
 

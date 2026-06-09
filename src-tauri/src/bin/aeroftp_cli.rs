@@ -23055,8 +23055,9 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
 }
 
 /// `keystore status`: read-only health probe of the credential vault. Reports
-/// the key mode and whether the vault opens right now. Exits 0 if healthy, 1 if
-/// the vault cannot be opened (e.g. lost/overwritten keyring entry).
+/// the key mode and whether the vault opens right now. Exit codes:
+/// 0 = healthy and unlockable now; 2 = healthy but locked (master mode, password
+/// not supplied); 1 = unopenable (e.g. lost/overwritten keyring entry).
 fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
     let h = ftp_client_gui_lib::credential_store::CredentialStore::health();
     if json {
@@ -23066,6 +23067,7 @@ fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
                 "mode": h.mode,
                 "vault_db_present": h.vault_db_present,
                 "unlockable": h.unlockable,
+                "needs_password": h.needs_password,
                 "detail": h.detail,
             })
         );
@@ -23081,12 +23083,22 @@ fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
         );
         eprintln!(
             "Unlockable now:  {}",
-            if h.unlockable { "yes" } else { "no" }
+            if h.unlockable {
+                "yes"
+            } else if h.needs_password {
+                "no (needs master password)"
+            } else {
+                "no"
+            }
         );
         eprintln!("{}", h.detail);
     }
     if h.unlockable {
         0
+    } else if h.needs_password {
+        // Healthy but locked: distinct from a broken vault so scripts can tell
+        // "supply a password" apart from "recover the vault".
+        2
     } else {
         1
     }

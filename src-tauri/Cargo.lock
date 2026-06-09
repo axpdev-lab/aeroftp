@@ -62,6 +62,7 @@ dependencies = [
  "fuser",
  "futures-util",
  "globset",
+ "gtk",
  "hex",
  "hkdf 0.12.4",
  "hmac 0.12.1",
