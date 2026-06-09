@@ -386,6 +386,28 @@ impl Default for AppState {
 mod tests {
     use super::*;
 
+    fn sample_context() -> TuiContext {
+        TuiContext {
+            users: vec![TuiUser {
+                id: 1,
+                name: "default".to_string(),
+                is_active: true,
+                is_locked: false,
+                is_admin: true,
+                profile_count: 1,
+                profiles: vec![TuiProfile {
+                    selector: "1".to_string(),
+                    name: "Production".to_string(),
+                    protocol: "sftp".to_string(),
+                    host: "example.com".to_string(),
+                    initial_path: "/".to_string(),
+                    favorite: true,
+                }],
+            }],
+            initial_user: 0,
+        }
+    }
+
     #[test]
     fn locked_user_activation_routes_to_existing_unlock_flow() {
         let context = TuiContext {
@@ -413,26 +435,7 @@ mod tests {
 
     #[test]
     fn profile_action_carries_user_and_profile_selector() {
-        let context = TuiContext {
-            users: vec![TuiUser {
-                id: 1,
-                name: "default".to_string(),
-                is_active: true,
-                is_locked: false,
-                is_admin: true,
-                profile_count: 1,
-                profiles: vec![TuiProfile {
-                    selector: "1".to_string(),
-                    name: "Production".to_string(),
-                    protocol: "sftp".to_string(),
-                    host: "example.com".to_string(),
-                    initial_path: "/".to_string(),
-                    favorite: true,
-                }],
-            }],
-            initial_user: 0,
-        };
-        let mut app = AppState::new(context);
+        let mut app = AppState::new(sample_context());
         app.focus = TuiFocus::Actions;
         app.selected_action = 1;
         app.apply_action(TuiAction::Activate);
@@ -445,5 +448,56 @@ mod tests {
                 action: TuiProfileAction::ListRoot,
             })
         );
+    }
+
+    #[test]
+    fn ready_action_menu_maps_every_command_to_the_expected_intent() {
+        let ready_actions = [
+            (0, None),
+            (1, Some(TuiProfileAction::ListRoot)),
+            (2, Some(TuiProfileAction::Tree)),
+            (3, Some(TuiProfileAction::Quota)),
+            (4, Some(TuiProfileAction::DiskUsage)),
+        ];
+
+        for (selected_action, expected_action) in ready_actions {
+            let mut app = AppState::new(sample_context());
+            app.focus = TuiFocus::Actions;
+            app.selected_action = selected_action;
+            app.apply_action(TuiAction::Activate);
+
+            let expected = match expected_action {
+                Some(action) => TuiIntent::ProfileAction {
+                    user_name: "default".to_string(),
+                    profile_selector: "1".to_string(),
+                    action,
+                },
+                None => TuiIntent::ProfilesInteractive {
+                    user_name: "default".to_string(),
+                },
+            };
+            assert_eq!(app.take_intent(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn planned_action_menu_items_do_not_exit_the_dashboard() {
+        for selected_action in 0..TUI_ACTION_ITEMS.len() {
+            if !matches!(
+                TUI_ACTION_ITEMS[selected_action].intent,
+                TuiActionIntent::Planned
+            ) {
+                continue;
+            }
+
+            let mut app = AppState::new(sample_context());
+            app.focus = TuiFocus::Actions;
+            app.selected_action = selected_action;
+            app.apply_action(TuiAction::Activate);
+
+            assert!(!app.should_quit);
+            assert_eq!(app.take_intent(), None);
+            assert!(app.status.contains("is planned for"));
+        }
     }
 }
