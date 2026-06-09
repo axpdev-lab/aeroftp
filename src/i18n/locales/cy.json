@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Dangos bar dewislen y system",
             "aerovaultOverlayActive": "Troshaen cynhwysydd AeroVault yn weithredol - cliciwch i ddatgysylltu",
             "aerovaultOverlayInactive": "Agorwch gynhwysydd .aerovault fel panel pell rhithwir. Ar gyfer troshaen rclone-crypt, defnyddiwch glic dde ar ffolder pell.",
-            "aerocryptOverlayActive": "Haen AeroCrypt yn weithredol: mae lanlwythiadau a lawrlwythiadau yn y panel hwn wedi'u hamgryptio. Cliciwch i ddatgysylltu.",
+            "aerocryptOverlayActive": "Haen Rclone Crypt yn weithredol: mae lanlwythiadau a lawrlwythiadau yn y panel hwn wedi'u hamgryptio. Cliciwch i ddatgysylltu.",
             "aerocryptOverlayInactive": "Agorwch anghysbell rclone-crypt (neu creu un newydd) fel haen dryloyw.",
             "aerocryptImportTitle": "Canfuwyd haen Rclone Crypt",
             "aerocryptImportDesc": "Proffil wedi'i fewnforio o rclone.conf ar gyfer {name}: agor yr haen nawr?",
@@ -4427,12 +4427,12 @@
             "reconnectFailed": "Methodd yr ailgysylltiad. Ailgysylltwch â llaw."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Haen Rclone Crypt",
+            "title": "Haen Rclone Crypt",
             "intro": {
                 "heading": "Beth mae'r haen hon yn ei wneud",
                 "p1": "Yn amgryptio enwau a chynnwys ffeiliau <strong>wrth fynd</strong>, cyn eu hanfon i'r gweinydd, ac yn eu dadgryptio pan fyddwch yn eu lawrlwytho. Dim ond blobiau ag enwau base32 mae'r gweinydd yn eu gweld. Rydych chi'n gweld yr enwau gwreiddiol.",
-                "p2": "Tra bo'r haen yn weithredol: mae eich sesiwn anghysbell yn dangos cynnwys yn glir, mae pob lanlwytho wedi'i amgryptio, mae pob lawrlwythiad wedi'i ddadgryptio. Chwiliwch am y bathodyn <em>AEROCRYPT</em> yn y bar llwybr.",
-                "p3": "Gwahaniaeth o'i gymharu ag AeroVault: mae AeroVault yn ffeil <code>.aerovault</code> hunangynhwysol unigol (fformat AeroFTP). Mae AeroCrypt yn haen ar ben anghysbell sy'n bodoli (S3/SFTP/WebDAV/...) gan ddefnyddio'r fformat rclone crypt cyhoeddus. Datgloiwch gyda'r un cyfrinair y byddech yn ei ddefnyddio yn <code>rclone</code>."
+                "p2": "Tra bo'r haen yn weithredol: mae eich sesiwn anghysbell yn dangos cynnwys yn glir, mae pob lanlwytho wedi'i amgryptio, mae pob lawrlwythiad wedi'i ddadgryptio. Chwiliwch am y bathodyn <em>RCLONE CRYPT</em> yn y bar llwybr.",
+                "p3": "Gwahaniaeth o'i gymharu ag AeroVault: mae AeroVault yn ffeil <code>.aerovault</code> hunangynhwysol unigol (fformat AeroFTP). Mae Rclone Crypt yn haen ar ben anghysbell sy'n bodoli (S3/SFTP/WebDAV/...) gan ddefnyddio'r fformat rclone crypt cyhoeddus. Datgloiwch gyda'r un cyfrinair y byddech yn ei ddefnyddio yn <code>rclone</code>."
             },
             "openExisting": "Agor un sy'n bodoli",
             "createNew": "Creu un newydd",

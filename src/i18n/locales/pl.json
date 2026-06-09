@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Pokaż menu systemowe",
             "aerovaultOverlayActive": "Nakładka kontenera AeroVault aktywna - kliknij, aby odłączyć",
             "aerovaultOverlayInactive": "Otwórz kontener .aerovault jako wirtualny panel zdalny. Dla nakładki rclone-crypt użyj prawego kliknięcia na zdalnym folderze.",
-            "aerocryptOverlayActive": "Nakładka AeroCrypt aktywna: przesyłanie i pobieranie w tym panelu są szyfrowane. Kliknij, aby odłączyć.",
+            "aerocryptOverlayActive": "Nakładka Rclone Crypt aktywna: przesyłanie i pobieranie w tym panelu są szyfrowane. Kliknij, aby odłączyć.",
             "aerocryptOverlayInactive": "Otwórz zdalny zasób rclone-crypt (lub utwórz nowy) jako przezroczystą nakładkę.",
             "aerocryptImportTitle": "Wykryto nakładkę Rclone Crypt",
             "aerocryptImportDesc": "Profil zaimportowany z rclone.conf dla {name}: otworzyć nakładkę teraz?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Ponowne łączenie nie powiodło się. Połącz się ponownie ręcznie."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Nakładka Rclone Crypt",
+            "title": "Nakładka Rclone Crypt",
             "intro": {
                 "heading": "Co robi ta nakładka",
                 "p1": "Szyfruje nazwy plików i ich zawartość <strong>w locie</strong>, przed wysłaniem na serwer, i odszyfrowuje je podczas pobierania. Serwer widzi tylko obiekty z nazwami w base32. Ty widzisz oryginalne nazwy.",
-                "p2": "Gdy nakładka jest aktywna: zdalna sesja pokazuje zawartość w postaci jawnej, każde przesyłanie jest szyfrowane, każde pobieranie jest odszyfrowywane. Szukaj odznaki <em>AEROCRYPT</em> na pasku ścieżki.",
-                "p3": "Różnica względem AeroVault: AeroVault to pojedynczy samodzielny plik <code>.aerovault</code> (format AeroFTP). AeroCrypt to warstwa nakładana na istniejący zasób zdalny (S3/SFTP/WebDAV/...) wykorzystująca publiczny format rclone crypt. Odblokuj tym samym hasłem, którego użyłbyś w <code>rclone</code>."
+                "p2": "Gdy nakładka jest aktywna: zdalna sesja pokazuje zawartość w postaci jawnej, każde przesyłanie jest szyfrowane, każde pobieranie jest odszyfrowywane. Szukaj odznaki <em>RCLONE CRYPT</em> na pasku ścieżki.",
+                "p3": "Różnica względem AeroVault: AeroVault to pojedynczy samodzielny plik <code>.aerovault</code> (format AeroFTP). Rclone Crypt to warstwa nakładana na istniejący zasób zdalny (S3/SFTP/WebDAV/...) wykorzystująca publiczny format rclone crypt. Odblokuj tym samym hasłem, którego użyłbyś w <code>rclone</code>."
             },
             "openExisting": "Otwórz istniejący",
             "createNew": "Utwórz nowy",

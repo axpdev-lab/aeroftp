@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Visa systemmenyrad",
             "aerovaultOverlayActive": "AeroVault-containeröverlägg aktivt - klicka för att koppla från",
             "aerovaultOverlayInactive": "Öppna en .aerovault-container som virtuell fjärrpanel. Använd högerklick på en fjärrmapp för rclone-crypt-överlägg.",
-            "aerocryptOverlayActive": "AeroCrypt-överlägg aktivt: uppladdningar och nedladdningar i den här panelen krypteras. Klicka för att koppla bort.",
+            "aerocryptOverlayActive": "Rclone Crypt-överlägg aktivt: uppladdningar och nedladdningar i den här panelen krypteras. Klicka för att koppla bort.",
             "aerocryptOverlayInactive": "Öppna en rclone-crypt-fjärr (eller skapa en ny) som transparent överlägg.",
             "aerocryptImportTitle": "Rclone Crypt-överlägg upptäckt",
             "aerocryptImportDesc": "Profil importerad från rclone.conf för {name}: öppna överlägget nu?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Återanslutning misslyckades. Återanslut manuellt."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt-överlägg",
+            "title": "Rclone Crypt-överlägg",
             "intro": {
                 "heading": "Vad det här överlägget gör",
                 "p1": "Krypterar filnamn och innehåll <strong>i farten</strong>, innan de skickas till servern, och dekrypterar dem vid nedladdning. Servern ser bara blobbar med base32-namn. Du ser de ursprungliga namnen.",
-                "p2": "När överlägget är aktivt: din fjärrsession visar innehåll i klartext, varje uppladdning krypteras, varje nedladdning dekrypteras. Leta efter <em>AEROCRYPT</em>-märket i sökvägsfältet.",
-                "p3": "Skillnad mot AeroVault: AeroVault är en enda fristående <code>.aerovault</code>-fil (AeroFTP-format). AeroCrypt är ett lager ovanpå en befintlig fjärrresurs (S3/SFTP/WebDAV/...) som använder det publika rclone crypt-formatet. Lås upp med samma lösenord som du skulle använda i <code>rclone</code>."
+                "p2": "När överlägget är aktivt: din fjärrsession visar innehåll i klartext, varje uppladdning krypteras, varje nedladdning dekrypteras. Leta efter <em>RCLONE CRYPT</em>-märket i sökvägsfältet.",
+                "p3": "Skillnad mot AeroVault: AeroVault är en enda fristående <code>.aerovault</code>-fil (AeroFTP-format). Rclone Crypt är ett lager ovanpå en befintlig fjärrresurs (S3/SFTP/WebDAV/...) som använder det publika rclone crypt-formatet. Lås upp med samma lösenord som du skulle använda i <code>rclone</code>."
             },
             "openExisting": "Öppna befintlig",
             "createNew": "Skapa ny",

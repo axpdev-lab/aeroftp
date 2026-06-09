@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Onyesha upau wa menyu ya mfumo",
             "aerovaultOverlayActive": "Uwekeleaji wa kontena la AeroVault unaendelea - bofya kutenganisha",
             "aerovaultOverlayInactive": "Fungua kontena la .aerovault kama paneli pepe ya mbali. Kwa uwekeleaji wa rclone-crypt tumia mbofyo wa kulia kwenye folda ya mbali.",
-            "aerocryptOverlayActive": "Tabaka ya AeroCrypt iko hai: upakiaji na upakuaji katika paneli hii vimesimbwa. Bofya ili kutenganisha.",
+            "aerocryptOverlayActive": "Tabaka ya Rclone Crypt iko hai: upakiaji na upakuaji katika paneli hii vimesimbwa. Bofya ili kutenganisha.",
             "aerocryptOverlayInactive": "Fungua hifadhi ya mbali ya rclone-crypt (au unda mpya) kama tabaka inayoonekana wazi.",
             "aerocryptImportTitle": "Tabaka ya Rclone Crypt imegunduliwa",
             "aerocryptImportDesc": "Wasifu umeingizwa kutoka rclone.conf kwa {name}: fungua tabaka sasa?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Kuunganisha tena kumeshindwa. Tafadhali unganisha tena mwenyewe."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Tabaka ya Rclone Crypt",
+            "title": "Tabaka ya Rclone Crypt",
             "intro": {
                 "heading": "Tabaka hii hufanya nini",
                 "p1": "Husimba majina ya faili na maudhui <strong>papo hapo</strong>, kabla ya kuyatuma kwenye seva, na kuyafichua wakati wa kupakua. Seva inaona tu vipande vyenye majina ya base32. Wewe unaona majina halisi.",
-                "p2": "Wakati tabaka iko hai: kikao chako cha mbali huonyesha maudhui kwa wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>AEROCRYPT</em> kwenye upau wa njia.",
-                "p3": "Tofauti dhidi ya AeroVault: AeroVault ni faili moja inayojitegemea <code>.aerovault</code> (umbizo la AeroFTP). AeroCrypt ni tabaka juu ya hifadhi ya mbali iliyopo (S3/SFTP/WebDAV/...) inayotumia umbizo la umma la rclone crypt. Fungua kwa nenosiri lile lile ungelilitumia kwenye <code>rclone</code>."
+                "p2": "Wakati tabaka iko hai: kikao chako cha mbali huonyesha maudhui kwa wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>RCLONE CRYPT</em> kwenye upau wa njia.",
+                "p3": "Tofauti dhidi ya AeroVault: AeroVault ni faili moja inayojitegemea <code>.aerovault</code> (umbizo la AeroFTP). Rclone Crypt ni tabaka juu ya hifadhi ya mbali iliyopo (S3/SFTP/WebDAV/...) inayotumia umbizo la umma la rclone crypt. Fungua kwa nenosiri lile lile ungelilitumia kwenye <code>rclone</code>."
             },
             "openExisting": "Fungua iliyopo",
             "createNew": "Unda mpya",

@@ -3586,7 +3586,7 @@
             "showSystemMenu": "显示系统菜单栏",
             "aerovaultOverlayActive": "AeroVault 容器覆盖层已激活 - 点击以分离",
             "aerovaultOverlayInactive": "将 .aerovault 容器作为虚拟远程面板打开。对于 rclone-crypt 覆盖层,请在远程文件夹上右键单击。",
-            "aerocryptOverlayActive": "AeroCrypt 叠加层激活:此面板中的上传和下载已加密。点击以分离。",
+            "aerocryptOverlayActive": "Rclone Crypt 叠加层激活:此面板中的上传和下载已加密。点击以分离。",
             "aerocryptOverlayInactive": "打开 rclone-crypt 远程(或创建新的)作为透明叠加层。",
             "aerocryptImportTitle": "检测到 Rclone Crypt 叠加层",
             "aerocryptImportDesc": "已从 rclone.conf 为 {name} 导入配置:现在打开叠加层吗?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "重新连接失败。请手动重新连接。"
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt 叠加层",
+            "title": "Rclone Crypt 叠加层",
             "intro": {
                 "heading": "此叠加层的作用",
                 "p1": "在发送到服务器之前<strong>即时</strong>加密文件名和内容,并在下载时解密。服务器只看到带有 base32 名称的二进制块。您看到的是原始名称。",
-                "p2": "当叠加层激活时:您的远程会话以明文显示内容,每次上传都会被加密,每次下载都会被解密。请在路径栏中查找 <em>AEROCRYPT</em> 标识。",
-                "p3": "与 AeroVault 的区别:AeroVault 是一个独立完整的 <code>.aerovault</code> 文件(AeroFTP 格式)。AeroCrypt 是覆盖在现有远程(S3/SFTP/WebDAV/...)之上的一层,使用公开的 rclone crypt 格式。使用您在 <code>rclone</code> 中所用的相同密码即可解锁。"
+                "p2": "当叠加层激活时:您的远程会话以明文显示内容,每次上传都会被加密,每次下载都会被解密。请在路径栏中查找 <em>RCLONE CRYPT</em> 标识。",
+                "p3": "与 AeroVault 的区别:AeroVault 是一个独立完整的 <code>.aerovault</code> 文件(AeroFTP 格式)。Rclone Crypt 是覆盖在现有远程(S3/SFTP/WebDAV/...)之上的一层,使用公开的 rclone crypt 格式。使用您在 <code>rclone</code> 中所用的相同密码即可解锁。"
             },
             "openExisting": "打开现有",
             "createNew": "创建新的",

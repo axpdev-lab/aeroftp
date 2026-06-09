@@ -3586,7 +3586,7 @@
             "showSystemMenu": "시스템 메뉴바 표시",
             "aerovaultOverlayActive": "AeroVault 컨테이너 오버레이 활성 - 클릭하여 분리",
             "aerovaultOverlayInactive": ".aerovault 컨테이너를 가상 원격 패널로 엽니다. rclone-crypt 오버레이는 원격 폴더에서 마우스 오른쪽 버튼 클릭을 사용하세요.",
-            "aerocryptOverlayActive": "AeroCrypt 오버레이 활성: 이 패널의 업로드와 다운로드는 암호화됩니다. 분리하려면 클릭하세요.",
+            "aerocryptOverlayActive": "Rclone Crypt 오버레이 활성: 이 패널의 업로드와 다운로드는 암호화됩니다. 분리하려면 클릭하세요.",
             "aerocryptOverlayInactive": "rclone-crypt 원격 저장소를 열거나 새로 만들어 투명 오버레이로 사용하세요.",
             "aerocryptImportTitle": "Rclone Crypt 오버레이 감지됨",
             "aerocryptImportDesc": "{name}의 프로필이 rclone.conf에서 가져왔습니다: 지금 오버레이를 열까요?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "재연결에 실패했습니다. 수동으로 다시 연결하세요."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt 오버레이",
+            "title": "Rclone Crypt 오버레이",
             "intro": {
                 "heading": "이 오버레이의 역할",
                 "p1": "파일 이름과 내용을 서버로 전송하기 전에 <strong>실시간으로</strong> 암호화하고, 다운로드 시 복호화합니다. 서버는 base32 이름을 가진 블롭만 봅니다. 사용자는 원본 이름을 봅니다.",
-                "p2": "오버레이가 활성화된 동안: 원격 세션은 내용을 평문으로 표시하며, 모든 업로드는 암호화되고 모든 다운로드는 복호화됩니다. 경로 표시줄에서 <em>AEROCRYPT</em> 배지를 확인하세요.",
-                "p3": "AeroVault와의 차이점: AeroVault는 단일 자체 포함 <code>.aerovault</code> 파일(AeroFTP 형식)입니다. AeroCrypt는 기존 원격 저장소(S3/SFTP/WebDAV/...) 위에 공개 rclone crypt 형식을 사용하는 계층입니다. <code>rclone</code>에서 사용하는 것과 동일한 비밀번호로 잠금 해제합니다."
+                "p2": "오버레이가 활성화된 동안: 원격 세션은 내용을 평문으로 표시하며, 모든 업로드는 암호화되고 모든 다운로드는 복호화됩니다. 경로 표시줄에서 <em>RCLONE CRYPT</em> 배지를 확인하세요.",
+                "p3": "AeroVault와의 차이점: AeroVault는 단일 자체 포함 <code>.aerovault</code> 파일(AeroFTP 형식)입니다. Rclone Crypt는 기존 원격 저장소(S3/SFTP/WebDAV/...) 위에 공개 rclone crypt 형식을 사용하는 계층입니다. <code>rclone</code>에서 사용하는 것과 동일한 비밀번호로 잠금 해제합니다."
             },
             "openExisting": "기존 열기",
             "createNew": "새로 만들기",

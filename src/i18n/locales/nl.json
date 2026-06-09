@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Systeemmenubalk weergeven",
             "aerovaultOverlayActive": "AeroVault-container-overlay actief - klik om los te koppelen",
             "aerovaultOverlayInactive": "Open een .aerovault-container als virtueel extern paneel. Gebruik voor rclone-crypt-overlay rechts klikken op een externe map.",
-            "aerocryptOverlayActive": "AeroCrypt-laag actief: uploads en downloads in dit paneel zijn versleuteld. Klik om los te koppelen.",
+            "aerocryptOverlayActive": "Rclone Crypt-laag actief: uploads en downloads in dit paneel zijn versleuteld. Klik om los te koppelen.",
             "aerocryptOverlayInactive": "Open een rclone-crypt externe opslag (of maak een nieuwe) als transparante laag.",
             "aerocryptImportTitle": "Rclone Crypt-laag gedetecteerd",
             "aerocryptImportDesc": "Profiel geïmporteerd uit rclone.conf voor {name}: nu de laag openen?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Opnieuw verbinden mislukt. Verbind handmatig opnieuw."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt-laag",
+            "title": "Rclone Crypt-laag",
             "intro": {
                 "heading": "Wat deze laag doet",
                 "p1": "Versleutelt bestandsnamen en inhoud <strong>direct</strong>, voordat ze naar de server worden verzonden, en ontsleutelt ze bij downloaden. De server ziet alleen blobs met base32-namen. U ziet de originele namen.",
-                "p2": "Terwijl de laag actief is: uw externe sessie toont inhoud in leesbare vorm, elke upload wordt versleuteld, elke download wordt ontsleuteld. Zoek de <em>AEROCRYPT</em>-badge in de padbalk.",
-                "p3": "Verschil met AeroVault: AeroVault is één op zichzelf staand <code>.aerovault</code>-bestand (AeroFTP-formaat). AeroCrypt is een laag bovenop een bestaande externe opslag (S3/SFTP/WebDAV/...) die het publieke rclone crypt-formaat gebruikt. Ontgrendel met hetzelfde wachtwoord dat u in <code>rclone</code> zou gebruiken."
+                "p2": "Terwijl de laag actief is: uw externe sessie toont inhoud in leesbare vorm, elke upload wordt versleuteld, elke download wordt ontsleuteld. Zoek de <em>RCLONE CRYPT</em>-badge in de padbalk.",
+                "p3": "Verschil met AeroVault: AeroVault is één op zichzelf staand <code>.aerovault</code>-bestand (AeroFTP-formaat). Rclone Crypt is een laag bovenop een bestaande externe opslag (S3/SFTP/WebDAV/...) die het publieke rclone crypt-formaat gebruikt. Ontgrendel met hetzelfde wachtwoord dat u in <code>rclone</code> zou gebruiken."
             },
             "openExisting": "Bestaande openen",
             "createNew": "Nieuwe maken",

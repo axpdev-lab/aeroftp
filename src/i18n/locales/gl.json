@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Mostrar barra de menú do sistema",
             "aerovaultOverlayActive": "Superposición de contedor AeroVault activa - fai clic para desconectar",
             "aerovaultOverlayInactive": "Abrir un contedor .aerovault como panel remoto virtual. Para a superposición rclone-crypt, fai clic dereito nun cartafol remoto.",
-            "aerocryptOverlayActive": "Capa AeroCrypt activa: as subidas e descargas neste panel están cifradas. Fai clic para desconectar.",
+            "aerocryptOverlayActive": "Capa Rclone Crypt activa: as subidas e descargas neste panel están cifradas. Fai clic para desconectar.",
             "aerocryptOverlayInactive": "Abre un remoto rclone-crypt (ou crea un novo) como capa transparente.",
             "aerocryptImportTitle": "Detectada capa Rclone Crypt",
             "aerocryptImportDesc": "Perfil importado dende rclone.conf para {name}: queres abrir a capa agora?",
@@ -4427,12 +4427,12 @@
             "reconnectFailed": "A reconexión fallou. Reconecta manualmente."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Capa Rclone Crypt",
+            "title": "Capa Rclone Crypt",
             "intro": {
                 "heading": "Que fai esta capa",
                 "p1": "Cifra os nomes e contidos dos ficheiros <strong>ao voo</strong>, antes de envialos ao servidor, e desciframos cando os descargas. O servidor só ve blobs con nomes en base32. Ti ves os nomes orixinais.",
-                "p2": "Mentres a capa está activa: a túa sesión remota mostra os contidos en claro, cada subida cífrase, cada descarga descifrarse. Busca a insignia <em>AEROCRYPT</em> na barra de ruta.",
-                "p3": "Diferenza respecto a AeroVault: AeroVault é un único ficheiro autocontido <code>.aerovault</code> (formato AeroFTP). AeroCrypt é unha capa sobre un remoto existente (S3/SFTP/WebDAV/...) que usa o formato público rclone crypt. Desbloquea co mesmo contrasinal que usarías en <code>rclone</code>."
+                "p2": "Mentres a capa está activa: a túa sesión remota mostra os contidos en claro, cada subida cífrase, cada descarga descifrarse. Busca a insignia <em>RCLONE CRYPT</em> na barra de ruta.",
+                "p3": "Diferenza respecto a AeroVault: AeroVault é un único ficheiro autocontido <code>.aerovault</code> (formato AeroFTP). Rclone Crypt é unha capa sobre un remoto existente (S3/SFTP/WebDAV/...) que usa o formato público rclone crypt. Desbloquea co mesmo contrasinal que usarías en <code>rclone</code>."
             },
             "openExisting": "Abrir existente",
             "createNew": "Crear novo",

@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Näytä järjestelmävalikkorivi",
             "aerovaultOverlayActive": "AeroVault-säilön peittokerros aktiivinen - irrota napsauttamalla",
             "aerovaultOverlayInactive": "Avaa .aerovault-säilö virtuaalisena etäpaneelina. rclone-crypt-peittokerrokseen napsauta hiiren oikealla painikkeella etäkansiota.",
-            "aerocryptOverlayActive": "AeroCrypt-peittokerros aktiivinen: tämän paneelin lähetykset ja lataukset on salattu. Napsauta irrottaaksesi.",
+            "aerocryptOverlayActive": "Rclone Crypt-peittokerros aktiivinen: tämän paneelin lähetykset ja lataukset on salattu. Napsauta irrottaaksesi.",
             "aerocryptOverlayInactive": "Avaa rclone-crypt-etäpaikka (tai luo uusi) läpinäkyvänä peittokerroksena.",
             "aerocryptImportTitle": "Rclone Crypt -peittokerros havaittu",
             "aerocryptImportDesc": "Profiili tuotu rclone.conf-tiedostosta nimelle {name}: avataanko peittokerros nyt?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Uudelleenyhdistäminen epäonnistui. Yhdistä manuaalisesti."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt -peittokerros",
+            "title": "Rclone Crypt -peittokerros",
             "intro": {
                 "heading": "Mitä tämä peittokerros tekee",
                 "p1": "Salaa tiedostonimet ja sisällön <strong>lennossa</strong>, ennen kuin ne lähetetään palvelimelle, ja purkaa salauksen lataamisen yhteydessä. Palvelin näkee vain blob-tiedostoja base32-nimillä. Sinä näet alkuperäiset nimet.",
-                "p2": "Kun peittokerros on aktiivinen: etäistuntosi näyttää sisällön selkeänä, jokainen lähetys salataan, jokainen lataus puretaan. Etsi <em>AEROCRYPT</em>-merkkiä polkupalkista.",
-                "p3": "Ero AeroVaultiin: AeroVault on yksittäinen itsenäinen <code>.aerovault</code>-tiedosto (AeroFTP-muoto). AeroCrypt on kerros olemassa olevan etäpaikan päällä (S3/SFTP/WebDAV/...), joka käyttää julkista rclone crypt -muotoa. Avaa lukitus samalla salasanalla, jota käyttäisit <code>rclone</code>-ohjelmassa."
+                "p2": "Kun peittokerros on aktiivinen: etäistuntosi näyttää sisällön selkeänä, jokainen lähetys salataan, jokainen lataus puretaan. Etsi <em>RCLONE CRYPT</em>-merkkiä polkupalkista.",
+                "p3": "Ero AeroVaultiin: AeroVault on yksittäinen itsenäinen <code>.aerovault</code>-tiedosto (AeroFTP-muoto). Rclone Crypt on kerros olemassa olevan etäpaikan päällä (S3/SFTP/WebDAV/...), joka käyttää julkista rclone crypt -muotoa. Avaa lukitus samalla salasanalla, jota käyttäisit <code>rclone</code>-ohjelmassa."
             },
             "openExisting": "Avaa olemassa oleva",
             "createNew": "Luo uusi",

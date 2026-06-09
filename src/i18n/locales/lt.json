@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Rodyti sistemos meniu juostą",
             "aerovaultOverlayActive": "AeroVault konteinerio sluoksnis aktyvus - spustelėkite, kad atjungtumėte",
             "aerovaultOverlayInactive": "Atidarykite .aerovault konteinerį kaip virtualų nuotolinį skydą. rclone-crypt sluoksniui naudokite dešinį pelės mygtuką nuotoliniame aplanke.",
-            "aerocryptOverlayActive": "AeroCrypt sluoksnis aktyvus: įkėlimai ir atsisiuntimai šiame skydelyje yra šifruojami. Spustelėkite, kad atsietumėte.",
+            "aerocryptOverlayActive": "Rclone Crypt sluoksnis aktyvus: įkėlimai ir atsisiuntimai šiame skydelyje yra šifruojami. Spustelėkite, kad atsietumėte.",
             "aerocryptOverlayInactive": "Atidarykite rclone-crypt nuotolinę saugyklą (arba sukurkite naują) kaip skaidrų sluoksnį.",
             "aerocryptImportTitle": "Aptiktas Rclone Crypt sluoksnis",
             "aerocryptImportDesc": "Profilis importuotas iš rclone.conf: {name}: atidaryti sluoksnį dabar?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Nepavyko prisijungti iš naujo. Prisijunkite rankiniu būdu."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt sluoksnis",
+            "title": "Rclone Crypt sluoksnis",
             "intro": {
                 "heading": "Ką daro šis sluoksnis",
                 "p1": "Šifruoja failų vardus ir turinį <strong>nedelsiant</strong> prieš juos siunčiant į serverį, ir iššifruoja atsisiuntimo metu. Serveris mato tik blobus su base32 vardais. Jūs matote originalius vardus.",
-                "p2": "Kol sluoksnis yra aktyvus: jūsų nuotolinė sesija rodo turinį atviru tekstu, kiekvienas įkėlimas yra šifruotas, kiekvienas atsisiuntimas yra iššifruotas. Ieškokite <em>AEROCRYPT</em> ženklelio kelio juostoje.",
-                "p3": "Skirtumas nuo AeroVault: AeroVault yra vienas savarankiškas <code>.aerovault</code> failas (AeroFTP formatas). AeroCrypt yra sluoksnis virš esamos nuotolinės saugyklos (S3/SFTP/WebDAV/...), naudojantis viešą rclone crypt formatą. Atrakinkite tuo pačiu slaptažodžiu, kurį naudotumėte <code>rclone</code>."
+                "p2": "Kol sluoksnis yra aktyvus: jūsų nuotolinė sesija rodo turinį atviru tekstu, kiekvienas įkėlimas yra šifruotas, kiekvienas atsisiuntimas yra iššifruotas. Ieškokite <em>RCLONE CRYPT</em> ženklelio kelio juostoje.",
+                "p3": "Skirtumas nuo AeroVault: AeroVault yra vienas savarankiškas <code>.aerovault</code> failas (AeroFTP formatas). Rclone Crypt yra sluoksnis virš esamos nuotolinės saugyklos (S3/SFTP/WebDAV/...), naudojantis viešą rclone crypt formatą. Atrakinkite tuo pačiu slaptažodžiu, kurį naudotumėte <code>rclone</code>."
             },
             "openExisting": "Atidaryti esamą",
             "createNew": "Sukurti naują",

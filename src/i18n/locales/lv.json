@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Rādīt sistēmas izvēlnes joslu",
             "aerovaultOverlayActive": "AeroVault konteinera pārklājums aktīvs - klikšķiniet, lai atvienotu",
             "aerovaultOverlayInactive": "Atveriet .aerovault konteineru kā virtuālu attālo paneli. rclone-crypt pārklājumam izmantojiet labo klikšķi uz attālās mapes.",
-            "aerocryptOverlayActive": "AeroCrypt slānis aktīvs: augšupielādes un lejupielādes šajā panelī tiek šifrētas. Noklikšķiniet, lai atvienotu.",
+            "aerocryptOverlayActive": "Rclone Crypt slānis aktīvs: augšupielādes un lejupielādes šajā panelī tiek šifrētas. Noklikšķiniet, lai atvienotu.",
             "aerocryptOverlayInactive": "Atveriet rclone-crypt attālo krātuvi (vai izveidojiet jaunu) kā caurspīdīgu slāni.",
             "aerocryptImportTitle": "Atklāts Rclone Crypt slānis",
             "aerocryptImportDesc": "Profils importēts no rclone.conf priekš {name}: atvērt slāni tagad?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Atkārtota savienošana neizdevās. Lūdzu, atkārtoti savienojieties manuāli."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt slānis",
+            "title": "Rclone Crypt slānis",
             "intro": {
                 "heading": "Ko dara šis slānis",
                 "p1": "Šifrē failu nosaukumus un saturu <strong>uzreiz</strong>, pirms tos nosūtīt uz serveri, un atšifrē, kad lejupielādējat. Serveris redz tikai blobus ar base32 nosaukumiem. Jūs redzat oriģinālos nosaukumus.",
-                "p2": "Kamēr slānis ir aktīvs: jūsu attālā sesija parāda saturu skaidrā tekstā, katra augšupielāde tiek šifrēta, katra lejupielāde tiek atšifrēta. Meklējiet <em>AEROCRYPT</em> emblēmu ceļa joslā.",
-                "p3": "Atšķirība no AeroVault: AeroVault ir viens patstāvīgs <code>.aerovault</code> fails (AeroFTP formāts). AeroCrypt ir slānis virs esošas attālās krātuves (S3/SFTP/WebDAV/...), izmantojot publisko rclone crypt formātu. Atbloķējiet ar to pašu paroli, kuru izmantotu <code>rclone</code>."
+                "p2": "Kamēr slānis ir aktīvs: jūsu attālā sesija parāda saturu skaidrā tekstā, katra augšupielāde tiek šifrēta, katra lejupielāde tiek atšifrēta. Meklējiet <em>RCLONE CRYPT</em> emblēmu ceļa joslā.",
+                "p3": "Atšķirība no AeroVault: AeroVault ir viens patstāvīgs <code>.aerovault</code> fails (AeroFTP formāts). Rclone Crypt ir slānis virs esošas attālās krātuves (S3/SFTP/WebDAV/...), izmantojot publisko rclone crypt formātu. Atbloķējiet ar to pašu paroli, kuru izmantotu <code>rclone</code>."
             },
             "openExisting": "Atvērt esošu",
             "createNew": "Izveidot jaunu",

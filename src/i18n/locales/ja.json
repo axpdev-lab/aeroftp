@@ -3551,7 +3551,7 @@
             "showSystemMenu": "システムメニューバーを表示",
             "aerovaultOverlayActive": "AeroVault コンテナオーバーレイが有効 - クリックして切り離す",
             "aerovaultOverlayInactive": ".aerovault コンテナを仮想リモートパネルとして開きます。rclone-crypt オーバーレイにはリモートフォルダで右クリックを使用してください。",
-            "aerocryptOverlayActive": "AeroCrypt オーバーレイが有効: このパネル内のアップロードとダウンロードは暗号化されます。クリックして切り離します。",
+            "aerocryptOverlayActive": "Rclone Crypt オーバーレイが有効: このパネル内のアップロードとダウンロードは暗号化されます。クリックして切り離します。",
             "aerocryptOverlayInactive": "rclone-crypt リモートを開く（または新規作成する）と透過オーバーレイになります。",
             "aerocryptImportTitle": "Rclone Crypt オーバーレイが検出されました",
             "aerocryptImportDesc": "{name} 用のプロファイルが rclone.conf からインポートされました: オーバーレイを今開きますか？",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "再接続に失敗しました。手動で再接続してください。"
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt オーバーレイ",
+            "title": "Rclone Crypt オーバーレイ",
             "intro": {
                 "heading": "このオーバーレイの機能",
                 "p1": "ファイル名と内容を<strong>オンザフライで</strong>暗号化してからサーバーに送信し、ダウンロード時に復号します。サーバーからは base32 名のブロブのみが見えます。あなたには元の名前が見えます。",
-                "p2": "オーバーレイが有効な間: リモートセッションでは内容が平文で表示され、すべてのアップロードは暗号化され、すべてのダウンロードは復号されます。パスバーの <em>AEROCRYPT</em> バッジを確認してください。",
-                "p3": "AeroVault との違い: AeroVault は単一の自己完結型 <code>.aerovault</code> ファイル（AeroFTP 形式）です。AeroCrypt は既存のリモート（S3/SFTP/WebDAV/...）の上に重ねるレイヤーで、公開されている rclone crypt 形式を使用します。<code>rclone</code> で使用するのと同じパスワードでロック解除します。"
+                "p2": "オーバーレイが有効な間: リモートセッションでは内容が平文で表示され、すべてのアップロードは暗号化され、すべてのダウンロードは復号されます。パスバーの <em>RCLONE CRYPT</em> バッジを確認してください。",
+                "p3": "AeroVault との違い: AeroVault は単一の自己完結型 <code>.aerovault</code> ファイル（AeroFTP 形式）です。Rclone Crypt は既存のリモート（S3/SFTP/WebDAV/...）の上に重ねるレイヤーで、公開されている rclone crypt 形式を使用します。<code>rclone</code> で使用するのと同じパスワードでロック解除します。"
             },
             "openExisting": "既存を開く",
             "createNew": "新規作成",

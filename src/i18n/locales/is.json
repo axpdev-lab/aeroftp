@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Sýna valmyndarstiku kerfis",
             "aerovaultOverlayActive": "AeroVault gáms yfirlag virkt - smelltu til að aftengja",
             "aerovaultOverlayInactive": "Opnaðu .aerovault gám sem sýndarfjarstýriborð. Fyrir rclone-crypt yfirlag notaðu hægrismell á fjartengda möppu.",
-            "aerocryptOverlayActive": "AeroCrypt yfirlag virkt: upphlóðsla og niðurhal í þessari spjaldtöku eru dulkóðuð. Smelltu til að aftengja.",
+            "aerocryptOverlayActive": "Rclone Crypt yfirlag virkt: upphlóðsla og niðurhal í þessari spjaldtöku eru dulkóðuð. Smelltu til að aftengja.",
             "aerocryptOverlayInactive": "Opnaðu rclone-crypt fjarlæga geymslu (eða búðu til nýja) sem gegnsætt yfirlag.",
             "aerocryptImportTitle": "Rclone Crypt yfirlag fundið",
             "aerocryptImportDesc": "Snið flutt inn úr rclone.conf fyrir {name}: opna yfirlagið núna?",
@@ -4427,12 +4427,12 @@
             "reconnectFailed": "Endurtenging mistókst. Vinsamlega tengstu handvirkt aftur."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt yfirlag",
+            "title": "Rclone Crypt yfirlag",
             "intro": {
                 "heading": "Hvað gerir þetta yfirlag",
                 "p1": "Dulkóðar skráarnöfn og innihald <strong>jafnóðum</strong>, áður en þeim er sent á þjóninn, og afkóðar þau þegar þú sækir. Þjónninn sér aðeins blokkir með base32 nöfnum. Þú sérð upprunalegu nöfnin.",
-                "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihald á skýru formi, hver upphlóðsla er dulkóðuð, hver niðurhal er afkóðuð. Leitaðu að <em>AEROCRYPT</em> merkinu í slóðarstikunni.",
-                "p3": "Munur frá AeroVault: AeroVault er ein sjálfstæð <code>.aerovault</code> skrá (AeroFTP snið). AeroCrypt er lag ofan á núverandi fjarlægu geymslu (S3/SFTP/WebDAV/...) sem notar opna rclone crypt sniðið. Opnaðu með sama lykilorði og þú myndir nota í <code>rclone</code>."
+                "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihald á skýru formi, hver upphlóðsla er dulkóðuð, hver niðurhal er afkóðuð. Leitaðu að <em>RCLONE CRYPT</em> merkinu í slóðarstikunni.",
+                "p3": "Munur frá AeroVault: AeroVault er ein sjálfstæð <code>.aerovault</code> skrá (AeroFTP snið). Rclone Crypt er lag ofan á núverandi fjarlægu geymslu (S3/SFTP/WebDAV/...) sem notar opna rclone crypt sniðið. Opnaðu með sama lykilorði og þú myndir nota í <code>rclone</code>."
             },
             "openExisting": "Opna núverandi",
             "createNew": "Búa til nýtt",

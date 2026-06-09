@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Prikaži sistemski izbornik",
             "aerovaultOverlayActive": "Prekrivač AeroVault spremnika aktivan - kliknite za odvajanje",
             "aerovaultOverlayInactive": "Otvori .aerovault spremnik kao virtualni udaljeni panel. Za prekrivač rclone-crypt koristite desni klik na udaljenu mapu.",
-            "aerocryptOverlayActive": "AeroCrypt sloj aktivan: uploadi i downloadi u ovom panelu su šifrirani. Kliknite za odvajanje.",
+            "aerocryptOverlayActive": "Rclone Crypt sloj aktivan: uploadi i downloadi u ovom panelu su šifrirani. Kliknite za odvajanje.",
             "aerocryptOverlayInactive": "Otvorite rclone-crypt udaljeni sustav (ili stvorite novi) kao transparentan sloj.",
             "aerocryptImportTitle": "Otkriven Rclone Crypt sloj",
             "aerocryptImportDesc": "Profil uvezen iz rclone.conf za {name}: otvoriti sloj sada?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Ponovno povezivanje nije uspjelo. Ručno se ponovno povežite."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt sloj",
+            "title": "Rclone Crypt sloj",
             "intro": {
                 "heading": "Što ovaj sloj radi",
                 "p1": "Šifrira nazive datoteka i sadržaje <strong>u letu</strong>, prije slanja na poslužitelj, te ih dešifrira pri preuzimanju. Poslužitelj vidi samo binarne podatke s base32 nazivima. Vi vidite originalne nazive.",
-                "p2": "Dok je sloj aktivan: vaša udaljena sesija prikazuje sadržaj otvoreno, svaki upload je šifriran, svaki download je dešifriran. Tražite oznaku <em>AEROCRYPT</em> u traci puta.",
-                "p3": "Razlika u odnosu na AeroVault: AeroVault je jedna samostalna <code>.aerovault</code> datoteka (AeroFTP format). AeroCrypt je sloj povrh postojećeg udaljenog sustava (S3/SFTP/WebDAV/...) koji koristi javni rclone crypt format. Otključajte istom lozinkom koju biste koristili u <code>rclone</code>."
+                "p2": "Dok je sloj aktivan: vaša udaljena sesija prikazuje sadržaj otvoreno, svaki upload je šifriran, svaki download je dešifriran. Tražite oznaku <em>RCLONE CRYPT</em> u traci puta.",
+                "p3": "Razlika u odnosu na AeroVault: AeroVault je jedna samostalna <code>.aerovault</code> datoteka (AeroFTP format). Rclone Crypt je sloj povrh postojećeg udaljenog sustava (S3/SFTP/WebDAV/...) koji koristi javni rclone crypt format. Otključajte istom lozinkom koju biste koristili u <code>rclone</code>."
             },
             "openExisting": "Otvori postojeći",
             "createNew": "Stvori novi",

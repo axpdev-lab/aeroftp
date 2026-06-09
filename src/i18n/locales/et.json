@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Näita süsteemi menüüriba",
             "aerovaultOverlayActive": "AeroVault konteineri kate aktiivne - klõpsake lahti ühendamiseks",
             "aerovaultOverlayInactive": "Avage .aerovault konteiner virtuaalse kaugpaneelina. rclone-crypt katte jaoks kasutage paremklõpsu kaugkaustal.",
-            "aerocryptOverlayActive": "AeroCrypti kiht aktiivne: üleslaadimised ja allalaadimised selles paneelis on krüpteeritud. Klõpsa lahti ühendamiseks.",
+            "aerocryptOverlayActive": "Rclone Crypti kiht aktiivne: üleslaadimised ja allalaadimised selles paneelis on krüpteeritud. Klõpsa lahti ühendamiseks.",
             "aerocryptOverlayInactive": "Ava rclone-crypti kaughoidla (või loo uus) läbipaistva kihina.",
             "aerocryptImportTitle": "Tuvastati Rclone Crypti kiht",
             "aerocryptImportDesc": "Profiil imporditud rclone.conf-ist {name} jaoks: kas avada kiht nüüd?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Uuestiühendamine ebaõnnestus. Palun ühenda käsitsi uuesti."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypti kiht",
+            "title": "Rclone Crypti kiht",
             "intro": {
                 "heading": "Mida see kiht teeb",
                 "p1": "Krüpteerib failinimed ja sisu <strong>lennult</strong>, enne kui need serverisse saadetakse, ning dekrüpteerib need allalaadimisel. Server näeb ainult base32-nimedega blobisid. Sina näed algseid nimesid.",
-                "p2": "Kuni kiht on aktiivne: sinu kaugseanss kuvab sisu loetavalt, iga üleslaadimine krüpteeritakse, iga allalaadimine dekrüpteeritakse. Otsi tee-ribalt märki <em>AEROCRYPT</em>.",
-                "p3": "Erinevus AeroVaultist: AeroVault on üks iseseisev fail <code>.aerovault</code> (AeroFTP vorming). AeroCrypt on kiht olemasoleva kaughoidla peal (S3/SFTP/WebDAV/...), mis kasutab avalikku rclone crypti vormingut. Ava sama parooliga, mida kasutaksid <code>rclone</code>'is."
+                "p2": "Kuni kiht on aktiivne: sinu kaugseanss kuvab sisu loetavalt, iga üleslaadimine krüpteeritakse, iga allalaadimine dekrüpteeritakse. Otsi tee-ribalt märki <em>RCLONE CRYPT</em>.",
+                "p3": "Erinevus AeroVaultist: AeroVault on üks iseseisev fail <code>.aerovault</code> (AeroFTP vorming). Rclone Crypt on kiht olemasoleva kaughoidla peal (S3/SFTP/WebDAV/...), mis kasutab avalikku rclone crypti vormingut. Ava sama parooliga, mida kasutaksid <code>rclone</code>'is."
             },
             "openExisting": "Ava olemasolev",
             "createNew": "Loo uus",

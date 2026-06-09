@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Systemmenüleiste anzeigen",
             "aerovaultOverlayActive": "AeroVault-Container-Overlay aktiv - klicken zum Trennen",
             "aerovaultOverlayInactive": "Einen .aerovault-Container als virtuelles Remote-Panel öffnen. Für Rclone-Crypt-Overlay Rechtsklick auf einen Remote-Ordner verwenden.",
-            "aerocryptOverlayActive": "AeroCrypt-Overlay aktiv: Uploads und Downloads in diesem Bereich werden verschlüsselt. Zum Trennen klicken.",
+            "aerocryptOverlayActive": "Rclone Crypt-Overlay aktiv: Uploads und Downloads in diesem Bereich werden verschlüsselt. Zum Trennen klicken.",
             "aerocryptOverlayInactive": "Öffnen Sie ein rclone-crypt-Remote (oder erstellen Sie ein neues) als transparentes Overlay.",
             "aerocryptImportTitle": "Rclone-Crypt-Overlay erkannt",
             "aerocryptImportDesc": "Profil aus rclone.conf für {name} importiert: Overlay jetzt öffnen?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Wiederverbindung fehlgeschlagen. Bitte manuell erneut verbinden."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone-Crypt-Overlay",
+            "title": "Rclone-Crypt-Overlay",
             "intro": {
                 "heading": "Was dieses Overlay tut",
                 "p1": "Verschlüsselt Dateinamen und Inhalte <strong>im laufenden Betrieb</strong>, bevor sie an den Server gesendet werden, und entschlüsselt sie beim Herunterladen. Der Server sieht nur Blobs mit base32-Namen. Sie sehen die Originalnamen.",
-                "p2": "Während das Overlay aktiv ist: Ihre Remote-Sitzung zeigt Inhalte im Klartext an, jeder Upload wird verschlüsselt, jeder Download wird entschlüsselt. Achten Sie auf das <em>AEROCRYPT</em>-Symbol in der Pfadleiste.",
-                "p3": "Unterschied zu AeroVault: AeroVault ist eine einzelne, eigenständige <code>.aerovault</code>-Datei (AeroFTP-Format). AeroCrypt ist eine Schicht über einem vorhandenen Remote (S3/SFTP/WebDAV/...) und verwendet das öffentliche rclone-crypt-Format. Entsperren Sie mit demselben Passwort, das Sie in <code>rclone</code> verwenden würden."
+                "p2": "Während das Overlay aktiv ist: Ihre Remote-Sitzung zeigt Inhalte im Klartext an, jeder Upload wird verschlüsselt, jeder Download wird entschlüsselt. Achten Sie auf das <em>RCLONE CRYPT</em>-Symbol in der Pfadleiste.",
+                "p3": "Unterschied zu AeroVault: AeroVault ist eine einzelne, eigenständige <code>.aerovault</code>-Datei (AeroFTP-Format). Rclone Crypt ist eine Schicht über einem vorhandenen Remote (S3/SFTP/WebDAV/...) und verwendet das öffentliche rclone-crypt-Format. Entsperren Sie mit demselben Passwort, das Sie in <code>rclone</code> verwenden würden."
             },
             "openExisting": "Vorhandenes öffnen",
             "createNew": "Neu erstellen",

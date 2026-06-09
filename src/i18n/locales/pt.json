@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Mostrar barra de menu do sistema",
             "aerovaultOverlayActive": "Sobreposição de contêiner AeroVault ativa - clique para desanexar",
             "aerovaultOverlayInactive": "Abrir um contêiner .aerovault como painel remoto virtual. Para sobreposição rclone-crypt, clique com o botão direito em uma pasta remota.",
-            "aerocryptOverlayActive": "Sobreposição AeroCrypt ativa: uploads e downloads neste painel são criptografados. Clique para desanexar.",
+            "aerocryptOverlayActive": "Sobreposição Rclone Crypt ativa: uploads e downloads neste painel são criptografados. Clique para desanexar.",
             "aerocryptOverlayInactive": "Abra um remoto rclone-crypt (ou crie um novo) como sobreposição transparente.",
             "aerocryptImportTitle": "Sobreposição Rclone Crypt detectada",
             "aerocryptImportDesc": "Perfil importado de rclone.conf para {name}: abrir a sobreposição agora?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "A reconexão falhou. Reconecte manualmente."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Sobreposição Rclone Crypt",
+            "title": "Sobreposição Rclone Crypt",
             "intro": {
                 "heading": "O que esta sobreposição faz",
                 "p1": "Criptografa nomes de arquivos e conteúdos <strong>em tempo real</strong>, antes de enviá-los ao servidor, e os descriptografa ao baixar. O servidor vê apenas blobs com nomes em base32. Você vê os nomes originais.",
-                "p2": "Enquanto a sobreposição está ativa: sua sessão remota exibe o conteúdo em claro, cada upload é criptografado, cada download é descriptografado. Procure pelo selo <em>AEROCRYPT</em> na barra de caminho.",
-                "p3": "Diferença em relação ao AeroVault: o AeroVault é um único arquivo autônomo <code>.aerovault</code> (formato AeroFTP). O AeroCrypt é uma camada sobre um remoto existente (S3/SFTP/WebDAV/...) usando o formato público rclone crypt. Desbloqueie com a mesma senha que usaria no <code>rclone</code>."
+                "p2": "Enquanto a sobreposição está ativa: sua sessão remota exibe o conteúdo em claro, cada upload é criptografado, cada download é descriptografado. Procure pelo selo <em>RCLONE CRYPT</em> na barra de caminho.",
+                "p3": "Diferença em relação ao AeroVault: o AeroVault é um único arquivo autônomo <code>.aerovault</code> (formato AeroFTP). O Rclone Crypt é uma camada sobre um remoto existente (S3/SFTP/WebDAV/...) usando o formato público rclone crypt. Desbloqueie com a mesma senha que usaria no <code>rclone</code>."
             },
             "openExisting": "Abrir existente",
             "createNew": "Criar novo",

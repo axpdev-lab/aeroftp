@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Hiện thanh menu hệ thống",
             "aerovaultOverlayActive": "Lớp phủ container AeroVault đang hoạt động - bấm để tách",
             "aerovaultOverlayInactive": "Mở container .aerovault làm bảng điều khiển từ xa ảo. Đối với lớp phủ rclone-crypt, dùng bấm chuột phải trên thư mục từ xa.",
-            "aerocryptOverlayActive": "Lớp phủ AeroCrypt đang hoạt động: tải lên và tải xuống trong bảng này được mã hóa. Nhấp để gỡ.",
+            "aerocryptOverlayActive": "Lớp phủ Rclone Crypt đang hoạt động: tải lên và tải xuống trong bảng này được mã hóa. Nhấp để gỡ.",
             "aerocryptOverlayInactive": "Mở một remote rclone-crypt (hoặc tạo mới) làm lớp phủ trong suốt.",
             "aerocryptImportTitle": "Đã phát hiện lớp phủ Rclone Crypt",
             "aerocryptImportDesc": "Đã nhập hồ sơ từ rclone.conf cho {name}: mở lớp phủ ngay bây giờ?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Kết nối lại thất bại. Vui lòng kết nối lại thủ công."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Lớp phủ Rclone Crypt",
+            "title": "Lớp phủ Rclone Crypt",
             "intro": {
                 "heading": "Lớp phủ này làm gì",
                 "p1": "Mã hóa tên tệp và nội dung <strong>tức thời</strong>, trước khi gửi đến máy chủ, và giải mã khi bạn tải xuống. Máy chủ chỉ thấy các blob với tên dạng base32. Bạn thấy các tên gốc.",
-                "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>AEROCRYPT</em> trong thanh đường dẫn.",
-                "p3": "Khác biệt so với AeroVault: AeroVault là một tệp <code>.aerovault</code> độc lập (định dạng AeroFTP). AeroCrypt là một lớp phủ trên một remote hiện có (S3/SFTP/WebDAV/...) sử dụng định dạng rclone crypt công khai. Mở khóa bằng cùng mật khẩu mà bạn sẽ dùng trong <code>rclone</code>."
+                "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>RCLONE CRYPT</em> trong thanh đường dẫn.",
+                "p3": "Khác biệt so với AeroVault: AeroVault là một tệp <code>.aerovault</code> độc lập (định dạng AeroFTP). Rclone Crypt là một lớp phủ trên một remote hiện có (S3/SFTP/WebDAV/...) sử dụng định dạng rclone crypt công khai. Mở khóa bằng cùng mật khẩu mà bạn sẽ dùng trong <code>rclone</code>."
             },
             "openExisting": "Mở cái hiện có",
             "createNew": "Tạo mới",

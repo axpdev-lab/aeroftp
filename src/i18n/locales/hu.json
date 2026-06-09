@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Rendszer menüsor megjelenítése",
             "aerovaultOverlayActive": "AeroVault konténer fedőréteg aktív - kattintson a leválasztáshoz",
             "aerovaultOverlayInactive": "Nyisson meg egy .aerovault konténert virtuális távoli panelként. Az rclone-crypt fedőréteghez kattintson a jobb gombbal egy távoli mappára.",
-            "aerocryptOverlayActive": "AeroCrypt réteg aktív: a feltöltések és letöltések ezen a panelen titkosítottak. Kattintson a leválasztáshoz.",
+            "aerocryptOverlayActive": "Rclone Crypt réteg aktív: a feltöltések és letöltések ezen a panelen titkosítottak. Kattintson a leválasztáshoz.",
             "aerocryptOverlayInactive": "Nyisson meg egy rclone-crypt távoli tárolót (vagy hozzon létre újat) átlátszó rétegként.",
             "aerocryptImportTitle": "Rclone Crypt réteg észlelve",
             "aerocryptImportDesc": "Profil importálva a rclone.conf fájlból ehhez: {name}: megnyitja most a réteget?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Az újracsatlakozás nem sikerült. Csatlakozzon újra manuálisan."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt réteg",
+            "title": "Rclone Crypt réteg",
             "intro": {
                 "heading": "Mit csinál ez a réteg",
                 "p1": "Titkosítja a fájlneveket és a tartalmakat <strong>menet közben</strong>, mielőtt a szerverre küldené, és visszafejti letöltéskor. A szerver csak base32 nevű blobokat lát. Ön az eredeti neveket látja.",
-                "p2": "Amíg a réteg aktív: a távoli munkamenet tisztán jeleníti meg a tartalmat, minden feltöltés titkosított, minden letöltés visszafejtett. Keresse az <em>AEROCRYPT</em> jelvényt az útvonalsávban.",
-                "p3": "Eltérés az AeroVaulttól: az AeroVault egy önálló <code>.aerovault</code> fájl (AeroFTP formátum). Az AeroCrypt egy réteg a meglévő távoli tároló (S3/SFTP/WebDAV/...) tetején, a nyilvános rclone crypt formátumot használva. Ugyanazzal a jelszóval oldja fel, amit a <code>rclone</code>-ban is használna."
+                "p2": "Amíg a réteg aktív: a távoli munkamenet tisztán jeleníti meg a tartalmat, minden feltöltés titkosított, minden letöltés visszafejtett. Keresse az <em>RCLONE CRYPT</em> jelvényt az útvonalsávban.",
+                "p3": "Eltérés az AeroVaulttól: az AeroVault egy önálló <code>.aerovault</code> fájl (AeroFTP formátum). Az Rclone Crypt egy réteg a meglévő távoli tároló (S3/SFTP/WebDAV/...) tetején, a nyilvános rclone crypt formátumot használva. Ugyanazzal a jelszóval oldja fel, amit a <code>rclone</code>-ban is használna."
             },
             "openExisting": "Meglévő megnyitása",
             "createNew": "Új létrehozása",

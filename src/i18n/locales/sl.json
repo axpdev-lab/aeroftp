@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Prikaži sistemski meni",
             "aerovaultOverlayActive": "Prekrivanje vsebnika AeroVault aktivno - kliknite za odklop",
             "aerovaultOverlayInactive": "Odpri vsebnik .aerovault kot navidezno oddaljeno ploščo. Za prekrivanje rclone-crypt uporabite desni klik na oddaljeno mapo.",
-            "aerocryptOverlayActive": "Prekrivni sloj AeroCrypt aktiven: nalaganja in prenosi v tem podoknu so šifrirani. Kliknite za odklop.",
+            "aerocryptOverlayActive": "Prekrivni sloj Rclone Crypt aktiven: nalaganja in prenosi v tem podoknu so šifrirani. Kliknite za odklop.",
             "aerocryptOverlayInactive": "Odprite oddaljeni vir rclone-crypt (ali ustvarite novega) kot transparenten prekrivni sloj.",
             "aerocryptImportTitle": "Zaznan prekrivni sloj Rclone Crypt",
             "aerocryptImportDesc": "Profil uvožen iz rclone.conf za {name}: odpreti prekrivni sloj zdaj?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Ponovna povezava ni uspela. Ponovno se povežite ročno."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Prekrivni sloj Rclone Crypt",
+            "title": "Prekrivni sloj Rclone Crypt",
             "intro": {
                 "heading": "Kaj počne ta prekrivni sloj",
                 "p1": "Šifrira imena datotek in vsebino <strong>v živo</strong>, preden jih pošlje na strežnik, in jih pri prenosu dešifrira. Strežnik vidi le bloke z imeni v base32. Vi vidite izvirna imena.",
-                "p2": "Medtem ko je prekrivni sloj aktiven: vaša oddaljena seja prikazuje vsebino v čistem, vsak prenos navzgor je šifriran, vsak prenos navzdol dešifriran. Iščite oznako <em>AEROCRYPT</em> v vrstici poti.",
-                "p3": "Razlika v primerjavi z AeroVault: AeroVault je ena samostojna datoteka <code>.aerovault</code> (format AeroFTP). AeroCrypt je sloj nad obstoječim oddaljenim virom (S3/SFTP/WebDAV/...), ki uporablja javni format rclone crypt. Odklenite z istim geslom, kot bi ga uporabili v <code>rclone</code>."
+                "p2": "Medtem ko je prekrivni sloj aktiven: vaša oddaljena seja prikazuje vsebino v čistem, vsak prenos navzgor je šifriran, vsak prenos navzdol dešifriran. Iščite oznako <em>RCLONE CRYPT</em> v vrstici poti.",
+                "p3": "Razlika v primerjavi z AeroVault: AeroVault je ena samostojna datoteka <code>.aerovault</code> (format AeroFTP). Rclone Crypt je sloj nad obstoječim oddaljenim virom (S3/SFTP/WebDAV/...), ki uporablja javni format rclone crypt. Odklenite z istim geslom, kot bi ga uporabili v <code>rclone</code>."
             },
             "openExisting": "Odpri obstoječega",
             "createNew": "Ustvari novega",

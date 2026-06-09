@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Afișează bara de meniu sistem",
             "aerovaultOverlayActive": "Suprapunere container AeroVault activă - clic pentru detașare",
             "aerovaultOverlayInactive": "Deschide un container .aerovault ca panou la distanță virtual. Pentru suprapunerea rclone-crypt, fă clic dreapta pe un folder la distanță.",
-            "aerocryptOverlayActive": "Suprapunere AeroCrypt activă: încărcările și descărcările din acest panou sunt criptate. Fă clic pentru a detașa.",
+            "aerocryptOverlayActive": "Suprapunere Rclone Crypt activă: încărcările și descărcările din acest panou sunt criptate. Fă clic pentru a detașa.",
             "aerocryptOverlayInactive": "Deschide un remote rclone-crypt (sau creează unul nou) ca suprapunere transparentă.",
             "aerocryptImportTitle": "Suprapunere Rclone Crypt detectată",
             "aerocryptImportDesc": "Profil importat din rclone.conf pentru {name}: deschizi suprapunerea acum?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Reconectarea a eșuat. Reconectați-vă manual."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Suprapunere Rclone Crypt",
+            "title": "Suprapunere Rclone Crypt",
             "intro": {
                 "heading": "Ce face această suprapunere",
                 "p1": "Criptează numele fișierelor și conținutul <strong>din mers</strong>, înainte de a le trimite pe server, și le decriptează la descărcare. Serverul vede doar blob-uri cu nume în base32. Tu vezi numele originale.",
-                "p2": "Cât timp suprapunerea este activă: sesiunea ta de la distanță afișează conținutul în clar, fiecare încărcare este criptată, fiecare descărcare este decriptată. Caută insigna <em>AEROCRYPT</em> în bara căii.",
-                "p3": "Diferența față de AeroVault: AeroVault este un singur fișier de sine stătător <code>.aerovault</code> (format AeroFTP). AeroCrypt este un strat peste un remote existent (S3/SFTP/WebDAV/...) care folosește formatul public rclone crypt. Deblochează cu aceeași parolă pe care ai folosi-o în <code>rclone</code>."
+                "p2": "Cât timp suprapunerea este activă: sesiunea ta de la distanță afișează conținutul în clar, fiecare încărcare este criptată, fiecare descărcare este decriptată. Caută insigna <em>RCLONE CRYPT</em> în bara căii.",
+                "p3": "Diferența față de AeroVault: AeroVault este un singur fișier de sine stătător <code>.aerovault</code> (format AeroFTP). Rclone Crypt este un strat peste un remote existent (S3/SFTP/WebDAV/...) care folosește formatul public rclone crypt. Deblochează cu aceeași parolă pe care ai folosi-o în <code>rclone</code>."
             },
             "openExisting": "Deschide existent",
             "createNew": "Creează nou",

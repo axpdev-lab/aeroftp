@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Zobraziť systémové menu",
             "aerovaultOverlayActive": "Prekrytie kontajnera AeroVault aktívne - kliknutím odpojte",
             "aerovaultOverlayInactive": "Otvoriť kontajner .aerovault ako virtuálny vzdialený panel. Pre prekrytie rclone-crypt použite pravé kliknutie na vzdialený priečinok.",
-            "aerocryptOverlayActive": "Prekrytie AeroCrypt aktívne: nahrávania a sťahovania v tomto paneli sú šifrované. Kliknutím odpojíte.",
+            "aerocryptOverlayActive": "Prekrytie Rclone Crypt aktívne: nahrávania a sťahovania v tomto paneli sú šifrované. Kliknutím odpojíte.",
             "aerocryptOverlayInactive": "Otvorte vzdialené úložisko rclone-crypt (alebo vytvorte nové) ako priehľadné prekrytie.",
             "aerocryptImportTitle": "Zistené prekrytie Rclone Crypt",
             "aerocryptImportDesc": "Profil importovaný z rclone.conf pre {name}: otvoriť prekrytie teraz?",
@@ -4408,12 +4408,12 @@
             "reconnectFailed": "Opätovné pripojenie zlyhalo. Pripojte sa znovu manuálne."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Prekrytie Rclone Crypt",
+            "title": "Prekrytie Rclone Crypt",
             "intro": {
                 "heading": "Čo toto prekrytie robí",
                 "p1": "Šifruje názvy súborov a obsah <strong>za behu</strong>, pred odoslaním na server, a pri sťahovaní ich dešifruje. Server vidí iba bloby s názvami v base32. Vy vidíte pôvodné názvy.",
-                "p2": "Kým je prekrytie aktívne: vaša vzdialená relácia zobrazuje obsah v čistej podobe, každé nahrávanie sa šifruje, každé sťahovanie sa dešifruje. Hľadajte odznak <em>AEROCRYPT</em> v paneli cesty.",
-                "p3": "Rozdiel oproti AeroVault: AeroVault je jediný samostatný súbor <code>.aerovault</code> (formát AeroFTP). AeroCrypt je vrstva nad existujúcim vzdialeným úložiskom (S3/SFTP/WebDAV/...) používajúca verejný formát rclone crypt. Odomknite rovnakým heslom, aké by ste použili v <code>rclone</code>."
+                "p2": "Kým je prekrytie aktívne: vaša vzdialená relácia zobrazuje obsah v čistej podobe, každé nahrávanie sa šifruje, každé sťahovanie sa dešifruje. Hľadajte odznak <em>RCLONE CRYPT</em> v paneli cesty.",
+                "p3": "Rozdiel oproti AeroVault: AeroVault je jediný samostatný súbor <code>.aerovault</code> (formát AeroFTP). Rclone Crypt je vrstva nad existujúcim vzdialeným úložiskom (S3/SFTP/WebDAV/...) používajúca verejný formát rclone crypt. Odomknite rovnakým heslom, aké by ste použili v <code>rclone</code>."
             },
             "openExisting": "Otvoriť existujúci",
             "createNew": "Vytvoriť nový",

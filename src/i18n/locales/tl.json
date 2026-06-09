@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Ipakita ang system menu bar",
             "aerovaultOverlayActive": "Aktibo ang AeroVault container overlay - mag-click upang ihiwalay",
             "aerovaultOverlayInactive": "Buksan ang .aerovault container bilang virtual remote panel. Para sa rclone-crypt overlay, gumamit ng right-click sa remote folder.",
-            "aerocryptOverlayActive": "Aktibo ang overlay ng AeroCrypt: ang mga upload at download sa panel na ito ay encrypted. I-click upang i-detach.",
+            "aerocryptOverlayActive": "Aktibo ang overlay ng Rclone Crypt: ang mga upload at download sa panel na ito ay encrypted. I-click upang i-detach.",
             "aerocryptOverlayInactive": "Magbukas ng remote ng rclone-crypt (o gumawa ng bago) bilang transparent na overlay.",
             "aerocryptImportTitle": "Natukoy ang overlay ng Rclone Crypt",
             "aerocryptImportDesc": "Na-import ang profile mula sa rclone.conf para sa {name}: buksan ang overlay ngayon?",
@@ -4427,12 +4427,12 @@
             "reconnectFailed": "Nabigo ang muling pagkonekta. Mangyaring muling kumonekta nang manu-mano."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Overlay ng Rclone Crypt",
+            "title": "Overlay ng Rclone Crypt",
             "intro": {
                 "heading": "Ano ang ginagawa ng overlay na ito",
                 "p1": "Ineencrypt ang mga pangalan ng file at nilalaman <strong>habang ginagawa</strong>, bago ipadala sa server, at dineencrypt kapag dina-download. Ang server ay nakikita lamang ang mga blob na may mga pangalan sa base32. Nakikita mo ang mga orihinal na pangalan.",
-                "p2": "Habang aktibo ang overlay: ang iyong remote session ay nagpapakita ng nilalaman nang maliwanag, ang bawat upload ay encrypted, ang bawat download ay decrypted. Hanapin ang badge ng <em>AEROCRYPT</em> sa path bar.",
-                "p3": "Pagkakaiba sa AeroVault: Ang AeroVault ay isang nag-iisang self-contained na file na <code>.aerovault</code> (format ng AeroFTP). Ang AeroCrypt ay isang layer sa ibabaw ng umiiral nang remote (S3/SFTP/WebDAV/...) na gumagamit ng pampublikong format ng rclone crypt. I-unlock gamit ang parehong password na gagamitin mo sa <code>rclone</code>."
+                "p2": "Habang aktibo ang overlay: ang iyong remote session ay nagpapakita ng nilalaman nang maliwanag, ang bawat upload ay encrypted, ang bawat download ay decrypted. Hanapin ang badge ng <em>RCLONE CRYPT</em> sa path bar.",
+                "p3": "Pagkakaiba sa AeroVault: Ang AeroVault ay isang nag-iisang self-contained na file na <code>.aerovault</code> (format ng AeroFTP). Ang Rclone Crypt ay isang layer sa ibabaw ng umiiral nang remote (S3/SFTP/WebDAV/...) na gumagamit ng pampublikong format ng rclone crypt. I-unlock gamit ang parehong password na gagamitin mo sa <code>rclone</code>."
             },
             "openExisting": "Buksan ang umiiral",
             "createNew": "Gumawa ng bago",
