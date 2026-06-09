@@ -2828,7 +2828,8 @@
             "repairSuccess": "ការជួសជុលបានបញ្ចប់៖ បានជួសជុលបំណែក {repaired} ដោយជោគជ័យ",
             "noDamageNothing": "គ្មានការខូចខាត គ្មានអ្វីត្រូវជួសជុលទេ។",
             "couldNotRepairAny": "មិនអាចជួសជុលណាមួយក្នុងចំណោម {damaged} បានទេ (ឃ្លាំងមិនត្រូវបានប៉ះពាល់)។",
-            "successfullyRepaired": "បានជួសជុលបំណែក {repaired} ដោយជោគជ័យ។"
+            "successfullyRepaired": "បានជួសជុលបំណែក {repaired} ដោយជោគជ័យ។",
+            "detachedHeaderProtectedNote": "ឯកសារសង្គ្រោះក៏ការពារក្បាលនៃ vault និងកម្មវិធីកំណត់ទីតាំង manifest ដែរ ដូច្នេះសូម្បីតែក្បាលដែលខូចក៏អាចស្ថាបនាឡើងវិញបាន។"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",

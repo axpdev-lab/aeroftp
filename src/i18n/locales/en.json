@@ -3948,6 +3948,7 @@
             "placementDetachedDesc": "Sibling .aerovault.rec file",
             "placementBothDesc": "In-container plus a sidecar",
             "detachedStableStorageNote": "Detached parity keeps the container byte-identical to a plain vault; re-export it after editing the vault.",
+            "detachedHeaderProtectedNote": "The recovery file also protects the vault header and manifest locator, so even a damaged header can be rebuilt.",
             "exportParity": "Export recovery file",
             "exportingParity": "Exporting...",
             "exportParityHint": "Write a detached .aerovault.rec recovery file from the current data",

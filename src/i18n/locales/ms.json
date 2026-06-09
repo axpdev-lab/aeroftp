@@ -2828,7 +2828,8 @@
             "repairSuccess": "Pembaikan selesai: berjaya membaiki {repaired} ketulan",
             "noDamageNothing": "Tiada kerosakan; tiada apa-apa untuk dibaiki.",
             "couldNotRepairAny": "Tidak dapat membaiki mana-mana daripada {damaged} (peti kebal dibiarkan tidak diubah).",
-            "successfullyRepaired": "Berjaya membaiki {repaired} ketulan."
+            "successfullyRepaired": "Berjaya membaiki {repaired} ketulan.",
+            "detachedHeaderProtectedNote": "Fail pemulihan turut melindungi pengepala bilik kebal dan pelokasi manifes, jadi pengepala yang rosak pun boleh dibina semula."
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

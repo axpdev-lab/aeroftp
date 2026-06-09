@@ -2828,7 +2828,8 @@
             "repairSuccess": "Đã sửa xong: đã sửa thành công {repaired} chunk",
             "noDamageNothing": "Không có hư hỏng; không có gì để sửa.",
             "couldNotRepairAny": "Không thể sửa bất kỳ chunk nào trong số {damaged} (giữ nguyên kho lưu trữ).",
-            "successfullyRepaired": "Đã sửa thành công {repaired} chunk."
+            "successfullyRepaired": "Đã sửa thành công {repaired} chunk.",
+            "detachedHeaderProtectedNote": "Tệp khôi phục cũng bảo vệ tiêu đề của vault và bộ định vị manifest, nên ngay cả tiêu đề bị hỏng cũng có thể được dựng lại."
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

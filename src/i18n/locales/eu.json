@@ -2828,7 +2828,8 @@
             "repairSuccess": "Konponketa osatuta: {repaired} zati behar bezala konponduta",
             "noDamageNothing": "Kalterik ez; ez dago zer konpondurik.",
             "couldNotRepairAny": "Ezin izan da {damaged}(e)tik bat ere konpondu (kutxa gotorra ukitu gabe utzi da).",
-            "successfullyRepaired": "{repaired} zati behar bezala konponduta."
+            "successfullyRepaired": "{repaired} zati behar bezala konponduta.",
+            "detachedHeaderProtectedNote": "Berreskuratze fitxategiak vault-aren goiburua eta manifestuaren kokatzailea ere babesten ditu, beraz, hondatutako goiburua ere berreraiki daiteke."
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

@@ -2828,7 +2828,8 @@
             "repairSuccess": "Поправката е завршена: успешно поправени {repaired} дел(ови)",
             "noDamageNothing": "Нема оштетување; нема што да се поправа.",
             "couldNotRepairAny": "Не може да се поправи ниту еден од {damaged} (сефот остана недопрен).",
-            "successfullyRepaired": "Успешно поправени {repaired} дел(ови)."
+            "successfullyRepaired": "Успешно поправени {repaired} дел(ови).",
+            "detachedHeaderProtectedNote": "Датотеката за обновување го заштитува и заглавието на трезорот и локаторот на манифестот, така што дури и оштетено заглавие може да се обнови."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

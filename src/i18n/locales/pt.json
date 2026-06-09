@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparação concluída: {repaired} bloco(s) reparado(s) com êxito",
             "noDamageNothing": "Sem danos; nada a reparar.",
             "couldNotRepairAny": "Não foi possível reparar nenhum de {damaged} (cofre deixado inalterado).",
-            "successfullyRepaired": "{repaired} bloco(s) reparado(s) com êxito."
+            "successfullyRepaired": "{repaired} bloco(s) reparado(s) com êxito.",
+            "detachedHeaderProtectedNote": "O ficheiro de recuperação também protege o cabeçalho do vault e o localizador do manifesto, por isso mesmo um cabeçalho danificado pode ser reconstruído."
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

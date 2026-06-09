@@ -2828,7 +2828,8 @@
             "repairSuccess": "Taisymas baigtas: sėkmingai pataisyta {repaired} fragmentų",
             "noDamageNothing": "Pažeidimų nėra; nėra ką taisyti.",
             "couldNotRepairAny": "Nepavyko pataisyti nė vieno iš {damaged} (saugykla palikta nepaliesta).",
-            "successfullyRepaired": "Sėkmingai pataisyta {repaired} fragmentų."
+            "successfullyRepaired": "Sėkmingai pataisyta {repaired} fragmentų.",
+            "detachedHeaderProtectedNote": "Atkūrimo failas taip pat apsaugo saugyklos antraštę ir manifesto lokatorių, todėl net sugadintą antraštę galima atkurti."
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

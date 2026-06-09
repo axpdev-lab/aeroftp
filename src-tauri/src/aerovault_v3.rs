@@ -521,20 +521,45 @@ fn recovery_binding_id(salt: &[u8; SALT_SIZE]) -> [u8; RECOVERY_BINDING_LEN] {
 }
 
 /// In-memory view of a detached `.aerovault.rec` file.
+///
+/// The sidecar is the placement-independent recovery store for the detached path,
+/// so it carries parity for every region the container itself cannot self-locate
+/// once damaged:
+/// - `payload`: data-block parity (the live-block stream).
+/// - `manifest_parity`: GAP-4 parity over the on-disk encrypted manifest (the
+///   "locator"). On the embedded path this lives in the metadata extension; a
+///   pure-detached vault keeps no embedded extension, so it must travel here.
+/// - `header_parity`: parity over the 1024-byte header. The header cannot point at
+///   its own recovery data once it is corrupt (chicken-and-egg), so its parity must
+///   live OUTSIDE the container: the sidecar is the only place it can.
 #[derive(Debug, Clone)]
 struct RecoveryFile {
     vault_binding_id: [u8; RECOVERY_BINDING_LEN],
     /// Raw `ErrorCorrectionPayload` (AVEC) bytes, the same blob the embedded
     /// placement stores in the extension payload area.
     payload: Vec<u8>,
+    /// GAP-4 parity (AVEC) over the on-disk encrypted manifest. Empty when the
+    /// vault was empty at export time or the file predates the metadata bundle.
+    manifest_parity: Vec<u8>,
+    /// Parity (AVEC) over the 1024-byte header. Empty when none was exported.
+    header_parity: Vec<u8>,
 }
 
 impl RecoveryFile {
-    /// Build a recovery file bound to `salt`, carrying `payload` (AVEC bytes).
-    fn new(salt: &[u8; SALT_SIZE], payload: Vec<u8>) -> Self {
+    /// Build a recovery file bound to `salt`, carrying the data-block `payload` plus
+    /// the GAP-4 metadata parity (`manifest_parity`, `header_parity`). Pass empty
+    /// vectors for regions that are not protected.
+    fn new(
+        salt: &[u8; SALT_SIZE],
+        payload: Vec<u8>,
+        manifest_parity: Vec<u8>,
+        header_parity: Vec<u8>,
+    ) -> Self {
         RecoveryFile {
             vault_binding_id: recovery_binding_id(salt),
             payload,
+            manifest_parity,
+            header_parity,
         }
     }
 
@@ -544,12 +569,23 @@ impl RecoveryFile {
                 + RECOVERY_BINDING_LEN
                 + 8
                 + self.payload.len()
+                + 8
+                + self.manifest_parity.len()
+                + 8
+                + self.header_parity.len()
                 + RECOVERY_FILE_CHECKSUM_LEN,
         );
         out.extend_from_slice(RECOVERY_FILE_MAGIC);
         out.extend_from_slice(&self.vault_binding_id);
         out.extend_from_slice(&(self.payload.len() as u64).to_le_bytes());
         out.extend_from_slice(&self.payload);
+        // GAP-4 metadata bundle (additive after the data payload). A reader that
+        // predates this bundle sees only the data payload (see `from_bytes`); a
+        // reader that knows it always finds both length-prefixed sections here.
+        out.extend_from_slice(&(self.manifest_parity.len() as u64).to_le_bytes());
+        out.extend_from_slice(&self.manifest_parity);
+        out.extend_from_slice(&(self.header_parity.len() as u64).to_le_bytes());
+        out.extend_from_slice(&self.header_parity);
         let checksum = blake3::hash(&out);
         out.extend_from_slice(checksum.as_bytes());
         out
@@ -574,15 +610,38 @@ impl RecoveryFile {
         let mut vault_binding_id = [0u8; RECOVERY_BINDING_LEN];
         vault_binding_id.copy_from_slice(&data[off..off + RECOVERY_BINDING_LEN]);
         off += RECOVERY_BINDING_LEN;
-        let payload_len = u64::from_le_bytes(data[off..off + 8].try_into().unwrap()) as usize;
-        off += 8;
-        if off + payload_len != body_end {
-            return Err("recovery file payload length mismatch".to_string());
-        }
-        let payload = data[off..off + payload_len].to_vec();
+        let read_section = |off: &mut usize, what: &str| -> Result<Vec<u8>, String> {
+            if *off + 8 > body_end {
+                return Err(format!("recovery file truncated reading {what} length"));
+            }
+            let len = u64::from_le_bytes(data[*off..*off + 8].try_into().unwrap()) as usize;
+            *off += 8;
+            if *off + len > body_end {
+                return Err(format!("recovery file {what} length mismatch"));
+            }
+            let v = data[*off..*off + len].to_vec();
+            *off += len;
+            Ok(v)
+        };
+        let payload = read_section(&mut off, "payload")?;
+        // The metadata bundle is additive: a legacy payload-only file ends exactly
+        // here, so treat "no trailing bytes" as empty metadata parity rather than an
+        // error. A newer file carries both length-prefixed sections.
+        let (manifest_parity, header_parity) = if off == body_end {
+            (Vec::new(), Vec::new())
+        } else {
+            let m = read_section(&mut off, "manifest parity")?;
+            let h = read_section(&mut off, "header parity")?;
+            if off != body_end {
+                return Err("recovery file has unexpected trailing bytes".to_string());
+            }
+            (m, h)
+        };
         Ok(RecoveryFile {
             vault_binding_id,
             payload,
+            manifest_parity,
+            header_parity,
         })
     }
 
@@ -678,6 +737,30 @@ fn resolve_parity_source(
     )
 }
 
+/// Compute the AVEC parity for a single fixed metadata region (the 1024-byte header
+/// or the on-disk encrypted manifest), treating it as one block exactly like the
+/// embedded GAP-4 metadata extension does. An empty region yields an empty payload.
+fn compute_metadata_parity(region: &[u8]) -> Vec<u8> {
+    if region.is_empty() {
+        return Vec::new();
+    }
+    let (payload, _shards, _prot, _ov) = compute_error_correction_shards(&[region]);
+    payload
+}
+
+/// Read the raw on-disk encrypted-manifest bytes (the exact bytes the manifest
+/// parity must protect; re-encrypting would use a fresh nonce and not match).
+fn read_manifest_raw(vault_path: &Path, header: &VaultHeaderV3) -> Result<Vec<u8>, String> {
+    let mut f = File::open(vault_path).map_err(|e| format!("open for manifest read: {e}"))?;
+    read_capped(
+        &mut f,
+        header.manifest_offset,
+        header.manifest_len,
+        MAX_MANIFEST_SIZE,
+        "manifest",
+    )
+}
+
 /// Outcome of `export_parity`, surfaced verbatim by the CLI/Tauri layers.
 struct ExportParityResult {
     path: PathBuf,
@@ -686,6 +769,10 @@ struct ExportParityResult {
     overhead_pct: f64,
     payload_len: u64,
     file_len: u64,
+    /// Bytes of header parity carried in the sidecar (0 when none).
+    header_parity_len: u64,
+    /// Bytes of manifest (locator) parity carried in the sidecar (0 when none).
+    manifest_parity_len: u64,
 }
 
 /// Write a detached `.aerovault.rec` recovery file for an existing vault. This is
@@ -703,7 +790,15 @@ fn export_parity(
     let vault = open_vault(vault_path, password)?;
     let blocks = collect_live_block_refs(&vault);
     let (payload, shards, protected, overhead) = compute_error_correction_shards(&blocks);
-    let rec = RecoveryFile::new(&vault.header.salt, payload);
+    // GAP-4 metadata bundle: protect the two regions the detached container cannot
+    // self-locate once damaged. The header parity is computed over the authoritative
+    // in-memory header (`to_bytes()` round-trips a clean header byte-for-byte, and
+    // heals one that open had to rebuild); the manifest parity is over the exact
+    // on-disk encrypted bytes (a re-encrypt would use a fresh nonce and not match).
+    let header_parity = compute_metadata_parity(&vault.header.to_bytes());
+    let manifest_raw = read_manifest_raw(vault_path, &vault.header)?;
+    let manifest_parity = compute_metadata_parity(&manifest_raw);
+    let rec = RecoveryFile::new(&vault.header.salt, payload, manifest_parity, header_parity);
     let bytes = rec.to_bytes();
     let out = out_path
         .map(|p| p.to_path_buf())
@@ -716,6 +811,8 @@ fn export_parity(
         overhead_pct: overhead,
         payload_len: rec.payload.len() as u64,
         file_len: bytes.len() as u64,
+        header_parity_len: rec.header_parity.len() as u64,
+        manifest_parity_len: rec.manifest_parity.len() as u64,
     })
 }
 
@@ -1059,10 +1156,11 @@ fn repair_vault(
 ) -> Result<(usize, ParitySource), String> {
     let damaged = scrub_vault(vault);
     if damaged.is_empty() {
-        // GAP-4: no damaged data blocks, but if open had to rebuild a corrupted
-        // manifest from the metadata parity, persist the healed locator. The seal
-        // re-encrypts the (correct, in-memory) manifest and regenerates both parities.
-        if vault.manifest_repaired_on_open {
+        // GAP-4 / HEADER: no damaged data blocks, but if open had to rebuild a
+        // corrupted manifest (metadata parity) or header (sidecar header parity),
+        // persist the healed region. The seal rewrites the header with a fresh MAC
+        // and re-encrypts the (correct, in-memory) manifest, regenerating parities.
+        if vault.manifest_repaired_on_open || vault.header_repaired_on_open {
             if !dry_run {
                 save_open_vault(vault)?;
             }
@@ -1208,6 +1306,10 @@ struct OpenVaultV3 {
     /// from the metadata parity. Repair persists the healed manifest even when no
     /// data block is damaged. Not persisted (recomputed per open).
     manifest_repaired_on_open: bool,
+    /// HEADER parity: set when open_vault had to rebuild a corrupted 1024-byte
+    /// header from the detached sidecar's header parity. Repair persists the healed
+    /// header even when no data block is damaged. Not persisted (recomputed per open).
+    header_repaired_on_open: bool,
 }
 
 impl Drop for OpenVaultV3 {
@@ -2503,8 +2605,11 @@ fn create_empty_vault(
     // An empty vault has an empty parity payload; re-run `export-parity` after
     // adding files (par2 semantics: the recovery file tracks a fixed data set).
     if error_correction.is_some_and(|p| p.writes_sidecar()) {
+        // An empty vault has no data, manifest, or stable header parity yet; seed an
+        // empty bundle so the file exists from creation. `export-parity` fills all
+        // three regions once files are added (par2 semantics: protect a fixed set).
         let (payload, _shards, _prot, _ov) = compute_error_correction_shards(&[]);
-        let rec = RecoveryFile::new(&salt, payload);
+        let rec = RecoveryFile::new(&salt, payload, Vec::new(), Vec::new());
         atomic_write(&default_sidecar_path(path), &rec.to_bytes())?;
     }
     Ok(())
@@ -2533,6 +2638,128 @@ fn validate_supported_wrappers(w: &WrapperManifest) -> Result<(), String> {
     check_wrapper("crypt", &w.crypt, "aes-256-gcm-siv", 1)?;
     check_wrapper("cipher_hash", &w.cipher_hash, "blake3-256", 1)?;
     Ok(())
+}
+
+/// A parsed, MAC-verified header together with its unwrapped MAC and master keys
+/// (the result of unlocking a header with the vault password).
+type UnlockedHeader = (VaultHeaderV3, [u8; KEY_SIZE], [u8; KEY_SIZE]);
+
+/// Load a header from raw bytes and unlock it with `password`, returning the parsed
+/// header plus the unwrapped MAC and master keys. This is the on-disk happy path and
+/// also the verification step a sidecar-reconstructed header must pass: a successful
+/// MAC verify on the (possibly rebuilt) bytes is the proof the header is correct.
+fn open_header_bytes(header_bytes: &[u8], password: &str) -> Result<UnlockedHeader, String> {
+    let header = VaultHeaderV3::from_bytes(header_bytes)?;
+    let mut base_kek = derive_base_kek(password, &header.salt)?;
+    let (kek_master, kek_mac) = derive_keks(&base_kek)?;
+    base_kek.zeroize();
+    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
+    header.verify_mac(&mac_key)?;
+    // Reject an unknown (authenticated) wrapper-header version instead of decoding it
+    // with the hardcoded cipher stack (CLAUDE-AV-024 / CODEX-AV-006).
+    if header.wrapper_header_version != SUPPORTED_WRAPPER_HEADER_VERSION {
+        return Err(format!(
+            "Unsupported AeroVault v3 wrapper-header version: {} (expected {})",
+            header.wrapper_header_version, SUPPORTED_WRAPPER_HEADER_VERSION
+        ));
+    }
+    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    Ok((header, mac_key, master_key))
+}
+
+/// HEADER parity: rebuild a corrupted 1024-byte header from the detached sidecar's
+/// header parity. The header cannot point at embedded recovery once it is itself
+/// damaged, so its parity lives in the sidecar (the only out-of-container store).
+/// Returns the verified header + keys when a sidecar carries header parity and the
+/// rebuild unlocks with `password`; `Ok(None)` when there is no sidecar / no header
+/// parity / the rebuild does not verify (the caller then keeps the original open
+/// error). The MAC verify inside `open_header_bytes` is the correctness proof.
+fn recover_header_from_sidecar(
+    vault_path: &Path,
+    on_disk_header: &[u8],
+    password: &str,
+) -> Result<Option<UnlockedHeader>, String> {
+    let sidecar = default_sidecar_path(vault_path);
+    if !sidecar.exists() {
+        return Ok(None);
+    }
+    let bytes = match std::fs::read(&sidecar) {
+        Ok(b) => b,
+        Err(_) => return Ok(None),
+    };
+    let rec = match RecoveryFile::from_bytes(&bytes) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+    if rec.header_parity.is_empty() {
+        return Ok(None);
+    }
+    // The header is a single fixed-length block; reconstruct requires the on-disk
+    // bytes at exactly HEADER_SIZE so the stream lengths line up.
+    if on_disk_header.len() != HEADER_SIZE {
+        return Ok(None);
+    }
+    let mut blocks = vec![on_disk_header.to_vec()];
+    if reconstruct_from_error_correction(&mut blocks, &rec.header_parity).is_err() {
+        return Ok(None);
+    }
+    let rebuilt = match blocks.into_iter().next() {
+        Some(b) if b.len() == HEADER_SIZE => b,
+        _ => return Ok(None),
+    };
+    match open_header_bytes(&rebuilt, password) {
+        Ok(triple) => Ok(Some(triple)),
+        Err(_) => Ok(None),
+    }
+}
+
+/// GAP-4 (detached): rebuild a corrupted encrypted manifest from the sidecar's
+/// manifest parity. Used as a fallback after the embedded metadata extension on the
+/// detached path, where the container keeps no embedded copy. Returns the rebuilt
+/// encrypted-manifest bytes; the caller proves correctness by a successful AEAD
+/// decrypt. `Ok(None)` when there is no sidecar / no manifest parity / no change.
+fn reconstruct_manifest_from_sidecar(
+    vault_path: &Path,
+    on_disk_manifest: &[u8],
+) -> Result<Option<Vec<u8>>, String> {
+    let sidecar = default_sidecar_path(vault_path);
+    if !sidecar.exists() {
+        return Ok(None);
+    }
+    let bytes = match std::fs::read(&sidecar) {
+        Ok(b) => b,
+        Err(_) => return Ok(None),
+    };
+    let rec = match RecoveryFile::from_bytes(&bytes) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+    if rec.manifest_parity.is_empty() {
+        return Ok(None);
+    }
+    let mut blocks = vec![on_disk_manifest.to_vec()];
+    if reconstruct_from_error_correction(&mut blocks, &rec.manifest_parity).is_err() {
+        return Ok(None);
+    }
+    Ok(blocks.into_iter().next())
+}
+
+/// Which GAP-4 metadata regions a vault's detached sidecar protects, read without the
+/// password (the sidecar is a separate, self-integrity-checked file). Returns
+/// `(manifest_parity_present, header_parity_present)`; `(false, false)` when there is
+/// no sidecar or it cannot be parsed.
+fn sidecar_parity_flags(vault_path: &Path) -> (bool, bool) {
+    let sidecar = default_sidecar_path(vault_path);
+    match std::fs::read(&sidecar)
+        .ok()
+        .and_then(|b| RecoveryFile::from_bytes(&b).ok())
+    {
+        Some(rec) => (
+            !rec.manifest_parity.is_empty(),
+            !rec.header_parity.is_empty(),
+        ),
+        None => (false, false),
+    }
 }
 
 /// GAP-4: try to rebuild a corrupted encrypted manifest from the metadata-parity
@@ -2606,22 +2833,19 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
     let mut header_bytes = [0u8; HEADER_SIZE];
     file.read_exact(&mut header_bytes)
         .map_err(|e| format!("Read header: {e}"))?;
-    let header = VaultHeaderV3::from_bytes(&header_bytes)?;
 
-    let mut base_kek = derive_base_kek(password, &header.salt)?;
-    let (kek_master, kek_mac) = derive_keks(&base_kek)?;
-    base_kek.zeroize();
-    let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
-    header.verify_mac(&mac_key)?;
-    // Reject an unknown (authenticated) wrapper-header version instead of
-    // decoding it with the hardcoded cipher stack (CLAUDE-AV-024 / CODEX-AV-006).
-    if header.wrapper_header_version != SUPPORTED_WRAPPER_HEADER_VERSION {
-        return Err(format!(
-            "Unsupported AeroVault v3 wrapper-header version: {} (expected {})",
-            header.wrapper_header_version, SUPPORTED_WRAPPER_HEADER_VERSION
-        ));
-    }
-    let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
+    // HEADER parity: the on-disk header is the happy path. If it fails to parse or
+    // its MAC does not verify (bit-rot / bad sector), fall back to rebuilding it from
+    // the detached sidecar's header parity. A missing sidecar / no header parity /
+    // a rebuild that still does not unlock keeps the original error.
+    let (header, mac_key, master_key, header_repaired_on_open) =
+        match open_header_bytes(&header_bytes, password) {
+            Ok((h, mac, master)) => (h, mac, master, false),
+            Err(orig) => match recover_header_from_sidecar(&path, &header_bytes, password)? {
+                Some((h, mac, master)) => (h, mac, master, true),
+                None => return Err(orig),
+            },
+        };
 
     validate_ranges(&header, file_len)?;
 
@@ -2648,12 +2872,19 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
             Ok(m) => (m, false),
             Err(orig) => {
                 // GAP-4: the manifest region may be corrupted (bit-rot, bad sector).
-                // If the metadata-parity extension is present, rebuild the encrypted
-                // manifest from it and retry. A successful AEAD decrypt on the rebuilt
+                // Rebuild the encrypted manifest from parity and retry. Try the
+                // embedded metadata extension first (auto-fresh on the embedded path),
+                // then the detached sidecar's manifest parity (the only copy a
+                // pure-detached vault keeps). A successful AEAD decrypt on the rebuilt
                 // bytes is the correctness proof; otherwise keep the original error.
-                match reconstruct_encrypted_manifest(&mut file, &header, file_len)? {
-                    Some(rebuilt) if rebuilt != encrypted_manifest => {
-                        (decrypt_manifest(&master_key, &rebuilt)?, true)
+                let embedded = reconstruct_encrypted_manifest(&mut file, &header, file_len)?;
+                let rebuilt = match embedded {
+                    Some(r) if r != encrypted_manifest => Some(r),
+                    _ => reconstruct_manifest_from_sidecar(&path, &encrypted_manifest)?,
+                };
+                match rebuilt {
+                    Some(r) if r != encrypted_manifest => {
+                        (decrypt_manifest(&master_key, &r)?, true)
                     }
                     _ => return Err(orig),
                 }
@@ -2714,6 +2945,7 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
         data,
         report: VaultReport::new("open", VERSION),
         manifest_repaired_on_open,
+        header_repaired_on_open,
     })
 }
 
@@ -3068,6 +3300,8 @@ pub async fn vault_v3_export_parity(
         "overhead_pct": res.overhead_pct,
         "payload_len": res.payload_len,
         "file_len": res.file_len,
+        "header_parity_len": res.header_parity_len,
+        "manifest_parity_len": res.manifest_parity_len,
     }))
 }
 
@@ -3098,10 +3332,16 @@ pub async fn vault_v3_recovery_status(path: String) -> Result<serde_json::Value,
         .await
         .unwrap_or(false);
     let detached = default_sidecar_path(Path::new(&path)).exists();
+    // The detached sidecar additionally reports which GAP-4 metadata regions it
+    // protects (locator + 1024-byte header), so the GUI can show that detached
+    // recovery covers the header, not just the data blocks.
+    let (manifest_parity, header_parity) = sidecar_parity_flags(Path::new(&path));
     Ok(serde_json::json!({
         "embedded": embedded,
         "detached": detached,
         "any": embedded || detached,
+        "manifest_parity": manifest_parity,
+        "header_parity": header_parity,
     }))
 }
 
@@ -3592,7 +3832,7 @@ mod tests {
     fn recovery_file_round_trips_and_binds() {
         let salt = [7u8; SALT_SIZE];
         let payload = b"AVEC-payload-stand-in-bytes".to_vec();
-        let rec = RecoveryFile::new(&salt, payload.clone());
+        let rec = RecoveryFile::new(&salt, payload.clone(), Vec::new(), Vec::new());
         let bytes = rec.to_bytes();
         let parsed = RecoveryFile::from_bytes(&bytes).expect("parse");
         assert_eq!(parsed.payload, payload);
@@ -3604,7 +3844,7 @@ mod tests {
     fn recovery_file_rejects_wrong_vault() {
         let salt_a = [1u8; SALT_SIZE];
         let salt_b = [2u8; SALT_SIZE];
-        let rec = RecoveryFile::new(&salt_a, b"x".to_vec());
+        let rec = RecoveryFile::new(&salt_a, b"x".to_vec(), Vec::new(), Vec::new());
         let parsed = RecoveryFile::from_bytes(&rec.to_bytes()).unwrap();
         // Right vault accepts, wrong vault is refused early.
         assert!(parsed.verify_binding(&salt_a).is_ok());
@@ -3614,7 +3854,7 @@ mod tests {
     #[test]
     fn recovery_file_detects_corruption_and_bad_magic() {
         let salt = [9u8; SALT_SIZE];
-        let rec = RecoveryFile::new(&salt, b"some-parity".to_vec());
+        let rec = RecoveryFile::new(&salt, b"some-parity".to_vec(), Vec::new(), Vec::new());
         let mut bytes = rec.to_bytes();
         // Flip a byte inside the payload region: self-checksum must catch it.
         let mid = bytes.len() / 2;
@@ -3638,7 +3878,7 @@ mod tests {
         assert!(!payload.is_empty());
 
         let salt = [3u8; SALT_SIZE];
-        let rec = RecoveryFile::new(&salt, payload.clone());
+        let rec = RecoveryFile::new(&salt, payload.clone(), Vec::new(), Vec::new());
         let detached = RecoveryFile::from_bytes(&rec.to_bytes()).unwrap();
 
         // Damage one block, then reconstruct from the detached payload.
@@ -3742,6 +3982,130 @@ mod tests {
     }
 
     #[test]
+    fn recovery_file_carries_metadata_bundle_and_stays_backward_compatible() {
+        let salt = [5u8; SALT_SIZE];
+        // A new file round-trips all three regions.
+        let rec = RecoveryFile::new(
+            &salt,
+            b"data-parity".to_vec(),
+            b"manifest-parity".to_vec(),
+            b"header-parity".to_vec(),
+        );
+        let parsed = RecoveryFile::from_bytes(&rec.to_bytes()).expect("parse bundle");
+        assert_eq!(parsed.payload, b"data-parity");
+        assert_eq!(parsed.manifest_parity, b"manifest-parity");
+        assert_eq!(parsed.header_parity, b"header-parity");
+
+        // A legacy payload-only file (no metadata bundle) still parses, with empty
+        // metadata parity, so older sidecars are never rejected.
+        let mut legacy = Vec::new();
+        legacy.extend_from_slice(RECOVERY_FILE_MAGIC);
+        legacy.extend_from_slice(&recovery_binding_id(&salt));
+        let payload = b"legacy-data-parity";
+        legacy.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+        legacy.extend_from_slice(payload);
+        let cksum = blake3::hash(&legacy);
+        legacy.extend_from_slice(cksum.as_bytes());
+        let parsed = RecoveryFile::from_bytes(&legacy).expect("parse legacy payload-only");
+        assert_eq!(parsed.payload, payload);
+        assert!(parsed.manifest_parity.is_empty());
+        assert!(parsed.header_parity.is_empty());
+    }
+
+    #[test]
+    fn detached_sidecar_rebuilds_corrupted_header() {
+        // HEADER parity: corrupt the on-disk 1024-byte header so its MAC fails, then
+        // confirm open rebuilds it from the detached sidecar and repair persists it.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("hdr.aerovault");
+        let f1 = dir.path().join("h1.txt");
+        std::fs::write(
+            &f1,
+            b"header recovery test payload, enough bytes for a block",
+        )
+        .unwrap();
+
+        create_empty_vault(
+            &vault_path,
+            "header-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Detached),
+        )
+        .unwrap();
+        let mut vault = open_vault(&vault_path, "header-pw-1234").unwrap();
+        append_file_at(&mut vault, &f1, "h1.txt").unwrap();
+        save_open_vault(&mut vault).unwrap();
+        // Export AFTER populating so the sidecar carries the final header parity.
+        let res = export_parity(&vault_path, "header-pw-1234", None).unwrap();
+        assert!(
+            res.header_parity_len > 0,
+            "sidecar must carry header parity"
+        );
+        assert!(
+            res.manifest_parity_len > 0,
+            "sidecar must carry manifest parity"
+        );
+
+        // Flip a byte inside the header (past the magic/version) so its MAC fails.
+        flip_byte_in_file(&vault_path, 64);
+        // Without recovery the header would be unreadable; the sidecar rebuilds it.
+        let mut healed = open_vault(&vault_path, "header-pw-1234").unwrap();
+        assert!(
+            healed.header_repaired_on_open,
+            "header rebuilt from sidecar"
+        );
+        let (repaired, _src) = repair_vault(&mut healed, false, None).unwrap();
+        assert!(repaired >= 1, "repair persists the healed header");
+
+        // Re-open the now-healed vault straight from disk: no recovery needed.
+        let reopened = open_vault(&vault_path, "header-pw-1234").unwrap();
+        assert!(
+            !reopened.header_repaired_on_open,
+            "on-disk header is healed; no sidecar recovery the second time"
+        );
+    }
+
+    #[test]
+    fn detached_sidecar_rebuilds_corrupted_manifest() {
+        // GAP-4 (detached): the pure-detached path keeps no embedded metadata
+        // extension, so a corrupted manifest must be rebuilt from the sidecar.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("man.aerovault");
+        let f1 = dir.path().join("m1.txt");
+        std::fs::write(
+            &f1,
+            b"manifest recovery payload, enough bytes for a real block",
+        )
+        .unwrap();
+
+        create_empty_vault(
+            &vault_path,
+            "manifest-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Detached),
+        )
+        .unwrap();
+        let mut vault = open_vault(&vault_path, "manifest-pw-1234").unwrap();
+        append_file_at(&mut vault, &f1, "m1.txt").unwrap();
+        save_open_vault(&mut vault).unwrap();
+        export_parity(&vault_path, "manifest-pw-1234", None).unwrap();
+
+        // Corrupt a byte inside the encrypted manifest region (AEAD decrypt fails).
+        let man_off = {
+            let v = open_vault(&vault_path, "manifest-pw-1234").unwrap();
+            v.header.manifest_offset as usize
+        };
+        flip_byte_in_file(&vault_path, man_off + 4);
+        // Open must rebuild the manifest from the detached sidecar's manifest parity.
+        let healed = open_vault(&vault_path, "manifest-pw-1234").unwrap();
+        assert!(
+            healed.manifest_repaired_on_open,
+            "manifest rebuilt from sidecar"
+        );
+        assert!(healed.manifest.entries.iter().any(|e| e.path == "m1.txt"));
+    }
+
+    #[test]
     fn strip_parity_refuses_without_sidecar_then_succeeds() {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("strip.aerovault");
@@ -3798,7 +4162,12 @@ mod tests {
         let v = open_vault(&vault_path, "host-pw-12345").unwrap();
 
         // A recovery file bound to a different vault salt is refused early.
-        let foreign = RecoveryFile::new(&[42u8; SALT_SIZE], b"not-this-vault".to_vec());
+        let foreign = RecoveryFile::new(
+            &[42u8; SALT_SIZE],
+            b"not-this-vault".to_vec(),
+            Vec::new(),
+            Vec::new(),
+        );
         let foreign_path = dir.path().join("foreign.aerovault.rec");
         std::fs::write(&foreign_path, foreign.to_bytes()).unwrap();
         assert!(resolve_parity_source(&v, Some(&foreign_path)).is_err());

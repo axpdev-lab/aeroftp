@@ -2828,7 +2828,8 @@
             "repairSuccess": "Naprawa zakończona: pomyślnie naprawiono {repaired} fragment(ów)",
             "noDamageNothing": "Brak uszkodzeń; nic do naprawienia.",
             "couldNotRepairAny": "Nie udało się naprawić żadnego z {damaged} (sejf pozostawiono nietknięty).",
-            "successfullyRepaired": "Pomyślnie naprawiono {repaired} fragment(ów)."
+            "successfullyRepaired": "Pomyślnie naprawiono {repaired} fragment(ów).",
+            "detachedHeaderProtectedNote": "Plik odzyskiwania chroni także nagłówek sejfu i lokalizator manifestu, dzięki czemu nawet uszkodzony nagłówek można odtworzyć."
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

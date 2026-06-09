@@ -2828,7 +2828,8 @@
             "repairSuccess": "मरम्मत पूर्ण: {repaired} चंक की सफलतापूर्वक मरम्मत की गई",
             "noDamageNothing": "कोई क्षति नहीं; मरम्मत के लिए कुछ नहीं।",
             "couldNotRepairAny": "{damaged} में से किसी की भी मरम्मत नहीं की जा सकी (वॉल्ट अपरिवर्तित रखा गया)।",
-            "successfullyRepaired": "{repaired} चंक की सफलतापूर्वक मरम्मत की गई।"
+            "successfullyRepaired": "{repaired} चंक की सफलतापूर्वक मरम्मत की गई।",
+            "detachedHeaderProtectedNote": "पुनर्प्राप्ति फ़ाइल वॉल्ट हेडर और मेनिफ़ेस्ट लोकेटर की भी रक्षा करती है, इसलिए क्षतिग्रस्त हेडर को भी फिर से बनाया जा सकता है।"
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",

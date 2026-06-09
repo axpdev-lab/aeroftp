@@ -2828,7 +2828,8 @@
             "repairSuccess": "ซ่อมเสร็จสมบูรณ์: ซ่อมชังก์สำเร็จ {repaired} ชังก์",
             "noDamageNothing": "ไม่มีความเสียหาย ไม่มีอะไรต้องซ่อม",
             "couldNotRepairAny": "ไม่สามารถซ่อมได้เลยจากทั้งหมด {damaged} (วอลต์ไม่ถูกแก้ไข)",
-            "successfullyRepaired": "ซ่อมชังก์สำเร็จ {repaired} ชังก์"
+            "successfullyRepaired": "ซ่อมชังก์สำเร็จ {repaired} ชังก์",
+            "detachedHeaderProtectedNote": "ไฟล์กู้คืนยังปกป้องส่วนหัวของวอลต์และตัวระบุตำแหน่งของมานิเฟสต์ ดังนั้นแม้ส่วนหัวที่เสียหายก็สามารถสร้างใหม่ได้"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",

@@ -2999,6 +2999,7 @@
             "placementDetachedDesc": "File .aerovault.rec affiancato",
             "placementBothDesc": "Nel contenitore piu un file separato",
             "detachedStableStorageNote": "La parita separata mantiene il contenitore identico byte per byte a un vault normale; riesportala dopo aver modificato il vault.",
+            "detachedHeaderProtectedNote": "Il file di ripristino protegge anche l'intestazione del vault e il localizzatore del manifest, cosi anche un'intestazione danneggiata puo essere ricostruita.",
             "exportParity": "Esporta file di ripristino",
             "exportingParity": "Esportazione...",
             "exportParityHint": "Scrivi un file di ripristino .aerovault.rec separato dai dati attuali",

@@ -43248,6 +43248,14 @@ async fn main() {
                                             .get("overhead_pct")
                                             .and_then(|v| v.as_f64())
                                             .unwrap_or(0.0);
+                                        let header_parity = report
+                                            .get("header_parity_len")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let manifest_parity = report
+                                            .get("manifest_parity_len")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
                                         if protected == 0 {
                                             println!(
                                                 "Wrote recovery file {} (vault is empty; re-run export-parity after adding files)",
@@ -43258,6 +43266,11 @@ async fn main() {
                                                 "Wrote recovery file {} ({} shards, {} bytes protected, {:.1}% overhead)",
                                                 out_path, shards, protected, overhead
                                             );
+                                            if header_parity > 0 || manifest_parity > 0 {
+                                                println!(
+                                                    "  also protects the header and manifest locator (detached metadata recovery)"
+                                                );
+                                            }
                                         }
                                     }
                                 }

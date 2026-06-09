@@ -2828,7 +2828,8 @@
             "repairSuccess": "Marekebisho yamekamilika: zimerekebishwa kwa mafanikio vipande {repaired}",
             "noDamageNothing": "Hakuna uharibifu; hakuna cha kurekebisha.",
             "couldNotRepairAny": "Haikuweza kurekebisha hata kimoja kati ya {damaged} (vault imeachwa bila kuguswa).",
-            "successfullyRepaired": "Vipande {repaired} vimerekebishwa kwa mafanikio."
+            "successfullyRepaired": "Vipande {repaired} vimerekebishwa kwa mafanikio.",
+            "detachedHeaderProtectedNote": "Faili la urejeshaji pia hulinda kichwa cha vault na kionyeshi cha manifesti, hivyo hata kichwa kilichoharibika kinaweza kujengwa upya."
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

@@ -2828,7 +2828,8 @@
             "repairSuccess": "Popravka završena: uspešno popravljeno {repaired} deo(ova)",
             "noDamageNothing": "Nema oštećenja; nema šta da se popravi.",
             "couldNotRepairAny": "Nije moguće popraviti nijedan od {damaged} (sef ostavljen netaknut).",
-            "successfullyRepaired": "Uspešno popravljeno {repaired} deo(ova)."
+            "successfullyRepaired": "Uspešno popravljeno {repaired} deo(ova).",
+            "detachedHeaderProtectedNote": "Датотека за опоравак штити и заглавље трезора и локатор манифеста, па се чак и оштећено заглавље може обновити."
         },
         "cryptomator": {
             "title": "Cryptomator trezor",

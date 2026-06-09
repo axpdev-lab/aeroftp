@@ -2828,7 +2828,8 @@
             "repairSuccess": "Korjaus valmis: korjattu onnistuneesti {repaired} osaa",
             "noDamageNothing": "Ei vaurioita; ei korjattavaa.",
             "couldNotRepairAny": "Mitään {damaged} osasta ei voitu korjata (holvia ei muutettu).",
-            "successfullyRepaired": "Korjattu onnistuneesti {repaired} osaa."
+            "successfullyRepaired": "Korjattu onnistuneesti {repaired} osaa.",
+            "detachedHeaderProtectedNote": "Palautustiedosto suojaa myös holvin otsikkoa ja manifestin paikanninta, joten jopa vaurioitunut otsikko voidaan rakentaa uudelleen."
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

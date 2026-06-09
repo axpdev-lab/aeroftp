@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparatie voltooid: {repaired} chunk(s) succesvol hersteld",
             "noDamageNothing": "Geen schade; niets te repareren.",
             "couldNotRepairAny": "Kon geen van de {damaged} repareren (kluis ongewijzigd gelaten).",
-            "successfullyRepaired": "{repaired} chunk(s) succesvol hersteld."
+            "successfullyRepaired": "{repaired} chunk(s) succesvol hersteld.",
+            "detachedHeaderProtectedNote": "Het herstelbestand beschermt ook de vault-header en de manifest-locator, zodat zelfs een beschadigde header kan worden herbouwd."
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

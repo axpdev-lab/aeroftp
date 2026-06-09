@@ -2821,7 +2821,8 @@
             "repairSuccess": "Վերականգնումն ավարտված է՝ հաջողությամբ վերականգնվեց {repaired} կտոր",
             "noDamageNothing": "Վնասներ չկան, վերականգնելու բան չկա։",
             "couldNotRepairAny": "Հնարավոր չեղավ վերականգնել {damaged}-ից ոչ մեկը (պահոցը մնաց անփոփոխ)։",
-            "successfullyRepaired": "Հաջողությամբ վերականգնվեց {repaired} կտոր։"
+            "successfullyRepaired": "Հաջողությամբ վերականգնվեց {repaired} կտոր։",
+            "detachedHeaderProtectedNote": "Վերականգնման ֆայլը պաշտպանում է նաև պահոցի վերնագիրը և մանիֆեստի տեղորոշիչը, ուստի նույնիսկ վնասված վերնագիրը կարող է վերակառուցվել։"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",

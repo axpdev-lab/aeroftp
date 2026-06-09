@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparation fuldført: reparerede {repaired} chunk(s) korrekt",
             "noDamageNothing": "Ingen skader; intet at reparere.",
             "couldNotRepairAny": "Kunne ikke reparere nogen af {damaged} (vault forblev uændret).",
-            "successfullyRepaired": "Reparerede {repaired} chunk(s) korrekt."
+            "successfullyRepaired": "Reparerede {repaired} chunk(s) korrekt.",
+            "detachedHeaderProtectedNote": "Gendannelsesfilen beskytter også vault-headeren og manifest-lokatoren, så selv en beskadiget header kan genopbygges."
         },
         "cryptomator": {
             "title": "Cryptomator-boks",

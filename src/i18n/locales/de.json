@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparatur abgeschlossen: {repaired} Chunk(s) erfolgreich repariert",
             "noDamageNothing": "Keine Schäden; nichts zu reparieren.",
             "couldNotRepairAny": "Keiner von {damaged} konnte repariert werden (Vault unverändert gelassen).",
-            "successfullyRepaired": "{repaired} Chunk(s) erfolgreich repariert."
+            "successfullyRepaired": "{repaired} Chunk(s) erfolgreich repariert.",
+            "detachedHeaderProtectedNote": "Die Wiederherstellungsdatei schützt auch den Vault-Header und den Manifest-Locator, sodass selbst ein beschädigter Header wiederhergestellt werden kann."
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

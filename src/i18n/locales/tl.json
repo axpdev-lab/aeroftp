@@ -2828,7 +2828,8 @@
             "repairSuccess": "Tapos na ang pag-aayos: matagumpay na naayos ang {repaired} (na) chunk",
             "noDamageNothing": "Walang pinsala; walang aayusin.",
             "couldNotRepairAny": "Hindi naayos ang alinman sa {damaged} (hindi ginalaw ang vault).",
-            "successfullyRepaired": "Matagumpay na naayos ang {repaired} (na) chunk."
+            "successfullyRepaired": "Matagumpay na naayos ang {repaired} (na) chunk.",
+            "detachedHeaderProtectedNote": "Pinoprotektahan din ng recovery file ang header ng vault at ang manifest locator, kaya kahit nasirang header ay maaaring muling itayo."
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

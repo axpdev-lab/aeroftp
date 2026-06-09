@@ -2828,7 +2828,8 @@
             "repairSuccess": "মেরামত সম্পন্ন: সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে",
             "noDamageNothing": "কোনো ক্ষতি নেই; মেরামত করার কিছু নেই।",
             "couldNotRepairAny": "{damaged}টির কোনোটিই মেরামত করা যায়নি (ভল্ট অপরিবর্তিত রাখা হয়েছে)।",
-            "successfullyRepaired": "সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে।"
+            "successfullyRepaired": "সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে।",
+            "detachedHeaderProtectedNote": "পুনরুদ্ধার ফাইলটি ভল্ট হেডার এবং ম্যানিফেস্ট লোকেটারও সুরক্ষিত করে, তাই ক্ষতিগ্রস্ত হেডারও পুনর্নির্মাণ করা যায়।"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

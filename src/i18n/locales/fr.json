@@ -2828,7 +2828,8 @@
             "repairSuccess": "Réparation terminée : {repaired} segment(s) réparé(s) avec succès",
             "noDamageNothing": "Aucun dommage ; rien à réparer.",
             "couldNotRepairAny": "Impossible de réparer le moindre des {damaged} (coffre laissé inchangé).",
-            "successfullyRepaired": "{repaired} segment(s) réparé(s) avec succès."
+            "successfullyRepaired": "{repaired} segment(s) réparé(s) avec succès.",
+            "detachedHeaderProtectedNote": "Le fichier de récupération protège aussi l'en-tête du coffre et le localisateur du manifeste, donc même un en-tête endommagé peut être reconstruit."
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

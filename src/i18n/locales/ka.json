@@ -2828,7 +2828,8 @@
             "repairSuccess": "აღდგენა დასრულდა: წარმატებით აღდგა {repaired} ფრაგმენტი",
             "noDamageNothing": "დაზიანება არ არის; აღსადგენი არაფერია.",
             "couldNotRepairAny": "{damaged}-დან ვერცერთი აღდგა (საცავი უცვლელი დარჩა).",
-            "successfullyRepaired": "წარმატებით აღდგა {repaired} ფრაგმენტი."
+            "successfullyRepaired": "წარმატებით აღდგა {repaired} ფრაგმენტი.",
+            "detachedHeaderProtectedNote": "აღდგენის ფაილი იცავს ასევე საცავის სათაურს და მანიფესტის ლოკატორს, ასე რომ დაზიანებული სათაურიც კი შეიძლება აღდგეს."
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

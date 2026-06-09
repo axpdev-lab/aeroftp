@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparasjon fullført: reparerte {repaired} del(er)",
             "noDamageNothing": "Ingen skade; ingenting å reparere.",
             "couldNotRepairAny": "Kunne ikke reparere noen av {damaged} (hvelvet er uendret).",
-            "successfullyRepaired": "Reparerte {repaired} del(er)."
+            "successfullyRepaired": "Reparerte {repaired} del(er).",
+            "detachedHeaderProtectedNote": "Gjenopprettingsfilen beskytter også vault-headeren og manifest-lokatoren, så selv en skadet header kan bygges opp igjen."
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",

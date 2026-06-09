@@ -218,20 +218,33 @@ engine is placement-agnostic (`reconstruct_from_error_correction` takes the pari
 bytes), so a detached file simply carries the same AVEC payload plus a framing
 header that binds it to one vault.
 
-`.aerovault.rec` format (v1, magic `AVREC1\0\0`):
+`.aerovault.rec` format (magic `AVREC1\0\0`):
 
 ```
-[ magic            : 8  bytes ] = "AVREC1\0\0"
-[ vault_binding_id : 32 bytes ] = BLAKE3("aerovault-recovery-binding-v1" || vault.salt)
-[ payload_len      : u64 LE   ]
-[ payload          : payload_len bytes ] = the AVEC ErrorCorrectionPayload, verbatim
-[ file_checksum    : 32 bytes ] = BLAKE3 over magic..=payload
+[ magic              : 8  bytes ] = "AVREC1\0\0"
+[ vault_binding_id   : 32 bytes ] = BLAKE3("aerovault-recovery-binding-v1" || vault.salt)
+[ payload_len        : u64 LE   ]
+[ payload            : payload_len bytes ] = the AVEC data-block ErrorCorrectionPayload, verbatim
+[ manifest_parity_len: u64 LE   ]                                   (GAP-4 metadata bundle)
+[ manifest_parity    : manifest_parity_len bytes ] = AVEC parity over the encrypted manifest
+[ header_parity_len  : u64 LE   ]
+[ header_parity      : header_parity_len bytes ] = AVEC parity over the 1024-byte header
+[ file_checksum      : 32 bytes ] = BLAKE3 over magic..=header_parity
 ```
 
 - **Binding** is par2's Recovery Set ID equivalent: derived from the vault's public
   per-vault salt (stable across edits, regenerated only on a password change), it
   refuses a recovery file from another vault early. Staleness after an edit is NOT
   the binding's job; it is caught downstream by the payload's per-shard checksums.
+- **GAP-4 metadata bundle (header + manifest locator)**: the detached container is
+  byte-identical to a plain vault, so it keeps no embedded extension. The sidecar
+  therefore also carries parity over the two metadata regions the container cannot
+  self-locate once damaged: the encrypted manifest (the "locator" scrub reads) and
+  the 1024-byte header (which cannot point at its own embedded recovery once it is
+  itself corrupt). `open_vault` rebuilds a corrupted header / manifest from the
+  sidecar, proving correctness by the header MAC / AEAD decrypt; `repair` persists
+  the healed region on the next seal. Both sections are absent (the file ends right
+  after `payload`) in a pre-bundle sidecar, which still parses as data-only.
 - **Self-integrity**: the trailing BLAKE3 detects corruption of the `.rec` file
   before its parity is trusted.
 - **Add-later win**: `export-parity` writes/refreshes a sidecar for an existing

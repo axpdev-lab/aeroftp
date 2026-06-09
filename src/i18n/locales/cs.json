@@ -2828,7 +2828,8 @@
             "repairSuccess": "Oprava dokončena: úspěšně opraveno {repaired} částí",
             "noDamageNothing": "Žádné poškození; není co opravovat.",
             "couldNotRepairAny": "Nepodařilo se opravit žádnou z {damaged} (trezor ponechán beze změny).",
-            "successfullyRepaired": "Úspěšně opraveno {repaired} částí."
+            "successfullyRepaired": "Úspěšně opraveno {repaired} částí.",
+            "detachedHeaderProtectedNote": "Soubor pro obnovu chrání také hlavičku trezoru a lokátor manifestu, takže i poškozenou hlavičku lze obnovit."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

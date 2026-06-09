@@ -2828,7 +2828,8 @@
             "repairSuccess": "Perbaikan selesai: berhasil memperbaiki {repaired} chunk",
             "noDamageNothing": "Tidak ada kerusakan; tidak ada yang perlu diperbaiki.",
             "couldNotRepairAny": "Tidak dapat memperbaiki satu pun dari {damaged} (vault dibiarkan tidak diubah).",
-            "successfullyRepaired": "Berhasil memperbaiki {repaired} chunk."
+            "successfullyRepaired": "Berhasil memperbaiki {repaired} chunk.",
+            "detachedHeaderProtectedNote": "Berkas pemulihan juga melindungi header vault dan pelokasi manifes, sehingga header yang rusak pun dapat dibangun ulang."
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

@@ -2828,7 +2828,8 @@
             "repairSuccess": "Labošana pabeigta: veiksmīgi izlaboti {repaired} fragmenti",
             "noDamageNothing": "Bojājumu nav; nav ko labot.",
             "couldNotRepairAny": "Neizdevās izlabot nevienu no {damaged} (glabātava atstāta nemainīta).",
-            "successfullyRepaired": "Veiksmīgi izlaboti {repaired} fragmenti."
+            "successfullyRepaired": "Veiksmīgi izlaboti {repaired} fragmenti.",
+            "detachedHeaderProtectedNote": "Atkopšanas fails aizsargā arī glabātavas galveni un manifesta lokatoru, tāpēc pat bojātu galveni var atjaunot."
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

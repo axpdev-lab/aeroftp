@@ -2793,7 +2793,8 @@
             "repairSuccess": "修復完了: {repaired} 件のチャンクを正常に修復しました",
             "noDamageNothing": "破損はありません。修復するものはありません。",
             "couldNotRepairAny": "{damaged} 件のいずれも修復できませんでした（ボールトは変更されていません）。",
-            "successfullyRepaired": "{repaired} 件のチャンクを正常に修復しました。"
+            "successfullyRepaired": "{repaired} 件のチャンクを正常に修復しました。",
+            "detachedHeaderProtectedNote": "リカバリファイルはボールトのヘッダーとマニフェストロケーターも保護するため、破損したヘッダーでも再構築できます。"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",

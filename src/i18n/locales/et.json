@@ -2828,7 +2828,8 @@
             "repairSuccess": "Parandamine lõpetatud: edukalt parandatud {repaired} tükki",
             "noDamageNothing": "Kahjustusi pole; pole midagi parandada.",
             "couldNotRepairAny": "Ühtegi {damaged} tükist ei õnnestunud parandada (hoidlat ei muudetud).",
-            "successfullyRepaired": "Edukalt parandatud {repaired} tükki."
+            "successfullyRepaired": "Edukalt parandatud {repaired} tükki.",
+            "detachedHeaderProtectedNote": "Taastefail kaitseb ka hoidla päist ja manifesti lokaatorit, nii et isegi kahjustatud päise saab taastada."
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

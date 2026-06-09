@@ -2828,7 +2828,8 @@
             "repairSuccess": "Javítás kész: {repaired} darab sikeresen javítva",
             "noDamageNothing": "Nincs sérülés; nincs mit javítani.",
             "couldNotRepairAny": "A(z) {damaged} sérültből egyik sem volt javítható (a széf érintetlen maradt).",
-            "successfullyRepaired": "{repaired} darab sikeresen javítva."
+            "successfullyRepaired": "{repaired} darab sikeresen javítva.",
+            "detachedHeaderProtectedNote": "A helyreállítási fájl a széf fejlécét és a manifeszt-lokátort is védi, így még a sérült fejléc is újraépíthető."
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

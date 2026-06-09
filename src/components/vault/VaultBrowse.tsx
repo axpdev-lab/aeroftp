@@ -134,7 +134,11 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         {(state.hasErrorCorrection || state.hasDetachedRecovery || state.errorCorrectionEnabled) && (
                             <span
                                 className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                                title={state.hasDetachedRecovery && !state.hasErrorCorrection ? t('vault.detachedStableStorageNote') : undefined}
+                                title={state.hasDetachedRecovery && !state.hasErrorCorrection
+                                    ? (state.hasDetachedHeaderRecovery
+                                        ? `${t('vault.detachedStableStorageNote')} ${t('vault.detachedHeaderProtectedNote')}`
+                                        : t('vault.detachedStableStorageNote'))
+                                    : undefined}
                             >
                                 {state.hasDetachedRecovery && !state.hasErrorCorrection
                                     ? t('vault.errorCorrectionDetachedBadge')

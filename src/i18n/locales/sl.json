@@ -2828,7 +2828,8 @@
             "repairSuccess": "Popravilo končano: uspešno popravljenih {repaired} delov",
             "noDamageNothing": "Ni poškodb; ni kaj popraviti.",
             "couldNotRepairAny": "Ni bilo mogoče popraviti nobenega od {damaged} (trezor ostal nespremenjen).",
-            "successfullyRepaired": "Uspešno popravljenih {repaired} delov."
+            "successfullyRepaired": "Uspešno popravljenih {repaired} delov.",
+            "detachedHeaderProtectedNote": "Datoteka za obnovitev ščiti tudi glavo trezorja in lokator manifesta, zato je mogoče obnoviti tudi poškodovano glavo."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

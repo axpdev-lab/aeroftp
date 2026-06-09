@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparació completa: s'han reparat correctament {repaired} fragment(s)",
             "noDamageNothing": "Sense danys; res a reparar.",
             "couldNotRepairAny": "No s'ha pogut reparar cap de {damaged} (la caixa forta no s'ha modificat).",
-            "successfullyRepaired": "S'han reparat correctament {repaired} fragment(s)."
+            "successfullyRepaired": "S'han reparat correctament {repaired} fragment(s).",
+            "detachedHeaderProtectedNote": "El fitxer de recuperació també protegeix la capçalera del vault i el localitzador del manifest, de manera que fins i tot una capçalera malmesa es pot reconstruir."
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

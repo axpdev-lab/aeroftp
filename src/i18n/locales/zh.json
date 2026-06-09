@@ -2828,7 +2828,8 @@
             "repairSuccess": "修复完成：已成功修复 {repaired} 个数据块",
             "noDamageNothing": "无损坏；无需修复。",
             "couldNotRepairAny": "{damaged} 个均无法修复（保管库未改动）。",
-            "successfullyRepaired": "已成功修复 {repaired} 个数据块。"
+            "successfullyRepaired": "已成功修复 {repaired} 个数据块。",
+            "detachedHeaderProtectedNote": "恢复文件还会保护保险库头部和清单定位器，因此即使头部损坏也能重建。"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

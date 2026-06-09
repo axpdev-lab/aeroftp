@@ -2828,7 +2828,8 @@
             "repairSuccess": "Поправката завърши: успешно поправени {repaired} парче(та)",
             "noDamageNothing": "Няма повреди; няма какво да се поправя.",
             "couldNotRepairAny": "Не може да се поправи нито едно от {damaged} (трезорът остана непроменен).",
-            "successfullyRepaired": "Успешно поправени {repaired} парче(та)."
+            "successfullyRepaired": "Успешно поправени {repaired} парче(та).",
+            "detachedHeaderProtectedNote": "Файлът за възстановяване защитава и заглавката на трезора и локатора на манифеста, така че дори повредена заглавка може да бъде възстановена."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

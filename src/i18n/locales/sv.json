@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparation klar: reparerade {repaired} segment",
             "noDamageNothing": "Inga skador; inget att reparera.",
             "couldNotRepairAny": "Kunde inte reparera något av {damaged} (valvet lämnades orört).",
-            "successfullyRepaired": "Reparerade {repaired} segment."
+            "successfullyRepaired": "Reparerade {repaired} segment.",
+            "detachedHeaderProtectedNote": "Återställningsfilen skyddar även valvets header och manifestlokaliseraren, så att även en skadad header kan byggas upp igen."
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

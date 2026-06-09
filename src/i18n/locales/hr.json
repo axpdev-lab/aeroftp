@@ -2828,7 +2828,8 @@
             "repairSuccess": "Popravak dovršen: uspješno popravljeno {repaired} dijelova",
             "noDamageNothing": "Nema oštećenja; ništa za popraviti.",
             "couldNotRepairAny": "Nije moguće popraviti nijedan od {damaged} (vault ostao nepromijenjen).",
-            "successfullyRepaired": "Uspješno popravljeno {repaired} dijelova."
+            "successfullyRepaired": "Uspješno popravljeno {repaired} dijelova.",
+            "detachedHeaderProtectedNote": "Datoteka za oporavak štiti i zaglavlje trezora i lokator manifesta, pa se čak i oštećeno zaglavlje može obnoviti."
         },
         "cryptomator": {
             "title": "Cryptomator Trezor",

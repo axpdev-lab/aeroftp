@@ -2828,7 +2828,8 @@
             "repairSuccess": "Reparación completada: reparáronse correctamente {repaired} fragmento(s)",
             "noDamageNothing": "Sen danos; nada que reparar.",
             "couldNotRepairAny": "Non se puido reparar ningún de {damaged} (o cofre non foi modificado).",
-            "successfullyRepaired": "Reparáronse correctamente {repaired} fragmento(s)."
+            "successfullyRepaired": "Reparáronse correctamente {repaired} fragmento(s).",
+            "detachedHeaderProtectedNote": "O ficheiro de recuperación tamén protexe a cabeceira do vault e o localizador do manifesto, polo que incluso unha cabeceira danada pode reconstruírse."
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

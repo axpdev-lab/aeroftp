@@ -2828,7 +2828,8 @@
             "repairSuccess": "Відновлення завершено: успішно відновлено фрагментів: {repaired}",
             "noDamageNothing": "Пошкоджень немає; немає чого відновлювати.",
             "couldNotRepairAny": "Не вдалося відновити жодного з {damaged} (сховище залишено без змін).",
-            "successfullyRepaired": "Успішно відновлено фрагментів: {repaired}."
+            "successfullyRepaired": "Успішно відновлено фрагментів: {repaired}.",
+            "detachedHeaderProtectedNote": "Файл відновлення також захищає заголовок сховища та локатор маніфесту, тож навіть пошкоджений заголовок можна відновити."
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",

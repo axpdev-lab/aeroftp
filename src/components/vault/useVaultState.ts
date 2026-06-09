@@ -339,6 +339,9 @@ export interface VaultState {
     setRecoveryPlacement: (p: RecoveryPlacement) => void;
     // Detected detached `.aerovault.rec` sidecar for the open vault.
     hasDetachedRecovery: boolean;
+    // The detached sidecar also carries header (+ manifest locator) parity, so the
+    // detached path can rebuild the 1024-byte header, not just the data blocks.
+    hasDetachedHeaderRecovery: boolean;
     // Export a detached recovery file; strip the embedded parity (sidecar-aware).
     exportParity: () => Promise<void>;
     stripParity: (force: boolean) => Promise<void>;
@@ -457,6 +460,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [hasErrorCorrection, setHasErrorCorrection] = useState(false);  // runtime detection for open vaults (via has_error_correction command)
     const [recoveryPlacement, setRecoveryPlacement] = useState<RecoveryPlacement>('embedded');
     const [hasDetachedRecovery, setHasDetachedRecovery] = useState(false);  // detached .aerovault.rec sidecar present
+    const [hasDetachedHeaderRecovery, setHasDetachedHeaderRecovery] = useState(false);  // sidecar carries header (+ manifest) parity
     const [isExportingParity, setIsExportingParity] = useState(false);
     const [isStrippingParity, setIsStrippingParity] = useState(false);
 
@@ -852,10 +856,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 // P2: detect Error Correction for badge and enabling scrub/repair actions in this session.
                 // recovery_status reports both the embedded extension and a detached .aerovault.rec sidecar.
                 try {
-                    const status = await invoke<{ embedded: boolean; detached: boolean }>('vault_v3_recovery_status', { path: vaultPath });
+                    const status = await invoke<{ embedded: boolean; detached: boolean; header_parity?: boolean }>('vault_v3_recovery_status', { path: vaultPath });
                     setHasErrorCorrection(!!status.embedded);
                     setHasDetachedRecovery(!!status.detached);
-                } catch { setHasErrorCorrection(false); setHasDetachedRecovery(false); }
+                    setHasDetachedHeaderRecovery(!!status.header_parity);
+                } catch { setHasErrorCorrection(false); setHasDetachedRecovery(false); setHasDetachedHeaderRecovery(false); }
                 setMode('browse');
 
                 const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
@@ -1339,6 +1344,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         hasErrorCorrection, setHasErrorCorrection,
         recoveryPlacement, setRecoveryPlacement,
         hasDetachedRecovery,
+        hasDetachedHeaderRecovery,
         exportParity, stripParity,
         isExportingParity, isStrippingParity,
         showScrubDialog, setShowScrubDialog,
