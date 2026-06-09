@@ -407,6 +407,132 @@ impl ErrorCorrectionPayload {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Detached Error Correction placement (the "sidecar" file, `.aerovault.rec`).
+//
+// Design (par2-inspired, see APPENDIX-AEROVAULT-V4-ECC and #276): the recovery
+// data lives in a SEPARATE file alongside the vault instead of embedded in the
+// container. The reconstruction engine is already placement-agnostic
+// (`reconstruct_from_error_correction` takes the parity bytes), so a detached
+// file simply carries the same `ErrorCorrectionPayload` AVEC blob plus a small
+// framing header that binds it to one specific vault.
+//
+// par2 uses a 16-byte "Recovery Set ID" so a recovery file is matched to its
+// protected data set; the AeroVault equivalent is a binding id derived from the
+// vault's per-vault random salt (public, stable across edits, regenerated only
+// on a password change). Content staleness (the vault was edited after export)
+// is caught downstream by the payload's own per-shard checksums + geometry, so
+// the binding id only answers "is this the right vault", not "is it current".
+//
+// Layout of an `.aerovault.rec` file:
+//   [ magic: 8 bytes  = RECOVERY_FILE_MAGIC ]
+//   [ vault_binding_id: 32 bytes = BLAKE3(domain || vault.salt) ]
+//   [ payload_len: u64 LE ]
+//   [ payload: the ErrorCorrectionPayload (AVEC) bytes, verbatim ]
+//   [ file_checksum: 32 bytes = BLAKE3 over magic..=payload ]
+// ---------------------------------------------------------------------------
+
+/// Magic for a detached recovery file. "AVREC" + version 1.
+// Detached placement API below is exercised by unit tests; the create/seal/CLI
+// wiring lands in the next SIDECAR slice (see detached-placement-design.md).
+#[allow(dead_code)]
+const RECOVERY_FILE_MAGIC: &[u8; 8] = b"AVREC1\0\0";
+/// The conventional extension for a detached recovery file.
+#[allow(dead_code)]
+const RECOVERY_FILE_EXTENSION: &str = "aerovault.rec";
+#[allow(dead_code)]
+const RECOVERY_BINDING_LEN: usize = 32;
+#[allow(dead_code)]
+const RECOVERY_FILE_CHECKSUM_LEN: usize = 32;
+
+/// Domain-separated binding id for a vault, derived from its public salt.
+/// A detached recovery file stores this so a wrong file is refused early.
+#[allow(dead_code)]
+fn recovery_binding_id(salt: &[u8; SALT_SIZE]) -> [u8; RECOVERY_BINDING_LEN] {
+    let mut h = blake3::Hasher::new();
+    h.update(b"aerovault-recovery-binding-v1");
+    h.update(salt);
+    *h.finalize().as_bytes()
+}
+
+/// In-memory view of a detached `.aerovault.rec` file.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct RecoveryFile {
+    vault_binding_id: [u8; RECOVERY_BINDING_LEN],
+    /// Raw `ErrorCorrectionPayload` (AVEC) bytes, the same blob the embedded
+    /// placement stores in the extension payload area.
+    payload: Vec<u8>,
+}
+
+#[allow(dead_code)]
+impl RecoveryFile {
+    /// Build a recovery file bound to `salt`, carrying `payload` (AVEC bytes).
+    fn new(salt: &[u8; SALT_SIZE], payload: Vec<u8>) -> Self {
+        RecoveryFile {
+            vault_binding_id: recovery_binding_id(salt),
+            payload,
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(
+            RECOVERY_FILE_MAGIC.len()
+                + RECOVERY_BINDING_LEN
+                + 8
+                + self.payload.len()
+                + RECOVERY_FILE_CHECKSUM_LEN,
+        );
+        out.extend_from_slice(RECOVERY_FILE_MAGIC);
+        out.extend_from_slice(&self.vault_binding_id);
+        out.extend_from_slice(&(self.payload.len() as u64).to_le_bytes());
+        out.extend_from_slice(&self.payload);
+        let checksum = blake3::hash(&out);
+        out.extend_from_slice(checksum.as_bytes());
+        out
+    }
+
+    fn from_bytes(data: &[u8]) -> Result<Self, String> {
+        let min = RECOVERY_FILE_MAGIC.len() + RECOVERY_BINDING_LEN + 8 + RECOVERY_FILE_CHECKSUM_LEN;
+        if data.len() < min {
+            return Err("recovery file too short".to_string());
+        }
+        if &data[0..RECOVERY_FILE_MAGIC.len()] != RECOVERY_FILE_MAGIC {
+            return Err("bad recovery file magic (not an .aerovault.rec)".to_string());
+        }
+        let body_end = data.len() - RECOVERY_FILE_CHECKSUM_LEN;
+        let actual = blake3::hash(&data[..body_end]);
+        if actual.as_bytes() != &data[body_end..] {
+            return Err(
+                "recovery file integrity check failed (corrupt .aerovault.rec)".to_string(),
+            );
+        }
+        let mut off = RECOVERY_FILE_MAGIC.len();
+        let mut vault_binding_id = [0u8; RECOVERY_BINDING_LEN];
+        vault_binding_id.copy_from_slice(&data[off..off + RECOVERY_BINDING_LEN]);
+        off += RECOVERY_BINDING_LEN;
+        let payload_len = u64::from_le_bytes(data[off..off + 8].try_into().unwrap()) as usize;
+        off += 8;
+        if off + payload_len != body_end {
+            return Err("recovery file payload length mismatch".to_string());
+        }
+        let payload = data[off..off + payload_len].to_vec();
+        Ok(RecoveryFile {
+            vault_binding_id,
+            payload,
+        })
+    }
+
+    /// Confirm this recovery file belongs to the vault identified by `salt`.
+    fn verify_binding(&self, salt: &[u8; SALT_SIZE]) -> Result<(), String> {
+        if self.vault_binding_id == recovery_binding_id(salt) {
+            Ok(())
+        } else {
+            Err("recovery file does not belong to this vault (binding id mismatch)".to_string())
+        }
+    }
+}
+
 /// P2-09: Compute the Error Correction payload (v2 fixed-grid format) for the concatenated
 /// live-block stream.
 ///
@@ -3146,6 +3272,68 @@ pub async fn vault_v3_security_info(path: Option<String>) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- Detached recovery file (.aerovault.rec) format ---
+
+    #[test]
+    fn recovery_file_round_trips_and_binds() {
+        let salt = [7u8; SALT_SIZE];
+        let payload = b"AVEC-payload-stand-in-bytes".to_vec();
+        let rec = RecoveryFile::new(&salt, payload.clone());
+        let bytes = rec.to_bytes();
+        let parsed = RecoveryFile::from_bytes(&bytes).expect("parse");
+        assert_eq!(parsed.payload, payload);
+        assert_eq!(parsed.vault_binding_id, rec.vault_binding_id);
+        parsed.verify_binding(&salt).expect("binding matches");
+    }
+
+    #[test]
+    fn recovery_file_rejects_wrong_vault() {
+        let salt_a = [1u8; SALT_SIZE];
+        let salt_b = [2u8; SALT_SIZE];
+        let rec = RecoveryFile::new(&salt_a, b"x".to_vec());
+        let parsed = RecoveryFile::from_bytes(&rec.to_bytes()).unwrap();
+        // Right vault accepts, wrong vault is refused early.
+        assert!(parsed.verify_binding(&salt_a).is_ok());
+        assert!(parsed.verify_binding(&salt_b).is_err());
+    }
+
+    #[test]
+    fn recovery_file_detects_corruption_and_bad_magic() {
+        let salt = [9u8; SALT_SIZE];
+        let rec = RecoveryFile::new(&salt, b"some-parity".to_vec());
+        let mut bytes = rec.to_bytes();
+        // Flip a byte inside the payload region: self-checksum must catch it.
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0xff;
+        assert!(RecoveryFile::from_bytes(&bytes).is_err());
+        // Bad magic.
+        let mut bad = rec.to_bytes();
+        bad[0] = b'X';
+        assert!(RecoveryFile::from_bytes(&bad).is_err());
+        // Truncated.
+        assert!(RecoveryFile::from_bytes(&rec.to_bytes()[..10]).is_err());
+    }
+
+    #[test]
+    fn recovery_payload_reconstructs_like_embedded() {
+        // A detached file carries the exact same AVEC payload as the embedded
+        // placement, so the placement-agnostic engine reconstructs identically.
+        let blocks: Vec<Vec<u8>> = (0..5u8).map(|i| vec![i; 4096]).collect();
+        let refs: Vec<&[u8]> = blocks.iter().map(|b| b.as_slice()).collect();
+        let (payload, _shards, _protected, _ovh) = compute_error_correction_shards(&refs);
+        assert!(!payload.is_empty());
+
+        let salt = [3u8; SALT_SIZE];
+        let rec = RecoveryFile::new(&salt, payload.clone());
+        let detached = RecoveryFile::from_bytes(&rec.to_bytes()).unwrap();
+
+        // Damage one block, then reconstruct from the detached payload.
+        let mut damaged: Vec<Vec<u8>> = blocks.clone();
+        damaged[2] = vec![0u8; damaged[2].len()];
+        reconstruct_from_error_correction(&mut damaged, &detached.payload).expect("reconstruct");
+        assert_eq!(damaged, blocks);
+    }
 
     #[test]
     fn cdc_ranges_cover_input() {
