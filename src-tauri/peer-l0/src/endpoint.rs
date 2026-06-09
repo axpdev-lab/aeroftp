@@ -229,3 +229,41 @@ impl ConnectivitySample {
         }
     }
 }
+
+/// Build a base iroh Endpoint configured with the same discovery_n0 + RelayMode
+/// (Staging or Custom from --custom-relay-urls) as the L0 PeerEndpoint.
+/// No L0 ALPN is registered here; the L1 docs paths use a Router + blobs/gossip/docs ALPNs instead.
+/// This reuses the relay/discovery logic so L1 gets the same hole-punch behavior as the proven L0 stack.
+pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
+    let relay_mode = match cfg.custom_relay_urls.as_deref() {
+        Some(urls) if !urls.is_empty() => {
+            let parsed: Vec<iroh::RelayUrl> = urls
+                .iter()
+                .map(|u| {
+                    u.parse::<iroh::RelayUrl>()
+                        .with_context(|| format!("invalid custom relay URL: {u:?}"))
+                })
+                .collect::<Result<_>>()?;
+            info!(
+                count = parsed.len(),
+                "build_base_endpoint (L1) using RelayMode::Custom (self-hosted/override relays)"
+            );
+            iroh::RelayMode::Custom(iroh::RelayMap::from_iter(parsed))
+        }
+        _ => iroh::RelayMode::Staging,
+    };
+    let builder = Endpoint::builder()
+        .relay_mode(relay_mode)
+        .discovery_n0();
+
+    // bind_addr is best-effort / ignored for 0.92 compat (same as L0)
+    if let Some(_addr) = cfg.bind_addr {
+        let _ = _addr;
+    }
+
+    let endpoint = builder
+        .bind()
+        .await
+        .context("failed to bind iroh endpoint (L1 docs)")?;
+    Ok(endpoint)
+}

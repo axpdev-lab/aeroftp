@@ -18,7 +18,11 @@ path = "src/main.rs"
 # broken ed25519-dalek / pkcs8 combinations that some 0.9x iroh releases expose.
 iroh = "0.92"
 iroh-blobs = "0.94"
+iroh-docs = "0.92"
+iroh-gossip = "0.92"
 blake3 = "1"
+bytes = "1"
+futures-lite = "2"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"
