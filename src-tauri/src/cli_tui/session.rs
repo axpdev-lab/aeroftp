@@ -1,7 +1,6 @@
 use std::fmt;
 
 use ftp_client_gui_lib::providers::StorageProvider;
-use tokio_util::sync::CancellationToken;
 
 use crate::cli_tui::app::{TuiProfile, TuiUser};
 
@@ -121,7 +120,6 @@ pub struct TuiSession {
     provider: Box<dyn StorageProvider>,
     state: TuiSessionState,
     initial_path: String,
-    cancel_token: CancellationToken,
 }
 
 #[allow(dead_code)]
@@ -142,7 +140,6 @@ impl TuiSession {
             provider,
             state,
             initial_path: initial_cwd,
-            cancel_token: CancellationToken::new(),
         }
     }
 
@@ -161,14 +158,6 @@ impl TuiSession {
     pub fn initial_path(&self) -> &str {
         &self.initial_path
     }
-
-    pub fn cancel_token(&self) -> CancellationToken {
-        self.cancel_token.clone()
-    }
-
-    pub fn cancel(&self) {
-        self.cancel_token.cancel();
-    }
 }
 
 impl fmt::Debug for TuiSession {
@@ -176,7 +165,6 @@ impl fmt::Debug for TuiSession {
         f.debug_struct("TuiSession")
             .field("state", &self.state)
             .field("initial_path", &self.initial_path)
-            .field("cancelled", &self.cancel_token.is_cancelled())
             .finish_non_exhaustive()
     }
 }

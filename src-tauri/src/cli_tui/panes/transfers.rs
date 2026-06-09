@@ -81,6 +81,14 @@ impl TransfersPaneState {
         }
     }
 
+    /// Mark a transfer as user-cancelled. The gauge keeps its partial ratio so
+    /// the row reflects how far the aborted transfer got before it stopped.
+    pub fn mark_cancelled(&mut self, id: u64) {
+        if let Some(item) = self.item_mut(id) {
+            item.status = TransferStatus::Cancelled;
+        }
+    }
+
     /// Drop the selected transfer once it is finished. Active transfers are kept
     /// so the queue never loses an in-flight operation by accident.
     pub fn remove_selected_if_finished(&mut self) -> bool {
@@ -136,6 +144,7 @@ pub enum TransferStatus {
     Active,
     Done,
     Failed(String),
+    Cancelled,
 }
 
 impl TransferStatus {
@@ -144,6 +153,7 @@ impl TransferStatus {
             TransferStatus::Active => "active",
             TransferStatus::Done => "done",
             TransferStatus::Failed(_) => "failed",
+            TransferStatus::Cancelled => "cancelled",
         }
     }
 }
@@ -212,6 +222,28 @@ mod tests {
             TransferStatus::Failed("network closed".to_string())
         );
         assert!(!transfers.has_active());
+    }
+
+    #[test]
+    fn cancel_keeps_partial_ratio_and_clears_active() {
+        let mut transfers = TransfersPaneState::default();
+        let id = transfers.enqueue(
+            TransferDirection::Download,
+            "big.bin".to_string(),
+            "/srv/big.bin".to_string(),
+            "./big.bin".to_string(),
+        );
+        transfers.update_progress(id, 30, 100);
+        transfers.mark_cancelled(id);
+
+        assert_eq!(transfers.items[0].status, TransferStatus::Cancelled);
+        // The gauge does not jump to full: the partial ratio is preserved.
+        assert_eq!(transfers.items[0].ratio(), 0.3);
+        assert!(!transfers.has_active());
+        // A cancelled (finished) transfer can be dropped from the queue.
+        transfers.selected = 0;
+        assert!(transfers.remove_selected_if_finished());
+        assert!(transfers.items.is_empty());
     }
 
     #[test]

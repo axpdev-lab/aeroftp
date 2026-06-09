@@ -9550,11 +9550,23 @@ async fn run_cli_tui_worker(
     mut command_rx: cli_tui::worker::WorkerCommandReceiver,
     event_tx: cli_tui::worker::WorkerEventSender,
 ) {
-    use cli_tui::worker::{TuiWorkerOperation, WorkerCommand, WorkerEvent};
+    use cli_tui::worker::{TransferDrive, TuiWorkerOperation, WorkerCommand, WorkerEvent};
+    use std::collections::VecDeque;
 
     let mut session: Option<cli_tui::session::TuiSession> = None;
+    // Commands that landed while a transfer held the single connection. They are
+    // replayed in arrival order before the worker blocks on the channel again,
+    // so nothing the user did mid-transfer is lost or reordered.
+    let mut pending: VecDeque<WorkerCommand> = VecDeque::new();
 
-    while let Some(command) = command_rx.recv().await {
+    loop {
+        let command = match pending.pop_front() {
+            Some(command) => command,
+            None => match command_rx.recv().await {
+                Some(command) => command,
+                None => break,
+            },
+        };
         match command {
             WorkerCommand::OpenSession { identity, .. } => {
                 let already_connected = session
@@ -9798,23 +9810,31 @@ async fn run_cli_tui_worker(
                     });
                     continue;
                 };
-                match download_tui_session_via_cli_handler(
+                let transfer = download_tui_session_via_cli_handler(
                     active_session,
                     &remote_path,
                     &local_path,
                     id,
                     &event_tx,
-                )
-                .await
+                );
+                match cli_tui::worker::drive_tui_transfer(transfer, &mut command_rx, &mut pending)
+                    .await
                 {
-                    Ok(()) => {
+                    TransferDrive::Completed => {
                         let _ = event_tx.send(WorkerEvent::TransferDone {
                             id,
                             message: format!("Downloaded {} -> {}", remote_path, local_path),
                         });
                     }
-                    Err(message) => {
+                    TransferDrive::Failed(message) => {
                         let _ = event_tx.send(WorkerEvent::TransferFailed { id, message });
+                    }
+                    TransferDrive::Cancelled => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                    }
+                    TransferDrive::ChannelClosed => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        break;
                     }
                 }
             }
@@ -9837,30 +9857,39 @@ async fn run_cli_tui_worker(
                     });
                     continue;
                 };
-                match upload_tui_session_via_cli_handler(
+                let transfer = upload_tui_session_via_cli_handler(
                     active_session,
                     &local_path,
                     &remote_path,
                     id,
                     &event_tx,
-                )
-                .await
+                );
+                match cli_tui::worker::drive_tui_transfer(transfer, &mut command_rx, &mut pending)
+                    .await
                 {
-                    Ok(()) => {
+                    TransferDrive::Completed => {
                         let _ = event_tx.send(WorkerEvent::TransferDone {
                             id,
                             message: format!("Uploaded {} -> {}", local_path, remote_path),
                         });
                     }
-                    Err(message) => {
+                    TransferDrive::Failed(message) => {
                         let _ = event_tx.send(WorkerEvent::TransferFailed { id, message });
+                    }
+                    TransferDrive::Cancelled => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                    }
+                    TransferDrive::ChannelClosed => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        break;
                     }
                 }
             }
             WorkerCommand::Cancel => {
-                if let Some(active_session) = session.as_ref() {
-                    active_session.cancel();
-                }
+                // Reaches here only when no transfer was in flight: an active
+                // transfer consumes Cancel inside drive_tui_transfer and aborts
+                // by dropping its future. Nothing to abort here, so leave the
+                // session connected and just acknowledge.
                 let _ = event_tx.send(WorkerEvent::Cancelled {
                     operation: TuiWorkerOperation::Cancel,
                 });

@@ -567,6 +567,7 @@ fn transfer_list_item(item: &TransferItem, theme: TuiTheme) -> ListItem<'static>
         TransferStatus::Active => theme.accent_style(),
         TransferStatus::Done => Style::default().fg(theme.ready),
         TransferStatus::Failed(_) => Style::default().fg(theme.planned),
+        TransferStatus::Cancelled => theme.muted_style(),
     };
     let detail = match &item.status {
         TransferStatus::Failed(message) => format!("  {}", message),

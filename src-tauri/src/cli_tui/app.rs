@@ -784,6 +784,14 @@ impl AppState {
                 self.transfers.mark_failed(*id, message.clone());
                 self.status = message.clone();
             }
+            WorkerEvent::TransferCancelled { id } => {
+                // A cancelled transfer is a per-item terminal state. The live
+                // session stays Connected so navigation and further transfers
+                // keep working; the provider kept the partial `.aerotmp` for a
+                // later resume.
+                self.transfers.mark_cancelled(*id);
+                self.status = format!("Transfer #{} cancelled.", id);
+            }
             WorkerEvent::Failed {
                 operation, message, ..
             } => {
@@ -798,7 +806,10 @@ impl AppState {
                 self.status = format!("{} failed: {}", operation.label(), message);
             }
             WorkerEvent::Cancelled { operation } => {
-                self.session.mark_cancelled();
+                // A bare Cancel only reaches here when nothing was in flight (an
+                // in-flight transfer is aborted via TransferCancelled instead).
+                // It must NOT tear the session down: marking it cancelled would
+                // flip the phase off Connected and block every later operation.
                 self.status = format!("{} cancelled.", operation.label());
             }
         }
@@ -920,6 +931,7 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         | WorkerEvent::TransferProgress { .. }
         | WorkerEvent::TransferDone { .. }
         | WorkerEvent::TransferFailed { .. }
+        | WorkerEvent::TransferCancelled { .. }
         | WorkerEvent::Cancelled { .. } => None,
     }
 }
@@ -1826,5 +1838,47 @@ mod tests {
         });
         app.apply_action(TuiAction::Delete);
         assert!(app.transfers.items.is_empty());
+    }
+
+    #[test]
+    fn cancelling_a_transfer_keeps_the_session_connected() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown);
+        app.apply_action(TuiAction::Download);
+        app.handle_overlay_key(OverlayKey::Submit);
+
+        app.apply_worker_event(WorkerEvent::TransferProgress {
+            id: 1,
+            transferred: 25,
+            total: 100,
+        });
+        let follow_up = app.apply_worker_event(WorkerEvent::TransferCancelled { id: 1 });
+
+        // The item lands in the Cancelled terminal state with its partial ratio
+        // preserved, and crucially the live session stays Connected so the next
+        // navigation or transfer still works (regression: a transfer cancel used
+        // to flip the whole session to Cancelled and brick every later action).
+        assert!(follow_up.is_empty());
+        assert_eq!(
+            app.transfers.items[0].status,
+            crate::cli_tui::panes::transfers::TransferStatus::Cancelled
+        );
+        assert_eq!(app.transfers.items[0].ratio(), 0.25);
+        assert_eq!(app.session.phase, TuiSessionPhase::Connected);
+        assert!(app.is_live_connected());
+    }
+
+    #[test]
+    fn bare_cancel_event_keeps_the_session_connected() {
+        let mut app = connected_app_with_listing();
+
+        // A Cancel that reaches the worker with nothing in flight comes back as a
+        // bare Cancelled event; it must not tear the session down.
+        app.apply_worker_event(WorkerEvent::Cancelled {
+            operation: TuiWorkerOperation::Cancel,
+        });
+
+        assert_eq!(app.session.phase, TuiSessionPhase::Connected);
+        assert!(app.is_live_connected());
     }
 }

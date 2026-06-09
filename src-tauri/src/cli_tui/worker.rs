@@ -152,6 +152,11 @@ pub enum WorkerEvent {
         id: u64,
         message: String,
     },
+    /// A transfer was aborted by the user. The partial `.aerotmp` is kept on
+    /// disk by the provider so a later re-download resumes from the offset.
+    TransferCancelled {
+        id: u64,
+    },
     ListReady {
         identity: TuiSessionIdentity,
         path: String,
@@ -192,8 +197,59 @@ impl WorkerEvent {
             } => format!("transfer #{} {}/{}", id, transferred, total),
             WorkerEvent::TransferDone { id, .. } => format!("transfer #{} done", id),
             WorkerEvent::TransferFailed { id, .. } => format!("transfer #{} failed", id),
+            WorkerEvent::TransferCancelled { id } => format!("transfer #{} cancelled", id),
             WorkerEvent::Failed { operation, .. } => format!("{} failed", operation.label()),
             WorkerEvent::Cancelled { operation } => format!("{} cancelled", operation.label()),
+        }
+    }
+}
+
+/// Terminal outcome of driving a transfer future via [`drive_tui_transfer`].
+#[derive(Debug, Eq, PartialEq)]
+pub enum TransferDrive {
+    /// The transfer future resolved successfully.
+    Completed,
+    /// The transfer future resolved with an error message.
+    Failed(String),
+    /// A `Cancel` command arrived; the future is dropped (aborted) on return.
+    Cancelled,
+    /// The command channel closed (the UI went away) while transferring.
+    ChannelClosed,
+}
+
+/// Drive a transfer future while keeping the worker responsive to `Cancel`.
+///
+/// The transfer borrows the live session mutably, so on a single connection no
+/// other provider call can run concurrently. Instead, non-cancel commands that
+/// arrive mid-transfer are buffered onto `pending` and replayed by the worker
+/// loop, in arrival order, once the transfer settles. A `Cancel` returns
+/// [`TransferDrive::Cancelled`]; dropping the awaited future on return is the
+/// idiomatic async abort and propagates to the in-flight provider read/write at
+/// its next await point. A closed channel (UI gone) aborts the same way.
+pub async fn drive_tui_transfer<F>(
+    transfer: F,
+    command_rx: &mut WorkerCommandReceiver,
+    pending: &mut std::collections::VecDeque<WorkerCommand>,
+) -> TransferDrive
+where
+    F: std::future::Future<Output = Result<(), String>>,
+{
+    tokio::pin!(transfer);
+    loop {
+        tokio::select! {
+            result = &mut transfer => {
+                return match result {
+                    Ok(()) => TransferDrive::Completed,
+                    Err(message) => TransferDrive::Failed(message),
+                };
+            }
+            maybe_command = command_rx.recv() => {
+                match maybe_command {
+                    Some(WorkerCommand::Cancel) => return TransferDrive::Cancelled,
+                    Some(other) => pending.push_back(other),
+                    None => return TransferDrive::ChannelClosed,
+                }
+            }
         }
     }
 }
@@ -361,5 +417,57 @@ mod tests {
             .label(),
             "stat ready /file.txt"
         );
+    }
+
+    #[tokio::test]
+    async fn drive_transfer_reports_completion() {
+        let (_tx, mut rx) = mpsc::unbounded_channel::<WorkerCommand>();
+        let mut pending = std::collections::VecDeque::new();
+        let outcome = drive_tui_transfer(async { Ok(()) }, &mut rx, &mut pending).await;
+        assert_eq!(outcome, TransferDrive::Completed);
+        assert!(pending.is_empty());
+    }
+
+    #[tokio::test]
+    async fn drive_transfer_reports_failure_message() {
+        let (_tx, mut rx) = mpsc::unbounded_channel::<WorkerCommand>();
+        let mut pending = std::collections::VecDeque::new();
+        let outcome =
+            drive_tui_transfer(async { Err("boom".to_string()) }, &mut rx, &mut pending).await;
+        assert_eq!(outcome, TransferDrive::Failed("boom".to_string()));
+    }
+
+    #[tokio::test]
+    async fn drive_transfer_aborts_on_cancel_and_buffers_other_commands() {
+        // A command that lands mid-transfer must be buffered (not lost), and a
+        // Cancel must abort. The transfer future never resolves on its own, so
+        // the only way out is the command channel.
+        let (tx, mut rx) = mpsc::unbounded_channel::<WorkerCommand>();
+        tx.send(WorkerCommand::List {
+            path: "/srv".to_string(),
+        })
+        .unwrap();
+        tx.send(WorkerCommand::Cancel).unwrap();
+        let mut pending = std::collections::VecDeque::new();
+        let never = std::future::pending::<Result<(), String>>();
+        let outcome = drive_tui_transfer(never, &mut rx, &mut pending).await;
+        assert_eq!(outcome, TransferDrive::Cancelled);
+        assert_eq!(
+            pending.pop_front(),
+            Some(WorkerCommand::List {
+                path: "/srv".to_string()
+            })
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[tokio::test]
+    async fn drive_transfer_aborts_when_channel_closes() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<WorkerCommand>();
+        drop(tx);
+        let mut pending = std::collections::VecDeque::new();
+        let never = std::future::pending::<Result<(), String>>();
+        let outcome = drive_tui_transfer(never, &mut rx, &mut pending).await;
+        assert_eq!(outcome, TransferDrive::ChannelClosed);
     }
 }
