@@ -108,8 +108,21 @@ function deriveProviderId(server: ServerProfile): string | undefined {
 
 function getServerSearchText(server: ServerProfile): string {
     const protocol = (server.protocol || 'ftp') as ProviderType;
-    const providerId = server.providerId || deriveProviderId(server);
-    const provider = providerId ? getProviderById(providerId) : undefined;
+    // A profile that switched protocols (e.g. OpenDrive moved from WebDAV to
+    // the native API) can keep a stale `providerId` pointing at the old preset
+    // (`opendrive-webdav`). Left as-is, that slug and its display name
+    // ("OpenDrive (WebDAV)") leak "webdav" into the search blob, so searching
+    // "web" surfaces an API profile that has nothing to do with WebDAV
+    // (issue #318). When the stored providerId resolves to a provider whose
+    // protocol no longer matches the profile, treat it as stale and re-derive
+    // the identity from the current protocol instead.
+    const storedProviderId = server.providerId || deriveProviderId(server);
+    const storedProvider = storedProviderId ? getProviderById(storedProviderId) : undefined;
+    const isStaleProviderId = !!storedProvider?.protocol && storedProvider.protocol !== server.protocol;
+    const providerId = isStaleProviderId ? deriveProviderId(server) : storedProviderId;
+    const provider = isStaleProviderId
+        ? (providerId ? getProviderById(providerId) : undefined)
+        : storedProvider;
     const protocolClass = getProtocolClass(protocol);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(protocol) : null;
     const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
