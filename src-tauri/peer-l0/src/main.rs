@@ -104,6 +104,12 @@ enum Mode {
         /// (skips symlinks). Relative keys use '/' separators. Sorted for determinism.
         #[arg(long)]
         dir: Option<String>,
+
+        /// For drive mode: after publishing v1, sleep this many seconds, then re-read the dir from disk
+        /// and publish v2 (drive_version=2, LWW updates + any new files). Then stay alive so watchers
+        /// can converge live. Only meaningful with --dir.
+        #[arg(long, default_value_t = 0)]
+        republish_after: u64,
     },
 
     /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry (or whole drive via manifest),
@@ -118,6 +124,13 @@ enum Mode {
         /// If absent, falls back to single-entry hello.txt behavior (backward compat).
         #[arg(long)]
         out: Option<String>,
+
+        /// For drive mode (--out present): after initial reconstruction, keep watching the LiveEvent
+        /// stream for this many seconds. On manifest version increase (via InsertRemote / PendingContentReady
+        /// etc.), re-pull the new manifest + all its files and converge (LWW). 0 or absent = exit after
+        /// initial (Stage 4 one-shot behavior).
+        #[arg(long, default_value_t = 0)]
+        watch_secs: u64,
     },
 }
 
@@ -194,24 +207,24 @@ async fn main() -> Result<()> {
             print_campaign_summary(&all_samples);
             return Ok(());
         }
-        Mode::DocsPublish { key, dir } => {
+        Mode::DocsPublish { key, dir, republish_after } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_publish(key, dir, docs_cfg, secret_bytes).await?;
+            run_docs_publish(key, dir, republish_after, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
-        Mode::DocsReplicate { ticket, out } => {
+        Mode::DocsReplicate { ticket, out, watch_secs } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_replicate(ticket, out, docs_cfg, secret_bytes).await?;
+            run_docs_replicate(ticket, out, watch_secs, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
     }
@@ -743,11 +756,86 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     sample
 }
 
-/// L1 Stage 4: docs-publish with optional drive mode (--dir).
-/// If --dir absent: exact single-entry E2EE behavior (backward compat with gate at 9f5a5c18).
-/// If --dir present: walk regular files (skip symlinks), encrypt each with fresh nonce under drive_key,
-/// record plaintext_blake3, write manifest under reserved key __drive_manifest__.json (also encrypted).
-async fn run_docs_publish(key: String, dir: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// Publish the current on-disk state of `src` as a specific drive_version: encrypt each regular file
+/// (fresh nonce) under `drive_key`, write it under its relative '/'-key, then write the signed +
+/// encrypted manifest under `__drive_manifest__.json`. Returns (file_count, total_plaintext_bytes).
+async fn publish_drive_version(
+    doc: &iroh_docs::api::Doc,
+    author: iroh_docs::AuthorId,
+    drive_key: &[u8; 32],
+    src: &Path,
+    version: u64,
+) -> Result<(usize, u64)> {
+    use bytes::Bytes;
+    if !src.is_dir() {
+        anyhow::bail!("--dir {} is not a directory", src.display());
+    }
+
+    let mut files: Vec<(String, PathBuf)> = vec![];
+    fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, PathBuf)>) {
+        if let Ok(read_dir) = std::fs::read_dir(dir) {
+            for entry in read_dir.flatten() {
+                let p = entry.path();
+                if p.is_symlink() {
+                    continue;
+                }
+                if p.is_dir() {
+                    collect_files(&p, base, out);
+                } else if p.is_file() {
+                    let rel = p.strip_prefix(base)
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .replace('\\', "/");
+                    out.push((rel, p));
+                }
+            }
+        }
+    }
+    collect_files(src, src, &mut files);
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut manifest_files: Vec<serde_json::Value> = vec![];
+    let mut total_pt: u64 = 0;
+
+    for (rel_key, path) in &files {
+        let pt = std::fs::read(path)?;
+        let (nonce, ct) = encrypt_blob(drive_key, &pt)?;
+        let mut blob = nonce.clone();
+        blob.extend_from_slice(&ct);
+        let content_hash = doc.set_bytes(author, Bytes::from(rel_key.clone()), Bytes::from(blob)).await?;
+        let pt_blake3 = blake3::hash(&pt).to_hex().to_string();
+        println!("wrote key={} pt_len={} ct_len={} content_hash={}", rel_key, pt.len(), ct.len(), content_hash);
+        manifest_files.push(serde_json::json!({
+            "key": rel_key,
+            "plaintext_len": pt.len(),
+            "plaintext_blake3": pt_blake3
+        }));
+        total_pt += pt.len() as u64;
+    }
+
+    let manifest = serde_json::json!({
+        "drive_version": version,
+        "created": chrono::Utc::now().to_rfc3339(),
+        "file_count": files.len(),
+        "files": manifest_files
+    });
+    let manifest_bytes = serde_json::to_vec(&manifest)?;
+    let (m_nonce, m_ct) = encrypt_blob(drive_key, &manifest_bytes)?;
+    let mut m_blob = m_nonce.clone();
+    m_blob.extend_from_slice(&m_ct);
+    doc.set_bytes(author, Bytes::from("__drive_manifest__.json"), Bytes::from(m_blob)).await?;
+
+    // The caller prints the summary line (it has the NamespaceId for display).
+    Ok((files.len(), total_pt))
+}
+
+/// L1 Stage 5: docs-publish with optional drive mode + republish-after for versioning demo.
+/// If --dir absent: exact single-entry (compat).
+/// If --dir present: publish v1 (drive_version=1) and SHARE THE TICKET IMMEDIATELY so a watcher can
+/// join during v1. If --republish-after > 0: only THEN sleep and publish v2 (drive_version=2, LWW
+/// updates + any new files), which gossip delivers live to the already-joined watcher.
+async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
     use iroh_blobs::BlobsProtocol;
@@ -791,70 +879,12 @@ async fn run_docs_publish(key: String, dir: Option<String>, cfg: aeroftp_peer_l0
     let secret = secret_bytes.context("docs-publish requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
     let drive_key = derive_drive_key(&secret, &ns.to_string());
 
-    if let Some(dir_path) = dir {
-        // === DRIVE MODE (Stage 4) ===
-        let src = Path::new(&dir_path);
-        if !src.is_dir() {
-            anyhow::bail!("--dir {} is not a directory", dir_path);
-        }
-
-        let mut files: Vec<(String, PathBuf)> = vec![];
-        fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, PathBuf)>) -> Result<()> {
-            for entry in std::fs::read_dir(dir)? {
-                let entry = entry?;
-                let p = entry.path();
-                if p.is_symlink() {
-                    continue; // task: skip symlinks
-                }
-                if p.is_dir() {
-                    collect_files(&p, base, out)?;
-                } else if p.is_file() {
-                    let rel = p.strip_prefix(base)
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .replace('\\', "/");
-                    out.push((rel, p));
-                }
-            }
-            Ok(())
-        }
-        collect_files(src, src, &mut files)?;
-        files.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut manifest_files: Vec<serde_json::Value> = vec![];
-        let mut total_pt: u64 = 0;
-
-        for (rel_key, path) in &files {
-            let pt = std::fs::read(path)?;
-            let (nonce, ct) = encrypt_blob(&drive_key, &pt)?;
-            let mut blob = nonce.clone();
-            blob.extend_from_slice(&ct);
-            let content_hash = doc.set_bytes(author, Bytes::from(rel_key.clone()), Bytes::from(blob)).await?;
-            let pt_blake3 = blake3::hash(&pt).to_hex().to_string();
-            println!("wrote key={} pt_len={} ct_len={} content_hash={}", rel_key, pt.len(), ct.len(), content_hash);
-            manifest_files.push(serde_json::json!({
-                "key": rel_key,
-                "plaintext_len": pt.len(),
-                "plaintext_blake3": pt_blake3
-            }));
-            total_pt += pt.len() as u64;
-        }
-
-        // Build + encrypt manifest (fresh nonce)
-        let manifest = serde_json::json!({
-            "drive_version": 1,
-            "created": chrono::Utc::now().to_rfc3339(),
-            "file_count": files.len(),
-            "files": manifest_files
-        });
-        let manifest_bytes = serde_json::to_vec(&manifest)?;
-        let (m_nonce, m_ct) = encrypt_blob(&drive_key, &manifest_bytes)?;
-        let mut m_blob = m_nonce.clone();
-        m_blob.extend_from_slice(&m_ct);
-        doc.set_bytes(author, Bytes::from("__drive_manifest__.json"), Bytes::from(m_blob)).await?;
-
-        println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", files.len(), ns, total_pt);
+    if let Some(dir_path) = dir.as_deref() {
+        // === DRIVE MODE (Stage 5): publish v1 now; the v2 republish happens AFTER the ticket share
+        // below, so a watcher can join during v1 and observe the live transition. ===
+        let src = Path::new(dir_path);
+        let (k1, b1) = publish_drive_version(&doc, author, &drive_key, src, 1).await?;
+        println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", k1, ns, b1);
     } else {
         // === SINGLE ENTRY MODE (exact backward compat with gate at 9f5a5c18) ===
         let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
@@ -870,14 +900,27 @@ async fn run_docs_publish(key: String, dir: Option<String>, cfg: aeroftp_peer_l0
         println!("stored ciphertext blob len={} (nonce {}B + ct) (E2EE; plaintext never leaves this process; entry signed by author)", blob.len(), nonce.len());
     }
 
-    // Produce a ticket that tells the other side the NamespaceId + where to find us.
-    // Read mode is sufficient for replication (the other side only pulls).
+    // Produce a ticket that tells the other side the NamespaceId + where to find us. Read mode is
+    // sufficient (the other side only pulls). Shared NOW (right after v1) so a watcher can join during
+    // v1 and observe the live v1->v2 update below.
     let ticket = doc.share(ShareMode::Read, AddrInfoOptions::RelayAndAddresses).await?;
     println!("\n=== DOC TICKET (copy/paste to docs-replicate side) ===");
     println!("{}", ticket);
     println!("==================================================\n");
-
     println!("Publish side ready. Waiting for replicators (Ctrl-C to stop)...");
+
+    // Drive versioning demo: republish v2 only AFTER the ticket is out, so a joined watcher sees the
+    // live transition (gossip pushes the updated entries + the bumped manifest).
+    if republish_after > 0 {
+        if let Some(dir_path) = dir.as_deref() {
+            let src = Path::new(dir_path);
+            println!("(republish-after {}s: sleeping before v2)", republish_after);
+            tokio::time::sleep(std::time::Duration::from_secs(republish_after)).await;
+            let (k2, b2) = publish_drive_version(&doc, author, &drive_key, src, 2).await?;
+            println!("DRIVE REPUBLISHED: v2, {} files, ns={}, total_plaintext_bytes={}", k2, ns, b2);
+        }
+    }
+
     // Keep the router (and thus the docs/gossip/blobs handlers) alive.
     tokio::signal::ctrl_c().await.ok();
     println!("Shutting down publish side.");
@@ -886,12 +929,43 @@ async fn run_docs_publish(key: String, dir: Option<String>, cfg: aeroftp_peer_l0
     Ok(())
 }
 
-/// L1 Stage 4: docs-replicate with optional drive reconstruction (--out).
-/// If --out absent: exact single-entry "hello.txt" behavior + get_bytes retry (gate compat).
-/// If --out present: first pull+decrypt __drive_manifest__.json (using same get_bytes retry),
-/// then for every listed file: wait entry, get_bytes (retry), decrypt, verify plaintext_blake3,
-/// mkdir -p parents, write plaintext. Do not write the manifest file itself under --out.
-async fn run_docs_replicate(ticket_str: String, out: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// Poll for an entry by exact key and return its content hash once it appears.
+/// (RBSR entry sync is async; on a slow/relay link the entry lands a little after the event.)
+async fn wait_entry_hash(doc: &iroh_docs::api::Doc, key: &[u8], attempts: u32) -> Option<iroh_blobs::Hash> {
+    use futures_lite::stream::StreamExt;
+    for _ in 0..attempts {
+        if let Ok(stream) = doc.get_many(iroh_docs::store::Query::key_exact(key)).await {
+            let mut pinned = Box::pin(stream);
+            if let Some(Ok(entry)) = pinned.next().await {
+                return Some(entry.content_hash());
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    }
+    None
+}
+
+/// Fetch a blob by hash, retrying while the content download completes (same race as the 9f5a5c18 fix).
+async fn fetch_blob_retry(
+    blobs: &iroh_blobs::store::mem::MemStore,
+    hash: iroh_blobs::Hash,
+    attempts: u32,
+) -> Option<bytes::Bytes> {
+    for _ in 0..attempts {
+        if let Ok(b) = blobs.blobs().get_bytes(hash).await {
+            return Some(b);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+    }
+    None
+}
+
+/// L1 Stage 5: docs-replicate with optional drive + live watch (--out + --watch-secs).
+/// If --out absent: single-entry compat.
+/// If --out present + no watch: Stage-4 one-shot (initial reconstruct + exit).
+/// If --watch-secs > 0: after initial, use import_and_subscribe + LiveEvent loop; on manifest version
+/// increase, re-converge (re-pull manifest + all files in it).
+async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs: u64, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
     use iroh::protocol::Router;
@@ -918,8 +992,8 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, cfg: aeroft
         .accept(iroh_docs::ALPN, docs.clone())
         .spawn();
 
-    // import joins the peers listed in the ticket and starts sync.
-    let doc = docs.api().import(ticket).await?;
+    // Stage 5: use import_and_subscribe to get the LiveEvent stream for live convergence.
+    let (doc, mut events) = docs.api().import_and_subscribe(ticket).await?;
     let ns = doc.id();
     println!("Imported + opened doc: NamespaceId={}", ns);
 
@@ -976,7 +1050,11 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, cfg: aeroft
 
         let files = manifest["files"].as_array().cloned().unwrap_or_default();
         let k = files.len();
-        println!("Manifest: {} files, drive_version={}", k, manifest["drive_version"]);
+        // Track the version from the first manifest we actually read (NOT hardcoded): a watcher that
+        // joins after a republish must start at the real current version, else it would re-converge
+        // needlessly and mislabel the transition. `mut` because the live loop advances it.
+        let mut current_version: u64 = manifest["drive_version"].as_u64().unwrap_or(1);
+        println!("Manifest: {} files, drive_version={}", k, current_version);
 
         let mut ok = 0usize;
         let mut total_bytes: u64 = 0;
@@ -1062,6 +1140,94 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, cfg: aeroft
         }
 
         println!("DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}", ok, k, total_bytes);
+
+        // --- LIVE CONVERGENCE (Stage 5) ---
+        if watch_secs > 0 {
+            use std::time::Instant;
+            use iroh_docs::engine::LiveEvent;
+            let deadline = Instant::now() + std::time::Duration::from_secs(watch_secs);
+            println!("(watching {}s for live updates...)", watch_secs);
+
+            loop {
+                let rem = deadline.saturating_duration_since(Instant::now());
+                if rem.is_zero() { break; }
+                match tokio::time::timeout(rem, events.next()).await {
+                    Err(_) => break,
+                    Ok(None) => break,
+                    Ok(Some(Ok(ev))) => {
+                        let trigger = match &ev {
+                            LiveEvent::InsertRemote { entry, .. } => entry.key() == b"__drive_manifest__.json",
+                            LiveEvent::PendingContentReady => true,
+                            _ => false,
+                        };
+                        if trigger {
+                            // Re-read the manifest; if its version advanced, re-converge every file it
+                            // lists. Errors are logged (not silently swallowed) and we keep watching.
+                            let manifest_hash = match wait_entry_hash(&doc, manifest_key, 20).await {
+                                Some(h) => h,
+                                None => continue,
+                            };
+                            let mblob = match fetch_blob_retry(&blobs, manifest_hash, 60).await {
+                                Some(b) => b,
+                                None => { eprintln!("converge: manifest blob not available yet"); continue; }
+                            };
+                            if mblob.len() < n { continue; }
+                            let (mn, mc) = mblob.split_at(n);
+                            let mpt = match decrypt_blob(&drive_key, mn, mc) {
+                                Ok(p) => p,
+                                Err(e) => { eprintln!("converge: manifest decrypt failed: {e}"); continue; }
+                            };
+                            let new_m: serde_json::Value = match serde_json::from_slice(&mpt) {
+                                Ok(v) => v,
+                                Err(e) => { eprintln!("converge: manifest JSON parse failed: {e}"); continue; }
+                            };
+                            let new_ver = new_m["drive_version"].as_u64().unwrap_or(current_version);
+                            if new_ver <= current_version { continue; }
+
+                            let old_ver = current_version;
+                            let new_files = new_m["files"].as_array().cloned().unwrap_or_default();
+                            let new_k = new_files.len();
+                            let mut pulled = 0usize;
+                            for f in &new_files {
+                                let rkey = f["key"].as_str().unwrap_or("").to_string();
+                                let ept_len = f["plaintext_len"].as_u64().unwrap_or(0);
+                                let eblake = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
+
+                                let fch = match wait_entry_hash(&doc, rkey.as_bytes(), 20).await {
+                                    Some(h) => h,
+                                    None => { eprintln!("converge: entry {rkey} not found"); continue; }
+                                };
+                                let fblob = match fetch_blob_retry(&blobs, fch, 60).await {
+                                    Some(b) => b,
+                                    None => { eprintln!("converge: blob for {rkey} not available"); continue; }
+                                };
+                                if fblob.len() < n { eprintln!("converge: blob for {rkey} too short"); continue; }
+                                let (fnc, fcc) = fblob.split_at(n);
+                                let ptt = match decrypt_blob(&drive_key, fnc, fcc) {
+                                    Ok(p) => p,
+                                    Err(e) => { eprintln!("converge: decrypt {rkey} failed: {e}"); continue; }
+                                };
+                                if blake3::hash(&ptt).to_hex().to_string() != eblake
+                                    || ptt.len() as u64 != ept_len
+                                {
+                                    eprintln!("converge: integrity check failed for {rkey}");
+                                    continue;
+                                }
+                                let target = out_path.join(&rkey);
+                                if let Some(parent) = target.parent() {
+                                    std::fs::create_dir_all(parent)?;
+                                }
+                                std::fs::write(&target, &ptt)?;
+                                pulled += 1;
+                            }
+                            current_version = new_ver;
+                            println!("DRIVE UPDATED: v{} -> v{}: wrote {} files (file_count {} -> {})", old_ver, new_ver, pulled, k, new_k);
+                        }
+                    }
+                    Ok(Some(Err(_))) => {}
+                }
+            }
+        }
     } else {
         // === SINGLE ENTRY MODE (exact backward compat) ===
         let key = "hello.txt";
