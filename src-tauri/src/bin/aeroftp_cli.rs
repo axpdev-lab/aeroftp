@@ -8447,6 +8447,27 @@ enum PeerCommands {
         #[arg(long)]
         relay: Option<String>,
     },
+    /// Re-key a drive you publish (revocation): mint a new content key, re-encrypt + republish all
+    /// files under it (old tokens can no longer read new versions), then re-grant to keep access
+    Rekey {
+        /// The directory to re-encrypt and republish (the drive's current content)
+        dir: String,
+        /// The persistent store the drive was published with (selects the namespace to re-key)
+        #[arg(long)]
+        store: String,
+        /// Human label for the drive (default: the directory name)
+        #[arg(long)]
+        name: Option<String>,
+        /// Seconds between automatic republishes (0 = none)
+        #[arg(long, default_value_t = 0)]
+        republish_after: u64,
+        /// How many republishes after v1 (with --republish-after)
+        #[arg(long, default_value_t = 0)]
+        republish_count: u64,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -8519,6 +8540,168 @@ fn read_peer_token_arg(arg: &str) -> Result<String, String> {
             .map_err(|e| format!("read token file: {e}"))
     } else {
         Ok(arg.trim().to_string())
+    }
+}
+
+/// Shared flow for `peer publish` and `peer rekey`: load (publish: auto-init) the identity, mint a
+/// FRESH per-drive content key, (re-)publish the directory under it via the capability path, custody
+/// the key in the vault under `publisher`, print the ticket, and serve until cancelled. On `rekey` the
+/// `--store` reopens the SAME namespace and re-encrypts ALL files under the new key (prev=None), so old
+/// capability holders can sync but no longer decrypt new versions — re-grant to keep access.
+#[allow(clippy::too_many_arguments)]
+async fn peer_publish_flow(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    dir: &str,
+    store_dir: Option<String>,
+    name: &Option<String>,
+    republish_after: u64,
+    republish_count: u64,
+    relay: &Option<String>,
+    rekey: bool,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::{peer, user_partitions};
+
+    let afid = match user_partitions::cli_peer_identity_show(store, user_id) {
+        Ok(Some(a)) => a,
+        Ok(None) if rekey => {
+            print_error(
+                format,
+                "NO_IDENTITY: you can only re-key a drive you publish (run `aeroftp peer publish` first)",
+                4,
+            );
+            return 4;
+        }
+        Ok(None) => {
+            // First publish in this partition: mint + store the identity.
+            let (secret, a) = peer::generate_identity();
+            if let Err(e) =
+                user_partitions::cli_peer_identity_store(store, user_id, &secret, &a, false)
+            {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            a
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let id_secret = match user_partitions::cli_peer_identity_load(store, user_id) {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            print_error(format, "NO_IDENTITY", 5);
+            return 5;
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let content_key = peer::fresh_content_key();
+    let drive_name = name.clone().unwrap_or_else(|| {
+        std::path::Path::new(dir)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("drive")
+            .to_string()
+    });
+    let relay_urls = relay
+        .as_ref()
+        .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let pub_fut = peer::publish_drive_cap(
+        dir.to_string(),
+        &content_key,
+        &id_secret,
+        drive_name.clone(),
+        store_dir,
+        republish_after,
+        republish_count,
+        relay_urls,
+        tx,
+    );
+    tokio::pin!(pub_fut);
+    let published = tokio::select! {
+        ready = rx => match ready {
+            Ok(p) => p,
+            Err(_) => {
+                print_error(format, "publisher ended before it was ready", 1);
+                return 1;
+            }
+        },
+        res = &mut pub_fut => {
+            return match res {
+                Ok(()) => 0,
+                Err(e) => { print_error(format, &format!("publish failed: {e}"), 1); 1 }
+            };
+        }
+    };
+    if let Err(e) = user_partitions::cli_peer_drive_store(
+        store,
+        user_id,
+        &published.namespace_id,
+        "publisher",
+        &content_key,
+    ) {
+        print_error(format, &e, 5);
+        return 5;
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "aeroftpId": afid,
+            "namespace": published.namespace_id,
+            "ticket": published.ticket,
+            "drive": drive_name,
+            "rekeyed": rekey,
+        }));
+    } else if rekey {
+        println!(
+            "Re-keyed drive '{}' (namespace {}).",
+            drive_name, published.namespace_id
+        );
+        println!("Old capability tokens can no longer read new versions of this drive.");
+        println!("\nNew ticket:\n{}", published.ticket);
+        match user_partitions::cli_peer_contact_list(store, user_id) {
+            Ok(contacts) if !contacts.is_empty() => {
+                println!("\nRe-grant to the contacts who should keep access:");
+                for (id, alias) in contacts {
+                    println!(
+                        "  aeroftp peer grant --to {id} --drive {}   # {alias}",
+                        published.namespace_id
+                    );
+                }
+            }
+            _ => println!(
+                "\nRe-grant with:  aeroftp peer grant --to <AeroFTP-ID> --drive {}",
+                published.namespace_id
+            ),
+        }
+        println!("\nServing the re-keyed drive... press Ctrl-C to stop.");
+    } else {
+        println!("AeroFTP-ID: {afid}");
+        println!(
+            "Drive '{}' namespace: {}",
+            drive_name, published.namespace_id
+        );
+        println!(
+            "\nShare this ticket with the replicator:\n{}",
+            published.ticket
+        );
+        println!(
+            "\nGrant access:  aeroftp peer grant --to <AeroFTP-ID> --drive {}",
+            published.namespace_id
+        );
+        println!("\nPublishing... press Ctrl-C to stop serving.");
+    }
+    match pub_fut.await {
+        Ok(()) => 0,
+        Err(e) => {
+            print_error(format, &format!("publish failed: {e}"), 1);
+            1
+        }
     }
 }
 
@@ -8845,114 +9028,41 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
             republish_count,
             relay,
         } => {
-            // Identity is required to seal future grants; auto-init on first publish.
-            let afid = match user_partitions::cli_peer_identity_show(&store, user_id) {
-                Ok(Some(a)) => a,
-                Ok(None) => {
-                    let (secret, a) = peer::generate_identity();
-                    if let Err(e) = user_partitions::cli_peer_identity_store(
-                        &store, user_id, &secret, &a, false,
-                    ) {
-                        print_error(format, &e, 5);
-                        return 5;
-                    }
-                    a
-                }
-                Err(e) => {
-                    print_error(format, &e, 5);
-                    return 5;
-                }
-            };
-            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
-                Ok(Some(s)) => s,
-                Ok(None) => {
-                    print_error(format, "NO_IDENTITY", 5);
-                    return 5;
-                }
-                Err(e) => {
-                    print_error(format, &e, 5);
-                    return 5;
-                }
-            };
-            let content_key = peer::fresh_content_key();
-            let drive_name = name.clone().unwrap_or_else(|| {
-                std::path::Path::new(dir)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("drive")
-                    .to_string()
-            });
-            let relay_urls = relay
-                .as_ref()
-                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let pub_fut = peer::publish_drive_cap(
-                dir.clone(),
-                &content_key,
-                &id_secret,
-                drive_name.clone(),
-                store_dir.clone(),
-                *republish_after,
-                *republish_count,
-                relay_urls,
-                tx,
-            );
-            tokio::pin!(pub_fut);
-            let published = tokio::select! {
-                ready = rx => match ready {
-                    Ok(p) => p,
-                    Err(_) => {
-                        print_error(format, "publisher ended before it was ready", 1);
-                        return 1;
-                    }
-                },
-                res = &mut pub_fut => {
-                    return match res {
-                        Ok(()) => 0,
-                        Err(e) => { print_error(format, &format!("publish failed: {e}"), 1); 1 }
-                    };
-                }
-            };
-            if let Err(e) = user_partitions::cli_peer_drive_store(
+            peer_publish_flow(
                 &store,
                 user_id,
-                &published.namespace_id,
-                "publisher",
-                &content_key,
-            ) {
-                print_error(format, &e, 5);
-                return 5;
-            }
-            if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({
-                    "aeroftpId": afid,
-                    "namespace": published.namespace_id,
-                    "ticket": published.ticket,
-                    "drive": drive_name,
-                }));
-            } else {
-                println!("AeroFTP-ID: {afid}");
-                println!(
-                    "Drive '{}' namespace: {}",
-                    drive_name, published.namespace_id
-                );
-                println!(
-                    "\nShare this ticket with the replicator:\n{}",
-                    published.ticket
-                );
-                println!(
-                    "\nGrant access:  aeroftp peer grant --to <AeroFTP-ID> --drive {}",
-                    published.namespace_id
-                );
-                println!("\nPublishing... press Ctrl-C to stop serving.");
-            }
-            match pub_fut.await {
-                Ok(()) => 0,
-                Err(e) => {
-                    print_error(format, &format!("publish failed: {e}"), 1);
-                    1
-                }
-            }
+                dir,
+                store_dir.clone(),
+                name,
+                *republish_after,
+                *republish_count,
+                relay,
+                false,
+                format,
+            )
+            .await
+        }
+        PeerCommands::Rekey {
+            dir,
+            store: store_dir,
+            name,
+            republish_after,
+            republish_count,
+            relay,
+        } => {
+            peer_publish_flow(
+                &store,
+                user_id,
+                dir,
+                Some(store_dir.clone()),
+                name,
+                *republish_after,
+                *republish_count,
+                relay,
+                true,
+                format,
+            )
+            .await
         }
         PeerCommands::Replicate {
             ticket,

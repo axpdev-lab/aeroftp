@@ -336,6 +336,42 @@ mod tests {
     }
 
     #[test]
+    fn p4_rekey_replaces_the_drive_content_key() {
+        // WI-4e: re-keying a drive UPSERTs the per-drive content key under the same namespace, so the
+        // vault custodies only the NEW key (old capability holders can no longer derive the drive key).
+        let (conn, user_a, _user_b) = two_user_db();
+        let ns = "8ce68153cc3b80d778b594b7e3787e3511745ca28b384ebdb4fab5ec41be0832";
+        let k1 = [1u8; 32];
+        let k2 = [2u8; 32];
+
+        user_partitions::with_partition_dek(&conn, &test_root(), user_a, |dek| {
+            store_drive(&conn, user_a, dek, ns, "publisher", &k1)
+        })
+        .expect("store k1");
+        user_partitions::with_partition_dek(&conn, &test_root(), user_a, |dek| {
+            store_drive(&conn, user_a, dek, ns, "publisher", &k2)
+        })
+        .expect("re-key to k2");
+
+        let got = user_partitions::with_partition_dek(&conn, &test_root(), user_a, |dek| {
+            load_drive(&conn, user_a, dek, ns)
+        })
+        .expect("load")
+        .expect("present");
+        assert_eq!(
+            got.as_slice(),
+            &k2[..],
+            "re-key replaces the stored content key"
+        );
+        assert_ne!(got.as_slice(), &k1[..], "the old content key is gone");
+        // Still exactly one row for the namespace (UPSERT, not insert).
+        assert_eq!(
+            list_drives(&conn, user_a).expect("list"),
+            vec![(ns.to_string(), "publisher".to_string())]
+        );
+    }
+
+    #[test]
     fn p3_contacts_add_list_remove() {
         let (conn, user_a, _user_b) = two_user_db();
         add_contact(&conn, user_a, "AERO-AAAA", "Carol").expect("add");
