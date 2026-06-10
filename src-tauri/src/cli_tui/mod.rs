@@ -390,9 +390,10 @@ fn render_introhub_table(
         "Name",
         "Type",
         "Host / Account",
-        "Remote -> Local",
         "Used",
         "Total",
+        "%",
+        "Last",
         "\u{2605}",
     ]
     .into_iter()
@@ -437,12 +438,13 @@ fn render_introhub_table(
 
     let widths = [
         Constraint::Length(3),
-        Constraint::Min(14),
-        Constraint::Length(9),
-        Constraint::Min(20),
+        Constraint::Min(12),
+        Constraint::Length(8),
         Constraint::Min(18),
-        Constraint::Length(8),
-        Constraint::Length(8),
+        Constraint::Length(9),
+        Constraint::Length(9),
+        Constraint::Length(6),
+        Constraint::Length(9),
         Constraint::Length(3),
     ];
 
@@ -486,17 +488,32 @@ fn introhub_table_row(profile: &TuiProfile, app: &AppState, theme: TuiTheme) -> 
         (true, true) => "-".to_string(),
     };
 
-    let remote = if profile.initial_path.is_empty() {
-        "/".to_string()
-    } else {
-        profile.initial_path.clone()
+    let dash = || Cell::from(Span::styled("\u{2014}", theme.muted_style()));
+    let used_cell = match profile.used {
+        Some(bytes) => Cell::from(Span::styled(
+            format_browser_size(bytes),
+            theme.muted_style(),
+        )),
+        None => dash(),
     };
-    let local = if profile.default_local_path.is_empty() {
-        "(cwd)".to_string()
-    } else {
-        profile.default_local_path.clone()
+    let total_cell = match profile.total {
+        Some(bytes) => Cell::from(Span::styled(
+            format_browser_size(bytes),
+            theme.muted_style(),
+        )),
+        None => dash(),
     };
-    let paths = format!("{} -> {}", remote, local);
+    let pct_cell = match (profile.used, profile.total) {
+        (Some(u), Some(t)) if t > 0 => Cell::from(Span::styled(
+            format!("{:.0}%", (u as f64 / t as f64 * 100.0).min(999.0)),
+            theme.muted_style(),
+        )),
+        _ => dash(),
+    };
+    let last_cell = match &profile.last_connected_label {
+        Some(label) => Cell::from(Span::styled(label.clone(), theme.muted_style())),
+        None => dash(),
+    };
 
     let fav = if profile.favorite { "\u{2605}" } else { "" };
 
@@ -511,9 +528,10 @@ fn introhub_table_row(profile: &TuiProfile, app: &AppState, theme: TuiTheme) -> 
             theme.accent_style(),
         )),
         Cell::from(subtitle),
-        Cell::from(Span::styled(paths, theme.muted_style())),
-        Cell::from(Span::styled("\u{2014}", theme.muted_style())),
-        Cell::from(Span::styled("\u{2014}", theme.muted_style())),
+        used_cell,
+        total_cell,
+        pct_cell,
+        last_cell,
         Cell::from(Span::styled(fav, theme.accent_style())),
     ])
 }
@@ -591,10 +609,28 @@ fn render_introhub_detail(
                         Span::styled("   Local: ", theme.muted_style()),
                         Span::raw(local),
                     ]),
-                    Line::from(Span::styled(
-                        "Quota / health populate after a probe (planned next TUI version).",
-                        theme.muted_style(),
-                    )),
+                    Line::from({
+                        let quota = match (profile.used, profile.total) {
+                            (Some(u), Some(t)) if t > 0 => format!(
+                                "{} / {} ({:.0}%)",
+                                format_browser_size(u),
+                                format_browser_size(t),
+                                (u as f64 / t as f64 * 100.0).min(999.0)
+                            ),
+                            (Some(u), _) => format!("{} used", format_browser_size(u)),
+                            _ => "not cached (df to refresh)".to_string(),
+                        };
+                        let last = profile
+                            .last_connected_label
+                            .clone()
+                            .unwrap_or_else(|| "never".to_string());
+                        vec![
+                            Span::styled("Quota:   ", theme.muted_style()),
+                            Span::raw(quota),
+                            Span::styled("   Last: ", theme.muted_style()),
+                            Span::raw(last),
+                        ]
+                    }),
                 ]
             }
             None => vec![Line::from(Span::styled(
@@ -995,6 +1031,10 @@ mod render_tests {
             initial_path: "/srv".to_string(),
             default_local_path: "/home/ale/dl".to_string(),
             favorite: sel == "1",
+            // Exercise the cached-quota / last-connected render path.
+            used: Some(3 * 1024 * 1024 * 1024),
+            total: Some(10 * 1024 * 1024 * 1024),
+            last_connected_label: Some("2d ago".to_string()),
         };
         TuiContext {
             users: vec![TuiUser {
@@ -1035,6 +1075,10 @@ mod render_tests {
         assert!(text.contains("My Servers"), "table title present");
         assert!(text.contains("AeroFTP TUI"), "header present");
         assert!(text.contains(TUI_VERSION), "TUI version surfaced");
+        // Cached quota / last-connected columns render real values, not dashes.
+        assert!(text.contains("GB"), "cached quota size rendered");
+        assert!(text.contains("30%"), "usage percent rendered");
+        assert!(text.contains("2d ago"), "last-connected label rendered");
 
         // Tiny terminal must not panic (Length(1)/Min layouts, Table widths).
         let mut tiny = Terminal::new(TestBackend::new(20, 4)).unwrap();

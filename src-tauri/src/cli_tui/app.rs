@@ -37,7 +37,7 @@ pub struct TuiUser {
     pub profiles: Vec<TuiProfile>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TuiProfile {
     pub selector: String,
     pub name: String,
@@ -49,6 +49,15 @@ pub struct TuiProfile {
     /// If present and non-empty, the Local pane should open here on connect.
     pub default_local_path: String,
     pub favorite: bool,
+    /// Cached storage usage from the saved bookmark (the GUI/CLI `lastQuota`),
+    /// surfaced read-only in the IntroHub table. Computed in `build_tui_context`
+    /// with the same CLI helpers (`profile_effective_used`/`_total`); the TUI
+    /// only renders them. `None` when the bookmark has no cached quota.
+    pub used: Option<u64>,
+    pub total: Option<u64>,
+    /// Pre-formatted "last connected" label (the CLI `format_time_ago` output),
+    /// or `None` when the profile was never connected.
+    pub last_connected_label: Option<String>,
 }
 
 #[derive(Debug)]
@@ -1540,6 +1549,7 @@ mod tests {
                     initial_path: "/".to_string(),
                     default_local_path: "/tmp".to_string(),
                     favorite: true,
+                    ..Default::default()
                 }],
             }],
             initial_user: 0,
@@ -1922,6 +1932,7 @@ mod tests {
             initial_path: "/archive".to_string(),
             default_local_path: "".to_string(),
             favorite: false,
+            ..Default::default()
         });
         let mut app = AppState::new_live(context);
         let stale_identity = app.session.identity.clone().unwrap();
@@ -1963,6 +1974,7 @@ mod tests {
             initial_path: "bucket/backups/".to_string(),
             default_local_path: "".to_string(),
             favorite: false,
+            ..Default::default()
         });
         let mut app = AppState::new(context);
 
@@ -2000,6 +2012,7 @@ mod tests {
                     initial_path: "/".to_string(),
                     default_local_path: "".to_string(),
                     favorite: false,
+                    ..Default::default()
                 }],
             }],
             initial_user: 0,
@@ -2021,6 +2034,7 @@ mod tests {
             initial_path: "/".to_string(),
             default_local_path: String::new(),
             favorite: false,
+            ..Default::default()
         };
         TuiContext {
             users: vec![

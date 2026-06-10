@@ -9302,6 +9302,14 @@ fn build_tui_context(
                             .to_string(),
                         default_local_path,
                         favorite: !id.is_empty() && favorites.contains(id),
+                        // Reuse the same cached-quota / last-connected logic as
+                        // the CLI `profiles` table; the TUI only renders these.
+                        used: profile_effective_used(profile),
+                        total: profile_effective_total(profile),
+                        last_connected_label: profile
+                            .get("lastConnected")
+                            .and_then(|v| v.as_str())
+                            .and_then(format_time_ago),
                     }
                 })
                 .collect();

@@ -214,6 +214,7 @@ mod tests {
             initial_path: initial_path.to_string(),
             default_local_path: "".to_string(),
             favorite: true,
+            ..Default::default()
         }
     }
 
