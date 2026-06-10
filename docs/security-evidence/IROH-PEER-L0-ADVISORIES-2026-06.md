@@ -84,3 +84,28 @@ WI-4d CLI). iroh stays confined behind the `aeroftp-peer-l0` crate boundary; the
 through `src/peer/` and `tests/peer_link.rs`. `cargo tree -i iroh -e normal` from `src-tauri/` shows
 the normal-edge path `aeroftp -> aeroftp-peer-l0 -> iroh`, confirming iroh is a shipped (non-dev)
 dependency as of WI-3d.
+
+## WI-5a update (2026-06-10): Mainline-DHT discovery adds 3 crates - audit ruling
+
+WI-5a (independence track, owner decision "C, with A+ immediate" in
+`P2P-INDEPENDENCE-ANALYSIS.md`) enables iroh 0.92's `discovery-pkarr-dht` feature in
+`aeroftp-peer-l0`, adding the BitTorrent Mainline-DHT discovery backend behind the
+`AEROFTP_PEER_DISCOVERY` env lever (default `both` = n0 DNS + DHT additive; `dht` = the zero-n0
+path exercised by GATE IND-1). New crates entering `src-tauri/Cargo.lock` (1241 -> 1244 deps):
+
+| Crate | Version | Role |
+|-------|---------|------|
+| mainline | 5.4.0 | Mainline (BitTorrent) DHT client, pkarr's DHT transport |
+| flume | 0.11.1 | MPMC channels used by mainline |
+| serde_bencode | 0.2.4 | bencoding (de)serialization for DHT messages |
+
+Ruling (`cargo audit` 2026-06-10, advisory-db 1124 advisories, exit 0): **0 vulnerabilities,
+0 denied, 0 new warnings; the ignored set is UNCHANGED** (the same five IDs of WI-3c/WI-3d; none
+of the three new crates appears in any RUSTSEC advisory). Raw output archived on the NAS at
+`linux-station/auto/wi5/wi5-audit-full.txt`.
+
+Exposure note: the DHT backend is ADDITIVE discovery beside pkarr-over-relay (already shipped);
+mainline parses bencoded UDP from the public BitTorrent DHT, the same class of untrusted network
+input iroh's discovery stack already handles. Signed-record verification stays pkarr's ed25519;
+no new cryptographic surface. The lever defaults keep behavior identical when the env vars are
+unset (discovery `both` still includes n0; tickets stay `full`).

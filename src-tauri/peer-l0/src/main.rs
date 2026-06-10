@@ -226,6 +226,7 @@ async fn main() -> Result<()> {
         bind_addr: None,
         secret_key_path: None,
         custom_relay_urls: custom_relay,
+        ..Default::default()
     };
 
     match cli.mode {
@@ -301,6 +302,7 @@ async fn main() -> Result<()> {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
+                ..Default::default()
             };
             // WI-4c: --identity selects the capability path (per-drive random content key); otherwise
             // the legacy --secret dev path. The two are mutually exclusive.
@@ -372,6 +374,7 @@ async fn main() -> Result<()> {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
+                ..Default::default()
             };
             // WI-4c: --capability selects the capability path; otherwise the legacy --secret dev path.
             let key_src = if let Some(token_arg) = capability {

@@ -14,7 +14,7 @@
 use aeroftp_peer_l0::drive::{
     run_docs_publish, run_docs_replicate, CapIssue, PublishKey, ReplicateKey,
 };
-use aeroftp_peer_l0::endpoint::PeerEndpointConfig;
+use aeroftp_peer_l0::endpoint::{DiscoveryMode, PeerEndpointConfig};
 use aeroftp_peer_l0::{open_capability, seal_capability, Capability, Identity, IdentityPublic};
 use zeroize::Zeroizing;
 
@@ -133,6 +133,25 @@ fn endpoint_config(custom_relay_urls: Option<Vec<String>>) -> PeerEndpointConfig
         bind_addr: None,
         secret_key_path: None,
         custom_relay_urls,
+        discovery: discovery_from_env(),
+    }
+}
+
+/// WI-5a independence seam: select the discovery backend from `AEROFTP_PEER_DISCOVERY`
+/// (`dht` | `n0` | `both`). Default `both` = n0 DNS + Mainline DHT concurrently (additive).
+/// `dht` = the zero-n0 path exercised by GATE IND-1. An unknown value falls back to the
+/// default rather than failing, so a stray env var never breaks a transfer.
+fn discovery_from_env() -> DiscoveryMode {
+    match std::env::var("AEROFTP_PEER_DISCOVERY")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("dht") => DiscoveryMode::Dht,
+        Some("n0") => DiscoveryMode::N0,
+        _ => DiscoveryMode::Both,
     }
 }
 

@@ -27,7 +27,10 @@ path = "src/main.rs"
 # both already coexist in the app graph (cargo check green with iroh added).
 # The crate stays isolated for sequencing/lint reasons, not dependency ones;
 # convergence is planned as WI-3c (path dep + audit ruling on iroh's graph).
-iroh = "0.92"
+# `discovery-pkarr-dht` (WI-5a): pulls pkarr's Mainline-DHT backend so the endpoint can
+# resolve/publish node records on the BitTorrent DHT alongside (or instead of) n0's DNS.
+# Decentralized discovery = the A+ independence move; additive, no iroh version bump.
+iroh = { version = "0.92", features = ["discovery-pkarr-dht"] }
 iroh-blobs = "0.94"
 iroh-docs = "0.92"
 iroh-gossip = "0.92"

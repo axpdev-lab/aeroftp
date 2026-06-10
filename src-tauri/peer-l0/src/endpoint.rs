@@ -8,6 +8,23 @@ use std::net::SocketAddr;
 use std::time::Instant;
 use tracing::{debug, info};
 
+/// Which discovery service(s) the endpoint publishes its node record to and resolves
+/// peers from. This is the independence seam (WI-5a / A+ de-n0-ization):
+/// - `Both` (default): n0 DNS **and** the BitTorrent Mainline DHT, concurrently. iroh
+///   appends both via `add_discovery` (`ConcurrentDiscovery`), so this is purely
+///   ADDITIVE — n0 keeps working, the DHT is layered on for decentralized resolution.
+/// - `Dht`: Mainline DHT ONLY (no n0 anywhere) — the zero-n0 path exercised by GATE
+///   IND-1. Bootstrap = 20-year-old BitTorrent infra, neither the owner nor a single
+///   operator.
+/// - `N0`: legacy n0-only (the pre-WI-5a behaviour).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DiscoveryMode {
+    N0,
+    Dht,
+    #[default]
+    Both,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PeerEndpointConfig {
     pub bind_addr: Option<SocketAddr>,
@@ -19,6 +36,22 @@ pub struct PeerEndpointConfig {
     /// production relays). This lets us point at a self-hosted relay by configuration
     /// only, with no code changes.
     pub custom_relay_urls: Option<Vec<String>>,
+    /// Discovery backend selection (WI-5a). Default `Both` adds the Mainline DHT
+    /// alongside n0 DNS (decentralized + additive). `Dht` drops n0 entirely.
+    pub discovery: DiscoveryMode,
+}
+
+/// Apply the selected discovery service(s) to an endpoint builder. Factored out so the
+/// L0 (`PeerEndpoint::new`) and L1 (`build_base_endpoint`) paths stay in lockstep.
+fn apply_discovery(
+    builder: iroh::endpoint::Builder,
+    mode: DiscoveryMode,
+) -> iroh::endpoint::Builder {
+    match mode {
+        DiscoveryMode::N0 => builder.discovery_n0(),
+        DiscoveryMode::Dht => builder.discovery_dht(),
+        DiscoveryMode::Both => builder.discovery_n0().discovery_dht(),
+    }
 }
 
 pub struct PeerEndpoint {
@@ -56,8 +89,14 @@ impl PeerEndpoint {
         // parsed URLs (`RelayMap: FromIterator<RelayUrl>`); an absent/empty list keeps
         // the working Staging default. An invalid URL is a hard error rather than a
         // silent fall-through, so a typo in a self-hosted relay URL is caught up front.
-        // INTEROP: both peers must share the SAME relay set to rendezvous; mixing
-        // Custom on one side and Staging on the other breaks hole-punch coordination.
+        // INTEROP (CORRECTED, WI-5c 2026-06-10): peers do NOT need the same relay set. A dialer
+        // connects on demand to the REMOTE peer's home relay even when it is not in the dialer's own
+        // RelayMap (iroh `active_relay_handle_for_node`), so heterogeneous/federated relays interoperate
+        // as long as each peer's home relay is discoverable (we publish it in the pkarr/DHT record).
+        // PROVEN: a replicator with home=staging connected to a publisher whose home was a local relay
+        // (`relay(http://localhost:3340)`), discovered purely via the Mainline DHT. This is what makes
+        // the "every capable user runs their own relay" model work. The earlier "same relay set"
+        // claim (from the WI-4g observation) was wrong; that failure had another cause.
         let relay_mode = match cfg.custom_relay_urls.as_deref() {
             Some(urls) if !urls.is_empty() => {
                 let parsed: Vec<iroh::RelayUrl> = urls
@@ -75,10 +114,12 @@ impl PeerEndpoint {
             }
             _ => iroh::RelayMode::Staging,
         };
-        let builder = Endpoint::builder()
-            .alpns(vec![crate::PEER_L0_ALPN.to_vec()])
-            .relay_mode(relay_mode)
-            .discovery_n0();
+        let builder = apply_discovery(
+            Endpoint::builder()
+                .alpns(vec![crate::PEER_L0_ALPN.to_vec()])
+                .relay_mode(relay_mode),
+            cfg.discovery,
+        );
 
         // Older iroh 0.9x API on our rust-version uses bind_addr_v4 / bind_addr_v6
         // or simply lets the builder pick. For the spike we keep it simple.
@@ -255,7 +296,7 @@ pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
         }
         _ => iroh::RelayMode::Staging,
     };
-    let builder = Endpoint::builder().relay_mode(relay_mode).discovery_n0();
+    let builder = apply_discovery(Endpoint::builder().relay_mode(relay_mode), cfg.discovery);
 
     // bind_addr is best-effort / ignored for 0.92 compat (same as L0)
     if let Some(_addr) = cfg.bind_addr {

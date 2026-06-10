@@ -133,6 +133,24 @@ pub fn namespace_from_ticket(ticket_str: &str) -> Result<String> {
 }
 
 /// Issue one sealed capability token per grant, after the drive ticket is known.
+/// WI-5b independence test lever: how much addressing the published DocTicket carries.
+/// `AEROFTP_PEER_TICKET_ADDRS=id` -> `AddrInfoOptions::Id` (NodeID only), forcing the replicator to
+/// resolve the publisher through discovery (Mainline DHT when `AEROFTP_PEER_DISCOVERY=dht`) rather than
+/// dialing ticket-embedded addresses. Any other value keeps `RelayAndAddresses` (the robust default that
+/// makes first contact discovery-independent). This is the lever that turns a 2-machine `dht` run into a
+/// real proof that decentralized discovery RESOLVES, not just that the transfer happens to succeed.
+fn ticket_addr_options_from_env() -> iroh_docs::api::protocol::AddrInfoOptions {
+    use iroh_docs::api::protocol::AddrInfoOptions;
+    match std::env::var("AEROFTP_PEER_TICKET_ADDRS")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("id") => AddrInfoOptions::Id,
+        _ => AddrInfoOptions::RelayAndAddresses,
+    }
+}
+
 pub(crate) fn issue_capabilities(
     cap: &CapIssue,
     ns: &iroh_docs::NamespaceId,
@@ -345,7 +363,7 @@ pub async fn run_docs_publish(
     use bytes::Bytes;
     use iroh::protocol::Router;
     use iroh_blobs::BlobsProtocol;
-    use iroh_docs::api::protocol::{AddrInfoOptions, ShareMode};
+    use iroh_docs::api::protocol::ShareMode;
     use iroh_docs::protocol::Docs;
     use iroh_gossip::net::Gossip;
 
@@ -516,9 +534,14 @@ pub async fn run_docs_publish(
     // Produce a ticket that tells the other side the NamespaceId + where to find us. Read mode is
     // sufficient (the other side only pulls). Shared NOW (right after v1) so a watcher can join during
     // v1 and observe the live v1->v2 update below.
-    let ticket = doc
-        .share(ShareMode::Read, AddrInfoOptions::RelayAndAddresses)
-        .await?;
+    // WI-5b independence lever: `AEROFTP_PEER_TICKET_ADDRS=id` emits a NodeID-ONLY ticket so the
+    // replicator MUST resolve us through discovery (the Mainline DHT under DISCOVERY=dht) instead of
+    // dialing addresses baked into the ticket — this is what actually EXERCISES decentralized discovery
+    // (without it the ticket carries our relay+addrs and the dialer bypasses discovery entirely).
+    // Any other value keeps the robust `RelayAndAddresses` default.
+    let addr_opts = ticket_addr_options_from_env();
+    println!("TICKET ADDRESSING: {addr_opts:?} (WI-5b; `Id` forces discovery resolution on the replicator)");
+    let ticket = doc.share(ShareMode::Read, addr_opts).await?;
     println!("\n=== DOC TICKET (copy/paste to docs-replicate side) ===");
     println!("{}", ticket);
     println!("==================================================\n");
