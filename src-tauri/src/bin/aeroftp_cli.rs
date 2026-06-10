@@ -9310,7 +9310,6 @@ fn build_tui_context(
                 .copied()
                 .unwrap_or(visible_profiles.len());
             Ok(cli_tui::TuiUser {
-                id: user.id,
                 name: user.name,
                 is_active: user.is_active,
                 is_locked,

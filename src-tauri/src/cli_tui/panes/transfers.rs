@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::cli_tui::worker::TransferDirection;
 
 /// In-memory transfer queue rendered by the Transfers pane.
@@ -34,6 +36,8 @@ impl TransfersPaneState {
             transferred: 0,
             total: 0,
             status: TransferStatus::Active,
+            speed_bps: 0,
+            last_sample: None,
         });
         self.selected = self.items.len().saturating_sub(1);
         id
@@ -58,6 +62,7 @@ impl TransfersPaneState {
     /// status, so the gauge never claims success before the worker confirms it.
     pub fn update_progress(&mut self, id: u64, transferred: u64, total: u64) {
         if let Some(item) = self.item_mut(id) {
+            item.observe_speed(transferred, Instant::now());
             item.transferred = transferred;
             if total > 0 {
                 item.total = total;
@@ -72,12 +77,14 @@ impl TransfersPaneState {
             }
             item.transferred = item.total;
             item.status = TransferStatus::Done;
+            item.speed_bps = 0;
         }
     }
 
     pub fn mark_failed(&mut self, id: u64, message: String) {
         if let Some(item) = self.item_mut(id) {
             item.status = TransferStatus::Failed(message);
+            item.speed_bps = 0;
         }
     }
 
@@ -86,7 +93,34 @@ impl TransfersPaneState {
     pub fn mark_cancelled(&mut self, id: u64) {
         if let Some(item) = self.item_mut(id) {
             item.status = TransferStatus::Cancelled;
+            item.speed_bps = 0;
         }
+    }
+
+    /// Number of transfers still moving bytes. Surfaced in the connected
+    /// header bar ("N active").
+    pub fn active_count(&self) -> usize {
+        self.items
+            .iter()
+            .filter(|item| matches!(item.status, TransferStatus::Active))
+            .count()
+    }
+
+    /// Aggregate live throughput of the active transfers, split by direction,
+    /// as `(upload_bps, download_bps)`. Feeds the header speed readout.
+    pub fn aggregate_speed(&self) -> (u64, u64) {
+        let mut up = 0u64;
+        let mut down = 0u64;
+        for item in &self.items {
+            if !matches!(item.status, TransferStatus::Active) {
+                continue;
+            }
+            match item.direction {
+                TransferDirection::Upload => up = up.saturating_add(item.speed_bps),
+                TransferDirection::Download => down = down.saturating_add(item.speed_bps),
+            }
+        }
+        (up, down)
     }
 
     /// Drop the selected transfer once it is finished, returning its local path
@@ -144,6 +178,11 @@ pub struct TransferItem {
     pub transferred: u64,
     pub total: u64,
     pub status: TransferStatus,
+    /// Most recent throughput estimate in bytes/sec, recomputed from the delta
+    /// between progress samples. Zeroed once the transfer leaves Active.
+    pub speed_bps: u64,
+    /// Last `(instant, transferred)` sample used to derive `speed_bps`.
+    last_sample: Option<(Instant, u64)>,
 }
 
 impl TransferItem {
@@ -153,6 +192,23 @@ impl TransferItem {
             TransferStatus::Done => 1.0,
             _ if self.total == 0 => 0.0,
             _ => (self.transferred as f64 / self.total as f64).clamp(0.0, 1.0),
+        }
+    }
+
+    /// Recompute the throughput estimate from a new progress sample. Samples
+    /// closer than 50ms are folded into the previous one (the backend already
+    /// throttles to ~150ms) so the readout never divides by a near-zero dt.
+    fn observe_speed(&mut self, transferred: u64, now: Instant) {
+        match self.last_sample {
+            Some((t0, b0)) => {
+                let dt = now.duration_since(t0).as_secs_f64();
+                if dt >= 0.05 {
+                    let delta = transferred.saturating_sub(b0) as f64;
+                    self.speed_bps = (delta / dt).max(0.0) as u64;
+                    self.last_sample = Some((now, transferred));
+                }
+            }
+            None => self.last_sample = Some((now, transferred)),
         }
     }
 }
@@ -302,6 +358,39 @@ mod tests {
         assert_eq!(transfers.items.len(), 1);
         assert_eq!(transfers.items[0].id, active);
         assert!(transfers.has_active());
+    }
+
+    #[test]
+    fn aggregate_speed_sums_active_transfers_by_direction() {
+        let mut transfers = TransfersPaneState::default();
+        let down = transfers.enqueue(
+            TransferDirection::Download,
+            "a.bin".to_string(),
+            "/srv/a.bin".to_string(),
+            "./a.bin".to_string(),
+        );
+        let up = transfers.enqueue(
+            TransferDirection::Upload,
+            "b.bin".to_string(),
+            "/srv/b.bin".to_string(),
+            "./b.bin".to_string(),
+        );
+        let done = transfers.enqueue(
+            TransferDirection::Download,
+            "c.bin".to_string(),
+            "/srv/c.bin".to_string(),
+            "./c.bin".to_string(),
+        );
+        transfers.items[0].speed_bps = 2_000;
+        transfers.items[1].speed_bps = 500;
+        transfers.items[2].speed_bps = 9_999;
+        transfers.mark_done(done);
+
+        // Active aggregate: download 2000, upload 500; the finished one drops out
+        // and its speed is zeroed.
+        assert_eq!(transfers.aggregate_speed(), (500, 2_000));
+        assert_eq!(transfers.active_count(), 2);
+        let _ = (down, up);
     }
 
     #[test]

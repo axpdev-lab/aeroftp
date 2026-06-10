@@ -195,7 +195,6 @@ mod tests {
 
     fn sample_user() -> TuiUser {
         TuiUser {
-            id: 1,
             name: "default".to_string(),
             is_active: true,
             is_locked: false,

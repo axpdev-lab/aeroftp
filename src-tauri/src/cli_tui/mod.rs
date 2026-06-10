@@ -7,7 +7,7 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -18,7 +18,7 @@ use ratatui::{
 };
 
 use self::{
-    app::{AppState, BrowserSide, TuiActionIntent, TuiFocus, TUI_ACTION_ITEMS},
+    app::{AppState, BrowserSide, TuiFocus},
     event::{key_to_action, key_to_overlay},
     overlay::TuiOverlay,
     panes::transfers::{TransferItem, TransferStatus},
@@ -168,127 +168,65 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     // dual-pane browser. The two layouts are deliberately distinct surfaces.
     if !app.is_live_connected() {
         render_introhub(frame, area, app, theme);
-        render_overlay(frame, area, app, theme);
-        return;
+    } else {
+        render_browser_fullscreen(frame, area, app, theme);
     }
+    render_overlay(frame, area, app, theme);
+}
 
+/// Shape B connected view: a full-screen dual-pane file manager. A header bar
+/// (profile, connection dot, aggregate up/down speed, active-transfer count),
+/// the REMOTE | LOCAL lists at full width, the TRANSFERS strip when transfers
+/// exist, and a key-hint footer. No picker columns are shown while browsing.
+fn render_browser_fullscreen(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
     let rows = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(12),
-        Constraint::Length(3),
+        Constraint::Length(1), // header bar
+        Constraint::Min(4),    // dual panes (+ transfers strip)
+        Constraint::Length(2), // footer key hints + status
     ])
     .split(area);
 
-    let header = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled(
-                " AeroFTP TUI",
-                theme.accent_style().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("  "),
-            Span::styled(app.phase_label(), theme.muted_style()),
-        ]),
-        Line::from(Span::styled(
-            "User -> profile -> action -> browser. Live reads are queued through CLI handlers.",
-            theme.muted_style(),
-        )),
-    ]);
-    frame.render_widget(header, rows[0]);
+    render_fullscreen_header(frame, rows[0], app, theme);
 
     let show_transfers =
         !app.transfers.items.is_empty() || matches!(app.focus, TuiFocus::Transfers);
     let body_area = if show_transfers {
         let strip_height = transfers_strip_height(app, rows[1].height);
         let split =
-            Layout::vertical([Constraint::Min(6), Constraint::Length(strip_height)]).split(rows[1]);
+            Layout::vertical([Constraint::Min(3), Constraint::Length(strip_height)]).split(rows[1]);
         render_transfers(frame, split[1], app, theme);
         split[0]
     } else {
         rows[1]
     };
 
-    let body_direction = if area.width >= 96 {
-        Direction::Horizontal
-    } else {
-        Direction::Vertical
-    };
-    // The Users column only ever shows a short list (often a single user), so it
-    // does not deserve a wide share. When a live session is connected the focus is
-    // on the dual-pane browser, so the picker columns shrink further and the
-    // browser container takes the lion's share (incremental step toward the #311
-    // full-screen dual-pane; the full Shape B pivot is a dedicated follow-up).
-    let body_constraints = if app.is_live_connected() {
-        [
-            Constraint::Percentage(10),
-            Constraint::Percentage(18),
-            Constraint::Percentage(14),
-            Constraint::Percentage(58),
-        ]
-    } else {
-        [
-            Constraint::Percentage(12),
-            Constraint::Percentage(27),
-            Constraint::Percentage(23),
-            Constraint::Percentage(38),
-        ]
-    };
-    let body = Layout::new(body_direction, body_constraints).split(body_area);
-
-    render_users(frame, body[0], app, theme);
-    render_profiles(frame, body[1], app, theme);
-    render_actions(frame, body[2], app, theme);
-
-    // Phase 3: true dual-pane split (local | remote) when we have a live connected session.
-    // The "browser" column is split horizontally; lists take most space, active summary below.
-    let browser_area = body[3];
-    if app.is_live_connected() {
-        // Give a bit more space to files when dual (the 30% column is now container).
-        // We keep the outer percentages for now; inside we split 50/50 for the two lists.
-        let summary_lines = 5u16; // compact summary for active side
-        let lists_height = browser_area.height.saturating_sub(summary_lines + 2); // +2 for borders/padding safety
-        let lists_area = Rect {
-            x: browser_area.x,
-            y: browser_area.y,
-            width: browser_area.width,
-            height: lists_height,
-        };
-        let dual = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(lists_area);
-
-        render_file_pane_list(frame, dual[0], app, theme, BrowserSide::Local);
-        render_file_pane_list(frame, dual[1], app, theme, BrowserSide::Remote);
-
-        // Active side summary at the bottom of the browser column
-        let summary_area = Rect {
-            x: browser_area.x,
-            y: lists_area.y + lists_height,
-            width: browser_area.width,
-            height: summary_lines + 1,
-        };
-        render_active_file_pane_summary(frame, summary_area, app, theme);
-    } else {
-        // In the picker/dashboard (non-live), show a split preview of Local and Remote paths
-        // based on the selected profile's saved paths (or launch CWD). This gives the dual
-        // info even before activating "Connect & browse".
-        render_browser_preview(frame, browser_area, app, theme);
-    }
+    // REMOTE on the left, LOCAL on the right (the #311 mockup order).
+    let dual = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(body_area);
+    render_file_pane_list(frame, dual[0], app, theme, BrowserSide::Remote);
+    render_file_pane_list(frame, dual[1], app, theme, BrowserSide::Local);
 
     let footer = Paragraph::new(vec![
         Line::from(vec![
-            Span::styled(" Move", theme.accent_style()),
-            Span::raw(" Up/Down   "),
-            Span::styled("Pane", theme.accent_style()),
-            Span::raw(" Tab   "),
-            Span::styled("Open", theme.accent_style()),
-            Span::raw(" Enter   "),
+            Span::styled(" Tab", theme.accent_style()),
+            Span::raw(" switch   "),
+            Span::styled("Enter", theme.accent_style()),
+            Span::raw(" open   "),
+            Span::styled("Bksp", theme.accent_style()),
+            Span::raw(" up   "),
+            Span::styled("g/u", theme.accent_style()),
+            Span::raw(" get/put   "),
             Span::styled("n", theme.accent_style()),
             Span::raw(" mkdir   "),
             Span::styled("r", theme.accent_style()),
             Span::raw(" rename   "),
             Span::styled("d", theme.accent_style()),
             Span::raw(" delete   "),
-            Span::styled("g/u", theme.accent_style()),
-            Span::raw(" get/put   "),
             Span::styled("c", theme.accent_style()),
             Span::raw(" cancel   "),
             Span::styled("D", theme.accent_style()),
@@ -301,8 +239,64 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
         Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
     ]);
     frame.render_widget(footer, rows[2]);
+}
 
-    render_overlay(frame, area, app, theme);
+/// Header bar of the connected view: app name + version, the profile name, a
+/// connection dot, and the live transfer readout (aggregate up/down speed and
+/// active-transfer count).
+fn render_fullscreen_header(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
+    let profile_name = app
+        .session
+        .identity
+        .as_ref()
+        .map(|identity| identity.profile_name.as_str())
+        .unwrap_or("-");
+
+    let (up, down) = app.transfers.aggregate_speed();
+    let active = app.transfers.active_count();
+
+    let mut spans = vec![
+        Span::styled(
+            " AeroFTP TUI",
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!(" {}", TUI_VERSION), theme.muted_style()),
+        Span::styled("  \u{00b7}  ", theme.muted_style()),
+        Span::styled(profile_name, Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled("  \u{00b7}  ", theme.muted_style()),
+        Span::styled("\u{25cf} connected", Style::default().fg(theme.ready)),
+    ];
+    spans.push(Span::styled(
+        format!(
+            "    \u{2191}{}/s \u{2193}{}/s",
+            format_browser_size(up),
+            format_browser_size(down)
+        ),
+        if active > 0 {
+            theme.accent_style()
+        } else {
+            theme.muted_style()
+        },
+    ));
+    spans.push(Span::styled(
+        format!("  \u{00b7}  {} active", active),
+        theme.muted_style(),
+    ));
+    // Surface an in-flight worker operation (connect/list/stat/transfer) so the
+    // header reflects ongoing activity, not just transfer throughput.
+    if matches!(app.worker, WorkerEvent::Busy { .. }) {
+        spans.push(Span::styled(
+            format!("  \u{00b7}  {}", app.worker.label()),
+            theme.muted_style(),
+        ));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 /// IntroHub: the GUI-style pre-connection screen. A header with the user
@@ -336,7 +330,7 @@ fn render_introhub_header(
     let user = app.selected_user();
     let user_name = user.map(|u| u.name.as_str()).unwrap_or("-");
     let user_pos = format!("{}/{}", app.selected_user + 1, users.len().max(1));
-    let profile_count = user.map(|u| u.profiles.len()).unwrap_or(0);
+    let profile_count = user.map(|u| u.profile_count).unwrap_or(0);
     let fav_count = user
         .map(|u| u.profiles.iter().filter(|p| p.favorite).count())
         .unwrap_or(0);
@@ -652,238 +646,6 @@ fn transfers_strip_height(app: &AppState, available: u16) -> u16 {
     let ceiling = available.saturating_sub(8).max(3);
     desired.min(ceiling)
 }
-
-fn render_users(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
-    let items: Vec<ListItem> = app
-        .context
-        .users
-        .iter()
-        .map(|user| {
-            let lock = if user.is_locked { "locked" } else { "open" };
-            let active = if user.is_active { " active" } else { "" };
-            let admin = if user.is_admin { " admin" } else { "" };
-            ListItem::new(Line::from(vec![
-                Span::styled(format!("#{} ", user.id), theme.muted_style()),
-                Span::styled(&user.name, Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw("  "),
-                Span::styled(lock, lock_style(user.is_locked, theme)),
-                Span::styled(active, theme.muted_style()),
-                Span::styled(admin, theme.muted_style()),
-                Span::styled(
-                    format!("  {} profile(s)", user.profile_count),
-                    theme.muted_style(),
-                ),
-            ]))
-        })
-        .collect();
-    let title = if matches!(app.focus, TuiFocus::Users) {
-        " Users * "
-    } else {
-        " Users "
-    };
-    let mut state = ListState::default();
-    if !items.is_empty() {
-        state.select(Some(app.selected_user));
-    }
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
-        .highlight_style(selection_style(app.focus, TuiFocus::Users, theme))
-        .highlight_symbol("> ");
-    frame.render_stateful_widget(list, area, &mut state);
-}
-
-fn render_profiles(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
-    let user = app.selected_user();
-    let items: Vec<ListItem> = user
-        .map(|user| {
-            if user.is_locked {
-                vec![ListItem::new(Line::from(vec![
-                    Span::styled("Locked user", Style::default().fg(theme.planned)),
-                    Span::raw("  "),
-                    Span::styled("Enter unlocks via CLI prompt", theme.muted_style()),
-                ]))]
-            } else if user.profiles.is_empty() {
-                vec![ListItem::new(Line::from(Span::styled(
-                    "No profiles for this user",
-                    theme.muted_style(),
-                )))]
-            } else {
-                user.profiles
-                    .iter()
-                    .map(|profile| {
-                        let fav = if profile.favorite { "*" } else { " " };
-                        // host always clear (per spec: "host in chiaro"); username (auth id) masked by default.
-                        // For cloud providers without a real host the subtitle echoes the
-                        // username/credential itself: rendering it here would both duplicate
-                        // the username column AND leak it in clear (defeating the `s` toggle),
-                        // so suppress it and let the maskable username column carry it.
-                        let host_is_credential_echo =
-                            !profile.host.is_empty() && profile.host == profile.username;
-                        let host_span = if host_is_credential_echo {
-                            Span::raw("")
-                        } else {
-                            Span::styled(format!("  {}", profile.host), theme.muted_style())
-                        };
-                        let user_span = if profile.username.is_empty() {
-                            Span::raw("")
-                        } else if app.show_credentials {
-                            Span::styled(
-                                format!("  {}", profile.username),
-                                Style::default().fg(theme.accent), // raw shown emphasized
-                            )
-                        } else {
-                            Span::styled(
-                                format!("  {}", app::mask_credential(&profile.username)),
-                                theme.muted_style(),
-                            )
-                        };
-                        ListItem::new(Line::from(vec![
-                            Span::styled(format!("{:>2}.", profile.selector), theme.muted_style()),
-                            Span::raw(fav),
-                            Span::styled(
-                                &profile.name,
-                                Style::default().add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(
-                                format!("  {}", profile.protocol),
-                                Style::default().fg(theme.accent),
-                            ),
-                            host_span,
-                            user_span,
-                        ]))
-                    })
-                    .collect()
-            }
-        })
-        .unwrap_or_else(|| {
-            vec![ListItem::new(Line::from(Span::styled(
-                "No user selected",
-                theme.muted_style(),
-            )))]
-        });
-
-    let title = if matches!(app.focus, TuiFocus::Profiles) {
-        " Profiles * "
-    } else {
-        " Profiles "
-    };
-    let mut state = ListState::default();
-    if user
-        .map(|u| !u.is_locked && !u.profiles.is_empty())
-        .unwrap_or(false)
-    {
-        state.select(Some(app.selected_profile));
-    }
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
-        .highlight_style(selection_style(app.focus, TuiFocus::Profiles, theme))
-        .highlight_symbol("> ");
-    frame.render_stateful_widget(list, area, &mut state);
-}
-
-fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
-    let chunks = Layout::vertical([Constraint::Min(7), Constraint::Length(8)]).split(area);
-
-    let items: Vec<ListItem> = TUI_ACTION_ITEMS
-        .iter()
-        .map(|item| {
-            let phase_style = match item.intent {
-                TuiActionIntent::ProfilesInteractive | TuiActionIntent::Profile(_) => {
-                    Style::default().fg(theme.ready)
-                }
-                TuiActionIntent::Planned => Style::default().fg(theme.planned),
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(item.title, Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw("  "),
-                Span::styled(item.phase, phase_style),
-            ]))
-        })
-        .collect();
-    let mut list_state = ListState::default();
-    list_state.select(Some(app.selected_action));
-    let title = if matches!(app.focus, TuiFocus::Actions) {
-        " Actions * "
-    } else {
-        " Actions "
-    };
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
-        .highlight_style(selection_style(app.focus, TuiFocus::Actions, theme))
-        .highlight_symbol("> ");
-    frame.render_stateful_widget(list, chunks[0], &mut list_state);
-
-    let selected = app.selected_action();
-    let user_name = app
-        .selected_user()
-        .map(|user| user.name.as_str())
-        .unwrap_or("-");
-    let profile = app.selected_profile();
-    let profile_name = profile.map(|p| p.name.as_str()).unwrap_or("-");
-    let profile_path = profile.map(|p| p.initial_path.as_str()).unwrap_or("-");
-    let mut detail_lines = vec![
-        Line::from(Span::styled(
-            selected.title,
-            theme.accent_style().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(selected.description),
-        Line::from(vec![
-            Span::styled("User:    ", theme.muted_style()),
-            Span::raw(user_name),
-        ]),
-        Line::from(vec![
-            Span::styled("Profile: ", theme.muted_style()),
-            Span::raw(profile_name),
-        ]),
-    ];
-    // Echo auth username (masked by default) in the Intent preview per masking task.
-    if let Some(p) = profile {
-        if !p.username.is_empty() {
-            let auth = if app.show_credentials {
-                p.username.clone()
-            } else {
-                app::mask_credential(&p.username)
-            };
-            detail_lines.push(Line::from(vec![
-                Span::styled("Auth:    ", theme.muted_style()),
-                Span::raw(auth),
-            ]));
-        }
-    }
-    detail_lines.extend(vec![
-        Line::from(vec![
-            Span::styled("Path:    ", theme.muted_style()),
-            Span::raw(profile_path),
-        ]),
-        Line::from(vec![
-            Span::styled("Command: ", theme.muted_style()),
-            Span::raw(selected.command),
-        ]),
-        Line::from(vec![
-            Span::styled("Status:  ", theme.muted_style()),
-            Span::raw(selected.phase),
-        ]),
-        Line::from(Span::styled(app.pane_summary(), theme.muted_style())),
-    ]);
-    // Phase 3: use active side for the "Listed" info in Intent.
-    if let Some(summary) = app.active_browser().summary.as_ref() {
-        detail_lines.push(Line::from(vec![
-            Span::styled("Listed:  ", theme.muted_style()),
-            Span::raw(format!(
-                "{} ({} items, {} dirs, {} files)",
-                app.active_browser().path,
-                summary.total,
-                summary.dirs,
-                summary.files
-            )),
-        ]));
-    }
-    let details = Paragraph::new(detail_lines)
-        .block(Block::default().borders(Borders::ALL).title(" Intent "))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(details, chunks[1]);
-}
-
 /// Phase 3: render just the file list for one side of the dual-pane (local or remote).
 /// No internal summary (summary is rendered once below for the active side).
 fn render_file_pane_list(
@@ -971,131 +733,6 @@ fn render_file_pane_list(
         .highlight_symbol(if is_active { "> " } else { "  " });
     frame.render_stateful_widget(list, area, &mut list_state);
 }
-
-/// Phase 3: compact summary for the currently active file pane (local or remote).
-fn render_active_file_pane_summary(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    app: &AppState,
-    theme: TuiTheme,
-) {
-    let state = app.active_browser();
-    let side_label = if app.active_browser_side == BrowserSide::Local {
-        "Local"
-    } else {
-        "Remote"
-    };
-
-    let summary = match &state.summary {
-        Some(summary) => {
-            let mut lines = vec![
-                Line::from(vec![
-                    Span::styled(format!("{} Path:  ", side_label), theme.muted_style()),
-                    Span::raw(state.path.as_str()),
-                ]),
-                Line::from(vec![
-                    Span::styled("Items: ", theme.muted_style()),
-                    Span::raw(format!(
-                        "{} total, {} dirs, {} files, {}",
-                        summary.total,
-                        summary.dirs,
-                        summary.files,
-                        format_browser_size(summary.total_bytes)
-                    )),
-                    Span::styled(
-                        if summary.truncated { " truncated" } else { "" },
-                        theme.muted_style(),
-                    ),
-                ]),
-            ];
-            if let Some(preview) = &state.preview {
-                lines.extend(browser_preview_lines(preview, theme));
-            } else if let Some(entry) = state.selected_entry() {
-                lines.push(Line::from(vec![
-                    Span::styled("Sel:   ", theme.muted_style()),
-                    Span::raw(format_browser_entry(entry)),
-                    Span::styled(
-                        if entry.is_dir {
-                            "  directory"
-                        } else {
-                            "  file"
-                        },
-                        theme.muted_style(),
-                    ),
-                ]));
-            }
-            lines
-        }
-        None => vec![
-            Line::from(vec![
-                Span::styled(format!("{} Path:  ", side_label), theme.muted_style()),
-                Span::raw("-"),
-            ]),
-            Line::from(vec![
-                Span::styled("Items: ", theme.muted_style()),
-                Span::raw("-"),
-            ]),
-        ],
-    };
-
-    let details = Paragraph::new(summary)
-        .block(Block::default().borders(Borders::ALL).title(" Listing "))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(details, area);
-}
-
-/// Preview for the browser column in the picker/dashboard (before live connect).
-/// Splits the area to show the expected Local and Remote starting paths for the
-/// selected profile (respecting saved localPath/defaultLocalPath if present).
-/// This gives a "dual" feel even in the initial view.
-fn render_browser_preview(
-    frame: &mut ratatui::Frame<'_>,
-    area: Rect,
-    app: &AppState,
-    _theme: TuiTheme,
-) {
-    let chunks =
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
-
-    let remote_path = app
-        .selected_profile()
-        .map(|p| p.initial_path.clone())
-        .unwrap_or_else(|| "/".to_string());
-
-    let local_path = app
-        .selected_profile()
-        .and_then(|p| {
-            if !p.default_local_path.is_empty() {
-                Some(p.default_local_path.clone())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| app.local.path.clone());
-
-    let local_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Local (profile or launch) ");
-    let local_para = Paragraph::new(format!(
-        "Path: {}\n\n(Connect to list live content)",
-        local_path
-    ))
-    .block(local_block)
-    .wrap(Wrap { trim: true });
-    frame.render_widget(local_para, chunks[0]);
-
-    let remote_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Remote (profile initialPath) ");
-    let remote_para = Paragraph::new(format!(
-        "Path: {}\n\n(Connect to list live content)",
-        remote_path
-    ))
-    .block(remote_block)
-    .wrap(Wrap { trim: true });
-    frame.render_widget(remote_para, chunks[1]);
-}
-
 fn render_transfers(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
     let items: Vec<ListItem> = if app.transfers.items.is_empty() {
         vec![ListItem::new(Line::from(Span::styled(
@@ -1253,55 +890,6 @@ fn browser_entry_meta(entry: &crate::cli_tui::panes::browser::BrowserEntry) -> S
         .unwrap_or_default();
     format!("  {}{}", format_browser_size(entry.size), modified)
 }
-
-fn browser_preview_lines(
-    preview: &crate::cli_tui::panes::browser::BrowserPreview,
-    theme: TuiTheme,
-) -> Vec<Line<'static>> {
-    let kind = if preview.is_dir { "directory" } else { "file" };
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Sel:   ", theme.muted_style()),
-            Span::raw(format!(
-                "{}  {}",
-                preview.name,
-                if preview.is_symlink { "symlink" } else { kind }
-            )),
-        ]),
-        Line::from(vec![
-            Span::styled("Size:  ", theme.muted_style()),
-            Span::raw(if preview.is_dir {
-                "-".to_string()
-            } else {
-                format!(
-                    "{} ({} bytes)",
-                    format_browser_size(preview.size),
-                    preview.size
-                )
-            }),
-        ]),
-    ];
-    if let Some(modified) = &preview.modified {
-        lines.push(Line::from(vec![
-            Span::styled("Mod:   ", theme.muted_style()),
-            Span::raw(short_modified(modified).to_string()),
-        ]));
-    }
-    if let Some(mime_type) = &preview.mime_type {
-        lines.push(Line::from(vec![
-            Span::styled("Mime:  ", theme.muted_style()),
-            Span::raw(mime_type.clone()),
-        ]));
-    }
-    if let Some(permissions) = &preview.permissions {
-        lines.push(Line::from(vec![
-            Span::styled("Perm:  ", theme.muted_style()),
-            Span::raw(permissions.clone()),
-        ]));
-    }
-    lines
-}
-
 fn short_modified(value: &str) -> &str {
     value.get(..16).unwrap_or(value)
 }
@@ -1338,15 +926,6 @@ fn selection_style(focus: TuiFocus, pane: TuiFocus, theme: TuiTheme) -> Style {
             .add_modifier(Modifier::BOLD)
     }
 }
-
-fn lock_style(locked: bool, theme: TuiTheme) -> Style {
-    if locked {
-        Style::default().fg(theme.planned)
-    } else {
-        Style::default().fg(theme.ready)
-    }
-}
-
 /// Run a ratatui surface in raw-mode alternate-screen mode.
 ///
 /// The restore path is deliberately centralized because every interactive
@@ -1397,4 +976,93 @@ fn restore_terminal(terminal: &mut CliTuiTerminal) -> io::Result<()> {
     raw_result?;
     screen_result?;
     cursor_result
+}
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+    use crate::cli_tui::app::{TuiProfile, TuiUser};
+    use crate::cli_tui::session::TuiSessionPhase;
+    use ratatui::backend::TestBackend;
+
+    fn smoke_context() -> TuiContext {
+        let profile = |sel: &str, name: &str| TuiProfile {
+            selector: sel.to_string(),
+            name: name.to_string(),
+            protocol: "sftp".to_string(),
+            host: "nas.example.com".to_string(),
+            username: "ale@example.com".to_string(),
+            initial_path: "/srv".to_string(),
+            default_local_path: "/home/ale/dl".to_string(),
+            favorite: sel == "1",
+        };
+        TuiContext {
+            users: vec![TuiUser {
+                name: "ale".to_string(),
+                is_active: true,
+                is_locked: false,
+                is_admin: true,
+                profile_count: 2,
+                profiles: vec![profile("1", "NAS"), profile("2", "Archive")],
+            }],
+            initial_user: 0,
+            download_base: "/home/ale".to_string(),
+        }
+    }
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+
+    /// The IntroHub renders the My Servers table without panicking, at a normal
+    /// size and a deliberately tiny one (layout subtraction overflow guard).
+    #[test]
+    fn introhub_renders_my_servers_table() {
+        let app = AppState::new_live(smoke_context());
+        let theme = TuiTheme::default();
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| render_dashboard(frame, &app, theme))
+            .unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("My Servers"), "table title present");
+        assert!(text.contains("AeroFTP TUI"), "header present");
+        assert!(text.contains(TUI_VERSION), "TUI version surfaced");
+
+        // Tiny terminal must not panic (Length(1)/Min layouts, Table widths).
+        let mut tiny = Terminal::new(TestBackend::new(20, 4)).unwrap();
+        tiny.draw(|frame| render_dashboard(frame, &app, theme))
+            .unwrap();
+    }
+
+    /// The connected dual-pane view renders header + REMOTE/LOCAL panes without
+    /// panicking, again including a tiny terminal.
+    #[test]
+    fn connected_fullscreen_renders_dual_panes() {
+        let mut app = AppState::new_live(smoke_context());
+        // Force a connected session so render_dashboard takes the fullscreen path.
+        app.session.phase = TuiSessionPhase::Connected;
+        app.focus = TuiFocus::Browser;
+        let theme = TuiTheme::default();
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| render_dashboard(frame, &app, theme))
+            .unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("Remote"), "remote pane present");
+        assert!(text.contains("Local"), "local pane present");
+        assert!(text.contains("connected"), "connection dot present");
+
+        let mut tiny = Terminal::new(TestBackend::new(18, 5)).unwrap();
+        tiny.draw(|frame| render_dashboard(frame, &app, theme))
+            .unwrap();
+    }
 }

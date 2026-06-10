@@ -29,7 +29,6 @@ impl TuiContext {
 
 #[derive(Debug, Clone)]
 pub struct TuiUser {
-    pub id: i64,
     pub name: String,
     pub is_active: bool,
     pub is_locked: bool,
@@ -131,30 +130,8 @@ impl AppState {
             .min(TUI_ACTION_ITEMS.len().saturating_sub(1))]
     }
 
-    pub fn phase_label(&self) -> &'static str {
-        if self.live_worker_enabled {
-            "Phase 2"
-        } else {
-            "Phase 1"
-        }
-    }
-
     pub fn take_intent(&mut self) -> Option<TuiIntent> {
         self.intent.take()
-    }
-
-    pub fn pane_summary(&self) -> String {
-        format!(
-            "focus:{} local:{} remote:{} side:{:?} profiles:{} transfers:{} session:{} worker:{}",
-            self.focus.label(),
-            self.local.selected,
-            self.browser.selected,
-            self.active_browser_side,
-            self.profiles.selected,
-            self.transfers.selected,
-            self.session.label(),
-            self.worker.label()
-        )
     }
 
     pub fn apply_action(&mut self, action: TuiAction) -> Vec<WorkerCommand> {
@@ -358,6 +335,16 @@ impl AppState {
     }
 
     fn focus_next(&mut self) -> Vec<WorkerCommand> {
+        // In the connected full-screen view only the Browser and Transfers panes
+        // exist; never cycle focus back onto the hidden picker panes.
+        if self.is_live_connected() {
+            self.focus = match self.focus {
+                TuiFocus::Transfers => TuiFocus::Browser,
+                _ => TuiFocus::Transfers,
+            };
+            self.status = self.contextual_status();
+            return Vec::new();
+        }
         self.focus = match self.focus {
             TuiFocus::Users => TuiFocus::Profiles,
             TuiFocus::Profiles => TuiFocus::Actions,
@@ -1305,18 +1292,6 @@ pub enum TuiFocus {
     Transfers,
 }
 
-impl TuiFocus {
-    pub fn label(self) -> &'static str {
-        match self {
-            TuiFocus::Users => "users",
-            TuiFocus::Profiles => "profiles",
-            TuiFocus::Actions => "actions",
-            TuiFocus::Browser => "browser",
-            TuiFocus::Transfers => "transfers",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TuiIntent {
     Quit,
@@ -1341,7 +1316,6 @@ pub enum TuiProfileAction {
 #[derive(Debug, Clone, Copy)]
 pub struct TuiActionItem {
     pub title: &'static str,
-    pub command: &'static str,
     pub description: &'static str,
     pub phase: &'static str,
     pub intent: TuiActionIntent,
@@ -1366,42 +1340,36 @@ pub enum BrowserSide {
 pub const TUI_ACTION_ITEMS: &[TuiActionItem] = &[
     TuiActionItem {
         title: "Connect & browse",
-        command: "aeroftp-cli --user USER --profile N ls / -l",
         description: "Connect to the profile and open a live browser session (Enter from Profiles does this directly).",
         phase: "P1 ready",
         intent: TuiActionIntent::Profile(TuiProfileAction::ListRoot),
     },
     TuiActionItem {
         title: "Profiles navigator (leaves TUI)",
-        command: "aeroftp-cli --user USER profiles -i",
         description: "Open the existing profile navigator for the selected user (exits TUI).",
         phase: "P1 ready",
         intent: TuiActionIntent::ProfilesInteractive,
     },
     TuiActionItem {
         title: "Tree",
-        command: "aeroftp-cli --user USER --profile N tree / -d 2",
         description: "Show a shallow tree through cmd_tree.",
         phase: "P1 ready",
         intent: TuiActionIntent::Profile(TuiProfileAction::Tree),
     },
     TuiActionItem {
         title: "Quota",
-        command: "aeroftp-cli --user USER --profile N df",
         description: "Read storage quota through cmd_df.",
         phase: "P1 ready",
         intent: TuiActionIntent::Profile(TuiProfileAction::Quota),
     },
     TuiActionItem {
         title: "Disk usage",
-        command: "aeroftp-cli --user USER --profile N ncdu /",
         description: "Open the existing ncdu explorer for the selected profile.",
         phase: "P1 ready",
         intent: TuiActionIntent::Profile(TuiProfileAction::DiskUsage),
     },
     TuiActionItem {
         title: "Transfers",
-        command: "g download / u upload (from the Browser)",
         description:
             "Download (g) and upload (u) from the Browser; progress shows in the Transfers pane.",
         phase: "P2 live",
@@ -1409,7 +1377,6 @@ pub const TUI_ACTION_ITEMS: &[TuiActionItem] = &[
     },
     TuiActionItem {
         title: "Command palette",
-        command: ": <any aeroftp-cli command>",
         description: "Parse line-mode commands without re-implementing handlers.",
         phase: "P3",
         intent: TuiActionIntent::Planned,
@@ -1506,7 +1473,6 @@ mod tests {
     fn sample_context() -> TuiContext {
         TuiContext {
             users: vec![TuiUser {
-                id: 1,
                 name: "default".to_string(),
                 is_active: true,
                 is_locked: false,
@@ -1586,7 +1552,6 @@ mod tests {
     fn locked_user_activation_routes_to_existing_unlock_flow() {
         let context = TuiContext {
             users: vec![TuiUser {
-                id: 1,
                 name: "locked".to_string(),
                 is_active: false,
                 is_locked: true,
@@ -1968,7 +1933,6 @@ mod tests {
     fn locked_user_has_no_planned_session() {
         let context = TuiContext {
             users: vec![TuiUser {
-                id: 1,
                 name: "locked".to_string(),
                 is_active: false,
                 is_locked: true,
@@ -2008,7 +1972,6 @@ mod tests {
         TuiContext {
             users: vec![
                 TuiUser {
-                    id: 1,
                     name: "ale".to_string(),
                     is_active: true,
                     is_locked: false,
@@ -2017,7 +1980,6 @@ mod tests {
                     profiles: vec![profile("1", "Production"), profile("2", "Archive")],
                 },
                 TuiUser {
-                    id: 2,
                     name: "root".to_string(),
                     is_active: false,
                     is_locked: false,
