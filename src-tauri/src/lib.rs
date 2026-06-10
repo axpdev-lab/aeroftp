@@ -74,6 +74,7 @@ pub mod delta_transport;
 #[cfg(feature = "aerorsync")]
 pub mod local_sync;
 mod number_parsing;
+pub mod peer_identity;
 pub mod portable;
 pub mod profile_loader;
 mod rsync_output;
@@ -81,6 +82,9 @@ pub mod storage_dedup;
 pub mod used_scan;
 mod user_crypto;
 pub mod user_partitions;
+// Re-export the partition DEK type so the (public) peer_identity storage facade
+// can name it in its signatures without widening the whole user_crypto module.
+pub use user_crypto::SecretKey;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`

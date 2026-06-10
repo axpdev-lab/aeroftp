@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 
 const DB_FILENAME: &str = "user_partitions.db";
-const SCHEMA_VERSION: &str = "3";
+const SCHEMA_VERSION: &str = "4";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
@@ -265,6 +265,36 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              key             TEXT PRIMARY KEY,
              value           TEXT NOT NULL,
              updated_at      INTEGER NOT NULL
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_identity (
+             user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+             encrypted_blob BLOB NOT NULL,
+             nonce          BLOB NOT NULL,
+             aead_alg       TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             public_id      TEXT NOT NULL,
+             created_at     INTEGER NOT NULL,
+             updated_at     INTEGER NOT NULL
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_contacts (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             contact_id     TEXT NOT NULL,
+             alias          TEXT NOT NULL,
+             added_at       INTEGER NOT NULL,
+             PRIMARY KEY(user_id, contact_id)
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_drives (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             namespace_id   TEXT NOT NULL,
+             role           TEXT NOT NULL,
+             encrypted_blob BLOB NOT NULL,
+             nonce          BLOB NOT NULL,
+             aead_alg       TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             created_at     INTEGER NOT NULL,
+             updated_at     INTEGER NOT NULL,
+             PRIMARY KEY(user_id, namespace_id)
          );",
     )
     .map_err(|e| format!("User partitions schema init: {e}"))
@@ -743,6 +773,23 @@ pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
         });
     }
 
+    // v3 -> v4: the P2P secret-store tables (peer_identity / peer_contacts /
+    // peer_drives) are additive and already created by `init_db_schema`'s
+    // CREATE TABLE IF NOT EXISTS on every open, so the upgrade only stamps the
+    // new version. This branch is REQUIRED: without it a v3 database would fall
+    // through to `migrate_legacy_payloads`, which re-inserts the default user
+    // and re-imports legacy payloads into a partition that already has users.
+    if stored_version.as_deref() == Some("3") {
+        upgrade_v3_to_v4(&mut conn)?;
+        return Ok(MigrationReport {
+            schema_version: SCHEMA_VERSION.to_string(),
+            created_default_user: false,
+            migrated_profiles: 0,
+            migrated_settings_scopes: 0,
+            already_migrated: true,
+        });
+    }
+
     // Multi-User is a first-class surface and does not require Master Password.
     // If the credential store is not cached yet (the GUI usually primes it via
     // `init_credential_store`, but the auto-keyring path may not have fired
@@ -818,6 +865,34 @@ fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
     tx.commit()
         .map_err(|e| format!("Commit v2->v3 upgrade: {e}"))?;
     Ok(())
+}
+
+/// v3 -> v4 upgrade. The new P2P secret-store tables are additive (already
+/// created by `init_db_schema` on open), so this only stamps the new schema
+/// version inside a transaction, mirroring [`upgrade_v2_to_v3`].
+fn upgrade_v3_to_v4(conn: &mut Connection) -> Result<(), String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start v3->v4 upgrade: {e}"))?;
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, SCHEMA_VERSION, now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit v3->v4 upgrade: {e}"))?;
+    Ok(())
+}
+
+/// Run `f` with the unlocked DEK of `user_id`, scoped to that partition without
+/// switching the active session. Thin wrapper over [`with_user_dek`] so the
+/// sibling P2P secret-store facade tests ([`crate::peer_identity`]) can thread a
+/// partition's real DEK. Test-only for now: shipping callers thread the DEK from
+/// the active session exactly like the profile commands do.
+#[cfg(test)]
+pub(crate) fn with_partition_dek<R>(
+    conn: &Connection,
+    root_key: &SecretKey,
+    user_id: i64,
+    f: impl FnOnce(&SecretKey) -> Result<R, String>,
+) -> Result<R, String> {
+    with_user_dek(conn, root_key, user_id, |_, dek| f(dek))
 }
 
 pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
@@ -4374,5 +4449,84 @@ mod tests {
             })
             .expect("admin still");
         assert_eq!(still_admin, 1);
+    }
+
+    #[test]
+    fn upgrade_v3_to_v4_stamps_version_and_preserves_users() {
+        // Regression guard for the data-loss-class finding behind the WI-4b v3->v4
+        // branch: a stored-v3 database (which already has users) must upgrade to v4
+        // by ONLY stamping the version - it must NOT re-insert a default user or
+        // otherwise touch existing partitions (that is what the missing branch would
+        // have caused by falling through to migrate_legacy_payloads).
+        let _guard = test_lock();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name              TEXT NOT NULL,
+                 name_canonical    TEXT NOT NULL UNIQUE,
+                 avatar_emoji      TEXT,
+                 avatar_color      TEXT,
+                 has_passphrase    INTEGER NOT NULL DEFAULT 0,
+                 kdf_salt          BLOB,
+                 kdf_params        TEXT,
+                 wrapped_dek       BLOB NOT NULL,
+                 dek_verifier      BLOB NOT NULL,
+                 sort_order        INTEGER NOT NULL DEFAULT 0,
+                 created_at        INTEGER NOT NULL,
+                 updated_at        INTEGER NOT NULL,
+                 last_unlocked_at  INTEGER,
+                 is_admin          INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE global_state (
+                 key             TEXT PRIMARY KEY,
+                 value           TEXT NOT NULL,
+                 updated_at      INTEGER NOT NULL
+             );",
+        )
+        .expect("v3 schema");
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, sort_order, created_at, updated_at, is_admin)
+             VALUES ('default', 'default', X'00', X'00', 0, ?1, ?1, 1)",
+            params![now],
+        )
+        .expect("seed default");
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, sort_order, created_at, updated_at, is_admin)
+             VALUES ('alice', 'alice', X'00', X'00', 1, ?1, ?1, 0)",
+            params![now],
+        )
+        .expect("seed alice");
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '3', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v3");
+
+        let users_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("count before");
+        assert_eq!(users_before, 2);
+
+        upgrade_v3_to_v4(&mut conn).expect("upgrade v3->v4");
+
+        let version = current_schema_version(&conn).expect("version");
+        assert_eq!(version.as_deref(), Some(SCHEMA_VERSION));
+        let users_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("count after");
+        assert_eq!(
+            users_after, 2,
+            "v3->v4 must preserve users (no default re-insert)"
+        );
+
+        // Idempotent: rerunning must not crash nor change the user set.
+        upgrade_v3_to_v4(&mut conn).expect("idempotent rerun");
+        let users_final: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("count final");
+        assert_eq!(users_final, 2);
     }
 }
