@@ -87,6 +87,12 @@ pub enum WorkerCommand {
     LocalStat {
         path: String,
     },
+    /// Persist the favorite flag for a saved profile (vault
+    /// `config_favorite_servers`). Fire-and-forget: the IntroHub flips its own
+    /// display state optimistically and asks the worker to persist.
+    ToggleFavorite {
+        profile_id: String,
+    },
 }
 
 impl WorkerCommand {
@@ -107,6 +113,7 @@ impl WorkerCommand {
             WorkerCommand::LocalList { .. } | WorkerCommand::LocalStat { .. } => {
                 TuiWorkerOperation::List
             }
+            WorkerCommand::ToggleFavorite { .. } => TuiWorkerOperation::Favorite,
         }
     }
 }
@@ -123,6 +130,7 @@ pub enum TuiWorkerOperation {
     Transfer,
     Cancel,
     Discard,
+    Favorite,
 }
 
 impl TuiWorkerOperation {
@@ -137,6 +145,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Transfer => "transfer",
             TuiWorkerOperation::Cancel => "cancel",
             TuiWorkerOperation::Discard => "discard",
+            TuiWorkerOperation::Favorite => "favorite",
         }
     }
 }

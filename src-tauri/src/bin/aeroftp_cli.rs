@@ -9283,6 +9283,7 @@ fn build_tui_context(
                         .to_string();
                     cli_tui::TuiProfile {
                         selector: (idx + 1).to_string(),
+                        id: id.to_string(),
                         name: profile
                             .get("name")
                             .and_then(|v| v.as_str())
@@ -10093,6 +10094,16 @@ async fn run_cli_tui_worker(
                             message,
                         });
                     }
+                }
+            }
+            WorkerCommand::ToggleFavorite { profile_id } => {
+                // Persist the favorite flag the IntroHub already flipped in its
+                // display state. Reuses the same vault helper as the CLI
+                // `profiles` toggle; fire-and-forget (no event back). The vault
+                // is already unlocked in this TUI session, so this is a cheap
+                // write; failures are non-critical for a favorite flag.
+                if let Ok(store) = open_vault(cli) {
+                    let _ = toggle_favorite_in_vault(&store, &profile_id);
                 }
             }
         }

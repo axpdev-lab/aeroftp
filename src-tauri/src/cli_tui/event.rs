@@ -32,6 +32,9 @@ pub enum TuiAction {
     /// When focus is on the dual browser area (live), Tab switches between Local and Remote pane.
     /// Left/Right still move global focus (e.g. Browser <-> Transfers).
     SwitchBrowserSide,
+    /// IntroHub: toggle the favorite flag of the highlighted saved profile,
+    /// persisted via the worker (`f`). No-op in the connected browser.
+    ToggleFavorite,
     Noop,
 }
 
@@ -59,6 +62,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('g') => TuiAction::Download,
         KeyCode::Char('u') => TuiAction::Upload,
         KeyCode::Char('c') => TuiAction::CancelOp,
+        KeyCode::Char('f') | KeyCode::Char('F') => TuiAction::ToggleFavorite,
         KeyCode::Char('s') | KeyCode::Char('S') => TuiAction::ToggleShowCredentials,
         _ => TuiAction::Noop,
     }

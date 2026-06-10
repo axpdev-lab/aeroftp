@@ -664,6 +664,8 @@ fn render_introhub_footer(
             Span::raw(" switch user   "),
             Span::styled("Enter", theme.accent_style()),
             Span::raw(" connect   "),
+            Span::styled("f", theme.accent_style()),
+            Span::raw(" favorite   "),
             Span::styled("s", theme.accent_style()),
             Span::raw(" show creds   "),
             Span::styled("q", theme.accent_style()),
@@ -1024,6 +1026,7 @@ mod render_tests {
     fn smoke_context() -> TuiContext {
         let profile = |sel: &str, name: &str| TuiProfile {
             selector: sel.to_string(),
+            id: format!("srv-{sel}"),
             name: name.to_string(),
             protocol: "sftp".to_string(),
             host: "nas.example.com".to_string(),

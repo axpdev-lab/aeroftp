@@ -40,6 +40,9 @@ pub struct TuiUser {
 #[derive(Debug, Clone, Default)]
 pub struct TuiProfile {
     pub selector: String,
+    /// Stable saved-profile id (vault `id`), used to persist the favorite flag
+    /// via `toggle_favorite_in_vault`. Empty for ad-hoc/unsaved entries.
+    pub id: String,
     pub name: String,
     pub protocol: String,
     pub host: String, // server host or subtitle; always rendered in clear (hosts stay clear)
@@ -204,6 +207,9 @@ impl AppState {
                 }
                 Vec::new()
             }
+            // Favorite toggling only applies on the IntroHub (handled in
+            // introhub_apply); a no-op in the connected browser.
+            TuiAction::ToggleFavorite => Vec::new(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -223,6 +229,8 @@ impl AppState {
             TuiAction::MoveRight => Some(self.introhub_cycle_user(1)),
             // Tab has no Local/Remote side to flip yet, so it also cycles users.
             TuiAction::SwitchBrowserSide => Some(self.introhub_cycle_user(1)),
+            // `f` toggles the favorite flag of the highlighted profile.
+            TuiAction::ToggleFavorite => Some(self.introhub_toggle_favorite()),
             // Enter connects to the selected profile (or unlocks a locked user).
             TuiAction::Activate => Some(self.introhub_activate()),
             // Backspace/Parent is meaningless on the picker; swallow it.
@@ -275,6 +283,36 @@ impl AppState {
             self.status = format!("User '{}' has no visible profiles.", user.name);
             Vec::new()
         }
+    }
+
+    /// Toggle the favorite flag of the highlighted profile. The display state is
+    /// flipped optimistically and the persistence (vault `config_favorite_servers`
+    /// via `toggle_favorite_in_vault`) is delegated to the worker; the TUI never
+    /// writes the vault itself.
+    fn introhub_toggle_favorite(&mut self) -> Vec<WorkerCommand> {
+        let (user_idx, profile_idx) = (self.selected_user, self.selected_profile);
+        let Some(profile) = self
+            .context
+            .users
+            .get_mut(user_idx)
+            .and_then(|user| user.profiles.get_mut(profile_idx))
+        else {
+            return Vec::new();
+        };
+        if profile.id.is_empty() {
+            self.status = "This profile has no saved id; favorite not persisted.".to_string();
+            return Vec::new();
+        }
+        profile.favorite = !profile.favorite;
+        let now_favorite = profile.favorite;
+        let profile_id = profile.id.clone();
+        let name = profile.name.clone();
+        self.status = if now_favorite {
+            format!("Marked '{}' as favorite.", name)
+        } else {
+            format!("Removed '{}' from favorites.", name)
+        };
+        vec![WorkerCommand::ToggleFavorite { profile_id }]
     }
 
     fn move_selection(&mut self, delta: isize) -> Vec<WorkerCommand> {
@@ -2084,6 +2122,38 @@ mod tests {
         assert_eq!(app.selected_user, 0);
         app.apply_action(TuiAction::MoveLeft);
         assert_eq!(app.selected_user, 0);
+    }
+
+    #[test]
+    fn introhub_f_toggles_favorite_optimistically_and_asks_the_worker_to_persist() {
+        let mut context = introhub_context();
+        context.users[0].profiles[0].id = "srv-1".to_string();
+        context.users[0].profiles[0].favorite = false;
+        let mut app = AppState::new_live(context);
+
+        let commands = app.apply_action(TuiAction::ToggleFavorite);
+
+        // Display state flips immediately.
+        assert!(app.context.users[0].profiles[0].favorite);
+        // And the worker is asked to persist the change for that profile id.
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::ToggleFavorite {
+                profile_id: "srv-1".to_string()
+            }]
+        );
+
+        // Toggling again clears it.
+        app.apply_action(TuiAction::ToggleFavorite);
+        assert!(!app.context.users[0].profiles[0].favorite);
+    }
+
+    #[test]
+    fn introhub_favorite_toggle_is_a_noop_without_a_saved_id() {
+        let mut app = AppState::new_live(introhub_context()); // ids are empty
+        let commands = app.apply_action(TuiAction::ToggleFavorite);
+        assert!(commands.is_empty());
+        assert!(!app.context.users[0].profiles[0].favorite);
     }
 
     #[test]
