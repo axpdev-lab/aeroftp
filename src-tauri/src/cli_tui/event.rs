@@ -29,6 +29,9 @@ pub enum TuiAction {
     /// in the Profiles pane and Intent preview. Session-only (never persisted).
     /// Default: masked. Key 's'/'S'.
     ToggleShowCredentials,
+    /// When focus is on the dual browser area (live), Tab switches between Local and Remote pane.
+    /// Left/Right still move global focus (e.g. Browser <-> Transfers).
+    SwitchBrowserSide,
     Noop,
 }
 
@@ -45,7 +48,8 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Up | KeyCode::Char('k') => TuiAction::MoveUp,
         KeyCode::Down | KeyCode::Char('j') => TuiAction::MoveDown,
         KeyCode::Left | KeyCode::Char('h') => TuiAction::MoveLeft,
-        KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => TuiAction::MoveRight,
+        KeyCode::Right | KeyCode::Char('l') => TuiAction::MoveRight,
+        KeyCode::Tab => TuiAction::SwitchBrowserSide,
         KeyCode::Enter => TuiAction::Activate,
         KeyCode::Backspace => TuiAction::Parent,
         KeyCode::Char('n') => TuiAction::NewDir,

@@ -46,6 +46,9 @@ pub struct TuiProfile {
     pub host: String, // server host or subtitle; always rendered in clear (hosts stay clear)
     pub username: String, // raw auth username/account id (email, AKIA*, token, etc); mask by default
     pub initial_path: String,
+    /// Default local directory for this profile (if saved in the bookmark as "localPath" or "defaultLocalPath").
+    /// If present and non-empty, the Local pane should open here on connect.
+    pub default_local_path: String,
     pub favorite: bool,
 }
 
@@ -182,6 +185,24 @@ impl AppState {
                 };
                 Vec::new()
             }
+            TuiAction::SwitchBrowserSide => {
+                if self.focus == TuiFocus::Browser && self.live_worker_enabled {
+                    self.flip_browser_side();
+                    // If switching to local and it has no listing yet, trigger list (local is always available).
+                    if self.active_browser_side == BrowserSide::Local
+                        && self.local.entries.is_empty()
+                        && !self.local.path.is_empty()
+                    {
+                        return vec![WorkerCommand::LocalList {
+                            path: self.local.path.clone(),
+                        }];
+                    }
+                } else {
+                    // Fallback: behave like normal right move if not in dual browser
+                    let _ = self.focus_next();
+                }
+                Vec::new()
+            }
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -190,7 +211,10 @@ impl AppState {
 
     fn move_selection(&mut self, delta: isize) -> Vec<WorkerCommand> {
         if matches!(self.focus, TuiFocus::Browser) {
-            self.browser.move_selection(delta);
+            // Move the *active* side (local or remote), not always the remote pane,
+            // or the local highlight stays stuck on the first entry while the status
+            // line (which reads the active side) appears to move.
+            self.active_browser_mut().move_selection(delta);
             self.status = self.contextual_status();
             return Vec::new();
         }
@@ -227,16 +251,31 @@ impl AppState {
         if matches!(self.focus, TuiFocus::Users) {
             self.selected_profile = 0;
         }
+        // Phase 3: when selecting a profile in the picker (Profiles or Actions pane),
+        // update the local pane to the profile's saved default local path (if present)
+        // and send LocalList so the preview populates with actual files.
+        if matches!(self.focus, TuiFocus::Profiles | TuiFocus::Actions) {
+            let default_local_path = self
+                .selected_profile()
+                .map(|p| p.default_local_path.clone())
+                .unwrap_or_default();
+            if !default_local_path.is_empty() && self.local.path != default_local_path {
+                // clear() resets path to "", so clear FIRST then set the path.
+                self.local.clear();
+                self.local.path = default_local_path;
+                if self.live_worker_enabled {
+                    self.status = self.contextual_status();
+                    return vec![WorkerCommand::LocalList {
+                        path: self.local.path.clone(),
+                    }];
+                }
+            }
+        }
         self.status = self.contextual_status();
         Vec::new()
     }
 
     fn focus_next(&mut self) -> Vec<WorkerCommand> {
-        if matches!(self.focus, TuiFocus::Browser) && self.live_worker_enabled {
-            // Phase 3: Tab / Right (l) inside browser area flips between Local and Remote pane.
-            self.flip_browser_side();
-            return Vec::new();
-        }
         self.focus = match self.focus {
             TuiFocus::Users => TuiFocus::Profiles,
             TuiFocus::Profiles => TuiFocus::Actions,
@@ -250,8 +289,6 @@ impl AppState {
 
     fn focus_prev(&mut self) -> Vec<WorkerCommand> {
         if matches!(self.focus, TuiFocus::Browser) {
-            // Phase 3: Left (h) or Backspace on browser does parent navigation on the *active* side.
-            // (Side flip is on Right/Tab via focus_next.)
             return self.navigate_parent();
         }
 
@@ -350,6 +387,40 @@ impl AppState {
         self.session = session;
         self.browser.clear();
         self.focus = TuiFocus::Browser;
+
+        // Phase 3: when connecting to a profile, initialize BOTH panes with the profile's saved paths if present.
+        // Remote: always profile.initial_path (passed to OpenSession)
+        // Local: prefer profile.default_local_path (from saved "localPath" or "defaultLocalPath" in the server bookmark),
+        //        else fall back to whatever was seeded at launch (CWD / download_base).
+        let local_start_path = if !profile.default_local_path.is_empty() {
+            profile.default_local_path.clone()
+        } else if !self.local.path.is_empty() {
+            self.local.path.clone()
+        } else {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| "/".to_string())
+        };
+
+        // clear() resets the pane to default (path becomes ""), so wipe stale
+        // state FIRST and set the start path AFTER, or the LocalList below would
+        // be dispatched with an empty path ("cannot read local dir ''").
+        self.local.clear();
+        self.local.path = local_start_path;
+
+        let commands = vec![
+            WorkerCommand::OpenSession {
+                identity: identity.clone(),
+                initial_cwd: profile.initial_path.clone(),
+            },
+            WorkerCommand::List {
+                path: "/".to_string(),
+            },
+            WorkerCommand::LocalList {
+                path: self.local.path.clone(),
+            },
+        ];
+
         self.worker = WorkerEvent::Busy {
             operation: TuiWorkerOperation::Connect,
             identity: Some(identity.clone()),
@@ -358,15 +429,7 @@ impl AppState {
             "Connecting to '{}' for a live read-only listing.",
             profile.name
         );
-        vec![
-            WorkerCommand::OpenSession {
-                identity,
-                initial_cwd: profile.initial_path.clone(),
-            },
-            WorkerCommand::List {
-                path: "/".to_string(),
-            },
-        ]
+        commands
     }
 
     fn open_selected_browser_entry(&mut self) -> Vec<WorkerCommand> {
@@ -1374,6 +1437,7 @@ mod tests {
                     host: "example.com".to_string(),
                     username: "user".to_string(),
                     initial_path: "/".to_string(),
+                    default_local_path: "/tmp".to_string(),
                     favorite: true,
                 }],
             }],
@@ -1547,6 +1611,11 @@ mod tests {
                 },
                 WorkerCommand::List {
                     path: "/".to_string(),
+                },
+                // Emits LocalList for the profile's default_local_path ("/tmp" in
+                // the sample). Regression guard: clear() must not blank this path.
+                WorkerCommand::LocalList {
+                    path: "/tmp".to_string(),
                 },
             ]
         );
@@ -1751,6 +1820,7 @@ mod tests {
             host: "s3.example.com".to_string(),
             username: "AKIAEXAMPLEKEY".to_string(),
             initial_path: "/archive".to_string(),
+            default_local_path: "".to_string(),
             favorite: false,
         });
         let mut app = AppState::new_live(context);
@@ -1791,6 +1861,7 @@ mod tests {
             host: "s3.example.com".to_string(),
             username: "AKIAEXAMPLEKEY".to_string(),
             initial_path: "bucket/backups/".to_string(),
+            default_local_path: "".to_string(),
             favorite: false,
         });
         let mut app = AppState::new(context);
@@ -1828,6 +1899,7 @@ mod tests {
                     host: "example.com".to_string(),
                     username: "user".to_string(),
                     initial_path: "/".to_string(),
+                    default_local_path: "".to_string(),
                     favorite: false,
                 }],
             }],
@@ -2203,5 +2275,92 @@ mod tests {
         );
         assert_eq!(app.transfers.items.len(), 1);
         assert_eq!(app.transfers.items[0].id, active);
+    }
+
+    // Regression (P3 dual-pane): a remote ListReady must populate `browser`
+    // (not `local`) after connecting via the Profiles-Enter flow, and the
+    // identity guard must accept it.
+    #[test]
+    fn remote_list_ready_populates_the_remote_pane_after_connect() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Profiles;
+        app.selected_profile = 0;
+        let cmds = app.apply_action(TuiAction::Activate);
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, WorkerCommand::OpenSession { .. })),
+            "Enter on a profile must connect (OpenSession); got {:?}",
+            cmds
+        );
+        assert!(
+            cmds.iter().any(|c| matches!(c, WorkerCommand::List { .. })),
+            "connect must request a remote List; got {:?}",
+            cmds
+        );
+
+        app.apply_worker_event(WorkerEvent::SessionReady {
+            identity: Some(sample_identity()),
+            cwd: "/srv".to_string(),
+        });
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: Some(sample_identity()),
+            path: "/srv".to_string(),
+            result: list_result(vec![crate::cli_tui::worker::TuiListEntry {
+                name: "readme.txt".to_string(),
+                path: "/srv/readme.txt".to_string(),
+                is_dir: false,
+                size: 10,
+                modified: None,
+            }]),
+        });
+
+        assert!(app.is_live_connected(), "session should be Connected");
+        assert_eq!(
+            app.browser.entries.len(),
+            1,
+            "remote pane must show the listed file"
+        );
+        assert!(
+            app.local.entries.is_empty(),
+            "local pane must NOT receive the remote listing"
+        );
+    }
+
+    // Regression: arrow movement in the Browser must move the *active* side.
+    // Previously it always moved the remote pane, so the local highlight stayed
+    // stuck on the first entry while the status line appeared to move.
+    #[test]
+    fn moving_in_browser_moves_only_the_active_side() {
+        fn dir(name: &str) -> crate::cli_tui::worker::TuiListEntry {
+            crate::cli_tui::worker::TuiListEntry {
+                name: name.to_string(),
+                path: format!("/{name}"),
+                is_dir: true,
+                size: 0,
+                modified: None,
+            }
+        }
+        let mut app = AppState::new_live(sample_context());
+        app.browser
+            .apply_list_result("/r".to_string(), list_result(vec![dir("a"), dir("b")]));
+        app.local
+            .apply_list_result("/l".to_string(), list_result(vec![dir("x"), dir("y")]));
+        app.focus = TuiFocus::Browser;
+
+        app.active_browser_side = BrowserSide::Local;
+        app.apply_action(TuiAction::MoveDown);
+        assert_eq!(app.local.selected, 1, "active local side must advance");
+        assert_eq!(
+            app.browser.selected, 0,
+            "remote must not move when local is active"
+        );
+
+        app.active_browser_side = BrowserSide::Remote;
+        app.apply_action(TuiAction::MoveDown);
+        assert_eq!(app.browser.selected, 1, "active remote side must advance");
+        assert_eq!(
+            app.local.selected, 1,
+            "local must not move when remote is active"
+        );
     }
 }

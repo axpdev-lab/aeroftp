@@ -213,6 +213,7 @@ mod tests {
             host: "example.com".to_string(),
             username: "user".to_string(),
             initial_path: initial_path.to_string(),
+            default_local_path: "".to_string(),
             favorite: true,
         }
     }

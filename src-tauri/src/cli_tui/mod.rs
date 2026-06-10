@@ -57,6 +57,15 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
     } else {
         AppState::new(context)
     };
+    // Always populate the local pane at launch (local fs is always available, no remote needed).
+    // This ensures the preview/local side shows files from the launch CWD (or profile default if set later).
+    if let Some(ref client) = worker {
+        if !app.local.path.is_empty() {
+            let _ = client.commands.send(WorkerCommand::LocalList {
+                path: app.local.path.clone(),
+            });
+        }
+    }
     let mut worker = worker;
     let theme = TuiTheme::default();
 
@@ -183,16 +192,27 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     } else {
         Direction::Vertical
     };
-    let body = Layout::new(
-        body_direction,
+    // The Users column only ever shows a short list (often a single user), so it
+    // does not deserve a wide share. When a live session is connected the focus is
+    // on the dual-pane browser, so the picker columns shrink further and the
+    // browser container takes the lion's share (incremental step toward the #311
+    // full-screen dual-pane; the full Shape B pivot is a dedicated follow-up).
+    let body_constraints = if app.is_live_connected() {
         [
-            Constraint::Percentage(21),
-            Constraint::Percentage(25),
-            Constraint::Percentage(24),
-            Constraint::Percentage(30),
-        ],
-    )
-    .split(body_area);
+            Constraint::Percentage(10),
+            Constraint::Percentage(18),
+            Constraint::Percentage(14),
+            Constraint::Percentage(58),
+        ]
+    } else {
+        [
+            Constraint::Percentage(12),
+            Constraint::Percentage(27),
+            Constraint::Percentage(23),
+            Constraint::Percentage(38),
+        ]
+    };
+    let body = Layout::new(body_direction, body_constraints).split(body_area);
 
     render_users(frame, body[0], app, theme);
     render_profiles(frame, body[1], app, theme);
@@ -227,7 +247,10 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
         };
         render_active_file_pane_summary(frame, summary_area, app, theme);
     } else {
-        render_browser(frame, browser_area, app, theme);
+        // In the picker/dashboard (non-live), show a split preview of Local and Remote paths
+        // based on the selected profile's saved paths (or launch CWD). This gives the dual
+        // info even before activating "Connect & browse".
+        render_browser_preview(frame, browser_area, app, theme);
     }
 
     let footer = Paragraph::new(vec![
@@ -331,8 +354,17 @@ fn render_profiles(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, t
                     .map(|profile| {
                         let fav = if profile.favorite { "*" } else { " " };
                         // host always clear (per spec: "host in chiaro"); username (auth id) masked by default.
-                        let host_span =
-                            Span::styled(format!("  {}", profile.host), theme.muted_style());
+                        // For cloud providers without a real host the subtitle echoes the
+                        // username/credential itself: rendering it here would both duplicate
+                        // the username column AND leak it in clear (defeating the `s` toggle),
+                        // so suppress it and let the maskable username column carry it.
+                        let host_is_credential_echo =
+                            !profile.host.is_empty() && profile.host == profile.username;
+                        let host_span = if host_is_credential_echo {
+                            Span::raw("")
+                        } else {
+                            Span::styled(format!("  {}", profile.host), theme.muted_style())
+                        };
                         let user_span = if profile.username.is_empty() {
                             Span::raw("")
                         } else if app.show_credentials {
@@ -489,118 +521,6 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
     }
     let details = Paragraph::new(detail_lines)
         .block(Block::default().borders(Borders::ALL).title(" Intent "))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(details, chunks[1]);
-}
-
-fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
-    // Phase 3: the single browser column currently reflects the active side (flip with Left/Right or Tab when focused).
-    // Full side-by-side split comes next.
-    let active = app.active_browser();
-    let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).split(area);
-    let title = browser_title(app);
-    let items: Vec<ListItem> = if active.entries.is_empty() {
-        let message = if active.summary.is_some() {
-            "(empty directory)"
-        } else {
-            "No listing loaded"
-        };
-        vec![ListItem::new(Line::from(Span::styled(
-            message,
-            theme.muted_style(),
-        )))]
-    } else {
-        active
-            .entries
-            .iter()
-            .map(|entry| {
-                let kind = if entry.is_dir { "DIR " } else { "FILE" };
-                let kind_style = if entry.is_dir {
-                    theme.accent_style()
-                } else {
-                    theme.muted_style()
-                };
-                ListItem::new(Line::from(vec![
-                    Span::styled(kind, kind_style),
-                    Span::raw(" "),
-                    Span::styled(
-                        format_browser_entry(entry),
-                        if entry.is_dir {
-                            Style::default().add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default()
-                        },
-                    ),
-                    Span::styled(browser_entry_meta(entry), theme.muted_style()),
-                ]))
-            })
-            .collect()
-    };
-
-    let mut state = ListState::default();
-    if !active.entries.is_empty() {
-        state.select(Some(active.selected));
-    }
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
-        .highlight_style(selection_style(app.focus, TuiFocus::Browser, theme))
-        .highlight_symbol("> ");
-    frame.render_stateful_widget(list, chunks[0], &mut state);
-
-    let mut summary = match &active.summary {
-        Some(summary) => {
-            let mut lines = vec![
-                Line::from(vec![
-                    Span::styled("Path:  ", theme.muted_style()),
-                    Span::raw(active.path.as_str()),
-                ]),
-                Line::from(vec![
-                    Span::styled("Items: ", theme.muted_style()),
-                    Span::raw(format!(
-                        "{} total, {} dirs, {} files, {}",
-                        summary.total,
-                        summary.dirs,
-                        summary.files,
-                        format_browser_size(summary.total_bytes)
-                    )),
-                    Span::styled(
-                        if summary.truncated { " truncated" } else { "" },
-                        theme.muted_style(),
-                    ),
-                ]),
-            ];
-            if let Some(preview) = &active.preview {
-                lines.extend(browser_preview_lines(preview, theme));
-            } else if let Some(entry) = active.selected_entry() {
-                lines.push(Line::from(vec![
-                    Span::styled("Sel:   ", theme.muted_style()),
-                    Span::raw(format_browser_entry(entry)),
-                    Span::styled(
-                        if entry.is_dir {
-                            "  directory"
-                        } else {
-                            "  file"
-                        },
-                        theme.muted_style(),
-                    ),
-                ]));
-            }
-            lines
-        }
-        None => vec![
-            Line::from(vec![
-                Span::styled("Path:  ", theme.muted_style()),
-                Span::raw("-"),
-            ]),
-            Line::from(vec![
-                Span::styled("Items: ", theme.muted_style()),
-                Span::raw("-"),
-            ]),
-        ],
-    };
-    summary.truncate(4);
-    let details = Paragraph::new(summary)
-        .block(Block::default().borders(Borders::ALL).title(" Listing "))
         .wrap(Wrap { trim: true });
     frame.render_widget(details, chunks[1]);
 }
@@ -765,6 +685,58 @@ fn render_active_file_pane_summary(
     frame.render_widget(details, area);
 }
 
+/// Preview for the browser column in the picker/dashboard (before live connect).
+/// Splits the area to show the expected Local and Remote starting paths for the
+/// selected profile (respecting saved localPath/defaultLocalPath if present).
+/// This gives a "dual" feel even in the initial view.
+fn render_browser_preview(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    _theme: TuiTheme,
+) {
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
+
+    let remote_path = app
+        .selected_profile()
+        .map(|p| p.initial_path.clone())
+        .unwrap_or_else(|| "/".to_string());
+
+    let local_path = app
+        .selected_profile()
+        .and_then(|p| {
+            if !p.default_local_path.is_empty() {
+                Some(p.default_local_path.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| app.local.path.clone());
+
+    let local_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Local (profile or launch) ");
+    let local_para = Paragraph::new(format!(
+        "Path: {}\n\n(Connect to list live content)",
+        local_path
+    ))
+    .block(local_block)
+    .wrap(Wrap { trim: true });
+    frame.render_widget(local_para, chunks[0]);
+
+    let remote_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Remote (profile initialPath) ");
+    let remote_para = Paragraph::new(format!(
+        "Path: {}\n\n(Connect to list live content)",
+        remote_path
+    ))
+    .block(remote_block)
+    .wrap(Wrap { trim: true });
+    frame.render_widget(remote_para, chunks[1]);
+}
+
 fn render_transfers(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
     let items: Vec<ListItem> = if app.transfers.items.is_empty() {
         vec![ListItem::new(Line::from(Span::styled(
@@ -895,25 +867,6 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
         y,
         width,
         height,
-    }
-}
-
-fn browser_title(app: &AppState) -> String {
-    let prefix = if matches!(app.focus, TuiFocus::Browser) {
-        " Browser * "
-    } else {
-        " Browser "
-    };
-    let side = app.active_browser_side;
-    let path = if side == crate::cli_tui::BrowserSide::Local {
-        &app.local.path
-    } else {
-        &app.browser.path
-    };
-    if path.is_empty() {
-        format!("{}[{:?}] ", prefix, side)
-    } else {
-        format!("{}[{:?}] {} ", prefix, side, path)
     }
 }
 

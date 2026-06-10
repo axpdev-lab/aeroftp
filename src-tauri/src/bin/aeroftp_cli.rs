@@ -9271,6 +9271,16 @@ fn build_tui_context(
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
+                    // Saved profiles persist the default local directory as
+                    // `localInitialPath` (ServerProfile in src/types.ts). The older
+                    // `localPath`/`defaultLocalPath` keys were never written by the GUI.
+                    let default_local_path = profile
+                        .get("localInitialPath")
+                        .or_else(|| profile.get("localPath"))
+                        .or_else(|| profile.get("defaultLocalPath"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     cli_tui::TuiProfile {
                         selector: (idx + 1).to_string(),
                         name: profile
@@ -9290,6 +9300,7 @@ fn build_tui_context(
                             .and_then(|v| v.as_str())
                             .unwrap_or("/")
                             .to_string(),
+                        default_local_path,
                         favorite: !id.is_empty() && favorites.contains(id),
                     }
                 })
@@ -9556,6 +9567,14 @@ async fn upload_tui_session_via_cli_handler(
 }
 
 /// Phase 3: Local filesystem listing for the dual-pane browser (left/local side).
+/// Format a filesystem mtime as `YYYY-MM-DD HH:MM` in local time, matching the
+/// remote pane's date column. Avoids the raw `SystemTime` Debug output.
+fn format_local_mtime(t: std::time::SystemTime) -> String {
+    chrono::DateTime::<chrono::Local>::from(t)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
 /// Returns (effective_path, TuiListResult) compatible with the remote ListReady path.
 async fn list_local_dir(path: &str) -> Result<(String, cli_tui::worker::TuiListResult), String> {
     use std::path::Path;
@@ -9584,8 +9603,9 @@ async fn list_local_dir(path: &str) -> Result<(String, cli_tui::worker::TuiListR
         let is_dir = meta.is_dir();
         let size = if is_dir { 0 } else { meta.len() };
 
-        // Simple modified time string (good enough for TUI display for now).
-        let modified = meta.modified().ok().map(|t| format!("{:?}", t));
+        // Format the mtime as a human date matching the remote pane (YYYY-MM-DD HH:MM),
+        // not the raw SystemTime Debug ("SystemTime { tv_sec: ... }").
+        let modified = meta.modified().ok().map(format_local_mtime);
 
         if is_dir {
             dir_count += 1;
@@ -9643,7 +9663,7 @@ async fn stat_local_path(path: &str) -> Result<(String, cli_tui::worker::TuiStat
 
     let is_dir = meta.is_dir();
     let size = if is_dir { 0 } else { meta.len() };
-    let modified = meta.modified().ok().map(|t| format!("{:?}", t));
+    let modified = meta.modified().ok().map(format_local_mtime);
     let is_symlink = meta.file_type().is_symlink();
 
     let result = cli_tui::worker::TuiStatResult {
