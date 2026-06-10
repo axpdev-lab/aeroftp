@@ -2628,6 +2628,32 @@ pub fn cli_peer_drive_load(
     result
 }
 
+/// A per-drive content key resolved from the ACTIVE user's partition, paired
+/// with that user's id so callers can scope per-user state without a second
+/// active-user lookup. The key is wiped on drop.
+pub type ActiveUserDriveKey = (i64, zeroize::Zeroizing<Vec<u8>>);
+
+/// GUI sibling of [`cli_peer_drive_load`] for the AeroShare runtime: load +
+/// decrypt the per-drive content key for `namespace_id` from the ACTIVE
+/// user's partition in the app vault (AppHandle-scoped DB). `None` when no
+/// key for the namespace was imported into this partition.
+pub fn gui_peer_drive_load(
+    app: &AppHandle,
+    namespace_id: &str,
+) -> Result<Option<ActiveUserDriveKey>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::load_drive(&conn, user.id, dek, namespace_id)
+    });
+    root_key.zeroize();
+    result.map(|opt| opt.map(|key| (user.id, key)))
+}
+
 /// List the active user's drives as `(namespace_id, role)`. Public: no DEK.
 pub fn cli_peer_drive_list(
     store: &CredentialStore,

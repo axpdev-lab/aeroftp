@@ -14950,6 +14950,10 @@ pub fn run() {
         .manage(AppState::new())
         .manage(provider_commands::ProviderState::new())
         .manage(provider_commands::ConnectionCancelRegistry::new())
+        // AeroShare: registry of the background drive sync tasks consumed by
+        // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
+        // open-or-tray = serving, Quit = stop).
+        .manage(peer::runtime::PeerRuntime::default())
         .manage(session_manager::MultiProviderState::new());
 
     // Add PTY state for terminal support (all platforms)

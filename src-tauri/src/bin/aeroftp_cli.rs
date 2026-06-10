@@ -4677,7 +4677,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         | ProviderError::NotConnected
         | ProviderError::NetworkError(_) => 1,
         ProviderError::NotFound(_) => 2,
-        ProviderError::PermissionDenied(_) => 3,
+        ProviderError::PermissionDenied(_) | ProviderError::ReadOnly(_) => 3,
         ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)

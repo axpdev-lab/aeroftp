@@ -178,7 +178,9 @@ impl TransferCapabilities {
             | ProviderType::Immich
             | ProviderType::ImageKit
             | ProviderType::Uploadcare
-            | ProviderType::Cloudinary => {}
+            | ProviderType::Cloudinary
+            // AeroShare peer drive: local replica reads, hint defaults apply.
+            | ProviderType::Peer => {}
         }
 
         if !caps.multipart_upload.is_available() {

@@ -18,6 +18,10 @@ use aeroftp_peer_l0::endpoint::{DiscoveryMode, PeerEndpointConfig};
 use aeroftp_peer_l0::{open_capability, seal_capability, Capability, Identity, IdentityPublic};
 use zeroize::Zeroizing;
 
+/// AeroShare Phase 1: the GUI-side registry of long-lived drive sync tasks
+/// (Tauri managed state; wired into `provider_connect` for `protocol="peer"`).
+pub mod runtime;
+
 /// What a capability-path publish hands back to the CLI once the drive exists (so it can custody the
 /// key in the vault and print the ticket while the publisher keeps serving). Re-exported from peer-l0.
 pub use aeroftp_peer_l0::drive::DrivePublished;

@@ -82,6 +82,10 @@ pub fn from_provider_type(
         | ProviderType::ImageKit
         | ProviderType::Uploadcare
         | ProviderType::Cloudinary => ProviderHint::OAuthCloud,
+        // AeroShare peer drive: reads come from the LOCAL replica folder, so
+        // there is no network class to route on. Unmeasured -> the module's
+        // safe default until a benchmark says otherwise.
+        ProviderType::Peer => ProviderHint::OAuthCloud,
     }
 }
 
