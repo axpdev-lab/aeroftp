@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Faragha ya OpenDrive",
             "privacyUpdated": "Faragha ya OpenDrive imesasishwa"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Ongeza rafiki",
+            "experimentalLabel": "AeroShare (ya majaribio)",
+            "experimentalDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati.",
+            "experimentalNote": "Ya majaribio: uhamishaji wa peer-to-peer unaendelezwa kikamilifu na unaweza kubadilika. Kwa sasa miunganisho hutumia relay ya umma kupita kuta za moto.",
+            "experimentalTag": "Ya majaribio",
+            "driveState": {
+                "syncing": "Inasawazisha",
+                "serving": "Inahudumu",
+                "error": "Hitilafu",
+                "starting": "Inaanza",
+                "stopped": "Imesimamishwa",
+                "offline": "Nje ya mtandao"
+            },
+            "status": {
+                "starting": "Inaanza...",
+                "serving": "Inahudumu",
+                "stopped": "Imesimamishwa",
+                "error": "Hitilafu"
+            },
+            "toast": {
+                "readOnlyTitle": "Kushiriki kwa kusoma tu",
+                "readOnlyBody": "Folda za AeroShare ni za kuvinjari na kupakua tu."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Pokea folda",
+                "shareTab": "Shiriki folda",
+                "myId": "AeroFTP-ID yako",
+                "myIdHint": "Tuma hii kwa rafiki yako ili waweze kushiriki folda nawe.",
+                "copy": "Nakili",
+                "copied": "Imenakiliwa",
+                "receiveStep": "Bandika kiungo cha kushiriki ambacho rafiki yako alikutumia.",
+                "linkLabel": "Kiungo cha kushiriki",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID ya rafiki",
+                "issuerPlaceholder": "AeroFTP-ID ya rafiki aliyeshiriki nawe",
+                "aliasLabel": "Jina la rafiki (si lazima)",
+                "localFolderLabel": "Hifadhi katika folda hii",
+                "chooseFolder": "Chagua folda",
+                "receiveSubmit": "Ongeza folda iliyoshirikiwa",
+                "receiving": "Inaongeza folda iliyoshirikiwa...",
+                "receiveSuccess": "Folda iliyoshirikiwa imeongezwa",
+                "connectNow": "Unganisha sasa",
+                "needIdentityFirst": "Inatengeneza AeroFTP-ID yako...",
+                "shareStep": "Chagua folda na nani wa kushiriki naye.",
+                "shareFolderLabel": "Folda ya kushiriki",
+                "recipientLabel": "Shiriki na",
+                "recipientSaved": "Rafiki aliyehifadhiwa",
+                "recipientPaste": "Bandika AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID ya rafiki",
+                "recipientAliasLabel": "Jina la rafiki (si lazima)",
+                "driveNameLabel": "Jina la folda (si lazima)",
+                "shareSubmit": "Tengeneza kiungo cha kushiriki",
+                "sharing": "Inaandaa folda iliyosimbwa...",
+                "shareReadyTitle": "Kiungo cha kushiriki kiko tayari",
+                "shareReadyHint": "Tuma kiungo hiki tena kwa rafiki yako. Wanakibandika katika AeroShare ili kupokea folda.",
+                "shareLinkLabel": "Kiungo cha kushiriki",
+                "noFriendsYet": "Bado hakuna marafiki waliohifadhiwa.",
+                "close": "Funga",
+                "missingLink": "Bandika kiungo cha kushiriki kwanza.",
+                "missingIssuer": "Weka AeroFTP-ID ya rafiki yako.",
+                "missingFolder": "Chagua folda.",
+                "missingRecipient": "Weka au chagua AeroFTP-ID ya mpokeaji."
+            }
         }
     }
 }

@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Quyền riêng tư OpenDrive",
             "privacyUpdated": "Đã cập nhật quyền riêng tư OpenDrive"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Thêm bạn bè",
+            "experimentalLabel": "AeroShare (thử nghiệm)",
+            "experimentalDesc": "Chia sẻ thư mục trực tiếp với bạn bè qua kênh ngang hàng được mã hóa, không có máy chủ trung gian.",
+            "experimentalNote": "Thử nghiệm: tính năng truyền ngang hàng đang được phát triển và có thể thay đổi. Các kết nối hiện sử dụng một relay công khai để vượt qua tường lửa.",
+            "experimentalTag": "Thử nghiệm",
+            "driveState": {
+                "syncing": "Đang đồng bộ",
+                "serving": "Đang phục vụ",
+                "error": "Lỗi",
+                "starting": "Đang khởi động",
+                "stopped": "Đã dừng",
+                "offline": "Ngoại tuyến"
+            },
+            "status": {
+                "starting": "Đang khởi động...",
+                "serving": "Đang phục vụ",
+                "stopped": "Đã dừng",
+                "error": "Lỗi"
+            },
+            "toast": {
+                "readOnlyTitle": "Chia sẻ chỉ đọc",
+                "readOnlyBody": "Thư mục AeroShare chỉ cho phép duyệt và tải xuống."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Nhận một thư mục",
+                "shareTab": "Chia sẻ một thư mục",
+                "myId": "AeroFTP-ID của bạn",
+                "myIdHint": "Gửi ID này cho bạn bè để họ có thể chia sẻ thư mục với bạn.",
+                "copy": "Sao chép",
+                "copied": "Đã sao chép",
+                "receiveStep": "Dán liên kết chia sẻ mà bạn bè đã gửi cho bạn.",
+                "linkLabel": "Liên kết chia sẻ",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID của bạn bè",
+                "issuerPlaceholder": "AeroFTP-ID của người bạn đã chia sẻ với bạn",
+                "aliasLabel": "Tên bạn bè (tùy chọn)",
+                "localFolderLabel": "Lưu vào thư mục này",
+                "chooseFolder": "Chọn thư mục",
+                "receiveSubmit": "Thêm thư mục được chia sẻ",
+                "receiving": "Đang thêm thư mục được chia sẻ...",
+                "receiveSuccess": "Đã thêm thư mục được chia sẻ",
+                "connectNow": "Kết nối ngay",
+                "needIdentityFirst": "Đang tạo AeroFTP-ID của bạn...",
+                "shareStep": "Chọn một thư mục và người để chia sẻ.",
+                "shareFolderLabel": "Thư mục cần chia sẻ",
+                "recipientLabel": "Chia sẻ với",
+                "recipientSaved": "Bạn bè đã lưu",
+                "recipientPaste": "Dán một AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID của bạn bè",
+                "recipientAliasLabel": "Tên bạn bè (tùy chọn)",
+                "driveNameLabel": "Tên thư mục (tùy chọn)",
+                "shareSubmit": "Tạo liên kết chia sẻ",
+                "sharing": "Đang chuẩn bị thư mục được mã hóa...",
+                "shareReadyTitle": "Liên kết chia sẻ đã sẵn sàng",
+                "shareReadyHint": "Gửi liên kết này lại cho bạn bè. Họ dán nó vào AeroShare để nhận thư mục.",
+                "shareLinkLabel": "Liên kết chia sẻ",
+                "noFriendsYet": "Chưa có bạn bè nào được lưu.",
+                "close": "Đóng",
+                "missingLink": "Hãy dán liên kết chia sẻ trước.",
+                "missingIssuer": "Nhập AeroFTP-ID của bạn bè.",
+                "missingFolder": "Chọn một thư mục.",
+                "missingRecipient": "Nhập hoặc chọn AeroFTP-ID của người nhận."
+            }
         }
     }
 }

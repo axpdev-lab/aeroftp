@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive-privatliv",
             "privacyUpdated": "OpenDrive-privatliv opdateret"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Tilføj ven",
+            "experimentalLabel": "AeroShare (eksperimentel)",
+            "experimentalDesc": "Del mapper direkte med venner via en krypteret peer-to-peer-kanal, uden nogen server imellem.",
+            "experimentalNote": "Eksperimentel: peer-to-peer-overførsel er under aktiv udvikling og kan ændre sig. Forbindelser bruger i øjeblikket et offentligt relæ til at passere firewalls.",
+            "experimentalTag": "Eksperimentel",
+            "driveState": {
+                "syncing": "Synkroniserer",
+                "serving": "Leverer",
+                "error": "Fejl",
+                "starting": "Starter",
+                "stopped": "Stoppet",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Starter...",
+                "serving": "Leverer",
+                "stopped": "Stoppet",
+                "error": "Fejl"
+            },
+            "toast": {
+                "readOnlyTitle": "Skrivebeskyttet deling",
+                "readOnlyBody": "AeroShare-mapper kan kun gennemses og downloades."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Modtag en mappe",
+                "shareTab": "Del en mappe",
+                "myId": "Dit AeroFTP-ID",
+                "myIdHint": "Send dette til din ven, så vedkommende kan dele en mappe med dig.",
+                "copy": "Kopiér",
+                "copied": "Kopieret",
+                "receiveStep": "Indsæt delingslinket, som din ven sendte til dig.",
+                "linkLabel": "Delingslink",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Vens AeroFTP-ID",
+                "issuerPlaceholder": "AeroFTP-ID'et for den ven, der delte med dig",
+                "aliasLabel": "Vens navn (valgfrit)",
+                "localFolderLabel": "Gem i denne mappe",
+                "chooseFolder": "Vælg mappe",
+                "receiveSubmit": "Tilføj delt mappe",
+                "receiving": "Tilføjer delt mappe...",
+                "receiveSuccess": "Delt mappe tilføjet",
+                "connectNow": "Opret forbindelse nu",
+                "needIdentityFirst": "Opretter dit AeroFTP-ID...",
+                "shareStep": "Vælg en mappe, og hvem du vil dele den med.",
+                "shareFolderLabel": "Mappe, der skal deles",
+                "recipientLabel": "Del med",
+                "recipientSaved": "Gemt ven",
+                "recipientPaste": "Indsæt et AeroFTP-ID",
+                "recipientAfidLabel": "Vens AeroFTP-ID",
+                "recipientAliasLabel": "Vens navn (valgfrit)",
+                "driveNameLabel": "Mappenavn (valgfrit)",
+                "shareSubmit": "Opret delingslink",
+                "sharing": "Forbereder den krypterede mappe...",
+                "shareReadyTitle": "Delingslink klar",
+                "shareReadyHint": "Send dette link tilbage til din ven. Vedkommende indsætter det i AeroShare for at modtage mappen.",
+                "shareLinkLabel": "Delingslink",
+                "noFriendsYet": "Ingen gemte venner endnu.",
+                "close": "Luk",
+                "missingLink": "Indsæt delingslinket først.",
+                "missingIssuer": "Indtast din vens AeroFTP-ID.",
+                "missingFolder": "Vælg en mappe.",
+                "missingRecipient": "Indtast eller vælg modtagerens AeroFTP-ID."
+            }
         }
     }
 }

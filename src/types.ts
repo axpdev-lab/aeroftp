@@ -51,7 +51,8 @@ export type ProviderType =
   | "imagekit"
   | "uploadcare"
   | "backblaze"
-  | "cloudinary";
+  | "cloudinary"
+  | "peer";
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -134,6 +135,10 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "uploadcare",
     "backblaze",
     "cloudinary",
+    // AeroShare peer drives browse a local replica through the provider_*
+    // command surface (protocol "peer"), so they dispatch like any non-FTP
+    // provider. The replica is read-only in Phase 1.
+    "peer",
   ].includes(type);
 };
 
@@ -353,6 +358,18 @@ export interface ProviderOptions {
   // huge tree (e.g. a web project on FTP) must not pay a full walk on
   // every connect unless the user asked for it.
   autoScanUsedOnConnect?: boolean;
+
+  // AeroShare (protocol "peer"): the local binding that lets a saved friend
+  // profile reconnect to a received drive (design doc §8, Phase 1 task 11).
+  // `server`/`host` carries the friend's AeroFTP-ID and `username` the alias;
+  // these four describe the drive itself. Persisted on the friend's profile
+  // JSON (no separate backend table for Phase 1) and forwarded to
+  // provider_connect as peer_namespace/peer_ticket/peer_local_folder/peer_role.
+  peerNamespace?: string;   // iroh-docs namespace id of the received drive
+  peerTicket?: string;      // DocTicket (dial addresses + namespace) from the share link
+  peerLocalFolder?: string; // absolute local folder the drive replicates into
+  peerRole?: string;        // "replicator" (their drive, read) in Phase 1
+  peerDriveName?: string;   // human label for the drive (display only)
 
   // InfiniCloud-specific
   infinicloud_mode?: "webdav" | "api"; // Connection mode: standard WebDAV or REST API with auto-discovery

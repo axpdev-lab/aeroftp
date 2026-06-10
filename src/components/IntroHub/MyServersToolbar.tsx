@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, UserPlus } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -32,6 +32,9 @@ interface MyServersToolbarProps {
     listDensity?: MyServersDensity;
     /** Cycle the row density. Only rendered when in list view. */
     onToggleListDensity?: () => void;
+    /** Open the AeroShare handshake dialog. Only passed when the experimental
+     *  flag is on; renders the "Add friend" toolbar button. */
+    onAddFriend?: () => void;
 }
 
 export function MyServersToolbar({
@@ -56,6 +59,7 @@ export function MyServersToolbar({
     crossProfileSelectionCount = 0,
     listDensity = 'compact',
     onToggleListDensity,
+    onAddFriend,
 }: MyServersToolbarProps) {
     const t = useTranslation();
     // Cross-Profile button visual states:
@@ -191,6 +195,17 @@ export function MyServersToolbar({
                             {crossProfileSelectionCount}
                         </span>
                     )}
+                </button>
+            )}
+
+            {/* AeroShare "Add friend" - violet, only when the experimental flag is on */}
+            {onAddFriend && (
+                <button
+                    onClick={onAddFriend}
+                    className="p-2 rounded-lg bg-violet-50 dark:bg-violet-900/30 hover:bg-violet-100 dark:hover:bg-violet-800/40 text-violet-600 dark:text-violet-400 transition-colors"
+                    title={t('aeroShare.addFriend')}
+                >
+                    <UserPlus size={15} />
                 </button>
             )}
 

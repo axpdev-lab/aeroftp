@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
+import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
+import { shortAfid } from '../../utils/aeroShare';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
@@ -139,9 +141,38 @@ function StorageUsageBar({
     );
 }
 
-export function ServerBadges({ server }: { server: ServerProfile }) {
+/** Tone for the live AeroShare drive-state chip. */
+const PEER_STATE_TONE: Record<PeerDriveState, string> = {
+    syncing: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+    serving: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+    error: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+    starting: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+    stopped: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+};
+
+export function ServerBadges({ server, peerState }: { server: ServerProfile; peerState?: PeerDriveState }) {
     const t = useTranslation();
     const proto = server.protocol || 'ftp';
+    // AeroShare friend: a dedicated violet badge + the live drive-state chip.
+    // Skips the generic protocol/class logic below (a peer is neither FTP nor
+    // an "API" cloud), so it never mislabels the card.
+    if (proto === 'peer') {
+        const stateKey: PeerDriveState | 'offline' = peerState ?? 'offline';
+        const stateLabel = peerState ? t(`aeroShare.driveState.${peerState}`) : t('aeroShare.driveState.offline');
+        const tone = peerState ? PEER_STATE_TONE[peerState] : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400';
+        return (
+            <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">
+                    <Users size={10} />
+                    {t('aeroShare.feature')}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 ${tone}`} title={stateLabel}>
+                    {stateKey === 'syncing' ? <RefreshCw size={9} className="animate-spin" /> : <Wifi size={9} />}
+                    {stateLabel}
+                </span>
+            </div>
+        );
+    }
     // Default tlsMode matches ProtocolSelector: ftp→'explicit', ftps→'implicit'
     const tlsMode = server.options?.tlsMode || (proto === 'ftp' ? 'explicit' : proto === 'ftps' ? 'implicit' : undefined);
     // FTP with any TLS mode (except 'none') is effectively FTPS
@@ -311,6 +342,9 @@ interface ServerCardProps {
      *  so users can tell at a glance which saved server they are already
      *  connected to. Independent from the health status itself. Issue #222. */
     hasActiveSession?: boolean;
+    /** AeroShare friend cards only: live replication/serving state for the
+     *  bound drive, fed by usePeerDriveStates. Drives the badge chip. */
+    peerState?: PeerDriveState;
 }
 
 export function RenameInput({
@@ -384,6 +418,10 @@ export function getServerIcon(server: ServerProfile, size = 20): React.ReactNode
         return <LogoComponent size={size} />;
     }
     const proto = server.protocol || 'ftp';
+    // AeroShare friend: no brand logo: a person glyph reads as "a friend".
+    if (proto === 'peer') {
+        return <Users size={size} className="text-violet-500" />;
+    }
     if (PROVIDER_LOGOS[proto]) {
         const LogoComponent = PROVIDER_LOGOS[proto];
         return <LogoComponent size={size} />;
@@ -439,6 +477,7 @@ export const ServerCard = React.memo(function ServerCard({
     onRetryHealth,
     thresholds = DEFAULT_THRESHOLDS,
     hasActiveSession = false,
+    peerState,
 }: ServerCardProps) {
     const t = useTranslation();
     const cardLayout = useCardLayout();
@@ -617,7 +656,7 @@ export const ServerCard = React.memo(function ServerCard({
                         </div>
                     )}
                     <div className="flex items-center gap-1.5 mt-0.5">
-                        <ServerBadges server={server} />
+                        <ServerBadges server={server} peerState={peerState} />
                         {timeAgo && (
                             <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums flex items-center gap-0.5"><Clock size={8} />{timeAgo}</span>
                         )}

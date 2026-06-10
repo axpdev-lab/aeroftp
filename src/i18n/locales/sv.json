@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive-sekretess",
             "privacyUpdated": "OpenDrive-sekretess uppdaterad"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Lägg till vän",
+            "experimentalLabel": "AeroShare (experimentell)",
+            "experimentalDesc": "Dela mappar direkt med vänner via en krypterad peer-to-peer-kanal, utan någon server emellan.",
+            "experimentalNote": "Experimentell: peer-to-peer-överföring är under aktiv utveckling och kan ändras. Anslutningar använder för närvarande ett offentligt relä för att ta sig igenom brandväggar.",
+            "experimentalTag": "Experimentell",
+            "driveState": {
+                "syncing": "Synkroniserar",
+                "serving": "Tillhandahåller",
+                "error": "Fel",
+                "starting": "Startar",
+                "stopped": "Stoppad",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Startar...",
+                "serving": "Tillhandahåller",
+                "stopped": "Stoppad",
+                "error": "Fel"
+            },
+            "toast": {
+                "readOnlyTitle": "Skrivskyddad delning",
+                "readOnlyBody": "AeroShare-mappar kan endast bläddras i och laddas ner."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Ta emot en mapp",
+                "shareTab": "Dela en mapp",
+                "myId": "Ditt AeroFTP-ID",
+                "myIdHint": "Skicka detta till din vän så att hen kan dela en mapp med dig.",
+                "copy": "Kopiera",
+                "copied": "Kopierad",
+                "receiveStep": "Klistra in delningslänken som din vän skickade till dig.",
+                "linkLabel": "Delningslänk",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Vännens AeroFTP-ID",
+                "issuerPlaceholder": "AeroFTP-ID:t för vännen som delade med dig",
+                "aliasLabel": "Vännens namn (valfritt)",
+                "localFolderLabel": "Spara i den här mappen",
+                "chooseFolder": "Välj mapp",
+                "receiveSubmit": "Lägg till delad mapp",
+                "receiving": "Lägger till delad mapp...",
+                "receiveSuccess": "Delad mapp tillagd",
+                "connectNow": "Anslut nu",
+                "needIdentityFirst": "Skapar ditt AeroFTP-ID...",
+                "shareStep": "Välj en mapp och vem du vill dela den med.",
+                "shareFolderLabel": "Mapp att dela",
+                "recipientLabel": "Dela med",
+                "recipientSaved": "Sparad vän",
+                "recipientPaste": "Klistra in ett AeroFTP-ID",
+                "recipientAfidLabel": "Vännens AeroFTP-ID",
+                "recipientAliasLabel": "Vännens namn (valfritt)",
+                "driveNameLabel": "Mappnamn (valfritt)",
+                "shareSubmit": "Skapa delningslänk",
+                "sharing": "Förbereder den krypterade mappen...",
+                "shareReadyTitle": "Delningslänk klar",
+                "shareReadyHint": "Skicka tillbaka den här länken till din vän. Hen klistrar in den i AeroShare för att ta emot mappen.",
+                "shareLinkLabel": "Delningslänk",
+                "noFriendsYet": "Inga sparade vänner ännu.",
+                "close": "Stäng",
+                "missingLink": "Klistra in delningslänken först.",
+                "missingIssuer": "Ange din väns AeroFTP-ID.",
+                "missingFolder": "Välj en mapp.",
+                "missingRecipient": "Ange eller välj mottagarens AeroFTP-ID."
+            }
         }
     }
 }

@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive კონფიდენციალურობა",
             "privacyUpdated": "OpenDrive კონფიდენციალურობა განახლდა"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "მეგობრის დამატება",
+            "experimentalLabel": "AeroShare (ექსპერიმენტული)",
+            "experimentalDesc": "გააზიარეთ საქაღალდეები პირდაპირ მეგობრებთან დაშიფრული peer-to-peer არხით, შუა სერვერის გარეშე.",
+            "experimentalNote": "ექსპერიმენტული: peer-to-peer გადაცემა აქტიური განვითარების პროცესშია და შეიძლება შეიცვალოს. კავშირები ამჟამად იყენებს საჯარო რელეს ფაიერვოლების გასავლელად.",
+            "experimentalTag": "ექსპერიმენტული",
+            "driveState": {
+                "syncing": "სინქრონიზაცია",
+                "serving": "მომსახურება",
+                "error": "შეცდომა",
+                "starting": "გაშვება",
+                "stopped": "გაჩერებული",
+                "offline": "ხაზგარეშე"
+            },
+            "status": {
+                "starting": "გაშვება...",
+                "serving": "მომსახურება",
+                "stopped": "გაჩერებული",
+                "error": "შეცდომა"
+            },
+            "toast": {
+                "readOnlyTitle": "მხოლოდ წასაკითხი გაზიარება",
+                "readOnlyBody": "AeroShare საქაღალდეები მხოლოდ დასათვალიერებლად და ჩამოსატვირთად არის."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "საქაღალდის მიღება",
+                "shareTab": "საქაღალდის გაზიარება",
+                "myId": "თქვენი AeroFTP-ID",
+                "myIdHint": "გაუგზავნეთ ეს თქვენს მეგობარს, რათა მან საქაღალდე გაგიზიაროთ.",
+                "copy": "კოპირება",
+                "copied": "დაკოპირდა",
+                "receiveStep": "ჩასვით გაზიარების ბმული, რომელიც მეგობარმა გამოგიგზავნათ.",
+                "linkLabel": "გაზიარების ბმული",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "მეგობრის AeroFTP-ID",
+                "issuerPlaceholder": "იმ მეგობრის AeroFTP-ID, ვინც გაგიზიარათ",
+                "aliasLabel": "მეგობრის სახელი (არასავალდებულო)",
+                "localFolderLabel": "შენახვა ამ საქაღალდეში",
+                "chooseFolder": "საქაღალდის არჩევა",
+                "receiveSubmit": "გაზიარებული საქაღალდის დამატება",
+                "receiving": "გაზიარებული საქაღალდის დამატება...",
+                "receiveSuccess": "გაზიარებული საქაღალდე დაემატა",
+                "connectNow": "ახლავე დაკავშირება",
+                "needIdentityFirst": "თქვენი AeroFTP-ID იქმნება...",
+                "shareStep": "აირჩიეთ საქაღალდე და ვისთან გააზიარებთ.",
+                "shareFolderLabel": "გასაზიარებელი საქაღალდე",
+                "recipientLabel": "გაზიარება",
+                "recipientSaved": "შენახული მეგობარი",
+                "recipientPaste": "ჩასვით AeroFTP-ID",
+                "recipientAfidLabel": "მეგობრის AeroFTP-ID",
+                "recipientAliasLabel": "მეგობრის სახელი (არასავალდებულო)",
+                "driveNameLabel": "საქაღალდის სახელი (არასავალდებულო)",
+                "shareSubmit": "გაზიარების ბმულის შექმნა",
+                "sharing": "დაშიფრული საქაღალდის მომზადება...",
+                "shareReadyTitle": "გაზიარების ბმული მზადაა",
+                "shareReadyHint": "გაუგზავნეთ ეს ბმული უკან თქვენს მეგობარს. ის ჩასვამს მას AeroShare-ში საქაღალდის მისაღებად.",
+                "shareLinkLabel": "გაზიარების ბმული",
+                "noFriendsYet": "ჯერ შენახული მეგობრები არ არის.",
+                "close": "დახურვა",
+                "missingLink": "ჯერ ჩასვით გაზიარების ბმული.",
+                "missingIssuer": "შეიყვანეთ თქვენი მეგობრის AeroFTP-ID.",
+                "missingFolder": "აირჩიეთ საქაღალდე.",
+                "missingRecipient": "შეიყვანეთ ან აირჩიეთ მიმღების AeroFTP-ID."
+            }
         }
     }
 }

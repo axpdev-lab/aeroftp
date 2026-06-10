@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive գաղտնիություն",
             "privacyUpdated": "OpenDrive գաղտնիությունը թարմացված է"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Ավելացնել ընկեր",
+            "experimentalLabel": "AeroShare (փորձնական)",
+            "experimentalDesc": "Կիսվեք թղթապանակներով անմիջապես ընկերների հետ՝ գաղտնագրված peer-to-peer ալիքով, առանց միջանկյալ սերվերի։",
+            "experimentalNote": "Փորձնական. peer-to-peer փոխանցումը ակտիվ մշակման փուլում է և կարող է փոխվել։ Կապերը ներկայումս օգտագործում են հանրային ռելե՝ firewall-ները հատելու համար։",
+            "experimentalTag": "Փորձնական",
+            "driveState": {
+                "syncing": "Համաժամացում",
+                "serving": "Սպասարկում",
+                "error": "Սխալ",
+                "starting": "Մեկնարկ",
+                "stopped": "Կանգնեցված",
+                "offline": "Անցանց"
+            },
+            "status": {
+                "starting": "Մեկնարկ...",
+                "serving": "Սպասարկում",
+                "stopped": "Կանգնեցված",
+                "error": "Սխալ"
+            },
+            "toast": {
+                "readOnlyTitle": "Միայն կարդալու համար տրամադրում",
+                "readOnlyBody": "AeroShare թղթապանակները միայն դիտելու և ներբեռնելու համար են։"
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Ստանալ թղթապանակ",
+                "shareTab": "Տրամադրել թղթապանակ",
+                "myId": "Ձեր AeroFTP-ID-ն",
+                "myIdHint": "Ուղարկեք սա ձեր ընկերոջը, որպեսզի նա կարողանա թղթապանակ տրամադրել ձեզ։",
+                "copy": "Պատճենել",
+                "copied": "Պատճենվեց",
+                "receiveStep": "Տեղադրեք ձեր ընկերոջ ուղարկած տրամադրման հղումը։",
+                "linkLabel": "Տրամադրման հղում",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Ընկերոջ AeroFTP-ID",
+                "issuerPlaceholder": "Ձեզ տրամադրած ընկերոջ AeroFTP-ID-ն",
+                "aliasLabel": "Ընկերոջ անունը (ըստ ցանկության)",
+                "localFolderLabel": "Պահպանել այս թղթապանակում",
+                "chooseFolder": "Ընտրել թղթապանակ",
+                "receiveSubmit": "Ավելացնել տրամադրված թղթապանակ",
+                "receiving": "Տրամադրված թղթապանակի ավելացում...",
+                "receiveSuccess": "Տրամադրված թղթապանակն ավելացվեց",
+                "connectNow": "Միանալ հիմա",
+                "needIdentityFirst": "Ստեղծվում է ձեր AeroFTP-ID-ն...",
+                "shareStep": "Ընտրեք թղթապանակ և թե ում հետ կիսվել։",
+                "shareFolderLabel": "Տրամադրվող թղթապանակ",
+                "recipientLabel": "Տրամադրել",
+                "recipientSaved": "Պահպանված ընկեր",
+                "recipientPaste": "Տեղադրեք AeroFTP-ID",
+                "recipientAfidLabel": "Ընկերոջ AeroFTP-ID",
+                "recipientAliasLabel": "Ընկերոջ անունը (ըստ ցանկության)",
+                "driveNameLabel": "Թղթապանակի անունը (ըստ ցանկության)",
+                "shareSubmit": "Ստեղծել տրամադրման հղում",
+                "sharing": "Գաղտնագրված թղթապանակի նախապատրաստում...",
+                "shareReadyTitle": "Տրամադրման հղումը պատրաստ է",
+                "shareReadyHint": "Ուղարկեք այս հղումը ձեր ընկերոջը։ Նա այն տեղադրում է AeroShare-ում՝ թղթապանակը ստանալու համար։",
+                "shareLinkLabel": "Տրամադրման հղում",
+                "noFriendsYet": "Դեռ պահպանված ընկերներ չկան։",
+                "close": "Փակել",
+                "missingLink": "Նախ տեղադրեք տրամադրման հղումը։",
+                "missingIssuer": "Մուտքագրեք ձեր ընկերոջ AeroFTP-ID-ն։",
+                "missingFolder": "Ընտրեք թղթապանակ։",
+                "missingRecipient": "Մուտքագրեք կամ ընտրեք ստացողի AeroFTP-ID-ն։"
+            }
         }
     }
 }

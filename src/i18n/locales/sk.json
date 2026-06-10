@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Súkromie OpenDrive",
             "privacyUpdated": "Súkromie OpenDrive aktualizované"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Pridať priateľa",
+            "experimentalLabel": "AeroShare (experimentálne)",
+            "experimentalDesc": "Zdieľajte priečinky priamo s priateľmi cez šifrovaný kanál peer-to-peer, bez servera uprostred.",
+            "experimentalNote": "Experimentálne: prenos peer-to-peer sa aktívne vyvíja a môže sa zmeniť. Pripojenia teraz používajú verejný prenášač na prechod cez firewally.",
+            "experimentalTag": "Experimentálne",
+            "driveState": {
+                "syncing": "Synchronizácia",
+                "serving": "Poskytovanie",
+                "error": "Chyba",
+                "starting": "Spúšťanie",
+                "stopped": "Zastavené",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Spúšťanie...",
+                "serving": "Poskytovanie",
+                "stopped": "Zastavené",
+                "error": "Chyba"
+            },
+            "toast": {
+                "readOnlyTitle": "Zdieľanie iba na čítanie",
+                "readOnlyBody": "Priečinky AeroShare slúžia iba na prehliadanie a sťahovanie."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Prijať priečinok",
+                "shareTab": "Zdieľať priečinok",
+                "myId": "Vaše AeroFTP-ID",
+                "myIdHint": "Pošlite to priateľovi, aby s vami mohol zdieľať priečinok.",
+                "copy": "Kopírovať",
+                "copied": "Skopírované",
+                "receiveStep": "Vložte odkaz na zdieľanie, ktorý vám poslal priateľ.",
+                "linkLabel": "Odkaz na zdieľanie",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID priateľa",
+                "issuerPlaceholder": "AeroFTP-ID priateľa, ktorý s vami zdieľal",
+                "aliasLabel": "Meno priateľa (voliteľné)",
+                "localFolderLabel": "Uložiť do tohto priečinka",
+                "chooseFolder": "Vybrať priečinok",
+                "receiveSubmit": "Pridať zdieľaný priečinok",
+                "receiving": "Pridávanie zdieľaného priečinka...",
+                "receiveSuccess": "Zdieľaný priečinok pridaný",
+                "connectNow": "Pripojiť teraz",
+                "needIdentityFirst": "Vytváranie vášho AeroFTP-ID...",
+                "shareStep": "Vyberte priečinok a osobu, s ktorou ho chcete zdieľať.",
+                "shareFolderLabel": "Priečinok na zdieľanie",
+                "recipientLabel": "Zdieľať s",
+                "recipientSaved": "Uložený priateľ",
+                "recipientPaste": "Vložte AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID priateľa",
+                "recipientAliasLabel": "Meno priateľa (voliteľné)",
+                "driveNameLabel": "Názov priečinka (voliteľné)",
+                "shareSubmit": "Vytvoriť odkaz na zdieľanie",
+                "sharing": "Príprava šifrovaného priečinka...",
+                "shareReadyTitle": "Odkaz na zdieľanie pripravený",
+                "shareReadyHint": "Pošlite tento odkaz späť priateľovi. Vloží ho do AeroShare, aby priečinok prijal.",
+                "shareLinkLabel": "Odkaz na zdieľanie",
+                "noFriendsYet": "Zatiaľ žiadni uložení priatelia.",
+                "close": "Zavrieť",
+                "missingLink": "Najprv vložte odkaz na zdieľanie.",
+                "missingIssuer": "Zadajte AeroFTP-ID svojho priateľa.",
+                "missingFolder": "Vyberte priečinok.",
+                "missingRecipient": "Zadajte alebo vyberte AeroFTP-ID príjemcu."
+            }
         }
     }
 }

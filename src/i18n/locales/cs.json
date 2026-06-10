@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Soukromí OpenDrive",
             "privacyUpdated": "Soukromí OpenDrive aktualizováno"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Přidat přítele",
+            "experimentalLabel": "AeroShare (experimentální)",
+            "experimentalDesc": "Sdílejte složky přímo s přáteli prostřednictvím šifrovaného kanálu peer-to-peer, bez serveru uprostřed.",
+            "experimentalNote": "Experimentální: přenos peer-to-peer se aktivně vyvíjí a může se změnit. Připojení nyní používají veřejný přenašeč pro průchod přes firewally.",
+            "experimentalTag": "Experimentální",
+            "driveState": {
+                "syncing": "Synchronizace",
+                "serving": "Poskytování",
+                "error": "Chyba",
+                "starting": "Spouštění",
+                "stopped": "Zastaveno",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Spouštění...",
+                "serving": "Poskytování",
+                "stopped": "Zastaveno",
+                "error": "Chyba"
+            },
+            "toast": {
+                "readOnlyTitle": "Sdílení pouze pro čtení",
+                "readOnlyBody": "Složky AeroShare slouží pouze k procházení a stahování."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Přijmout složku",
+                "shareTab": "Sdílet složku",
+                "myId": "Vaše AeroFTP-ID",
+                "myIdHint": "Pošlete to příteli, aby s vámi mohl sdílet složku.",
+                "copy": "Kopírovat",
+                "copied": "Zkopírováno",
+                "receiveStep": "Vložte odkaz pro sdílení, který vám poslal přítel.",
+                "linkLabel": "Odkaz pro sdílení",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID přítele",
+                "issuerPlaceholder": "AeroFTP-ID přítele, který s vámi sdílel",
+                "aliasLabel": "Jméno přítele (volitelné)",
+                "localFolderLabel": "Uložit do této složky",
+                "chooseFolder": "Vybrat složku",
+                "receiveSubmit": "Přidat sdílenou složku",
+                "receiving": "Přidávání sdílené složky...",
+                "receiveSuccess": "Sdílená složka přidána",
+                "connectNow": "Připojit nyní",
+                "needIdentityFirst": "Vytváření vašeho AeroFTP-ID...",
+                "shareStep": "Vyberte složku a osobu, se kterou ji chcete sdílet.",
+                "shareFolderLabel": "Složka ke sdílení",
+                "recipientLabel": "Sdílet s",
+                "recipientSaved": "Uložený přítel",
+                "recipientPaste": "Vložte AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID přítele",
+                "recipientAliasLabel": "Jméno přítele (volitelné)",
+                "driveNameLabel": "Název složky (volitelné)",
+                "shareSubmit": "Vytvořit odkaz pro sdílení",
+                "sharing": "Příprava šifrované složky...",
+                "shareReadyTitle": "Odkaz pro sdílení připraven",
+                "shareReadyHint": "Pošlete tento odkaz zpět příteli. Vloží jej do AeroShare, aby složku přijal.",
+                "shareLinkLabel": "Odkaz pro sdílení",
+                "noFriendsYet": "Zatím žádní uložení přátelé.",
+                "close": "Zavřít",
+                "missingLink": "Nejprve vložte odkaz pro sdílení.",
+                "missingIssuer": "Zadejte AeroFTP-ID svého přítele.",
+                "missingFolder": "Vyberte složku.",
+                "missingRecipient": "Zadejte nebo vyberte AeroFTP-ID příjemce."
+            }
         }
     }
 }

@@ -4708,6 +4708,73 @@
                 "colAction": "Azione"
             },
             "launcherScheduler": "Pianificatore"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Aggiungi amico",
+            "experimentalLabel": "AeroShare (sperimentale)",
+            "experimentalDesc": "Condividi cartelle direttamente con gli amici su un canale peer-to-peer cifrato, senza alcun server di mezzo.",
+            "experimentalNote": "Sperimentale: il trasferimento peer-to-peer è in fase di sviluppo attivo e può cambiare. Le connessioni usano attualmente un relay pubblico per attraversare i firewall.",
+            "experimentalTag": "Sperimentale",
+            "driveState": {
+                "syncing": "Sincronizzazione",
+                "serving": "In condivisione",
+                "error": "Errore",
+                "starting": "Avvio",
+                "stopped": "Fermato",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Avvio...",
+                "serving": "In condivisione",
+                "stopped": "Fermato",
+                "error": "Errore"
+            },
+            "toast": {
+                "readOnlyTitle": "Condivisione in sola lettura",
+                "readOnlyBody": "Le cartelle AeroShare permettono solo di sfogliare e scaricare."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Ricevi una cartella",
+                "shareTab": "Condividi una cartella",
+                "myId": "Il tuo AeroFTP-ID",
+                "myIdHint": "Invialo al tuo amico così potrà condividere una cartella con te.",
+                "copy": "Copia",
+                "copied": "Copiato",
+                "receiveStep": "Incolla il link di condivisione che ti ha inviato il tuo amico.",
+                "linkLabel": "Link di condivisione",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID dell'amico",
+                "issuerPlaceholder": "L'AeroFTP-ID dell'amico che ha condiviso con te",
+                "aliasLabel": "Nome dell'amico (facoltativo)",
+                "localFolderLabel": "Salva in questa cartella",
+                "chooseFolder": "Scegli cartella",
+                "receiveSubmit": "Aggiungi cartella condivisa",
+                "receiving": "Aggiunta cartella condivisa...",
+                "receiveSuccess": "Cartella condivisa aggiunta",
+                "connectNow": "Connetti ora",
+                "needIdentityFirst": "Creazione del tuo AeroFTP-ID...",
+                "shareStep": "Scegli una cartella e con chi condividerla.",
+                "shareFolderLabel": "Cartella da condividere",
+                "recipientLabel": "Condividi con",
+                "recipientSaved": "Amico salvato",
+                "recipientPaste": "Incolla un AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID dell'amico",
+                "recipientAliasLabel": "Nome dell'amico (facoltativo)",
+                "driveNameLabel": "Nome della cartella (facoltativo)",
+                "shareSubmit": "Crea link di condivisione",
+                "sharing": "Preparazione della cartella cifrata...",
+                "shareReadyTitle": "Link di condivisione pronto",
+                "shareReadyHint": "Invia questo link al tuo amico. Lo incollerà in AeroShare per ricevere la cartella.",
+                "shareLinkLabel": "Link di condivisione",
+                "noFriendsYet": "Ancora nessun amico salvato.",
+                "close": "Chiudi",
+                "missingLink": "Incolla prima il link di condivisione.",
+                "missingIssuer": "Inserisci l'AeroFTP-ID del tuo amico.",
+                "missingFolder": "Scegli una cartella.",
+                "missingRecipient": "Inserisci o scegli l'AeroFTP-ID del destinatario."
+            }
         }
     }
 }

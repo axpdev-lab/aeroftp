@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Zasebnost OpenDrive",
             "privacyUpdated": "Zasebnost OpenDrive posodobljena"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Dodaj prijatelja",
+            "experimentalLabel": "AeroShare (poskusno)",
+            "experimentalDesc": "Mape delite neposredno s prijatelji prek šifriranega peer-to-peer kanala, brez strežnika vmes.",
+            "experimentalNote": "Poskusno: peer-to-peer prenos je v dejavnem razvoju in se lahko spremeni. Povezave trenutno uporabljajo javni rele za prehod skozi požarne zidove.",
+            "experimentalTag": "Poskusno",
+            "driveState": {
+                "syncing": "Sinhronizacija",
+                "serving": "Strežba",
+                "error": "Napaka",
+                "starting": "Zaganjanje",
+                "stopped": "Ustavljeno",
+                "offline": "Brez povezave"
+            },
+            "status": {
+                "starting": "Zaganjanje...",
+                "serving": "Strežba",
+                "stopped": "Ustavljeno",
+                "error": "Napaka"
+            },
+            "toast": {
+                "readOnlyTitle": "Deljenje samo za branje",
+                "readOnlyBody": "Mape v AeroShare so namenjene samo brskanju in prenosu."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Prejmi mapo",
+                "shareTab": "Deli mapo",
+                "myId": "Vaš AeroFTP-ID",
+                "myIdHint": "Pošljite to prijatelju, da lahko z vami deli mapo.",
+                "copy": "Kopiraj",
+                "copied": "Kopirano",
+                "receiveStep": "Prilepite povezavo za deljenje, ki vam jo je poslal prijatelj.",
+                "linkLabel": "Povezava za deljenje",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Prijateljev AeroFTP-ID",
+                "issuerPlaceholder": "AeroFTP-ID prijatelja, ki je delil z vami",
+                "aliasLabel": "Ime prijatelja (neobvezno)",
+                "localFolderLabel": "Shrani v to mapo",
+                "chooseFolder": "Izberi mapo",
+                "receiveSubmit": "Dodaj deljeno mapo",
+                "receiving": "Dodajanje deljene mape...",
+                "receiveSuccess": "Deljena mapa je dodana",
+                "connectNow": "Poveži zdaj",
+                "needIdentityFirst": "Ustvarjanje vašega AeroFTP-ID...",
+                "shareStep": "Izberite mapo in s kom jo želite deliti.",
+                "shareFolderLabel": "Mapa za deljenje",
+                "recipientLabel": "Deli z",
+                "recipientSaved": "Shranjen prijatelj",
+                "recipientPaste": "Prilepite AeroFTP-ID",
+                "recipientAfidLabel": "Prijateljev AeroFTP-ID",
+                "recipientAliasLabel": "Ime prijatelja (neobvezno)",
+                "driveNameLabel": "Ime mape (neobvezno)",
+                "shareSubmit": "Ustvari povezavo za deljenje",
+                "sharing": "Pripravljanje šifrirane mape...",
+                "shareReadyTitle": "Povezava za deljenje je pripravljena",
+                "shareReadyHint": "Pošljite to povezavo nazaj prijatelju. Prilepi jo v AeroShare, da prejme mapo.",
+                "shareLinkLabel": "Povezava za deljenje",
+                "noFriendsYet": "Še ni shranjenih prijateljev.",
+                "close": "Zapri",
+                "missingLink": "Najprej prilepite povezavo za deljenje.",
+                "missingIssuer": "Vnesite prijateljev AeroFTP-ID.",
+                "missingFolder": "Izberite mapo.",
+                "missingRecipient": "Vnesite ali izberite prejemnikov AeroFTP-ID."
+            }
         }
     }
 }

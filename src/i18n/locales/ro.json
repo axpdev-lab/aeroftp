@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Confidențialitate OpenDrive",
             "privacyUpdated": "Confidențialitate OpenDrive actualizată"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Adaugă prieten",
+            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalDesc": "Partajează foldere direct cu prietenii printr-un canal criptat de la egal la egal, fără niciun server la mijloc.",
+            "experimentalNote": "Experimental: transferul de la egal la egal este în dezvoltare activă și se poate modifica. Conexiunile folosesc în prezent un releu public pentru a traversa firewallurile.",
+            "experimentalTag": "Experimental",
+            "driveState": {
+                "syncing": "Se sincronizează",
+                "serving": "Se partajează",
+                "error": "Eroare",
+                "starting": "Se pornește",
+                "stopped": "Oprit",
+                "offline": "Deconectat"
+            },
+            "status": {
+                "starting": "Se pornește...",
+                "serving": "Se partajează",
+                "stopped": "Oprit",
+                "error": "Eroare"
+            },
+            "toast": {
+                "readOnlyTitle": "Partajare doar pentru citire",
+                "readOnlyBody": "Folderele AeroShare permit doar răsfoirea și descărcarea."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Primește un folder",
+                "shareTab": "Partajează un folder",
+                "myId": "AeroFTP-ID-ul tău",
+                "myIdHint": "Trimite-l prietenului tău ca să poată partaja un folder cu tine.",
+                "copy": "Copiază",
+                "copied": "Copiat",
+                "receiveStep": "Lipește linkul de partajare pe care ți l-a trimis prietenul tău.",
+                "linkLabel": "Link de partajare",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID-ul prietenului",
+                "issuerPlaceholder": "AeroFTP-ID-ul prietenului care a partajat cu tine",
+                "aliasLabel": "Numele prietenului (opțional)",
+                "localFolderLabel": "Salvează în acest folder",
+                "chooseFolder": "Alege folder",
+                "receiveSubmit": "Adaugă folderul partajat",
+                "receiving": "Se adaugă folderul partajat...",
+                "receiveSuccess": "Folder partajat adăugat",
+                "connectNow": "Conectează-te acum",
+                "needIdentityFirst": "Se creează AeroFTP-ID-ul tău...",
+                "shareStep": "Alege un folder și cu cine îl partajezi.",
+                "shareFolderLabel": "Folder de partajat",
+                "recipientLabel": "Partajează cu",
+                "recipientSaved": "Prieten salvat",
+                "recipientPaste": "Lipește un AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID-ul prietenului",
+                "recipientAliasLabel": "Numele prietenului (opțional)",
+                "driveNameLabel": "Numele folderului (opțional)",
+                "shareSubmit": "Creează link de partajare",
+                "sharing": "Se pregătește folderul criptat...",
+                "shareReadyTitle": "Link de partajare gata",
+                "shareReadyHint": "Trimite acest link înapoi prietenului tău. Îl lipește în AeroShare pentru a primi folderul.",
+                "shareLinkLabel": "Link de partajare",
+                "noFriendsYet": "Încă niciun prieten salvat.",
+                "close": "Închide",
+                "missingLink": "Lipește mai întâi linkul de partajare.",
+                "missingIssuer": "Introdu AeroFTP-ID-ul prietenului tău.",
+                "missingFolder": "Alege un folder.",
+                "missingRecipient": "Introdu sau alege AeroFTP-ID-ul destinatarului."
+            }
         }
     }
 }

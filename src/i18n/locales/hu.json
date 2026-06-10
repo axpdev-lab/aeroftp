@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive adatvédelem",
             "privacyUpdated": "OpenDrive adatvédelem frissítve"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Barát hozzáadása",
+            "experimentalLabel": "AeroShare (kísérleti)",
+            "experimentalDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül.",
+            "experimentalNote": "Kísérleti: a peer-to-peer átvitel aktív fejlesztés alatt áll, és változhat. A kapcsolatok jelenleg nyilvános továbbítót használnak a tűzfalak áthidalásához.",
+            "experimentalTag": "Kísérleti",
+            "driveState": {
+                "syncing": "Szinkronizálás",
+                "serving": "Kiszolgálás",
+                "error": "Hiba",
+                "starting": "Indítás",
+                "stopped": "Leállítva",
+                "offline": "Kapcsolat nélkül"
+            },
+            "status": {
+                "starting": "Indítás...",
+                "serving": "Kiszolgálás",
+                "stopped": "Leállítva",
+                "error": "Hiba"
+            },
+            "toast": {
+                "readOnlyTitle": "Csak olvasható megosztás",
+                "readOnlyBody": "Az AeroShare mappák csak böngészhetők és letölthetők."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Mappa fogadása",
+                "shareTab": "Mappa megosztása",
+                "myId": "A te AeroFTP-ID-d",
+                "myIdHint": "Küldd el ezt a barátodnak, hogy megoszthasson veled egy mappát.",
+                "copy": "Másolás",
+                "copied": "Másolva",
+                "receiveStep": "Illeszd be a barátod által küldött megosztási hivatkozást.",
+                "linkLabel": "Megosztási hivatkozás",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "A barát AeroFTP-ID-ja",
+                "issuerPlaceholder": "Annak a barátnak az AeroFTP-ID-ja, aki megosztotta veled",
+                "aliasLabel": "Barát neve (nem kötelező)",
+                "localFolderLabel": "Mentés ebbe a mappába",
+                "chooseFolder": "Mappa kiválasztása",
+                "receiveSubmit": "Megosztott mappa hozzáadása",
+                "receiving": "Megosztott mappa hozzáadása...",
+                "receiveSuccess": "Megosztott mappa hozzáadva",
+                "connectNow": "Csatlakozás most",
+                "needIdentityFirst": "AeroFTP-ID létrehozása...",
+                "shareStep": "Válassz egy mappát és azt, hogy kivel osztod meg.",
+                "shareFolderLabel": "Megosztandó mappa",
+                "recipientLabel": "Megosztás vele",
+                "recipientSaved": "Mentett barát",
+                "recipientPaste": "Illessz be egy AeroFTP-ID-t",
+                "recipientAfidLabel": "A barát AeroFTP-ID-ja",
+                "recipientAliasLabel": "Barát neve (nem kötelező)",
+                "driveNameLabel": "Mappa neve (nem kötelező)",
+                "shareSubmit": "Megosztási hivatkozás létrehozása",
+                "sharing": "A titkosított mappa előkészítése...",
+                "shareReadyTitle": "A megosztási hivatkozás kész",
+                "shareReadyHint": "Küldd vissza ezt a hivatkozást a barátodnak. Beilleszti az AeroShare-be, hogy megkapja a mappát.",
+                "shareLinkLabel": "Megosztási hivatkozás",
+                "noFriendsYet": "Még nincsenek mentett barátok.",
+                "close": "Bezárás",
+                "missingLink": "Először illeszd be a megosztási hivatkozást.",
+                "missingIssuer": "Add meg a barátod AeroFTP-ID-ját.",
+                "missingFolder": "Válassz egy mappát.",
+                "missingRecipient": "Add meg vagy válaszd ki a címzett AeroFTP-ID-ját."
+            }
         }
     }
 }

@@ -4727,6 +4727,73 @@
         "opendrive": {
             "privacyTitle": "Privacidade de OpenDrive",
             "privacyUpdated": "Privacidade de OpenDrive actualizada"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Engadir amigo",
+            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalDesc": "Comparte cartafoles directamente cos teus amigos a través dunha canle cifrada de igual a igual, sen ningún servidor polo medio.",
+            "experimentalNote": "Experimental: a transferencia de igual a igual está en desenvolvemento activo e pode cambiar. As conexións usan actualmente un relé público para atravesar as devasas.",
+            "experimentalTag": "Experimental",
+            "driveState": {
+                "syncing": "Sincronizando",
+                "serving": "Compartindo",
+                "error": "Erro",
+                "starting": "Iniciando",
+                "stopped": "Detido",
+                "offline": "Sen conexión"
+            },
+            "status": {
+                "starting": "Iniciando...",
+                "serving": "Compartindo",
+                "stopped": "Detido",
+                "error": "Erro"
+            },
+            "toast": {
+                "readOnlyTitle": "Compartición só de lectura",
+                "readOnlyBody": "Os cartafoles de AeroShare só permiten navegar e descargar."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Recibir un cartafol",
+                "shareTab": "Compartir un cartafol",
+                "myId": "O teu AeroFTP-ID",
+                "myIdHint": "Envíallo ao teu amigo para que poida compartir un cartafol contigo.",
+                "copy": "Copiar",
+                "copied": "Copiado",
+                "receiveStep": "Pega a ligazón de compartición que che enviou o teu amigo.",
+                "linkLabel": "Ligazón de compartición",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID do amigo",
+                "issuerPlaceholder": "O AeroFTP-ID do amigo que compartiu contigo",
+                "aliasLabel": "Nome do amigo (opcional)",
+                "localFolderLabel": "Gardar neste cartafol",
+                "chooseFolder": "Escoller cartafol",
+                "receiveSubmit": "Engadir cartafol compartido",
+                "receiving": "Engadindo cartafol compartido...",
+                "receiveSuccess": "Cartafol compartido engadido",
+                "connectNow": "Conectar agora",
+                "needIdentityFirst": "Creando o teu AeroFTP-ID...",
+                "shareStep": "Escolle un cartafol e con quen compartilo.",
+                "shareFolderLabel": "Cartafol para compartir",
+                "recipientLabel": "Compartir con",
+                "recipientSaved": "Amigo gardado",
+                "recipientPaste": "Pega un AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID do amigo",
+                "recipientAliasLabel": "Nome do amigo (opcional)",
+                "driveNameLabel": "Nome do cartafol (opcional)",
+                "shareSubmit": "Crear ligazón de compartición",
+                "sharing": "Preparando o cartafol cifrado...",
+                "shareReadyTitle": "Ligazón de compartición lista",
+                "shareReadyHint": "Envíalle esta ligazón de volta ao teu amigo. Pégaa en AeroShare para recibir o cartafol.",
+                "shareLinkLabel": "Ligazón de compartición",
+                "noFriendsYet": "Aínda non hai amigos gardados.",
+                "close": "Pechar",
+                "missingLink": "Pega primeiro a ligazón de compartición.",
+                "missingIssuer": "Introduce o AeroFTP-ID do teu amigo.",
+                "missingFolder": "Escolle un cartafol.",
+                "missingRecipient": "Introduce ou escolle o AeroFTP-ID do destinatario."
+            }
         }
     }
 }

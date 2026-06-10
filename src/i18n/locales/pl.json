@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Prywatność OpenDrive",
             "privacyUpdated": "Zaktualizowano prywatność OpenDrive"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Dodaj znajomego",
+            "experimentalLabel": "AeroShare (eksperymentalnie)",
+            "experimentalDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego.",
+            "experimentalNote": "Eksperymentalnie: transfer peer-to-peer jest aktywnie rozwijany i może ulec zmianie. Połączenia korzystają obecnie z publicznego przekaźnika do omijania zapór sieciowych.",
+            "experimentalTag": "Eksperymentalne",
+            "driveState": {
+                "syncing": "Synchronizacja",
+                "serving": "Udostępnianie",
+                "error": "Błąd",
+                "starting": "Uruchamianie",
+                "stopped": "Zatrzymano",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Uruchamianie...",
+                "serving": "Udostępnianie",
+                "stopped": "Zatrzymano",
+                "error": "Błąd"
+            },
+            "toast": {
+                "readOnlyTitle": "Udostępnianie tylko do odczytu",
+                "readOnlyBody": "Foldery AeroShare służą wyłącznie do przeglądania i pobierania."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Odbierz folder",
+                "shareTab": "Udostępnij folder",
+                "myId": "Twój AeroFTP-ID",
+                "myIdHint": "Wyślij to znajomemu, aby mógł udostępnić Ci folder.",
+                "copy": "Kopiuj",
+                "copied": "Skopiowano",
+                "receiveStep": "Wklej link udostępniania przesłany przez znajomego.",
+                "linkLabel": "Link udostępniania",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID znajomego",
+                "issuerPlaceholder": "AeroFTP-ID znajomego, który Ci udostępnił",
+                "aliasLabel": "Nazwa znajomego (opcjonalnie)",
+                "localFolderLabel": "Zapisz w tym folderze",
+                "chooseFolder": "Wybierz folder",
+                "receiveSubmit": "Dodaj udostępniony folder",
+                "receiving": "Dodawanie udostępnionego folderu...",
+                "receiveSuccess": "Udostępniony folder dodany",
+                "connectNow": "Połącz teraz",
+                "needIdentityFirst": "Tworzenie Twojego AeroFTP-ID...",
+                "shareStep": "Wybierz folder oraz osobę, której chcesz go udostępnić.",
+                "shareFolderLabel": "Folder do udostępnienia",
+                "recipientLabel": "Udostępnij dla",
+                "recipientSaved": "Zapisany znajomy",
+                "recipientPaste": "Wklej AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID znajomego",
+                "recipientAliasLabel": "Nazwa znajomego (opcjonalnie)",
+                "driveNameLabel": "Nazwa folderu (opcjonalnie)",
+                "shareSubmit": "Utwórz link udostępniania",
+                "sharing": "Przygotowywanie zaszyfrowanego folderu...",
+                "shareReadyTitle": "Link udostępniania gotowy",
+                "shareReadyHint": "Odeślij ten link znajomemu. Wkleja go w AeroShare, aby odebrać folder.",
+                "shareLinkLabel": "Link udostępniania",
+                "noFriendsYet": "Brak zapisanych znajomych.",
+                "close": "Zamknij",
+                "missingLink": "Najpierw wklej link udostępniania.",
+                "missingIssuer": "Wprowadź AeroFTP-ID znajomego.",
+                "missingFolder": "Wybierz folder.",
+                "missingRecipient": "Wprowadź lub wybierz AeroFTP-ID odbiorcy."
+            }
         }
     }
 }

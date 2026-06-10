@@ -18,6 +18,7 @@ import type { TableColAlign, TableColumnDef } from '../../hooks/useTableColumns'
 import { useTranslation } from '../../i18n';
 import { HealthRadial } from './HealthRadial';
 import { getServerIcon, getTimeAgo, RenameInput, ServerBadges } from './ServerCard';
+import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 
 interface MyServersTableRowProps {
     server: ServerProfile;
@@ -65,6 +66,8 @@ interface MyServersTableRowProps {
     resolveAlign?: (id: MyServersTableColId) => TableColAlign;
     /** True when this profile has an open session: pulses the health radial. */
     hasActiveSession?: boolean;
+    /** AeroShare friend rows: live drive-state for the badge chip. */
+    peerState?: PeerDriveState;
 }
 
 export const MyServersTableRow = React.memo(function MyServersTableRow({
@@ -105,6 +108,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     density = 'compact',
     resolveAlign,
     hasActiveSession = false,
+    peerState,
 }: MyServersTableRowProps) {
     const t = useTranslation();
     const isCompact = density === 'compact';
@@ -345,7 +349,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 return (
                     <td key="badges" className={`${cellClass} ${alignTd('badges', 'left')}`}>
                         <div className={`flex items-center ${alignFlex('badges', 'left')}`}>
-                            <ServerBadges server={server} />
+                            <ServerBadges server={server} peerState={peerState} />
                         </div>
                     </td>
                 );

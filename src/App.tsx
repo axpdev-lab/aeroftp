@@ -4573,6 +4573,13 @@ interface UpdateVerificationInfo {
       github_pem_path: effectiveParams.options?.githubPemPath || null,
       github_token_expires_at: effectiveParams.options?.githubTokenExpiresAt || null,
       github_branch: effectiveParams.options?.githubBranch || null,
+      // AeroShare (protocol "peer"): forward the friend-drive binding so
+      // provider_connect can (re)start the replication sub and browse the
+      // local replica. `server` already carries the friend's AeroFTP-ID.
+      peer_namespace: effectiveParams.options?.peerNamespace || null,
+      peer_ticket: effectiveParams.options?.peerTicket || null,
+      peer_local_folder: effectiveParams.options?.peerLocalFolder || null,
+      peer_role: effectiveParams.options?.peerRole || null,
     };
 
     return { effectiveParams, providerParams };

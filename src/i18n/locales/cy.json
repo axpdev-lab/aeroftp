@@ -4727,6 +4727,73 @@
         "opendrive": {
             "privacyTitle": "Preifatrwydd OpenDrive",
             "privacyUpdated": "Preifatrwydd OpenDrive wedi'i ddiweddaru"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Ychwanegu ffrind",
+            "experimentalLabel": "AeroShare (arbrofol)",
+            "experimentalDesc": "Rhannwch ffolderi yn uniongyrchol gyda ffrindiau dros sianel peer-to-peer wedi'i hamgryptio, heb weinydd yn y canol.",
+            "experimentalNote": "Arbrofol: mae trosglwyddo peer-to-peer yn cael ei ddatblygu'n weithredol a gall newid. Ar hyn o bryd mae cysylltiadau'n defnyddio relái cyhoeddus i groesi waliau tân.",
+            "experimentalTag": "Arbrofol",
+            "driveState": {
+                "syncing": "Cysoni",
+                "serving": "Gweini",
+                "error": "Gwall",
+                "starting": "Cychwyn",
+                "stopped": "Wedi stopio",
+                "offline": "All-lein"
+            },
+            "status": {
+                "starting": "Cychwyn...",
+                "serving": "Gweini",
+                "stopped": "Wedi stopio",
+                "error": "Gwall"
+            },
+            "toast": {
+                "readOnlyTitle": "Rhannu darllen yn unig",
+                "readOnlyBody": "Mae ffolderi AeroShare ar gyfer pori a lawrlwytho yn unig."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Derbyn ffolder",
+                "shareTab": "Rhannu ffolder",
+                "myId": "Eich AeroFTP-ID",
+                "myIdHint": "Anfonwch hwn at eich ffrind fel y gallant rannu ffolder gyda chi.",
+                "copy": "Copïo",
+                "copied": "Wedi'i gopïo",
+                "receiveStep": "Gludwch y ddolen rannu a anfonodd eich ffrind atoch.",
+                "linkLabel": "Dolen rannu",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID y ffrind",
+                "issuerPlaceholder": "AeroFTP-ID y ffrind a rannodd gyda chi",
+                "aliasLabel": "Enw'r ffrind (dewisol)",
+                "localFolderLabel": "Cadw yn y ffolder hon",
+                "chooseFolder": "Dewis ffolder",
+                "receiveSubmit": "Ychwanegu ffolder a rannwyd",
+                "receiving": "Ychwanegu ffolder a rannwyd...",
+                "receiveSuccess": "Ychwanegwyd y ffolder a rannwyd",
+                "connectNow": "Cysylltu nawr",
+                "needIdentityFirst": "Yn creu eich AeroFTP-ID...",
+                "shareStep": "Dewiswch ffolder a chyda phwy i'w rhannu.",
+                "shareFolderLabel": "Ffolder i'w rhannu",
+                "recipientLabel": "Rhannu gyda",
+                "recipientSaved": "Ffrind wedi'i gadw",
+                "recipientPaste": "Gludwch AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID y ffrind",
+                "recipientAliasLabel": "Enw'r ffrind (dewisol)",
+                "driveNameLabel": "Enw'r ffolder (dewisol)",
+                "shareSubmit": "Creu dolen rannu",
+                "sharing": "Yn paratoi'r ffolder wedi'i hamgryptio...",
+                "shareReadyTitle": "Mae'r ddolen rannu'n barod",
+                "shareReadyHint": "Anfonwch y ddolen hon yn ôl at eich ffrind. Maen nhw'n ei gludo i mewn i AeroShare i dderbyn y ffolder.",
+                "shareLinkLabel": "Dolen rannu",
+                "noFriendsYet": "Dim ffrindiau wedi'u cadw eto.",
+                "close": "Cau",
+                "missingLink": "Gludwch y ddolen rannu yn gyntaf.",
+                "missingIssuer": "Rhowch AeroFTP-ID eich ffrind.",
+                "missingFolder": "Dewiswch ffolder.",
+                "missingRecipient": "Rhowch neu dewiswch AeroFTP-ID y derbynnydd."
+            }
         }
     }
 }

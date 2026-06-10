@@ -4727,6 +4727,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive persónuvernd",
             "privacyUpdated": "OpenDrive persónuvernd uppfærð"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Bæta við vini",
+            "experimentalLabel": "AeroShare (á tilraunastigi)",
+            "experimentalDesc": "Deildu möppum beint með vinum um dulkóðaða jafningjarás, án nokkurs þjóns á milli.",
+            "experimentalNote": "Á tilraunastigi: jafningjaflutningur er í virkri þróun og getur breyst. Tengingar nota sem stendur opinbert endurvarp til að komast í gegnum eldveggi.",
+            "experimentalTag": "Á tilraunastigi",
+            "driveState": {
+                "syncing": "Samstillir",
+                "serving": "Þjónar",
+                "error": "Villa",
+                "starting": "Ræsir",
+                "stopped": "Stöðvað",
+                "offline": "Ótengt"
+            },
+            "status": {
+                "starting": "Ræsir...",
+                "serving": "Þjónar",
+                "stopped": "Stöðvað",
+                "error": "Villa"
+            },
+            "toast": {
+                "readOnlyTitle": "Skrifvarin deiling",
+                "readOnlyBody": "AeroShare-möppur er aðeins hægt að skoða og hlaða niður."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Taka á móti möppu",
+                "shareTab": "Deila möppu",
+                "myId": "AeroFTP-ID þitt",
+                "myIdHint": "Sendu þetta til vinar þíns svo hann geti deilt möppu með þér.",
+                "copy": "Afrita",
+                "copied": "Afritað",
+                "receiveStep": "Límdu inn deilingatengilinn sem vinur þinn sendi þér.",
+                "linkLabel": "Deilingatengill",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID vinarins",
+                "issuerPlaceholder": "AeroFTP-ID vinarins sem deildi með þér",
+                "aliasLabel": "Nafn vinar (valfrjálst)",
+                "localFolderLabel": "Vista í þessa möppu",
+                "chooseFolder": "Velja möppu",
+                "receiveSubmit": "Bæta við deildri möppu",
+                "receiving": "Bæti við deildri möppu...",
+                "receiveSuccess": "Deildri möppu bætt við",
+                "connectNow": "Tengjast núna",
+                "needIdentityFirst": "Bý til AeroFTP-ID þitt...",
+                "shareStep": "Veldu möppu og með hverjum þú vilt deila henni.",
+                "shareFolderLabel": "Mappa til að deila",
+                "recipientLabel": "Deila með",
+                "recipientSaved": "Vistaður vinur",
+                "recipientPaste": "Límdu inn AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID vinarins",
+                "recipientAliasLabel": "Nafn vinar (valfrjálst)",
+                "driveNameLabel": "Nafn möppu (valfrjálst)",
+                "shareSubmit": "Búa til deilingatengil",
+                "sharing": "Undirbý dulkóðuðu möppuna...",
+                "shareReadyTitle": "Deilingatengill tilbúinn",
+                "shareReadyHint": "Sendu þennan tengil til baka til vinar þíns. Hann límir hann inn í AeroShare til að taka á móti möppunni.",
+                "shareLinkLabel": "Deilingatengill",
+                "noFriendsYet": "Engir vistaðir vinir enn.",
+                "close": "Loka",
+                "missingLink": "Límdu inn deilingatengilinn fyrst.",
+                "missingIssuer": "Sláðu inn AeroFTP-ID vinar þíns.",
+                "missingFolder": "Veldu möppu.",
+                "missingRecipient": "Sláðu inn eða veldu AeroFTP-ID viðtakandans."
+            }
         }
     }
 }

@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Поверителност на OpenDrive",
             "privacyUpdated": "Поверителността на OpenDrive е актуализирана"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Добавяне на приятел",
+            "experimentalLabel": "AeroShare (експериментално)",
+            "experimentalDesc": "Споделяйте папки директно с приятели по шифрован peer-to-peer канал, без сървър по средата.",
+            "experimentalNote": "Експериментално: peer-to-peer прехвърлянето е в активна разработка и може да се промени. В момента връзките използват публичен релей за преминаване през защитни стени.",
+            "experimentalTag": "Експериментално",
+            "driveState": {
+                "syncing": "Синхронизиране",
+                "serving": "Обслужване",
+                "error": "Грешка",
+                "starting": "Стартиране",
+                "stopped": "Спряно",
+                "offline": "Офлайн"
+            },
+            "status": {
+                "starting": "Стартиране...",
+                "serving": "Обслужване",
+                "stopped": "Спряно",
+                "error": "Грешка"
+            },
+            "toast": {
+                "readOnlyTitle": "Споделяне само за четене",
+                "readOnlyBody": "Папките в AeroShare са само за разглеждане и изтегляне."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Получаване на папка",
+                "shareTab": "Споделяне на папка",
+                "myId": "Вашият AeroFTP-ID",
+                "myIdHint": "Изпратете това на приятеля си, за да може да сподели папка с вас.",
+                "copy": "Копиране",
+                "copied": "Копирано",
+                "receiveStep": "Поставете връзката за споделяне, която приятелят ви изпрати.",
+                "linkLabel": "Връзка за споделяне",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID на приятеля",
+                "issuerPlaceholder": "AeroFTP-ID на приятеля, който е споделил с вас",
+                "aliasLabel": "Име на приятеля (по избор)",
+                "localFolderLabel": "Запазване в тази папка",
+                "chooseFolder": "Изберете папка",
+                "receiveSubmit": "Добавяне на споделена папка",
+                "receiving": "Добавяне на споделена папка...",
+                "receiveSuccess": "Споделената папка е добавена",
+                "connectNow": "Свържете се сега",
+                "needIdentityFirst": "Създаване на вашия AeroFTP-ID...",
+                "shareStep": "Изберете папка и с кого да я споделите.",
+                "shareFolderLabel": "Папка за споделяне",
+                "recipientLabel": "Споделяне с",
+                "recipientSaved": "Запазен приятел",
+                "recipientPaste": "Поставете AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID на приятеля",
+                "recipientAliasLabel": "Име на приятеля (по избор)",
+                "driveNameLabel": "Име на папката (по избор)",
+                "shareSubmit": "Създаване на връзка за споделяне",
+                "sharing": "Подготовка на шифрованата папка...",
+                "shareReadyTitle": "Връзката за споделяне е готова",
+                "shareReadyHint": "Изпратете тази връзка обратно на приятеля си. Той я поставя в AeroShare, за да получи папката.",
+                "shareLinkLabel": "Връзка за споделяне",
+                "noFriendsYet": "Все още няма запазени приятели.",
+                "close": "Затваряне",
+                "missingLink": "Първо поставете връзката за споделяне.",
+                "missingIssuer": "Въведете AeroFTP-ID на приятеля си.",
+                "missingFolder": "Изберете папка.",
+                "missingRecipient": "Въведете или изберете AeroFTP-ID на получателя."
+            }
         }
     }
 }

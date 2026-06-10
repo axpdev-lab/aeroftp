@@ -4727,6 +4727,73 @@
         "opendrive": {
             "privacyTitle": "Privacitat d'OpenDrive",
             "privacyUpdated": "Privacitat d'OpenDrive actualitzada"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Afegeix un amic",
+            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalDesc": "Comparteix carpetes directament amb els amics a través d'un canal xifrat d'igual a igual, sense cap servidor pel mig.",
+            "experimentalNote": "Experimental: la transferència d'igual a igual està en desenvolupament actiu i pot canviar. Les connexions utilitzen actualment un relé públic per travessar els tallafocs.",
+            "experimentalTag": "Experimental",
+            "driveState": {
+                "syncing": "Sincronitzant",
+                "serving": "Compartint",
+                "error": "Error",
+                "starting": "Iniciant",
+                "stopped": "Aturat",
+                "offline": "Sense connexió"
+            },
+            "status": {
+                "starting": "Iniciant...",
+                "serving": "Compartint",
+                "stopped": "Aturat",
+                "error": "Error"
+            },
+            "toast": {
+                "readOnlyTitle": "Compartició només de lectura",
+                "readOnlyBody": "Les carpetes d'AeroShare només permeten navegar i baixar."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Rep una carpeta",
+                "shareTab": "Comparteix una carpeta",
+                "myId": "El teu AeroFTP-ID",
+                "myIdHint": "Envia'l al teu amic perquè pugui compartir una carpeta amb tu.",
+                "copy": "Copia",
+                "copied": "Copiat",
+                "receiveStep": "Enganxa l'enllaç de compartició que t'ha enviat el teu amic.",
+                "linkLabel": "Enllaç de compartició",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID de l'amic",
+                "issuerPlaceholder": "L'AeroFTP-ID de l'amic que ha compartit amb tu",
+                "aliasLabel": "Nom de l'amic (opcional)",
+                "localFolderLabel": "Desa en aquesta carpeta",
+                "chooseFolder": "Tria una carpeta",
+                "receiveSubmit": "Afegeix la carpeta compartida",
+                "receiving": "Afegint la carpeta compartida...",
+                "receiveSuccess": "Carpeta compartida afegida",
+                "connectNow": "Connecta't ara",
+                "needIdentityFirst": "Creant el teu AeroFTP-ID...",
+                "shareStep": "Tria una carpeta i amb qui compartir-la.",
+                "shareFolderLabel": "Carpeta per compartir",
+                "recipientLabel": "Comparteix amb",
+                "recipientSaved": "Amic desat",
+                "recipientPaste": "Enganxa un AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID de l'amic",
+                "recipientAliasLabel": "Nom de l'amic (opcional)",
+                "driveNameLabel": "Nom de la carpeta (opcional)",
+                "shareSubmit": "Crea l'enllaç de compartició",
+                "sharing": "Preparant la carpeta xifrada...",
+                "shareReadyTitle": "Enllaç de compartició a punt",
+                "shareReadyHint": "Torna a enviar aquest enllaç al teu amic. L'enganxa a AeroShare per rebre la carpeta.",
+                "shareLinkLabel": "Enllaç de compartició",
+                "noFriendsYet": "Encara no hi ha amics desats.",
+                "close": "Tanca",
+                "missingLink": "Enganxa primer l'enllaç de compartició.",
+                "missingIssuer": "Introdueix l'AeroFTP-ID del teu amic.",
+                "missingFolder": "Tria una carpeta.",
+                "missingRecipient": "Introdueix o tria l'AeroFTP-ID del destinatari."
+            }
         }
     }
 }

@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive'i privaatsus",
             "privacyUpdated": "OpenDrive'i privaatsus uuendatud"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Lisa sõber",
+            "experimentalLabel": "AeroShare (katseline)",
+            "experimentalDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita.",
+            "experimentalNote": "Katseline: peer-to-peer edastus on aktiivses arenduses ja võib muutuda. Ühendused kasutavad praegu avalikku releed tulemüüride läbimiseks.",
+            "experimentalTag": "Katseline",
+            "driveState": {
+                "syncing": "Sünkroonimine",
+                "serving": "Teenindamine",
+                "error": "Viga",
+                "starting": "Käivitamine",
+                "stopped": "Peatatud",
+                "offline": "Võrguühenduseta"
+            },
+            "status": {
+                "starting": "Käivitamine...",
+                "serving": "Teenindamine",
+                "stopped": "Peatatud",
+                "error": "Viga"
+            },
+            "toast": {
+                "readOnlyTitle": "Kirjutuskaitstud jagamine",
+                "readOnlyBody": "AeroShare'i kaustu saab ainult sirvida ja alla laadida."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Võta kaust vastu",
+                "shareTab": "Jaga kausta",
+                "myId": "Teie AeroFTP-ID",
+                "myIdHint": "Saatke see sõbrale, et ta saaks teiega kausta jagada.",
+                "copy": "Kopeeri",
+                "copied": "Kopeeritud",
+                "receiveStep": "Kleepige jagamislink, mille sõber teile saatis.",
+                "linkLabel": "Jagamislink",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Sõbra AeroFTP-ID",
+                "issuerPlaceholder": "Teiega jaganud sõbra AeroFTP-ID",
+                "aliasLabel": "Sõbra nimi (valikuline)",
+                "localFolderLabel": "Salvesta sellesse kausta",
+                "chooseFolder": "Vali kaust",
+                "receiveSubmit": "Lisa jagatud kaust",
+                "receiving": "Jagatud kausta lisamine...",
+                "receiveSuccess": "Jagatud kaust lisatud",
+                "connectNow": "Ühenda kohe",
+                "needIdentityFirst": "Teie AeroFTP-ID loomine...",
+                "shareStep": "Valige kaust ja kellega seda jagada.",
+                "shareFolderLabel": "Jagatav kaust",
+                "recipientLabel": "Jaga kasutajaga",
+                "recipientSaved": "Salvestatud sõber",
+                "recipientPaste": "Kleepige AeroFTP-ID",
+                "recipientAfidLabel": "Sõbra AeroFTP-ID",
+                "recipientAliasLabel": "Sõbra nimi (valikuline)",
+                "driveNameLabel": "Kausta nimi (valikuline)",
+                "shareSubmit": "Loo jagamislink",
+                "sharing": "Krüptitud kausta ettevalmistamine...",
+                "shareReadyTitle": "Jagamislink on valmis",
+                "shareReadyHint": "Saatke see link sõbrale tagasi. Ta kleebib selle AeroShare'i, et kaust vastu võtta.",
+                "shareLinkLabel": "Jagamislink",
+                "noFriendsYet": "Salvestatud sõpru pole veel.",
+                "close": "Sulge",
+                "missingLink": "Kleepige esmalt jagamislink.",
+                "missingIssuer": "Sisestage sõbra AeroFTP-ID.",
+                "missingFolder": "Valige kaust.",
+                "missingRecipient": "Sisestage või valige saaja AeroFTP-ID."
+            }
         }
     }
 }

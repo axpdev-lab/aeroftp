@@ -4727,6 +4727,73 @@
         "opendrive": {
             "privacyTitle": "Privacy ng OpenDrive",
             "privacyUpdated": "Na-update ang privacy ng OpenDrive"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Magdagdag ng kaibigan",
+            "experimentalLabel": "AeroShare (eksperimental)",
+            "experimentalDesc": "Direktang magbahagi ng mga folder sa mga kaibigan sa pamamagitan ng naka-encrypt na peer-to-peer na channel, nang walang server sa pagitan.",
+            "experimentalNote": "Eksperimental: ang peer-to-peer na paglilipat ay aktibong binubuo at maaaring magbago. Kasalukuyang gumagamit ang mga koneksyon ng pampublikong relay upang tumawid sa mga firewall.",
+            "experimentalTag": "Eksperimental",
+            "driveState": {
+                "syncing": "Sina-sync",
+                "serving": "Naghahatid",
+                "error": "May error",
+                "starting": "Sinisimulan",
+                "stopped": "Tigil",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Sinisimulan...",
+                "serving": "Naghahatid",
+                "stopped": "Tigil",
+                "error": "May error"
+            },
+            "toast": {
+                "readOnlyTitle": "Read-only na pagbabahagi",
+                "readOnlyBody": "Ang mga folder ng AeroShare ay para lamang sa pag-browse at pag-download."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Tumanggap ng folder",
+                "shareTab": "Magbahagi ng folder",
+                "myId": "Ang iyong AeroFTP-ID",
+                "myIdHint": "Ipadala ito sa iyong kaibigan upang makapagbahagi sila ng folder sa iyo.",
+                "copy": "Kopyahin",
+                "copied": "Nakopya",
+                "receiveStep": "I-paste ang share link na ipinadala sa iyo ng iyong kaibigan.",
+                "linkLabel": "Share link",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID ng kaibigan",
+                "issuerPlaceholder": "Ang AeroFTP-ID ng kaibigan na nagbahagi sa iyo",
+                "aliasLabel": "Pangalan ng kaibigan (opsyonal)",
+                "localFolderLabel": "I-save sa folder na ito",
+                "chooseFolder": "Pumili ng folder",
+                "receiveSubmit": "Idagdag ang ibinahaging folder",
+                "receiving": "Idinaragdag ang ibinahaging folder...",
+                "receiveSuccess": "Naidagdag ang ibinahaging folder",
+                "connectNow": "Kumonekta ngayon",
+                "needIdentityFirst": "Ginagawa ang iyong AeroFTP-ID...",
+                "shareStep": "Pumili ng folder at kung kanino ito ibabahagi.",
+                "shareFolderLabel": "Folder na ibabahagi",
+                "recipientLabel": "Ibahagi kay",
+                "recipientSaved": "Naka-save na kaibigan",
+                "recipientPaste": "Mag-paste ng AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID ng kaibigan",
+                "recipientAliasLabel": "Pangalan ng kaibigan (opsyonal)",
+                "driveNameLabel": "Pangalan ng folder (opsyonal)",
+                "shareSubmit": "Gumawa ng share link",
+                "sharing": "Inihahanda ang naka-encrypt na folder...",
+                "shareReadyTitle": "Handa na ang share link",
+                "shareReadyHint": "Ibalik ang link na ito sa iyong kaibigan. I-paste nila ito sa AeroShare upang matanggap ang folder.",
+                "shareLinkLabel": "Share link",
+                "noFriendsYet": "Wala pang naka-save na kaibigan.",
+                "close": "Isara",
+                "missingLink": "I-paste muna ang share link.",
+                "missingIssuer": "Ilagay ang AeroFTP-ID ng iyong kaibigan.",
+                "missingFolder": "Pumili ng folder.",
+                "missingRecipient": "Ilagay o piliin ang AeroFTP-ID ng tatanggap."
+            }
         }
     }
 }

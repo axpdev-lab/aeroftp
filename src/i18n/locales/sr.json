@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive приватност",
             "privacyUpdated": "OpenDrive приватност ажурирана"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Додај пријатеља",
+            "experimentalLabel": "AeroShare (експериментално)",
+            "experimentalDesc": "Делите фасцикле директно са пријатељима преко шифрованог peer-to-peer канала, без сервера у средини.",
+            "experimentalNote": "Експериментално: peer-to-peer пренос је у активном развоју и може се променити. Везе тренутно користе јавни релеј за пролазак кроз заштитне зидове.",
+            "experimentalTag": "Експериментално",
+            "driveState": {
+                "syncing": "Синхронизација",
+                "serving": "Услуживање",
+                "error": "Грешка",
+                "starting": "Покретање",
+                "stopped": "Заустављено",
+                "offline": "Ван мреже"
+            },
+            "status": {
+                "starting": "Покретање...",
+                "serving": "Услуживање",
+                "stopped": "Заустављено",
+                "error": "Грешка"
+            },
+            "toast": {
+                "readOnlyTitle": "Дељење само за читање",
+                "readOnlyBody": "Фасцикле у AeroShare-у служе само за прегледање и преузимање."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Прими фасциклу",
+                "shareTab": "Подели фасциклу",
+                "myId": "Ваш AeroFTP-ID",
+                "myIdHint": "Пошаљите ово пријатељу како би могао да подели фасциклу са вама.",
+                "copy": "Копирај",
+                "copied": "Копирано",
+                "receiveStep": "Налепите везу за дељење коју вам је пријатељ послао.",
+                "linkLabel": "Веза за дељење",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID пријатеља",
+                "issuerPlaceholder": "AeroFTP-ID пријатеља који је поделио са вама",
+                "aliasLabel": "Име пријатеља (опционо)",
+                "localFolderLabel": "Сачувај у ову фасциклу",
+                "chooseFolder": "Изабери фасциклу",
+                "receiveSubmit": "Додај дељену фасциклу",
+                "receiving": "Додавање дељене фасцикле...",
+                "receiveSuccess": "Дељена фасцикла је додата",
+                "connectNow": "Повежи се сада",
+                "needIdentityFirst": "Креирање вашег AeroFTP-ID-а...",
+                "shareStep": "Изаберите фасциклу и са ким желите да је поделите.",
+                "shareFolderLabel": "Фасцикла за дељење",
+                "recipientLabel": "Подели са",
+                "recipientSaved": "Сачувани пријатељ",
+                "recipientPaste": "Налепите AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID пријатеља",
+                "recipientAliasLabel": "Име пријатеља (опционо)",
+                "driveNameLabel": "Назив фасцикле (опционо)",
+                "shareSubmit": "Креирај везу за дељење",
+                "sharing": "Припрема шифроване фасцикле...",
+                "shareReadyTitle": "Веза за дељење је спремна",
+                "shareReadyHint": "Пошаљите ову везу назад пријатељу. Он је налепи у AeroShare да би примио фасциклу.",
+                "shareLinkLabel": "Веза за дељење",
+                "noFriendsYet": "Још нема сачуваних пријатеља.",
+                "close": "Затвори",
+                "missingLink": "Прво налепите везу за дељење.",
+                "missingIssuer": "Унесите AeroFTP-ID пријатеља.",
+                "missingFolder": "Изаберите фасциклу.",
+                "missingRecipient": "Унесите или изаберите AeroFTP-ID примаоца."
+            }
         }
     }
 }

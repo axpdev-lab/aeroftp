@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive privātums",
             "privacyUpdated": "OpenDrive privātums atjaunināts"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Pievienot draugu",
+            "experimentalLabel": "AeroShare (eksperimentāls)",
+            "experimentalDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu.",
+            "experimentalNote": "Eksperimentāls: peer-to-peer pārsūtīšana tiek aktīvi izstrādāta un var mainīties. Savienojumi pašlaik izmanto publisku releju, lai šķērsotu ugunsmūrus.",
+            "experimentalTag": "Eksperimentāls",
+            "driveState": {
+                "syncing": "Sinhronizē",
+                "serving": "Apkalpo",
+                "error": "Kļūda",
+                "starting": "Startē",
+                "stopped": "Apturēts",
+                "offline": "Bezsaistē"
+            },
+            "status": {
+                "starting": "Startē...",
+                "serving": "Apkalpo",
+                "stopped": "Apturēts",
+                "error": "Kļūda"
+            },
+            "toast": {
+                "readOnlyTitle": "Kopīgošana tikai lasīšanai",
+                "readOnlyBody": "AeroShare mapes ir paredzētas tikai pārlūkošanai un lejupielādei."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Saņemt mapi",
+                "shareTab": "Kopīgot mapi",
+                "myId": "Jūsu AeroFTP-ID",
+                "myIdHint": "Nosūtiet to draugam, lai viņš varētu kopīgot mapi ar jums.",
+                "copy": "Kopēt",
+                "copied": "Nokopēts",
+                "receiveStep": "Ielīmējiet kopīgošanas saiti, ko jums atsūtīja draugs.",
+                "linkLabel": "Kopīgošanas saite",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Drauga AeroFTP-ID",
+                "issuerPlaceholder": "Tā drauga AeroFTP-ID, kurš kopīgoja ar jums",
+                "aliasLabel": "Drauga vārds (neobligāti)",
+                "localFolderLabel": "Saglabāt šajā mapē",
+                "chooseFolder": "Izvēlēties mapi",
+                "receiveSubmit": "Pievienot kopīgoto mapi",
+                "receiving": "Pievieno kopīgoto mapi...",
+                "receiveSuccess": "Kopīgotā mape pievienota",
+                "connectNow": "Savienoties tagad",
+                "needIdentityFirst": "Tiek izveidots jūsu AeroFTP-ID...",
+                "shareStep": "Izvēlieties mapi un ar ko to kopīgot.",
+                "shareFolderLabel": "Kopīgojamā mape",
+                "recipientLabel": "Kopīgot ar",
+                "recipientSaved": "Saglabāts draugs",
+                "recipientPaste": "Ielīmējiet AeroFTP-ID",
+                "recipientAfidLabel": "Drauga AeroFTP-ID",
+                "recipientAliasLabel": "Drauga vārds (neobligāti)",
+                "driveNameLabel": "Mapes nosaukums (neobligāti)",
+                "shareSubmit": "Izveidot kopīgošanas saiti",
+                "sharing": "Tiek sagatavota šifrētā mape...",
+                "shareReadyTitle": "Kopīgošanas saite ir gatava",
+                "shareReadyHint": "Nosūtiet šo saiti atpakaļ draugam. Viņš to ielīmē AeroShare, lai saņemtu mapi.",
+                "shareLinkLabel": "Kopīgošanas saite",
+                "noFriendsYet": "Vēl nav saglabātu draugu.",
+                "close": "Aizvērt",
+                "missingLink": "Vispirms ielīmējiet kopīgošanas saiti.",
+                "missingIssuer": "Ievadiet drauga AeroFTP-ID.",
+                "missingFolder": "Izvēlieties mapi.",
+                "missingRecipient": "Ievadiet vai izvēlieties saņēmēja AeroFTP-ID."
+            }
         }
     }
 }

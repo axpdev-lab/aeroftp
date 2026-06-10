@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes, Share2 } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -147,6 +147,10 @@ interface AppSettings {
     reconnectAttempts: number;
     reconnectDelay: number;
     ftpMode: 'passive' | 'active';
+    /** AeroShare experimental master flag (P2P-GUI-DESIGN.md D-GUI-2). When
+     *  false (default) every AeroShare surface is hidden. Read app-wide via
+     *  {@link useAeroShareEnabled}. */
+    aeroShareEnabled: boolean;
     // Transfers
     maxConcurrentTransfers: number;
     retryCount: number;
@@ -200,6 +204,7 @@ const defaultSettings: AppSettings = {
     reconnectAttempts: 3,
     reconnectDelay: 5,
     ftpMode: 'passive',
+    aeroShareEnabled: false,
     maxConcurrentTransfers: 5,
     retryCount: 3,
     downloadSegments: 0,
@@ -1210,6 +1215,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </label>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.ftpModeDesc')}</p>
+                                        </div>
+
+                                        {/* AeroShare experimental master flag (P2P-GUI-DESIGN.md
+                                            D-GUI-2). Default OFF: hides every AeroShare surface
+                                            (friend cards, Add friend, handshake dialog) until the
+                                            §9 release-gating checklist clears. */}
+                                        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+                                            <Checkbox
+                                                checked={settings.aeroShareEnabled}
+                                                onChange={(v) => updateSetting('aeroShareEnabled', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium flex items-center gap-2">
+                                                            <Share2 size={15} className="text-violet-500" />
+                                                            {t('aeroShare.experimentalLabel')}
+                                                        </p>
+                                                        <p className="text-sm text-gray-500">{t('aeroShare.experimentalDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
+                                            <p className="text-xs text-amber-600 mt-2 ml-6">{t('aeroShare.experimentalNote')}</p>
                                         </div>
                                     </div>
                                 </div>

@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Confidentialité OpenDrive",
             "privacyUpdated": "Confidentialité OpenDrive mise à jour"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Ajouter un ami",
+            "experimentalLabel": "AeroShare (expérimental)",
+            "experimentalDesc": "Partagez des dossiers directement avec vos amis via un canal chiffré de pair à pair, sans aucun serveur intermédiaire.",
+            "experimentalNote": "Expérimental : le transfert de pair à pair est en cours de développement et peut évoluer. Les connexions utilisent actuellement un relais public pour traverser les pare-feux.",
+            "experimentalTag": "Expérimental",
+            "driveState": {
+                "syncing": "Synchronisation",
+                "serving": "Partage en cours",
+                "error": "Erreur",
+                "starting": "Démarrage",
+                "stopped": "Arrêté",
+                "offline": "Hors ligne"
+            },
+            "status": {
+                "starting": "Démarrage...",
+                "serving": "Partage en cours",
+                "stopped": "Arrêté",
+                "error": "Erreur"
+            },
+            "toast": {
+                "readOnlyTitle": "Partage en lecture seule",
+                "readOnlyBody": "Les dossiers AeroShare permettent uniquement de parcourir et de télécharger."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Recevoir un dossier",
+                "shareTab": "Partager un dossier",
+                "myId": "Votre AeroFTP-ID",
+                "myIdHint": "Envoyez-le à votre ami pour qu'il puisse partager un dossier avec vous.",
+                "copy": "Copier",
+                "copied": "Copié",
+                "receiveStep": "Collez le lien de partage que votre ami vous a envoyé.",
+                "linkLabel": "Lien de partage",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID de l'ami",
+                "issuerPlaceholder": "L'AeroFTP-ID de l'ami qui a partagé avec vous",
+                "aliasLabel": "Nom de l'ami (facultatif)",
+                "localFolderLabel": "Enregistrer dans ce dossier",
+                "chooseFolder": "Choisir un dossier",
+                "receiveSubmit": "Ajouter le dossier partagé",
+                "receiving": "Ajout du dossier partagé...",
+                "receiveSuccess": "Dossier partagé ajouté",
+                "connectNow": "Se connecter maintenant",
+                "needIdentityFirst": "Création de votre AeroFTP-ID...",
+                "shareStep": "Choisissez un dossier et avec qui le partager.",
+                "shareFolderLabel": "Dossier à partager",
+                "recipientLabel": "Partager avec",
+                "recipientSaved": "Ami enregistré",
+                "recipientPaste": "Collez un AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID de l'ami",
+                "recipientAliasLabel": "Nom de l'ami (facultatif)",
+                "driveNameLabel": "Nom du dossier (facultatif)",
+                "shareSubmit": "Créer le lien de partage",
+                "sharing": "Préparation du dossier chiffré...",
+                "shareReadyTitle": "Lien de partage prêt",
+                "shareReadyHint": "Renvoyez ce lien à votre ami. Il le collera dans AeroShare pour recevoir le dossier.",
+                "shareLinkLabel": "Lien de partage",
+                "noFriendsYet": "Aucun ami enregistré pour l'instant.",
+                "close": "Fermer",
+                "missingLink": "Collez d'abord le lien de partage.",
+                "missingIssuer": "Saisissez l'AeroFTP-ID de votre ami.",
+                "missingFolder": "Choisissez un dossier.",
+                "missingRecipient": "Saisissez ou choisissez l'AeroFTP-ID du destinataire."
+            }
         }
     }
 }

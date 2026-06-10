@@ -4708,6 +4708,73 @@
             "verifyPolicy_size_and_mtime": "Size + timestamp",
             "verifyPolicy_full_checksum": "Full checksum",
             "verifyPolicyHint": "Post-transfer integrity check applied to each file."
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Add friend",
+            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalDesc": "Share folders directly with friends over an encrypted peer-to-peer channel, with no server in the middle.",
+            "experimentalNote": "Experimental: peer-to-peer transfer is under active development and may change. Connections currently use a public relay to traverse firewalls.",
+            "experimentalTag": "Experimental",
+            "driveState": {
+                "syncing": "Syncing",
+                "serving": "Serving",
+                "error": "Error",
+                "starting": "Starting",
+                "stopped": "Stopped",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Starting...",
+                "serving": "Serving",
+                "stopped": "Stopped",
+                "error": "Error"
+            },
+            "toast": {
+                "readOnlyTitle": "Read-only share",
+                "readOnlyBody": "AeroShare folders are browse and download only."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Receive a folder",
+                "shareTab": "Share a folder",
+                "myId": "Your AeroFTP-ID",
+                "myIdHint": "Send this to your friend so they can share a folder with you.",
+                "copy": "Copy",
+                "copied": "Copied",
+                "receiveStep": "Paste the share link your friend sent you.",
+                "linkLabel": "Share link",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Friend's AeroFTP-ID",
+                "issuerPlaceholder": "The AeroFTP-ID of the friend who shared with you",
+                "aliasLabel": "Friend name (optional)",
+                "localFolderLabel": "Save into this folder",
+                "chooseFolder": "Choose folder",
+                "receiveSubmit": "Add shared folder",
+                "receiving": "Adding shared folder...",
+                "receiveSuccess": "Shared folder added",
+                "connectNow": "Connect now",
+                "needIdentityFirst": "Creating your AeroFTP-ID...",
+                "shareStep": "Choose a folder and who to share it with.",
+                "shareFolderLabel": "Folder to share",
+                "recipientLabel": "Share with",
+                "recipientSaved": "Saved friend",
+                "recipientPaste": "Paste an AeroFTP-ID",
+                "recipientAfidLabel": "Friend's AeroFTP-ID",
+                "recipientAliasLabel": "Friend name (optional)",
+                "driveNameLabel": "Folder name (optional)",
+                "shareSubmit": "Create share link",
+                "sharing": "Preparing the encrypted folder...",
+                "shareReadyTitle": "Share link ready",
+                "shareReadyHint": "Send this link back to your friend. They paste it into AeroShare to receive the folder.",
+                "shareLinkLabel": "Share link",
+                "noFriendsYet": "No saved friends yet.",
+                "close": "Close",
+                "missingLink": "Paste the share link first.",
+                "missingIssuer": "Enter your friend's AeroFTP-ID.",
+                "missingFolder": "Choose a folder.",
+                "missingRecipient": "Enter or pick the recipient's AeroFTP-ID."
+            }
         }
     }
 }

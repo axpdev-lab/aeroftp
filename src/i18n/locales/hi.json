@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive गोपनीयता",
             "privacyUpdated": "OpenDrive गोपनीयता अपडेट की गई"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "मित्र जोड़ें",
+            "experimentalLabel": "AeroShare (प्रयोगात्मक)",
+            "experimentalDesc": "बिना किसी बीच के सर्वर के, एन्क्रिप्टेड पीयर-टू-पीयर चैनल पर सीधे मित्रों के साथ फ़ोल्डर साझा करें।",
+            "experimentalNote": "प्रयोगात्मक: पीयर-टू-पीयर स्थानांतरण सक्रिय विकास में है और बदल सकता है। कनेक्शन वर्तमान में फ़ायरवॉल पार करने के लिए एक सार्वजनिक रिले का उपयोग करते हैं।",
+            "experimentalTag": "प्रयोगात्मक",
+            "driveState": {
+                "syncing": "सिंक हो रहा है",
+                "serving": "सर्व हो रहा है",
+                "error": "त्रुटि",
+                "starting": "आरंभ हो रहा है",
+                "stopped": "रुका हुआ",
+                "offline": "ऑफ़लाइन"
+            },
+            "status": {
+                "starting": "आरंभ हो रहा है...",
+                "serving": "सर्व हो रहा है",
+                "stopped": "रुका हुआ",
+                "error": "त्रुटि"
+            },
+            "toast": {
+                "readOnlyTitle": "केवल-पढ़ने योग्य साझाकरण",
+                "readOnlyBody": "AeroShare फ़ोल्डर केवल ब्राउज़ और डाउनलोड के लिए हैं।"
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "एक फ़ोल्डर प्राप्त करें",
+                "shareTab": "एक फ़ोल्डर साझा करें",
+                "myId": "आपका AeroFTP-ID",
+                "myIdHint": "इसे अपने मित्र को भेजें ताकि वे आपके साथ एक फ़ोल्डर साझा कर सकें।",
+                "copy": "कॉपी करें",
+                "copied": "कॉपी किया गया",
+                "receiveStep": "आपके मित्र द्वारा भेजा गया साझा लिंक पेस्ट करें।",
+                "linkLabel": "साझा लिंक",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "मित्र का AeroFTP-ID",
+                "issuerPlaceholder": "उस मित्र का AeroFTP-ID जिसने आपके साथ साझा किया",
+                "aliasLabel": "मित्र का नाम (वैकल्पिक)",
+                "localFolderLabel": "इस फ़ोल्डर में सहेजें",
+                "chooseFolder": "फ़ोल्डर चुनें",
+                "receiveSubmit": "साझा फ़ोल्डर जोड़ें",
+                "receiving": "साझा फ़ोल्डर जोड़ा जा रहा है...",
+                "receiveSuccess": "साझा फ़ोल्डर जोड़ा गया",
+                "connectNow": "अभी कनेक्ट करें",
+                "needIdentityFirst": "आपका AeroFTP-ID बनाया जा रहा है...",
+                "shareStep": "एक फ़ोल्डर चुनें और किसके साथ साझा करना है यह चुनें।",
+                "shareFolderLabel": "साझा करने के लिए फ़ोल्डर",
+                "recipientLabel": "इसके साथ साझा करें",
+                "recipientSaved": "सहेजा गया मित्र",
+                "recipientPaste": "एक AeroFTP-ID पेस्ट करें",
+                "recipientAfidLabel": "मित्र का AeroFTP-ID",
+                "recipientAliasLabel": "मित्र का नाम (वैकल्पिक)",
+                "driveNameLabel": "फ़ोल्डर का नाम (वैकल्पिक)",
+                "shareSubmit": "साझा लिंक बनाएँ",
+                "sharing": "एन्क्रिप्टेड फ़ोल्डर तैयार किया जा रहा है...",
+                "shareReadyTitle": "साझा लिंक तैयार है",
+                "shareReadyHint": "यह लिंक अपने मित्र को वापस भेजें। फ़ोल्डर प्राप्त करने के लिए वे इसे AeroShare में पेस्ट करते हैं।",
+                "shareLinkLabel": "साझा लिंक",
+                "noFriendsYet": "अभी तक कोई सहेजा गया मित्र नहीं।",
+                "close": "बंद करें",
+                "missingLink": "पहले साझा लिंक पेस्ट करें।",
+                "missingIssuer": "अपने मित्र का AeroFTP-ID दर्ज करें।",
+                "missingFolder": "एक फ़ोल्डर चुनें।",
+                "missingRecipient": "प्राप्तकर्ता का AeroFTP-ID दर्ज करें या चुनें।"
+            }
         }
     }
 }

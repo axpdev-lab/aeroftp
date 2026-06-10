@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive Datenschutz",
             "privacyUpdated": "OpenDrive Datenschutz aktualisiert"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Freund hinzufügen",
+            "experimentalLabel": "AeroShare (experimentell)",
+            "experimentalDesc": "Teilen Sie Ordner direkt mit Freunden über einen verschlüsselten Peer-to-Peer-Kanal, ganz ohne Server dazwischen.",
+            "experimentalNote": "Experimentell: Die Peer-to-Peer-Übertragung wird aktiv weiterentwickelt und kann sich ändern. Verbindungen nutzen derzeit ein öffentliches Relay, um Firewalls zu durchqueren.",
+            "experimentalTag": "Experimentell",
+            "driveState": {
+                "syncing": "Wird synchronisiert",
+                "serving": "Wird bereitgestellt",
+                "error": "Fehler",
+                "starting": "Wird gestartet",
+                "stopped": "Gestoppt",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Wird gestartet...",
+                "serving": "Wird bereitgestellt",
+                "stopped": "Gestoppt",
+                "error": "Fehler"
+            },
+            "toast": {
+                "readOnlyTitle": "Nur-Lese-Freigabe",
+                "readOnlyBody": "AeroShare-Ordner können nur durchsucht und heruntergeladen werden."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Ordner empfangen",
+                "shareTab": "Ordner teilen",
+                "myId": "Ihre AeroFTP-ID",
+                "myIdHint": "Senden Sie diese an Ihren Freund, damit er einen Ordner mit Ihnen teilen kann.",
+                "copy": "Kopieren",
+                "copied": "Kopiert",
+                "receiveStep": "Fügen Sie den Freigabelink ein, den Ihnen Ihr Freund gesendet hat.",
+                "linkLabel": "Freigabelink",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID des Freundes",
+                "issuerPlaceholder": "Die AeroFTP-ID des Freundes, der mit Ihnen geteilt hat",
+                "aliasLabel": "Name des Freundes (optional)",
+                "localFolderLabel": "In diesen Ordner speichern",
+                "chooseFolder": "Ordner auswählen",
+                "receiveSubmit": "Geteilten Ordner hinzufügen",
+                "receiving": "Geteilter Ordner wird hinzugefügt...",
+                "receiveSuccess": "Geteilter Ordner hinzugefügt",
+                "connectNow": "Jetzt verbinden",
+                "needIdentityFirst": "Ihre AeroFTP-ID wird erstellt...",
+                "shareStep": "Wählen Sie einen Ordner und mit wem Sie ihn teilen möchten.",
+                "shareFolderLabel": "Zu teilender Ordner",
+                "recipientLabel": "Teilen mit",
+                "recipientSaved": "Gespeicherter Freund",
+                "recipientPaste": "Eine AeroFTP-ID einfügen",
+                "recipientAfidLabel": "AeroFTP-ID des Freundes",
+                "recipientAliasLabel": "Name des Freundes (optional)",
+                "driveNameLabel": "Ordnername (optional)",
+                "shareSubmit": "Freigabelink erstellen",
+                "sharing": "Der verschlüsselte Ordner wird vorbereitet...",
+                "shareReadyTitle": "Freigabelink bereit",
+                "shareReadyHint": "Senden Sie diesen Link an Ihren Freund zurück. Er fügt ihn in AeroShare ein, um den Ordner zu empfangen.",
+                "shareLinkLabel": "Freigabelink",
+                "noFriendsYet": "Noch keine gespeicherten Freunde.",
+                "close": "Schließen",
+                "missingLink": "Fügen Sie zuerst den Freigabelink ein.",
+                "missingIssuer": "Geben Sie die AeroFTP-ID Ihres Freundes ein.",
+                "missingFolder": "Wählen Sie einen Ordner aus.",
+                "missingRecipient": "Geben Sie die AeroFTP-ID des Empfängers ein oder wählen Sie sie aus."
+            }
         }
     }
 }

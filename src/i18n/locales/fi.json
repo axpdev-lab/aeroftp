@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive-yksityisyys",
             "privacyUpdated": "OpenDrive-yksityisyys päivitetty"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Lisää kaveri",
+            "experimentalLabel": "AeroShare (kokeellinen)",
+            "experimentalDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta.",
+            "experimentalNote": "Kokeellinen: vertaissiirtoa kehitetään aktiivisesti ja se voi muuttua. Yhteydet käyttävät tällä hetkellä julkista välitintä palomuurien läpäisemiseen.",
+            "experimentalTag": "Kokeellinen",
+            "driveState": {
+                "syncing": "Synkronoidaan",
+                "serving": "Tarjotaan",
+                "error": "Virhe",
+                "starting": "Käynnistetään",
+                "stopped": "Pysäytetty",
+                "offline": "Offline-tilassa"
+            },
+            "status": {
+                "starting": "Käynnistetään...",
+                "serving": "Tarjotaan",
+                "stopped": "Pysäytetty",
+                "error": "Virhe"
+            },
+            "toast": {
+                "readOnlyTitle": "Vain luku -jako",
+                "readOnlyBody": "AeroShare-kansioita voi vain selata ja ladata."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Vastaanota kansio",
+                "shareTab": "Jaa kansio",
+                "myId": "Sinun AeroFTP-ID",
+                "myIdHint": "Lähetä tämä kaverillesi, jotta hän voi jakaa kansion kanssasi.",
+                "copy": "Kopioi",
+                "copied": "Kopioitu",
+                "receiveStep": "Liitä jakolinkki, jonka kaverisi lähetti sinulle.",
+                "linkLabel": "Jakolinkki",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Kaverin AeroFTP-ID",
+                "issuerPlaceholder": "Sen kaverin AeroFTP-ID, joka jakoi kanssasi",
+                "aliasLabel": "Kaverin nimi (valinnainen)",
+                "localFolderLabel": "Tallenna tähän kansioon",
+                "chooseFolder": "Valitse kansio",
+                "receiveSubmit": "Lisää jaettu kansio",
+                "receiving": "Lisätään jaettua kansiota...",
+                "receiveSuccess": "Jaettu kansio lisätty",
+                "connectNow": "Yhdistä nyt",
+                "needIdentityFirst": "Luodaan AeroFTP-ID:tä...",
+                "shareStep": "Valitse kansio ja kenen kanssa jaat sen.",
+                "shareFolderLabel": "Jaettava kansio",
+                "recipientLabel": "Jaa kenen kanssa",
+                "recipientSaved": "Tallennettu kaveri",
+                "recipientPaste": "Liitä AeroFTP-ID",
+                "recipientAfidLabel": "Kaverin AeroFTP-ID",
+                "recipientAliasLabel": "Kaverin nimi (valinnainen)",
+                "driveNameLabel": "Kansion nimi (valinnainen)",
+                "shareSubmit": "Luo jakolinkki",
+                "sharing": "Valmistellaan salattua kansiota...",
+                "shareReadyTitle": "Jakolinkki valmis",
+                "shareReadyHint": "Lähetä tämä linkki takaisin kaverillesi. Hän liittää sen AeroShareen vastaanottaakseen kansion.",
+                "shareLinkLabel": "Jakolinkki",
+                "noFriendsYet": "Ei vielä tallennettuja kavereita.",
+                "close": "Sulje",
+                "missingLink": "Liitä ensin jakolinkki.",
+                "missingIssuer": "Anna kaverisi AeroFTP-ID.",
+                "missingFolder": "Valitse kansio.",
+                "missingRecipient": "Anna tai valitse vastaanottajan AeroFTP-ID."
+            }
         }
     }
 }

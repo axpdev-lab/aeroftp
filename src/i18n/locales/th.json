@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "ความเป็นส่วนตัว OpenDrive",
             "privacyUpdated": "อัปเดตความเป็นส่วนตัว OpenDrive แล้ว"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "เพิ่มเพื่อน",
+            "experimentalLabel": "AeroShare (ทดลอง)",
+            "experimentalDesc": "แชร์โฟลเดอร์โดยตรงกับเพื่อนผ่านช่องทางแบบเพียร์ทูเพียร์ที่เข้ารหัส โดยไม่มีเซิร์ฟเวอร์อยู่ตรงกลาง",
+            "experimentalNote": "ทดลอง: การถ่ายโอนแบบเพียร์ทูเพียร์อยู่ระหว่างการพัฒนาและอาจมีการเปลี่ยนแปลง ปัจจุบันการเชื่อมต่อใช้รีเลย์สาธารณะเพื่อทะลุผ่านไฟร์วอลล์",
+            "experimentalTag": "ทดลอง",
+            "driveState": {
+                "syncing": "กำลังซิงค์",
+                "serving": "กำลังให้บริการ",
+                "error": "ข้อผิดพลาด",
+                "starting": "กำลังเริ่มต้น",
+                "stopped": "หยุดแล้ว",
+                "offline": "ออฟไลน์"
+            },
+            "status": {
+                "starting": "กำลังเริ่มต้น...",
+                "serving": "กำลังให้บริการ",
+                "stopped": "หยุดแล้ว",
+                "error": "ข้อผิดพลาด"
+            },
+            "toast": {
+                "readOnlyTitle": "การแชร์แบบอ่านอย่างเดียว",
+                "readOnlyBody": "โฟลเดอร์ AeroShare สามารถเรียกดูและดาวน์โหลดได้เท่านั้น"
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "รับโฟลเดอร์",
+                "shareTab": "แชร์โฟลเดอร์",
+                "myId": "AeroFTP-ID ของคุณ",
+                "myIdHint": "ส่ง ID นี้ให้เพื่อนของคุณ เพื่อให้พวกเขาแชร์โฟลเดอร์กับคุณได้",
+                "copy": "คัดลอก",
+                "copied": "คัดลอกแล้ว",
+                "receiveStep": "วางลิงก์แชร์ที่เพื่อนส่งมาให้คุณ",
+                "linkLabel": "ลิงก์แชร์",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID ของเพื่อน",
+                "issuerPlaceholder": "AeroFTP-ID ของเพื่อนที่แชร์กับคุณ",
+                "aliasLabel": "ชื่อเพื่อน (ไม่บังคับ)",
+                "localFolderLabel": "บันทึกลงในโฟลเดอร์นี้",
+                "chooseFolder": "เลือกโฟลเดอร์",
+                "receiveSubmit": "เพิ่มโฟลเดอร์ที่แชร์",
+                "receiving": "กำลังเพิ่มโฟลเดอร์ที่แชร์...",
+                "receiveSuccess": "เพิ่มโฟลเดอร์ที่แชร์แล้ว",
+                "connectNow": "เชื่อมต่อตอนนี้",
+                "needIdentityFirst": "กำลังสร้าง AeroFTP-ID ของคุณ...",
+                "shareStep": "เลือกโฟลเดอร์และผู้ที่จะแชร์ด้วย",
+                "shareFolderLabel": "โฟลเดอร์ที่จะแชร์",
+                "recipientLabel": "แชร์กับ",
+                "recipientSaved": "เพื่อนที่บันทึกไว้",
+                "recipientPaste": "วาง AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID ของเพื่อน",
+                "recipientAliasLabel": "ชื่อเพื่อน (ไม่บังคับ)",
+                "driveNameLabel": "ชื่อโฟลเดอร์ (ไม่บังคับ)",
+                "shareSubmit": "สร้างลิงก์แชร์",
+                "sharing": "กำลังเตรียมโฟลเดอร์ที่เข้ารหัส...",
+                "shareReadyTitle": "ลิงก์แชร์พร้อมแล้ว",
+                "shareReadyHint": "ส่งลิงก์นี้กลับไปให้เพื่อนของคุณ พวกเขาจะวางลงใน AeroShare เพื่อรับโฟลเดอร์",
+                "shareLinkLabel": "ลิงก์แชร์",
+                "noFriendsYet": "ยังไม่มีเพื่อนที่บันทึกไว้",
+                "close": "ปิด",
+                "missingLink": "วางลิงก์แชร์ก่อน",
+                "missingIssuer": "ป้อน AeroFTP-ID ของเพื่อนคุณ",
+                "missingFolder": "เลือกโฟลเดอร์",
+                "missingRecipient": "ป้อนหรือเลือก AeroFTP-ID ของผู้รับ"
+            }
         }
     }
 }

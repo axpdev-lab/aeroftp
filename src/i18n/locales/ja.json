@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive プライバシー",
             "privacyUpdated": "OpenDrive のプライバシーを更新しました"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "友達を追加",
+            "experimentalLabel": "AeroShare（実験的）",
+            "experimentalDesc": "暗号化されたピアツーピア接続を通じて、間にサーバーを介さずに友達と直接フォルダを共有します。",
+            "experimentalNote": "実験的機能：ピアツーピア転送は現在開発中であり、変更される場合があります。接続には現在、ファイアウォールを通過するためにパブリックリレーを使用しています。",
+            "experimentalTag": "実験的",
+            "driveState": {
+                "syncing": "同期中",
+                "serving": "提供中",
+                "error": "エラー",
+                "starting": "起動中",
+                "stopped": "停止",
+                "offline": "オフライン"
+            },
+            "status": {
+                "starting": "起動中...",
+                "serving": "提供中",
+                "stopped": "停止",
+                "error": "エラー"
+            },
+            "toast": {
+                "readOnlyTitle": "読み取り専用の共有",
+                "readOnlyBody": "AeroShare フォルダは閲覧とダウンロードのみ可能です。"
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "フォルダを受け取る",
+                "shareTab": "フォルダを共有する",
+                "myId": "あなたの AeroFTP-ID",
+                "myIdHint": "これを友達に送ると、相手があなたとフォルダを共有できます。",
+                "copy": "コピー",
+                "copied": "コピーしました",
+                "receiveStep": "友達から送られた共有リンクを貼り付けてください。",
+                "linkLabel": "共有リンク",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "友達の AeroFTP-ID",
+                "issuerPlaceholder": "あなたと共有した友達の AeroFTP-ID",
+                "aliasLabel": "友達の名前（任意）",
+                "localFolderLabel": "このフォルダに保存",
+                "chooseFolder": "フォルダを選択",
+                "receiveSubmit": "共有フォルダを追加",
+                "receiving": "共有フォルダを追加しています...",
+                "receiveSuccess": "共有フォルダを追加しました",
+                "connectNow": "今すぐ接続",
+                "needIdentityFirst": "あなたの AeroFTP-ID を作成しています...",
+                "shareStep": "フォルダと共有する相手を選択してください。",
+                "shareFolderLabel": "共有するフォルダ",
+                "recipientLabel": "共有相手",
+                "recipientSaved": "保存済みの友達",
+                "recipientPaste": "AeroFTP-ID を貼り付け",
+                "recipientAfidLabel": "友達の AeroFTP-ID",
+                "recipientAliasLabel": "友達の名前（任意）",
+                "driveNameLabel": "フォルダ名（任意）",
+                "shareSubmit": "共有リンクを作成",
+                "sharing": "暗号化フォルダを準備しています...",
+                "shareReadyTitle": "共有リンクの準備ができました",
+                "shareReadyHint": "このリンクを友達に送り返してください。相手が AeroShare に貼り付けるとフォルダを受け取れます。",
+                "shareLinkLabel": "共有リンク",
+                "noFriendsYet": "保存された友達はまだありません。",
+                "close": "閉じる",
+                "missingLink": "まず共有リンクを貼り付けてください。",
+                "missingIssuer": "友達の AeroFTP-ID を入力してください。",
+                "missingFolder": "フォルダを選択してください。",
+                "missingRecipient": "受信者の AeroFTP-ID を入力または選択してください。"
+            }
         }
     }
 }

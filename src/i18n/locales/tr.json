@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive Gizliliği",
             "privacyUpdated": "OpenDrive gizliliği güncellendi"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Arkadaş ekle",
+            "experimentalLabel": "AeroShare (deneysel)",
+            "experimentalDesc": "Klasörleri arkadaşlarınızla doğrudan, şifreli bir peer-to-peer kanal üzerinden, aradaki sunucu olmadan paylaşın.",
+            "experimentalNote": "Deneysel: peer-to-peer aktarım etkin geliştirme aşamasındadır ve değişebilir. Bağlantılar şu anda güvenlik duvarlarını aşmak için genel bir aktarıcı kullanır.",
+            "experimentalTag": "Deneysel",
+            "driveState": {
+                "syncing": "Eşitleniyor",
+                "serving": "Sunuluyor",
+                "error": "Hata",
+                "starting": "Başlatılıyor",
+                "stopped": "Durduruldu",
+                "offline": "Çevrimdışı"
+            },
+            "status": {
+                "starting": "Başlatılıyor...",
+                "serving": "Sunuluyor",
+                "stopped": "Durduruldu",
+                "error": "Hata"
+            },
+            "toast": {
+                "readOnlyTitle": "Salt okunur paylaşım",
+                "readOnlyBody": "AeroShare klasörleri yalnızca göz atma ve indirme içindir."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Klasör al",
+                "shareTab": "Klasör paylaş",
+                "myId": "AeroFTP-ID'niz",
+                "myIdHint": "Sizinle bir klasör paylaşabilmesi için bunu arkadaşınıza gönderin.",
+                "copy": "Kopyala",
+                "copied": "Kopyalandı",
+                "receiveStep": "Arkadaşınızın size gönderdiği paylaşım bağlantısını yapıştırın.",
+                "linkLabel": "Paylaşım bağlantısı",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Arkadaşın AeroFTP-ID'si",
+                "issuerPlaceholder": "Sizinle paylaşan arkadaşın AeroFTP-ID'si",
+                "aliasLabel": "Arkadaş adı (isteğe bağlı)",
+                "localFolderLabel": "Bu klasöre kaydet",
+                "chooseFolder": "Klasör seç",
+                "receiveSubmit": "Paylaşılan klasörü ekle",
+                "receiving": "Paylaşılan klasör ekleniyor...",
+                "receiveSuccess": "Paylaşılan klasör eklendi",
+                "connectNow": "Şimdi bağlan",
+                "needIdentityFirst": "AeroFTP-ID'niz oluşturuluyor...",
+                "shareStep": "Bir klasör ve kiminle paylaşacağınızı seçin.",
+                "shareFolderLabel": "Paylaşılacak klasör",
+                "recipientLabel": "Şununla paylaş",
+                "recipientSaved": "Kayıtlı arkadaş",
+                "recipientPaste": "Bir AeroFTP-ID yapıştırın",
+                "recipientAfidLabel": "Arkadaşın AeroFTP-ID'si",
+                "recipientAliasLabel": "Arkadaş adı (isteğe bağlı)",
+                "driveNameLabel": "Klasör adı (isteğe bağlı)",
+                "shareSubmit": "Paylaşım bağlantısı oluştur",
+                "sharing": "Şifreli klasör hazırlanıyor...",
+                "shareReadyTitle": "Paylaşım bağlantısı hazır",
+                "shareReadyHint": "Bu bağlantıyı arkadaşınıza geri gönderin. Klasörü almak için onu AeroShare'e yapıştırır.",
+                "shareLinkLabel": "Paylaşım bağlantısı",
+                "noFriendsYet": "Henüz kayıtlı arkadaş yok.",
+                "close": "Kapat",
+                "missingLink": "Önce paylaşım bağlantısını yapıştırın.",
+                "missingIssuer": "Arkadaşınızın AeroFTP-ID'sini girin.",
+                "missingFolder": "Bir klasör seçin.",
+                "missingRecipient": "Alıcının AeroFTP-ID'sini girin veya seçin."
+            }
         }
     }
 }

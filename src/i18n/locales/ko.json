@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive 개인정보",
             "privacyUpdated": "OpenDrive 개인정보가 업데이트되었습니다"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "친구 추가",
+            "experimentalLabel": "AeroShare(실험적)",
+            "experimentalDesc": "중간 서버 없이 암호화된 P2P 채널을 통해 친구와 폴더를 직접 공유합니다.",
+            "experimentalNote": "실험적 기능: P2P 전송은 현재 활발히 개발 중이며 변경될 수 있습니다. 현재 연결은 방화벽을 통과하기 위해 공용 릴레이를 사용합니다.",
+            "experimentalTag": "실험적",
+            "driveState": {
+                "syncing": "동기화 중",
+                "serving": "제공 중",
+                "error": "오류",
+                "starting": "시작 중",
+                "stopped": "중지됨",
+                "offline": "오프라인"
+            },
+            "status": {
+                "starting": "시작 중...",
+                "serving": "제공 중",
+                "stopped": "중지됨",
+                "error": "오류"
+            },
+            "toast": {
+                "readOnlyTitle": "읽기 전용 공유",
+                "readOnlyBody": "AeroShare 폴더는 탐색 및 다운로드만 가능합니다."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "폴더 받기",
+                "shareTab": "폴더 공유",
+                "myId": "내 AeroFTP-ID",
+                "myIdHint": "친구가 폴더를 공유할 수 있도록 이 ID를 친구에게 보내세요.",
+                "copy": "복사",
+                "copied": "복사됨",
+                "receiveStep": "친구가 보낸 공유 링크를 붙여넣으세요.",
+                "linkLabel": "공유 링크",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "친구의 AeroFTP-ID",
+                "issuerPlaceholder": "나와 공유한 친구의 AeroFTP-ID",
+                "aliasLabel": "친구 이름(선택 사항)",
+                "localFolderLabel": "이 폴더에 저장",
+                "chooseFolder": "폴더 선택",
+                "receiveSubmit": "공유 폴더 추가",
+                "receiving": "공유 폴더를 추가하는 중...",
+                "receiveSuccess": "공유 폴더가 추가됨",
+                "connectNow": "지금 연결",
+                "needIdentityFirst": "AeroFTP-ID를 생성하는 중...",
+                "shareStep": "공유할 폴더와 공유 대상을 선택하세요.",
+                "shareFolderLabel": "공유할 폴더",
+                "recipientLabel": "공유 대상",
+                "recipientSaved": "저장된 친구",
+                "recipientPaste": "AeroFTP-ID 붙여넣기",
+                "recipientAfidLabel": "친구의 AeroFTP-ID",
+                "recipientAliasLabel": "친구 이름(선택 사항)",
+                "driveNameLabel": "폴더 이름(선택 사항)",
+                "shareSubmit": "공유 링크 만들기",
+                "sharing": "암호화된 폴더를 준비하는 중...",
+                "shareReadyTitle": "공유 링크 준비 완료",
+                "shareReadyHint": "이 링크를 친구에게 다시 보내세요. 친구가 AeroShare에 붙여넣으면 폴더를 받을 수 있습니다.",
+                "shareLinkLabel": "공유 링크",
+                "noFriendsYet": "저장된 친구가 아직 없습니다.",
+                "close": "닫기",
+                "missingLink": "먼저 공유 링크를 붙여넣으세요.",
+                "missingIssuer": "친구의 AeroFTP-ID를 입력하세요.",
+                "missingFolder": "폴더를 선택하세요.",
+                "missingRecipient": "받는 사람의 AeroFTP-ID를 입력하거나 선택하세요."
+            }
         }
     }
 }

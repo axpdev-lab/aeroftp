@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, UserPlus } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -29,6 +29,10 @@ import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favoriteServers';
+import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
+import { usePeerDriveStates, type PeerDriveState } from '../../hooks/usePeerDriveStates';
+import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialog';
+import { friendCanConnect } from '../../utils/aeroShare';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
@@ -180,6 +184,9 @@ function parseHealthEndpoint(input: string): { url: string; host: string; port?:
 
 function getHealthProbeInput(server: ServerProfile): string | null {
     const proto = server.protocol || 'ftp';
+    // AeroShare friend: no HTTP endpoint to probe (the drive is a local
+    // replica; reachability is the live sync badge, not a health dot).
+    if (proto === 'peer') return null;
     const providerUrl = server.providerId ? getProviderById(server.providerId)?.healthCheckUrl : undefined;
     const protocolUrl = PROVIDER_HEALTH_URLS[proto];
     const endpoint = server.options?.endpoint;
@@ -298,6 +305,19 @@ export function MyServersPanel({
     }, []);
     const { thresholds } = useStorageThresholds();
     const { density, setDensity } = useMyServersDensity();
+    // AeroShare (experimental, default OFF). When off, every friend surface
+    // (cards, Add friend, dialog) is hidden; when on, friend cards get a live
+    // drive-state badge fed by usePeerDriveStates.
+    const aeroShareEnabled = useAeroShareEnabled();
+    const { states: peerStates, refresh: refreshPeerStates } = usePeerDriveStates(aeroShareEnabled);
+    const [aeroShareDialog, setAeroShareDialog] = useState<{ mode: AeroShareMode; prefillAfid?: string; prefillAlias?: string } | null>(null);
+    // Bumped after a handshake so the friend's freshly-saved profile reloads
+    // (the load effect also keys on the parent `lastUpdate`).
+    const [localRefresh, setLocalRefresh] = useState(0);
+    const peerStateFor = useCallback((server: ServerProfile): PeerDriveState | undefined => {
+        const ns = server.options?.peerNamespace;
+        return ns ? peerStates.get(ns)?.state : undefined;
+    }, [peerStates]);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
@@ -407,7 +427,7 @@ export function MyServersPanel({
             } catch { /* vault not ready / locked, retry on next lastUpdate bump */ }
         })();
         return () => { cancelled = true; };
-    }, [lastUpdate]);
+    }, [lastUpdate, localRefresh]);
 
     useEffect(() => {
         // N4 (#270): gate the cross-user copy/move menu entries on at least
@@ -657,7 +677,10 @@ export function MyServersPanel({
     }, [crossProfileSelection]);
 
     const filteredServers = useMemo(() => {
-        let result = servers;
+        // AeroShare is experimental and OFF by default: when the flag is off,
+        // friend (protocol "peer") profiles are hidden everywhere, even if a
+        // partition already holds some (D-GUI-2).
+        let result = aeroShareEnabled ? servers : servers.filter(s => s.protocol !== 'peer');
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             result = result.filter((server) => (serverSearchTexts.get(server.id) ?? '').includes(q));
@@ -671,7 +694,7 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, favorites, serverSearchTexts]);
+    }, [servers, searchQuery, activeFilter, favorites, serverSearchTexts, aeroShareEnabled]);
 
     const { insertStartIdx, insertEndIdx } = useMemo(() => {
         if (filteredServers.length === 0) {
@@ -785,6 +808,17 @@ export function MyServersPanel({
     // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
     const handleConnect = useCallback(async (server: ServerProfile) => {
         if (connectingId) return;
+
+        // AeroShare friend (design §2 "what happens after you click"): if a
+        // drive is already bound, fall through to the standard credential-based
+        // connect path (peer carries no password; the binding rides in
+        // options.peer*). If nothing is shared yet, open the handshake dialog
+        // instead of attempting a connection.
+        if (server.protocol === 'peer' && !friendCanConnect(server)) {
+            setAeroShareDialog({ mode: 'receive', prefillAfid: server.host, prefillAlias: server.username });
+            return;
+        }
+
         setConnectingId(server.id);
 
         // OAuth2 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho, kDrive)
@@ -1173,6 +1207,7 @@ export function MyServersPanel({
                 crossProfileSelectionCount={crossProfileSelection.length}
                 listDensity={density}
                 onToggleListDensity={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
+                onAddFriend={aeroShareEnabled ? () => setAeroShareDialog({ mode: 'receive' }) : undefined}
             />
 
             {filteredServers.length === 0 ? (
@@ -1186,13 +1221,24 @@ export function MyServersPanel({
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                                 {t('introHub.noServersHint')}
                             </p>
-                            <button
-                                onClick={onQuickConnect}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors mb-8"
-                            >
-                                <Plus size={18} />
-                                {t('introHub.addFirstServer')}
-                            </button>
+                            <div className="flex items-center gap-2 mb-8">
+                                <button
+                                    onClick={onQuickConnect}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                                >
+                                    <Plus size={18} />
+                                    {t('introHub.addFirstServer')}
+                                </button>
+                                {aeroShareEnabled && (
+                                    <button
+                                        onClick={() => setAeroShareDialog({ mode: 'receive' })}
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                                    >
+                                        <UserPlus size={18} />
+                                        {t('aeroShare.addFriend')}
+                                    </button>
+                                )}
+                            </div>
 
                             {onJumpToCategory && (
                                 <>
@@ -1300,6 +1346,7 @@ export function MyServersPanel({
                                     onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                                     thresholds={thresholds}
                                     hasActiveSession={activeProfileIds?.has(server.id) ?? false}
+                                    peerState={peerStateFor(server)}
                                 />
                             );
                         })}
@@ -1370,6 +1417,7 @@ export function MyServersPanel({
                         thresholds={thresholds}
                         density={density}
                         activeProfileIds={activeProfileIds}
+                        getPeerState={peerStateFor}
                     />
                     {canDrag && dragIdx !== null && (
                         <div
@@ -1434,6 +1482,16 @@ export function MyServersPanel({
                             setServers(prev => prev.filter(s => s.id !== relocateState.profile.id));
                         }
                     }}
+                />
+            )}
+            {aeroShareEnabled && aeroShareDialog && (
+                <AeroShareDialog
+                    initialMode={aeroShareDialog.mode}
+                    prefillAfid={aeroShareDialog.prefillAfid}
+                    prefillAlias={aeroShareDialog.prefillAlias}
+                    onFriendSaved={() => { setLocalRefresh(n => n + 1); refreshPeerStates(); }}
+                    onConnectFriend={(profile) => { void handleConnect(profile); }}
+                    onClose={() => setAeroShareDialog(null)}
                 />
             )}
         </div>

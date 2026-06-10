@@ -4727,6 +4727,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive pribatutasuna",
             "privacyUpdated": "OpenDrive pribatutasuna eguneratuta"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Gehitu laguna",
+            "experimentalLabel": "AeroShare (esperimentala)",
+            "experimentalDesc": "Partekatu karpetak zuzenean lagunekin enkriptatutako peer-to-peer kanal baten bidez, tarteko zerbitzaririk gabe.",
+            "experimentalNote": "Esperimentala: peer-to-peer transferentzia garapen aktiboan dago eta alda daiteke. Konexioek gaur egun errele publiko bat erabiltzen dute suebakiak zeharkatzeko.",
+            "experimentalTag": "Esperimentala",
+            "driveState": {
+                "syncing": "Sinkronizatzen",
+                "serving": "Zerbitzatzen",
+                "error": "Errorea",
+                "starting": "Abiarazten",
+                "stopped": "Geldituta",
+                "offline": "Lineaz kanpo"
+            },
+            "status": {
+                "starting": "Abiarazten...",
+                "serving": "Zerbitzatzen",
+                "stopped": "Geldituta",
+                "error": "Errorea"
+            },
+            "toast": {
+                "readOnlyTitle": "Irakurtzeko soilik partekatzea",
+                "readOnlyBody": "AeroShare karpetak arakatzeko eta deskargatzeko soilik dira."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Jaso karpeta bat",
+                "shareTab": "Partekatu karpeta bat",
+                "myId": "Zure AeroFTP-ID",
+                "myIdHint": "Bidali hau zure lagunari, karpeta bat zurekin parteka dezan.",
+                "copy": "Kopiatu",
+                "copied": "Kopiatuta",
+                "receiveStep": "Itsatsi zure lagunak bidalitako partekatze-esteka.",
+                "linkLabel": "Partekatze-esteka",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Lagunaren AeroFTP-ID",
+                "issuerPlaceholder": "Zurekin partekatu duen lagunaren AeroFTP-ID",
+                "aliasLabel": "Lagunaren izena (aukerakoa)",
+                "localFolderLabel": "Gorde karpeta honetan",
+                "chooseFolder": "Aukeratu karpeta",
+                "receiveSubmit": "Gehitu partekatutako karpeta",
+                "receiving": "Partekatutako karpeta gehitzen...",
+                "receiveSuccess": "Partekatutako karpeta gehitu da",
+                "connectNow": "Konektatu orain",
+                "needIdentityFirst": "Zure AeroFTP-ID sortzen...",
+                "shareStep": "Aukeratu karpeta bat eta norekin partekatu.",
+                "shareFolderLabel": "Partekatzeko karpeta",
+                "recipientLabel": "Partekatu honekin",
+                "recipientSaved": "Gordetako laguna",
+                "recipientPaste": "Itsatsi AeroFTP-ID bat",
+                "recipientAfidLabel": "Lagunaren AeroFTP-ID",
+                "recipientAliasLabel": "Lagunaren izena (aukerakoa)",
+                "driveNameLabel": "Karpetaren izena (aukerakoa)",
+                "shareSubmit": "Sortu partekatze-esteka",
+                "sharing": "Enkriptatutako karpeta prestatzen...",
+                "shareReadyTitle": "Partekatze-esteka prest dago",
+                "shareReadyHint": "Bidali esteka hau zure lagunari berriro. AeroShare-n itsasten du karpeta jasotzeko.",
+                "shareLinkLabel": "Partekatze-esteka",
+                "noFriendsYet": "Oraindik ez dago gordetako lagunik.",
+                "close": "Itxi",
+                "missingLink": "Itsatsi lehenik partekatze-esteka.",
+                "missingIssuer": "Sartu zure lagunaren AeroFTP-ID.",
+                "missingFolder": "Aukeratu karpeta bat.",
+                "missingRecipient": "Sartu edo aukeratu hartzailearen AeroFTP-ID."
+            }
         }
     }
 }

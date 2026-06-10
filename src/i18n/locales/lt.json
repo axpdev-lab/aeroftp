@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive privatumas",
             "privacyUpdated": "OpenDrive privatumas atnaujintas"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Pridėti draugą",
+            "experimentalLabel": "AeroShare (eksperimentinė)",
+            "experimentalDesc": "Bendrinkite aplankus tiesiogiai su draugais užšifruotu peer-to-peer kanalu, be serverio tarpininkavimo.",
+            "experimentalNote": "Eksperimentinė: peer-to-peer perdavimas yra aktyviai kuriamas ir gali keistis. Ryšiai šiuo metu naudoja viešą relę, kad pereitų per ugniasienes.",
+            "experimentalTag": "Eksperimentinė",
+            "driveState": {
+                "syncing": "Sinchronizuojama",
+                "serving": "Teikiama",
+                "error": "Klaida",
+                "starting": "Paleidžiama",
+                "stopped": "Sustabdyta",
+                "offline": "Neprisijungę"
+            },
+            "status": {
+                "starting": "Paleidžiama...",
+                "serving": "Teikiama",
+                "stopped": "Sustabdyta",
+                "error": "Klaida"
+            },
+            "toast": {
+                "readOnlyTitle": "Bendrinimas tik skaitymui",
+                "readOnlyBody": "AeroShare aplankus galima tik naršyti ir atsisiųsti."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Gauti aplanką",
+                "shareTab": "Bendrinti aplanką",
+                "myId": "Jūsų AeroFTP-ID",
+                "myIdHint": "Nusiųskite tai draugui, kad jis galėtų su jumis bendrinti aplanką.",
+                "copy": "Kopijuoti",
+                "copied": "Nukopijuota",
+                "receiveStep": "Įklijuokite bendrinimo nuorodą, kurią jums atsiuntė draugas.",
+                "linkLabel": "Bendrinimo nuoroda",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "Draugo AeroFTP-ID",
+                "issuerPlaceholder": "Draugo, kuris su jumis bendrino, AeroFTP-ID",
+                "aliasLabel": "Draugo vardas (nebūtina)",
+                "localFolderLabel": "Įrašyti į šį aplanką",
+                "chooseFolder": "Pasirinkti aplanką",
+                "receiveSubmit": "Pridėti bendrinamą aplanką",
+                "receiving": "Pridedamas bendrinamas aplankas...",
+                "receiveSuccess": "Bendrinamas aplankas pridėtas",
+                "connectNow": "Prisijungti dabar",
+                "needIdentityFirst": "Kuriamas jūsų AeroFTP-ID...",
+                "shareStep": "Pasirinkite aplanką ir su kuo norite jį bendrinti.",
+                "shareFolderLabel": "Bendrinamas aplankas",
+                "recipientLabel": "Bendrinti su",
+                "recipientSaved": "Įrašytas draugas",
+                "recipientPaste": "Įklijuokite AeroFTP-ID",
+                "recipientAfidLabel": "Draugo AeroFTP-ID",
+                "recipientAliasLabel": "Draugo vardas (nebūtina)",
+                "driveNameLabel": "Aplanko pavadinimas (nebūtina)",
+                "shareSubmit": "Sukurti bendrinimo nuorodą",
+                "sharing": "Ruošiamas užšifruotas aplankas...",
+                "shareReadyTitle": "Bendrinimo nuoroda paruošta",
+                "shareReadyHint": "Nusiųskite šią nuorodą atgal draugui. Jis ją įklijuoja į AeroShare, kad gautų aplanką.",
+                "shareLinkLabel": "Bendrinimo nuoroda",
+                "noFriendsYet": "Dar nėra įrašytų draugų.",
+                "close": "Uždaryti",
+                "missingLink": "Pirmiausia įklijuokite bendrinimo nuorodą.",
+                "missingIssuer": "Įveskite draugo AeroFTP-ID.",
+                "missingFolder": "Pasirinkite aplanką.",
+                "missingRecipient": "Įveskite arba pasirinkite gavėjo AeroFTP-ID."
+            }
         }
     }
 }

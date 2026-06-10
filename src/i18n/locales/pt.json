@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Privacidade do OpenDrive",
             "privacyUpdated": "Privacidade do OpenDrive atualizada"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Adicionar amigo",
+            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalDesc": "Partilhe pastas diretamente com os seus amigos através de um canal encriptado ponto a ponto, sem qualquer servidor pelo meio.",
+            "experimentalNote": "Experimental: a transferência ponto a ponto está em desenvolvimento ativo e pode mudar. As ligações usam atualmente um relé público para atravessar firewalls.",
+            "experimentalTag": "Experimental",
+            "driveState": {
+                "syncing": "A sincronizar",
+                "serving": "A partilhar",
+                "error": "Erro",
+                "starting": "A iniciar",
+                "stopped": "Parado",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "A iniciar...",
+                "serving": "A partilhar",
+                "stopped": "Parado",
+                "error": "Erro"
+            },
+            "toast": {
+                "readOnlyTitle": "Partilha só de leitura",
+                "readOnlyBody": "As pastas do AeroShare permitem apenas navegar e transferir."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Receber uma pasta",
+                "shareTab": "Partilhar uma pasta",
+                "myId": "O seu AeroFTP-ID",
+                "myIdHint": "Envie isto ao seu amigo para que ele possa partilhar uma pasta consigo.",
+                "copy": "Copiar",
+                "copied": "Copiado",
+                "receiveStep": "Cole o link de partilha que o seu amigo lhe enviou.",
+                "linkLabel": "Link de partilha",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID do amigo",
+                "issuerPlaceholder": "O AeroFTP-ID do amigo que partilhou consigo",
+                "aliasLabel": "Nome do amigo (opcional)",
+                "localFolderLabel": "Guardar nesta pasta",
+                "chooseFolder": "Escolher pasta",
+                "receiveSubmit": "Adicionar pasta partilhada",
+                "receiving": "A adicionar pasta partilhada...",
+                "receiveSuccess": "Pasta partilhada adicionada",
+                "connectNow": "Ligar agora",
+                "needIdentityFirst": "A criar o seu AeroFTP-ID...",
+                "shareStep": "Escolha uma pasta e com quem a partilhar.",
+                "shareFolderLabel": "Pasta a partilhar",
+                "recipientLabel": "Partilhar com",
+                "recipientSaved": "Amigo guardado",
+                "recipientPaste": "Cole um AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID do amigo",
+                "recipientAliasLabel": "Nome do amigo (opcional)",
+                "driveNameLabel": "Nome da pasta (opcional)",
+                "shareSubmit": "Criar link de partilha",
+                "sharing": "A preparar a pasta encriptada...",
+                "shareReadyTitle": "Link de partilha pronto",
+                "shareReadyHint": "Envie este link de volta ao seu amigo. Ele cola-o no AeroShare para receber a pasta.",
+                "shareLinkLabel": "Link de partilha",
+                "noFriendsYet": "Ainda não há amigos guardados.",
+                "close": "Fechar",
+                "missingLink": "Cole primeiro o link de partilha.",
+                "missingIssuer": "Introduza o AeroFTP-ID do seu amigo.",
+                "missingFolder": "Escolha uma pasta.",
+                "missingRecipient": "Introduza ou escolha o AeroFTP-ID do destinatário."
+            }
         }
     }
 }

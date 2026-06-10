@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive 隐私",
             "privacyUpdated": "OpenDrive 隐私已更新"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "添加好友",
+            "experimentalLabel": "AeroShare（实验性）",
+            "experimentalDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。",
+            "experimentalNote": "实验性：点对点传输正在积极开发中，可能会有变动。当前连接使用公共中继来穿透防火墙。",
+            "experimentalTag": "实验性",
+            "driveState": {
+                "syncing": "同步中",
+                "serving": "提供中",
+                "error": "错误",
+                "starting": "启动中",
+                "stopped": "已停止",
+                "offline": "离线"
+            },
+            "status": {
+                "starting": "启动中...",
+                "serving": "提供中",
+                "stopped": "已停止",
+                "error": "错误"
+            },
+            "toast": {
+                "readOnlyTitle": "只读共享",
+                "readOnlyBody": "AeroShare 文件夹仅支持浏览和下载。"
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "接收文件夹",
+                "shareTab": "共享文件夹",
+                "myId": "您的 AeroFTP-ID",
+                "myIdHint": "将此发送给好友，以便他们与您共享文件夹。",
+                "copy": "复制",
+                "copied": "已复制",
+                "receiveStep": "粘贴好友发给您的共享链接。",
+                "linkLabel": "共享链接",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "好友的 AeroFTP-ID",
+                "issuerPlaceholder": "与您共享的好友的 AeroFTP-ID",
+                "aliasLabel": "好友名称（可选）",
+                "localFolderLabel": "保存到此文件夹",
+                "chooseFolder": "选择文件夹",
+                "receiveSubmit": "添加共享文件夹",
+                "receiving": "正在添加共享文件夹...",
+                "receiveSuccess": "已添加共享文件夹",
+                "connectNow": "立即连接",
+                "needIdentityFirst": "正在创建您的 AeroFTP-ID...",
+                "shareStep": "选择一个文件夹以及共享对象。",
+                "shareFolderLabel": "要共享的文件夹",
+                "recipientLabel": "共享给",
+                "recipientSaved": "已保存的好友",
+                "recipientPaste": "粘贴 AeroFTP-ID",
+                "recipientAfidLabel": "好友的 AeroFTP-ID",
+                "recipientAliasLabel": "好友名称（可选）",
+                "driveNameLabel": "文件夹名称（可选）",
+                "shareSubmit": "创建共享链接",
+                "sharing": "正在准备加密文件夹...",
+                "shareReadyTitle": "共享链接已就绪",
+                "shareReadyHint": "将此链接发回给好友。他们将其粘贴到 AeroShare 中即可接收文件夹。",
+                "shareLinkLabel": "共享链接",
+                "noFriendsYet": "尚无已保存的好友。",
+                "close": "关闭",
+                "missingLink": "请先粘贴共享链接。",
+                "missingIssuer": "请输入好友的 AeroFTP-ID。",
+                "missingFolder": "请选择一个文件夹。",
+                "missingRecipient": "请输入或选择接收方的 AeroFTP-ID。"
+            }
         }
     }
 }

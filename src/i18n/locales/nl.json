@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "OpenDrive Privacy",
             "privacyUpdated": "OpenDrive-privacy bijgewerkt"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Vriend toevoegen",
+            "experimentalLabel": "AeroShare (experimenteel)",
+            "experimentalDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen.",
+            "experimentalNote": "Experimenteel: peer-to-peer-overdracht is volop in ontwikkeling en kan veranderen. Verbindingen gebruiken momenteel een openbaar relay om firewalls te passeren.",
+            "experimentalTag": "Experimenteel",
+            "driveState": {
+                "syncing": "Synchroniseren",
+                "serving": "Aanbieden",
+                "error": "Fout",
+                "starting": "Starten",
+                "stopped": "Gestopt",
+                "offline": "Offline"
+            },
+            "status": {
+                "starting": "Starten...",
+                "serving": "Aanbieden",
+                "stopped": "Gestopt",
+                "error": "Fout"
+            },
+            "toast": {
+                "readOnlyTitle": "Alleen-lezen gedeelde map",
+                "readOnlyBody": "AeroShare-mappen kunnen alleen worden bekeken en gedownload."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Een map ontvangen",
+                "shareTab": "Een map delen",
+                "myId": "Je AeroFTP-ID",
+                "myIdHint": "Stuur deze naar je vriend zodat hij een map met je kan delen.",
+                "copy": "Kopiëren",
+                "copied": "Gekopieerd",
+                "receiveStep": "Plak de deellink die je vriend je heeft gestuurd.",
+                "linkLabel": "Deellink",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID van vriend",
+                "issuerPlaceholder": "De AeroFTP-ID van de vriend die met je heeft gedeeld",
+                "aliasLabel": "Naam van vriend (optioneel)",
+                "localFolderLabel": "Opslaan in deze map",
+                "chooseFolder": "Map kiezen",
+                "receiveSubmit": "Gedeelde map toevoegen",
+                "receiving": "Gedeelde map toevoegen...",
+                "receiveSuccess": "Gedeelde map toegevoegd",
+                "connectNow": "Nu verbinden",
+                "needIdentityFirst": "Je AeroFTP-ID wordt aangemaakt...",
+                "shareStep": "Kies een map en met wie je deze wilt delen.",
+                "shareFolderLabel": "Map om te delen",
+                "recipientLabel": "Delen met",
+                "recipientSaved": "Opgeslagen vriend",
+                "recipientPaste": "Plak een AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID van vriend",
+                "recipientAliasLabel": "Naam van vriend (optioneel)",
+                "driveNameLabel": "Mapnaam (optioneel)",
+                "shareSubmit": "Deellink maken",
+                "sharing": "De versleutelde map wordt voorbereid...",
+                "shareReadyTitle": "Deellink gereed",
+                "shareReadyHint": "Stuur deze link terug naar je vriend. Hij plakt deze in AeroShare om de map te ontvangen.",
+                "shareLinkLabel": "Deellink",
+                "noFriendsYet": "Nog geen opgeslagen vrienden.",
+                "close": "Sluiten",
+                "missingLink": "Plak eerst de deellink.",
+                "missingIssuer": "Voer de AeroFTP-ID van je vriend in.",
+                "missingFolder": "Kies een map.",
+                "missingRecipient": "Voer de AeroFTP-ID van de ontvanger in of kies deze."
+            }
         }
     }
 }

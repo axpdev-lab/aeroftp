@@ -1626,6 +1626,10 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         uploadcare: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
         cloudinary: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300',
         backblaze: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        // AeroShare friend (the badge is never reached for "peer": ServerBadges
+        // renders a dedicated violet chip; this entry only satisfies the
+        // exhaustive Record<ProviderType, string>).
+        peer: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
     };
 
     return (

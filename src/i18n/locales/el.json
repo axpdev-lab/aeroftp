@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Απόρρητο OpenDrive",
             "privacyUpdated": "Το απόρρητο OpenDrive ενημερώθηκε"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Προσθήκη φίλου",
+            "experimentalLabel": "AeroShare (πειραματικό)",
+            "experimentalDesc": "Μοιραστείτε φακέλους απευθείας με φίλους μέσω κρυπτογραφημένου καναλιού peer-to-peer, χωρίς διακομιστή στη μέση.",
+            "experimentalNote": "Πειραματικό: η μεταφορά peer-to-peer βρίσκεται σε ενεργή ανάπτυξη και μπορεί να αλλάξει. Οι συνδέσεις χρησιμοποιούν προς το παρόν δημόσιο αναμεταδότη για τη διέλευση τειχών προστασίας.",
+            "experimentalTag": "Πειραματικό",
+            "driveState": {
+                "syncing": "Συγχρονισμός",
+                "serving": "Διάθεση",
+                "error": "Σφάλμα",
+                "starting": "Εκκίνηση",
+                "stopped": "Σταματημένο",
+                "offline": "Εκτός σύνδεσης"
+            },
+            "status": {
+                "starting": "Εκκίνηση...",
+                "serving": "Διάθεση",
+                "stopped": "Σταματημένο",
+                "error": "Σφάλμα"
+            },
+            "toast": {
+                "readOnlyTitle": "Κοινή χρήση μόνο για ανάγνωση",
+                "readOnlyBody": "Οι φάκελοι AeroShare είναι μόνο για περιήγηση και λήψη."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Λήψη φακέλου",
+                "shareTab": "Κοινή χρήση φακέλου",
+                "myId": "Το AeroFTP-ID σας",
+                "myIdHint": "Στείλτε το στον φίλο σας ώστε να μπορεί να μοιραστεί έναν φάκελο μαζί σας.",
+                "copy": "Αντιγραφή",
+                "copied": "Αντιγράφηκε",
+                "receiveStep": "Επικολλήστε τον σύνδεσμο κοινής χρήσης που σας έστειλε ο φίλος σας.",
+                "linkLabel": "Σύνδεσμος κοινής χρήσης",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID του φίλου",
+                "issuerPlaceholder": "Το AeroFTP-ID του φίλου που μοιράστηκε μαζί σας",
+                "aliasLabel": "Όνομα φίλου (προαιρετικό)",
+                "localFolderLabel": "Αποθήκευση σε αυτόν τον φάκελο",
+                "chooseFolder": "Επιλογή φακέλου",
+                "receiveSubmit": "Προσθήκη κοινόχρηστου φακέλου",
+                "receiving": "Προσθήκη κοινόχρηστου φακέλου...",
+                "receiveSuccess": "Ο κοινόχρηστος φάκελος προστέθηκε",
+                "connectNow": "Σύνδεση τώρα",
+                "needIdentityFirst": "Δημιουργία του AeroFTP-ID σας...",
+                "shareStep": "Επιλέξτε έναν φάκελο και με ποιον θα τον μοιραστείτε.",
+                "shareFolderLabel": "Φάκελος προς κοινή χρήση",
+                "recipientLabel": "Κοινή χρήση με",
+                "recipientSaved": "Αποθηκευμένος φίλος",
+                "recipientPaste": "Επικόλληση ενός AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID του φίλου",
+                "recipientAliasLabel": "Όνομα φίλου (προαιρετικό)",
+                "driveNameLabel": "Όνομα φακέλου (προαιρετικό)",
+                "shareSubmit": "Δημιουργία συνδέσμου κοινής χρήσης",
+                "sharing": "Προετοιμασία του κρυπτογραφημένου φακέλου...",
+                "shareReadyTitle": "Ο σύνδεσμος κοινής χρήσης είναι έτοιμος",
+                "shareReadyHint": "Στείλτε αυτόν τον σύνδεσμο πίσω στον φίλο σας. Τον επικολλά στο AeroShare για να λάβει τον φάκελο.",
+                "shareLinkLabel": "Σύνδεσμος κοινής χρήσης",
+                "noFriendsYet": "Δεν υπάρχουν αποθηκευμένοι φίλοι ακόμη.",
+                "close": "Κλείσιμο",
+                "missingLink": "Επικολλήστε πρώτα τον σύνδεσμο κοινής χρήσης.",
+                "missingIssuer": "Εισαγάγετε το AeroFTP-ID του φίλου σας.",
+                "missingFolder": "Επιλέξτε έναν φάκελο.",
+                "missingRecipient": "Εισαγάγετε ή επιλέξτε το AeroFTP-ID του παραλήπτη."
+            }
         }
     }
 }

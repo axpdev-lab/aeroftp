@@ -4708,6 +4708,73 @@
         "opendrive": {
             "privacyTitle": "Privasi OpenDrive",
             "privacyUpdated": "Privasi OpenDrive dikemas kini"
+        },
+        "aeroShare": {
+            "feature": "AeroShare",
+            "addFriend": "Tambah rakan",
+            "experimentalLabel": "AeroShare (eksperimental)",
+            "experimentalDesc": "Kongsi folder terus dengan rakan melalui saluran peer-to-peer yang disulitkan, tanpa pelayan di tengah.",
+            "experimentalNote": "Eksperimental: pemindahan peer-to-peer sedang dalam pembangunan aktif dan mungkin berubah. Sambungan kini menggunakan relai awam untuk menembusi tembok api.",
+            "experimentalTag": "Eksperimental",
+            "driveState": {
+                "syncing": "Menyegerakkan",
+                "serving": "Menyajikan",
+                "error": "Ralat",
+                "starting": "Memulakan",
+                "stopped": "Dihentikan",
+                "offline": "Luar talian"
+            },
+            "status": {
+                "starting": "Memulakan...",
+                "serving": "Menyajikan",
+                "stopped": "Dihentikan",
+                "error": "Ralat"
+            },
+            "toast": {
+                "readOnlyTitle": "Perkongsian baca sahaja",
+                "readOnlyBody": "Folder AeroShare hanya boleh dilayari dan dimuat turun."
+            },
+            "dialog": {
+                "title": "AeroShare",
+                "receiveTab": "Terima folder",
+                "shareTab": "Kongsi folder",
+                "myId": "AeroFTP-ID anda",
+                "myIdHint": "Hantar ini kepada rakan anda supaya mereka boleh berkongsi folder dengan anda.",
+                "copy": "Salin",
+                "copied": "Disalin",
+                "receiveStep": "Tampal pautan kongsi yang dihantar oleh rakan anda.",
+                "linkLabel": "Pautan kongsi",
+                "linkPlaceholder": "aeroftp-share://v1/...",
+                "issuerLabel": "AeroFTP-ID rakan",
+                "issuerPlaceholder": "AeroFTP-ID rakan yang berkongsi dengan anda",
+                "aliasLabel": "Nama rakan (pilihan)",
+                "localFolderLabel": "Simpan ke dalam folder ini",
+                "chooseFolder": "Pilih folder",
+                "receiveSubmit": "Tambah folder dikongsi",
+                "receiving": "Menambah folder dikongsi...",
+                "receiveSuccess": "Folder dikongsi ditambah",
+                "connectNow": "Sambung sekarang",
+                "needIdentityFirst": "Mencipta AeroFTP-ID anda...",
+                "shareStep": "Pilih folder dan dengan siapa hendak dikongsi.",
+                "shareFolderLabel": "Folder untuk dikongsi",
+                "recipientLabel": "Kongsi dengan",
+                "recipientSaved": "Rakan disimpan",
+                "recipientPaste": "Tampal satu AeroFTP-ID",
+                "recipientAfidLabel": "AeroFTP-ID rakan",
+                "recipientAliasLabel": "Nama rakan (pilihan)",
+                "driveNameLabel": "Nama folder (pilihan)",
+                "shareSubmit": "Cipta pautan kongsi",
+                "sharing": "Menyediakan folder yang disulitkan...",
+                "shareReadyTitle": "Pautan kongsi sedia",
+                "shareReadyHint": "Hantar semula pautan ini kepada rakan anda. Mereka menampalnya ke dalam AeroShare untuk menerima folder.",
+                "shareLinkLabel": "Pautan kongsi",
+                "noFriendsYet": "Belum ada rakan disimpan.",
+                "close": "Tutup",
+                "missingLink": "Tampal pautan kongsi dahulu.",
+                "missingIssuer": "Masukkan AeroFTP-ID rakan anda.",
+                "missingFolder": "Pilih satu folder.",
+                "missingRecipient": "Masukkan atau pilih AeroFTP-ID penerima."
+            }
         }
     }
 }

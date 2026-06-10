@@ -724,7 +724,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         );
         transferIdToDisplayPath.current.delete(data.transfer_id);
 
-        notify.error(t('transfer.failed'), data.message);
+        // AeroShare Phase 1 drives are browse/pull only (providers/peer.rs
+        // ReadOnly). Map the stable "Read-only endpoint:" marker to a calm,
+        // localized toast instead of a raw backend string.
+        if (typeof data.message === 'string' && data.message.startsWith('Read-only endpoint:')) {
+          notify.error(t('aeroShare.toast.readOnlyTitle'), t('aeroShare.toast.readOnlyBody'));
+        } else {
+          notify.error(t('transfer.failed'), data.message);
+        }
       } else if (data.event_type === 'cancelled') {
         window.dispatchEvent(new CustomEvent(TRANSFER_BATCH_FINISHED_EVENT, { detail: data }));
         streamingScanActive.current = false;
