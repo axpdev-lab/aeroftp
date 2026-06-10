@@ -49,6 +49,12 @@ hkdf = "0.12"
 sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
+
+# WI-4a peer identity: Ed25519 user-identity signing + X25519 sealed capabilities. Both sit on the
+# STABLE dalek lineage already in this crate's graph (iroh 0.92 -> curve25519-dalek 4.x), so they add
+# no new crypto lineage. Used by src/identity.rs (storage-agnostic; the vault facade is WI-4b).
+ed25519-dalek = "2"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [dev-dependencies]

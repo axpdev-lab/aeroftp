@@ -4,6 +4,7 @@
 
 pub mod crypto;
 pub mod endpoint;
+pub mod identity;
 pub mod protocol;
 
 pub use crypto::{
@@ -11,6 +12,7 @@ pub use crypto::{
     generate_pairing_secret, PAIRING_SECRET_LEN,
 };
 pub use endpoint::{PeerBlobOffer, PeerEndpoint, PeerEndpointConfig};
+pub use identity::{open_capability, seal, seal_capability, Capability, Identity, IdentityPublic};
 pub use protocol::{
     recv_blob, recv_encrypted_blob, recv_offer, send_blob, send_encrypted_blob, send_offer,
 };
