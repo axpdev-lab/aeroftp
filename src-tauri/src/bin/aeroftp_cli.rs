@@ -2173,6 +2173,11 @@ enum Commands {
         #[command(subcommand)]
         command: UsersCommands,
     },
+    /// User-to-user P2P encrypted drives (identity, contacts, grant/import, publish/replicate)
+    Peer {
+        #[command(subcommand)]
+        command: PeerCommands,
+    },
     /// Create a new server profile in the vault
     ///
     /// Scriptable alternative to the GUI's New Server flow and to the
@@ -8357,6 +8362,659 @@ enum Tone {
     Ok,
     Low,
     Unknown,
+}
+
+// ============================================================================
+// WI-4d: P2P (peer) drive verbs. Identity/contact/drive custody is vault-backed
+// (the `cli_peer_*` bridges over the WI-4b facade); the crypto + engine live in
+// `ftp_client_gui_lib::peer` (the iroh-isolated peer-l0 crate behind it).
+// ============================================================================
+
+#[derive(Subcommand)]
+enum PeerCommands {
+    /// Manage this user-partition's P2P identity (its AeroFTP-ID)
+    Identity {
+        #[command(subcommand)]
+        command: PeerIdentityCommands,
+    },
+    /// Manage saved P2P contacts (AeroFTP-IDs you grant drives to)
+    Contact {
+        #[command(subcommand)]
+        command: PeerContactCommands,
+    },
+    /// List or forget the drives this partition holds keys for
+    Drive {
+        #[command(subcommand)]
+        command: PeerDriveCommands,
+    },
+    /// Seal a read capability for one of your drives to a contact (prints/writes a token)
+    Grant {
+        /// Recipient AeroFTP-ID, or a saved contact alias
+        #[arg(long)]
+        to: String,
+        /// The drive's namespace id (from `peer drive list` or `peer publish`)
+        #[arg(long)]
+        drive: String,
+        /// Optional human label carried in the token
+        #[arg(long)]
+        name: Option<String>,
+        /// Also write the token to this file
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Import a capability token shared with you and remember the drive's key
+    Import {
+        /// The aeroftp-drive:// token, or a path to a file containing it
+        token: String,
+        /// Expected issuer AeroFTP-ID (the publisher who granted it)
+        #[arg(long)]
+        from: String,
+    },
+    /// Publish a local directory as an encrypted, versioned P2P drive
+    Publish {
+        /// Local directory to publish
+        dir: String,
+        /// Persistent store dir (survives restart); default: in-memory
+        #[arg(long)]
+        store: Option<String>,
+        /// Human label for the drive (default: the directory name)
+        #[arg(long)]
+        name: Option<String>,
+        /// Seconds between automatic republishes (0 = none)
+        #[arg(long, default_value_t = 0)]
+        republish_after: u64,
+        /// How many republishes after v1 (with --republish-after)
+        #[arg(long, default_value_t = 0)]
+        republish_count: u64,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
+    /// Replicate a drive from a ticket, using a key you already imported
+    Replicate {
+        /// DocTicket printed by the publisher
+        ticket: String,
+        /// Output directory to reconstruct into
+        #[arg(long)]
+        out: String,
+        /// Seconds to keep converging on new versions (0 = one-shot)
+        #[arg(long, default_value_t = 0)]
+        watch: u64,
+        /// Persistent store dir (resume across runs)
+        #[arg(long)]
+        store: Option<String>,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum PeerIdentityCommands {
+    /// Create this partition's identity if absent and print its AeroFTP-ID
+    Init {
+        /// Replace an existing identity (re-key; invalidates old grants)
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print this partition's AeroFTP-ID
+    Show,
+}
+
+#[derive(Subcommand)]
+enum PeerContactCommands {
+    /// Add (or rename) a contact by AeroFTP-ID
+    Add {
+        /// The contact's AeroFTP-ID
+        id: String,
+        /// Friendly alias (defaults to the id)
+        #[arg(long)]
+        alias: Option<String>,
+    },
+    /// List saved contacts
+    List,
+    /// Remove a contact by AeroFTP-ID
+    Remove {
+        /// The contact's AeroFTP-ID
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PeerDriveCommands {
+    /// List drives this partition holds keys for (namespace + role)
+    List,
+    /// Forget a drive's key (does not delete remote data)
+    Forget {
+        /// The drive's namespace id
+        namespace: String,
+    },
+}
+
+/// Resolve a grant recipient: an explicit AeroFTP-ID, or a saved contact alias.
+fn resolve_peer_recipient(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    to: &str,
+) -> Result<String, String> {
+    if let Ok(afid) = ftp_client_gui_lib::peer::validate_aeroftp_id(to) {
+        return Ok(afid);
+    }
+    let contacts = ftp_client_gui_lib::user_partitions::cli_peer_contact_list(store, user_id)?;
+    for (contact_id, alias) in contacts {
+        if alias.eq_ignore_ascii_case(to) {
+            return Ok(contact_id);
+        }
+    }
+    Err(format!(
+        "'{to}' is neither a valid AeroFTP-ID nor a known contact alias"
+    ))
+}
+
+/// Read a token argument: a literal `aeroftp-drive://...` or a path to a file holding one.
+fn read_peer_token_arg(arg: &str) -> Result<String, String> {
+    if std::path::Path::new(arg).is_file() {
+        std::fs::read_to_string(arg)
+            .map(|s| s.trim().to_string())
+            .map_err(|e| format!("read token file: {e}"))
+    } else {
+        Ok(arg.trim().to_string())
+    }
+}
+
+/// Dispatcher for `aeroftp peer ...`. Every verb runs in the active (unlocked) user partition.
+async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::{peer, user_partitions};
+
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+    let user_id = match ensure_active_user_unlocked(cli, &store) {
+        Ok(Some(meta)) => meta.id,
+        Ok(None) => {
+            print_error(format, "NO_ACTIVE_USER: create or select a user first", 6);
+            return 6;
+        }
+        Err(err) => {
+            print_error(format, &err, 6);
+            return 6;
+        }
+    };
+
+    match command {
+        PeerCommands::Identity { command } => match command {
+            PeerIdentityCommands::Init { force } => {
+                let (secret, afid) = peer::generate_identity();
+                match user_partitions::cli_peer_identity_store(
+                    &store, user_id, &secret, &afid, *force,
+                ) {
+                    Ok(()) => {
+                        if matches!(format, OutputFormat::Json) {
+                            print_json(&serde_json::json!({ "aeroftpId": afid }));
+                        } else {
+                            println!("AeroFTP-ID: {afid}");
+                        }
+                        0
+                    }
+                    Err(e) if e == "PEER_IDENTITY_EXISTS" => {
+                        let existing = user_partitions::cli_peer_identity_show(&store, user_id)
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        print_error(
+                            format,
+                            &format!("identity already exists ({existing}); use --force to re-key"),
+                            4,
+                        );
+                        4
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+            PeerIdentityCommands::Show => {
+                match user_partitions::cli_peer_identity_show(&store, user_id) {
+                    Ok(Some(afid)) => {
+                        if matches!(format, OutputFormat::Json) {
+                            print_json(&serde_json::json!({ "aeroftpId": afid }));
+                        } else {
+                            println!("{afid}");
+                        }
+                        0
+                    }
+                    Ok(None) => {
+                        print_error(
+                            format,
+                            "no identity in this partition; run `aeroftp peer identity init`",
+                            4,
+                        );
+                        4
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+        },
+        PeerCommands::Contact { command } => match command {
+            PeerContactCommands::Add { id, alias } => {
+                let afid = match peer::validate_aeroftp_id(id) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        print_error(format, &format!("invalid AeroFTP-ID: {e}"), 4);
+                        return 4;
+                    }
+                };
+                let alias = alias.clone().unwrap_or_else(|| afid.clone());
+                match user_partitions::cli_peer_contact_add(&store, user_id, &afid, &alias) {
+                    Ok(()) => {
+                        if matches!(format, OutputFormat::Json) {
+                            print_json(&serde_json::json!({ "contactId": afid, "alias": alias }));
+                        } else {
+                            println!("Added contact {alias} ({afid})");
+                        }
+                        0
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+            PeerContactCommands::List => {
+                match user_partitions::cli_peer_contact_list(&store, user_id) {
+                    Ok(contacts) => {
+                        if matches!(format, OutputFormat::Json) {
+                            let items: Vec<_> = contacts
+                                .iter()
+                                .map(|(id, alias)| {
+                                    serde_json::json!({ "contactId": id, "alias": alias })
+                                })
+                                .collect();
+                            print_json(&serde_json::json!({ "contacts": items }));
+                        } else if contacts.is_empty() {
+                            println!("No contacts.");
+                        } else {
+                            for (id, alias) in contacts {
+                                println!("{alias}\t{id}");
+                            }
+                        }
+                        0
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+            PeerContactCommands::Remove { id } => {
+                match user_partitions::cli_peer_contact_remove(&store, user_id, id) {
+                    Ok(()) => {
+                        if matches!(format, OutputFormat::Json) {
+                            print_json(&serde_json::json!({ "removed": id }));
+                        } else {
+                            println!("Removed contact {id}");
+                        }
+                        0
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+        },
+        PeerCommands::Drive { command } => match command {
+            PeerDriveCommands::List => {
+                match user_partitions::cli_peer_drive_list(&store, user_id) {
+                    Ok(drives) => {
+                        if matches!(format, OutputFormat::Json) {
+                            let items: Vec<_> = drives
+                                .iter()
+                                .map(|(ns, role)| {
+                                    serde_json::json!({ "namespace": ns, "role": role })
+                                })
+                                .collect();
+                            print_json(&serde_json::json!({ "drives": items }));
+                        } else if drives.is_empty() {
+                            println!("No drives.");
+                        } else {
+                            for (ns, role) in drives {
+                                println!("{role}\t{ns}");
+                            }
+                        }
+                        0
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+            PeerDriveCommands::Forget { namespace } => {
+                match user_partitions::cli_peer_drive_forget(&store, user_id, namespace) {
+                    Ok(()) => {
+                        if matches!(format, OutputFormat::Json) {
+                            print_json(&serde_json::json!({ "forgot": namespace }));
+                        } else {
+                            println!("Forgot drive {namespace}");
+                        }
+                        0
+                    }
+                    Err(e) => {
+                        print_error(format, &e, 5);
+                        5
+                    }
+                }
+            }
+        },
+        PeerCommands::Grant {
+            to,
+            drive,
+            name,
+            out,
+        } => {
+            let recipient = match resolve_peer_recipient(&store, user_id, to) {
+                Ok(r) => r,
+                Err(e) => {
+                    print_error(format, &e, 4);
+                    return 4;
+                }
+            };
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY: run `aeroftp peer identity init`", 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let content_key = match user_partitions::cli_peer_drive_load(&store, user_id, drive) {
+                Ok(Some(k)) => k,
+                Ok(None) => {
+                    print_error(format, &format!("no drive {drive} in this partition"), 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let drive_name = name.clone().unwrap_or_else(|| "drive".to_string());
+            let issued_at = chrono::Utc::now().timestamp();
+            let token = match peer::grant_capability(
+                &id_secret,
+                &recipient,
+                drive,
+                &content_key,
+                &drive_name,
+                1,
+                Vec::new(),
+                issued_at,
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    print_error(format, &format!("grant failed: {e}"), 1);
+                    return 1;
+                }
+            };
+            if let Some(path) = out {
+                if let Err(e) = std::fs::write(path, &token) {
+                    print_error(format, &format!("write token to {path}: {e}"), 1);
+                    return 1;
+                }
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({
+                    "token": token, "namespace": drive, "recipient": recipient,
+                }));
+            } else {
+                if let Some(path) = out {
+                    println!("Capability for {recipient} written to {path}");
+                }
+                println!("{token}");
+            }
+            0
+        }
+        PeerCommands::Import { token, from } => {
+            let token_str = match read_peer_token_arg(token) {
+                Ok(t) => t,
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    return 1;
+                }
+            };
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY: run `aeroftp peer identity init`", 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let imported = match peer::import_capability(&id_secret, from, &token_str) {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &format!("import failed: {e}"), 1);
+                    return 1;
+                }
+            };
+            if let Err(e) = user_partitions::cli_peer_drive_store(
+                &store,
+                user_id,
+                &imported.namespace_id,
+                "replicator",
+                &imported.content_key,
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({
+                    "namespace": imported.namespace_id,
+                    "drive": imported.drive_name,
+                    "version": imported.version,
+                }));
+            } else {
+                println!(
+                    "Imported drive '{}' (namespace {})",
+                    imported.drive_name, imported.namespace_id
+                );
+                println!("Replicate with: aeroftp peer replicate <ticket> --out <dir>");
+            }
+            0
+        }
+        PeerCommands::Publish {
+            dir,
+            store: store_dir,
+            name,
+            republish_after,
+            republish_count,
+            relay,
+        } => {
+            // Identity is required to seal future grants; auto-init on first publish.
+            let afid = match user_partitions::cli_peer_identity_show(&store, user_id) {
+                Ok(Some(a)) => a,
+                Ok(None) => {
+                    let (secret, a) = peer::generate_identity();
+                    if let Err(e) = user_partitions::cli_peer_identity_store(
+                        &store, user_id, &secret, &a, false,
+                    ) {
+                        print_error(format, &e, 5);
+                        return 5;
+                    }
+                    a
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY", 5);
+                    return 5;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let content_key = peer::fresh_content_key();
+            let drive_name = name.clone().unwrap_or_else(|| {
+                std::path::Path::new(dir)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("drive")
+                    .to_string()
+            });
+            let relay_urls = relay
+                .as_ref()
+                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let pub_fut = peer::publish_drive_cap(
+                dir.clone(),
+                &content_key,
+                &id_secret,
+                drive_name.clone(),
+                store_dir.clone(),
+                *republish_after,
+                *republish_count,
+                relay_urls,
+                tx,
+            );
+            tokio::pin!(pub_fut);
+            let published = tokio::select! {
+                ready = rx => match ready {
+                    Ok(p) => p,
+                    Err(_) => {
+                        print_error(format, "publisher ended before it was ready", 1);
+                        return 1;
+                    }
+                },
+                res = &mut pub_fut => {
+                    return match res {
+                        Ok(()) => 0,
+                        Err(e) => { print_error(format, &format!("publish failed: {e}"), 1); 1 }
+                    };
+                }
+            };
+            if let Err(e) = user_partitions::cli_peer_drive_store(
+                &store,
+                user_id,
+                &published.namespace_id,
+                "publisher",
+                &content_key,
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({
+                    "aeroftpId": afid,
+                    "namespace": published.namespace_id,
+                    "ticket": published.ticket,
+                    "drive": drive_name,
+                }));
+            } else {
+                println!("AeroFTP-ID: {afid}");
+                println!(
+                    "Drive '{}' namespace: {}",
+                    drive_name, published.namespace_id
+                );
+                println!(
+                    "\nShare this ticket with the replicator:\n{}",
+                    published.ticket
+                );
+                println!(
+                    "\nGrant access:  aeroftp peer grant --to <AeroFTP-ID> --drive {}",
+                    published.namespace_id
+                );
+                println!("\nPublishing... press Ctrl-C to stop serving.");
+            }
+            match pub_fut.await {
+                Ok(()) => 0,
+                Err(e) => {
+                    print_error(format, &format!("publish failed: {e}"), 1);
+                    1
+                }
+            }
+        }
+        PeerCommands::Replicate {
+            ticket,
+            out,
+            watch,
+            store: store_dir,
+            relay,
+        } => {
+            let namespace = match peer::namespace_from_ticket(ticket) {
+                Ok(ns) => ns,
+                Err(e) => {
+                    print_error(format, &format!("invalid ticket: {e}"), 1);
+                    return 1;
+                }
+            };
+            let content_key = match user_partitions::cli_peer_drive_load(
+                &store, user_id, &namespace,
+            ) {
+                Ok(Some(k)) => k,
+                Ok(None) => {
+                    print_error(
+                        format,
+                        &format!(
+                            "no key for drive {namespace}; run `aeroftp peer import <token> --from <issuer>` first"
+                        ),
+                        4,
+                    );
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let relay_urls = relay
+                .as_ref()
+                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+            match peer::replicate_drive_cap(
+                ticket.clone(),
+                out.clone(),
+                &content_key,
+                *watch,
+                store_dir.clone(),
+                relay_urls,
+            )
+            .await
+            {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({ "namespace": namespace, "out": out }));
+                    } else {
+                        println!("Replicated drive {namespace} into {out}");
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &format!("replicate failed: {e}"), 1);
+                    1
+                }
+            }
+        }
+    }
 }
 
 /// Port of `getStorageTone` from `src/hooks/useStorageThresholds.tsx`.
@@ -43195,6 +43853,7 @@ async fn main() {
             },
         ),
         Commands::Users { command } => cmd_users(&cli, command, format),
+        Commands::Peer { command } => cmd_peer(&cli, command, format).await,
         Commands::ProfileAdd {
             name,
             protocol,

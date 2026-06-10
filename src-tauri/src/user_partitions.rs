@@ -2501,6 +2501,154 @@ pub fn cli_find_user_by_name(store: &CredentialStore, name: &str) -> Result<User
         .ok_or_else(|| format!("USER_NOT_FOUND: {}", name))
 }
 
+// ============ WI-4d: CLI bridges for the P2P (peer) secret store ============
+// Thin wrappers around the WI-4b `peer_identity` vault facade, following the same template as the
+// `cli_*` server-profile bridges: open the partition db, derive the root wrapping key, and (for
+// private material) run the facade call inside `with_partition_dek` so the per-user DEK is threaded
+// and zeroized. Public material (the AeroFTP-ID, contacts, drive namespaces+roles) needs no DEK. These
+// stay opaque-bytes in/out — the peer-l0 crypto lives in `crate::peer`, the CLI handler orchestrates.
+
+/// Store (or replace) the active user's P2P identity. Refuses to clobber an existing identity unless
+/// `force` (re-keying is the explicit WI-4e path). `secret_bytes`/`public_id` are produced by
+/// `crate::peer::generate_identity`.
+pub fn cli_peer_identity_store(
+    store: &CredentialStore,
+    user_id: i64,
+    secret_bytes: &[u8],
+    public_id: &str,
+    force: bool,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    if !force && crate::peer_identity::identity_public_id(&conn, user_id)?.is_some() {
+        return Err("PEER_IDENTITY_EXISTS".to_string());
+    }
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::store_identity(&conn, user_id, dek, secret_bytes, public_id)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// The active user's public AeroFTP-ID, or `None` if no identity exists. Public: no DEK.
+pub fn cli_peer_identity_show(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Option<String>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::identity_public_id(&conn, user_id)
+}
+
+/// Load + decrypt the active user's 64-byte identity secret (wiped on drop), or `None` if unset.
+pub fn cli_peer_identity_load(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Option<zeroize::Zeroizing<Vec<u8>>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::load_identity(&conn, user_id, dek)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// Add (or rename) a contact. Public material: no DEK.
+pub fn cli_peer_contact_add(
+    store: &CredentialStore,
+    user_id: i64,
+    contact_id: &str,
+    alias: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::add_contact(&conn, user_id, contact_id, alias)
+}
+
+/// List the active user's contacts as `(contact_id, alias)`. Public: no DEK.
+pub fn cli_peer_contact_list(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Vec<(String, String)>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::list_contacts(&conn, user_id)
+}
+
+/// Remove a contact (no-op if absent). Public: no DEK.
+pub fn cli_peer_contact_remove(
+    store: &CredentialStore,
+    user_id: i64,
+    contact_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::remove_contact(&conn, user_id, contact_id)
+}
+
+/// Store (or replace) the per-drive content key for `namespace_id` under `role`
+/// (`publisher`/`replicator`). Private blob -> needs the DEK.
+pub fn cli_peer_drive_store(
+    store: &CredentialStore,
+    user_id: i64,
+    namespace_id: &str,
+    role: &str,
+    content_key: &[u8],
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::store_drive(&conn, user_id, dek, namespace_id, role, content_key)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// Load + decrypt the per-drive content key for `namespace_id` (wiped on drop), or `None`.
+pub fn cli_peer_drive_load(
+    store: &CredentialStore,
+    user_id: i64,
+    namespace_id: &str,
+) -> Result<Option<zeroize::Zeroizing<Vec<u8>>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::load_drive(&conn, user_id, dek, namespace_id)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// List the active user's drives as `(namespace_id, role)`. Public: no DEK.
+pub fn cli_peer_drive_list(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Vec<(String, String)>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::list_drives(&conn, user_id)
+}
+
+/// Forget a drive (no-op if absent). Public: no DEK.
+pub fn cli_peer_drive_forget(
+    store: &CredentialStore,
+    user_id: i64,
+    namespace_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::delete_drive(&conn, user_id, namespace_id)
+}
+
 #[tauri::command]
 pub async fn user_partitions_init(app: AppHandle) -> Result<MigrationReport, String> {
     init_or_migrate(&app)

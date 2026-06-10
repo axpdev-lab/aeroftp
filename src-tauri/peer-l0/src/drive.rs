@@ -38,6 +38,17 @@ pub enum ReplicateKey {
     /// WI-4c capability path: open a sealed token with my identity, verifying the expected issuer.
     /// Boxed (Identity is large) so the variants stay close in size.
     Capability(Box<ReplicateCap>),
+    /// WI-4d: the per-drive 32-byte content key directly (the replicator already custodies it in its
+    /// vault after a `peer import`). Use the ticket's namespace for dialing; no token to re-open.
+    Content([u8; 32]),
+}
+
+/// WI-4d: what `run_docs_publish` reports back to an in-app caller once the drive's namespace exists
+/// and its ticket is shared, BEFORE it blocks serving. Lets the CLI custody `(namespace_id,
+/// content_key)` in the vault and print the ticket while the publisher keeps running.
+pub struct DrivePublished {
+    pub namespace_id: String,
+    pub ticket: String,
 }
 
 /// Replicator's capability inputs: my identity, the expected issuer, and the token to open.
@@ -112,6 +123,13 @@ pub fn load_capability_token(s: &str) -> Result<String> {
     } else {
         Ok(s.trim().to_string())
     }
+}
+
+/// WI-4d: extract the drive namespace id from a DocTicket string, WITHOUT importing/syncing it, so the
+/// CLI can look up the vault-custodied content key for `peer replicate`.
+pub fn namespace_from_ticket(ticket_str: &str) -> Result<String> {
+    let ticket: iroh_docs::DocTicket = ticket_str.parse().context("failed to parse DocTicket")?;
+    Ok(ticket.capability.id().to_string())
 }
 
 /// Issue one sealed capability token per grant, after the drive ticket is known.
@@ -322,6 +340,7 @@ pub async fn run_docs_publish(
     store: Option<String>,
     cfg: crate::endpoint::PeerEndpointConfig,
     publish_key: PublishKey,
+    ready: Option<tokio::sync::oneshot::Sender<DrivePublished>>,
 ) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
@@ -503,6 +522,16 @@ pub async fn run_docs_publish(
     println!("\n=== DOC TICKET (copy/paste to docs-replicate side) ===");
     println!("{}", ticket);
     println!("==================================================\n");
+
+    // WI-4d: report the namespace + ticket to an in-app caller (the CLI) now that both exist, so it can
+    // custody the drive key in the vault and surface the ticket while we keep serving below. Best-effort:
+    // a dropped receiver (caller gone) just means nobody is listening.
+    if let Some(tx) = ready {
+        let _ = tx.send(DrivePublished {
+            namespace_id: ns.to_string(),
+            ticket: ticket.to_string(),
+        });
+    }
 
     // WI-4c: on the capability path, seal+sign one token per --grant now that the ns + ticket exist.
     if let PublishKey::Capability { issue, .. } = &publish_key {
@@ -796,6 +825,12 @@ pub async fn run_docs_replicate(
                 cap.drive_name
             );
             cap.content_key
+        }
+        ReplicateKey::Content(content_key) => {
+            // WI-4d: the CLI already opened the capability at `peer import` time and stored the content
+            // key in the vault; here it passes that key directly. Dial/namespace come from the ticket.
+            println!("CONTENT KEY: provided by caller (vault-custodied); replicating ns={ns}");
+            content_key
         }
     };
     let n = 12; // AES-GCM nonce

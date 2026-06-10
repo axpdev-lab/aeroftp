@@ -11,10 +11,16 @@
 //! (`crate::peer_identity`) are wired by WI-4d; no Tauri commands or CLI verbs
 //! are added here yet.
 
-use aeroftp_peer_l0::drive::{run_docs_publish, run_docs_replicate, PublishKey, ReplicateKey};
+use aeroftp_peer_l0::drive::{
+    run_docs_publish, run_docs_replicate, CapIssue, PublishKey, ReplicateKey,
+};
 use aeroftp_peer_l0::endpoint::PeerEndpointConfig;
 use aeroftp_peer_l0::{open_capability, seal_capability, Capability, Identity, IdentityPublic};
 use zeroize::Zeroizing;
+
+/// What a capability-path publish hands back to the CLI once the drive exists (so it can custody the
+/// key in the vault and print the ticket while the publisher keeps serving). Re-exported from peer-l0.
+pub use aeroftp_peer_l0::drive::DrivePublished;
 
 // ----------------------------------------------------------------------------
 // WI-4d identity + capability custody seam (app-side; returns plain bytes/strings
@@ -94,6 +100,12 @@ pub fn grant_capability(
     seal_capability(&me, &recipient, &cap)
 }
 
+/// Extract the drive namespace id from a publisher's DocTicket, so the CLI can look up the
+/// vault-custodied content key for `peer replicate` (no import/sync needed).
+pub fn namespace_from_ticket(ticket: &str) -> anyhow::Result<String> {
+    aeroftp_peer_l0::drive::namespace_from_ticket(ticket)
+}
+
 /// Open a capability token addressed to me, verifying it came from
 /// `issuer_aeroftp_id` (defends against a forged issuer) before unsealing.
 /// Fails closed on a wrong issuer, a token sealed to someone else, or tampering.
@@ -147,6 +159,72 @@ pub async fn publish_drive_dev(
         store,
         endpoint_config(custom_relay_urls),
         PublishKey::DevSecret(secret),
+        None, // dev path does not custody a namespace back to a caller
+    )
+    .await
+}
+
+/// Publish a local directory as a CAPABILITY-path drive (WI-4d): the blobs are E2EE'd with a per-drive
+/// RANDOM `content_key` the caller minted (and will custody in the vault keyed by the returned
+/// namespace). No tokens are sealed here — granting is a separate `peer grant` verb. The drive's
+/// `(namespace_id, ticket)` is sent on `ready` as soon as it exists, then this serves until cancelled.
+#[allow(clippy::too_many_arguments)]
+pub async fn publish_drive_cap(
+    dir: String,
+    content_key: &[u8],
+    identity_secret: &[u8],
+    drive_name: String,
+    store: Option<String>,
+    republish_after: u64,
+    republish_count: u64,
+    custom_relay_urls: Option<Vec<String>>,
+    ready: tokio::sync::oneshot::Sender<DrivePublished>,
+) -> anyhow::Result<()> {
+    let content_key: [u8; 32] = content_key
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("content key must be exactly 32 bytes"))?;
+    let issuer = identity_from_secret(identity_secret)?;
+    run_docs_publish(
+        "hello.txt".to_string(),
+        Some(dir),
+        republish_after,
+        republish_count,
+        store,
+        endpoint_config(custom_relay_urls),
+        PublishKey::Capability {
+            content_key,
+            issue: Box::new(CapIssue {
+                issuer,
+                grants: Vec::new(),
+                cap_out: None,
+                drive_name,
+            }),
+        },
+        Some(ready),
+    )
+    .await
+}
+
+/// Replicate a CAPABILITY-path drive (WI-4d) using a `content_key` the caller already custodies in the
+/// vault (recovered at `peer import` time). The namespace + addrs come from the `ticket`.
+pub async fn replicate_drive_cap(
+    ticket: String,
+    out: String,
+    content_key: &[u8],
+    watch_secs: u64,
+    store: Option<String>,
+    custom_relay_urls: Option<Vec<String>>,
+) -> anyhow::Result<()> {
+    let content_key: [u8; 32] = content_key
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("content key must be exactly 32 bytes"))?;
+    run_docs_replicate(
+        ticket,
+        Some(out),
+        watch_secs,
+        store,
+        endpoint_config(custom_relay_urls),
+        ReplicateKey::Content(content_key),
     )
     .await
 }

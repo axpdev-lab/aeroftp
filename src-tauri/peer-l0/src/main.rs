@@ -354,6 +354,7 @@ async fn main() -> Result<()> {
                 store,
                 docs_cfg,
                 publish_key,
+                None, // WI-4d ready-hook: the spike CLI does not need the namespace handed back
             )
             .await?;
             return Ok(());
