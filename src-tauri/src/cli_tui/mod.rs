@@ -10,7 +10,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{
+        Block, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table, TableState,
+        Wrap,
+    },
     Terminal,
 };
 
@@ -34,6 +37,12 @@ pub mod worker;
 pub use app::{TuiContext, TuiIntent, TuiProfile, TuiProfileAction, TuiUser};
 
 pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
+
+/// Reference version of the interactive TUI, tracked independently of the
+/// AeroFTP release (a sub-version surfaced in the TUI header). Beta 1.0.0 ships
+/// the IntroHub + multi-user dual-pane file manager with the full transfer set;
+/// later versions grow toward GUI parity (Discover/profile editing, etc).
+pub const TUI_VERSION: &str = "1.0.0-beta";
 
 #[allow(dead_code)]
 pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
@@ -152,6 +161,17 @@ fn dispatch_commands(
 
 fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTheme) {
     let area = frame.area();
+
+    // Shape B pivot: the pre-connection screen is the GUI-style IntroHub
+    // (My Servers detailed table + header user switcher), NOT the old 5-column
+    // picker. Once a live session is connected the dashboard below renders the
+    // dual-pane browser. The two layouts are deliberately distinct surfaces.
+    if !app.is_live_connected() {
+        render_introhub(frame, area, app, theme);
+        render_overlay(frame, area, app, theme);
+        return;
+    }
+
     let rows = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(12),
@@ -283,6 +303,345 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     frame.render_widget(footer, rows[2]);
 
     render_overlay(frame, area, app, theme);
+}
+
+/// IntroHub: the GUI-style pre-connection screen. A header with the user
+/// switcher and tab labels, a detailed "My Servers" table for the selected
+/// user's saved profiles, a detail panel for the highlighted profile, and a
+/// footer of key hints. Mirrors the GUI `MyServersTable` list view. Quota /
+/// health / time columns are placeholders here and fill in once the df/health
+/// probes are wired (next TUI version toward GUI parity).
+fn render_introhub(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    let rows = Layout::vertical([
+        Constraint::Length(3), // header (identity + user switcher)
+        Constraint::Min(6),    // My Servers table
+        Constraint::Length(8), // selected-profile detail
+        Constraint::Length(2), // footer key hints + status
+    ])
+    .split(area);
+
+    render_introhub_header(frame, rows[0], app, theme);
+    render_introhub_table(frame, rows[1], app, theme);
+    render_introhub_detail(frame, rows[2], app, theme);
+    render_introhub_footer(frame, rows[3], app, theme);
+}
+
+fn render_introhub_header(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
+    let users = &app.context.users;
+    let user = app.selected_user();
+    let user_name = user.map(|u| u.name.as_str()).unwrap_or("-");
+    let user_pos = format!("{}/{}", app.selected_user + 1, users.len().max(1));
+    let profile_count = user.map(|u| u.profiles.len()).unwrap_or(0);
+    let fav_count = user
+        .map(|u| u.profiles.iter().filter(|p| p.favorite).count())
+        .unwrap_or(0);
+    let is_locked = user.map(|u| u.is_locked).unwrap_or(false);
+    let is_admin = user.map(|u| u.is_admin).unwrap_or(false);
+
+    let mut user_line = vec![
+        Span::styled("user: ", theme.muted_style()),
+        Span::styled(user_name, theme.accent_style().add_modifier(Modifier::BOLD)),
+        Span::styled(format!(" ({})", user_pos), theme.muted_style()),
+    ];
+    if is_admin {
+        user_line.push(Span::styled("  admin", theme.muted_style()));
+    }
+    if is_locked {
+        user_line.push(Span::styled("  LOCKED", Style::default().fg(theme.planned)));
+    }
+    user_line.push(Span::styled(
+        format!("  ·  {} profiles", profile_count),
+        theme.muted_style(),
+    ));
+    if fav_count > 0 {
+        user_line.push(Span::styled(
+            format!("  ·  {}\u{2605}", fav_count),
+            theme.accent_style(),
+        ));
+    }
+
+    let header = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(
+                " AeroFTP TUI",
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!(" {}", TUI_VERSION), theme.muted_style()),
+            Span::raw("   "),
+            Span::styled(
+                "[ My Servers ]",
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  Discover (next)", theme.muted_style()),
+        ]),
+        Line::from(user_line),
+    ]);
+    frame.render_widget(header, area);
+}
+
+fn render_introhub_table(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
+    let user = app.selected_user();
+    let header_cells = [
+        "#",
+        "Name",
+        "Type",
+        "Host / Account",
+        "Remote -> Local",
+        "Used",
+        "Total",
+        "\u{2605}",
+    ]
+    .into_iter()
+    .map(|h| {
+        Cell::from(Span::styled(
+            h,
+            theme.muted_style().add_modifier(Modifier::BOLD),
+        ))
+    });
+    let header_row = Row::new(header_cells).height(1);
+
+    let rows: Vec<Row> = match user {
+        Some(user) if user.is_locked => vec![Row::new(vec![
+            Cell::from(""),
+            Cell::from(Span::styled(
+                "Locked user",
+                Style::default().fg(theme.planned),
+            )),
+            Cell::from(""),
+            Cell::from(Span::styled(
+                "Enter unlocks via the CLI prompt",
+                theme.muted_style(),
+            )),
+        ])],
+        Some(user) if user.profiles.is_empty() => vec![Row::new(vec![
+            Cell::from(""),
+            Cell::from(Span::styled(
+                "No saved servers for this user",
+                theme.muted_style(),
+            )),
+        ])],
+        Some(user) => user
+            .profiles
+            .iter()
+            .map(|profile| introhub_table_row(profile, app, theme))
+            .collect(),
+        None => vec![Row::new(vec![Cell::from(Span::styled(
+            "No users found in the local vault",
+            theme.muted_style(),
+        ))])],
+    };
+
+    let widths = [
+        Constraint::Length(3),
+        Constraint::Min(14),
+        Constraint::Length(9),
+        Constraint::Min(20),
+        Constraint::Min(18),
+        Constraint::Length(8),
+        Constraint::Length(8),
+        Constraint::Length(3),
+    ];
+
+    let mut state = TableState::default();
+    if matches!(user, Some(u) if !u.is_locked && !u.profiles.is_empty()) {
+        state.select(Some(app.selected_profile));
+    }
+
+    let table = Table::new(rows, widths)
+        .header(header_row)
+        .block(Block::default().borders(Borders::ALL).title(" My Servers "))
+        .row_highlight_style(
+            Style::default()
+                .bg(theme.selection)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(table, area, &mut state);
+}
+
+/// Build one detailed table row for a saved profile. Host stays in clear; the
+/// account/username is masked unless the session reveal toggle (`s`) is on.
+fn introhub_table_row(profile: &TuiProfile, app: &AppState, theme: TuiTheme) -> Row<'static> {
+    let host = if profile.host.is_empty() || profile.host == profile.username {
+        String::new()
+    } else {
+        profile.host.clone()
+    };
+    let account = if profile.username.is_empty() {
+        String::new()
+    } else if app.show_credentials {
+        profile.username.clone()
+    } else {
+        app::mask_credential(&profile.username)
+    };
+    let subtitle = match (host.is_empty(), account.is_empty()) {
+        (false, false) => format!("{}  {}", host, account),
+        (false, true) => host,
+        (true, false) => account,
+        (true, true) => "-".to_string(),
+    };
+
+    let remote = if profile.initial_path.is_empty() {
+        "/".to_string()
+    } else {
+        profile.initial_path.clone()
+    };
+    let local = if profile.default_local_path.is_empty() {
+        "(cwd)".to_string()
+    } else {
+        profile.default_local_path.clone()
+    };
+    let paths = format!("{} -> {}", remote, local);
+
+    let fav = if profile.favorite { "\u{2605}" } else { "" };
+
+    Row::new(vec![
+        Cell::from(Span::styled(profile.selector.clone(), theme.muted_style())),
+        Cell::from(Span::styled(
+            profile.name.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Cell::from(Span::styled(
+            profile.protocol.to_uppercase(),
+            theme.accent_style(),
+        )),
+        Cell::from(subtitle),
+        Cell::from(Span::styled(paths, theme.muted_style())),
+        Cell::from(Span::styled("\u{2014}", theme.muted_style())),
+        Cell::from(Span::styled("\u{2014}", theme.muted_style())),
+        Cell::from(Span::styled(fav, theme.accent_style())),
+    ])
+}
+
+fn render_introhub_detail(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
+    let user = app.selected_user();
+    let lines: Vec<Line> = match user {
+        Some(user) if user.is_locked => vec![
+            Line::from(Span::styled(
+                format!("User '{}' is locked", user.name),
+                Style::default()
+                    .fg(theme.planned)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "Press Enter to unlock via the existing CLI prompt (leaves the TUI).",
+                theme.muted_style(),
+            )),
+        ],
+        Some(_) => match app.selected_profile() {
+            Some(profile) => {
+                let account = if profile.username.is_empty() {
+                    "-".to_string()
+                } else if app.show_credentials {
+                    profile.username.clone()
+                } else {
+                    app::mask_credential(&profile.username)
+                };
+                let host = if profile.host.is_empty() {
+                    "-".to_string()
+                } else {
+                    profile.host.clone()
+                };
+                let local = if profile.default_local_path.is_empty() {
+                    "launch directory".to_string()
+                } else {
+                    profile.default_local_path.clone()
+                };
+                vec![
+                    Line::from(vec![
+                        Span::styled(
+                            profile.name.clone(),
+                            theme.accent_style().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("  {}", profile.protocol.to_uppercase()),
+                            theme.accent_style(),
+                        ),
+                        if profile.favorite {
+                            Span::styled("   \u{2605} favorite", theme.accent_style())
+                        } else {
+                            Span::raw("")
+                        },
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Host:    ", theme.muted_style()),
+                        Span::raw(host),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Account: ", theme.muted_style()),
+                        Span::raw(account),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Remote:  ", theme.muted_style()),
+                        Span::raw(if profile.initial_path.is_empty() {
+                            "/".to_string()
+                        } else {
+                            profile.initial_path.clone()
+                        }),
+                        Span::styled("   Local: ", theme.muted_style()),
+                        Span::raw(local),
+                    ]),
+                    Line::from(Span::styled(
+                        "Quota / health populate after a probe (planned next TUI version).",
+                        theme.muted_style(),
+                    )),
+                ]
+            }
+            None => vec![Line::from(Span::styled(
+                "No profile selected.",
+                theme.muted_style(),
+            ))],
+        },
+        None => vec![Line::from(Span::styled(
+            "No users found in the local vault.",
+            theme.muted_style(),
+        ))],
+    };
+
+    let detail = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title(" Profile "))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(detail, area);
+}
+
+fn render_introhub_footer(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
+    let footer = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(" \u{2191}/\u{2193}", theme.accent_style()),
+            Span::raw(" select   "),
+            Span::styled("\u{2190}/\u{2192}", theme.accent_style()),
+            Span::raw(" switch user   "),
+            Span::styled("Enter", theme.accent_style()),
+            Span::raw(" connect   "),
+            Span::styled("s", theme.accent_style()),
+            Span::raw(" show creds   "),
+            Span::styled("q", theme.accent_style()),
+            Span::raw(" quit"),
+        ]),
+        Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
+    ]);
+    frame.render_widget(footer, area);
 }
 
 /// Height of the transfers strip, including borders, clamped so it never starves

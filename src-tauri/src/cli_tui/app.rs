@@ -158,6 +158,21 @@ impl AppState {
     }
 
     pub fn apply_action(&mut self, action: TuiAction) -> Vec<WorkerCommand> {
+        // Shape B IntroHub: while a live TUI is not yet connected, the screen is
+        // the My Servers table with a header user switcher. Navigation is
+        // decoupled from the old pane-focus model: Up/Down move the highlighted
+        // profile, Left/Right switch user, Enter connects. Other keys (Quit,
+        // reveal toggle) fall through to the shared handlers below. The old
+        // non-live launcher (dead-code at runtime) keeps its pane-focus flow.
+        if self.live_worker_enabled
+            && !self.is_live_connected()
+            && !matches!(self.focus, TuiFocus::Browser | TuiFocus::Transfers)
+        {
+            if let Some(commands) = self.introhub_apply(action) {
+                self.sync_pane_state();
+                return commands;
+            }
+        }
         let commands = match action {
             TuiAction::Quit => {
                 self.finish(TuiIntent::Quit);
@@ -207,6 +222,73 @@ impl AppState {
         };
         self.sync_pane_state();
         commands
+    }
+
+    /// IntroHub (Shape B pre-connection) action routing. Returns `Some(commands)`
+    /// when the action is handled by the My Servers screen, or `None` to fall
+    /// through to the shared handlers (Quit, reveal toggle, Noop).
+    fn introhub_apply(&mut self, action: TuiAction) -> Option<Vec<WorkerCommand>> {
+        match action {
+            // Up/Down move the highlighted profile within the current user.
+            TuiAction::MoveUp => Some(self.introhub_move_profile(-1)),
+            TuiAction::MoveDown => Some(self.introhub_move_profile(1)),
+            // Left/Right switch the active user (the header switcher).
+            TuiAction::MoveLeft => Some(self.introhub_cycle_user(-1)),
+            TuiAction::MoveRight => Some(self.introhub_cycle_user(1)),
+            // Tab has no Local/Remote side to flip yet, so it also cycles users.
+            TuiAction::SwitchBrowserSide => Some(self.introhub_cycle_user(1)),
+            // Enter connects to the selected profile (or unlocks a locked user).
+            TuiAction::Activate => Some(self.introhub_activate()),
+            // Backspace/Parent is meaningless on the picker; swallow it.
+            TuiAction::Parent => Some(Vec::new()),
+            _ => None,
+        }
+    }
+
+    /// Move the highlighted profile in the IntroHub table, reusing the picker's
+    /// Profiles-focus move (which also refreshes the local-pane preview).
+    fn introhub_move_profile(&mut self, delta: isize) -> Vec<WorkerCommand> {
+        self.focus = TuiFocus::Profiles;
+        self.move_selection(delta)
+    }
+
+    /// Switch the active user in the header switcher, reset the profile cursor,
+    /// and refresh the local-pane preview for the newly selected profile.
+    fn introhub_cycle_user(&mut self, delta: isize) -> Vec<WorkerCommand> {
+        let len = self.context.users.len();
+        if len == 0 {
+            return Vec::new();
+        }
+        let next = (self.selected_user as isize + delta).clamp(0, len as isize - 1) as usize;
+        self.selected_user = next;
+        self.selected_profile = 0;
+        // Reuse the Profiles-focus move (delta 0 keeps the cursor) so the local
+        // preview and planned-session refresh for the new user's first profile.
+        self.focus = TuiFocus::Profiles;
+        let commands = self.move_selection(0);
+        self.status = self.contextual_status();
+        commands
+    }
+
+    /// Enter on the IntroHub: connect to the highlighted profile, or hand a
+    /// locked user off to the existing CLI unlock prompt.
+    fn introhub_activate(&mut self) -> Vec<WorkerCommand> {
+        let Some(user) = self.selected_user().cloned() else {
+            self.status = "No users found in the local vault.".to_string();
+            return Vec::new();
+        };
+        if user.is_locked {
+            self.finish(TuiIntent::ProfilesInteractive {
+                user_name: user.name,
+            });
+            return Vec::new();
+        }
+        if let Some(profile) = self.selected_profile().cloned() {
+            self.connect_to_profile(&user, &profile)
+        } else {
+            self.status = format!("User '{}' has no visible profiles.", user.name);
+            Vec::new()
+        }
     }
 
     fn move_selection(&mut self, delta: isize) -> Vec<WorkerCommand> {
@@ -1909,6 +1991,96 @@ mod tests {
         let app = AppState::new(context);
 
         assert_eq!(app.session, TuiSessionState::default());
+    }
+
+    /// Two users, the first with two profiles, for IntroHub navigation tests.
+    fn introhub_context() -> TuiContext {
+        let profile = |sel: &str, name: &str| TuiProfile {
+            selector: sel.to_string(),
+            name: name.to_string(),
+            protocol: "sftp".to_string(),
+            host: "example.com".to_string(),
+            username: "user".to_string(),
+            initial_path: "/".to_string(),
+            default_local_path: String::new(),
+            favorite: false,
+        };
+        TuiContext {
+            users: vec![
+                TuiUser {
+                    id: 1,
+                    name: "ale".to_string(),
+                    is_active: true,
+                    is_locked: false,
+                    is_admin: true,
+                    profile_count: 2,
+                    profiles: vec![profile("1", "Production"), profile("2", "Archive")],
+                },
+                TuiUser {
+                    id: 2,
+                    name: "root".to_string(),
+                    is_active: false,
+                    is_locked: false,
+                    is_admin: false,
+                    profile_count: 1,
+                    profiles: vec![profile("1", "Backup")],
+                },
+            ],
+            initial_user: 0,
+            download_base: "/tmp/tui_cwd".to_string(),
+        }
+    }
+
+    #[test]
+    fn introhub_up_down_move_the_highlighted_profile() {
+        let mut app = AppState::new_live(introhub_context());
+        // Pre-connect IntroHub: Down highlights the next profile of the user.
+        app.apply_action(TuiAction::MoveDown);
+        assert_eq!(app.selected_profile, 1);
+        assert_eq!(app.focus, TuiFocus::Profiles);
+        app.apply_action(TuiAction::MoveUp);
+        assert_eq!(app.selected_profile, 0);
+    }
+
+    #[test]
+    fn introhub_left_right_switch_the_active_user() {
+        let mut app = AppState::new_live(introhub_context());
+        app.selected_profile = 1;
+        // Right advances to the next user and resets the profile cursor.
+        app.apply_action(TuiAction::MoveRight);
+        assert_eq!(app.selected_user, 1);
+        assert_eq!(app.selected_profile, 0);
+        // Left at the first user is clamped (no wrap).
+        app.apply_action(TuiAction::MoveLeft);
+        assert_eq!(app.selected_user, 0);
+        app.apply_action(TuiAction::MoveLeft);
+        assert_eq!(app.selected_user, 0);
+    }
+
+    #[test]
+    fn introhub_enter_connects_the_selected_profile() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::MoveRight); // user "root"
+        let commands = app.apply_action(TuiAction::Activate);
+
+        assert_eq!(app.focus, TuiFocus::Browser);
+        assert!(matches!(
+            app.session.phase,
+            TuiSessionPhase::Connecting | TuiSessionPhase::Connected
+        ));
+        assert!(
+            commands
+                .iter()
+                .any(|c| matches!(c, WorkerCommand::OpenSession { .. })),
+            "Enter must open a session for the selected profile"
+        );
+        assert_eq!(
+            app.session
+                .identity
+                .as_ref()
+                .map(|identity| identity.user_name.as_str()),
+            Some("root")
+        );
     }
 
     /// A live app connected at `/srv` listing a directory (`docs/`) and a file
