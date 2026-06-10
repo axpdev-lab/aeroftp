@@ -3,6 +3,7 @@
 //! live under src-tauri/src/peer/.
 
 pub mod crypto;
+pub mod drive;
 pub mod endpoint;
 pub mod identity;
 pub mod protocol;
