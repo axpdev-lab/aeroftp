@@ -53,6 +53,7 @@ mod debug_tests;
 mod delta_sync;
 pub mod dreamweaver_import;
 pub mod duplicacy_import;
+pub(crate) mod error_correction;
 pub mod kopia_import;
 pub mod lftp_import;
 pub mod mobaxterm_import;
