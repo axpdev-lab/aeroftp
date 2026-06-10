@@ -266,6 +266,7 @@ tauri-plugin-localhost = "2"
 fuser = "0.17"
 
 [dev-dependencies]
+aeroftp-peer-l0 = { path = "peer-l0" }
 
 [features]
 default = ["aerorsync", "local-stt"]
