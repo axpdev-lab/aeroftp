@@ -37,6 +37,9 @@ pub enum TuiAction {
     ToggleFavorite,
     /// IntroHub: probe reachability (health) of the highlighted profile (`H`).
     HealthCheck,
+    /// IntroHub: refresh storage quota of the highlighted profile via a
+    /// transient connection (`Q`).
+    RefreshQuota,
     Noop,
 }
 
@@ -66,6 +69,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('c') => TuiAction::CancelOp,
         KeyCode::Char('f') | KeyCode::Char('F') => TuiAction::ToggleFavorite,
         KeyCode::Char('H') => TuiAction::HealthCheck,
+        KeyCode::Char('Q') => TuiAction::RefreshQuota,
         KeyCode::Char('s') | KeyCode::Char('S') => TuiAction::ToggleShowCredentials,
         _ => TuiAction::Noop,
     }

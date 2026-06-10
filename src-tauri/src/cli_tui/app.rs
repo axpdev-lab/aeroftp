@@ -225,6 +225,7 @@ impl AppState {
             // (handled in introhub_apply); a no-op in the connected browser.
             TuiAction::ToggleFavorite => Vec::new(),
             TuiAction::HealthCheck => Vec::new(),
+            TuiAction::RefreshQuota => Vec::new(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -248,6 +249,8 @@ impl AppState {
             TuiAction::ToggleFavorite => Some(self.introhub_toggle_favorite()),
             // `H` probes reachability (health) of the highlighted profile.
             TuiAction::HealthCheck => Some(self.introhub_check_health()),
+            // `Q` refreshes the storage quota via a transient connection.
+            TuiAction::RefreshQuota => Some(self.introhub_refresh_quota()),
             // Enter connects to the selected profile (or unlocks a locked user).
             TuiAction::Activate => Some(self.introhub_activate()),
             // Backspace/Parent is meaningless on the picker; swallow it.
@@ -365,6 +368,32 @@ impl AppState {
             port,
             protocol,
             endpoint,
+        }]
+    }
+
+    /// Refresh the highlighted profile's storage quota via a transient provider
+    /// connection. The TUI only asks; the worker connects, reads `storage_info`,
+    /// reports `QuotaReady`, and persists the bookmark `lastQuota`.
+    fn introhub_refresh_quota(&mut self) -> Vec<WorkerCommand> {
+        let Some(user) = self.selected_user().cloned() else {
+            return Vec::new();
+        };
+        if user.is_locked {
+            self.status = "Unlock the user before refreshing quota.".to_string();
+            return Vec::new();
+        }
+        let Some(profile) = self.selected_profile().cloned() else {
+            return Vec::new();
+        };
+        if profile.id.is_empty() {
+            self.status = "This profile has no saved id; cannot refresh quota.".to_string();
+            return Vec::new();
+        }
+        let identity = TuiSessionIdentity::from_selection(&user, &profile);
+        self.status = format!("Refreshing quota of '{}' (connecting)...", profile.name);
+        vec![WorkerCommand::RefreshQuota {
+            identity,
+            profile_id: profile.id,
         }]
     }
 
@@ -1235,6 +1264,31 @@ impl AppState {
                     self.status = format!("Health: {}", label);
                 }
             }
+            WorkerEvent::QuotaReady {
+                profile_id,
+                used,
+                total,
+            } => {
+                for user in &mut self.context.users {
+                    for profile in &mut user.profiles {
+                        if profile.id == *profile_id {
+                            profile.used = Some(*used);
+                            profile.total = if *total > 0 {
+                                Some(*total)
+                            } else {
+                                profile.total
+                            };
+                        }
+                    }
+                }
+                self.status = format!("Quota refreshed: {} / {} bytes.", used, total);
+            }
+            WorkerEvent::QuotaFailed {
+                profile_id: _,
+                message,
+            } => {
+                self.status = format!("Quota refresh failed: {}", message);
+            }
         }
         self.worker = event;
         follow_up
@@ -1357,7 +1411,9 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         | WorkerEvent::TransferFailed { .. }
         | WorkerEvent::TransferCancelled { .. }
         | WorkerEvent::Cancelled { .. }
-        | WorkerEvent::HealthReady { .. } => None,
+        | WorkerEvent::HealthReady { .. }
+        | WorkerEvent::QuotaReady { .. }
+        | WorkerEvent::QuotaFailed { .. } => None,
     }
 }
 
@@ -2271,6 +2327,40 @@ mod tests {
         assert_eq!(health.status, "healthy");
         assert_eq!(health.score, 97);
         assert_eq!(health.latency_ms, Some(42));
+    }
+
+    #[test]
+    fn introhub_q_requests_a_quota_refresh_and_applies_the_result() {
+        let mut context = introhub_context();
+        context.users[0].profiles[0].id = "srv-1".to_string();
+        let mut app = AppState::new_live(context);
+
+        let commands = app.apply_action(TuiAction::RefreshQuota);
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            WorkerCommand::RefreshQuota {
+                identity,
+                profile_id,
+            } => {
+                assert_eq!(profile_id, "srv-1");
+                assert_eq!(identity.user_name, "ale");
+            }
+            other => panic!("expected RefreshQuota, got {:?}", other),
+        }
+
+        app.apply_worker_event(WorkerEvent::QuotaReady {
+            profile_id: "srv-1".to_string(),
+            used: 5 * 1024 * 1024 * 1024,
+            total: 20 * 1024 * 1024 * 1024,
+        });
+        assert_eq!(
+            app.context.users[0].profiles[0].used,
+            Some(5 * 1024 * 1024 * 1024)
+        );
+        assert_eq!(
+            app.context.users[0].profiles[0].total,
+            Some(20 * 1024 * 1024 * 1024)
+        );
     }
 
     #[test]

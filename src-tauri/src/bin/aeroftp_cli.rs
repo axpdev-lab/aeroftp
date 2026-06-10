@@ -10159,6 +10159,54 @@ async fn run_cli_tui_worker(
                 };
                 let _ = event_tx.send(event);
             }
+            WorkerCommand::RefreshQuota {
+                identity,
+                profile_id,
+            } => {
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Quota,
+                    identity: Some(identity.clone()),
+                });
+                // Transient connection just for the quota read (same storage_info
+                // path as `df`), then persist to the bookmark so the GUI/CLI
+                // cached columns also update.
+                let event =
+                    match create_tui_session_via_cli_factory(cli, format, identity.clone()).await {
+                        Ok(mut session) => {
+                            let info = session.provider_mut().storage_info().await;
+                            let _ = session.provider_mut().disconnect().await;
+                            match info {
+                                Ok(info) => {
+                                    let prev_user = cli.user.replace(identity.user_name.clone());
+                                    let prev_profile =
+                                        cli.profile.replace(identity.profile_selector.clone());
+                                    persist_scanned_quota_to_profile(
+                                        cli,
+                                        info.used,
+                                        info.total,
+                                        Some("api"),
+                                    );
+                                    cli.user = prev_user;
+                                    cli.profile = prev_profile;
+                                    WorkerEvent::QuotaReady {
+                                        profile_id,
+                                        used: info.used,
+                                        total: info.total,
+                                    }
+                                }
+                                Err(err) => WorkerEvent::QuotaFailed {
+                                    profile_id,
+                                    message: err.to_string(),
+                                },
+                            }
+                        }
+                        Err(message) => WorkerEvent::QuotaFailed {
+                            profile_id,
+                            message,
+                        },
+                    };
+                let _ = event_tx.send(event);
+            }
         }
     }
 

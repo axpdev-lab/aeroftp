@@ -642,7 +642,7 @@ fn render_introhub_detail(
                                 (u as f64 / t as f64 * 100.0).min(999.0)
                             ),
                             (Some(u), _) => format!("{} used", format_browser_size(u)),
-                            _ => "not cached (df to refresh)".to_string(),
+                            _ => "not cached (press Q to refresh)".to_string(),
                         };
                         let last = profile
                             .last_connected_label
@@ -707,6 +707,8 @@ fn render_introhub_footer(
             Span::raw(" favorite   "),
             Span::styled("H", theme.accent_style()),
             Span::raw(" health   "),
+            Span::styled("Q", theme.accent_style()),
+            Span::raw(" quota   "),
             Span::styled("s", theme.accent_style()),
             Span::raw(" show creds   "),
             Span::styled("q", theme.accent_style()),

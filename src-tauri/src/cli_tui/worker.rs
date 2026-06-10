@@ -103,6 +103,13 @@ pub enum WorkerCommand {
         protocol: String,
         endpoint: Option<String>,
     },
+    /// Refresh storage quota for a saved profile via a transient provider
+    /// connection (the same `storage_info` path as `df`). Reports a
+    /// `QuotaReady` event and persists the result to the bookmark `lastQuota`.
+    RefreshQuota {
+        identity: TuiSessionIdentity,
+        profile_id: String,
+    },
 }
 
 impl WorkerCommand {
@@ -125,6 +132,7 @@ impl WorkerCommand {
             }
             WorkerCommand::ToggleFavorite { .. } => TuiWorkerOperation::Favorite,
             WorkerCommand::HealthCheck { .. } => TuiWorkerOperation::Health,
+            WorkerCommand::RefreshQuota { .. } => TuiWorkerOperation::Quota,
         }
     }
 }
@@ -143,6 +151,7 @@ pub enum TuiWorkerOperation {
     Discard,
     Favorite,
     Health,
+    Quota,
 }
 
 impl TuiWorkerOperation {
@@ -159,6 +168,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Discard => "discard",
             TuiWorkerOperation::Favorite => "favorite",
             TuiWorkerOperation::Health => "health",
+            TuiWorkerOperation::Quota => "quota",
         }
     }
 }
@@ -222,6 +232,17 @@ pub enum WorkerEvent {
         score: u8,
         latency_ms: Option<u32>,
     },
+    /// Result of a [`WorkerCommand::RefreshQuota`] probe for a saved profile.
+    QuotaReady {
+        profile_id: String,
+        used: u64,
+        total: u64,
+    },
+    /// A [`WorkerCommand::RefreshQuota`] that could not reach the provider.
+    QuotaFailed {
+        profile_id: String,
+        message: String,
+    },
 }
 
 impl WorkerEvent {
@@ -250,6 +271,12 @@ impl WorkerEvent {
             WorkerEvent::HealthReady {
                 profile_id, status, ..
             } => format!("health {} {}", profile_id, status),
+            WorkerEvent::QuotaReady {
+                profile_id,
+                used,
+                total,
+            } => format!("quota {} {}/{}", profile_id, used, total),
+            WorkerEvent::QuotaFailed { profile_id, .. } => format!("quota {} failed", profile_id),
         }
     }
 }
