@@ -1009,12 +1009,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    // True when this provider/protocol ships a built-in preset logo (Filen,
+    // OneDrive, ...). The icon picker is shown for every Quick Connect page now,
+    // but preset providers are restricted to the custom-icons library so they
+    // cannot be assigned a *different* provider's logo (#270).
     const hasProviderLogoForSave = !!PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
 
     const renderIconPicker = () => {
-        if (hasProviderLogoForSave) return null;
         const proto = connectionParams.protocol || 'ftp';
-        const hasIcon = !!customIconForSave || !!faviconForSave;
+        const PresetLogo = PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+        const hasIcon = !!customIconForSave || !!faviconForSave || !!PresetLogo;
         const letter = (connectionName || connectionParams.server || '?').charAt(0).toUpperCase();
         return (
             <div className="mt-2">
@@ -1026,6 +1030,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <img src={customIconForSave} alt="" className="w-6 h-6 rounded object-contain" />
                             ) : faviconForSave ? (
                                 <img src={faviconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                            ) : PresetLogo ? (
+                                <PresetLogo size={24} />
                             ) : (
                                 <span className="font-bold text-sm">{letter}</span>
                             )}
@@ -5077,6 +5083,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     onClose={() => setShowIconPicker(false)}
                     currentIcon={customIconForSave || faviconForSave}
                     detectedFavicon={faviconForSave}
+                    customIconsOnly={hasProviderLogoForSave}
                     onRescan={async () => {
                         // Live re-detection: re-runs the same Tauri commands as
                         // the auto-detection hook, so a favicon that changed on
