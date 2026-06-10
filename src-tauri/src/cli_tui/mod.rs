@@ -15,7 +15,7 @@ use ratatui::{
 };
 
 use self::{
-    app::{AppState, TuiActionIntent, TuiFocus, TUI_ACTION_ITEMS},
+    app::{AppState, BrowserSide, TuiActionIntent, TuiFocus, TUI_ACTION_ITEMS},
     event::{key_to_action, key_to_overlay},
     overlay::TuiOverlay,
     panes::transfers::{TransferItem, TransferStatus},
@@ -197,7 +197,38 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     render_users(frame, body[0], app, theme);
     render_profiles(frame, body[1], app, theme);
     render_actions(frame, body[2], app, theme);
-    render_browser(frame, body[3], app, theme);
+
+    // Phase 3: true dual-pane split (local | remote) when we have a live connected session.
+    // The "browser" column is split horizontally; lists take most space, active summary below.
+    let browser_area = body[3];
+    if app.is_live_connected() {
+        // Give a bit more space to files when dual (the 30% column is now container).
+        // We keep the outer percentages for now; inside we split 50/50 for the two lists.
+        let summary_lines = 5u16; // compact summary for active side
+        let lists_height = browser_area.height.saturating_sub(summary_lines + 2); // +2 for borders/padding safety
+        let lists_area = Rect {
+            x: browser_area.x,
+            y: browser_area.y,
+            width: browser_area.width,
+            height: lists_height,
+        };
+        let dual = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(lists_area);
+
+        render_file_pane_list(frame, dual[0], app, theme, BrowserSide::Local);
+        render_file_pane_list(frame, dual[1], app, theme, BrowserSide::Remote);
+
+        // Active side summary at the bottom of the browser column
+        let summary_area = Rect {
+            x: browser_area.x,
+            y: lists_area.y + lists_height,
+            width: browser_area.width,
+            height: summary_lines + 1,
+        };
+        render_active_file_pane_summary(frame, summary_area, app, theme);
+    } else {
+        render_browser(frame, browser_area, app, theme);
+    }
 
     let footer = Paragraph::new(vec![
         Line::from(vec![
@@ -443,12 +474,16 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
         ]),
         Line::from(Span::styled(app.pane_summary(), theme.muted_style())),
     ]);
-    if let Some(summary) = &app.browser.summary {
+    // Phase 3: use active side for the "Listed" info in Intent.
+    if let Some(summary) = app.active_browser().summary.as_ref() {
         detail_lines.push(Line::from(vec![
             Span::styled("Listed:  ", theme.muted_style()),
             Span::raw(format!(
                 "{} ({} items, {} dirs, {} files)",
-                app.browser.path, summary.total, summary.dirs, summary.files
+                app.active_browser().path,
+                summary.total,
+                summary.dirs,
+                summary.files
             )),
         ]));
     }
@@ -459,10 +494,13 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
 }
 
 fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    // Phase 3: the single browser column currently reflects the active side (flip with Left/Right or Tab when focused).
+    // Full side-by-side split comes next.
+    let active = app.active_browser();
     let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).split(area);
     let title = browser_title(app);
-    let items: Vec<ListItem> = if app.browser.entries.is_empty() {
-        let message = if app.browser.summary.is_some() {
+    let items: Vec<ListItem> = if active.entries.is_empty() {
+        let message = if active.summary.is_some() {
             "(empty directory)"
         } else {
             "No listing loaded"
@@ -472,7 +510,7 @@ fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             theme.muted_style(),
         )))]
     } else {
-        app.browser
+        active
             .entries
             .iter()
             .map(|entry| {
@@ -500,8 +538,8 @@ fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
     };
 
     let mut state = ListState::default();
-    if !app.browser.entries.is_empty() {
-        state.select(Some(app.browser.selected));
+    if !active.entries.is_empty() {
+        state.select(Some(active.selected));
     }
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title(title))
@@ -509,12 +547,12 @@ fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
         .highlight_symbol("> ");
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    let mut summary = match &app.browser.summary {
+    let mut summary = match &active.summary {
         Some(summary) => {
             let mut lines = vec![
                 Line::from(vec![
                     Span::styled("Path:  ", theme.muted_style()),
-                    Span::raw(app.browser.path.as_str()),
+                    Span::raw(active.path.as_str()),
                 ]),
                 Line::from(vec![
                     Span::styled("Items: ", theme.muted_style()),
@@ -531,9 +569,9 @@ fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
                     ),
                 ]),
             ];
-            if let Some(preview) = &app.browser.preview {
+            if let Some(preview) = &active.preview {
                 lines.extend(browser_preview_lines(preview, theme));
-            } else if let Some(entry) = app.browser.selected_entry() {
+            } else if let Some(entry) = active.selected_entry() {
                 lines.push(Line::from(vec![
                     Span::styled("Sel:   ", theme.muted_style()),
                     Span::raw(format_browser_entry(entry)),
@@ -565,6 +603,166 @@ fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
         .block(Block::default().borders(Borders::ALL).title(" Listing "))
         .wrap(Wrap { trim: true });
     frame.render_widget(details, chunks[1]);
+}
+
+/// Phase 3: render just the file list for one side of the dual-pane (local or remote).
+/// No internal summary (summary is rendered once below for the active side).
+fn render_file_pane_list(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+    side: BrowserSide,
+) {
+    let state = if side == BrowserSide::Local {
+        &app.local
+    } else {
+        &app.browser
+    };
+    let is_active = app.focus == TuiFocus::Browser && app.active_browser_side == side;
+
+    let title_prefix = if side == BrowserSide::Local {
+        " Local"
+    } else {
+        " Remote"
+    };
+    let title = if is_active {
+        format!("{} * ", title_prefix)
+    } else {
+        format!("{}  ", title_prefix)
+    };
+    let title = if state.path.is_empty() {
+        title
+    } else {
+        format!("{}{} ", title, state.path)
+    };
+
+    let items: Vec<ListItem> = if state.entries.is_empty() {
+        let message = if state.summary.is_some() {
+            "(empty directory)"
+        } else {
+            "No listing loaded"
+        };
+        vec![ListItem::new(Line::from(Span::styled(
+            message,
+            theme.muted_style(),
+        )))]
+    } else {
+        state
+            .entries
+            .iter()
+            .map(|entry| {
+                let kind = if entry.is_dir { "DIR " } else { "FILE" };
+                let kind_style = if entry.is_dir {
+                    theme.accent_style()
+                } else {
+                    theme.muted_style()
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(kind, kind_style),
+                    Span::raw(" "),
+                    Span::styled(
+                        format_browser_entry(entry),
+                        if entry.is_dir {
+                            Style::default().add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(browser_entry_meta(entry), theme.muted_style()),
+                ]))
+            })
+            .collect()
+    };
+
+    let mut list_state = ListState::default();
+    if is_active && !state.entries.is_empty() {
+        list_state.select(Some(state.selected));
+    }
+    // For inactive pane, no cursor highlight (or very subtle). We still show the list content.
+    let highlight = if is_active {
+        selection_style(app.focus, TuiFocus::Browser, theme)
+    } else {
+        Style::default()
+    };
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(highlight)
+        .highlight_symbol(if is_active { "> " } else { "  " });
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+/// Phase 3: compact summary for the currently active file pane (local or remote).
+fn render_active_file_pane_summary(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    theme: TuiTheme,
+) {
+    let state = app.active_browser();
+    let side_label = if app.active_browser_side == BrowserSide::Local {
+        "Local"
+    } else {
+        "Remote"
+    };
+
+    let summary = match &state.summary {
+        Some(summary) => {
+            let mut lines = vec![
+                Line::from(vec![
+                    Span::styled(format!("{} Path:  ", side_label), theme.muted_style()),
+                    Span::raw(state.path.as_str()),
+                ]),
+                Line::from(vec![
+                    Span::styled("Items: ", theme.muted_style()),
+                    Span::raw(format!(
+                        "{} total, {} dirs, {} files, {}",
+                        summary.total,
+                        summary.dirs,
+                        summary.files,
+                        format_browser_size(summary.total_bytes)
+                    )),
+                    Span::styled(
+                        if summary.truncated { " truncated" } else { "" },
+                        theme.muted_style(),
+                    ),
+                ]),
+            ];
+            if let Some(preview) = &state.preview {
+                lines.extend(browser_preview_lines(preview, theme));
+            } else if let Some(entry) = state.selected_entry() {
+                lines.push(Line::from(vec![
+                    Span::styled("Sel:   ", theme.muted_style()),
+                    Span::raw(format_browser_entry(entry)),
+                    Span::styled(
+                        if entry.is_dir {
+                            "  directory"
+                        } else {
+                            "  file"
+                        },
+                        theme.muted_style(),
+                    ),
+                ]));
+            }
+            lines
+        }
+        None => vec![
+            Line::from(vec![
+                Span::styled(format!("{} Path:  ", side_label), theme.muted_style()),
+                Span::raw("-"),
+            ]),
+            Line::from(vec![
+                Span::styled("Items: ", theme.muted_style()),
+                Span::raw("-"),
+            ]),
+        ],
+    };
+
+    let details = Paragraph::new(summary)
+        .block(Block::default().borders(Borders::ALL).title(" Listing "))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(details, area);
 }
 
 fn render_transfers(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
@@ -706,10 +904,16 @@ fn browser_title(app: &AppState) -> String {
     } else {
         " Browser "
     };
-    if app.browser.path.is_empty() {
-        prefix.to_string()
+    let side = app.active_browser_side;
+    let path = if side == crate::cli_tui::BrowserSide::Local {
+        &app.local.path
     } else {
-        format!("{}{} ", prefix, app.browser.path)
+        &app.browser.path
+    };
+    if path.is_empty() {
+        format!("{}[{:?}] ", prefix, side)
+    } else {
+        format!("{}[{:?}] {} ", prefix, side, path)
     }
 }
 

@@ -9555,6 +9555,114 @@ async fn upload_tui_session_via_cli_handler(
         .map_err(|err| format!("upload failed: {}", err))
 }
 
+/// Phase 3: Local filesystem listing for the dual-pane browser (left/local side).
+/// Returns (effective_path, TuiListResult) compatible with the remote ListReady path.
+async fn list_local_dir(path: &str) -> Result<(String, cli_tui::worker::TuiListResult), String> {
+    use std::path::Path;
+    use tokio::fs;
+
+    let root = Path::new(path);
+    let mut dir_entries = match fs::read_dir(root).await {
+        Ok(rd) => rd,
+        Err(e) => return Err(format!("cannot read local dir '{}': {}", path, e)),
+    };
+
+    let mut entries: Vec<cli_tui::worker::TuiListEntry> = vec![];
+    let mut total_bytes: u64 = 0;
+    let mut file_count: usize = 0;
+    let mut dir_count: usize = 0;
+
+    while let Some(dir_entry) = dir_entries.next_entry().await.map_err(|e| e.to_string())? {
+        let name = dir_entry.file_name().to_string_lossy().to_string();
+        let full_path = dir_entry.path().to_string_lossy().to_string();
+
+        let meta = match dir_entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let is_dir = meta.is_dir();
+        let size = if is_dir { 0 } else { meta.len() };
+
+        // Simple modified time string (good enough for TUI display for now).
+        let modified = meta.modified().ok().map(|t| format!("{:?}", t));
+
+        if is_dir {
+            dir_count += 1;
+        } else {
+            file_count += 1;
+            total_bytes += size;
+        }
+
+        entries.push(cli_tui::worker::TuiListEntry {
+            name,
+            path: full_path,
+            is_dir,
+            size,
+            modified,
+        });
+    }
+
+    // Sort: directories first, then by name (simple and predictable).
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    let total = dir_count + file_count;
+    let result = cli_tui::worker::TuiListResult {
+        entries,
+        summary: cli_tui::worker::TuiListSummary {
+            total,
+            files: file_count,
+            dirs: dir_count,
+            total_bytes,
+            truncated: false,
+            total_before_limit: total,
+        },
+    };
+
+    Ok((path.to_string(), result))
+}
+
+/// Phase 3: Local stat for the dual-pane (used for preview when selecting a local entry).
+async fn stat_local_path(path: &str) -> Result<(String, cli_tui::worker::TuiStatResult), String> {
+    use std::path::Path;
+    use tokio::fs;
+
+    let p = Path::new(path);
+    let meta = fs::symlink_metadata(p)
+        .await
+        .map_err(|e| format!("stat local '{}': {}", path, e))?;
+
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string());
+
+    let is_dir = meta.is_dir();
+    let size = if is_dir { 0 } else { meta.len() };
+    let modified = meta.modified().ok().map(|t| format!("{:?}", t));
+    let is_symlink = meta.file_type().is_symlink();
+
+    let result = cli_tui::worker::TuiStatResult {
+        name,
+        path: path.to_string(),
+        is_dir,
+        size,
+        modified,
+        permissions: None, // can be enriched later with unix mode if needed
+        owner: None,
+        group: None,
+        is_symlink,
+        link_target: None, // TODO: read_link if symlink
+        mime_type: None,
+    };
+
+    Ok((path.to_string(), result))
+}
+
 async fn run_cli_tui_worker(
     cli: &mut Cli,
     format: OutputFormat,
@@ -9587,7 +9695,7 @@ async fn run_cli_tui_worker(
                 if already_connected {
                     if let Some(session) = session.as_ref() {
                         let _ = event_tx.send(WorkerEvent::SessionReady {
-                            identity,
+                            identity: Some(identity),
                             cwd: session.state().cwd.clone(),
                         });
                     }
@@ -9614,7 +9722,7 @@ async fn run_cli_tui_worker(
                             .unwrap_or_else(|| requested_identity.clone());
                         session = Some(new_session);
                         let _ = event_tx.send(WorkerEvent::SessionReady {
-                            identity: ready_identity,
+                            identity: Some(ready_identity),
                             cwd,
                         });
                     }
@@ -9652,7 +9760,7 @@ async fn run_cli_tui_worker(
                         active_session.state_mut().mark_connected(&listed_path);
                         if let Some(identity) = active_identity {
                             let _ = event_tx.send(WorkerEvent::ListReady {
-                                identity,
+                                identity: Some(identity),
                                 path: listed_path,
                                 result,
                             });
@@ -9691,7 +9799,7 @@ async fn run_cli_tui_worker(
                     Ok((stat_path, result)) => {
                         if let Some(identity) = active_identity {
                             let _ = event_tx.send(WorkerEvent::StatReady {
-                                identity,
+                                identity: Some(identity),
                                 path: stat_path,
                                 result,
                             });
@@ -9914,6 +10022,51 @@ async fn run_cli_tui_worker(
                     std::path::Path::new(&local_path),
                 );
                 let _ = tokio::fs::remove_file(&temp).await;
+            }
+            // Phase 3: real local filesystem listing/stat for dual-pane.
+            WorkerCommand::LocalList { path } => {
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::List,
+                    identity: None,
+                });
+                match list_local_dir(&path).await {
+                    Ok((listed_path, result)) => {
+                        let _ = event_tx.send(WorkerEvent::ListReady {
+                            identity: None,
+                            path: listed_path,
+                            result,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::List,
+                            identity: None,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::LocalStat { path } => {
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Stat,
+                    identity: None,
+                });
+                match stat_local_path(&path).await {
+                    Ok((stat_path, result)) => {
+                        let _ = event_tx.send(WorkerEvent::StatReady {
+                            identity: None,
+                            path: stat_path,
+                            result,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Stat,
+                            identity: None,
+                            message,
+                        });
+                    }
+                }
             }
         }
     }

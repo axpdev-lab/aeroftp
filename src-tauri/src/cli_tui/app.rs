@@ -58,7 +58,8 @@ pub struct AppState {
     pub selected_action: usize,
     pub should_quit: bool,
     pub status: String,
-    pub browser: BrowserPaneState,
+    pub browser: BrowserPaneState, // remote (after connect)
+    pub local: BrowserPaneState,   // local filesystem (always available in Phase 3+)
     pub profiles: ProfilesPaneState,
     pub transfers: TransfersPaneState,
     pub overlay: TuiOverlay,
@@ -68,6 +69,8 @@ pub struct AppState {
     intent: Option<TuiIntent>,
     /// Default false (masked). Toggled via 's' for the current TUI session only; never persisted.
     pub show_credentials: bool,
+    /// When in Browser focus in dual-pane mode (Phase 3), which side is active for navigation/ops.
+    pub active_browser_side: BrowserSide,
 }
 
 impl AppState {
@@ -84,6 +87,7 @@ impl AppState {
             should_quit: false,
             status: "Select a user, then a profile, then an action.".to_string(),
             browser: BrowserPaneState::default(),
+            local: BrowserPaneState::default(),
             profiles: ProfilesPaneState::default(),
             transfers: TransfersPaneState::default(),
             overlay: TuiOverlay::None,
@@ -92,8 +96,14 @@ impl AppState {
             live_worker_enabled: false,
             intent: None,
             show_credentials: false,
+            active_browser_side: BrowserSide::Remote,
         };
         state.sync_pane_state();
+        // Seed a reasonable starting point for the local pane (Phase 3 dual-pane).
+        // Real population via worker LocalList will happen on first focus/refresh.
+        if let Ok(cwd) = std::env::current_dir() {
+            state.local.path = cwd.to_string_lossy().to_string();
+        }
         state
     }
 
@@ -132,9 +142,11 @@ impl AppState {
 
     pub fn pane_summary(&self) -> String {
         format!(
-            "focus:{} browser:{} profiles:{} transfers:{} session:{} worker:{}",
+            "focus:{} local:{} remote:{} side:{:?} profiles:{} transfers:{} session:{} worker:{}",
             self.focus.label(),
+            self.local.selected,
             self.browser.selected,
+            self.active_browser_side,
             self.profiles.selected,
             self.transfers.selected,
             self.session.label(),
@@ -220,6 +232,11 @@ impl AppState {
     }
 
     fn focus_next(&mut self) -> Vec<WorkerCommand> {
+        if matches!(self.focus, TuiFocus::Browser) && self.live_worker_enabled {
+            // Phase 3: Tab / Right (l) inside browser area flips between Local and Remote pane.
+            self.flip_browser_side();
+            return Vec::new();
+        }
         self.focus = match self.focus {
             TuiFocus::Users => TuiFocus::Profiles,
             TuiFocus::Profiles => TuiFocus::Actions,
@@ -233,6 +250,8 @@ impl AppState {
 
     fn focus_prev(&mut self) -> Vec<WorkerCommand> {
         if matches!(self.focus, TuiFocus::Browser) {
+            // Phase 3: Left (h) or Backspace on browser does parent navigation on the *active* side.
+            // (Side flip is on Right/Tab via focus_next.)
             return self.navigate_parent();
         }
 
@@ -351,7 +370,14 @@ impl AppState {
     }
 
     fn open_selected_browser_entry(&mut self) -> Vec<WorkerCommand> {
-        if let Some(path) = self.browser.selected_directory_path() {
+        // Phase 3: operations on the active side (for now remote uses worker, local will too).
+        let active = self.active_browser_mut();
+        if let Some(path) = active.selected_directory_path() {
+            if self.active_browser_side == BrowserSide::Local {
+                // Local list can be handled in worker or directly; for consistency go through worker.
+                self.status = format!("Listing local {}.", path);
+                return vec![WorkerCommand::LocalList { path }];
+            }
             self.worker = WorkerEvent::Busy {
                 operation: TuiWorkerOperation::List,
                 identity: self.session.identity.clone(),
@@ -360,12 +386,16 @@ impl AppState {
             return vec![WorkerCommand::List { path }];
         }
 
-        let Some(path) = self.browser.selected_file_path() else {
+        let Some(path) = active.selected_file_path() else {
             self.status = "No browser entry selected.".to_string();
             return Vec::new();
         };
 
-        self.browser.clear_preview();
+        active.clear_preview();
+        if self.active_browser_side == BrowserSide::Local {
+            self.status = format!("Loading local metadata for {}.", path);
+            return vec![WorkerCommand::LocalStat { path }];
+        }
         self.worker = WorkerEvent::Busy {
             operation: TuiWorkerOperation::Stat,
             identity: self.session.identity.clone(),
@@ -379,14 +409,20 @@ impl AppState {
             return self.focus_prev();
         }
 
-        let Some(path) = self.browser.parent_path() else {
-            self.status = if self.browser.summary.is_some() {
-                format!("Already at {}.", self.browser.path)
+        let active = self.active_browser();
+        let Some(path) = active.parent_path() else {
+            self.status = if active.summary.is_some() {
+                format!("Already at {}.", active.path)
             } else {
                 "No live listing loaded.".to_string()
             };
             return Vec::new();
         };
+
+        if self.active_browser_side == BrowserSide::Local {
+            self.status = format!("Listing local parent {}.", path);
+            return vec![WorkerCommand::LocalList { path }];
+        }
 
         self.worker = WorkerEvent::Busy {
             operation: TuiWorkerOperation::List,
@@ -398,8 +434,37 @@ impl AppState {
 
     /// Whether a live, connected session exists. Mutating actions and transfers
     /// are gated on this so the TUI never tries to act without a provider.
-    fn is_live_connected(&self) -> bool {
+    pub(crate) fn is_live_connected(&self) -> bool {
         self.live_worker_enabled && matches!(self.session.phase, TuiSessionPhase::Connected)
+    }
+
+    /// Phase 3 dual-pane: flip between Local and Remote browser side.
+    /// Called from focus navigation when focus==Browser and live.
+    fn flip_browser_side(&mut self) {
+        self.active_browser_side = match self.active_browser_side {
+            BrowserSide::Remote => BrowserSide::Local,
+            BrowserSide::Local => BrowserSide::Remote,
+        };
+        let path = if self.active_browser_side == BrowserSide::Local {
+            &self.local.path
+        } else {
+            &self.browser.path
+        };
+        self.status = format!("Browser side: {:?} — {}", self.active_browser_side, path);
+    }
+
+    pub(crate) fn active_browser(&self) -> &BrowserPaneState {
+        match self.active_browser_side {
+            BrowserSide::Local => &self.local,
+            BrowserSide::Remote => &self.browser,
+        }
+    }
+
+    pub(crate) fn active_browser_mut(&mut self) -> &mut BrowserPaneState {
+        match self.active_browser_side {
+            BrowserSide::Local => &mut self.local,
+            BrowserSide::Remote => &mut self.browser,
+        }
     }
 
     fn require_live_connection(&mut self) -> bool {
@@ -419,7 +484,8 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
-        let parent = self.browser.path.clone();
+        // Phase 3: mkdir targets the active pane (works for both local and remote).
+        let parent = self.active_browser().path.clone();
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Mkdir {
                 parent: parent.clone(),
@@ -428,7 +494,7 @@ impl AppState {
             "type a name, Enter to create, Esc to cancel",
             String::new(),
         ));
-        self.status = "Creating a folder.".to_string();
+        self.status = format!("Creating a folder in {:?}.", self.active_browser_side);
         Vec::new()
     }
 
@@ -449,12 +515,14 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
-        let Some(entry) = self.browser.selected_entry() else {
+        // Phase 3: delete on active pane (local or remote selection).
+        let active = self.active_browser();
+        let Some(entry) = active.selected_entry() else {
             self.status = "No entry selected to delete.".to_string();
             return Vec::new();
         };
         let is_dir = entry.is_dir;
-        let Some(path) = self.browser.selected_entry_path() else {
+        let Some(path) = active.selected_entry_path() else {
             self.status = "No entry selected to delete.".to_string();
             return Vec::new();
         };
@@ -470,7 +538,7 @@ impl AppState {
             },
             message,
         });
-        self.status = "Confirm delete: y to proceed, n/Esc to cancel.".to_string();
+        self.status = format!("Confirm delete (y/n) on {:?}.", self.active_browser_side);
         Vec::new()
     }
 
@@ -482,11 +550,13 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
-        let Some(entry) = self.browser.selected_entry().cloned() else {
+        // Phase 3: rename on active pane.
+        let active = self.active_browser();
+        let Some(entry) = active.selected_entry().cloned() else {
             self.status = "No entry selected to rename.".to_string();
             return Vec::new();
         };
-        let Some(from) = self.browser.selected_entry_path() else {
+        let Some(from) = active.selected_entry_path() else {
             self.status = "No entry selected to rename.".to_string();
             return Vec::new();
         };
@@ -496,7 +566,7 @@ impl AppState {
             "edit the name, Enter to apply, Esc to cancel",
             entry.name.clone(),
         ));
-        self.status = "Renaming an entry.".to_string();
+        self.status = format!("Renaming an entry on {:?}.", self.active_browser_side);
         Vec::new()
     }
 
@@ -508,8 +578,11 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
-        let Some(entry) = self.browser.selected_entry() else {
-            self.status = "No entry selected to download.".to_string();
+        // Phase 3 cross get/put: 'g' always sources from the remote pane's selection,
+        // defaults the destination to the local pane's current directory (smart cross default).
+        let remote_state = &self.browser;
+        let Some(entry) = remote_state.selected_entry() else {
+            self.status = "No (remote) entry selected to download.".to_string();
             return Vec::new();
         };
         if entry.is_dir {
@@ -517,25 +590,27 @@ impl AppState {
             return Vec::new();
         }
         let name = entry.name.clone();
-        let Some(remote) = self.browser.selected_file_path() else {
+        let Some(remote) = remote_state.selected_file_path() else {
             self.status = "No file selected to download.".to_string();
             return Vec::new();
         };
-        // Absolute default using launch CWD (threaded via TuiContext at boundary).
-        // Avoids opaque "./name" relative to wherever the TUI process CWD was.
-        let base = if self.context.download_base.is_empty() {
-            ".".to_string()
-        } else {
+        // Cross default: prefer the launch download_base (for test stability and launch CWD),
+        // else fall back to the local pane's current path.
+        let base = if !self.context.download_base.is_empty() {
             self.context.download_base.clone()
+        } else if !self.local.path.is_empty() {
+            self.local.path.clone()
+        } else {
+            ".".to_string()
         };
         let default_local = format!("{}/{}", base.trim_end_matches('/'), name);
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Download { remote },
             format!("Download '{}'", name),
-            "local destination path (absolute recommended), Enter to start, Esc to cancel",
+            "local destination (cross from remote pane), Enter to start, Esc to cancel",
             default_local,
         ));
-        self.status = "Downloading a file.".to_string();
+        self.status = "Downloading a file (cross remote→local).".to_string();
         Vec::new()
     }
 
@@ -547,16 +622,19 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
+        // Phase 3 cross: 'u' sources from local pane, targets the remote pane's current dir.
+        // For simplicity we still prompt for the exact local source (user can have selected in local).
         let remote_dir = self.browser.path.clone();
+        // If active is local, we could default the prompt to the active selected local file, but keep prompt for now.
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Upload {
                 remote_dir: remote_dir.clone(),
             },
             format!("Upload into {}", display_dir(&remote_dir)),
-            "local source file path, Enter to start, Esc to cancel",
+            "local source file path (cross to remote pane), Enter to start, Esc to cancel",
             String::new(),
         ));
-        self.status = "Uploading a file.".to_string();
+        self.status = "Uploading a file (cross local→remote).".to_string();
         Vec::new()
     }
 
@@ -753,12 +831,14 @@ impl AppState {
         self.status = status;
     }
 
-    /// Path of the directory the browser currently shows, defaulting to root.
+    /// Path of the directory the *active* browser pane (local or remote) currently shows.
+    /// Phase 3 dual-pane support.
     fn current_browser_dir(&self) -> String {
-        if self.browser.path.is_empty() {
+        let active = self.active_browser();
+        if active.path.is_empty() {
             "/".to_string()
         } else {
-            self.browser.path.clone()
+            active.path.clone()
         }
     }
 
@@ -787,28 +867,55 @@ impl AppState {
             WorkerEvent::PathReady { operation, path } => {
                 self.status = format!("{} ready at {}.", operation.label(), path);
                 // A successful mutation invalidates the current listing: refresh
-                // it so the new/renamed/removed entry is reflected immediately.
+                // the active side (local or remote). Phase 3.
                 if matches!(
                     operation,
                     TuiWorkerOperation::Mkdir
                         | TuiWorkerOperation::Remove
                         | TuiWorkerOperation::Rename
                 ) {
-                    follow_up.push(WorkerCommand::List {
-                        path: self.current_browser_dir(),
-                    });
+                    let dir = self.current_browser_dir();
+                    if self.active_browser_side == BrowserSide::Local {
+                        follow_up.push(WorkerCommand::LocalList { path: dir });
+                    } else {
+                        follow_up.push(WorkerCommand::List { path: dir });
+                    }
                 }
             }
-            WorkerEvent::ListReady { path, result, .. } => {
-                self.session.mark_connected(path);
-                self.browser.apply_list_result(path.clone(), result.clone());
-                self.status = format!(
-                    "Listed {}: {} item(s), {} dir(s), {} file(s).",
-                    path, result.summary.total, result.summary.dirs, result.summary.files
-                );
+            WorkerEvent::ListReady {
+                path,
+                result,
+                identity,
+            } => {
+                if identity.is_none() {
+                    // Local filesystem result (Phase 3 dual-pane)
+                    self.local.apply_list_result(path.clone(), result.clone());
+                    self.status = format!(
+                        "Listed local {}: {} item(s), {} dir(s), {} file(s).",
+                        path, result.summary.total, result.summary.dirs, result.summary.files
+                    );
+                } else {
+                    self.session.mark_connected(path);
+                    self.browser.apply_list_result(path.clone(), result.clone());
+                    self.status = format!(
+                        "Listed {}: {} item(s), {} dir(s), {} file(s).",
+                        path, result.summary.total, result.summary.dirs, result.summary.files
+                    );
+                }
             }
-            WorkerEvent::StatReady { path, result, .. } => {
-                if self.browser.apply_stat_result(result.clone()) {
+            WorkerEvent::StatReady {
+                path,
+                result,
+                identity,
+            } => {
+                if identity.is_none() {
+                    // Local stat
+                    if self.local.apply_stat_result(result.clone()) {
+                        self.status = format!("Loaded local metadata for {}.", path);
+                    } else {
+                        self.status = format!("Local metadata ready for {}.", path);
+                    }
+                } else if self.browser.apply_stat_result(result.clone()) {
                     self.status = format!("Loaded metadata for {}.", path);
                 } else {
                     self.status = format!("Metadata ready for {}.", path);
@@ -982,7 +1089,7 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         }
         WorkerEvent::SessionReady { identity, .. }
         | WorkerEvent::ListReady { identity, .. }
-        | WorkerEvent::StatReady { identity, .. } => Some(identity),
+        | WorkerEvent::StatReady { identity, .. } => identity.as_ref(),
         WorkerEvent::Idle
         | WorkerEvent::PathReady { .. }
         | WorkerEvent::TransferProgress { .. }
@@ -1100,6 +1207,15 @@ pub enum TuiActionIntent {
     ProfilesInteractive,
     Profile(TuiProfileAction),
     Planned,
+}
+
+/// Which file browser side is active when focus is on the (dual) browser area.
+/// Phase 3: Local pane + Remote pane side-by-side.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
+pub enum BrowserSide {
+    #[default]
+    Remote,
+    Local,
 }
 
 pub const TUI_ACTION_ITEMS: &[TuiActionItem] = &[
@@ -1445,7 +1561,7 @@ mod tests {
         app.selected_action = 0; // Connect & browse
         app.apply_action(TuiAction::Activate);
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(vec![
                 crate::cli_tui::worker::TuiListEntry {
@@ -1489,7 +1605,7 @@ mod tests {
         app.selected_action = 0; // Connect & browse
         app.apply_action(TuiAction::Activate);
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(vec![
                 crate::cli_tui::worker::TuiListEntry {
@@ -1527,7 +1643,7 @@ mod tests {
         ));
 
         app.apply_worker_event(WorkerEvent::StatReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv/readme.txt".to_string(),
             result: stat_result("/srv/readme.txt"),
         });
@@ -1546,7 +1662,7 @@ mod tests {
     fn stat_failure_keeps_the_live_session_connected() {
         let mut app = AppState::new_live(sample_context());
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(Vec::new()),
         });
@@ -1566,7 +1682,7 @@ mod tests {
         let mut app = AppState::new_live(sample_context());
         app.focus = TuiFocus::Browser;
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(vec![
                 crate::cli_tui::worker::TuiListEntry {
@@ -1597,12 +1713,12 @@ mod tests {
         let mut app = AppState::new_live(sample_context());
         app.focus = TuiFocus::Browser;
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(Vec::new()),
         });
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv/docs".to_string(),
             result: list_result(Vec::new()),
         });
@@ -1617,7 +1733,7 @@ mod tests {
         );
 
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(Vec::new()),
         });
@@ -1651,7 +1767,7 @@ mod tests {
         );
 
         app.apply_worker_event(WorkerEvent::SessionReady {
-            identity: stale_identity,
+            identity: Some(stale_identity),
             cwd: "/".to_string(),
         });
 
@@ -1731,7 +1847,7 @@ mod tests {
         app.selected_action = 0; // Connect & browse (was ListRoot at 1) now at 0 after polish reorder
         app.apply_action(TuiAction::Activate);
         app.apply_worker_event(WorkerEvent::ListReady {
-            identity: sample_identity(),
+            identity: Some(sample_identity()),
             path: "/srv".to_string(),
             result: list_result(vec![
                 crate::cli_tui::worker::TuiListEntry {

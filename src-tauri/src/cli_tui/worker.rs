@@ -80,6 +80,13 @@ pub enum WorkerCommand {
     DiscardPartial {
         local_path: String,
     },
+    // Phase 3 dual-pane: local filesystem operations (independent of remote session).
+    LocalList {
+        path: String,
+    },
+    LocalStat {
+        path: String,
+    },
 }
 
 impl WorkerCommand {
@@ -97,6 +104,9 @@ impl WorkerCommand {
             }
             WorkerCommand::Cancel => TuiWorkerOperation::Cancel,
             WorkerCommand::DiscardPartial { .. } => TuiWorkerOperation::Discard,
+            WorkerCommand::LocalList { .. } | WorkerCommand::LocalStat { .. } => {
+                TuiWorkerOperation::List
+            }
         }
     }
 }
@@ -140,7 +150,7 @@ pub enum WorkerEvent {
         identity: Option<TuiSessionIdentity>,
     },
     SessionReady {
-        identity: TuiSessionIdentity,
+        identity: Option<TuiSessionIdentity>,
         cwd: String,
     },
     PathReady {
@@ -166,12 +176,12 @@ pub enum WorkerEvent {
         id: u64,
     },
     ListReady {
-        identity: TuiSessionIdentity,
+        identity: Option<TuiSessionIdentity>,
         path: String,
         result: TuiListResult,
     },
     StatReady {
-        identity: TuiSessionIdentity,
+        identity: Option<TuiSessionIdentity>,
         path: String,
         result: TuiStatResult,
     },
@@ -387,7 +397,7 @@ mod tests {
         );
         assert_eq!(
             WorkerEvent::ListReady {
-                identity: identity(),
+                identity: Some(identity()),
                 path: "/".to_string(),
                 result: TuiListResult {
                     entries: Vec::new(),
@@ -406,7 +416,7 @@ mod tests {
         );
         assert_eq!(
             WorkerEvent::StatReady {
-                identity: identity(),
+                identity: Some(identity()),
                 path: "/file.txt".to_string(),
                 result: TuiStatResult {
                     name: "file.txt".to_string(),
