@@ -211,6 +211,7 @@ mod tests {
             name: "Production".to_string(),
             protocol: "sftp".to_string(),
             host: "example.com".to_string(),
+            username: "user".to_string(),
             initial_path: initial_path.to_string(),
             favorite: true,
         }

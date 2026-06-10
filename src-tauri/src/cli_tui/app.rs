@@ -12,6 +12,9 @@ use crate::cli_tui::{
 pub struct TuiContext {
     pub users: Vec<TuiUser>,
     pub initial_user: usize,
+    /// Launch CWD captured at TUI entry boundary for absolute download defaults.
+    /// Never compute inside pure AppState; threaded from caller.
+    pub download_base: String,
 }
 
 impl TuiContext {
@@ -19,6 +22,7 @@ impl TuiContext {
         Self {
             users: Vec::new(),
             initial_user: 0,
+            download_base: ".".to_string(),
         }
     }
 }
@@ -39,7 +43,8 @@ pub struct TuiProfile {
     pub selector: String,
     pub name: String,
     pub protocol: String,
-    pub host: String,
+    pub host: String, // server host or subtitle; always rendered in clear (hosts stay clear)
+    pub username: String, // raw auth username/account id (email, AKIA*, token, etc); mask by default
     pub initial_path: String,
     pub favorite: bool,
 }
@@ -61,6 +66,8 @@ pub struct AppState {
     pub worker: WorkerEvent,
     live_worker_enabled: bool,
     intent: Option<TuiIntent>,
+    /// Default false (masked). Toggled via 's' for the current TUI session only; never persisted.
+    pub show_credentials: bool,
 }
 
 impl AppState {
@@ -84,6 +91,7 @@ impl AppState {
             worker: WorkerEvent::Idle,
             live_worker_enabled: false,
             intent: None,
+            show_credentials: false,
         };
         state.sync_pane_state();
         state
@@ -153,6 +161,15 @@ impl AppState {
             TuiAction::Upload => self.trigger_upload(),
             TuiAction::CancelOp => self.cancel_operation(),
             TuiAction::ClearTransfers => self.clear_transfers(),
+            TuiAction::ToggleShowCredentials => {
+                self.show_credentials = !self.show_credentials;
+                self.status = if self.show_credentials {
+                    "Credentials shown for this session (not persisted).".to_string()
+                } else {
+                    "Credentials masked (default). Press 's' to show.".to_string()
+                };
+                Vec::new()
+            }
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -250,7 +267,11 @@ impl AppState {
                 Vec::new()
             }
             TuiFocus::Profiles => {
-                if self.selected_profile().is_some() {
+                if let Some(profile) = self.selected_profile().cloned() {
+                    if self.live_worker_enabled {
+                        // Direct connect on Enter from Profiles (first-use polish).
+                        return self.connect_to_profile(&user, &profile);
+                    }
                     self.focus = TuiFocus::Actions;
                     self.status = self.contextual_status();
                 } else {
@@ -274,30 +295,7 @@ impl AppState {
                             return Vec::new();
                         };
                         if self.live_worker_enabled && action == TuiProfileAction::ListRoot {
-                            let identity = TuiSessionIdentity::from_selection(&user, &profile);
-                            let mut session =
-                                TuiSessionState::planned_from_selection(&user, &profile);
-                            session.begin_connect();
-                            self.session = session;
-                            self.browser.clear();
-                            self.focus = TuiFocus::Browser;
-                            self.worker = WorkerEvent::Busy {
-                                operation: TuiWorkerOperation::Connect,
-                                identity: Some(identity.clone()),
-                            };
-                            self.status = format!(
-                                "Connecting to '{}' for a live read-only listing.",
-                                profile.name
-                            );
-                            return vec![
-                                WorkerCommand::OpenSession {
-                                    identity,
-                                    initial_cwd: profile.initial_path,
-                                },
-                                WorkerCommand::List {
-                                    path: "/".to_string(),
-                                },
-                            ];
+                            return self.connect_to_profile(&user, &profile);
                         }
                         self.finish(TuiIntent::ProfileAction {
                             user_name: user.name,
@@ -321,6 +319,35 @@ impl AppState {
                 Vec::new()
             }
         }
+    }
+
+    /// Shared connect logic for live "List root" (both from Actions "Connect & browse"
+    /// and direct Enter on a profile when live_worker_enabled). Refactored out of
+    /// activate() per connect-flow polish.
+    fn connect_to_profile(&mut self, user: &TuiUser, profile: &TuiProfile) -> Vec<WorkerCommand> {
+        let identity = TuiSessionIdentity::from_selection(user, profile);
+        let mut session = TuiSessionState::planned_from_selection(user, profile);
+        session.begin_connect();
+        self.session = session;
+        self.browser.clear();
+        self.focus = TuiFocus::Browser;
+        self.worker = WorkerEvent::Busy {
+            operation: TuiWorkerOperation::Connect,
+            identity: Some(identity.clone()),
+        };
+        self.status = format!(
+            "Connecting to '{}' for a live read-only listing.",
+            profile.name
+        );
+        vec![
+            WorkerCommand::OpenSession {
+                identity,
+                initial_cwd: profile.initial_path.clone(),
+            },
+            WorkerCommand::List {
+                path: "/".to_string(),
+            },
+        ]
     }
 
     fn open_selected_browser_entry(&mut self) -> Vec<WorkerCommand> {
@@ -494,11 +521,19 @@ impl AppState {
             self.status = "No file selected to download.".to_string();
             return Vec::new();
         };
+        // Absolute default using launch CWD (threaded via TuiContext at boundary).
+        // Avoids opaque "./name" relative to wherever the TUI process CWD was.
+        let base = if self.context.download_base.is_empty() {
+            ".".to_string()
+        } else {
+            self.context.download_base.clone()
+        };
+        let default_local = format!("{}/{}", base.trim_end_matches('/'), name);
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Download { remote },
             format!("Download '{}'", name),
-            "local destination path, Enter to start, Esc to cancel",
-            format!("./{}", name),
+            "local destination path (absolute recommended), Enter to start, Esc to cancel",
+            default_local,
         ));
         self.status = "Downloading a file.".to_string();
         Vec::new()
@@ -864,8 +899,9 @@ impl AppState {
             TuiFocus::Profiles => self
                 .selected_profile()
                 .map(|profile| {
+                    // Polish: Enter now connects directly in live mode; Right/Tab for actions.
                     format!(
-                        "Profile '{}' selected. Right/Enter moves to actions.",
+                        "Profile '{}' selected. Enter connects; Right for more actions.",
                         profile.name
                     )
                 })
@@ -1068,18 +1104,18 @@ pub enum TuiActionIntent {
 
 pub const TUI_ACTION_ITEMS: &[TuiActionItem] = &[
     TuiActionItem {
-        title: "Profiles navigator",
-        command: "aeroftp-cli --user USER profiles -i",
-        description: "Open the existing profile navigator for the selected user.",
-        phase: "P1 ready",
-        intent: TuiActionIntent::ProfilesInteractive,
-    },
-    TuiActionItem {
-        title: "List root",
+        title: "Connect & browse",
         command: "aeroftp-cli --user USER --profile N ls / -l",
-        description: "List the selected profile root through cmd_ls.",
+        description: "Connect to the profile and open a live browser session (Enter from Profiles does this directly).",
         phase: "P1 ready",
         intent: TuiActionIntent::Profile(TuiProfileAction::ListRoot),
+    },
+    TuiActionItem {
+        title: "Profiles navigator (leaves TUI)",
+        command: "aeroftp-cli --user USER profiles -i",
+        description: "Open the existing profile navigator for the selected user (exits TUI).",
+        phase: "P1 ready",
+        intent: TuiActionIntent::ProfilesInteractive,
     },
     TuiActionItem {
         title: "Tree",
@@ -1119,6 +1155,82 @@ pub const TUI_ACTION_ITEMS: &[TuiActionItem] = &[
     },
 ];
 
+/// Port of the GUI's `src/utils/maskCredential.ts` (exact rules, no i18n).
+/// Default use: masked display of profile usernames / auth ids (emails, S3 AKIA keys,
+/// tokens) in the Profiles pane and Intent preview. Hosts stay in clear per spec.
+/// Toggle 's' reveals raw for current session only (never persisted).
+pub fn mask_credential(value: &str) -> String {
+    if value.is_empty() {
+        return value.to_string();
+    }
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return value.to_string();
+    }
+
+    // HTTP(S) URL: not a secret; render host + path (e.g. for ImageKit URL-endpoint ids
+    // that some providers store in the username field). Matches GUI behavior exactly.
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        // Minimal URL host+path without external crate: strip scheme, take up to first ? or #,
+        // then host + trimmed path (no trailing /).
+        let without_scheme = if let Some(rest) = trimmed
+            .strip_prefix("https://")
+            .or_else(|| trimmed.strip_prefix("http://"))
+            .or_else(|| trimmed.strip_prefix("HTTPS://"))
+            .or_else(|| trimmed.strip_prefix("HTTP://"))
+        {
+            rest
+        } else {
+            trimmed
+        };
+        let without_query = without_scheme
+            .split(['?', '#'])
+            .next()
+            .unwrap_or(without_scheme);
+        if let Some(slash) = without_query.find('/') {
+            let host = &without_query[..slash];
+            let mut path = &without_query[slash..];
+            while path.ends_with('/') {
+                path = &path[..path.len() - 1];
+            }
+            return if path.is_empty() {
+                host.to_string()
+            } else {
+                format!("{}{}", host, path)
+            };
+        } else {
+            return without_query.to_string();
+        }
+    }
+
+    // S3 access key: ^AKIA[A-Z0-9]{16,}$ (case-insensitive per TS /i) -> first5...last4
+    if trimmed.len() >= 20 && lower.starts_with("akia") {
+        let rest = &trimmed[4..];
+        if rest.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return format!("{}...{}", &trimmed[..5], &trimmed[trimmed.len() - 4..]);
+        }
+    }
+
+    // Email: first 3 of local + *** + @domain (or all local if <3)
+    if let Some(at_idx) = trimmed.find('@') {
+        if at_idx > 0 {
+            let local = &trimmed[..at_idx];
+            let domain = &trimmed[at_idx..];
+            let visible = std::cmp::min(3, local.len());
+            return format!("{}***{}", &local[..visible], domain);
+        }
+    }
+
+    // Short (<=3): fully ***
+    if trimmed.len() <= 3 {
+        return "***".to_string();
+    }
+
+    // Generic: first 3 + ***
+    format!("{}***", &trimmed[..3])
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self::new(TuiContext::empty())
@@ -1144,11 +1256,13 @@ mod tests {
                     name: "Production".to_string(),
                     protocol: "sftp".to_string(),
                     host: "example.com".to_string(),
+                    username: "user".to_string(),
                     initial_path: "/".to_string(),
                     favorite: true,
                 }],
             }],
             initial_user: 0,
+            download_base: "/tmp/tui_cwd".to_string(),
         }
     }
 
@@ -1219,6 +1333,7 @@ mod tests {
                 profiles: Vec::new(),
             }],
             initial_user: 0,
+            download_base: "/tmp/tui_cwd".to_string(),
         };
         let mut app = AppState::new(context);
         app.apply_action(TuiAction::Activate);
@@ -1235,7 +1350,7 @@ mod tests {
     fn profile_action_carries_user_and_profile_selector() {
         let mut app = AppState::new(sample_context());
         app.focus = TuiFocus::Actions;
-        app.selected_action = 1;
+        app.selected_action = 0; // Connect & browse (ListRoot) is now index 0 after reorder
         app.apply_action(TuiAction::Activate);
 
         assert_eq!(
@@ -1250,9 +1365,10 @@ mod tests {
 
     #[test]
     fn ready_action_menu_maps_every_command_to_the_expected_intent() {
+        // After reorder: 0=Connect&browse (ListRoot), 1=Profiles navigator (None), 2=Tree, ...
         let ready_actions = [
-            (0, None),
-            (1, Some(TuiProfileAction::ListRoot)),
+            (0, Some(TuiProfileAction::ListRoot)),
+            (1, None),
             (2, Some(TuiProfileAction::Tree)),
             (3, Some(TuiProfileAction::Quota)),
             (4, Some(TuiProfileAction::DiskUsage)),
@@ -1300,7 +1416,7 @@ mod tests {
     fn live_list_root_emits_worker_commands_without_exiting() {
         let mut app = AppState::new_live(sample_context());
         app.focus = TuiFocus::Actions;
-        app.selected_action = 1;
+        app.selected_action = 0; // Connect & browse now at 0
 
         let commands = app.apply_action(TuiAction::Activate);
 
@@ -1326,7 +1442,7 @@ mod tests {
     fn browser_enter_on_directory_emits_read_only_list_command() {
         let mut app = AppState::new_live(sample_context());
         app.focus = TuiFocus::Actions;
-        app.selected_action = 1;
+        app.selected_action = 0; // Connect & browse
         app.apply_action(TuiAction::Activate);
         app.apply_worker_event(WorkerEvent::ListReady {
             identity: sample_identity(),
@@ -1370,7 +1486,7 @@ mod tests {
     fn browser_enter_on_file_emits_read_only_stat_command_and_applies_preview() {
         let mut app = AppState::new_live(sample_context());
         app.focus = TuiFocus::Actions;
-        app.selected_action = 1;
+        app.selected_action = 0; // Connect & browse
         app.apply_action(TuiAction::Activate);
         app.apply_worker_event(WorkerEvent::ListReady {
             identity: sample_identity(),
@@ -1517,6 +1633,7 @@ mod tests {
             name: "Archive".to_string(),
             protocol: "s3".to_string(),
             host: "s3.example.com".to_string(),
+            username: "AKIAEXAMPLEKEY".to_string(),
             initial_path: "/archive".to_string(),
             favorite: false,
         });
@@ -1556,6 +1673,7 @@ mod tests {
             name: "Archive".to_string(),
             protocol: "s3".to_string(),
             host: "s3.example.com".to_string(),
+            username: "AKIAEXAMPLEKEY".to_string(),
             initial_path: "bucket/backups/".to_string(),
             favorite: false,
         });
@@ -1592,11 +1710,13 @@ mod tests {
                     name: "Hidden".to_string(),
                     protocol: "sftp".to_string(),
                     host: "example.com".to_string(),
+                    username: "user".to_string(),
                     initial_path: "/".to_string(),
                     favorite: false,
                 }],
             }],
             initial_user: 0,
+            download_base: "/tmp/tui_cwd".to_string(),
         };
         let app = AppState::new(context);
 
@@ -1608,7 +1728,7 @@ mod tests {
     fn connected_app_with_listing() -> AppState {
         let mut app = AppState::new_live(sample_context());
         app.focus = TuiFocus::Actions;
-        app.selected_action = 1;
+        app.selected_action = 0; // Connect & browse (was ListRoot at 1) now at 0 after polish reorder
         app.apply_action(TuiAction::Activate);
         app.apply_worker_event(WorkerEvent::ListReady {
             identity: sample_identity(),
@@ -1726,7 +1846,7 @@ mod tests {
             vec![WorkerCommand::Download {
                 id: 1,
                 remote_path: "/srv/readme.txt".to_string(),
-                local_path: "./readme.txt".to_string(),
+                local_path: "/tmp/tui_cwd/readme.txt".to_string(),
             }]
         );
         assert_eq!(app.focus, TuiFocus::Transfers);
@@ -1798,7 +1918,7 @@ mod tests {
 
         let commands = app.apply_worker_event(WorkerEvent::TransferDone {
             id: 1,
-            message: "Downloaded /srv/readme.txt -> ./readme.txt".to_string(),
+            message: "Downloaded /srv/readme.txt -> /tmp/tui_cwd/readme.txt".to_string(),
         });
         // A download never changes the remote listing, so no refresh is queued.
         assert!(commands.is_empty());
@@ -1908,7 +2028,7 @@ mod tests {
         let mut app = connected_app_with_listing();
         app.apply_action(TuiAction::MoveDown); // select readme.txt
         app.apply_action(TuiAction::Download);
-        app.handle_overlay_key(OverlayKey::Submit); // id 1, default ./readme.txt
+        app.handle_overlay_key(OverlayKey::Submit); // id 1, default uses sample download_base
         app.apply_worker_event(WorkerEvent::TransferDone {
             id: 1,
             message: "done".to_string(),
@@ -1920,7 +2040,7 @@ mod tests {
         assert_eq!(
             commands,
             vec![WorkerCommand::DiscardPartial {
-                local_path: "./readme.txt".to_string()
+                local_path: "/tmp/tui_cwd/readme.txt".to_string()
             }]
         );
         assert!(app.transfers.items.is_empty());

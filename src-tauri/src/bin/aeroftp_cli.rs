@@ -9238,7 +9238,11 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
     0
 }
 
-fn build_tui_context(cli: &Cli, store: &CredentialStore) -> Result<cli_tui::TuiContext, String> {
+fn build_tui_context(
+    cli: &Cli,
+    store: &CredentialStore,
+    download_base: String,
+) -> Result<cli_tui::TuiContext, String> {
     let users = user_partitions::cli_list_users(store)?;
     let stats = user_partitions::cli_storage_stats(store).unwrap_or_default();
     let stats_by_user: HashMap<i64, usize> = stats
@@ -9262,6 +9266,11 @@ fn build_tui_context(cli: &Cli, store: &CredentialStore) -> Result<cli_tui::TuiC
                 .enumerate()
                 .map(|(idx, profile)| {
                     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let username = profile
+                        .get("username")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     cli_tui::TuiProfile {
                         selector: (idx + 1).to_string(),
                         name: profile
@@ -9275,6 +9284,7 @@ fn build_tui_context(cli: &Cli, store: &CredentialStore) -> Result<cli_tui::TuiC
                             .unwrap_or("ftp")
                             .to_string(),
                         host: host_subtitle(profile),
+                        username,
                         initial_path: profile
                             .get("initialPath")
                             .and_then(|v| v.as_str())
@@ -9320,6 +9330,7 @@ fn build_tui_context(cli: &Cli, store: &CredentialStore) -> Result<cli_tui::TuiC
     Ok(cli_tui::TuiContext {
         users,
         initial_user,
+        download_base,
     })
 }
 
@@ -9950,7 +9961,12 @@ async fn cmd_tui(cli: &mut Cli, format: OutputFormat) -> i32 {
             return 5;
         }
     };
-    let context = match build_tui_context(cli, &store) {
+    // Capture launch CWD at the TUI run boundary (NOT inside pure state or AppState ctors).
+    // Used for absolute-path default in download prompts (see trigger_download + handoff).
+    let download_base = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| ".".to_string());
+    let context = match build_tui_context(cli, &store, download_base) {
         Ok(context) => context,
         Err(err) => {
             print_error(format, &format!("Failed to load TUI context: {}", err), 5);

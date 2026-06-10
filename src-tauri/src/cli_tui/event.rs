@@ -25,6 +25,10 @@ pub enum TuiAction {
     /// Clear every finished transfer from the queue (Transfers pane), discarding
     /// their resumable `.aerotmp` leftovers.
     ClearTransfers,
+    /// Toggle reveal/mask of sensitive credential values (profile username / auth id)
+    /// in the Profiles pane and Intent preview. Session-only (never persisted).
+    /// Default: masked. Key 's'/'S'.
+    ToggleShowCredentials,
     Noop,
 }
 
@@ -51,6 +55,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('g') => TuiAction::Download,
         KeyCode::Char('u') => TuiAction::Upload,
         KeyCode::Char('c') => TuiAction::CancelOp,
+        KeyCode::Char('s') | KeyCode::Char('S') => TuiAction::ToggleShowCredentials,
         _ => TuiAction::Noop,
     }
 }

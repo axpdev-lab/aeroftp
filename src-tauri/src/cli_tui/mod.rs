@@ -219,6 +219,8 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Span::raw(" cancel   "),
             Span::styled("D", theme.accent_style()),
             Span::raw(" clear   "),
+            Span::styled("s", theme.accent_style()),
+            Span::raw(" show   "),
             Span::styled("q", theme.accent_style()),
             Span::raw(" quit"),
         ]),
@@ -297,6 +299,22 @@ fn render_profiles(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, t
                     .iter()
                     .map(|profile| {
                         let fav = if profile.favorite { "*" } else { " " };
+                        // host always clear (per spec: "host in chiaro"); username (auth id) masked by default.
+                        let host_span =
+                            Span::styled(format!("  {}", profile.host), theme.muted_style());
+                        let user_span = if profile.username.is_empty() {
+                            Span::raw("")
+                        } else if app.show_credentials {
+                            Span::styled(
+                                format!("  {}", profile.username),
+                                Style::default().fg(theme.accent), // raw shown emphasized
+                            )
+                        } else {
+                            Span::styled(
+                                format!("  {}", app::mask_credential(&profile.username)),
+                                theme.muted_style(),
+                            )
+                        };
                         ListItem::new(Line::from(vec![
                             Span::styled(format!("{:>2}.", profile.selector), theme.muted_style()),
                             Span::raw(fav),
@@ -308,7 +326,8 @@ fn render_profiles(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, t
                                 format!("  {}", profile.protocol),
                                 Style::default().fg(theme.accent),
                             ),
-                            Span::styled(format!("  {}", profile.host), theme.muted_style()),
+                            host_span,
+                            user_span,
                         ]))
                     })
                     .collect()
@@ -394,6 +413,22 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             Span::styled("Profile: ", theme.muted_style()),
             Span::raw(profile_name),
         ]),
+    ];
+    // Echo auth username (masked by default) in the Intent preview per masking task.
+    if let Some(p) = profile {
+        if !p.username.is_empty() {
+            let auth = if app.show_credentials {
+                p.username.clone()
+            } else {
+                app::mask_credential(&p.username)
+            };
+            detail_lines.push(Line::from(vec![
+                Span::styled("Auth:    ", theme.muted_style()),
+                Span::raw(auth),
+            ]));
+        }
+    }
+    detail_lines.extend(vec![
         Line::from(vec![
             Span::styled("Path:    ", theme.muted_style()),
             Span::raw(profile_path),
@@ -407,7 +442,7 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             Span::raw(selected.phase),
         ]),
         Line::from(Span::styled(app.pane_summary(), theme.muted_style())),
-    ];
+    ]);
     if let Some(summary) = &app.browser.summary {
         detail_lines.push(Line::from(vec![
             Span::styled("Listed:  ", theme.muted_style()),
