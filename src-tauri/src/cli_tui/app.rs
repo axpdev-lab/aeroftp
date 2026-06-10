@@ -1043,12 +1043,12 @@ impl AppState {
                 if identity.is_none() {
                     // Local stat
                     if self.local.apply_stat_result(result.clone()) {
-                        self.status = format!("Loaded local metadata for {}.", path);
+                        self.status = stat_status_line(path, self.local.preview.as_ref());
                     } else {
                         self.status = format!("Local metadata ready for {}.", path);
                     }
                 } else if self.browser.apply_stat_result(result.clone()) {
-                    self.status = format!("Loaded metadata for {}.", path);
+                    self.status = stat_status_line(path, self.browser.preview.as_ref());
                 } else {
                     self.status = format!("Metadata ready for {}.", path);
                 }
@@ -1281,6 +1281,59 @@ fn local_basename(path: &str) -> String {
         .next()
         .unwrap_or(path)
         .to_string()
+}
+
+/// Compact byte size for the status line (the Shape B fullscreen view has no
+/// separate details box, so file metadata is folded into the footer status).
+fn format_size_compact(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// One-line file metadata for the status footer after a stat (name, size or
+/// "directory", mime, permissions, symlink target, modified time), skipping
+/// fields the backend did not provide.
+fn stat_status_line(
+    path: &str,
+    preview: Option<&crate::cli_tui::panes::browser::BrowserPreview>,
+) -> String {
+    match preview {
+        Some(p) => {
+            let mut parts = vec![p.name.clone()];
+            if p.is_dir {
+                parts.push("directory".to_string());
+            } else {
+                parts.push(format_size_compact(p.size));
+            }
+            if let Some(mime) = &p.mime_type {
+                parts.push(mime.clone());
+            }
+            if let Some(perm) = &p.permissions {
+                parts.push(perm.clone());
+            }
+            if p.is_symlink {
+                match &p.link_target {
+                    Some(target) => parts.push(format!("symlink -> {}", target)),
+                    None => parts.push("symlink".to_string()),
+                }
+            }
+            if let Some(modified) = &p.modified {
+                parts.push(modified.chars().take(16).collect::<String>());
+            }
+            parts.join("  \u{00b7}  ")
+        }
+        None => format!("Metadata ready for {}.", path),
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
