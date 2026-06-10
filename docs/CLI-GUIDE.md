@@ -1259,6 +1259,20 @@ aeroftp-cli benchmark --profile "server" --json
 
 Runs a deterministic benchmark across upload, download, list, and stat operations and emits a sanitized, opt-in report shaped after the public schema `aeroftp.benchmark.v1`. **The output is intentionally credential-free**: hostnames, paths, bucket names, and credentials are NOT recorded; only protocol family, region (when known), file sizes, and timings. Use this command to compare providers honestly, to file regression reports against AeroFTP, or to contribute results to the community benchmark.
 
+#### Many small files (`--file-count`)
+
+The single-file size sweep measures raw throughput on one large transfer. A *many small files* workload measures something different and complementary: per-file overhead (connection handshake, request signing, metadata round-trips), which is where S3 typically pulls ahead of WebDAV and FTP. This is a **separate axis** and is never averaged into the single-file numbers.
+
+```bash
+# 1000 files of 64 KB each, alongside the default size sweep
+aeroftp-cli benchmark --profile "server" --file-count 1000
+
+# Tune the per-file size (e.g. 4 KB to stress metadata cost)
+aeroftp-cli benchmark --profile "server" --file-count 5000 --file-size 4K --json
+```
+
+When `--file-count N` is set (`--file-size` defaults to `64K`), the run adds five dedicated operations: **`upload-all`**, **`list-dir`** (one listing of the N-file directory), **`stat-all`**, **`download-all`**, and **`delete-all`**. Each reports **`files_per_second`** and a per-file latency distribution (`latency_ms`, whose p50 is the mean per-file time) alongside raw `throughput_mbps` for the transfer ops. The aggregate payload (`file-count` x `file-size`) is capped at 5 GiB and `--file-count` at 100000.
+
 ### import - Import Server Profiles
 
 `import` ingests server profiles from external tools and stores them in the AeroFTP encrypted vault. **15 sources** are supported: `rclone`, `winscp`, `filezilla`, `aws`, `ssh`, `mc`, `cyberduck`, `s3cmd`, `lftp`, `putty`, `mobaxterm`, `dreamweaver`, `kopia`, `duplicacy`, `restic`. Use `--json` on any subcommand for scripting; secrets are decoded from each tool's native obfuscation and re-wrapped in AES-256-GCM by the vault on commit. The three original sources (rclone, winscp, filezilla) have dedicated examples below; the other twelve share the same `aeroftp import <tool> [path]` interface (see [import (other tools)](#import-other-tools)).

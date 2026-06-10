@@ -1667,6 +1667,20 @@ enum Commands {
         /// WebDAV servers) that reject overwrite-on-PUT.
         #[arg(long)]
         pre_delete: bool,
+        /// Many-small-files workload: number of files to exercise (e.g. 100,
+        /// 1000). When > 0, runs a dedicated small-files benchmark on a separate
+        /// axis (upload-all / download-all / list-dir / stat-all / delete-all)
+        /// reporting files/sec and mean per-file time, in addition to the
+        /// single-file size sweep. This is the workload where per-file overhead
+        /// (handshake, signing, metadata round-trips) dominates and S3 typically
+        /// pulls ahead of WebDAV and FTP.
+        #[arg(long, value_name = "N")]
+        file_count: Option<u32>,
+        /// Size of each file in the many-small-files workload (e.g. 4K, 64K,
+        /// 1M). Defaults to 64K. Total payload (file-count x file-size) is
+        /// capped at 5 GiB.
+        #[arg(long, value_name = "SIZE", default_value = "64K")]
+        file_size: String,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -4070,6 +4084,15 @@ struct BenchmarkResult {
     payload_size_bytes: u64,
     runs: u32,
     warmup_runs_discarded: u32,
+    // Many-small-files axis (schema v1, additive): number of files exercised by
+    // a batch operation (upload-all / download-all / list-dir / stat-all /
+    // delete-all) and the resulting files-per-second. Omitted for the
+    // single-file size sweep, where `latency_ms` and `throughput_mbps` already
+    // carry the meaningful numbers. See APPENDIX-BENCHMARK schema doc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    files_per_second: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     throughput_mbps: Option<BenchmarkStats>,
     latency_ms: BenchmarkStats,
@@ -26862,6 +26885,386 @@ async fn cmd_speed_compare(
 
 const BENCHMARK_MAX_SIZE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 const BENCHMARK_TOTAL_TIMEOUT_SECS: u64 = 60 * 60;
+/// Upper bound on `--file-count` for the many-small-files workload. A run of
+/// 100k metadata round-trips is already long enough to be meaningful; beyond
+/// this the wall time is dominated by the workload itself, not the protocol.
+const BENCHMARK_MAX_FILE_COUNT: u32 = 100_000;
+
+/// Resolved parameters for the many-small-files axis. Built only when
+/// `--file-count` is provided; the single-file size sweep is unaffected.
+#[derive(Debug, Clone, Copy)]
+struct ManyFilesConfig {
+    file_count: u32,
+    file_size_bytes: u64,
+}
+
+/// Validate and resolve the many-small-files workload parameters. Returns
+/// `Ok(None)` when the workload is not requested (`file_count` is `None`/0).
+fn resolve_many_files_config(
+    file_count: Option<u32>,
+    file_size: &str,
+) -> Result<Option<ManyFilesConfig>, String> {
+    let count = match file_count {
+        Some(n) if n > 0 => n,
+        _ => return Ok(None),
+    };
+    if count > BENCHMARK_MAX_FILE_COUNT {
+        return Err(format!(
+            "--file-count {} exceeds the {} cap",
+            count, BENCHMARK_MAX_FILE_COUNT
+        ));
+    }
+    let file_size_bytes = parse_size_filter(file_size.trim())?;
+    if file_size_bytes == 0 {
+        return Err("--file-size cannot be zero".into());
+    }
+    // Bound the aggregate payload so a careless `--file-count 100000 --file-size
+    // 1M` cannot try to push 100 GiB. The product is checked in u128 to avoid
+    // overflow on the multiply.
+    let total = file_size_bytes as u128 * count as u128;
+    if total > BENCHMARK_MAX_SIZE_BYTES as u128 {
+        return Err(format!(
+            "many-files payload {} (file-count {} x file-size {}) exceeds the 5 GiB cap",
+            format_size((total.min(u64::MAX as u128)) as u64),
+            count,
+            format_size(file_size_bytes)
+        ));
+    }
+    Ok(Some(ManyFilesConfig {
+        file_count: count,
+        file_size_bytes,
+    }))
+}
+
+/// Accumulated output of the many-small-files workload, merged back into the
+/// main benchmark report by the caller.
+struct ManyFilesOutcome {
+    results: Vec<BenchmarkResult>,
+    bytes_transferred: u64,
+    runs: u32,
+    errors: Vec<String>,
+}
+
+/// Build a single batch-operation result for the many-small-files axis.
+/// `per_file_ms` carries the per-file latency distribution (its p50 is the mean
+/// per-file time); `files_per_second` is the headline rate over the whole batch.
+#[allow(clippy::too_many_arguments)]
+fn many_files_result(
+    protocol: &str,
+    anonymize_extra: bool,
+    report_id: &str,
+    operation: &str,
+    payload_size_bytes: u64,
+    files: u32,
+    files_per_second: f64,
+    per_file_ms: &[f64],
+    throughput_mbps: Option<&[f64]>,
+    fatal: u32,
+) -> BenchmarkResult {
+    let (hint, hash) = benchmark_provider_hint(protocol, anonymize_extra, report_id);
+    let raw_runs = per_file_ms
+        .iter()
+        .map(|ms| BenchmarkRawRun {
+            duration_ms: *ms as u64,
+            bytes: payload_size_bytes,
+            throughput_mbps: None,
+        })
+        .collect();
+    BenchmarkResult {
+        protocol: protocol.to_string(),
+        provider_hint: hint,
+        provider_hash: hash,
+        operation: operation.to_string(),
+        payload_size_bytes,
+        // `runs` is the number of timed measurements (one list-dir call vs. one
+        // per file for the batch ops); `file_count` is how many files the op
+        // touched (the N entries listed, the N files uploaded, etc.).
+        runs: per_file_ms.len() as u32,
+        warmup_runs_discarded: 0,
+        file_count: Some(files),
+        files_per_second: Some(files_per_second),
+        throughput_mbps: throughput_mbps.map(benchmark_stats_from),
+        latency_ms: benchmark_stats_from(per_file_ms),
+        tls_handshake_ms: None,
+        errors: BenchmarkErrors {
+            transient: 0,
+            fatal,
+        },
+        raw_runs,
+    }
+}
+
+/// Run the many-small-files axis: create N files of a fixed small size and
+/// measure upload-all / list-dir / stat-all / download-all / delete-all,
+/// reporting files/sec and per-file latency. This is the workload where
+/// per-file overhead (handshake, signing, metadata round-trips) dominates and
+/// S3 typically beats WebDAV/FTP.
+///
+/// Unlike the single-file size sweep (which goes through the transfer DAG to
+/// mirror a real transfer), these ops call the provider directly so the numbers
+/// isolate the protocol's raw per-file cost, the dimension being compared.
+#[allow(clippy::too_many_arguments)]
+async fn run_many_files_workload(
+    provider: &mut Box<dyn StorageProvider>,
+    mf: ManyFilesConfig,
+    test_root: &str,
+    protocol: &str,
+    anonymize_extra: bool,
+    report_id: &str,
+    deadline_secs: u64,
+    total_start: Instant,
+    cli: &Cli,
+    format: OutputFormat,
+) -> ManyFilesOutcome {
+    let mut out = ManyFilesOutcome {
+        results: Vec::new(),
+        bytes_transferred: 0,
+        runs: 0,
+        errors: Vec::new(),
+    };
+
+    let many_dir = format!("{}/manyfiles", test_root);
+    if let Err(e) = provider.mkdir(&many_dir).await {
+        if !matches!(e, ProviderError::AlreadyExists(_)) {
+            out.errors.push(format!(
+                "many-files: cannot create scratch dir '{}': {}",
+                many_dir, e
+            ));
+            return out;
+        }
+    }
+
+    let size = mf.file_size_bytes;
+    let remote_name = |i: u32| format!("{}/f{:06}.bin", many_dir, i);
+
+    if !cli.quiet && matches!(format, OutputFormat::Text) {
+        eprintln!(
+            "running many-small-files workload: {} files of {}",
+            mf.file_count,
+            format_size(size)
+        );
+    }
+
+    // ── upload-all ──────────────────────────────────────────────────
+    let local_up = match NamedTempFile::new() {
+        Ok(f) => f,
+        Err(e) => {
+            out.errors
+                .push(format!("many-files: cannot create local temp: {}", e));
+            return out;
+        }
+    };
+    let local_up_path = local_up.path().to_string_lossy().to_string();
+    let mut up_ms: Vec<f64> = Vec::new();
+    let mut up_mbps: Vec<f64> = Vec::new();
+    let mut up_fatal = 0u32;
+    let mut uploaded = 0u32;
+    let up_start = Instant::now();
+    for i in 0..mf.file_count {
+        if total_start.elapsed().as_secs() > deadline_secs {
+            out.errors
+                .push("many-files: hit profile-timeout during upload-all".into());
+            break;
+        }
+        // Fresh random content per file (untimed) so content-dedup backends
+        // cannot short-circuit the upload and inflate files/sec.
+        if let Err(e) = write_speed_test_file_random(local_up.path(), size) {
+            out.errors.push(format!("many-files: {}", e));
+            break;
+        }
+        let remote = remote_name(i);
+        let start = Instant::now();
+        match provider.upload(&local_up_path, &remote, None).await {
+            Ok(()) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                up_ms.push(ms);
+                up_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
+                uploaded += 1;
+                out.bytes_transferred += size;
+                out.runs += 1;
+            }
+            Err(e) => {
+                up_fatal += 1;
+                out.errors
+                    .push(format!("many-files: upload of file {} failed: {}", i, e));
+                break;
+            }
+        }
+    }
+    if uploaded > 0 {
+        let secs = up_start.elapsed().as_secs_f64().max(1e-6);
+        out.results.push(many_files_result(
+            protocol,
+            anonymize_extra,
+            report_id,
+            "upload-all",
+            size,
+            uploaded,
+            uploaded as f64 / secs,
+            &up_ms,
+            Some(&up_mbps),
+            up_fatal,
+        ));
+    }
+    if uploaded == 0 {
+        // Nothing landed remotely: the remaining ops have no payload to act on.
+        return out;
+    }
+
+    // ── list-dir (one call, returns N entries) ──────────────────────
+    let list_start = Instant::now();
+    match provider.list(&many_dir).await {
+        Ok(entries) => {
+            let ms = list_start.elapsed().as_secs_f64() * 1000.0;
+            let listed = entries.iter().filter(|e| !e.is_dir).count() as u32;
+            let fps = listed as f64 / (ms / 1000.0).max(1e-6);
+            out.results.push(many_files_result(
+                protocol,
+                anonymize_extra,
+                report_id,
+                "list-dir",
+                0,
+                listed,
+                fps,
+                &[ms],
+                None,
+                0,
+            ));
+            out.runs += 1;
+        }
+        Err(e) => out
+            .errors
+            .push(format!("many-files: list-dir failed: {}", e)),
+    }
+
+    // ── stat-all ────────────────────────────────────────────────────
+    let mut stat_ms: Vec<f64> = Vec::new();
+    let mut stat_fatal = 0u32;
+    let stat_start = Instant::now();
+    for i in 0..uploaded {
+        if total_start.elapsed().as_secs() > deadline_secs {
+            out.errors
+                .push("many-files: hit profile-timeout during stat-all".into());
+            break;
+        }
+        let start = Instant::now();
+        match provider.stat(&remote_name(i)).await {
+            Ok(_) => stat_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Err(e) => {
+                stat_fatal += 1;
+                out.errors
+                    .push(format!("many-files: stat of file {} failed: {}", i, e));
+            }
+        }
+    }
+    if !stat_ms.is_empty() {
+        let secs = stat_start.elapsed().as_secs_f64().max(1e-6);
+        out.results.push(many_files_result(
+            protocol,
+            anonymize_extra,
+            report_id,
+            "stat-all",
+            0,
+            stat_ms.len() as u32,
+            stat_ms.len() as f64 / secs,
+            &stat_ms,
+            None,
+            stat_fatal,
+        ));
+        out.runs += stat_ms.len() as u32;
+    }
+
+    // ── download-all ────────────────────────────────────────────────
+    let local_dn = match NamedTempFile::new() {
+        Ok(f) => Some(f),
+        Err(e) => {
+            out.errors
+                .push(format!("many-files: cannot create download temp: {}", e));
+            None
+        }
+    };
+    if let Some(local_dn) = local_dn {
+        let local_dn_path = local_dn.path().to_string_lossy().to_string();
+        let mut dn_ms: Vec<f64> = Vec::new();
+        let mut dn_mbps: Vec<f64> = Vec::new();
+        let mut dn_fatal = 0u32;
+        let dn_start = Instant::now();
+        for i in 0..uploaded {
+            if total_start.elapsed().as_secs() > deadline_secs {
+                out.errors
+                    .push("many-files: hit profile-timeout during download-all".into());
+                break;
+            }
+            let start = Instant::now();
+            match provider
+                .download(&remote_name(i), &local_dn_path, None)
+                .await
+            {
+                Ok(()) => {
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    dn_ms.push(ms);
+                    dn_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
+                    out.bytes_transferred += size;
+                    out.runs += 1;
+                }
+                Err(e) => {
+                    dn_fatal += 1;
+                    out.errors
+                        .push(format!("many-files: download of file {} failed: {}", i, e));
+                }
+            }
+        }
+        if !dn_ms.is_empty() {
+            let secs = dn_start.elapsed().as_secs_f64().max(1e-6);
+            out.results.push(many_files_result(
+                protocol,
+                anonymize_extra,
+                report_id,
+                "download-all",
+                size,
+                dn_ms.len() as u32,
+                dn_ms.len() as f64 / secs,
+                &dn_ms,
+                Some(&dn_mbps),
+                dn_fatal,
+            ));
+        }
+    }
+
+    // ── delete-all (also clears the scratch files) ──────────────────
+    let mut del_ms: Vec<f64> = Vec::new();
+    let mut del_fatal = 0u32;
+    let del_start = Instant::now();
+    for i in 0..uploaded {
+        let start = Instant::now();
+        match provider.delete(&remote_name(i)).await {
+            Ok(()) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Err(e) => {
+                del_fatal += 1;
+                out.errors
+                    .push(format!("many-files: delete of file {} failed: {}", i, e));
+            }
+        }
+    }
+    if !del_ms.is_empty() {
+        let secs = del_start.elapsed().as_secs_f64().max(1e-6);
+        out.results.push(many_files_result(
+            protocol,
+            anonymize_extra,
+            report_id,
+            "delete-all",
+            0,
+            del_ms.len() as u32,
+            del_ms.len() as f64 / secs,
+            &del_ms,
+            None,
+            del_fatal,
+        ));
+        out.runs += del_ms.len() as u32;
+    }
+
+    out
+}
 
 #[derive(Debug)]
 struct BenchmarkConfig {
@@ -27252,6 +27655,8 @@ async fn cmd_benchmark(
     profile_timeout_override: Option<u64>,
     test_root_prefix_override: Option<&str>,
     pre_delete: bool,
+    file_count: Option<u32>,
+    file_size: &str,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -27266,6 +27671,16 @@ async fn cmd_benchmark(
         );
         return 5;
     }
+
+    // Resolve the optional many-small-files axis up front so a bad
+    // --file-count / --file-size fails before we connect or transfer anything.
+    let many_files_cfg = match resolve_many_files_config(file_count, file_size) {
+        Ok(c) => c,
+        Err(msg) => {
+            print_error(format, &msg, 5);
+            return 5;
+        }
+    };
 
     // PATH-01: `--test-root-prefix` is honored verbatim and becomes the root for
     // mkdir/upload/rmdir_recursive. Reject `..`/null so the scratch tree (and its
@@ -27460,6 +27875,8 @@ async fn cmd_benchmark(
                             payload_size_bytes: size,
                             runs: 0,
                             warmup_runs_discarded: cfg.warmup_runs,
+                            file_count: None,
+                            files_per_second: None,
                             throughput_mbps: None,
                             latency_ms: BenchmarkStats {
                                 p50: 0.0,
@@ -27544,6 +27961,8 @@ async fn cmd_benchmark(
                 payload_size_bytes: size,
                 runs: upload_durations_ms.len() as u32,
                 warmup_runs_discarded: cfg.warmup_runs,
+                file_count: None,
+                files_per_second: None,
                 throughput_mbps: Some(benchmark_stats_from(&upload_throughput_mbps)),
                 latency_ms: benchmark_stats_from(&upload_durations_ms),
                 tls_handshake_ms: None,
@@ -27563,6 +27982,8 @@ async fn cmd_benchmark(
                 payload_size_bytes: size,
                 runs: download_durations_ms.len() as u32,
                 warmup_runs_discarded: cfg.warmup_runs,
+                file_count: None,
+                files_per_second: None,
                 throughput_mbps: Some(benchmark_stats_from(&download_throughput_mbps)),
                 latency_ms: benchmark_stats_from(&download_durations_ms),
                 tls_handshake_ms: None,
@@ -27590,6 +28011,8 @@ async fn cmd_benchmark(
                         payload_size_bytes: 0,
                         runs: 1,
                         warmup_runs_discarded: 0,
+                        file_count: None,
+                        files_per_second: None,
                         throughput_mbps: None,
                         latency_ms: BenchmarkStats {
                             p50: ms,
@@ -27629,6 +28052,8 @@ async fn cmd_benchmark(
                         payload_size_bytes: 0,
                         runs: 1,
                         warmup_runs_discarded: 0,
+                        file_count: None,
+                        files_per_second: None,
                         throughput_mbps: None,
                         latency_ms: BenchmarkStats {
                             p50: ms,
@@ -27668,6 +28093,8 @@ async fn cmd_benchmark(
                         payload_size_bytes: 0,
                         runs: 1,
                         warmup_runs_discarded: 0,
+                        file_count: None,
+                        files_per_second: None,
                         throughput_mbps: None,
                         latency_ms: BenchmarkStats {
                             p50: ms,
@@ -27691,6 +28118,31 @@ async fn cmd_benchmark(
                 }
                 Err(e) => errors.push(format!("delete failed: {}", e)),
             }
+        }
+    }
+
+    // Many-small-files axis (separate from the size sweep above): only run when
+    // requested via --file-count and when the size sweep did not already abort
+    // on a fatal/connection error.
+    if let Some(mf) = many_files_cfg {
+        if !early_abort && total_start.elapsed().as_secs() <= profile_timeout_secs {
+            let outcome = run_many_files_workload(
+                &mut provider,
+                mf,
+                &test_root,
+                &protocol,
+                anonymize_extra,
+                &report_id,
+                profile_timeout_secs,
+                total_start,
+                cli,
+                format,
+            )
+            .await;
+            total_bytes_transferred += outcome.bytes_transferred;
+            total_runs += outcome.runs;
+            results.extend(outcome.results);
+            errors.extend(outcome.errors);
         }
     }
 
@@ -27849,12 +28301,19 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
     );
     println!();
     for r in &report.results {
-        let throughput = match &r.throughput_mbps {
-            Some(t) => format!("{:7.2} Mbps p50, {:7.2} Mbps p95", t.p50, t.p95),
-            None => "n/a".into(),
+        // Many-files batch ops lead with files/sec (the headline for that axis);
+        // single-file ops keep showing raw throughput in Mbps.
+        let trailing = match (r.files_per_second, &r.throughput_mbps) {
+            (Some(fps), Some(t)) => format!(
+                "{:8.1} files/s  {:7.2} Mbps p50, {:7.2} Mbps p95",
+                fps, t.p50, t.p95
+            ),
+            (Some(fps), None) => format!("{:8.1} files/s", fps),
+            (None, Some(t)) => format!("{:7.2} Mbps p50, {:7.2} Mbps p95", t.p50, t.p95),
+            (None, None) => "n/a".into(),
         };
         println!(
-            "  {:>8} {:>10}  {:>3} runs  latency p50={:6.1}ms p95={:6.1}ms  {}",
+            "  {:>12} {:>10}  {:>4} runs  latency p50={:6.1}ms p95={:6.1}ms  {}",
             r.operation,
             if r.payload_size_bytes == 0 {
                 "-".into()
@@ -27864,7 +28323,7 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
             r.runs,
             r.latency_ms.p50,
             r.latency_ms.p95,
-            throughput
+            trailing
         );
     }
     if !report.summary.errors.is_empty() {
@@ -43082,6 +43541,8 @@ async fn main() {
             profile_timeout,
             test_root_prefix,
             pre_delete,
+            file_count,
+            file_size,
         } => {
             cmd_benchmark(
                 *level,
@@ -43094,6 +43555,8 @@ async fn main() {
                 *profile_timeout,
                 test_root_prefix.as_deref(),
                 *pre_delete,
+                *file_count,
+                file_size,
                 &cli,
                 format,
             )
@@ -46789,6 +47252,68 @@ mod tests {
     fn benchmark_resolve_config_clamps_runs() {
         let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, Some(99), None).unwrap();
         assert_eq!(cfg.runs_per_size, 20);
+    }
+
+    #[test]
+    fn many_files_config_absent_when_not_requested() {
+        assert!(resolve_many_files_config(None, "64K").unwrap().is_none());
+        assert!(resolve_many_files_config(Some(0), "64K").unwrap().is_none());
+    }
+
+    #[test]
+    fn many_files_config_resolves_count_and_size() {
+        let mf = resolve_many_files_config(Some(100), "64K")
+            .unwrap()
+            .expect("workload requested");
+        assert_eq!(mf.file_count, 100);
+        assert_eq!(mf.file_size_bytes, 64 * 1024);
+    }
+
+    #[test]
+    fn many_files_config_rejects_excessive_count() {
+        let err = resolve_many_files_config(Some(BENCHMARK_MAX_FILE_COUNT + 1), "1K").unwrap_err();
+        assert!(err.contains("cap"), "got: {}", err);
+    }
+
+    #[test]
+    fn many_files_config_rejects_zero_size() {
+        let err = resolve_many_files_config(Some(10), "0").unwrap_err();
+        assert!(err.contains("zero"), "got: {}", err);
+    }
+
+    #[test]
+    fn many_files_config_rejects_oversized_aggregate() {
+        // 100k files x 1 MiB = ~100 GiB, well over the 5 GiB cap.
+        let err = resolve_many_files_config(Some(100_000), "1M").unwrap_err();
+        assert!(err.contains("5 GiB cap"), "got: {}", err);
+    }
+
+    #[test]
+    fn many_files_result_carries_files_per_second_and_count() {
+        let r = many_files_result(
+            "s3",
+            false,
+            "rid",
+            "upload-all",
+            64 * 1024,
+            3,
+            250.0,
+            &[3.0, 4.0, 5.0],
+            Some(&[120.0, 130.0, 140.0]),
+            0,
+        );
+        assert_eq!(r.operation, "upload-all");
+        assert_eq!(r.file_count, Some(3));
+        assert_eq!(r.files_per_second, Some(250.0));
+        assert_eq!(r.runs, 3);
+        assert!(r.throughput_mbps.is_some());
+        assert_eq!(r.latency_ms.p50, 4.0);
+        assert_eq!(r.raw_runs.len(), 3);
+        // Serialized many-files result must still pass the PII sweep.
+        let pretty = serde_json::to_string_pretty(&r).unwrap();
+        assert!(benchmark_sanitization_sweep(&pretty).is_ok());
+        assert!(pretty.contains("files_per_second"));
+        assert!(pretty.contains("file_count"));
     }
 
     #[test]

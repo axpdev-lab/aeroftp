@@ -93,6 +93,17 @@ Run only metadata operations:
 aeroftp-cli --profile "SFTP Lab" benchmark custom --sizes 1M --runs 1 --operations list,stat,delete
 ```
 
+Run a many-small-files workload (a separate axis: this is where per-file
+overhead dominates and S3 typically beats WebDAV and FTP):
+
+```bash
+aeroftp-cli --profile "SFTP Lab" benchmark --file-count 1000 --file-size 64K
+```
+
+This adds `upload-all`, `list-dir`, `stat-all`, `download-all`, and `delete-all`
+results, each reporting `files_per_second` and per-file latency. It runs
+alongside the size sweep and is never averaged into the single-file numbers.
+
 ## What Happens Remotely
 
 The benchmark creates temporary files under the profile's configured remote
@@ -135,11 +146,13 @@ Each result entry records:
 | ----- | ------- |
 | `protocol` | Protocol family, for example `sftp`, `webdav`, `s3`, `gdrive` |
 | `provider_hint` | Coarse provider hint, or `null` with `--anonymize-extra` |
-| `operation` | `upload`, `download`, `list`, `stat`, or `delete` |
-| `payload_size_bytes` | Payload size for that measurement |
-| `runs` | Number of measured runs, excluding warm-up |
+| `operation` | Single-file: `upload`, `download`, `list`, `stat`, `delete`. Many-files: `upload-all`, `download-all`, `list-dir`, `stat-all`, `delete-all` |
+| `payload_size_bytes` | Payload size for that measurement (per-file size for the many-files axis) |
+| `runs` | Number of measured runs, excluding warm-up (files processed for the many-files axis) |
+| `file_count` | Many-files axis only: number of files exercised by the batch operation |
+| `files_per_second` | Many-files axis only: throughput in files/second over the whole batch |
 | `throughput_mbps` | p50, p95, stddev, min, max for transfer operations |
-| `latency_ms` | p50, p95, stddev, min, max for operation latency |
+| `latency_ms` | p50, p95, stddev, min, max for operation latency (per-file latency on the many-files axis; p50 is the mean per-file time) |
 | `errors` | Transient and fatal operation counts |
 | `raw_runs` | Per-run measurements so aggregation can be recomputed |
 
