@@ -75,6 +75,11 @@ pub enum WorkerCommand {
         remote_path: String,
     },
     Cancel,
+    /// Remove the `.aerotmp` partial for a transfer dropped from the queue, so
+    /// clearing a cancelled transfer also discards its resumable leftover.
+    DiscardPartial {
+        local_path: String,
+    },
 }
 
 impl WorkerCommand {
@@ -91,6 +96,7 @@ impl WorkerCommand {
                 TuiWorkerOperation::Transfer
             }
             WorkerCommand::Cancel => TuiWorkerOperation::Cancel,
+            WorkerCommand::DiscardPartial { .. } => TuiWorkerOperation::Discard,
         }
     }
 }
@@ -106,6 +112,7 @@ pub enum TuiWorkerOperation {
     Rename,
     Transfer,
     Cancel,
+    Discard,
 }
 
 impl TuiWorkerOperation {
@@ -119,6 +126,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Rename => "rename",
             TuiWorkerOperation::Transfer => "transfer",
             TuiWorkerOperation::Cancel => "cancel",
+            TuiWorkerOperation::Discard => "discard",
         }
     }
 }

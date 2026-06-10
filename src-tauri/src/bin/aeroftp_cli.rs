@@ -9894,6 +9894,16 @@ async fn run_cli_tui_worker(
                     operation: TuiWorkerOperation::Cancel,
                 });
             }
+            WorkerCommand::DiscardPartial { local_path } => {
+                // A transfer was dropped from the queue: remove its resumable
+                // `.aerotmp` leftover so a cleared cancel leaves no orphan. The
+                // final file (if the transfer completed) is never touched. Silent
+                // best-effort: the UI already removed the row.
+                let temp = ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(
+                    std::path::Path::new(&local_path),
+                );
+                let _ = tokio::fs::remove_file(&temp).await;
+            }
         }
     }
 

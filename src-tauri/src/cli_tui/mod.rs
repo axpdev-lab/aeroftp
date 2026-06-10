@@ -217,6 +217,8 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Span::raw(" get/put   "),
             Span::styled("c", theme.accent_style()),
             Span::raw(" cancel   "),
+            Span::styled("D", theme.accent_style()),
+            Span::raw(" clear   "),
             Span::styled("q", theme.accent_style()),
             Span::raw(" quit"),
         ]),

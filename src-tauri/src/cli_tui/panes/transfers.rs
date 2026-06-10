@@ -89,20 +89,38 @@ impl TransfersPaneState {
         }
     }
 
-    /// Drop the selected transfer once it is finished. Active transfers are kept
-    /// so the queue never loses an in-flight operation by accident.
-    pub fn remove_selected_if_finished(&mut self) -> bool {
-        let Some(item) = self.items.get(self.selected) else {
-            return false;
-        };
+    /// Drop the selected transfer once it is finished, returning its local path
+    /// so the caller can discard the `.aerotmp` leftover. Active transfers are
+    /// kept (returns `None`) so the queue never loses an in-flight operation.
+    pub fn remove_selected_if_finished(&mut self) -> Option<String> {
+        let item = self.items.get(self.selected)?;
         if matches!(item.status, TransferStatus::Active) {
-            return false;
+            return None;
         }
-        self.items.remove(self.selected);
+        let local_path = self.items.remove(self.selected).local_path;
         if self.selected >= self.items.len() {
             self.selected = self.items.len().saturating_sub(1);
         }
-        true
+        Some(local_path)
+    }
+
+    /// Remove every finished (non-active) transfer at once, returning their
+    /// local paths so the caller can discard each `.aerotmp` leftover. Active
+    /// transfers stay in the queue.
+    pub fn clear_finished(&mut self) -> Vec<String> {
+        let mut discarded = Vec::new();
+        self.items.retain(|item| {
+            if matches!(item.status, TransferStatus::Active) {
+                true
+            } else {
+                discarded.push(item.local_path.clone());
+                false
+            }
+        });
+        if self.selected >= self.items.len() {
+            self.selected = self.items.len().saturating_sub(1);
+        }
+        discarded
     }
 
     pub fn has_active(&self) -> bool {
@@ -240,10 +258,50 @@ mod tests {
         // The gauge does not jump to full: the partial ratio is preserved.
         assert_eq!(transfers.items[0].ratio(), 0.3);
         assert!(!transfers.has_active());
-        // A cancelled (finished) transfer can be dropped from the queue.
+        // A cancelled (finished) transfer can be dropped, surrendering its local
+        // path so the caller can delete the `.aerotmp` leftover.
         transfers.selected = 0;
-        assert!(transfers.remove_selected_if_finished());
+        assert_eq!(
+            transfers.remove_selected_if_finished(),
+            Some("./big.bin".to_string())
+        );
         assert!(transfers.items.is_empty());
+    }
+
+    #[test]
+    fn clear_finished_drops_finished_and_returns_their_paths_keeping_active() {
+        let mut transfers = TransfersPaneState::default();
+        let done = transfers.enqueue(
+            TransferDirection::Download,
+            "a.txt".to_string(),
+            "/srv/a.txt".to_string(),
+            "./a.txt".to_string(),
+        );
+        let cancelled = transfers.enqueue(
+            TransferDirection::Download,
+            "b.bin".to_string(),
+            "/srv/b.bin".to_string(),
+            "./b.bin".to_string(),
+        );
+        let active = transfers.enqueue(
+            TransferDirection::Upload,
+            "c.bin".to_string(),
+            "/srv/c.bin".to_string(),
+            "./c.bin".to_string(),
+        );
+        transfers.mark_done(done);
+        transfers.mark_cancelled(cancelled);
+        // `active` stays Active.
+
+        let discarded = transfers.clear_finished();
+
+        assert_eq!(
+            discarded,
+            vec!["./a.txt".to_string(), "./b.bin".to_string()]
+        );
+        assert_eq!(transfers.items.len(), 1);
+        assert_eq!(transfers.items[0].id, active);
+        assert!(transfers.has_active());
     }
 
     #[test]
@@ -256,10 +314,10 @@ mod tests {
             "./a.txt".to_string(),
         );
         transfers.selected = 0;
-        assert!(!transfers.remove_selected_if_finished());
+        assert!(transfers.remove_selected_if_finished().is_none());
 
         transfers.mark_done(active);
-        assert!(transfers.remove_selected_if_finished());
+        assert!(transfers.remove_selected_if_finished().is_some());
         assert!(transfers.items.is_empty());
         assert_eq!(transfers.selected, 0);
     }

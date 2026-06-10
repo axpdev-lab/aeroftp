@@ -22,6 +22,9 @@ pub enum TuiAction {
     Upload,
     /// Cancel the in-flight worker operation (used by long transfers).
     CancelOp,
+    /// Clear every finished transfer from the queue (Transfers pane), discarding
+    /// their resumable `.aerotmp` leftovers.
+    ClearTransfers,
     Noop,
 }
 
@@ -43,6 +46,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Backspace => TuiAction::Parent,
         KeyCode::Char('n') => TuiAction::NewDir,
         KeyCode::Char('d') | KeyCode::Delete => TuiAction::Delete,
+        KeyCode::Char('D') => TuiAction::ClearTransfers,
         KeyCode::Char('r') => TuiAction::Rename,
         KeyCode::Char('g') => TuiAction::Download,
         KeyCode::Char('u') => TuiAction::Upload,

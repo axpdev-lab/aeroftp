@@ -152,6 +152,7 @@ impl AppState {
             TuiAction::Download => self.trigger_download(),
             TuiAction::Upload => self.trigger_upload(),
             TuiAction::CancelOp => self.cancel_operation(),
+            TuiAction::ClearTransfers => self.clear_transfers(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -406,11 +407,12 @@ impl AppState {
 
     fn trigger_delete(&mut self) -> Vec<WorkerCommand> {
         if matches!(self.focus, TuiFocus::Transfers) {
-            if self.transfers.remove_selected_if_finished() {
+            if let Some(local_path) = self.transfers.remove_selected_if_finished() {
                 self.status = "Removed finished transfer from the queue.".to_string();
-            } else {
-                self.status = "Active transfers cannot be removed; cancel them first.".to_string();
+                // Discarding the row also drops its resumable `.aerotmp` leftover.
+                return vec![WorkerCommand::DiscardPartial { local_path }];
             }
+            self.status = "Active transfers cannot be removed; cancel them first.".to_string();
             return Vec::new();
         }
         if !matches!(self.focus, TuiFocus::Browser) {
@@ -530,6 +532,25 @@ impl AppState {
         }
         self.status = "Nothing to cancel.".to_string();
         Vec::new()
+    }
+
+    /// Clear every finished transfer from the queue at once, discarding each
+    /// `.aerotmp` leftover. In-flight transfers are kept.
+    fn clear_transfers(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Transfers) {
+            self.status = "Switch to the Transfers pane to clear the queue.".to_string();
+            return Vec::new();
+        }
+        let discarded = self.transfers.clear_finished();
+        if discarded.is_empty() {
+            self.status = "No finished transfers to clear.".to_string();
+            return Vec::new();
+        }
+        self.status = format!("Cleared {} finished transfer(s).", discarded.len());
+        discarded
+            .into_iter()
+            .map(|local_path| WorkerCommand::DiscardPartial { local_path })
+            .collect()
     }
 
     pub fn overlay_active(&self) -> bool {
@@ -1880,5 +1901,71 @@ mod tests {
 
         assert_eq!(app.session.phase, TuiSessionPhase::Connected);
         assert!(app.is_live_connected());
+    }
+
+    #[test]
+    fn removing_a_finished_transfer_discards_its_partial() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown); // select readme.txt
+        app.apply_action(TuiAction::Download);
+        app.handle_overlay_key(OverlayKey::Submit); // id 1, default ./readme.txt
+        app.apply_worker_event(WorkerEvent::TransferDone {
+            id: 1,
+            message: "done".to_string(),
+        });
+
+        // `d` on a finished transfer removes the row AND asks the worker to drop
+        // its `.aerotmp` leftover.
+        let commands = app.apply_action(TuiAction::Delete);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::DiscardPartial {
+                local_path: "./readme.txt".to_string()
+            }]
+        );
+        assert!(app.transfers.items.is_empty());
+    }
+
+    #[test]
+    fn clear_transfers_drops_all_finished_and_discards_each_partial() {
+        let mut app = connected_app_with_listing();
+        app.focus = TuiFocus::Transfers;
+        let done = app.transfers.enqueue(
+            TransferDirection::Download,
+            "a.txt".to_string(),
+            "/srv/a.txt".to_string(),
+            "/tmp/a.txt".to_string(),
+        );
+        let cancelled = app.transfers.enqueue(
+            TransferDirection::Download,
+            "b.bin".to_string(),
+            "/srv/b.bin".to_string(),
+            "/tmp/b.bin".to_string(),
+        );
+        let active = app.transfers.enqueue(
+            TransferDirection::Upload,
+            "c.bin".to_string(),
+            "/srv/c.bin".to_string(),
+            "/tmp/c.bin".to_string(),
+        );
+        app.transfers.mark_done(done);
+        app.transfers.mark_cancelled(cancelled);
+
+        // `D` clears every finished row at once, discarding each partial; the
+        // in-flight transfer is kept.
+        let commands = app.apply_action(TuiAction::ClearTransfers);
+        assert_eq!(
+            commands,
+            vec![
+                WorkerCommand::DiscardPartial {
+                    local_path: "/tmp/a.txt".to_string()
+                },
+                WorkerCommand::DiscardPartial {
+                    local_path: "/tmp/b.bin".to_string()
+                },
+            ]
+        );
+        assert_eq!(app.transfers.items.len(), 1);
+        assert_eq!(app.transfers.items[0].id, active);
     }
 }
