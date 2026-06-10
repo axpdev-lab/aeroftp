@@ -9311,6 +9311,18 @@ fn build_tui_context(
                             .get("lastConnected")
                             .and_then(|v| v.as_str())
                             .and_then(format_time_ago),
+                        port: profile
+                            .get("port")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                            .min(u16::MAX as u64) as u16,
+                        endpoint: profile
+                            .get("options")
+                            .and_then(|o| o.get("endpoint"))
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string()),
+                        health: None,
                     }
                 })
                 .collect();
@@ -10105,6 +10117,47 @@ async fn run_cli_tui_worker(
                 if let Ok(store) = open_vault(cli) {
                     let _ = toggle_favorite_in_vault(&store, &profile_id);
                 }
+            }
+            WorkerCommand::HealthCheck {
+                profile_id,
+                host,
+                port,
+                protocol,
+                endpoint,
+            } => {
+                // Reuse the shared reachability probe (DNS/TCP/TLS/HTTP); no
+                // provider session is opened. The result drives the IntroHub dot.
+                let result = ftp_client_gui_lib::server_health::server_health_check(
+                    profile_id.clone(),
+                    host,
+                    port,
+                    protocol,
+                    endpoint,
+                )
+                .await;
+                let event = match result {
+                    Ok(r) => {
+                        let latency_ms = r
+                            .checks
+                            .iter()
+                            .filter_map(|c| c.latency_ms)
+                            .next_back()
+                            .map(|ms| ms.round() as u32);
+                        WorkerEvent::HealthReady {
+                            profile_id,
+                            status: r.status,
+                            score: r.score,
+                            latency_ms,
+                        }
+                    }
+                    Err(message) => WorkerEvent::HealthReady {
+                        profile_id,
+                        status: format!("error: {}", message),
+                        score: 0,
+                        latency_ms: None,
+                    },
+                };
+                let _ = event_tx.send(event);
             }
         }
     }

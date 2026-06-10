@@ -61,6 +61,20 @@ pub struct TuiProfile {
     /// Pre-formatted "last connected" label (the CLI `format_time_ago` output),
     /// or `None` when the profile was never connected.
     pub last_connected_label: Option<String>,
+    /// Connection details needed by the health probe (DNS/TCP/TLS). `port` is 0
+    /// when unknown; `endpoint` carries the S3/WebDAV override when present.
+    pub port: u16,
+    pub endpoint: Option<String>,
+    /// Latest reachability probe result (`H`), `None` until probed.
+    pub health: Option<TuiHealth>,
+}
+
+/// Outcome of a reachability probe, mirrored from `server_health::HealthCheckResult`.
+#[derive(Debug, Clone)]
+pub struct TuiHealth {
+    pub status: String, // "healthy" | "degraded" | "unreachable" | "error"
+    pub score: u8,
+    pub latency_ms: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -207,9 +221,10 @@ impl AppState {
                 }
                 Vec::new()
             }
-            // Favorite toggling only applies on the IntroHub (handled in
-            // introhub_apply); a no-op in the connected browser.
+            // Favorite toggling and health probes only apply on the IntroHub
+            // (handled in introhub_apply); a no-op in the connected browser.
             TuiAction::ToggleFavorite => Vec::new(),
+            TuiAction::HealthCheck => Vec::new(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -231,6 +246,8 @@ impl AppState {
             TuiAction::SwitchBrowserSide => Some(self.introhub_cycle_user(1)),
             // `f` toggles the favorite flag of the highlighted profile.
             TuiAction::ToggleFavorite => Some(self.introhub_toggle_favorite()),
+            // `H` probes reachability (health) of the highlighted profile.
+            TuiAction::HealthCheck => Some(self.introhub_check_health()),
             // Enter connects to the selected profile (or unlocks a locked user).
             TuiAction::Activate => Some(self.introhub_activate()),
             // Backspace/Parent is meaningless on the picker; swallow it.
@@ -313,6 +330,42 @@ impl AppState {
             format!("Removed '{}' from favorites.", name)
         };
         vec![WorkerCommand::ToggleFavorite { profile_id }]
+    }
+
+    /// Probe the highlighted profile's reachability. The TUI only requests the
+    /// probe (carrying the saved connection details); the worker runs the shared
+    /// `server_health_check` and reports a `HealthReady` event.
+    fn introhub_check_health(&mut self) -> Vec<WorkerCommand> {
+        // Copy the connection details out first so the status assignment below
+        // does not overlap the immutable borrow of the selected profile.
+        let Some((id, host, port, protocol, endpoint, name)) = self.selected_profile().map(|p| {
+            (
+                p.id.clone(),
+                p.host.clone(),
+                p.port,
+                p.protocol.clone(),
+                p.endpoint.clone(),
+                p.name.clone(),
+            )
+        }) else {
+            return Vec::new();
+        };
+        if id.is_empty() {
+            self.status = "This profile has no saved id; cannot probe health.".to_string();
+            return Vec::new();
+        }
+        if host.is_empty() {
+            self.status = "No host on this profile to probe.".to_string();
+            return Vec::new();
+        }
+        self.status = format!("Probing health of '{}'...", name);
+        vec![WorkerCommand::HealthCheck {
+            profile_id: id,
+            host,
+            port,
+            protocol,
+            endpoint,
+        }]
     }
 
     fn move_selection(&mut self, delta: isize) -> Vec<WorkerCommand> {
@@ -1154,6 +1207,34 @@ impl AppState {
                 // flip the phase off Connected and block every later operation.
                 self.status = format!("{} cancelled.", operation.label());
             }
+            WorkerEvent::HealthReady {
+                profile_id,
+                status,
+                score,
+                latency_ms,
+            } => {
+                let latency = *latency_ms;
+                let label = match latency {
+                    Some(ms) => format!("{} ({}) {}ms", status, score, ms),
+                    None => format!("{} ({})", status, score),
+                };
+                let mut applied = false;
+                for user in &mut self.context.users {
+                    for profile in &mut user.profiles {
+                        if profile.id == *profile_id {
+                            profile.health = Some(TuiHealth {
+                                status: status.clone(),
+                                score: *score,
+                                latency_ms: latency,
+                            });
+                            applied = true;
+                        }
+                    }
+                }
+                if applied {
+                    self.status = format!("Health: {}", label);
+                }
+            }
         }
         self.worker = event;
         follow_up
@@ -1275,7 +1356,8 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         | WorkerEvent::TransferDone { .. }
         | WorkerEvent::TransferFailed { .. }
         | WorkerEvent::TransferCancelled { .. }
-        | WorkerEvent::Cancelled { .. } => None,
+        | WorkerEvent::Cancelled { .. }
+        | WorkerEvent::HealthReady { .. } => None,
     }
 }
 
@@ -2154,6 +2236,41 @@ mod tests {
         let commands = app.apply_action(TuiAction::ToggleFavorite);
         assert!(commands.is_empty());
         assert!(!app.context.users[0].profiles[0].favorite);
+    }
+
+    #[test]
+    fn introhub_h_requests_a_health_probe_and_applies_the_result() {
+        let mut context = introhub_context();
+        context.users[0].profiles[0].id = "srv-1".to_string();
+        context.users[0].profiles[0].host = "nas.example.com".to_string();
+        context.users[0].profiles[0].port = 22;
+        let mut app = AppState::new_live(context);
+
+        let commands = app.apply_action(TuiAction::HealthCheck);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::HealthCheck {
+                profile_id: "srv-1".to_string(),
+                host: "nas.example.com".to_string(),
+                port: 22,
+                protocol: "sftp".to_string(),
+                endpoint: None,
+            }]
+        );
+
+        app.apply_worker_event(WorkerEvent::HealthReady {
+            profile_id: "srv-1".to_string(),
+            status: "healthy".to_string(),
+            score: 97,
+            latency_ms: Some(42),
+        });
+        let health = app.context.users[0].profiles[0]
+            .health
+            .as_ref()
+            .expect("health applied");
+        assert_eq!(health.status, "healthy");
+        assert_eq!(health.score, 97);
+        assert_eq!(health.latency_ms, Some(42));
     }
 
     #[test]

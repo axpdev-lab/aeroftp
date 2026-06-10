@@ -437,7 +437,7 @@ fn render_introhub_table(
     };
 
     let widths = [
-        Constraint::Length(3),
+        Constraint::Length(4),
         Constraint::Min(12),
         Constraint::Length(8),
         Constraint::Min(18),
@@ -517,8 +517,16 @@ fn introhub_table_row(profile: &TuiProfile, app: &AppState, theme: TuiTheme) -> 
 
     let fav = if profile.favorite { "\u{2605}" } else { "" };
 
+    // The leading cell carries a reachability dot (once probed with `H`) next to
+    // the selector number.
+    let (dot_glyph, dot_style) = health_glyph_style(profile.health.as_ref(), theme);
+    let selector_cell = Cell::from(Line::from(vec![
+        Span::styled(dot_glyph, dot_style),
+        Span::styled(format!(" {}", profile.selector), theme.muted_style()),
+    ]));
+
     Row::new(vec![
-        Cell::from(Span::styled(profile.selector.clone(), theme.muted_style())),
+        selector_cell,
         Cell::from(Span::styled(
             profile.name.clone(),
             Style::default().add_modifier(Modifier::BOLD),
@@ -534,6 +542,22 @@ fn introhub_table_row(profile: &TuiProfile, app: &AppState, theme: TuiTheme) -> 
         last_cell,
         Cell::from(Span::styled(fav, theme.accent_style())),
     ])
+}
+
+/// Reachability dot for a profile: filled when probed (green/amber/red by
+/// status), hollow when not yet probed.
+fn health_glyph_style(health: Option<&app::TuiHealth>, theme: TuiTheme) -> (&'static str, Style) {
+    match health {
+        None => ("\u{25cc}", theme.muted_style()), // hollow circle: not probed
+        Some(h) => {
+            let color = match h.status.as_str() {
+                "healthy" => theme.ready,
+                "degraded" => theme.planned,
+                _ => Color::Red, // unreachable / error
+            };
+            ("\u{25cf}", Style::default().fg(color)) // filled circle
+        }
+    }
 }
 
 fn render_introhub_detail(
@@ -631,6 +655,21 @@ fn render_introhub_detail(
                             Span::raw(last),
                         ]
                     }),
+                    Line::from({
+                        let (glyph, style) = health_glyph_style(profile.health.as_ref(), theme);
+                        let text = match &profile.health {
+                            Some(h) => match h.latency_ms {
+                                Some(ms) => format!(" {} ({}) {}ms", h.status, h.score, ms),
+                                None => format!(" {} ({})", h.status, h.score),
+                            },
+                            None => " not probed (press H)".to_string(),
+                        };
+                        vec![
+                            Span::styled("Health:  ", theme.muted_style()),
+                            Span::styled(glyph, style),
+                            Span::raw(text),
+                        ]
+                    }),
                 ]
             }
             None => vec![Line::from(Span::styled(
@@ -666,6 +705,8 @@ fn render_introhub_footer(
             Span::raw(" connect   "),
             Span::styled("f", theme.accent_style()),
             Span::raw(" favorite   "),
+            Span::styled("H", theme.accent_style()),
+            Span::raw(" health   "),
             Span::styled("s", theme.accent_style()),
             Span::raw(" show creds   "),
             Span::styled("q", theme.accent_style()),
@@ -1038,6 +1079,13 @@ mod render_tests {
             used: Some(3 * 1024 * 1024 * 1024),
             total: Some(10 * 1024 * 1024 * 1024),
             last_connected_label: Some("2d ago".to_string()),
+            port: 22,
+            endpoint: None,
+            health: Some(crate::cli_tui::app::TuiHealth {
+                status: "healthy".to_string(),
+                score: 98,
+                latency_ms: Some(41),
+            }),
         };
         TuiContext {
             users: vec![TuiUser {
@@ -1082,6 +1130,7 @@ mod render_tests {
         assert!(text.contains("GB"), "cached quota size rendered");
         assert!(text.contains("30%"), "usage percent rendered");
         assert!(text.contains("2d ago"), "last-connected label rendered");
+        assert!(text.contains("healthy"), "health status rendered in detail");
 
         // Tiny terminal must not panic (Length(1)/Min layouts, Table widths).
         let mut tiny = Terminal::new(TestBackend::new(20, 4)).unwrap();

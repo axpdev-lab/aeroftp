@@ -93,6 +93,16 @@ pub enum WorkerCommand {
     ToggleFavorite {
         profile_id: String,
     },
+    /// Probe reachability of a saved profile (DNS/TCP/TLS/HTTP) via the shared
+    /// `server_health_check`, without opening a provider session. Reports back a
+    /// `HealthReady` event the IntroHub renders as a status dot.
+    HealthCheck {
+        profile_id: String,
+        host: String,
+        port: u16,
+        protocol: String,
+        endpoint: Option<String>,
+    },
 }
 
 impl WorkerCommand {
@@ -114,6 +124,7 @@ impl WorkerCommand {
                 TuiWorkerOperation::List
             }
             WorkerCommand::ToggleFavorite { .. } => TuiWorkerOperation::Favorite,
+            WorkerCommand::HealthCheck { .. } => TuiWorkerOperation::Health,
         }
     }
 }
@@ -131,6 +142,7 @@ pub enum TuiWorkerOperation {
     Cancel,
     Discard,
     Favorite,
+    Health,
 }
 
 impl TuiWorkerOperation {
@@ -146,6 +158,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Cancel => "cancel",
             TuiWorkerOperation::Discard => "discard",
             TuiWorkerOperation::Favorite => "favorite",
+            TuiWorkerOperation::Health => "health",
         }
     }
 }
@@ -202,6 +215,13 @@ pub enum WorkerEvent {
     Cancelled {
         operation: TuiWorkerOperation,
     },
+    /// Result of a [`WorkerCommand::HealthCheck`] probe for a saved profile.
+    HealthReady {
+        profile_id: String,
+        status: String,
+        score: u8,
+        latency_ms: Option<u32>,
+    },
 }
 
 impl WorkerEvent {
@@ -227,6 +247,9 @@ impl WorkerEvent {
             WorkerEvent::TransferCancelled { id } => format!("transfer #{} cancelled", id),
             WorkerEvent::Failed { operation, .. } => format!("{} failed", operation.label()),
             WorkerEvent::Cancelled { operation } => format!("{} cancelled", operation.label()),
+            WorkerEvent::HealthReady {
+                profile_id, status, ..
+            } => format!("health {} {}", profile_id, status),
         }
     }
 }
