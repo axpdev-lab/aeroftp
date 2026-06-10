@@ -6,9 +6,14 @@ pub mod crypto;
 pub mod endpoint;
 pub mod protocol;
 
-pub use crypto::{decode_secret, derive_drive_key, derive_session_key, encode_secret, encrypt_blob, generate_pairing_secret, decrypt_blob, PAIRING_SECRET_LEN};
+pub use crypto::{
+    decode_secret, decrypt_blob, derive_drive_key, derive_session_key, encode_secret, encrypt_blob,
+    generate_pairing_secret, PAIRING_SECRET_LEN,
+};
 pub use endpoint::{PeerBlobOffer, PeerEndpoint, PeerEndpointConfig};
-pub use protocol::{recv_blob, recv_encrypted_blob, recv_offer, send_blob, send_encrypted_blob, send_offer};
+pub use protocol::{
+    recv_blob, recv_encrypted_blob, recv_offer, send_blob, send_encrypted_blob, send_offer,
+};
 
 pub use crate::endpoint::ConnectivitySample;
 

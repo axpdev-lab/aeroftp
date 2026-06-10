@@ -120,7 +120,10 @@ pub async fn recv_encrypted_blob(
     if offer.size > MAX_BLOB_FOR_GATE {
         bail!("blob larger than L0 gate safety cap");
     }
-    let (mut send, mut recv) = conn.accept_bi().await.context("accept_bi for encrypted blob data")?;
+    let (mut send, mut recv) = conn
+        .accept_bi()
+        .await
+        .context("accept_bi for encrypted blob data")?;
 
     let mut nonce = [0u8; 12];
     recv.read_exact(&mut nonce).await?;
@@ -140,7 +143,11 @@ pub async fn recv_encrypted_blob(
     // Now verify the plaintext matches the hash the sender offered.
     let computed = Hash::new(&plaintext);
     if computed != offer.hash {
-        bail!("BLAKE3 mismatch after decryption: got {}, expected {}", computed, offer.hash);
+        bail!(
+            "BLAKE3 mismatch after decryption: got {}, expected {}",
+            computed,
+            offer.hash
+        );
     }
 
     // Receipt confirmed (decrypt + BLAKE3 verified): ACK the sender on the return

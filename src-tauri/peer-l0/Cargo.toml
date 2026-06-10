@@ -7,15 +7,26 @@ publish = false
 description = "AeroFTP Peer L0 spike — isolated iroh transport experiment (T-PEER)"
 license = "GPL-3.0-or-later"
 
+# Own workspace root: keeps this spike crate out of any parent workspace (its
+# Cargo.lock stays authoritative for standalone builds, and a future
+# `--workspace` lint/test invocation in src-tauri cannot pull this crate in).
+# NOTE it does NOT shield from `cargo fmt --all`: cargo-fmt formats local
+# path dependencies regardless of workspace boundaries (verified WI-3b on
+# both machines), so from the moment the app gains a path dep on this crate
+# (WI-3c) this crate must STAY rustfmt-clean. It is, since WI-3b.
+[workspace]
+
 [[bin]]
 name = "peer-l0-dial"
 path = "src/main.rs"
 
 [dependencies]
-# The whole point of this tiny isolated crate: we can pull recent iroh without
-# fighting the russh =0.60.3 aead pin that lives in the main aeroftp crate.
-# Pinned versions that (hopefully) build on rust 1.85 without pulling in
-# broken ed25519-dalek / pkcs8 combinations that some 0.9x iroh releases expose.
+# Historical isolation premise: pull recent iroh without fighting the app's
+# russh aead pin. WI-3a (2026-06-10) DISPROVED the conflict: russh 0.60.3 sits
+# on the RC crypto lineage via its forked ssh-key, iroh on the stable one, and
+# both already coexist in the app graph (cargo check green with iroh added).
+# The crate stays isolated for sequencing/lint reasons, not dependency ones;
+# convergence is planned as WI-3c (path dep + audit ruling on iroh's graph).
 iroh = "0.92"
 iroh-blobs = "0.94"
 iroh-docs = "0.92"

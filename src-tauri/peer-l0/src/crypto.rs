@@ -105,9 +105,9 @@ pub fn decrypt_blob(key: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Result<V
     let cipher = Aes256Gcm::new(key);
     let nonce = Nonce::from_slice(nonce);
 
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|e| anyhow::anyhow!("aes-gcm decryption failed (wrong secret or corrupted data): {e}"))?;
+    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|e| {
+        anyhow::anyhow!("aes-gcm decryption failed (wrong secret or corrupted data): {e}")
+    })?;
 
     Ok(plaintext)
 }

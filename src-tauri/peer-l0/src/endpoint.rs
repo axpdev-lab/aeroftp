@@ -88,7 +88,10 @@ impl PeerEndpoint {
             let _ = addr; // ignored for maximum compatibility in L0
         }
 
-        let endpoint = builder.bind().await.context("failed to bind iroh endpoint")?;
+        let endpoint = builder
+            .bind()
+            .await
+            .context("failed to bind iroh endpoint")?;
         let node_id = endpoint.node_id();
 
         info!(%node_id, "PeerEndpoint (L0 isolated) ready");
@@ -252,9 +255,7 @@ pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
         }
         _ => iroh::RelayMode::Staging,
     };
-    let builder = Endpoint::builder()
-        .relay_mode(relay_mode)
-        .discovery_n0();
+    let builder = Endpoint::builder().relay_mode(relay_mode).discovery_n0();
 
     // bind_addr is best-effort / ignored for 0.92 compat (same as L0)
     if let Some(_addr) = cfg.bind_addr {
