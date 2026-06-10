@@ -74,6 +74,7 @@ pub mod delta_transport;
 #[cfg(feature = "aerorsync")]
 pub mod local_sync;
 mod number_parsing;
+pub mod peer;
 pub mod peer_identity;
 pub mod portable;
 pub mod profile_loader;

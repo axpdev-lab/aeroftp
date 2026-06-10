@@ -60,3 +60,27 @@ Drop all five ignores when iroh ships a release that both (a) resolves with russ
 the resolution experiments are archived on the NAS at
 `linux-station/reports/wi3c-rustsec-investigation-2026-06-10.md` and
 `linux-station/auto/wi3/wi3c-audit-full.txt`.
+
+## WI-3d update (2026-06-10): iroh is now a SHIPPED dependency
+
+As of WI-3d the L1 drive engine was moved into the `aeroftp-peer-l0` crate library and
+`aeroftp-peer-l0` was promoted from `[dev-dependencies]` to a NORMAL `[dependencies]` of the app
+(`src-tauri/Cargo.toml`), called via the in-app facade `src-tauri/src/peer/`. **Consequence: the
+iroh P2P stack (~100 transitive crates) and therefore these five advisories now ship in the release
+binary, not only in the test build (as they did at WI-3c).**
+
+Nothing else changed about the risk assessment:
+- The set of advisories is **UNCHANGED** (the same five IDs: RUSTSEC-2026-0118, -2026-0119,
+  -2026-0002, -2023-0089, -2024-0436); `cargo audit` reports 0 vulnerabilities / 0 denied with
+  exactly these five ignored, identical count to WI-3c.
+- The **per-ID reachability arguments above are UNCHANGED** (DNSSEC/NSEC3 path not compiled;
+  quadratic-encode only on large server-side messages; lru/pkarr cache fed no untrusted input;
+  paste/atomic-polyfill are build-time/unmaintained, not vulnerabilities).
+- The **exit path is UNCHANGED**: drop all five ignores when iroh ships a release that resolves with
+  russh 0.60+ AND uses hickory-proto >= 0.26.1.
+
+The promotion was an owner-approved, deliberate step (the P2P drive must run inside the app for the
+WI-4d CLI). iroh stays confined behind the `aeroftp-peer-l0` crate boundary; the app reaches it only
+through `src/peer/` and `tests/peer_link.rs`. `cargo tree -i iroh -e normal` from `src-tauri/` shows
+the normal-edge path `aeroftp -> aeroftp-peer-l0 -> iroh`, confirming iroh is a shipped (non-dev)
+dependency as of WI-3d.
