@@ -4707,7 +4707,9 @@
                 "colBytes": "Byteak",
                 "colAction": "Ekintza"
             },
-            "launcherScheduler": "Antolatzailea"
+            "launcherScheduler": "Antolatzailea",
+            "errorCorrection": "Erroreen zuzenketa",
+            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerorec paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

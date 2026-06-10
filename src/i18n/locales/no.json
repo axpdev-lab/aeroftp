@@ -4707,7 +4707,9 @@
                 "colBytes": "Byte",
                 "colAction": "Handling"
             },
-            "launcherScheduler": "Planlegger"
+            "launcherScheduler": "Planlegger",
+            "errorCorrection": "Feilkorreksjon",
+            "errorCorrectionHint": "Lagrer en liten .aerorec-paritetsfil ved siden av hver sikkerhetskopiert fil, slik at en fjernkopi ødelagt av bit-rot kan repareres ved neste pull, uten originalen."
         },
         "accountLock": {
             "title": "Velg en konto",

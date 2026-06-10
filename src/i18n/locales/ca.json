@@ -4707,7 +4707,9 @@
                 "colBytes": "Bytes",
                 "colAction": "Acció"
             },
-            "launcherScheduler": "Planificador"
+            "launcherScheduler": "Planificador",
+            "errorCorrection": "Correcció d'errors",
+            "errorCorrectionHint": "Desa un petit fitxer de paritat .aerorec al costat de cada fitxer de còpia de seguretat, de manera que una còpia remota malmesa per bit-rot es pugui reparar en el següent pull, sense l'original."
         },
         "accountLock": {
             "title": "Trieu un compte",

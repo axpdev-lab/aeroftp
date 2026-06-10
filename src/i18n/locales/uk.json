@@ -4688,7 +4688,9 @@
                 "colBytes": "Байти",
                 "colAction": "Дія"
             },
-            "launcherScheduler": "Планувальник"
+            "launcherScheduler": "Планувальник",
+            "errorCorrection": "Корекція помилок",
+            "errorCorrectionHint": "Зберігає невеликий файл парності .aerorec поруч із кожним резервним файлом, щоб віддалену копію, пошкоджену bit-rot, можна було відновити під час наступного pull без оригіналу."
         },
         "accountLock": {
             "title": "Виберіть обліковий запис",

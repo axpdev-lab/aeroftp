@@ -4688,7 +4688,9 @@
                 "colBytes": "Bajty",
                 "colAction": "Akcja"
             },
-            "launcherScheduler": "Harmonogram"
+            "launcherScheduler": "Harmonogram",
+            "errorCorrection": "Korekcja błędów",
+            "errorCorrectionHint": "Zapisuje mały plik parzystości .aerorec obok każdego pliku kopii zapasowej, dzięki czemu zdalną kopię uszkodzoną przez bit-rot można naprawić przy następnym pobraniu, bez oryginału."
         },
         "accountLock": {
             "title": "Wybierz konto",

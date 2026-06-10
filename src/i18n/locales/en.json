@@ -4728,6 +4728,8 @@
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Extreme",
             "speedModeHint": "Parallel streams + compression preset applied to the run.",
+            "errorCorrection": "Error Correction",
+            "errorCorrectionHint": "Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original.",
             "verifyPolicy": "Verify policy",
             "verifyPolicy_none": "None",
             "verifyPolicy_size_only": "Size only",

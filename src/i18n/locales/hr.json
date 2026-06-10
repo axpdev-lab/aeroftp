@@ -4688,7 +4688,9 @@
                 "colBytes": "Bajtova",
                 "colAction": "Radnja"
             },
-            "launcherScheduler": "Raspoređivač"
+            "launcherScheduler": "Raspoređivač",
+            "errorCorrection": "Ispravak pogrešaka",
+            "errorCorrectionHint": "Sprema malu .aerorec datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika."
         },
         "accountLock": {
             "title": "Odaberite račun",

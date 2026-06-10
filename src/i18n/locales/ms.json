@@ -4688,7 +4688,9 @@
                 "colBytes": "Bait",
                 "colAction": "Tindakan"
             },
-            "launcherScheduler": "Penjadual"
+            "launcherScheduler": "Penjadual",
+            "errorCorrection": "Pembetulan Ralat",
+            "errorCorrectionHint": "Menyimpan fail pariti .aerorec kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal."
         },
         "accountLock": {
             "title": "Pilih akaun",

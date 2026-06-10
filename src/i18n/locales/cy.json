@@ -4707,7 +4707,9 @@
                 "colBytes": "Beitiau",
                 "colAction": "Gweithred"
             },
-            "launcherScheduler": "Trefnydd"
+            "launcherScheduler": "Trefnydd",
+            "errorCorrection": "Cywiro Gwallau",
+            "errorCorrectionHint": "Yn cadw ffeil baredd .aerorec fach wrth ymyl pob ffeil wrth gefn, fel y gellir trwsio copi pell sydd wedi pydru-did ar y pull nesaf, heb y gwreiddiol."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

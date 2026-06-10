@@ -4688,7 +4688,9 @@
                 "colBytes": "바이트",
                 "colAction": "작업"
             },
-            "launcherScheduler": "스케줄러"
+            "launcherScheduler": "스케줄러",
+            "errorCorrection": "오류 정정",
+            "errorCorrectionHint": "백업된 각 파일 옆에 작은 .aerorec 패리티 파일을 저장하여, bit-rot으로 손상된 원격 복사본을 원본 없이 다음 pull 시 복구할 수 있도록 합니다."
         },
         "accountLock": {
             "title": "계정 선택",

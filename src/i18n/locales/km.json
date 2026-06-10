@@ -4707,7 +4707,9 @@
                 "colBytes": "បៃ",
                 "colAction": "សកម្មភាព"
             },
-            "launcherScheduler": "កាលវិភាគ"
+            "launcherScheduler": "កាលវិភាគ",
+            "errorCorrection": "ការកែកំហុស",
+            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerorec តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។"
         },
         "accountLock": {
             "title": "ជ្រើសរើសគណនី",

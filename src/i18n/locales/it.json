@@ -4693,6 +4693,8 @@
             "speedMode_turbo": "Turbo",
             "speedMode_extreme": "Estrema",
             "speedModeHint": "Stream paralleli + preset di compressione applicato all'esecuzione.",
+            "errorCorrection": "Correzione errori",
+            "errorCorrectionHint": "Salva un piccolo file di parità .aerorec accanto a ogni file di backup, così una copia remota corrotta da bit-rot può essere riparata al prossimo pull, senza l'originale.",
             "verifyPolicy": "Policy di verifica",
             "verifyPolicy_none": "Nessuna",
             "verifyPolicy_size_only": "Solo dimensione",

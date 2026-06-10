@@ -4688,7 +4688,9 @@
                 "colBytes": "Bayt",
                 "colAction": "Eylem"
             },
-            "launcherScheduler": "Zamanlayıcı"
+            "launcherScheduler": "Zamanlayıcı",
+            "errorCorrection": "Hata Düzeltme",
+            "errorCorrectionHint": "Her yedeklenen dosyanın yanına küçük bir .aerorec eşlik dosyası kaydeder, böylece bit-rot nedeniyle bozulmuş uzak bir kopya, orijinali olmadan bir sonraki pull işleminde onarılabilir."
         },
         "accountLock": {
             "title": "Bir hesap seçin",

@@ -4688,7 +4688,9 @@
                 "colBytes": "Bajty",
                 "colAction": "Akcia"
             },
-            "launcherScheduler": "Plánovač"
+            "launcherScheduler": "Plánovač",
+            "errorCorrection": "Oprava chýb",
+            "errorCorrectionHint": "Uloží malý paritný súbor .aerorec vedľa každého zálohovaného súboru, takže vzdialenú kópiu poškodenú bit-rotom možno opraviť pri ďalšom stiahnutí, bez originálu."
         },
         "accountLock": {
             "title": "Vyberte účet",

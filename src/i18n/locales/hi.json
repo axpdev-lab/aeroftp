@@ -4688,7 +4688,9 @@
                 "colBytes": "बाइट्स",
                 "colAction": "क्रिया"
             },
-            "launcherScheduler": "अनुसूचक"
+            "launcherScheduler": "अनुसूचक",
+            "errorCorrection": "त्रुटि सुधार",
+            "errorCorrectionHint": "प्रत्येक बैकअप फ़ाइल के बगल में एक छोटी .aerorec पैरिटी फ़ाइल संग्रहीत करता है, ताकि bit-rot से क्षतिग्रस्त रिमोट कॉपी को मूल के बिना अगले pull पर ठीक किया जा सके।"
         },
         "accountLock": {
             "title": "एक खाता चुनें",

@@ -4688,7 +4688,9 @@
                 "colBytes": "字节",
                 "colAction": "操作"
             },
-            "launcherScheduler": "调度器"
+            "launcherScheduler": "调度器",
+            "errorCorrection": "纠错",
+            "errorCorrectionHint": "在每个备份文件旁存储一个小的 .aerorec 校验文件，使因位衰减（bit-rot）损坏的远程副本能在下次拉取时无需原件即可修复。"
         },
         "accountLock": {
             "title": "选择一个账户",

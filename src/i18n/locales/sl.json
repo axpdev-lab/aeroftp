@@ -4688,7 +4688,9 @@
                 "colBytes": "Bajti",
                 "colAction": "Dejanje"
             },
-            "launcherScheduler": "Razporejevalnik"
+            "launcherScheduler": "Razporejevalnik",
+            "errorCorrection": "Popravljanje napak",
+            "errorCorrectionHint": "Shrani majhno paritetno datoteko .aerorec poleg vsake varnostne kopije, tako da je oddaljeno kopijo, poškodovano zaradi bit-rota, mogoče popraviti ob naslednjem prenosu, brez izvirnika."
         },
         "accountLock": {
             "title": "Izberite račun",

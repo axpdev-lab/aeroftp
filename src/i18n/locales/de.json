@@ -4688,7 +4688,9 @@
                 "colBytes": "Bytes",
                 "colAction": "Aktion"
             },
-            "launcherScheduler": "Planer"
+            "launcherScheduler": "Planer",
+            "errorCorrection": "Fehlerkorrektur",
+            "errorCorrectionHint": "Speichert eine kleine .aerorec-Paritätsdatei neben jeder gesicherten Datei, sodass eine durch Bit-Rot beschädigte Remote-Kopie beim nächsten Pull ohne das Original repariert werden kann."
         },
         "accountLock": {
             "title": "Konto auswählen",

@@ -4688,7 +4688,9 @@
                 "colBytes": "Byte",
                 "colAction": "Hành động"
             },
-            "launcherScheduler": "Bộ lập lịch"
+            "launcherScheduler": "Bộ lập lịch",
+            "errorCorrection": "Sửa lỗi",
+            "errorCorrectionHint": "Lưu một tệp chẵn lẻ .aerorec nhỏ bên cạnh mỗi tệp sao lưu, để một bản sao từ xa bị hỏng do bit-rot có thể được sửa chữa ở lần pull tiếp theo mà không cần bản gốc."
         },
         "accountLock": {
             "title": "Chọn tài khoản",

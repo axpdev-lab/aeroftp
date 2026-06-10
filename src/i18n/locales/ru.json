@@ -4688,7 +4688,9 @@
                 "colBytes": "Байты",
                 "colAction": "Действие"
             },
-            "launcherScheduler": "Планировщик"
+            "launcherScheduler": "Планировщик",
+            "errorCorrection": "Коррекция ошибок",
+            "errorCorrectionHint": "Сохраняет небольшой файл чётности .aerorec рядом с каждым резервным файлом, чтобы удалённую копию, повреждённую bit-rot, можно было восстановить при следующем pull без оригинала."
         },
         "accountLock": {
             "title": "Выберите аккаунт",

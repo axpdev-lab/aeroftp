@@ -4688,7 +4688,9 @@
                 "colBytes": "Octets",
                 "colAction": "Action"
             },
-            "launcherScheduler": "Planificateur"
+            "launcherScheduler": "Planificateur",
+            "errorCorrection": "Correction d'erreurs",
+            "errorCorrectionHint": "Enregistre un petit fichier de parité .aerorec à côté de chaque fichier sauvegardé, afin qu'une copie distante endommagée par le bit-rot puisse être réparée lors du prochain pull, sans l'original."
         },
         "accountLock": {
             "title": "Choisissez un compte",

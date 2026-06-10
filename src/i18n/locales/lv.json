@@ -4688,7 +4688,9 @@
                 "colBytes": "Baiti",
                 "colAction": "Darbība"
             },
-            "launcherScheduler": "Plānotājs"
+            "launcherScheduler": "Plānotājs",
+            "errorCorrection": "Kļūdu labošana",
+            "errorCorrectionHint": "Saglabā nelielu .aerorec paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla."
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

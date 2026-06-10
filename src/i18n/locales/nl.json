@@ -4688,7 +4688,9 @@
                 "colBytes": "Bytes",
                 "colAction": "Actie"
             },
-            "launcherScheduler": "Planner"
+            "launcherScheduler": "Planner",
+            "errorCorrection": "Foutcorrectie",
+            "errorCorrectionHint": "Slaat een klein .aerorec-pariteitsbestand op naast elk back-upbestand, zodat een door bit-rot beschadigde externe kopie bij de volgende pull kan worden hersteld, zonder het origineel."
         },
         "accountLock": {
             "title": "Kies een account",

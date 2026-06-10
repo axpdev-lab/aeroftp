@@ -4688,7 +4688,9 @@
                 "colBytes": "বাইট",
                 "colAction": "ক্রিয়া"
             },
-            "launcherScheduler": "শিডিউলার"
+            "launcherScheduler": "শিডিউলার",
+            "errorCorrection": "ত্রুটি সংশোধন",
+            "errorCorrectionHint": "প্রতিটি ব্যাকআপ ফাইলের পাশে একটি ছোট .aerorec প্যারিটি ফাইল সংরক্ষণ করে, যাতে bit-rot দ্বারা ক্ষতিগ্রস্ত একটি দূরবর্তী কপি মূল ছাড়াই পরবর্তী pull-এ মেরামত করা যায়।"
         },
         "accountLock": {
             "title": "একটি অ্যাকাউন্ট বেছে নিন",

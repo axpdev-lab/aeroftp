@@ -4688,7 +4688,9 @@
                 "colBytes": "Bájt",
                 "colAction": "Művelet"
             },
-            "launcherScheduler": "Ütemező"
+            "launcherScheduler": "Ütemező",
+            "errorCorrection": "Hibajavítás",
+            "errorCorrectionHint": "Egy kis .aerorec paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül."
         },
         "accountLock": {
             "title": "Válasszon fiókot",

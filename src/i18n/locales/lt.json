@@ -4688,7 +4688,9 @@
                 "colBytes": "Baitai",
                 "colAction": "Veiksmas"
             },
-            "launcherScheduler": "Tvarkaraštis"
+            "launcherScheduler": "Tvarkaraštis",
+            "errorCorrection": "Klaidų taisymas",
+            "errorCorrectionHint": "Šalia kiekvieno atsarginio failo išsaugo mažą .aerorec lygiškumo failą, kad bit-rot pažeistą nuotolinę kopiją būtų galima atkurti kito atsisiuntimo metu be originalo."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

@@ -4688,7 +4688,9 @@
                 "colBytes": "Octeți",
                 "colAction": "Acțiune"
             },
-            "launcherScheduler": "Planificator"
+            "launcherScheduler": "Planificator",
+            "errorCorrection": "Corectarea erorilor",
+            "errorCorrectionHint": "Salvează un mic fișier de paritate .aerorec lângă fiecare fișier de backup, astfel încât o copie la distanță deteriorată de bit-rot să poată fi reparată la următoarea descărcare, fără original."
         },
         "accountLock": {
             "title": "Alegeți un cont",

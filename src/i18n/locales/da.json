@@ -4688,7 +4688,9 @@
                 "colBytes": "Byte",
                 "colAction": "Handling"
             },
-            "launcherScheduler": "Planlægger"
+            "launcherScheduler": "Planlægger",
+            "errorCorrection": "Fejlkorrektion",
+            "errorCorrectionHint": "Gemmer en lille .aerorec-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen."
         },
         "accountLock": {
             "title": "Vælg en konto",

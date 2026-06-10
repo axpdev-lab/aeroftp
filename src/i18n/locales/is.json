@@ -4707,7 +4707,9 @@
                 "colBytes": "Bæti",
                 "colAction": "Aðgerð"
             },
-            "launcherScheduler": "Tímaáætlun"
+            "launcherScheduler": "Tímaáætlun",
+            "errorCorrection": "Villuleiðrétting",
+            "errorCorrectionHint": "Vistar litla .aerorec jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins."
         },
         "accountLock": {
             "title": "Veldu reikning",

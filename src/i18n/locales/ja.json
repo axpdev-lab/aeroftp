@@ -4688,7 +4688,9 @@
                 "colBytes": "バイト",
                 "colAction": "操作"
             },
-            "launcherScheduler": "スケジューラ"
+            "launcherScheduler": "スケジューラ",
+            "errorCorrection": "エラー訂正",
+            "errorCorrectionHint": "バックアップされた各ファイルの隣に小さな .aerorec パリティファイルを保存し、bit-rot で破損したリモートコピーを元ファイルなしで次回の pull 時に修復できるようにします。"
         },
         "accountLock": {
             "title": "アカウントを選択",

@@ -4688,7 +4688,9 @@
                 "colBytes": "Tavua",
                 "colAction": "Toiminto"
             },
-            "launcherScheduler": "Ajastin"
+            "launcherScheduler": "Ajastin",
+            "errorCorrection": "Virheenkorjaus",
+            "errorCorrectionHint": "Tallentaa pienen .aerorec-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä."
         },
         "accountLock": {
             "title": "Valitse tili",

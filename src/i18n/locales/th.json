@@ -4688,7 +4688,9 @@
                 "colBytes": "ไบต์",
                 "colAction": "การกระทำ"
             },
-            "launcherScheduler": "ตัวกำหนดเวลา"
+            "launcherScheduler": "ตัวกำหนดเวลา",
+            "errorCorrection": "การแก้ไขข้อผิดพลาด",
+            "errorCorrectionHint": "จัดเก็บไฟล์พาริตี .aerorec ขนาดเล็กไว้ข้างไฟล์สำรองข้อมูลแต่ละไฟล์ เพื่อให้สำเนาระยะไกลที่เสียหายจาก bit-rot สามารถซ่อมแซมได้ในการ pull ครั้งถัดไป โดยไม่ต้องมีต้นฉบับ"
         },
         "accountLock": {
             "title": "เลือกบัญชี",

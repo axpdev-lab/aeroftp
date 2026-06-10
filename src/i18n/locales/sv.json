@@ -4688,7 +4688,9 @@
                 "colBytes": "Byte",
                 "colAction": "Åtgärd"
             },
-            "launcherScheduler": "Schemaläggare"
+            "launcherScheduler": "Schemaläggare",
+            "errorCorrection": "Felkorrigering",
+            "errorCorrectionHint": "Sparar en liten .aerorec-paritetsfil bredvid varje säkerhetskopierad fil, så att en fjärrkopia skadad av bit-rot kan repareras vid nästa hämtning, utan originalet."
         },
         "accountLock": {
             "title": "Välj ett konto",

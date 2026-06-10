@@ -4688,7 +4688,9 @@
                 "colBytes": "Byte",
                 "colAction": "Tindakan"
             },
-            "launcherScheduler": "Penjadwal"
+            "launcherScheduler": "Penjadwal",
+            "errorCorrection": "Koreksi Kesalahan",
+            "errorCorrectionHint": "Menyimpan file paritas .aerorec kecil di samping setiap file cadangan, sehingga salinan jarak jauh yang rusak karena bit-rot dapat diperbaiki pada pull berikutnya, tanpa aslinya."
         },
         "accountLock": {
             "title": "Pilih akun",

@@ -4688,7 +4688,9 @@
                 "colBytes": "Bytes",
                 "colAction": "Acción"
             },
-            "launcherScheduler": "Programador"
+            "launcherScheduler": "Programador",
+            "errorCorrection": "Corrección de errores",
+            "errorCorrectionHint": "Guarda un pequeño archivo de paridad .aerorec junto a cada archivo de copia de seguridad, para que una copia remota dañada por bit-rot pueda repararse en el siguiente pull, sin el original."
         },
         "accountLock": {
             "title": "Elige una cuenta",

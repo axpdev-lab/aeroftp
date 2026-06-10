@@ -4707,7 +4707,9 @@
                 "colBytes": "Bytes",
                 "colAction": "Aksyon"
             },
-            "launcherScheduler": "Tagaplano"
+            "launcherScheduler": "Tagaplano",
+            "errorCorrection": "Pagwawasto ng Error",
+            "errorCorrectionHint": "Nag-iimbak ng maliit na .aerorec parity file sa tabi ng bawat naka-backup na file, upang ang isang remote na kopyang nasira ng bit-rot ay maaayos sa susunod na pull, nang walang orihinal."
         },
         "accountLock": {
             "title": "Pumili ng account",
