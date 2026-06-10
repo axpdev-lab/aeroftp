@@ -140,6 +140,57 @@ describe('remoteSyncRunner — copy legs', () => {
     });
 });
 
+describe('remoteSyncRunner — error correction sidecars', () => {
+    it('generates a sidecar after a successful upload without changing transfer success', async () => {
+        const { invoke, calls } = makeInvoke({
+            sync_ec_generate: () => ({ status: 'generated' }),
+        });
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig({ errorCorrection: { enabled: true, pct: 20 } }),
+            {},
+            noWaitDeps(invoke),
+        );
+
+        expect(report.uploaded).toBe(1);
+        expect(report.ec_generated).toBe(1);
+        const ecCall = calls.find((c) => c.cmd === 'sync_ec_generate');
+        expect(ecCall?.args).toMatchObject({
+            localPath: '/home/u/work/a.txt',
+            remotePath: '/srv/data/a.txt',
+            relativePath: 'a.txt',
+            pct: 20,
+            isProvider: false,
+        });
+    });
+
+    it('runs verify/repair after a successful download when SHA-256 is available', async () => {
+        const { invoke, calls } = makeInvoke({
+            sync_ec_verify_repair: () => ({ status: 'repaired' }),
+        });
+        const report = await runRemoteSync(
+            [file('b.txt', 'download', { expectedSha256: 'a'.repeat(64) })],
+            noDirs,
+            baseConfig({ errorCorrection: { enabled: true, pct: 20 } }),
+            {},
+            noWaitDeps(invoke),
+        );
+
+        expect(report.downloaded).toBe(1);
+        expect(report.ec_repaired).toBe(1);
+        const ecCall = calls.find((c) => c.cmd === 'sync_ec_verify_repair');
+        expect(ecCall?.args).toMatchObject({
+            localPath: '/home/u/work/b.txt',
+            remotePath: '/srv/data/b.txt',
+            relativePath: 'b.txt',
+            expectedSha256: 'a'.repeat(64),
+            expectedMtime: '2026-05-22T10:00:00Z',
+            isProvider: false,
+        });
+    });
+});
+
 describe('remoteSyncRunner — orphan deletes', () => {
     it('deletes a remote orphan', async () => {
         const { invoke, calls } = makeInvoke();

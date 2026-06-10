@@ -669,6 +669,7 @@ export interface FileInfo {
   modified: string | null;
   is_dir: boolean;
   checksum: string | null;
+  checksum_alg?: string | null;
 }
 
 export interface FileComparison {
@@ -695,6 +696,11 @@ export interface CompareOptions {
   compare_size: boolean;
   compare_checksum: boolean;
   exclude_patterns: string[];
+  error_correction?: {
+    enabled: boolean;
+    pct?: number;
+    max_file_size?: number;
+  } | null;
   direction: SyncDirection;
   delete_orphans?: boolean;
   conflict_strategy?: ConflictStrategy;
@@ -1024,6 +1030,16 @@ export type JournalEntryStatus =
   | "skipped"
   | "verify_failed";
 
+export type SyncEcStatus =
+  | "generated"
+  | "verified"
+  | "repaired"
+  | "skipped_too_large"
+  | "generate_failed"
+  | "missing_sidecar"
+  | "missing_expected_hash"
+  | "verify_failed";
+
 export interface SyncJournalEntry {
   relative_path: string;
   action: string;
@@ -1032,6 +1048,7 @@ export interface SyncJournalEntry {
   last_error: SyncErrorInfo | null;
   verified: boolean | null;
   bytes_transferred: number;
+  ec_status?: SyncEcStatus | null;
 }
 
 export interface SyncJournal {

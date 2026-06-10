@@ -5,11 +5,20 @@
 // File comparison and synchronization logic
 
 use crate::delta_transport::DeltaBatch;
+use crate::error_correction::aerosync::{
+    generate_sync_sidecar_for_file_capped, parse_sha256_hex, sync_error_correction_sidecar_path,
+    verify_repair_sync_file, SyncEcGenerateResult, SyncEcRepairResult,
+    AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+};
+use crate::error_correction::{
+    ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
+};
 use crate::providers::{ProviderError, ProviderTransferExecutorKind, StorageProvider};
 use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, ScanOptions};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -50,6 +59,8 @@ pub struct FileInfo {
     pub modified: Option<DateTime<Utc>>,
     pub is_dir: bool,
     pub checksum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_alg: Option<String>,
 }
 
 /// Result of comparing a single file/directory
@@ -68,6 +79,70 @@ pub struct FileComparison {
     #[serde(default)]
     pub previously_synced: bool,
 }
+
+fn default_error_correction_pct() -> u32 {
+    ERROR_CORRECTION_DEFAULT_PCT
+}
+
+fn default_error_correction_max_file_size() -> u64 {
+    AEROSYNC_EC_PHASE1_MAX_FILE_SIZE
+}
+
+/// Optional AeroSync recovery sidecar settings. Disabled by default so legacy
+/// sync behavior stays byte-for-byte unchanged until a caller opts in.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncErrorCorrectionOptions {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_error_correction_pct")]
+    pub pct: u32,
+    #[serde(default = "default_error_correction_max_file_size")]
+    pub max_file_size: u64,
+}
+
+impl Default for SyncErrorCorrectionOptions {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            pct: ERROR_CORRECTION_DEFAULT_PCT,
+            max_file_size: AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+        }
+    }
+}
+
+impl SyncErrorCorrectionOptions {
+    pub(crate) fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub(crate) fn pct(&self) -> u32 {
+        self.pct
+            .clamp(ERROR_CORRECTION_MIN_PCT, ERROR_CORRECTION_MAX_PCT)
+    }
+
+    pub(crate) fn max_file_size(&self) -> u64 {
+        if self.max_file_size == 0 {
+            AEROSYNC_EC_PHASE1_MAX_FILE_SIZE
+        } else {
+            self.max_file_size
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncEcStatus {
+    Generated,
+    Verified,
+    Repaired,
+    SkippedTooLarge,
+    GenerateFailed,
+    MissingSidecar,
+    MissingExpectedHash,
+    VerifyFailed,
+}
+
+pub const AEROSYNC_EC_EXCLUDE_PATTERN: &str = "*.aerorec";
 
 /// Options for comparison
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +163,9 @@ pub struct CompareOptions {
     pub strict_checksum: bool,
     /// Patterns to exclude (e.g., "node_modules", ".git")
     pub exclude_patterns: Vec<String>,
+    /// Optional AeroSync Error Correction sidecar behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_correction: Option<SyncErrorCorrectionOptions>,
     /// Direction of comparison
     pub direction: CompareDirection,
     /// Minimum file size in bytes (skip smaller files)
@@ -121,6 +199,7 @@ impl Default for CompareOptions {
                 ".env".to_string(),
                 "target".to_string(),
             ],
+            error_correction: None,
             direction: CompareDirection::Bidirectional,
             min_size: None,
             max_size: None,
@@ -128,6 +207,35 @@ impl Default for CompareOptions {
             max_age_secs: None,
         }
     }
+}
+
+pub(crate) fn ensure_error_correction_exclude_patterns(patterns: &mut Vec<String>) {
+    if !patterns
+        .iter()
+        .any(|pattern| pattern == AEROSYNC_EC_EXCLUDE_PATTERN)
+    {
+        patterns.push(AEROSYNC_EC_EXCLUDE_PATTERN.to_string());
+    }
+}
+
+pub(crate) fn apply_error_correction_excludes(options: &mut CompareOptions) {
+    if options
+        .error_correction
+        .as_ref()
+        .is_some_and(SyncErrorCorrectionOptions::enabled)
+    {
+        ensure_error_correction_exclude_patterns(&mut options.exclude_patterns);
+    }
+}
+
+pub(crate) fn scan_options_for_sync(opts: &SyncOptions) -> ScanOptions {
+    let mut scan = opts.scan.clone();
+    if opts.error_correction.enabled() {
+        ensure_error_correction_exclude_patterns(&mut scan.exclude_patterns);
+        scan.compute_checksum = true;
+        scan.compute_remote_checksum = true;
+    }
+    scan
 }
 
 /// Direction of synchronization
@@ -232,6 +340,7 @@ pub struct SyncOptions {
     pub delete_orphans: bool,
     pub conflict_mode: ConflictMode,
     pub scan: ScanOptions,
+    pub error_correction: SyncErrorCorrectionOptions,
     /// Requested intra-file download segments for the transfer phase.
     /// `1` preserves the legacy single-stream path.
     pub download_segments: u32,
@@ -246,6 +355,7 @@ impl Default for SyncOptions {
             delete_orphans: false,
             conflict_mode: ConflictMode::Larger,
             scan: ScanOptions::default(),
+            error_correction: SyncErrorCorrectionOptions::default(),
             download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
         }
     }
@@ -327,11 +437,13 @@ pub enum FileOutcome {
         bytes: u64,
         delta_stats: Option<DeltaTransferStats>,
         fallback_reason: Option<String>,
+        ec_status: Option<SyncEcStatus>,
     },
     Downloaded {
         bytes: u64,
         delta_stats: Option<DeltaTransferStats>,
         fallback_reason: Option<String>,
+        ec_status: Option<SyncEcStatus>,
     },
     Deleted,
     Skipped {
@@ -387,6 +499,11 @@ pub struct SyncReport {
     /// the batch path. May be less than `uploaded + downloaded` if some
     /// files fell back to the single-shot or classic path.
     pub delta_batch_files: Option<u64>,
+    pub ec_generated: u32,
+    pub ec_verified: u32,
+    pub ec_repaired: u32,
+    pub ec_skipped_too_large: u32,
+    pub ec_generate_failed: u32,
 }
 
 impl SyncReport {
@@ -968,7 +1085,8 @@ pub async fn sync_tree_core(
 
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
-    let locals = scan_local_tree(local_root, &opts.scan);
+    let scan = scan_options_for_sync(opts);
+    let locals = scan_local_tree(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -977,7 +1095,7 @@ pub async fn sync_tree_core(
         ensure_remote_dir(provider, remote_root).await;
     }
 
-    let remotes = scan_remote_tree(provider, remote_root, &opts.scan).await;
+    let remotes = scan_remote_tree(provider, remote_root, &scan).await;
 
     sink.on_phase(SyncPhase::Planning);
     let mut report = SyncReport {
@@ -1052,6 +1170,7 @@ pub async fn sync_tree_core(
                         opts.dry_run,
                         sink,
                         &mut delta_batch,
+                        &opts.error_correction,
                     )
                     .await;
                     apply_sync_tree_outcome(
@@ -1114,6 +1233,8 @@ pub async fn sync_tree_core(
                         opts.dry_run,
                         sink,
                         &mut delta_batch,
+                        remote_sha256_hex(remote_entry),
+                        &opts.error_correction,
                     )
                     .await;
                     apply_sync_tree_outcome(
@@ -1483,6 +1604,13 @@ fn parse_scan_mtime(raw: &str) -> Option<chrono::DateTime<Utc>> {
         })
 }
 
+fn remote_sha256_hex(entry: &crate::sync_core::RemoteEntry) -> Option<&str> {
+    match (entry.checksum_alg.as_deref(), entry.checksum_hex.as_deref()) {
+        (Some(alg), Some(hex)) if alg.eq_ignore_ascii_case("sha256") => Some(hex),
+        _ => None,
+    }
+}
+
 pub(crate) fn apply_sync_tree_outcome(
     report: &mut SyncReport,
     rel: &str,
@@ -1505,6 +1633,27 @@ pub(crate) fn apply_sync_tree_outcome(
                 message: error.clone(),
                 decision_policy,
             });
+        }
+    }
+
+    if let FileOutcome::Uploaded {
+        ec_status: Some(status),
+        ..
+    }
+    | FileOutcome::Downloaded {
+        ec_status: Some(status),
+        ..
+    } = &outcome
+    {
+        match status {
+            SyncEcStatus::Generated => report.ec_generated += 1,
+            SyncEcStatus::Verified => report.ec_verified += 1,
+            SyncEcStatus::Repaired => report.ec_repaired += 1,
+            SyncEcStatus::SkippedTooLarge => report.ec_skipped_too_large += 1,
+            SyncEcStatus::GenerateFailed => report.ec_generate_failed += 1,
+            SyncEcStatus::MissingSidecar
+            | SyncEcStatus::MissingExpectedHash
+            | SyncEcStatus::VerifyFailed => {}
         }
     }
 
@@ -1552,6 +1701,170 @@ pub(crate) fn apply_sync_tree_outcome(
     sink.on_file_done(rel, &outcome);
 }
 
+async fn upload_sync_ec_sidecar(
+    provider: &mut dyn StorageProvider,
+    sidecar_remote_path: &str,
+    sidecar_bytes: &[u8],
+) -> Result<(), String> {
+    let mut tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| format!("create AeroSync EC temp sidecar: {e}"))?;
+    tmp.write_all(sidecar_bytes)
+        .map_err(|e| format!("write AeroSync EC temp sidecar: {e}"))?;
+    tmp.flush()
+        .map_err(|e| format!("flush AeroSync EC temp sidecar: {e}"))?;
+    let tmp_path = tmp.path().to_string_lossy().to_string();
+    provider
+        .upload(&tmp_path, sidecar_remote_path, None)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn download_sync_ec_sidecar(
+    provider: &mut dyn StorageProvider,
+    sidecar_remote_path: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| format!("create AeroSync EC temp download: {e}"))?;
+    let tmp_path = tmp.path().to_string_lossy().to_string();
+    match provider
+        .download(sidecar_remote_path, &tmp_path, None)
+        .await
+    {
+        Ok(()) => std::fs::read(tmp.path())
+            .map(Some)
+            .map_err(|e| format!("read AeroSync EC temp download: {e}")),
+        Err(ProviderError::NotFound(_)) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+async fn generate_sync_ec_after_upload(
+    provider: &mut dyn StorageProvider,
+    rel: &str,
+    local_path: &str,
+    remote_path: &str,
+    options: &SyncErrorCorrectionOptions,
+) -> Option<SyncEcStatus> {
+    if !options.enabled() {
+        return None;
+    }
+    let generated = match generate_sync_sidecar_for_file_capped(
+        rel,
+        Path::new(local_path),
+        options.pct(),
+        options.max_file_size(),
+    ) {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::warn!(
+                "sync.ec: failed to generate sidecar (rel={}, error={})",
+                rel,
+                e
+            );
+            return Some(SyncEcStatus::GenerateFailed);
+        }
+    };
+    let sidecar = match generated {
+        SyncEcGenerateResult::Generated(sidecar) => sidecar,
+        SyncEcGenerateResult::SkippedTooLarge {
+            file_size,
+            max_file_size,
+        } => {
+            tracing::info!(
+                "sync.ec: skipped sidecar generation for large file (rel={}, bytes={}, max={})",
+                rel,
+                file_size,
+                max_file_size
+            );
+            return Some(SyncEcStatus::SkippedTooLarge);
+        }
+    };
+    let sidecar_remote_path = sync_error_correction_sidecar_path(remote_path);
+    match upload_sync_ec_sidecar(provider, &sidecar_remote_path, &sidecar.sidecar_bytes).await {
+        Ok(()) => {
+            tracing::info!(
+                "sync.ec: generated sidecar (rel={}, sidecar={}, protected={}, sidecar_bytes={})",
+                rel,
+                sidecar_remote_path,
+                sidecar.bytes_protected,
+                sidecar.sidecar_len
+            );
+            Some(SyncEcStatus::Generated)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "sync.ec: failed to upload sidecar (rel={}, sidecar={}, error={})",
+                rel,
+                sidecar_remote_path,
+                e
+            );
+            Some(SyncEcStatus::GenerateFailed)
+        }
+    }
+}
+
+async fn verify_repair_sync_ec_after_download(
+    provider: &mut dyn StorageProvider,
+    rel: &str,
+    local_path: &str,
+    remote_path: &str,
+    expected_sha256_hex: Option<&str>,
+    options: &SyncErrorCorrectionOptions,
+) -> Option<SyncEcStatus> {
+    if !options.enabled() {
+        return None;
+    }
+    let Some(expected_sha256_hex) = expected_sha256_hex else {
+        return Some(SyncEcStatus::MissingExpectedHash);
+    };
+    let expected_sha256 = match parse_sha256_hex(expected_sha256_hex) {
+        Ok(hash) => hash,
+        Err(e) => {
+            tracing::warn!(
+                "sync.ec: invalid expected SHA-256 (rel={}, error={})",
+                rel,
+                e
+            );
+            return Some(SyncEcStatus::VerifyFailed);
+        }
+    };
+    let sidecar_remote_path = sync_error_correction_sidecar_path(remote_path);
+    let sidecar_bytes = match download_sync_ec_sidecar(provider, &sidecar_remote_path).await {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return Some(SyncEcStatus::MissingSidecar),
+        Err(e) => {
+            tracing::warn!(
+                "sync.ec: failed to download sidecar (rel={}, sidecar={}, error={})",
+                rel,
+                sidecar_remote_path,
+                e
+            );
+            return Some(SyncEcStatus::VerifyFailed);
+        }
+    };
+    match verify_repair_sync_file(rel, &expected_sha256, Path::new(local_path), &sidecar_bytes) {
+        Ok(SyncEcRepairResult::Verified) => Some(SyncEcStatus::Verified),
+        Ok(SyncEcRepairResult::Repaired { recovered_shards }) => {
+            tracing::warn!(
+                "sync.ec: repaired downloaded file (rel={}, recovered_shards={})",
+                rel,
+                recovered_shards
+            );
+            Some(SyncEcStatus::Repaired)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "sync.ec: verify/repair failed (rel={}, sidecar={}, error={})",
+                rel,
+                sidecar_remote_path,
+                e
+            );
+            Some(SyncEcStatus::VerifyFailed)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn perform_upload(
     provider: &mut Box<dyn StorageProvider>,
     local_root: &str,
@@ -1560,6 +1873,7 @@ pub(crate) async fn perform_upload(
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
     delta_batch: &mut Option<Box<dyn DeltaBatch>>,
+    error_correction: &SyncErrorCorrectionOptions,
 ) -> FileOutcome {
     sink.on_file_start(
         transfer.rel,
@@ -1598,10 +1912,19 @@ pub(crate) async fn perform_upload(
                     remote_path
                 );
                 let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
+                let ec_status = generate_sync_ec_after_upload(
+                    provider.as_mut(),
+                    transfer.rel,
+                    &local_path,
+                    &remote_path,
+                    error_correction,
+                )
+                .await;
                 return FileOutcome::Uploaded {
                     bytes: transfer.total,
                     delta_stats,
                     fallback_reason: None,
+                    ec_status,
                 };
             }
             if let Some(msg) = result.hard_error {
@@ -1643,10 +1966,19 @@ pub(crate) async fn perform_upload(
                     remote_path
                 );
                 let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
+                let ec_status = generate_sync_ec_after_upload(
+                    provider.as_mut(),
+                    transfer.rel,
+                    &local_path,
+                    &remote_path,
+                    error_correction,
+                )
+                .await;
                 return FileOutcome::Uploaded {
                     bytes: transfer.total,
                     delta_stats,
                     fallback_reason: None,
+                    ec_status,
                 };
             }
             Some(result) if result.hard_error.is_some() => {
@@ -1663,11 +1995,22 @@ pub(crate) async fn perform_upload(
                         reason
                     );
                     return match provider.upload(&local_path, &remote_path, None).await {
-                        Ok(()) => FileOutcome::Uploaded {
-                            bytes: transfer.total,
-                            delta_stats: None,
-                            fallback_reason: Some(reason),
-                        },
+                        Ok(()) => {
+                            let ec_status = generate_sync_ec_after_upload(
+                                provider.as_mut(),
+                                transfer.rel,
+                                &local_path,
+                                &remote_path,
+                                error_correction,
+                            )
+                            .await;
+                            FileOutcome::Uploaded {
+                                bytes: transfer.total,
+                                delta_stats: None,
+                                fallback_reason: Some(reason),
+                                ec_status,
+                            }
+                        }
                         Err(e) => FileOutcome::Failed {
                             error: format!("upload failed: {}", e),
                         },
@@ -1679,11 +2022,22 @@ pub(crate) async fn perform_upload(
     }
 
     match provider.upload(&local_path, &remote_path, None).await {
-        Ok(()) => FileOutcome::Uploaded {
-            bytes: transfer.total,
-            delta_stats: None,
-            fallback_reason: None,
-        },
+        Ok(()) => {
+            let ec_status = generate_sync_ec_after_upload(
+                provider.as_mut(),
+                transfer.rel,
+                &local_path,
+                &remote_path,
+                error_correction,
+            )
+            .await;
+            FileOutcome::Uploaded {
+                bytes: transfer.total,
+                delta_stats: None,
+                fallback_reason: None,
+                ec_status,
+            }
+        }
         Err(e) => FileOutcome::Failed {
             error: format!("upload failed: {}", e),
         },
@@ -1705,6 +2059,8 @@ pub(crate) async fn perform_download(
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
     delta_batch: &mut Option<Box<dyn DeltaBatch>>,
+    expected_sha256_hex: Option<&str>,
+    error_correction: &SyncErrorCorrectionOptions,
 ) -> FileOutcome {
     sink.on_file_start(
         transfer.rel,
@@ -1740,10 +2096,20 @@ pub(crate) async fn perform_download(
                     remote_path
                 );
                 let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
+                let ec_status = verify_repair_sync_ec_after_download(
+                    provider.as_mut(),
+                    transfer.rel,
+                    &local_path,
+                    &remote_path,
+                    expected_sha256_hex,
+                    error_correction,
+                )
+                .await;
                 return FileOutcome::Downloaded {
                     bytes: transfer.total,
                     delta_stats,
                     fallback_reason: None,
+                    ec_status,
                 };
             }
             if let Some(msg) = result.hard_error {
@@ -1776,10 +2142,20 @@ pub(crate) async fn perform_download(
                     remote_path
                 );
                 let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
+                let ec_status = verify_repair_sync_ec_after_download(
+                    provider.as_mut(),
+                    transfer.rel,
+                    &local_path,
+                    &remote_path,
+                    expected_sha256_hex,
+                    error_correction,
+                )
+                .await;
                 return FileOutcome::Downloaded {
                     bytes: transfer.total,
                     delta_stats,
                     fallback_reason: None,
+                    ec_status,
                 };
             }
             Some(result) if result.hard_error.is_some() => {
@@ -1804,11 +2180,23 @@ pub(crate) async fn perform_download(
                     )
                     .await
                     {
-                        Ok(()) => FileOutcome::Downloaded {
-                            bytes: transfer.total,
-                            delta_stats: None,
-                            fallback_reason: Some(reason),
-                        },
+                        Ok(()) => {
+                            let ec_status = verify_repair_sync_ec_after_download(
+                                provider.as_mut(),
+                                transfer.rel,
+                                &local_path,
+                                &remote_path,
+                                expected_sha256_hex,
+                                error_correction,
+                            )
+                            .await;
+                            FileOutcome::Downloaded {
+                                bytes: transfer.total,
+                                delta_stats: None,
+                                fallback_reason: Some(reason),
+                                ec_status,
+                            }
+                        }
                         Err(e) => FileOutcome::Failed {
                             error: format!("download failed: {}", e),
                         },
@@ -1828,11 +2216,23 @@ pub(crate) async fn perform_download(
     )
     .await
     {
-        Ok(()) => FileOutcome::Downloaded {
-            bytes: transfer.total,
-            delta_stats: None,
-            fallback_reason: None,
-        },
+        Ok(()) => {
+            let ec_status = verify_repair_sync_ec_after_download(
+                provider.as_mut(),
+                transfer.rel,
+                &local_path,
+                &remote_path,
+                expected_sha256_hex,
+                error_correction,
+            )
+            .await;
+            FileOutcome::Downloaded {
+                bytes: transfer.total,
+                delta_stats: None,
+                fallback_reason: None,
+                ec_status,
+            }
+        }
         Err(e) => FileOutcome::Failed {
             error: format!("download failed: {}", e),
         },
@@ -2549,6 +2949,8 @@ pub struct SyncJournalEntry {
     pub last_error: Option<SyncErrorInfo>,
     pub verified: Option<bool>,
     pub bytes_transferred: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_status: Option<SyncEcStatus>,
 }
 
 /// Persistent transfer journal for checkpoint/resume
@@ -3792,6 +4194,7 @@ mod tests {
                 speedup,
             }),
             fallback_reason: None,
+            ec_status: None,
         }
     }
 
@@ -3804,6 +4207,7 @@ mod tests {
                 speedup,
             }),
             fallback_reason: None,
+            ec_status: None,
         }
     }
 
@@ -3812,6 +4216,7 @@ mod tests {
             bytes: total,
             delta_stats: None,
             fallback_reason: None,
+            ec_status: None,
         }
     }
 
@@ -3820,7 +4225,70 @@ mod tests {
             bytes: total,
             delta_stats: None,
             fallback_reason: Some(reason.to_string()),
+            ec_status: None,
         }
+    }
+
+    #[test]
+    fn error_correction_exclude_added_only_when_enabled() {
+        let mut disabled = CompareOptions::default();
+        apply_error_correction_excludes(&mut disabled);
+        assert!(!disabled
+            .exclude_patterns
+            .iter()
+            .any(|pattern| pattern == AEROSYNC_EC_EXCLUDE_PATTERN));
+
+        let mut enabled = CompareOptions::default();
+        enabled.error_correction = Some(SyncErrorCorrectionOptions {
+            enabled: true,
+            ..Default::default()
+        });
+        apply_error_correction_excludes(&mut enabled);
+        apply_error_correction_excludes(&mut enabled);
+        assert_eq!(
+            enabled
+                .exclude_patterns
+                .iter()
+                .filter(|pattern| pattern.as_str() == AEROSYNC_EC_EXCLUDE_PATTERN)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn error_correction_status_accumulates_report_counters() {
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        let statuses = [
+            SyncEcStatus::Generated,
+            SyncEcStatus::Verified,
+            SyncEcStatus::Repaired,
+            SyncEcStatus::SkippedTooLarge,
+            SyncEcStatus::GenerateFailed,
+            SyncEcStatus::MissingSidecar,
+        ];
+
+        for status in statuses {
+            apply_sync_tree_outcome(
+                &mut report,
+                "ec.bin",
+                "upload",
+                FileOutcome::Uploaded {
+                    bytes: 1,
+                    delta_stats: None,
+                    fallback_reason: None,
+                    ec_status: Some(status),
+                },
+                DeltaPolicy::default(),
+                &mut sink,
+            );
+        }
+
+        assert_eq!(report.ec_generated, 1);
+        assert_eq!(report.ec_verified, 1);
+        assert_eq!(report.ec_repaired, 1);
+        assert_eq!(report.ec_skipped_too_large, 1);
+        assert_eq!(report.ec_generate_failed, 1);
     }
 
     #[test]
@@ -4153,6 +4621,7 @@ mod tests {
             size: 100,
             modified: Some(Utc::now()),
             is_dir: false,
+            checksum_alg: None,
             checksum: None,
         };
 
@@ -4248,6 +4717,7 @@ mod tests {
             last_error: None,
             verified: None,
             bytes_transferred: 0,
+            ec_status: None,
         });
         assert!(journal.has_resumable_entries());
 
@@ -4273,6 +4743,7 @@ mod tests {
             last_error: None,
             verified: Some(true),
             bytes_transferred: 1024,
+            ec_status: None,
         });
         journal.entries.push(SyncJournalEntry {
             relative_path: "b.txt".to_string(),
@@ -4282,6 +4753,7 @@ mod tests {
             last_error: None,
             verified: None,
             bytes_transferred: 0,
+            ec_status: None,
         });
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Completed), 1);
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Failed), 1);

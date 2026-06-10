@@ -1,7 +1,9 @@
-// P1 lands the sync sidecar codec before P2 wires it into the upload/download pipeline.
+// Some status/regeneration helpers are intentionally kept for the next AeroSync
+// wiring slices; P2 consumes the transfer hooks but not every codec surface yet.
 #![allow(dead_code)]
 
 use sha2::{Digest, Sha256};
+use std::path::Path;
 
 use super::{
     compute_error_correction_shards_grid, error_correction_grid, reconstruct_from_error_correction,
@@ -71,6 +73,14 @@ fn sha256_bytes(data: &[u8]) -> [u8; 32] {
     let mut out = [0u8; 32];
     out.copy_from_slice(&digest);
     out
+}
+
+pub(crate) fn parse_sha256_hex(input: &str) -> Result<[u8; 32], String> {
+    let bytes = hex::decode(input.trim()).map_err(|e| format!("invalid SHA-256 hex: {e}"))?;
+    let arr: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| "invalid SHA-256 hex length".to_string())?;
+    Ok(arr)
 }
 
 pub(crate) fn sync_error_correction_sidecar_path(remote_path: &str) -> String {
@@ -265,6 +275,34 @@ pub(crate) fn generate_sync_sidecar_for_bytes_capped(
     SyncEcGenerateResult::Generated(generate_sync_sidecar_for_bytes(rel_path, data, pct))
 }
 
+pub(crate) fn generate_sync_sidecar_for_file_capped(
+    rel_path: &str,
+    path: &Path,
+    pct: u32,
+    max_file_size: u64,
+) -> Result<SyncEcGenerateResult, String> {
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        format!(
+            "read metadata for AeroSync EC source {}: {e}",
+            path.display()
+        )
+    })?;
+    if metadata.len() > max_file_size {
+        return Ok(SyncEcGenerateResult::SkippedTooLarge {
+            file_size: metadata.len(),
+            max_file_size,
+        });
+    }
+    let data = std::fs::read(path)
+        .map_err(|e| format!("read AeroSync EC source {}: {e}", path.display()))?;
+    Ok(generate_sync_sidecar_for_bytes_capped(
+        rel_path,
+        &data,
+        pct,
+        max_file_size,
+    ))
+}
+
 pub(crate) fn sync_sidecar_status_for_bytes(
     rel_path: &str,
     data: &[u8],
@@ -331,6 +369,22 @@ pub(crate) fn verify_repair_sync_bytes(
     }
     *data = repaired;
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
+}
+
+pub(crate) fn verify_repair_sync_file(
+    rel_path: &str,
+    expected_sha256: &[u8; 32],
+    path: &Path,
+    sidecar_bytes: &[u8],
+) -> Result<SyncEcRepairResult, String> {
+    let mut data = std::fs::read(path)
+        .map_err(|e| format!("read AeroSync EC target {}: {e}", path.display()))?;
+    let result = verify_repair_sync_bytes(rel_path, expected_sha256, &mut data, sidecar_bytes)?;
+    if matches!(result, SyncEcRepairResult::Repaired { .. }) {
+        std::fs::write(path, data)
+            .map_err(|e| format!("write repaired AeroSync EC target {}: {e}", path.display()))?;
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

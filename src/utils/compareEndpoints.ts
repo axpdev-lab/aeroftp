@@ -59,6 +59,10 @@ export interface CompareResultEntry {
     rightSize?: number | null;
     leftMtimeMs?: number | null;
     rightMtimeMs?: number | null;
+    leftChecksum?: string | null;
+    leftChecksumAlg?: string | null;
+    rightChecksum?: string | null;
+    rightChecksumAlg?: string | null;
 }
 
 export interface CompareOptions {

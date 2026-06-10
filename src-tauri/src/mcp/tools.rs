@@ -1359,6 +1359,7 @@ pub async fn execute_tool(
                     compute_remote_checksum: delta_policy.wants_checksums(),
                     ..Default::default()
                 },
+                error_correction: Default::default(),
                 download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
             };
 

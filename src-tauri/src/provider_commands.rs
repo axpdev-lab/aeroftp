@@ -4497,7 +4497,8 @@ pub async fn provider_compare_directories(
     };
     use std::collections::HashMap;
 
-    let options = options.unwrap_or_default();
+    let mut options = options.unwrap_or_default();
+    crate::sync::apply_error_correction_excludes(&mut options);
 
     info!(
         "Provider compare: local={}, remote={}",
@@ -4619,6 +4620,7 @@ pub async fn provider_compare_directories(
                 size: entry.size,
                 modified,
                 is_dir: false,
+                checksum_alg: entry.checksum_alg,
                 checksum: entry.checksum_hex,
             };
 
@@ -4706,6 +4708,7 @@ pub async fn provider_compare_directories(
                     size: entry.size,
                     modified,
                     is_dir: entry.is_dir,
+                    checksum_alg: None,
                     checksum: None,
                 };
 

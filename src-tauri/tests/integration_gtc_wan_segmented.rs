@@ -246,6 +246,7 @@ async fn run_sync_download_once(
         delete_orphans: false,
         conflict_mode: ConflictMode::Larger,
         scan: ScanOptions::default(),
+        error_correction: Default::default(),
         download_segments,
     };
     let mut sink = NoopProgressSink;

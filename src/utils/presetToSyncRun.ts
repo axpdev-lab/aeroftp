@@ -53,6 +53,15 @@ const rightMeta = (e: CompareResultEntry): SideMeta => ({
  */
 const relPath = (e: CompareResultEntry): string => e.relativePath ?? e.name;
 
+const sourceSha256 = (
+    entry: CompareResultEntry,
+    sourceSide: 'left' | 'right',
+): string | null => {
+    const checksum = sourceSide === 'left' ? entry.leftChecksum : entry.rightChecksum;
+    const alg = sourceSide === 'left' ? entry.leftChecksumAlg : entry.rightChecksumAlg;
+    return checksum && alg?.toLowerCase() === 'sha256' ? checksum : null;
+};
+
 /**
  * Translate a resolved `PresetPlan` into the runner's input.
  *
@@ -95,6 +104,7 @@ export const buildRemoteSyncInput = (
             mtime: meta.mtime,
             overwritesExisting: overwrites,
             isDir: false,
+            expectedSha256: destIsRemote ? null : sourceSha256(entry, sourceSide),
         });
     };
 
@@ -133,6 +143,7 @@ export const buildRemoteSyncInput = (
             mtime: meta.mtime,
             overwritesExisting: false,
             isDir: false,
+            expectedSha256: destIsRemote ? null : sourceSha256(entry, sourceSide),
         });
     };
 

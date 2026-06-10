@@ -145,6 +145,10 @@ export const adaptFileComparisons = (
             rightSize: rightInfo ? rightInfo.size : null,
             leftMtimeMs: parseMtime(leftInfo?.modified),
             rightMtimeMs: parseMtime(rightInfo?.modified),
+            leftChecksum: leftInfo?.checksum ?? null,
+            leftChecksumAlg: leftInfo?.checksum_alg ?? null,
+            rightChecksum: rightInfo?.checksum ?? null,
+            rightChecksumAlg: rightInfo?.checksum_alg ?? null,
         };
 
         // Bytes at stake: the larger side, mirroring `compareEndpoints`.
