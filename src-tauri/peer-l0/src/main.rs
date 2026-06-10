@@ -1109,7 +1109,8 @@ async fn wait_entry_hash(doc: &iroh_docs::api::Doc, key: &[u8], attempts: u32) -
 /// If --watch-secs > 0: after initial, use import_and_subscribe + LiveEvent loop; on manifest version
 /// increase, re-converge (re-pull manifest + all files in it).
 /// Stage 9: --store <dir> makes replicate side persistent (FsStore + Docs::persistent + current-ns.txt +
-/// api.open for resume). --store requires --out; --store + --watch-secs rejected (one-shot resume only).
+/// api.open for resume). --store requires --out. Stage 10: --store + --watch-secs resumes from disk AND
+/// re-arms live sync (doc.start_sync with the ticket's nodes), so a restarted replicator keeps converging.
 async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs: u64, store: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
@@ -1414,8 +1415,8 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
         println!("DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}", ok, k, total_bytes);
 
         // Stage 9: with --store, flush the downloaded blobs to disk so a later reopen (offline resume)
-        // can serve them. No-op for the in-memory path. (watch + --store is rejected, so this is the
-        // one-shot persistent path; flushing here is correct before we fall through / return.)
+        // can serve them. No-op for the in-memory path. (Stage 10 allows watch + --store: this initial
+        // flush still runs before the watch loop, which re-flushes after each converged version.)
         blobs.flush().await;
 
         // --- LIVE CONVERGENCE (Stage 6 differential + deletions) ---
@@ -1428,7 +1429,7 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
             // events comes from either first-sync (import_and_subscribe) or resume (doc.subscribe after api.open).
             // Store + watch is now supported (Stage 10); mem path is unchanged.
             // This keeps the original live watch behavior byte-identical when --store is absent.
-            let mut events = events.context("live watch only supported without --store in Stage 9 (one-shot resume path)")?;
+            let mut events = events.context("LiveEvent stream missing (every setup path populates events; unreachable)")?;
             loop {
                 let rem = deadline.saturating_duration_since(Instant::now());
                 if rem.is_zero() { break; }
