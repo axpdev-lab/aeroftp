@@ -75,6 +75,7 @@ pub mod delta_transport;
 pub mod local_sync;
 mod number_parsing;
 pub mod peer;
+pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
 pub mod profile_loader;
@@ -15159,6 +15160,12 @@ pub fn run() {
             user_partitions::user_partitions_delete_active_setting,
             user_partitions::user_partitions_list_active_setting_scopes,
             user_partitions::user_partitions_find_cross_user_dedup,
+            // AeroShare P1 (task 4/5): the peer handshake + inventory surface
+            peer_commands::peer_identity_get,
+            peer_commands::peer_share_start,
+            peer_commands::peer_drive_add,
+            peer_commands::peer_friends_list,
+            peer_commands::peer_drives_list,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,

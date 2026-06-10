@@ -2654,6 +2654,103 @@ pub fn gui_peer_drive_load(
     result.map(|opt| opt.map(|key| (user.id, key)))
 }
 
+// ============ AeroShare P1 task 4: GUI bridges for the peer secret store ============
+// AppHandle-scoped siblings of the `cli_peer_*` bridges above, for the Tauri commands in
+// `crate::peer_commands`. Same custody rules: private material runs inside `with_user_dek`
+// (DEK threaded + zeroized), public material (AFIDs, aliases, namespaces, roles) needs no DEK.
+// All operate on the ACTIVE user partition.
+
+/// GUI: the active user's AeroFTP-ID. With `auto_create`, mints + custodies a
+/// fresh identity when none exists (the receiver-side "show my AFID" flow and
+/// the first share both need this). Returns `(user_id, afid, created)`;
+/// `None` only when no identity exists AND `auto_create` is false.
+pub fn gui_peer_identity_get_or_create(
+    app: &AppHandle,
+    auto_create: bool,
+) -> Result<Option<(i64, String, bool)>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    if let Some(afid) = crate::peer_identity::identity_public_id(&conn, user.id)? {
+        return Ok(Some((user.id, afid, false)));
+    }
+    if !auto_create {
+        return Ok(None);
+    }
+    let (secret, afid) = crate::peer::generate_identity();
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::store_identity(&conn, user.id, dek, &secret, &afid)
+    });
+    root_key.zeroize();
+    result?;
+    Ok(Some((user.id, afid, true)))
+}
+
+/// GUI: load + decrypt the active user's 64-byte identity secret (wiped on
+/// drop), or `None` when the partition has no identity yet.
+pub fn gui_peer_identity_load_secret(
+    app: &AppHandle,
+) -> Result<Option<ActiveUserDriveKey>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::load_identity(&conn, user.id, dek)
+    });
+    root_key.zeroize();
+    result.map(|opt| opt.map(|key| (user.id, key)))
+}
+
+/// GUI: add (or rename) a contact in the active user's partition. Public: no DEK.
+pub fn gui_peer_contact_add(app: &AppHandle, contact_id: &str, alias: &str) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::add_contact(&conn, user.id, contact_id, alias)
+}
+
+/// GUI: the active user's contacts as `(contact_id, alias)`. Public: no DEK.
+pub fn gui_peer_contact_list(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::list_contacts(&conn, user.id)
+}
+
+/// GUI: store (or replace) the per-drive content key for `namespace_id` under
+/// `role` in the active user's partition. Returns the active `user_id`.
+pub fn gui_peer_drive_store(
+    app: &AppHandle,
+    namespace_id: &str,
+    role: &str,
+    content_key: &[u8],
+) -> Result<i64, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::store_drive(&conn, user.id, dek, namespace_id, role, content_key)
+    });
+    root_key.zeroize();
+    result?;
+    Ok(user.id)
+}
+
+/// GUI: the active user's drives as `(namespace_id, role)`. Public: no DEK.
+pub fn gui_peer_drive_list(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::list_drives(&conn, user.id)
+}
+
 /// List the active user's drives as `(namespace_id, role)`. Public: no DEK.
 pub fn cli_peer_drive_list(
     store: &CredentialStore,
