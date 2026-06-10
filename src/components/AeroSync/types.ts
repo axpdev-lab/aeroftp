@@ -56,6 +56,14 @@ export interface AeroSyncRuntime {
      */
     parallelStreams?: number;
     compressionMode?: CompressionMode;
+    /**
+     * P3 (AeroSync EC): Error Correction toggle + pct from Plan tab.
+     * Wired only for Backup-class presets (default ON/Medium 15%).
+     * Carried through to RemoteSyncConfig.errorCorrection (already present
+     * in runner). The (k,p) geometry is resolved by the shared codec; UI
+     * only passes enabled + pct (5..50).
+     */
+    errorCorrection?: { enabled: boolean; pct: number } | null;
 }
 
 export interface AeroSyncContext {

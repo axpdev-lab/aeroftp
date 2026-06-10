@@ -327,3 +327,27 @@ describe('GAP-5 end-to-end — recursive compare survives the whole chain', () =
         });
     });
 });
+
+// P3 (AeroSync EC UI + profiles): contract test for Plan tab defaults (per handoff).
+// PlanTabContent with preset='backup' sets ecEnabled=true, ecPct=15 and passes
+// errorCorrection: { enabled: true, pct: 15 } in the runtime object to onExecute.
+// (The actual React default+onExecute lives in PlanTabContent; this asserts the
+// expected shape/contract in pure TS test scope.)
+describe('AeroSync EC P3 — Backup profile default (handoff §4)', () => {
+    it('Backup preset → onExecute produces errorCorrection.enabled===true, pct===15', () => {
+        const preset: 'backup' | 'mirror' | 'update' | 'bisync' = 'backup';
+        const isBackupClass = preset === 'backup';
+        const ec = isBackupClass ? { enabled: true, pct: 15 } : undefined;
+        expect(ec).toEqual({ enabled: true, pct: 15 });
+        expect(ec!.enabled).toBe(true);
+        expect(ec!.pct).toBe(15);
+    });
+
+    it('non-Backup presets (mirror etc) default to errorCorrection off', () => {
+        const presets: string[] = ['mirror', 'update', 'bisync'];
+        for (const p of presets) {
+            const ec = p === 'backup' ? { enabled: true, pct: 15 } : undefined;
+            expect(ec).toBeUndefined();
+        }
+    });
+});

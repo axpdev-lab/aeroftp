@@ -71,6 +71,8 @@ interface ConnectedRemoteRunOptions {
    */
   parallelStreams?: number;
   compressionMode?: CompressionMode;
+  /** P3 EC: from PlanTabContent onExecute via AeroSyncRuntime. */
+  errorCorrection?: { enabled: boolean; pct: number } | null;
 }
 
 // GAP-10: runtime options for the local-local sync launcher. A dual-local
@@ -7606,6 +7608,8 @@ interface UpdateVerificationInfo {
       // GAP-9b: threaded config — consumed by APPENDIX-DAG-ENGINE Fase 2.
       parallelStreams: opts.parallelStreams,
       compressionMode: opts.compressionMode,
+      // P3: EC control from Plan tab (Backup default) reaches runner unchanged.
+      errorCorrection: opts.errorCorrection,
     };
 
     const launchRun = (): void => {
@@ -7992,6 +7996,8 @@ interface UpdateVerificationInfo {
           maniac: runtime.speedMode === 'maniac',
           parallelStreams: runtime.parallelStreams,
           compressionMode: runtime.compressionMode,
+          // P3: thread EC (only populated for backup preset from Plan tab)
+          errorCorrection: runtime.errorCorrection,
         });
       };
 
