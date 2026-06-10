@@ -1,5 +1,7 @@
 use reed_solomon_erasure::ReedSolomon;
 
+pub(crate) mod aerosync;
+
 /// P2-09: On-disk payload format (v2) for Reed-Solomon Error Correction.
 ///
 /// v1 mapped one ciphertext block to one Reed-Solomon shard and sized every shard
