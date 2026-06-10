@@ -22,9 +22,149 @@ use tracing::info;
 
 use aeroftp_peer_l0::{
     decode_secret, decrypt_blob, derive_drive_key, derive_session_key, encode_secret, encrypt_blob,
-    generate_pairing_secret, recv_encrypted_blob, recv_offer, send_encrypted_blob, send_offer,
-    ConnectivitySample,
+    generate_pairing_secret, open_capability, recv_encrypted_blob, recv_offer, seal_capability,
+    send_encrypted_blob, send_offer, Capability, ConnectivitySample, Identity, IdentityPublic,
 };
+
+// --------------------------------------------------------------------------------------------
+// WI-4c: capability-path helpers (per-drive RANDOM content key shared via a sealed Capability).
+// These sit ALONGSIDE the existing --secret (dev/pairing) path; the two are mutually exclusive.
+// --------------------------------------------------------------------------------------------
+
+/// How a docs-publish run keys the drive (and, on the capability path, who to issue tokens to).
+enum PublishKey {
+    /// Legacy dev/pairing-secret path (WI-1/WI-2 gate harness): drive_key = HKDF(secret, ns).
+    DevSecret(Vec<u8>),
+    /// WI-4c capability path: a per-drive RANDOM 32-byte content key + the issuance plan.
+    /// Boxed so the two variants stay close in size (CapIssue carries an Identity).
+    Capability {
+        content_key: [u8; 32],
+        issue: Box<CapIssue>,
+    },
+}
+
+/// How a docs-replicate run recovers the 32-byte drive content key.
+enum ReplicateKey {
+    /// Legacy dev/pairing-secret path: drive_key = HKDF(secret, ns).
+    DevSecret(Vec<u8>),
+    /// WI-4c capability path: open a sealed token with my identity, verifying the expected issuer.
+    /// Boxed (Identity is large) so the variants stay close in size.
+    Capability(Box<ReplicateCap>),
+}
+
+/// Replicator's capability inputs: my identity, the expected issuer, and the token to open.
+struct ReplicateCap {
+    me: Identity,
+    expected_issuer: IdentityPublic,
+    token: String,
+}
+
+/// Publisher-side capability issuance: after the ticket is shared, seal+sign one token per grant.
+struct CapIssue {
+    issuer: Identity,
+    /// (printable AeroFTP-ID, parsed public identity) for each recipient.
+    grants: Vec<(String, IdentityPublic)>,
+    cap_out: Option<String>,
+    drive_name: String,
+}
+
+/// Decode a base64url (no pad) 32-byte content key.
+fn decode_content_key(s: &str) -> Result<[u8; 32]> {
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, s.trim())
+        .context("content-key is not valid base64url")?;
+    let arr: [u8; 32] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("content-key must decode to exactly 32 bytes"))?;
+    Ok(arr)
+}
+
+/// Encode a 32-byte content key for display (base64url, no pad).
+fn encode_content_key(k: &[u8; 32]) -> String {
+    base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, k)
+}
+
+/// Fresh random 32-byte content key from OS randomness.
+fn random_content_key() -> [u8; 32] {
+    use rand::RngCore;
+    let mut k = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut k);
+    k
+}
+
+/// Load a 64-byte identity secret file (as written by `identity-new`).
+fn load_identity(path: &str) -> Result<Identity> {
+    let bytes = std::fs::read(path).with_context(|| format!("read identity file {path}"))?;
+    let arr: [u8; 64] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("identity file must be exactly 64 bytes"))?;
+    Ok(Identity::from_secret_bytes(&arr))
+}
+
+/// Write an identity's 64 secret bytes to `path` (0600 on unix).
+fn write_identity(path: &str, id: &Identity) -> Result<()> {
+    std::fs::write(path, id.to_secret_bytes())
+        .with_context(|| format!("write identity file {path}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).ok();
+    }
+    Ok(())
+}
+
+/// Resolve a `--capability` argument: a literal `aeroftp-drive://` token OR a path to a file holding one.
+fn load_capability_token(s: &str) -> Result<String> {
+    if std::path::Path::new(s).is_file() {
+        Ok(std::fs::read_to_string(s)
+            .with_context(|| format!("read capability token file {s}"))?
+            .trim()
+            .to_string())
+    } else {
+        Ok(s.trim().to_string())
+    }
+}
+
+/// Issue one sealed capability token per grant, after the drive ticket is known.
+fn issue_capabilities(
+    cap: &CapIssue,
+    ns: &iroh_docs::NamespaceId,
+    content_key: &[u8; 32],
+    ticket: &iroh_docs::DocTicket,
+) -> Result<()> {
+    let node_addrs: Vec<String> = ticket.nodes.iter().map(|n| n.node_id.to_string()).collect();
+    if let Some(dir) = &cap.cap_out {
+        std::fs::create_dir_all(dir).ok();
+    }
+    println!("\n=== CAPABILITY TOKENS (WI-4c) ===");
+    for (afid, recipient) in &cap.grants {
+        let capability = Capability {
+            namespace_id: ns.to_string(),
+            content_key: *content_key,
+            node_addrs: node_addrs.clone(),
+            drive_name: cap.drive_name.clone(),
+            version: 1,
+            granted_to_ed: recipient.ed_bytes(),
+            issued_at: chrono::Utc::now().timestamp(),
+        };
+        let token = seal_capability(&cap.issuer, recipient, &capability)?;
+        println!("CAP TOKEN for {afid}: {token}");
+        if let Some(dir) = &cap.cap_out {
+            let short: String = afid
+                .chars()
+                .take(16)
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            let path = std::path::Path::new(dir).join(format!("{short}.token"));
+            std::fs::write(&path, &token)
+                .with_context(|| format!("write cap token to {}", path.display()))?;
+            println!("  (written to {})", path.display());
+        }
+    }
+    println!("=================================\n");
+    Ok(())
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -125,6 +265,24 @@ enum Mode {
         /// Format: --store /path/to/store  (will use subdirs blobs/ and docs/)
         #[arg(long)]
         store: Option<String>,
+
+        /// WI-4c capability path: publisher identity file (64 secret bytes). Mutually exclusive
+        /// with --secret. When present, the drive key is a per-drive RANDOM content key and each
+        /// --grant gets a sealed capability token.
+        #[arg(long)]
+        identity: Option<String>,
+
+        /// WI-4c: AeroFTP-ID to issue a sealed capability to (repeatable; >=1 on the capability path).
+        #[arg(long)]
+        grant: Vec<String>,
+
+        /// WI-4c: optional explicit 32-byte content key (base64url); default = fresh random.
+        #[arg(long)]
+        content_key: Option<String>,
+
+        /// WI-4c: optional dir to write each sealed token to as <recipient-short>.token.
+        #[arg(long)]
+        cap_out: Option<String>,
     },
 
     /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry (or whole drive via manifest),
@@ -153,6 +311,32 @@ enum Mode {
         /// Mirrors the publish --store added in Stage 8.
         #[arg(long)]
         store: Option<String>,
+
+        /// WI-4c capability path: my identity file (64 secret bytes). Mutually exclusive with --secret.
+        #[arg(long)]
+        identity: Option<String>,
+
+        /// WI-4c: the aeroftp-drive:// capability token, or a path to a file containing it.
+        #[arg(long)]
+        capability: Option<String>,
+
+        /// WI-4c: expected issuer AeroFTP-ID (the publisher); REQUIRED with --capability.
+        #[arg(long)]
+        issuer: Option<String>,
+    },
+
+    /// WI-4c: generate a fresh peer Identity, write its 64 secret bytes (0600) to --out, print the AeroFTP-ID.
+    IdentityNew {
+        /// Output file for the 64 secret bytes (will be chmod 0600 on unix).
+        #[arg(long)]
+        out: String,
+    },
+
+    /// WI-4c: print the AeroFTP-ID of a saved identity file.
+    IdentityShow {
+        /// Path to a 64-byte identity secret file.
+        #[arg(long)]
+        identity: String,
     },
 }
 
@@ -245,13 +429,60 @@ async fn main() -> Result<()> {
             republish_after,
             republish_count,
             store,
+            identity,
+            grant,
+            content_key,
+            cap_out,
         } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
-            let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
+            // WI-4c: --identity selects the capability path (per-drive random content key); otherwise
+            // the legacy --secret dev path. The two are mutually exclusive.
+            let publish_key = if let Some(id_path) = identity {
+                if effective_secret.is_some() {
+                    anyhow::bail!("--identity and --secret are mutually exclusive (capability path OR dev path)");
+                }
+                if grant.is_empty() {
+                    anyhow::bail!("the capability path requires at least one --grant <AeroFTP-ID>");
+                }
+                let issuer = load_identity(&id_path)?;
+                let mut grants = Vec::with_capacity(grant.len());
+                for afid in &grant {
+                    let pk = IdentityPublic::from_aeroftp_id(afid)
+                        .with_context(|| format!("invalid --grant AeroFTP-ID: {afid}"))?;
+                    grants.push((afid.clone(), pk));
+                }
+                let ck = match content_key.as_deref() {
+                    Some(s) => decode_content_key(s)?,
+                    None => random_content_key(),
+                };
+                let drive_name = dir
+                    .as_deref()
+                    .and_then(|d| Path::new(d).file_name().and_then(|s| s.to_str()))
+                    .unwrap_or("drive")
+                    .to_string();
+                PublishKey::Capability {
+                    content_key: ck,
+                    issue: Box::new(CapIssue {
+                        issuer,
+                        grants,
+                        cap_out,
+                        drive_name,
+                    }),
+                }
+            } else {
+                let secret = effective_secret
+                    .as_deref()
+                    .map(decode_secret)
+                    .transpose()?
+                    .context(
+                        "docs-publish requires --secret (dev path) or --identity (capability path)",
+                    )?;
+                PublishKey::DevSecret(secret)
+            };
             run_docs_publish(
                 key,
                 dir,
@@ -259,7 +490,7 @@ async fn main() -> Result<()> {
                 republish_count,
                 store,
                 docs_cfg,
-                secret_bytes,
+                publish_key,
             )
             .await?;
             return Ok(());
@@ -269,14 +500,53 @@ async fn main() -> Result<()> {
             out,
             watch_secs,
             store,
+            identity,
+            capability,
+            issuer,
         } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
-            let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_replicate(ticket, out, watch_secs, store, docs_cfg, secret_bytes).await?;
+            // WI-4c: --capability selects the capability path; otherwise the legacy --secret dev path.
+            let key_src = if let Some(token_arg) = capability {
+                if effective_secret.is_some() {
+                    anyhow::bail!("--capability and --secret are mutually exclusive");
+                }
+                let id_path = identity
+                    .context("--capability requires --identity (your own identity file)")?;
+                let issuer_afid = issuer
+                    .context("--capability requires --issuer <expected publisher AeroFTP-ID>")?;
+                let me = load_identity(&id_path)?;
+                let expected_issuer = IdentityPublic::from_aeroftp_id(&issuer_afid)
+                    .context("invalid --issuer AeroFTP-ID")?;
+                let token = load_capability_token(&token_arg)?;
+                ReplicateKey::Capability(Box::new(ReplicateCap {
+                    me,
+                    expected_issuer,
+                    token,
+                }))
+            } else {
+                let secret = effective_secret
+                    .as_deref()
+                    .map(decode_secret)
+                    .transpose()?
+                    .context("docs-replicate requires --secret (dev path) or --capability (capability path)")?;
+                ReplicateKey::DevSecret(secret)
+            };
+            run_docs_replicate(ticket, out, watch_secs, store, docs_cfg, key_src).await?;
+            return Ok(());
+        }
+        Mode::IdentityNew { out } => {
+            let id = Identity::generate();
+            write_identity(&out, &id)?;
+            println!("{}", id.public().to_aeroftp_id());
+            return Ok(());
+        }
+        Mode::IdentityShow { identity } => {
+            let id = load_identity(&identity)?;
+            println!("{}", id.public().to_aeroftp_id());
             return Ok(());
         }
     }
@@ -1028,7 +1298,7 @@ async fn run_docs_publish(
     republish_count: u64,
     store: Option<String>,
     cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig,
-    secret_bytes: Option<Vec<u8>>,
+    publish_key: PublishKey,
 ) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
@@ -1044,8 +1314,14 @@ async fn run_docs_publish(
     println!("NodeID: {}", node_id);
     println!("(this is the listener side; share the ticket below with the replicate side)");
 
-    let secret = secret_bytes
-        .context("docs-publish requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
+    // WI-4c: the drive key is either HKDF(dev secret, ns) or a per-drive random content key. The ns is
+    // only known after the doc is created, so resolve per branch via this closure (borrows the source).
+    let resolve_drive_key = |ns: &iroh_docs::NamespaceId| -> [u8; 32] {
+        match &publish_key {
+            PublishKey::DevSecret(secret) => derive_drive_key(secret, &ns.to_string()),
+            PublishKey::Capability { content_key, .. } => *content_key,
+        }
+    };
 
     let mut v1_file_count: usize = 0;
     let mut drive_state: Option<DriveState> = None;
@@ -1109,7 +1385,7 @@ async fn run_docs_publish(
         let the_doc = the_doc.unwrap();
         doc = the_doc;
         ns = doc.id();
-        drive_key = derive_drive_key(&secret, &ns.to_string());
+        drive_key = resolve_drive_key(&ns);
 
         println!(
             "PERSISTENT DRIVE: store={} ns={} (reopened={}) author={}",
@@ -1155,7 +1431,7 @@ async fn run_docs_publish(
         let the_doc = api.create().await?;
         doc = the_doc;
         ns = doc.id();
-        drive_key = derive_drive_key(&secret, &ns.to_string());
+        drive_key = resolve_drive_key(&ns);
 
         println!("AuthorId: {}", author);
         println!("NamespaceId: {}", ns);
@@ -1204,6 +1480,13 @@ async fn run_docs_publish(
     println!("\n=== DOC TICKET (copy/paste to docs-replicate side) ===");
     println!("{}", ticket);
     println!("==================================================\n");
+
+    // WI-4c: on the capability path, seal+sign one token per --grant now that the ns + ticket exist.
+    if let PublishKey::Capability { issue, .. } = &publish_key {
+        println!("CONTENT KEY (b64url): {}", encode_content_key(&drive_key));
+        issue_capabilities(issue, &ns, &drive_key, &ticket)?;
+    }
+
     println!("Publish side ready. Waiting for replicators (Ctrl-C to stop)...");
 
     // Drive versioning (Stage 7 generalized): after ticket share, if republish_after > 0 then
@@ -1272,7 +1555,7 @@ async fn run_docs_replicate(
     watch_secs: u64,
     store: Option<String>,
     cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig,
-    secret_bytes: Option<Vec<u8>>,
+    key_src: ReplicateKey,
 ) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
@@ -1466,9 +1749,32 @@ async fn run_docs_replicate(
     };
     let ns = doc.id();
 
-    let secret = secret_bytes
-        .context("docs-replicate requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
-    let drive_key = derive_drive_key(&secret, &ns.to_string());
+    // WI-4c: recover the drive key either by HKDF(dev secret, ns) or by opening a sealed capability
+    // token (verifying the expected issuer) and cross-checking its namespace against the ticket's.
+    let drive_key: [u8; 32] = match key_src {
+        ReplicateKey::DevSecret(secret) => derive_drive_key(&secret, &ns.to_string()),
+        ReplicateKey::Capability(cap_in) => {
+            let ReplicateCap {
+                me,
+                expected_issuer,
+                token,
+            } = *cap_in;
+            let cap =
+                open_capability(&me, &expected_issuer, &token).context("open capability token")?;
+            if cap.namespace_id != ns.to_string() {
+                anyhow::bail!(
+                    "capability namespace {} does not match the ticket drive namespace {}",
+                    cap.namespace_id,
+                    ns
+                );
+            }
+            println!(
+                "CAPABILITY OK: drive='{}' issuer verified, ns matches ticket; content key recovered",
+                cap.drive_name
+            );
+            cap.content_key
+        }
+    };
     let n = 12; // AES-GCM nonce
 
     if let Some(out_dir) = out {

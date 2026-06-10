@@ -335,6 +335,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn t5_capability_content_key_drives_blob_crypto() {
+        // WI-4c: the recovered content_key must be the SAME 32 bytes the publisher sealed, and it must
+        // actually decrypt a blob the publisher encrypted with it (the drive-key handoff end to end).
+        use crate::crypto::{decrypt_blob, encrypt_blob};
+
+        let publisher = Identity::generate();
+        let recipient = Identity::generate();
+
+        // Publisher's per-drive RANDOM content key (stand-in: a fixed distinctive pattern is fine here;
+        // the contract is byte-equality after the seal/open round-trip, not randomness).
+        let content_key: [u8; 32] =
+            core::array::from_fn(|i| (i as u8).wrapping_mul(7).wrapping_add(3));
+
+        let mut cap = sample_cap(&recipient.public());
+        cap.content_key = content_key;
+
+        let token = seal_capability(&publisher, &recipient.public(), &cap).expect("seal");
+        let recovered = open_capability(&recipient, &publisher.public(), &token).expect("open");
+        assert_eq!(
+            recovered.content_key, content_key,
+            "recovered content_key must equal the publisher's 32 bytes"
+        );
+
+        // The recovered key decrypts what the publisher's key encrypted.
+        let plaintext = b"a drive manifest or file ciphertext";
+        let (nonce, ct) = encrypt_blob(&content_key, plaintext).expect("encrypt");
+        let back = decrypt_blob(&recovered.content_key, &nonce, &ct).expect("decrypt");
+        assert_eq!(
+            &back, plaintext,
+            "round-trip via the capability content key"
+        );
+    }
+
     // ---- negative (must fail closed) ----
 
     #[test]
