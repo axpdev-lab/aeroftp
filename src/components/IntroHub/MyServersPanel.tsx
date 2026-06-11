@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, UserPlus } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
@@ -1514,7 +1515,12 @@ export function MyServersPanel({
                     }}
                 />
             )}
-            {aeroShareEnabled && aeroShareDialog && (
+            {/* Portaled to <body>: this panel is kept mounted but display:none
+                when another IntroHub tab is active, and a display:none ancestor
+                hides even a position:fixed child. Entry points (Discover tile,
+                titlebar icon, File menu) fire from other tabs, so the dialog
+                must escape this subtree to actually show. */}
+            {aeroShareEnabled && aeroShareDialog && createPortal(
                 <AeroShareDialog
                     initialMode={aeroShareDialog.mode}
                     prefillAfid={aeroShareDialog.prefillAfid}
@@ -1522,7 +1528,8 @@ export function MyServersPanel({
                     onFriendSaved={() => { setLocalRefresh(n => n + 1); refreshPeerStates(); }}
                     onConnectFriend={(profile) => { void handleConnect(profile); }}
                     onClose={() => setAeroShareDialog(null)}
-                />
+                />,
+                document.body,
             )}
         </div>
     );

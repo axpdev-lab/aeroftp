@@ -101,6 +101,26 @@ function CopyField({ value, label }: { value: string; label: string }) {
 const inputCls =
   'w-full text-xs px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500';
 
+// Hoisted out of AeroShareDialog ON PURPOSE: defining it inline made it a new
+// component type on every render, so React remounted the tab buttons. With the
+// dialog now portaled under the frequently re-rendering MyServersPanel, those
+// remounts swallowed clicks (the tab needed 2-3 taps to switch). As a stable
+// top-level component it just re-renders in place.
+function ModeTab({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 pb-2 text-xs font-medium border-b-2 transition-colors ${
+        active
+          ? 'border-violet-500 text-violet-600 dark:text-violet-400'
+          : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+      }`}
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
 export function AeroShareDialog({
   initialMode = 'receive',
   prefillAfid,
@@ -264,19 +284,6 @@ export function AeroShareDialog({
     return () => { active = false; un?.(); };
   }, [sharePhase, t]);
 
-  const TabButton = ({ value, icon, label }: { value: AeroShareMode; icon: React.ReactNode; label: string }) => (
-    <button
-      onClick={() => setMode(value)}
-      className={`flex items-center gap-1.5 pb-2 text-xs font-medium border-b-2 transition-colors ${
-        mode === value
-          ? 'border-violet-500 text-violet-600 dark:text-violet-400'
-          : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-      }`}
-    >
-      {icon}{label}
-    </button>
-  );
-
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
@@ -301,8 +308,8 @@ export function AeroShareDialog({
             </button>
           </div>
           <div className="flex px-4 gap-5">
-            <TabButton value="receive" icon={<Download size={13} />} label={t('aeroShare.dialog.receiveTab')} />
-            <TabButton value="share" icon={<Upload size={13} />} label={t('aeroShare.dialog.shareTab')} />
+            <ModeTab active={mode === 'receive'} onClick={() => setMode('receive')} icon={<Download size={13} />} label={t('aeroShare.dialog.receiveTab')} />
+            <ModeTab active={mode === 'share'} onClick={() => setMode('share')} icon={<Upload size={13} />} label={t('aeroShare.dialog.shareTab')} />
           </div>
         </div>
 
