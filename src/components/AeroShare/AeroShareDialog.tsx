@@ -30,6 +30,8 @@ interface AeroShareDialogProps {
   prefillAlias?: string;
   /** Default destination folder for the RECEIVE flow. */
   defaultLocalPath?: string;
+  /** SHARE flow: pre-fill the folder to share (folder-context entry point). */
+  prefillShareFolder?: string;
   /** Re-pull friends/drives after a successful handshake. */
   onFriendSaved?: () => void;
   /** "Connect now" after receiving a drive: open the dual panel on it. */
@@ -42,6 +44,7 @@ export function AeroShareDialog({
   prefillAfid,
   prefillAlias,
   defaultLocalPath,
+  prefillShareFolder,
   onFriendSaved,
   onConnectFriend,
   onClose,
@@ -82,6 +85,7 @@ export function AeroShareDialog({
           prefillAfid={prefillAfid}
           prefillAlias={prefillAlias}
           defaultLocalPath={defaultLocalPath}
+          prefillShareFolder={prefillShareFolder}
           onFriendSaved={onFriendSaved}
           onConnectFriend={onConnectFriend}
           onClose={onClose}

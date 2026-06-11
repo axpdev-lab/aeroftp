@@ -311,7 +311,7 @@ export function MyServersPanel({
     // drive-state badge fed by usePeerDriveStates.
     const aeroShareEnabled = useAeroShareEnabled();
     const { states: peerStates, refresh: refreshPeerStates } = usePeerDriveStates(aeroShareEnabled);
-    const [aeroShareDialog, setAeroShareDialog] = useState<{ mode: AeroShareMode; prefillAfid?: string; prefillAlias?: string } | null>(null);
+    const [aeroShareDialog, setAeroShareDialog] = useState<{ mode: AeroShareMode; prefillAfid?: string; prefillAlias?: string; prefillShareFolder?: string } | null>(null);
     // Bumped after a handshake so the friend's freshly-saved profile reloads
     // (the load effect also keys on the parent `lastUpdate`).
     const [localRefresh, setLocalRefresh] = useState(0);
@@ -500,9 +500,11 @@ export function MyServersPanel({
         const onOpen = (e: Event) => {
             const d = (e as CustomEvent<AeroShareOpenDetail>).detail;
             setAeroShareDialog({
-                mode: d?.mode === 'share' ? 'share' : 'receive',
+                // A pre-filled share folder implies the share tab.
+                mode: (d?.mode === 'share' || d?.prefillShareFolder) ? 'share' : 'receive',
                 prefillAfid: d?.prefillAfid,
                 prefillAlias: d?.prefillAlias,
+                prefillShareFolder: d?.prefillShareFolder,
             });
         };
         window.addEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
@@ -1525,6 +1527,7 @@ export function MyServersPanel({
                     initialMode={aeroShareDialog.mode}
                     prefillAfid={aeroShareDialog.prefillAfid}
                     prefillAlias={aeroShareDialog.prefillAlias}
+                    prefillShareFolder={aeroShareDialog.prefillShareFolder}
                     onFriendSaved={() => { setLocalRefresh(n => n + 1); refreshPeerStates(); }}
                     onConnectFriend={(profile) => { void handleConnect(profile); }}
                     onClose={() => setAeroShareDialog(null)}

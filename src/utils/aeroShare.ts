@@ -155,6 +155,9 @@ export interface AeroShareOpenDetail {
   mode: 'receive' | 'share';
   prefillAfid?: string;
   prefillAlias?: string;
+  /** SHARE flow: pre-fill the folder to share (folder-context "Share via
+   *  AeroShare" entry point). Implies opening on the share tab. */
+  prefillShareFolder?: string;
 }
 
 /** Ask the (always-mounted) MyServersPanel to open the AeroShare dialog.

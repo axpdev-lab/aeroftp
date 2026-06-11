@@ -53,6 +53,8 @@ export interface AeroShareHandshakeBodyProps {
   prefillAlias?: string;
   /** Default destination folder for the RECEIVE flow. */
   defaultLocalPath?: string;
+  /** SHARE flow: pre-fill the folder to share (folder-context entry point). */
+  prefillShareFolder?: string;
   /** Re-pull friends/drives after a successful handshake. */
   onFriendSaved?: () => void;
   /** "Connect now" after receiving a drive: open the dual panel on it. */
@@ -170,6 +172,7 @@ export function AeroShareHandshakeBody({
   onClose,
   variant = 'modal',
   receiveOnly = false,
+  prefillShareFolder,
   editConnection,
   onSaveEdit,
 }: AeroShareHandshakeBodyProps) {
@@ -211,7 +214,7 @@ export function AeroShareHandshakeBody({
   const [selectedFriend, setSelectedFriend] = useState('');
   const [recipientAfid, setRecipientAfid] = useState(prefillAfid ?? '');
   const [recipientAlias, setRecipientAlias] = useState(prefillAlias ?? '');
-  const [shareFolder, setShareFolder] = useState('');
+  const [shareFolder, setShareFolder] = useState(prefillShareFolder ?? '');
   const [driveName, setDriveName] = useState('');
   const [sharePhase, setSharePhase] = useState<Phase>('form');
   const [shareError, setShareError] = useState('');
