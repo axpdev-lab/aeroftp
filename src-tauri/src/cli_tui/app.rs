@@ -1718,6 +1718,41 @@ impl AppState {
                     local_path,
                 }]
             }
+            PaletteCommand::Put { local, remote } => {
+                let name = local_basename(&local);
+                if name.is_empty() {
+                    if let TuiOverlay::Palette(state) = &mut self.overlay {
+                        state.last_result = "could not read a file name from that path".to_string();
+                    }
+                    return Vec::new();
+                }
+                let remote_path = remote.unwrap_or_else(|| join_remote(&cwd, &name));
+                let id = self.transfers.enqueue(
+                    TransferDirection::Upload,
+                    name,
+                    remote_path.clone(),
+                    local.clone(),
+                );
+                self.overlay = TuiOverlay::None;
+                self.focus = TuiFocus::Transfers;
+                self.begin_mutation(
+                    TuiWorkerOperation::Transfer,
+                    format!("Uploading {} -> {}.", local, remote_path),
+                );
+                vec![WorkerCommand::Upload {
+                    id,
+                    local_path: local,
+                    remote_path,
+                }]
+            }
+            PaletteCommand::Move { from, to } => {
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(
+                    TuiWorkerOperation::Rename,
+                    format!("Moving {} -> {}.", from, to),
+                );
+                vec![WorkerCommand::Rename { from, to }]
+            }
             PaletteCommand::Rm { path, force } => {
                 if force {
                     self.overlay = TuiOverlay::None;
@@ -2718,11 +2753,21 @@ enum PaletteCommand {
     Stat { path: String },
     /// `mkdir <path>`: create a remote directory.
     Mkdir { path: String },
-    /// `get <remote> [local]`: enqueue a download (local defaults like `g`).
+    /// `get <remote> [local]` / `pget <remote> [local]`: enqueue a download
+    /// (local defaults like the `g` key).
     Get {
         remote: String,
         local: Option<String>,
     },
+    /// `put <local> [remote]`: enqueue an upload (remote defaults to cwd, like
+    /// the `p` key). Mirrors the CLI `put`, reusing `WorkerCommand::Upload`.
+    Put {
+        local: String,
+        remote: Option<String>,
+    },
+    /// `mv <src> <dst>`: move/rename a remote entry. A remote rename is a move
+    /// here, so this reuses `WorkerCommand::Rename` (CLI parity for `mv`).
+    Move { from: String, to: String },
     /// `rm <path>` (confirm) / `rm! <path>` (force): delete a remote entry.
     Rm { path: String, force: bool },
 }
@@ -2828,7 +2873,7 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
                 path: resolve_remote_arg(cwd, &args[0]),
             }
         }
-        "get" => match args.len() {
+        "get" | "pget" => match args.len() {
             1 => PaletteCommand::Get {
                 remote: resolve_remote_arg(cwd, &args[0]),
                 local: None,
@@ -2839,6 +2884,26 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
             },
             _ => PaletteCommand::Error("usage: get <remote> [local]".to_string()),
         },
+        "put" => match args.len() {
+            1 => PaletteCommand::Put {
+                local: args[0].clone(),
+                remote: None,
+            },
+            2 => PaletteCommand::Put {
+                local: args[0].clone(),
+                remote: Some(resolve_remote_arg(cwd, &args[1])),
+            },
+            _ => PaletteCommand::Error("usage: put <local> [remote]".to_string()),
+        },
+        "mv" => {
+            if args.len() != 2 {
+                return PaletteCommand::Error("usage: mv <src> <dst>".to_string());
+            }
+            PaletteCommand::Move {
+                from: resolve_remote_arg(cwd, &args[0]),
+                to: resolve_remote_arg(cwd, &args[1]),
+            }
+        }
         "rm" | "rm!" => {
             if args.len() != 1 {
                 return PaletteCommand::Error(
@@ -2851,7 +2916,7 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
             }
         }
         other => PaletteCommand::Error(format!(
-            "unknown '{}': ls cd get stat mkdir rm rm! (type help)",
+            "unknown '{}': ls cd get put stat mkdir mv rm rm! (type help)",
             other
         )),
     }
@@ -2861,7 +2926,7 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
 /// the `help`/`?` echo and the empty-buffer placeholder hint (rendered in
 /// `mod.rs`). The middot separator matches the header style; no em-dashes.
 pub(crate) fn palette_cheatsheet() -> &'static str {
-    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · rm <path> · rm! <path>"
+    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · put <local> [remote] · mv <src> <dst> · rm <path> · rm! <path>"
 }
 
 /// Compact byte size for the status line (the Shape B fullscreen view has no
@@ -4270,6 +4335,77 @@ mod tests {
                 path: "/srv/old".to_string(),
                 force: true,
             }
+        );
+        // `pget` is an alias of `get` (CLI parity).
+        assert_eq!(
+            parse_palette_command("pget a.txt", "/srv"),
+            PaletteCommand::Get {
+                remote: "/srv/a.txt".to_string(),
+                local: None,
+            }
+        );
+        // `put` mirrors `get`: local source, optional remote destination.
+        assert_eq!(
+            parse_palette_command("put ./a.txt", "/srv"),
+            PaletteCommand::Put {
+                local: "./a.txt".to_string(),
+                remote: None,
+            }
+        );
+        assert_eq!(
+            parse_palette_command("put ./a.txt sub/b.txt", "/srv"),
+            PaletteCommand::Put {
+                local: "./a.txt".to_string(),
+                remote: Some("/srv/sub/b.txt".to_string()),
+            }
+        );
+        // `mv` resolves both arguments against the remote cwd (rename == move).
+        assert_eq!(
+            parse_palette_command("mv a.txt b.txt", "/srv"),
+            PaletteCommand::Move {
+                from: "/srv/a.txt".to_string(),
+                to: "/srv/b.txt".to_string(),
+            }
+        );
+        assert!(matches!(
+            parse_palette_command("mv only", "/srv"),
+            PaletteCommand::Error(_)
+        ));
+    }
+
+    #[test]
+    fn palette_put_enqueues_an_upload_and_mv_emits_a_rename() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "put /tmp/data.bin".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let cmds = app.handle_overlay_key(OverlayKey::Submit);
+        match cmds.as_slice() {
+            [WorkerCommand::Upload {
+                local_path,
+                remote_path,
+                ..
+            }] => {
+                assert_eq!(local_path, "/tmp/data.bin");
+                assert!(remote_path.ends_with("/data.bin"), "uploaded into cwd");
+            }
+            other => panic!("put must emit a single Upload, got {:?}", other),
+        }
+
+        let mut app = connected_app_with_listing();
+        let cwd = app.current_browser_dir();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "mv a.txt b.txt".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let cmds = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            cmds,
+            vec![WorkerCommand::Rename {
+                from: resolve_remote_arg(&cwd, "a.txt"),
+                to: resolve_remote_arg(&cwd, "b.txt"),
+            }]
         );
     }
 
