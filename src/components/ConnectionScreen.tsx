@@ -2547,6 +2547,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <AeroShareHandshakeBody
                                     variant="page"
                                     initialMode="receive"
+                                    receiveOnly
                                     onClose={() => { onFormSaved?.(); }}
                                 />
                             </div>

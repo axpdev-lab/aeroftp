@@ -62,6 +62,12 @@ export interface AeroShareHandshakeBodyProps {
   /** Visual density: 'modal' (compact, default) or 'page' (the wider form-tab
    *  styling used when embedded in ConnectionScreen, matching other providers). */
   variant?: 'modal' | 'page';
+  /** Receive-only: hide the Share tab and lock the body to the RECEIVE flow.
+   *  Used by the My Servers add (a My Servers card is a received drive, settled
+   *  model), so the page-add cannot publish. Sharing stays reachable from the
+   *  modal (titlebar / File menu) until it gets its own surface. The modal
+   *  leaves this false and keeps both tabs. */
+  receiveOnly?: boolean;
   /** Edit an existing received connection (My Servers peer-card edit). When set,
    *  the body renders a receive-only EDIT form: no mode tabs, no "Your
    *  AeroFTP-ID" card, no share-link/import step. The friend's AeroFTP-ID is
@@ -163,6 +169,7 @@ export function AeroShareHandshakeBody({
   onConnectFriend,
   onClose,
   variant = 'modal',
+  receiveOnly = false,
   editConnection,
   onSaveEdit,
 }: AeroShareHandshakeBodyProps) {
@@ -170,9 +177,12 @@ export function AeroShareHandshakeBody({
   const isPage = variant === 'page';
   // Edit mode (My Servers peer-card edit): a receive-only, link-less form.
   const isEdit = !!editConnection;
+  // No mode tabs when editing, or when the host pins the body to receive
+  // (My Servers add): only the RECEIVE flow is reachable then.
+  const showTabs = !isEdit && !receiveOnly;
   const inputCls = inputClsFor(isPage);
   const labelCls = labelClsFor(isPage);
-  const [mode, setMode] = useState<AeroShareMode>(initialMode);
+  const [mode, setMode] = useState<AeroShareMode>(receiveOnly ? 'receive' : initialMode);
 
   // Optional friend avatar (data URL), saved as the card's customIconUrl.
   // Shown only in the page (form-tab) host, matching the other providers'
@@ -380,8 +390,9 @@ export function AeroShareHandshakeBody({
 
   return (
     <>
-      {/* Mode tabs (hidden in edit: a My Servers card edits its receive side only) */}
-      {!isEdit && (
+      {/* Mode tabs: hidden in edit (a My Servers card edits its receive side
+          only) and in receive-only add (My Servers cannot publish). */}
+      {showTabs && (
       <div className="flex px-4 gap-5 border-b border-gray-200 dark:border-gray-700">
         <ModeTab active={mode === 'receive'} onClick={() => setMode('receive')} icon={<Download size={13} />} label={t('aeroShare.dialog.receiveTab')} />
         <ModeTab active={mode === 'share'} onClick={() => setMode('share')} icon={<Upload size={13} />} label={t('aeroShare.dialog.shareTab')} />
