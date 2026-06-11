@@ -129,6 +129,10 @@ impl SyncErrorCorrectionOptions {
     }
 }
 
+pub fn sync_error_correction_sidecar_remote_path(remote_path: &str) -> String {
+    sync_error_correction_sidecar_path(remote_path)
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncEcStatus {
@@ -140,6 +144,13 @@ pub enum SyncEcStatus {
     MissingSidecar,
     MissingExpectedHash,
     VerifyFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyncEcSidecarDeleteStatus {
+    Deleted,
+    Missing,
+    Failed(String),
 }
 
 pub const AEROSYNC_EC_EXCLUDE_PATTERN: &str = "*.aerorec";
@@ -445,7 +456,9 @@ pub enum FileOutcome {
         fallback_reason: Option<String>,
         ec_status: Option<SyncEcStatus>,
     },
-    Deleted,
+    Deleted {
+        ec_sidecar_status: Option<SyncEcSidecarDeleteStatus>,
+    },
     Skipped {
         reason: String,
     },
@@ -504,6 +517,8 @@ pub struct SyncReport {
     pub ec_repaired: u32,
     pub ec_skipped_too_large: u32,
     pub ec_generate_failed: u32,
+    pub ec_sidecar_deleted: u32,
+    pub ec_sidecar_delete_failed: u32,
 }
 
 impl SyncReport {
@@ -1274,6 +1289,7 @@ pub async fn sync_tree_core(
                             opts.delta_policy,
                             opts.dry_run,
                             sink,
+                            &opts.error_correction,
                         )
                         .await;
                         apply_sync_tree_outcome(
@@ -1624,7 +1640,14 @@ pub(crate) fn apply_sync_tree_outcome(
     match &outcome {
         FileOutcome::Uploaded { .. } => report.uploaded += 1,
         FileOutcome::Downloaded { .. } => report.downloaded += 1,
-        FileOutcome::Deleted => report.deleted += 1,
+        FileOutcome::Deleted { ec_sidecar_status } => {
+            report.deleted += 1;
+            match ec_sidecar_status {
+                Some(SyncEcSidecarDeleteStatus::Deleted) => report.ec_sidecar_deleted += 1,
+                Some(SyncEcSidecarDeleteStatus::Failed(_)) => report.ec_sidecar_delete_failed += 1,
+                Some(SyncEcSidecarDeleteStatus::Missing) | None => {}
+            }
+        }
         FileOutcome::Skipped { .. } => report.skipped += 1,
         FileOutcome::Failed { error } => {
             report.errors.push(SyncError {
@@ -1717,6 +1740,34 @@ async fn upload_sync_ec_sidecar(
         .upload(&tmp_path, sidecar_remote_path, None)
         .await
         .map_err(|e| e.to_string())
+}
+
+pub async fn delete_sync_error_correction_sidecar_after_remote_delete(
+    provider: &mut dyn StorageProvider,
+    remote_path: &str,
+) -> SyncEcSidecarDeleteStatus {
+    let sidecar_remote_path = sync_error_correction_sidecar_remote_path(remote_path);
+    match provider.delete(&sidecar_remote_path).await {
+        Ok(()) => {
+            tracing::info!(
+                "sync.ec: deleted sidecar for remote delete (sidecar={}, protected={})",
+                sidecar_remote_path,
+                remote_path
+            );
+            SyncEcSidecarDeleteStatus::Deleted
+        }
+        Err(ProviderError::NotFound(_)) => SyncEcSidecarDeleteStatus::Missing,
+        Err(e) => {
+            let message = e.to_string();
+            tracing::warn!(
+                "sync.ec: failed to delete sidecar for remote delete (sidecar={}, protected={}, error={})",
+                sidecar_remote_path,
+                remote_path,
+                message
+            );
+            SyncEcSidecarDeleteStatus::Failed(message)
+        }
+    }
 }
 
 async fn download_sync_ec_sidecar(
@@ -2316,6 +2367,7 @@ pub(crate) async fn perform_remote_delete(
     decision_policy: DeltaPolicy,
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
+    error_correction: &SyncErrorCorrectionOptions,
 ) -> FileOutcome {
     sink.on_file_start(rel, 0, "delete_remote", decision_policy);
     if dry_run {
@@ -2325,7 +2377,20 @@ pub(crate) async fn perform_remote_delete(
     }
     let remote_path = join_clean_remote(remote_root, rel);
     match provider.delete(&remote_path).await {
-        Ok(()) => FileOutcome::Deleted,
+        Ok(()) => {
+            let ec_sidecar_status = if error_correction.enabled() {
+                Some(
+                    delete_sync_error_correction_sidecar_after_remote_delete(
+                        provider.as_mut(),
+                        &remote_path,
+                    )
+                    .await,
+                )
+            } else {
+                None
+            };
+            FileOutcome::Deleted { ec_sidecar_status }
+        }
         Err(e) => FileOutcome::Failed {
             error: format!("delete failed: {}", e),
         },
@@ -2347,7 +2412,9 @@ pub(crate) fn perform_local_delete(
     }
     let path = join_clean(local_root, rel);
     match std::fs::remove_file(&path) {
-        Ok(()) => FileOutcome::Deleted,
+        Ok(()) => FileOutcome::Deleted {
+            ec_sidecar_status: None,
+        },
         Err(e) => FileOutcome::Failed {
             error: format!("delete failed: {}", e),
         },
@@ -4273,6 +4340,14 @@ mod tests {
     }
 
     #[test]
+    fn error_correction_sidecar_remote_path_uses_aerorec_extension() {
+        assert_eq!(
+            sync_error_correction_sidecar_remote_path("/remote/file.bin"),
+            "/remote/file.bin.aerorec"
+        );
+    }
+
+    #[test]
     fn error_correction_status_accumulates_report_counters() {
         let mut report = SyncReport::default();
         let mut sink = NoopProgressSink;
@@ -4306,6 +4381,44 @@ mod tests {
         assert_eq!(report.ec_repaired, 1);
         assert_eq!(report.ec_skipped_too_large, 1);
         assert_eq!(report.ec_generate_failed, 1);
+    }
+
+    #[test]
+    fn error_correction_sidecar_delete_status_accumulates_report_counters() {
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        let statuses = [
+            SyncEcSidecarDeleteStatus::Deleted,
+            SyncEcSidecarDeleteStatus::Missing,
+            SyncEcSidecarDeleteStatus::Failed("permission denied".to_string()),
+        ];
+
+        for status in statuses {
+            apply_sync_tree_outcome(
+                &mut report,
+                "ec.bin",
+                "delete_remote",
+                FileOutcome::Deleted {
+                    ec_sidecar_status: Some(status),
+                },
+                DeltaPolicy::default(),
+                &mut sink,
+            );
+        }
+        apply_sync_tree_outcome(
+            &mut report,
+            "local.bin",
+            "delete_local",
+            FileOutcome::Deleted {
+                ec_sidecar_status: None,
+            },
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+
+        assert_eq!(report.deleted, 4);
+        assert_eq!(report.ec_sidecar_deleted, 1);
+        assert_eq!(report.ec_sidecar_delete_failed, 1);
     }
 
     #[test]

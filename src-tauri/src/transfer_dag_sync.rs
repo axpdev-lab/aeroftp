@@ -626,6 +626,7 @@ pub async fn execute_sync_dag(
                     opts.delta_policy,
                     false,
                     sink,
+                    &opts.error_correction,
                 )
                 .await
             }

@@ -3902,6 +3902,10 @@ struct CliSyncResult {
     ec_skipped_too_large: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_generate_failed: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_sidecar_deleted: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_sidecar_delete_failed: Option<u32>,
     errors: Vec<String>,
     elapsed_secs: f64,
     /// Per-file execution plan. Populated in `--dry-run` so agents can pilot
@@ -3942,6 +3946,8 @@ struct SyncCycleStats {
     ec_generated: u32,
     ec_skipped_too_large: u32,
     ec_generate_failed: u32,
+    ec_sidecar_deleted: u32,
+    ec_sidecar_delete_failed: u32,
     error_count: u32,
 }
 
@@ -4817,6 +4823,8 @@ struct CliSyncEcCounters {
     generated: u32,
     skipped_too_large: u32,
     generate_failed: u32,
+    sidecar_deleted: u32,
+    sidecar_delete_failed: u32,
 }
 
 impl CliSyncEcCounters {
@@ -4826,6 +4834,21 @@ impl CliSyncEcCounters {
             ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge => self.skipped_too_large += 1,
             ftp_client_gui_lib::sync::SyncEcStatus::GenerateFailed => self.generate_failed += 1,
             _ => {}
+        }
+    }
+
+    fn record_sidecar_delete(
+        &mut self,
+        status: &ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus,
+    ) {
+        match status {
+            ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Deleted => {
+                self.sidecar_deleted += 1
+            }
+            ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Failed(_) => {
+                self.sidecar_delete_failed += 1
+            }
+            ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Missing => {}
         }
     }
 }
@@ -19552,6 +19575,8 @@ async fn cmd_get_recursive(
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -19780,6 +19805,8 @@ async fn cmd_get_glob(
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -20405,6 +20432,8 @@ async fn cmd_put_recursive(
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -29884,6 +29913,11 @@ async fn cmd_sync(
                     ec_generated: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_skipped_too_large: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_generate_failed: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_sidecar_deleted: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_sidecar_delete_failed: sync_ec_json_counter(
+                        error_correction_pct.is_some(),
+                        0,
+                    ),
                     errors: vec![],
                     elapsed_secs: start.elapsed().as_secs_f64(),
                     plan,
@@ -29901,6 +29935,8 @@ async fn cmd_sync(
             ec_generated: 0,
             ec_skipped_too_large: 0,
             ec_generate_failed: 0,
+            ec_sidecar_deleted: 0,
+            ec_sidecar_delete_failed: 0,
             error_count: 0,
         };
     }
@@ -30383,7 +30419,28 @@ async fn cmd_sync(
         }
         let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
         match provider.delete(&remote_path).await {
-            Ok(()) => deleted += 1,
+            Ok(()) => {
+                deleted += 1;
+                if error_correction_enabled {
+                    let status =
+                        ftp_client_gui_lib::sync::delete_sync_error_correction_sidecar_after_remote_delete(
+                            provider.as_mut(),
+                            &remote_path,
+                        )
+                        .await;
+                    ec_counters.record_sidecar_delete(&status);
+                    if let ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Failed(message) =
+                        status
+                    {
+                        if !quiet {
+                            eprintln!(
+                                "Warning: AeroSync EC sidecar delete failed for {} (file deleted): {}",
+                                path, message
+                            );
+                        }
+                    }
+                }
+            }
             Err(e) => errors.push(format!("delete remote {}: {}", path, e)),
         }
     }
@@ -30443,10 +30500,12 @@ async fn cmd_sync(
                 );
                 if error_correction_enabled {
                     println!(
-                        "AeroSync EC: {} generated, {} skipped too large, {} failed",
+                        "AeroSync EC: {} generated, {} skipped too large, {} failed, {} sidecars deleted, {} sidecar delete failed",
                         ec_counters.generated,
                         ec_counters.skipped_too_large,
-                        ec_counters.generate_failed
+                        ec_counters.generate_failed,
+                        ec_counters.sidecar_deleted,
+                        ec_counters.sidecar_delete_failed
                     );
                 }
                 for err in &errors {
@@ -30477,6 +30536,14 @@ async fn cmd_sync(
                     error_correction_pct.is_some(),
                     ec_counters.generate_failed,
                 ),
+                ec_sidecar_deleted: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.sidecar_deleted,
+                ),
+                ec_sidecar_delete_failed: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.sidecar_delete_failed,
+                ),
                 errors: errors.clone(),
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -30506,6 +30573,8 @@ async fn cmd_sync(
         ec_generated: ec_counters.generated,
         ec_skipped_too_large: ec_counters.skipped_too_large,
         ec_generate_failed: ec_counters.generate_failed,
+        ec_sidecar_deleted: ec_counters.sidecar_deleted,
+        ec_sidecar_delete_failed: ec_counters.sidecar_delete_failed,
         error_count: errors.len() as u32,
     }
 }
@@ -34241,6 +34310,8 @@ async fn cmd_put_glob(
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -34605,6 +34676,10 @@ async fn cmd_sync_watch(
                     payload["ec_skipped_too_large"] =
                         serde_json::json!(stats.ec_skipped_too_large);
                     payload["ec_generate_failed"] = serde_json::json!(stats.ec_generate_failed);
+                    payload["ec_sidecar_deleted"] =
+                        serde_json::json!(stats.ec_sidecar_deleted);
+                    payload["ec_sidecar_delete_failed"] =
+                        serde_json::json!(stats.ec_sidecar_delete_failed);
                 }
                 print_json(&payload);
             } else if !quiet {

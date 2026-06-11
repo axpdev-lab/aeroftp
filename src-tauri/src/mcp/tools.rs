@@ -1813,7 +1813,7 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
                 crate::sync_core::FileOutcome::Downloaded { bytes, .. } => {
                     format!("downloaded {} ({} bytes)", rel, bytes)
                 }
-                crate::sync_core::FileOutcome::Deleted => format!("deleted {}", rel),
+                crate::sync_core::FileOutcome::Deleted { .. } => format!("deleted {}", rel),
                 crate::sync_core::FileOutcome::Skipped { reason } => {
                     format!("skipped {}: {}", rel, reason)
                 }
