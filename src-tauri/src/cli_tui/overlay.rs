@@ -318,13 +318,17 @@ impl ProfileFormState {
     }
 }
 
-/// A single-line text prompt (create directory, rename, transfer paths).
+/// A single-line text prompt (create directory, rename, transfer paths). A
+/// minimal line editor: a `cursor` (char index, 0..=len) supports inserting and
+/// deleting in the middle of the buffer, with Left/Right to move it.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PromptState {
     pub kind: PromptKind,
     pub title: String,
     pub hint: String,
     pub buffer: String,
+    /// Insertion point as a char index into `buffer` (0..=char count).
+    pub cursor: usize,
 }
 
 impl PromptState {
@@ -334,16 +338,33 @@ impl PromptState {
         hint: impl Into<String>,
         initial: impl Into<String>,
     ) -> Self {
+        let buffer = initial.into();
+        let cursor = buffer.chars().count();
         Self {
             kind,
             title: title.into(),
             hint: hint.into(),
-            buffer: initial.into(),
+            buffer,
+            cursor,
         }
     }
 
-    /// Append a printable character, rejecting control characters and the path
-    /// separators that would let a single-segment prompt escape its directory.
+    fn len_chars(&self) -> usize {
+        self.buffer.chars().count()
+    }
+
+    /// Byte offset of char index `cursor`, or the buffer length when at the end.
+    fn byte_at(&self, cursor: usize) -> usize {
+        self.buffer
+            .char_indices()
+            .nth(cursor)
+            .map(|(i, _)| i)
+            .unwrap_or(self.buffer.len())
+    }
+
+    /// Insert a printable character at the cursor, rejecting control characters
+    /// and the path separators that would let a single-segment prompt escape its
+    /// directory. Advances the cursor past the inserted character.
     pub fn push_char(&mut self, c: char) {
         if c.is_control() {
             return;
@@ -355,11 +376,47 @@ impl PromptState {
         {
             return;
         }
-        self.buffer.push(c);
+        self.cursor = self.cursor.min(self.len_chars());
+        let byte = self.byte_at(self.cursor);
+        self.buffer.insert(byte, c);
+        self.cursor += 1;
     }
 
+    /// Delete the character before the cursor (Backspace).
     pub fn backspace(&mut self) {
-        self.buffer.pop();
+        self.cursor = self.cursor.min(self.len_chars());
+        if self.cursor == 0 {
+            return;
+        }
+        let byte = self.byte_at(self.cursor - 1);
+        self.buffer.remove(byte);
+        self.cursor -= 1;
+    }
+
+    pub fn move_left(&mut self) {
+        self.cursor = self.cursor.min(self.len_chars()).saturating_sub(1);
+    }
+
+    pub fn move_right(&mut self) {
+        self.cursor = (self.cursor + 1).min(self.len_chars());
+    }
+
+    /// Split the buffer for rendering a block cursor: `(before, at, after)` where
+    /// `at` is the single character under the cursor (a space when at the end).
+    pub fn cursor_split(&self) -> (String, String, String) {
+        let chars: Vec<char> = self.buffer.chars().collect();
+        let cursor = self.cursor.min(chars.len());
+        let before: String = chars[..cursor].iter().collect();
+        let at: String = chars
+            .get(cursor)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| " ".to_string());
+        let after: String = if cursor < chars.len() {
+            chars[cursor + 1..].iter().collect()
+        } else {
+            String::new()
+        };
+        (before, at, after)
     }
 
     pub fn trimmed(&self) -> &str {
@@ -395,7 +452,14 @@ pub struct ConfirmState {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ConfirmKind {
     /// Delete `path`; `recursive` when the entry is a non-empty directory.
-    Delete { path: String, recursive: bool },
+    /// `local` routes the delete to the local filesystem (Local pane) instead of
+    /// the remote provider - carried explicitly because a delete can be raised
+    /// from either the active pane or the (always-remote) palette `rm`.
+    Delete {
+        path: String,
+        recursive: bool,
+        local: bool,
+    },
     /// Delete a saved profile (B4 DiscoveryHub) from `user_name`'s partition.
     /// Carries the display name for the confirmation message and the id for the
     /// optimistic removal + worker `DeleteProfile`.
@@ -440,6 +504,35 @@ mod tests {
             prompt.push_char(c);
         }
         assert_eq!(prompt.buffer, "./out/file.txt");
+    }
+
+    #[test]
+    fn prompt_cursor_inserts_and_deletes_mid_string() {
+        let mut prompt = PromptState::new(
+            PromptKind::Download {
+                remote: "/srv/file.txt".to_string(),
+            },
+            "Download",
+            "local path",
+            "abcd".to_string(),
+        );
+        // Cursor starts at the end.
+        assert_eq!(prompt.cursor, 4);
+        // Move left twice -> between 'b' and 'c', insert 'X'.
+        prompt.move_left();
+        prompt.move_left();
+        prompt.push_char('X');
+        assert_eq!(prompt.buffer, "abXcd");
+        assert_eq!(prompt.cursor, 3);
+        // Backspace deletes the char before the cursor ('X'), not the end.
+        prompt.backspace();
+        assert_eq!(prompt.buffer, "abcd");
+        assert_eq!(prompt.cursor, 2);
+        // Right to the end; move_right clamps at the length.
+        prompt.move_right();
+        prompt.move_right();
+        prompt.move_right();
+        assert_eq!(prompt.cursor, 4);
     }
 
     #[test]

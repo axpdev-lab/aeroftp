@@ -173,6 +173,15 @@ fn dispatch_commands(
 fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &mut AppState, theme: TuiTheme) {
     let area = frame.area();
 
+    // Start every frame from a blank slate. ratatui reuses its back buffer and
+    // only sends changed cells, so any cell no widget repaints keeps stale
+    // content from two frames ago. The IntroHub and the connected view are
+    // different layouts (and Paragraph/List do not fill their trailing cells),
+    // so on connect the old table/detail cells bleed through as blue selection
+    // bands and a garbled footer until a full redraw (resize/move). Clearing the
+    // whole area first makes those gaps render blank instead of stale.
+    frame.render_widget(Clear, area);
+
     // Shape B pivot: the pre-connection screen is the GUI-style IntroHub
     // (My Servers detailed table + header user switcher), NOT the old 5-column
     // picker. Once a live session is connected the dashboard below renders the
@@ -252,6 +261,8 @@ fn render_browser_fullscreen(
             Span::raw(" palette   "),
             Span::styled("s", theme.accent_style()),
             Span::raw(" show   "),
+            Span::styled("Esc", theme.accent_style()),
+            Span::raw(" disconnect   "),
             Span::styled("q", theme.accent_style()),
             Span::raw(" quit"),
         ]),
@@ -1002,16 +1013,17 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
         TuiOverlay::Prompt(prompt) => {
             let popup = centered_rect(60, 7, area);
             frame.render_widget(Clear, popup);
+            let (before, at, after) = prompt.cursor_split();
             let body = Paragraph::new(vec![
                 Line::from(Span::styled(prompt.hint.clone(), theme.muted_style())),
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("> ", theme.accent_style()),
-                    Span::styled(
-                        prompt.buffer.clone(),
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled("_", theme.accent_style()),
+                    Span::styled(before, Style::default().add_modifier(Modifier::BOLD)),
+                    // Block cursor: the character under the cursor rendered
+                    // reversed, so the caret is visible mid-string.
+                    Span::styled(at, Style::default().add_modifier(Modifier::REVERSED)),
+                    Span::styled(after, Style::default().add_modifier(Modifier::BOLD)),
                 ]),
             ])
             .block(
@@ -1651,6 +1663,7 @@ mod render_tests {
                 kind: ConfirmKind::Delete {
                     path: "/srv/old".to_string(),
                     recursive: false,
+                    local: false,
                 },
                 message: "Delete '/srv/old'?".to_string(),
             }),

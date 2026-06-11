@@ -10693,6 +10693,14 @@ async fn run_cli_tui_worker(
                     operation: TuiWorkerOperation::Cancel,
                 });
             }
+            WorkerCommand::Disconnect => {
+                // Esc -> back to the IntroHub: the TUI already reset its session
+                // state, so just close the provider and drop it (no event back;
+                // the TUI's optimistic status stands).
+                if let Some(mut old_session) = session.take() {
+                    let _ = old_session.provider_mut().disconnect().await;
+                }
+            }
             WorkerCommand::DiscardPartial { local_path } => {
                 // A transfer was dropped from the queue: remove its resumable
                 // `.aerotmp` leftover so a cleared cancel leaves no orphan. The
@@ -10747,6 +10755,76 @@ async fn run_cli_tui_worker(
                         });
                     }
                 }
+            }
+            WorkerCommand::LocalMkdir { path } => {
+                // Dual-pane mkdir on the Local side: create on the local
+                // filesystem, not the remote provider.
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Mkdir,
+                    identity: None,
+                });
+                let event = match tokio::fs::create_dir(&path).await {
+                    Ok(()) => WorkerEvent::PathReady {
+                        operation: TuiWorkerOperation::Mkdir,
+                        path,
+                    },
+                    Err(err) => WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Mkdir,
+                        identity: None,
+                        message: format!("local mkdir failed: {}", err),
+                    },
+                };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::LocalRename { from, to } => {
+                // Dual-pane rename on the Local side: rename on the local
+                // filesystem (sending it to the remote provider produced the
+                // "[550] No such file or directory" failure on local files).
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Rename,
+                    identity: None,
+                });
+                let event = match tokio::fs::rename(&from, &to).await {
+                    Ok(()) => WorkerEvent::PathReady {
+                        operation: TuiWorkerOperation::Rename,
+                        path: to,
+                    },
+                    Err(err) => WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Rename,
+                        identity: None,
+                        message: format!("local rename failed: {}", err),
+                    },
+                };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::LocalRemove { path, recursive } => {
+                // Dual-pane delete on the Local side: remove from the local
+                // filesystem, never the remote entry at the same path.
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Remove,
+                    identity: None,
+                });
+                let result = if recursive {
+                    tokio::fs::remove_dir_all(&path).await
+                } else {
+                    match tokio::fs::metadata(&path).await {
+                        Ok(meta) if meta.is_dir() => tokio::fs::remove_dir(&path).await,
+                        Ok(_) => tokio::fs::remove_file(&path).await,
+                        Err(err) => Err(err),
+                    }
+                };
+                let event = match result {
+                    Ok(()) => WorkerEvent::PathReady {
+                        operation: TuiWorkerOperation::Remove,
+                        path,
+                    },
+                    Err(err) => WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Remove,
+                        identity: None,
+                        message: format!("local delete failed: {}", err),
+                    },
+                };
+                let _ = event_tx.send(event);
             }
             WorkerCommand::ToggleFavorite { profile_id } => {
                 // Persist the favorite flag the IntroHub already flipped in its

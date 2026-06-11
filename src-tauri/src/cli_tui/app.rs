@@ -236,6 +236,7 @@ impl AppState {
                 self.finish(TuiIntent::Quit);
                 Vec::new()
             }
+            TuiAction::Back => self.handle_back(),
             TuiAction::MoveDown => self.move_selection(1),
             TuiAction::MoveUp => self.move_selection(-1),
             TuiAction::MoveLeft => self.focus_prev(),
@@ -1192,10 +1193,12 @@ impl AppState {
         } else {
             format!("Delete file '{}'?", path)
         };
+        let on_local = self.active_browser_side == BrowserSide::Local;
         self.overlay = TuiOverlay::Confirm(ConfirmState {
             kind: ConfirmKind::Delete {
                 path,
                 recursive: is_dir,
+                local: on_local,
             },
             message,
         });
@@ -1325,6 +1328,37 @@ impl AppState {
             .into_iter()
             .map(|local_path| WorkerCommand::DiscardPartial { local_path })
             .collect()
+    }
+
+    /// Esc: contextual "back". Disconnect to the IntroHub when a live session is
+    /// connected, otherwise quit the app. Refused while a transfer is in flight
+    /// (cancel it first) so a disconnect never strands an active transfer.
+    fn handle_back(&mut self) -> Vec<WorkerCommand> {
+        if self.is_live_connected() {
+            if self.transfers.has_active() {
+                self.status = "Cancel the active transfer (c) before disconnecting.".to_string();
+                return Vec::new();
+            }
+            return self.disconnect_to_introhub();
+        }
+        self.finish(TuiIntent::Quit);
+        Vec::new()
+    }
+
+    /// Drop the live session and return to the IntroHub (My Servers). The TUI
+    /// resets its own session state optimistically and asks the worker to close
+    /// the provider so the connection is not leaked.
+    fn disconnect_to_introhub(&mut self) -> Vec<WorkerCommand> {
+        self.session = TuiSessionState::default();
+        self.browser.clear();
+        self.overlay = TuiOverlay::None;
+        // Back on the IntroHub: navigation keys must reach `introhub_apply`,
+        // which is gated on the focus not being Browser/Transfers.
+        self.focus = TuiFocus::Profiles;
+        self.worker = WorkerEvent::Idle;
+        self.status = "Disconnected. Back to My Servers (Esc again to quit).".to_string();
+        self.sync_pane_state();
+        vec![WorkerCommand::Disconnect]
     }
 
     pub fn overlay_active(&self) -> bool {
@@ -1546,14 +1580,21 @@ impl AppState {
                 }
                 Vec::new()
             }
+            OverlayKey::Left => {
+                if let TuiOverlay::Prompt(prompt) = &mut self.overlay {
+                    prompt.move_left();
+                }
+                Vec::new()
+            }
+            OverlayKey::Right => {
+                if let TuiOverlay::Prompt(prompt) = &mut self.overlay {
+                    prompt.move_right();
+                }
+                Vec::new()
+            }
             OverlayKey::Submit => self.submit_prompt(),
             OverlayKey::Cancel => self.cancel_overlay(),
-            OverlayKey::Up
-            | OverlayKey::Down
-            | OverlayKey::Left
-            | OverlayKey::Right
-            | OverlayKey::Tab
-            | OverlayKey::Noop => Vec::new(),
+            OverlayKey::Up | OverlayKey::Down | OverlayKey::Tab | OverlayKey::Noop => Vec::new(),
         }
     }
 
@@ -1684,6 +1725,7 @@ impl AppState {
                         kind: ConfirmKind::Delete {
                             path,
                             recursive: false,
+                            local: false, // palette `rm` is remote-only (v1)
                         },
                         message,
                     });
@@ -1877,9 +1919,17 @@ impl AppState {
                     return Vec::new();
                 }
                 let path = join_remote(&parent, &value);
+                let on_local = self.active_browser_side == BrowserSide::Local;
                 self.overlay = TuiOverlay::None;
                 self.begin_mutation(TuiWorkerOperation::Mkdir, format!("Creating {}.", path));
-                vec![WorkerCommand::Mkdir { path }]
+                // Route to the active side: a Local-pane mkdir hits the local
+                // filesystem, not the remote provider (otherwise a "local" mkdir
+                // would create the directory on the server).
+                if on_local {
+                    vec![WorkerCommand::LocalMkdir { path }]
+                } else {
+                    vec![WorkerCommand::Mkdir { path }]
+                }
             }
             PromptKind::Rename { from } => {
                 if !is_valid_segment(&value) {
@@ -1892,9 +1942,17 @@ impl AppState {
                     self.status = "Name unchanged.".to_string();
                     return Vec::new();
                 }
+                let on_local = self.active_browser_side == BrowserSide::Local;
                 self.overlay = TuiOverlay::None;
                 self.begin_mutation(TuiWorkerOperation::Rename, format!("Renaming to {}.", to));
-                vec![WorkerCommand::Rename { from, to }]
+                // Route to the active side: a Local-pane rename hits the local
+                // filesystem (sending it to the remote provider is what caused
+                // the "[550] No such file or directory" failure on local files).
+                if on_local {
+                    vec![WorkerCommand::LocalRename { from, to }]
+                } else {
+                    vec![WorkerCommand::Rename { from, to }]
+                }
             }
             PromptKind::Download { remote } => {
                 if value.is_empty() {
@@ -1996,10 +2054,21 @@ impl AppState {
         };
         let kind = confirm.kind.clone();
         match kind {
-            ConfirmKind::Delete { path, recursive } => {
+            ConfirmKind::Delete {
+                path,
+                recursive,
+                local,
+            } => {
                 self.overlay = TuiOverlay::None;
                 self.begin_mutation(TuiWorkerOperation::Remove, format!("Deleting {}.", path));
-                vec![WorkerCommand::Remove { path, recursive }]
+                // Route to the side the delete was raised on: a Local-pane delete
+                // must remove the local file, never the remote entry at the same
+                // path. The palette `rm` is always remote (local = false).
+                if local {
+                    vec![WorkerCommand::LocalRemove { path, recursive }]
+                } else {
+                    vec![WorkerCommand::Remove { path, recursive }]
+                }
             }
             ConfirmKind::DeleteProfile {
                 user_name,
@@ -2418,8 +2487,14 @@ impl AppState {
                                 let visible = self.visible_profile_indices();
                                 if idx < visible.len() {
                                     self.selected_profile = visible[idx];
+                                    self.focus = TuiFocus::Profiles;
                                     if is_double {
-                                        return self.activate();
+                                        // The IntroHub connect path is
+                                        // `introhub_activate` (what keyboard Enter
+                                        // uses); the generic `activate` only
+                                        // connects when focus is already Profiles,
+                                        // so a fresh click would just switch focus.
+                                        return self.introhub_activate();
                                     }
                                 }
                             }
@@ -4347,6 +4422,101 @@ mod tests {
         );
     }
 
+    /// A connected app with the Local pane populated and active, for testing
+    /// that dual-pane mutations on the Local side hit the local filesystem.
+    fn connected_app_with_local_listing() -> AppState {
+        let mut app = connected_app_with_listing();
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: None, // identity None == local result
+            path: "/home/ale".to_string(),
+            result: list_result(vec![
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "note.txt".to_string(),
+                    path: "/home/ale/note.txt".to_string(),
+                    is_dir: false,
+                    size: 10,
+                    modified: None,
+                },
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "sub".to_string(),
+                    path: "/home/ale/sub".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                },
+            ]),
+        });
+        app.active_browser_side = BrowserSide::Local;
+        app.focus = TuiFocus::Browser;
+        app
+    }
+
+    #[test]
+    fn local_rename_routes_to_the_local_filesystem() {
+        let mut app = connected_app_with_local_listing();
+        app.apply_action(TuiAction::Rename); // selects note.txt (index 0)
+        app.handle_overlay_key(OverlayKey::Char('2'));
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        // Must be a LOCAL rename, not a remote one (the remote Rename caused the
+        // "[550] No such file or directory" on local files).
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::LocalRename {
+                from: "/home/ale/note.txt".to_string(),
+                to: "/home/ale/note.txt2".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn local_mkdir_routes_to_the_local_filesystem() {
+        let mut app = connected_app_with_local_listing();
+        app.apply_action(TuiAction::NewDir);
+        for c in "newdir".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::LocalMkdir {
+                path: "/home/ale/newdir".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn local_delete_routes_to_the_local_filesystem() {
+        let mut app = connected_app_with_local_listing();
+        // Select the directory entry (index 1) -> recursive delete.
+        app.apply_action(TuiAction::MoveDown);
+        app.apply_action(TuiAction::Delete);
+        let commands = app.handle_overlay_key(OverlayKey::Submit); // confirm
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::LocalRemove {
+                path: "/home/ale/sub".to_string(),
+                recursive: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn remote_rename_still_routes_to_the_remote_provider() {
+        // Regression guard: the Remote side keeps using the provider command.
+        let mut app = connected_app_with_listing(); // Remote side active
+        app.apply_action(TuiAction::MoveDown); // readme.txt
+        app.apply_action(TuiAction::Rename);
+        app.handle_overlay_key(OverlayKey::Char('x'));
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Rename {
+                from: "/srv/readme.txt".to_string(),
+                to: "/srv/readme.txtx".to_string(),
+            }]
+        );
+    }
+
     #[test]
     fn download_submit_enqueues_a_transfer_and_focuses_the_pane() {
         let mut app = connected_app_with_listing();
@@ -4858,6 +5028,85 @@ mod tests {
             "the view behind the overlay is not touched"
         );
         assert!(matches!(app.overlay, TuiOverlay::Palette(_)));
+    }
+
+    #[test]
+    fn esc_disconnects_to_introhub_when_connected() {
+        let mut app = connected_app_with_listing();
+        assert!(app.is_live_connected());
+        let commands = app.apply_action(TuiAction::Back);
+        // The worker is asked to close the provider...
+        assert_eq!(commands, vec![WorkerCommand::Disconnect]);
+        // ...and the TUI drops back to the IntroHub (My Servers): the live
+        // session is gone (phase Disconnected; sync_pane_state then re-seeds the
+        // planned identity of the highlighted profile, exactly like a fresh
+        // IntroHub, so is_live_connected stays false).
+        assert!(!app.is_live_connected());
+        assert_eq!(app.session.phase, TuiSessionPhase::Disconnected);
+        assert_eq!(app.focus, TuiFocus::Profiles);
+        // It does not quit the app.
+        assert!(!app.should_quit);
+        assert_eq!(app.take_intent(), None);
+    }
+
+    #[test]
+    fn esc_quits_from_the_introhub() {
+        let mut app = AppState::new_live(introhub_context());
+        assert!(!app.is_live_connected());
+        let commands = app.apply_action(TuiAction::Back);
+        assert!(commands.is_empty());
+        assert_eq!(app.take_intent(), Some(TuiIntent::Quit));
+    }
+
+    #[test]
+    fn esc_during_an_active_transfer_is_refused() {
+        let mut app = connected_app_with_listing();
+        // Enqueue a transfer so one is "active" (not finished).
+        app.transfers.enqueue(
+            TransferDirection::Download,
+            "f.bin".to_string(),
+            "/srv/f.bin".to_string(),
+            "./f.bin".to_string(),
+        );
+        assert!(app.transfers.has_active());
+        let commands = app.apply_action(TuiAction::Back);
+        assert!(commands.is_empty(), "disconnect refused mid-transfer");
+        assert!(app.is_live_connected(), "still connected");
+    }
+
+    #[test]
+    fn mouse_double_click_on_intro_row_connects() {
+        let mut app = AppState::new_live(introhub_context());
+        // Bordered table with a header row: data starts at rect.y + 2.
+        app.layout.intro_table = Some(Rect {
+            x: 0,
+            y: 0,
+            width: 60,
+            height: 12,
+        });
+        // First down primes the double-click on row 2 (data_top = 0 + 2 -> idx 0).
+        let _ = app.handle_mouse(sample_mouse_event(
+            ::crossterm::event::MouseEventKind::Down(MouseButton::Left),
+            5,
+            2,
+        ));
+        let commands = app.handle_mouse(sample_mouse_event(
+            ::crossterm::event::MouseEventKind::Down(MouseButton::Left),
+            5,
+            2,
+        ));
+        // Double-click connects the highlighted profile (not just switches focus).
+        assert_eq!(app.selected_profile, 0);
+        assert!(
+            commands
+                .iter()
+                .any(|c| matches!(c, WorkerCommand::OpenSession { .. })),
+            "double-click must open a session"
+        );
+        assert!(matches!(
+            app.session.phase,
+            TuiSessionPhase::Connecting | TuiSessionPhase::Connected
+        ));
     }
 
     #[test]

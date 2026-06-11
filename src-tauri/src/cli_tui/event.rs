@@ -3,6 +3,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TuiAction {
     Quit,
+    /// Esc: contextual "back". Disconnects to the IntroHub when a live session
+    /// is connected; quits the app from the IntroHub. Resolved in `AppState`.
+    Back,
     MoveUp,
     MoveDown,
     MoveLeft,
@@ -64,7 +67,10 @@ pub enum TuiAction {
 /// handled separately by [`key_to_overlay`].
 pub fn key_to_action(key: KeyEvent) -> TuiAction {
     match key.code {
-        KeyCode::Char('q') | KeyCode::Esc => TuiAction::Quit,
+        KeyCode::Char('q') => TuiAction::Quit,
+        // Esc is contextual "back": disconnect to the IntroHub when connected,
+        // quit the app from the IntroHub. AppState decides (see TuiAction::Back).
+        KeyCode::Esc => TuiAction::Back,
         KeyCode::Up | KeyCode::Char('k') => TuiAction::MoveUp,
         KeyCode::Down | KeyCode::Char('j') => TuiAction::MoveDown,
         KeyCode::Left | KeyCode::Char('h') => TuiAction::MoveLeft,

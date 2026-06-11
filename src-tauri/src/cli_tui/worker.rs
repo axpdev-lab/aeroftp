@@ -147,6 +147,10 @@ pub enum WorkerCommand {
         remote_path: String,
     },
     Cancel,
+    /// Disconnect the live session and drop it (Esc -> back to the IntroHub).
+    /// The TUI has already reset its session state optimistically; the worker
+    /// closes the provider so the connection is not leaked.
+    Disconnect,
     /// Remove the `.aerotmp` partial for a transfer dropped from the queue, so
     /// clearing a cancelled transfer also discards its resumable leftover.
     DiscardPartial {
@@ -158,6 +162,23 @@ pub enum WorkerCommand {
     },
     LocalStat {
         path: String,
+    },
+    /// Create a directory on the LOCAL filesystem (dual-pane mkdir on the Local
+    /// side). Distinct from `Mkdir`, which targets the remote provider.
+    LocalMkdir {
+        path: String,
+    },
+    /// Delete an entry on the LOCAL filesystem (dual-pane delete on the Local
+    /// side). `recursive` removes a directory and its contents.
+    LocalRemove {
+        path: String,
+        recursive: bool,
+    },
+    /// Rename/move an entry on the LOCAL filesystem (dual-pane rename on the
+    /// Local side). Distinct from `Rename`, which targets the remote provider.
+    LocalRename {
+        from: String,
+        to: String,
     },
     /// Persist the favorite flag for a saved profile (vault
     /// `config_favorite_servers`). Fire-and-forget: the IntroHub flips its own
@@ -235,10 +256,14 @@ impl WorkerCommand {
                 TuiWorkerOperation::Transfer
             }
             WorkerCommand::Cancel => TuiWorkerOperation::Cancel,
+            WorkerCommand::Disconnect => TuiWorkerOperation::Connect,
             WorkerCommand::DiscardPartial { .. } => TuiWorkerOperation::Discard,
             WorkerCommand::LocalList { .. } | WorkerCommand::LocalStat { .. } => {
                 TuiWorkerOperation::List
             }
+            WorkerCommand::LocalMkdir { .. } => TuiWorkerOperation::Mkdir,
+            WorkerCommand::LocalRemove { .. } => TuiWorkerOperation::Remove,
+            WorkerCommand::LocalRename { .. } => TuiWorkerOperation::Rename,
             WorkerCommand::ToggleFavorite { .. } => TuiWorkerOperation::Favorite,
             WorkerCommand::ToggleGroupMembership { .. }
             | WorkerCommand::RenameGroup { .. }
