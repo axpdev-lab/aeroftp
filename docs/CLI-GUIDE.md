@@ -854,9 +854,12 @@ aeroftp-cli sync --profile "server" ./local /remote --from-reconcile diff.json -
 ```bash
 # Preflight: risks + suggested next command
 aeroftp-cli sync-doctor --profile "server" ./local /remote --json
+
+# Include an AeroSync EC sidecar cost estimate without generating parity
+aeroftp-cli sync-doctor --profile "server" ./local /remote --ec=medium --json
 ```
 
-Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
+Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. With `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, sync-doctor automatically excludes `*.aerorec` from scans and adds estimate fields (`ec_enabled`, `ec_level_pct`, `ec_estimated_sidecars`, `ec_estimated_overhead_bytes`, `ec_skipped_too_large`, `ec_phase1_max_file_size`) without computing or uploading parity. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
 
 ### AEROSYNC-EC - Sync Error Correction Sidecars
 

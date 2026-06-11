@@ -154,6 +154,7 @@ pub enum SyncEcSidecarDeleteStatus {
 }
 
 pub const AEROSYNC_EC_EXCLUDE_PATTERN: &str = "*.aerorec";
+pub const AEROSYNC_EC_PHASE1_MAX_FILE_SIZE_BYTES: u64 = AEROSYNC_EC_PHASE1_MAX_FILE_SIZE;
 
 /// Options for comparison
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1827,6 +1827,17 @@ enum Commands {
         /// Use checksums instead of size/mtime
         #[arg(long)]
         checksum: bool,
+        /// Estimate AeroSync Reed-Solomon .aerorec sidecar cost for planned uploads.
+        /// Optional level: low, medium, quartile, high, or a percentage 5-50.
+        #[arg(
+            long = "error-correction",
+            visible_alias = "ec",
+            value_name = "LEVEL",
+            num_args = 0..=1,
+            require_equals = true,
+            default_missing_value = "medium"
+        )]
+        error_correction: Option<String>,
     },
     /// Display remote directory tree
     Tree {
@@ -4073,6 +4084,18 @@ struct CliDoctorResult {
     checks: Vec<serde_json::Value>,
     risks: Vec<String>,
     suggested_next_command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_level_pct: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_estimated_sidecars: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_estimated_overhead_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_too_large: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_phase1_max_file_size: Option<u64>,
 }
 
 // ── Community Benchmark report (schema v1) ────────────────────────────
@@ -4855,6 +4878,73 @@ impl CliSyncEcCounters {
 
 fn sync_ec_json_counter(enabled: bool, value: u32) -> Option<u32> {
     enabled.then_some(value)
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct SyncDoctorEcEstimate {
+    estimated_sidecars: u64,
+    estimated_overhead_bytes: u64,
+    skipped_too_large: u64,
+}
+
+fn estimate_sync_doctor_ec_for_uploads<I>(
+    upload_sizes: I,
+    pct: u32,
+    max_file_size: u64,
+) -> SyncDoctorEcEstimate
+where
+    I: IntoIterator<Item = u64>,
+{
+    let mut estimate = SyncDoctorEcEstimate::default();
+    for size in upload_sizes {
+        if size > max_file_size {
+            estimate.skipped_too_large = estimate.skipped_too_large.saturating_add(1);
+            continue;
+        }
+        estimate.estimated_sidecars = estimate.estimated_sidecars.saturating_add(1);
+        let overhead =
+            ((size as u128 * pct as u128).saturating_add(99) / 100).min(u64::MAX as u128) as u64;
+        estimate.estimated_overhead_bytes =
+            estimate.estimated_overhead_bytes.saturating_add(overhead);
+    }
+    estimate
+}
+
+fn sync_doctor_planned_upload_sizes(
+    direction: &str,
+    conflict_mode: &str,
+    local_entries: &HashMap<String, (u64, Option<String>)>,
+    remote_entries: &HashMap<String, (u64, Option<String>)>,
+    default_time: Option<&str>,
+) -> Vec<u64> {
+    if !matches!(direction, "upload" | "both") {
+        return Vec::new();
+    }
+    local_entries
+        .iter()
+        .filter_map(
+            |(path, (local_size, local_mtime))| match remote_entries.get(path) {
+                None => Some(*local_size),
+                Some((remote_size, remote_mtime)) => {
+                    let lm = apply_default_time(local_mtime.as_deref(), default_time);
+                    let rm = apply_default_time(remote_mtime.as_deref(), default_time);
+                    if local_size == remote_size
+                        && compare_mtime(lm, rm) == std::cmp::Ordering::Equal
+                    {
+                        return None;
+                    }
+                    if direction == "both" {
+                        match resolve_conflict(conflict_mode, *local_size, lm, *remote_size, rm) {
+                            "upload" | "rename" => Some(*local_size),
+                            _ => None,
+                        }
+                    } else {
+                        Some(*local_size)
+                    }
+                }
+            },
+        )
+        .collect()
 }
 
 fn sync_effective_exclude_patterns(
@@ -34873,6 +34963,7 @@ async fn cmd_sync_doctor(
     direction: &str,
     delete: bool,
     exclude: &[String],
+    error_correction_pct: Option<u32>,
     track_renames: bool,
     conflict_mode: &str,
     resync: bool,
@@ -34918,13 +35009,14 @@ async fn cmd_sync_doctor(
         return 5;
     }
 
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+    let error_correction_enabled = error_correction_pct.is_some();
+    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
+    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
         .iter()
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
 
-    let mut local_files = 0usize;
-    let mut local_bytes = 0u64;
+    let mut local_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
     for entry in walkdir::WalkDir::new(local)
         .follow_links(false)
         .max_depth(100)
@@ -34950,17 +35042,25 @@ async fn cmd_sync_doctor(
         {
             continue;
         }
-        local_files += 1;
-        local_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let meta = entry.metadata().ok();
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime = meta.and_then(|m| {
+            m.modified().ok().map(|t| {
+                let dt: chrono::DateTime<chrono::Utc> = t.into();
+                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+            })
+        });
+        local_entries.insert(relative, (size, mtime));
     }
+    let local_files = local_entries.len();
+    let local_bytes = local_entries.values().map(|(size, _)| *size).sum::<u64>();
 
     let remote_root_ok = provider.list(&remote).await.is_ok();
-    let mut remote_files = 0usize;
-    let mut remote_bytes = 0u64;
+    let mut remote_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
     if remote_root_ok {
         let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
         while let Some((dir, depth)) = queue.pop() {
-            if depth >= MAX_SCAN_DEPTH || remote_files >= MAX_SCAN_ENTRIES {
+            if depth >= MAX_SCAN_DEPTH || remote_entries.len() >= MAX_SCAN_ENTRIES {
                 break;
             }
             if let Ok(entries) = provider.list(&dir).await {
@@ -34983,21 +35083,36 @@ async fn cmd_sync_doctor(
                         {
                             continue;
                         }
-                        remote_files += 1;
-                        remote_bytes += e.size;
+                        remote_entries.insert(relative, (e.size, e.modified));
                     }
                 }
             }
         }
     }
+    let remote_files = remote_entries.len();
+    let remote_bytes = remote_entries.values().map(|(size, _)| *size).sum::<u64>();
+
+    let ec_max_file_size = ftp_client_gui_lib::sync::AEROSYNC_EC_PHASE1_MAX_FILE_SIZE_BYTES;
+    let default_time_val = resolve_default_time(cli);
+    let default_time_ref = default_time_val.as_deref();
+    let ec_estimate = error_correction_pct.map(|pct| {
+        let upload_sizes = sync_doctor_planned_upload_sizes(
+            direction,
+            conflict_mode,
+            &local_entries,
+            &remote_entries,
+            default_time_ref,
+        );
+        estimate_sync_doctor_ec_for_uploads(upload_sizes, pct, ec_max_file_size)
+    });
 
     let mut checks = vec![
         serde_json::json!({"name": "local_path_exists", "ok": true, "path": local}),
         serde_json::json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote}),
     ];
-    if !exclude.is_empty() {
+    if !effective_exclude.is_empty() {
         checks.push(
-            serde_json::json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}),
+            serde_json::json!({"name": "exclude_patterns", "ok": true, "count": effective_exclude.len()}),
         );
     }
 
@@ -35024,13 +35139,35 @@ async fn cmd_sync_doctor(
         risks
             .push("checksum is enabled; later verification may be slower but stricter".to_string());
     }
+    if let (Some(pct), Some(estimate)) = (error_correction_pct, ec_estimate) {
+        risks.push(format!(
+            "error-correction is enabled; sync will create up to {} .aerorec sidecar(s) at about {} overhead",
+            estimate.estimated_sidecars,
+            format_size(estimate.estimated_overhead_bytes)
+        ));
+        if estimate.skipped_too_large > 0 {
+            risks.push(format!(
+                "{} planned upload(s) exceed the Phase 1 EC size cap and will not get sidecars",
+                estimate.skipped_too_large
+            ));
+        }
+        checks.push(serde_json::json!({
+            "name": "error_correction_estimate",
+            "ok": true,
+            "level_pct": pct,
+            "estimated_sidecars": estimate.estimated_sidecars,
+            "estimated_overhead_bytes": estimate.estimated_overhead_bytes,
+            "skipped_too_large": estimate.skipped_too_large,
+            "phase1_max_file_size": ec_max_file_size,
+        }));
+    }
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
     }
 
     let suggested_next_command =
         format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}",
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}",
         profile_or_placeholder(cli),
         shell_double_quote(local),
         shell_double_quote(&remote),
@@ -35038,6 +35175,9 @@ async fn cmd_sync_doctor(
         if delete { " --delete" } else { "" },
         if track_renames { " --track-renames" } else { "" },
         if resync { " --resync" } else { "" },
+        error_correction_pct
+            .map(|pct| format!(" --error-correction={pct}"))
+            .unwrap_or_default(),
         if exclude.is_empty() {
             String::new()
         } else {
@@ -35069,6 +35209,12 @@ async fn cmd_sync_doctor(
         checks,
         risks,
         suggested_next_command,
+        ec_enabled: error_correction_pct.map(|_| true),
+        ec_level_pct: error_correction_pct,
+        ec_estimated_sidecars: ec_estimate.map(|estimate| estimate.estimated_sidecars),
+        ec_estimated_overhead_bytes: ec_estimate.map(|estimate| estimate.estimated_overhead_bytes),
+        ec_skipped_too_large: ec_estimate.map(|estimate| estimate.skipped_too_large),
+        ec_phase1_max_file_size: error_correction_pct.map(|_| ec_max_file_size),
     };
 
     match format {
@@ -35086,6 +35232,20 @@ async fn cmd_sync_doctor(
                 format_size(remote_bytes)
             );
             println!("  Direction: {}", direction);
+            if let (Some(pct), Some(estimate)) = (error_correction_pct, ec_estimate) {
+                println!("  AeroSync EC:");
+                println!("    Level: {}%", pct);
+                println!("    Estimated sidecars: {}", estimate.estimated_sidecars);
+                println!(
+                    "    Estimated overhead: {}",
+                    format_size(estimate.estimated_overhead_bytes)
+                );
+                println!(
+                    "    Skipped too large: {} (cap {})",
+                    estimate.skipped_too_large,
+                    format_size(ec_max_file_size)
+                );
+            }
             if !result.risks.is_empty() {
                 println!("  Risks:");
                 for risk in &result.risks {
@@ -36327,6 +36487,12 @@ async fn cmd_transfer_doctor(
             source_path,
             dest_path,
         ),
+        ec_enabled: None,
+        ec_level_pct: None,
+        ec_estimated_sidecars: None,
+        ec_estimated_overhead_bytes: None,
+        ec_skipped_too_large: None,
+        ec_phase1_max_file_size: None,
     };
 
     match format {
@@ -42800,27 +42966,37 @@ async fn main() {
             conflict_mode,
             resync,
             checksum,
+            error_correction,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
             } else {
                 (url.as_str(), local.as_str(), remote.as_str())
             };
-            cmd_sync_doctor(
-                u,
-                l,
-                r,
-                direction,
-                *delete,
-                exclude,
-                *track_renames,
-                conflict_mode,
-                *resync,
-                *checksum,
-                &cli,
-                format,
-            )
-            .await
+            match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    5
+                }
+                Ok(error_correction_pct) => {
+                    cmd_sync_doctor(
+                        u,
+                        l,
+                        r,
+                        direction,
+                        *delete,
+                        exclude,
+                        error_correction_pct,
+                        *track_renames,
+                        conflict_mode,
+                        *resync,
+                        *checksum,
+                        &cli,
+                        format,
+                    )
+                    .await
+                }
+            }
         }
         Commands::About { url } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -44485,6 +44661,77 @@ mod tests {
             Ok(Some(50))
         );
         assert!(parse_sync_error_correction_level_pct(Some("banana")).is_err());
+    }
+
+    #[test]
+    fn sync_doctor_ec_estimate_counts_sidecars_and_large_skips() {
+        let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200);
+
+        assert_eq!(
+            estimate,
+            SyncDoctorEcEstimate {
+                estimated_sidecars: 2,
+                estimated_overhead_bytes: 31,
+                skipped_too_large: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn sync_doctor_upload_estimate_uses_upload_and_both_directions() {
+        let local_entries = HashMap::from([
+            (
+                "same.txt".to_string(),
+                (10, Some("2026-06-11T10:00:00".to_string())),
+            ),
+            (
+                "changed.txt".to_string(),
+                (20, Some("2026-06-11T11:00:00".to_string())),
+            ),
+            (
+                "new.txt".to_string(),
+                (30, Some("2026-06-11T12:00:00".to_string())),
+            ),
+        ]);
+        let remote_entries = HashMap::from([
+            (
+                "same.txt".to_string(),
+                (10, Some("2026-06-11T10:00:00".to_string())),
+            ),
+            (
+                "changed.txt".to_string(),
+                (25, Some("2026-06-11T10:30:00".to_string())),
+            ),
+        ]);
+
+        let mut upload_sizes = sync_doctor_planned_upload_sizes(
+            "upload",
+            "newer",
+            &local_entries,
+            &remote_entries,
+            None,
+        );
+        upload_sizes.sort_unstable();
+        assert_eq!(upload_sizes, vec![20, 30]);
+
+        let mut both_sizes = sync_doctor_planned_upload_sizes(
+            "both",
+            "newer",
+            &local_entries,
+            &remote_entries,
+            None,
+        );
+        both_sizes.sort_unstable();
+        assert_eq!(both_sizes, vec![20, 30]);
+
+        assert!(sync_doctor_planned_upload_sizes(
+            "download",
+            "newer",
+            &local_entries,
+            &remote_entries,
+            None
+        )
+        .is_empty());
     }
 
     #[test]
