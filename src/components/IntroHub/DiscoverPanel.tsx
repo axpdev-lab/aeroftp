@@ -197,7 +197,11 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             name: t('aeroShare.feature'),
             description: t('protocol.peerDesc'),
             protocol: 'peer' as ProviderType,
-            badge: t('aeroShare.experimentalTag'),
+            // Uniform with the app's other end-to-end tiles (Filen/Internxt): the
+            // AeroShare channel seals content under a 256-bit key, so it carries
+            // the same "E2E 256-bit" secure badge (green + lock via
+            // isCipherStrengthBadge). "Beta" stays on the dialog tag + Settings.
+            badge: 'E2E 256-bit',
             source: 'protocol',
         };
     }, [aeroShareEnabled, t]);

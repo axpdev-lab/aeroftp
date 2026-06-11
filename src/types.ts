@@ -187,6 +187,10 @@ export const providerServesQuota = (
   providerId?: string | null,
   server?: string | null,
 ): boolean => {
+  // AeroShare friend (protocol "peer"): a read-only local replica with no quota
+  // concept. Reporting "serves quota" suppresses the manual-total-bytes field
+  // and the used-storage scan in the connection/edit form.
+  if (protocol === "peer") return true;
   if (isNativeApiProtocol(protocol)) return true;
   if (protocol === "webdav") {
     const host = (server || "").toLowerCase();

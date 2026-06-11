@@ -477,6 +477,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const t = useTranslation();
     const { log: logActivity } = useActivityLog();
     const protocol = connectionParams.protocol; // Can be undefined
+    // AeroShare friend (protocol "peer"): editing one must NOT show the FTP
+    // credential layout. The identity (AeroFTP-ID) + drive binding are fixed by
+    // the handshake; the only editable attribute is the friend's display name.
+    // So we relabel Server -> AeroFTP-ID (read-only), Username -> friend name,
+    // and hide Port / Password / Remote Path / storage fields below.
+    const isPeer = protocol === 'peer';
 
     // Connections are always saved (the legacy "Save this connection" checkbox
     // was removed: the user can still delete a profile from the list afterwards).
@@ -1733,6 +1739,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Dynamic username label based on protocol
     const getUsernameLabel = () => {
+        if (protocol === 'peer') return t('aeroShare.dialog.aliasLabel');
         if (protocol === 's3') return t('connection.accessKeyId');
         if (protocol === 'azure') return t('connection.azureAccountName');
         if (protocol === 'github') return t('github.ownerRepo');
@@ -1774,6 +1781,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Link2 icon; for hostname-based protocols (FTP/SFTP/FTPS) the simple
     // "Server" label fits.
     const getServerLabel = (): React.ReactNode => {
+        if (protocol === 'peer') return 'AeroFTP-ID';
         if (protocol === 's3') {
             return <span className="inline-flex items-center gap-1.5"><Link2 size={12} className="text-gray-400" />{t('protocol.s3Endpoint')}</span>;
         }
@@ -1920,7 +1928,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const sfPrefix = '/home/frs/project/';
         return (
             <div className="space-y-3">
-                {/* Remote Path (SourceForge: prefix + project name) */}
+                {/* Remote Path: hidden for an AeroShare friend (a read-only replica
+                    has no remote-path concept). SourceForge: prefix + project name. */}
+                {!isPeer && (
                 <div>
                     <label className="block text-sm font-medium mb-1.5">
                         {isSourceForge ? 'Project (Unixname)' : `${t('browser.remote')} ${t('browser.path')}`}
@@ -1951,6 +1961,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         />
                     )}
                 </div>
+                )}
                 {/* Local Path */}
                 <div>
                     <label className="block text-sm font-medium mb-1.5">{t('browser.local')} {t('browser.path')}</label>
@@ -4743,6 +4754,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             if (hideServerField) return null; // Shown in Advanced Options below
                                             if (serverLocked) return null;
                                             if (selectedProviderId === 'infinicloud') return null; // Rendered inside InfiniCloud mode selector block
+                                            // AeroShare friend: the AeroFTP-ID is the identity, fixed by the
+                                            // handshake and not user-editable, and there is no port. Show it
+                                            // read-only on its own row (no Port column).
+                                            if (isPeer) return (
+                                                <div>
+                                                    <label className="block text-sm font-medium mb-1.5">{getServerLabel()}</label>
+                                                    <input
+                                                        type="text"
+                                                        value={connectionParams.server}
+                                                        readOnly
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono opacity-80 cursor-not-allowed"
+                                                    />
+                                                </div>
+                                            );
                                             return (
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 min-w-0">
@@ -4832,6 +4857,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 placeholder={getUsernamePlaceholder()}
                                             />
                                         </div>
+                                        {/* Password: not applicable to an AeroShare friend (peer carries
+                                            no password; the binding rides in options.peer*). */}
+                                        {!isPeer && (
                                         <div>
                                             {renderPasswordLabel()}
                                             <div className="relative">
@@ -4847,6 +4875,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                         </div>
+                                        )}
 
                                         {/* InfiniCloud: mode-dependent fields (server+port for WebDAV, API key for REST API) */}
                                         {selectedProviderId === 'infinicloud' && (
