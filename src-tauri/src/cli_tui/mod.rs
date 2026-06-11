@@ -1,7 +1,9 @@
 use std::{io, io::IsTerminal, time::Duration};
 
 use crossterm::{
-    event::{self as crossterm_event, Event, KeyEventKind},
+    event::{
+        self as crossterm_event, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind,
+    },
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -42,7 +44,7 @@ pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 /// AeroFTP release (a sub-version surfaced in the TUI header). Beta 1.0.0 ships
 /// the IntroHub + multi-user dual-pane file manager with the full transfer set;
 /// later versions grow toward GUI parity (Discover/profile editing, etc).
-pub const TUI_VERSION: &str = "1.0.0-beta";
+pub const TUI_VERSION: &str = "1.0.1";
 
 #[allow(dead_code)]
 pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
@@ -81,26 +83,34 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
     with_terminal(|terminal| {
         loop {
             drain_worker_events(&mut app, &mut worker);
-            terminal.draw(|frame| render_dashboard(frame, &app, theme))?;
+            terminal.draw(|frame| render_dashboard(frame, &mut app, theme))?;
 
             if app.should_quit {
                 break;
             }
 
             if crossterm_event::poll(Duration::from_millis(100))? {
-                if let Event::Key(key) = crossterm_event::read()? {
-                    if key.kind != KeyEventKind::Press {
-                        continue;
+                match crossterm_event::read()? {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        let commands = if app.overlay_active() {
+                            app.handle_overlay_key(key_to_overlay(key))
+                        } else {
+                            app.apply_action(key_to_action(key))
+                        };
+                        dispatch_commands(&mut app, &mut worker, commands);
+                        if app.should_quit {
+                            break;
+                        }
                     }
-                    let commands = if app.overlay_active() {
-                        app.handle_overlay_key(key_to_overlay(key))
-                    } else {
-                        app.apply_action(key_to_action(key))
-                    };
-                    dispatch_commands(&mut app, &mut worker, commands);
-                    if app.should_quit {
-                        break;
+                    Event::Mouse(me) => {
+                        let commands = app.handle_mouse(me);
+                        dispatch_commands(&mut app, &mut worker, commands);
                     }
+                    Event::Resize(_, _) => {
+                        // Consume so the next draw re-computes layout for narrow
+                        // terminals etc. ratatui handles the actual reflow.
+                    }
+                    _ => {}
                 }
             }
         }
@@ -159,7 +169,7 @@ fn dispatch_commands(
     }
 }
 
-fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTheme) {
+fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &mut AppState, theme: TuiTheme) {
     let area = frame.area();
 
     // Shape B pivot: the pre-connection screen is the GUI-style IntroHub
@@ -178,10 +188,12 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
 /// (profile, connection dot, aggregate up/down speed, active-transfer count),
 /// the REMOTE | LOCAL lists at full width, the TRANSFERS strip when transfers
 /// exist, and a key-hint footer. No picker columns are shown while browsing.
+/// Records pane rects into app.layout for mouse hit-testing (click to select,
+/// click inactive side to focus it, wheel scroll, double-click activate).
 fn render_browser_fullscreen(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
-    app: &AppState,
+    app: &mut AppState,
     theme: TuiTheme,
 ) {
     let rows = Layout::vertical([
@@ -199,15 +211,19 @@ fn render_browser_fullscreen(
         let strip_height = transfers_strip_height(app, rows[1].height);
         let split =
             Layout::vertical([Constraint::Min(3), Constraint::Length(strip_height)]).split(rows[1]);
+        app.layout.transfers_strip = Some(split[1]);
         render_transfers(frame, split[1], app, theme);
         split[0]
     } else {
+        app.layout.transfers_strip = None;
         rows[1]
     };
 
     // REMOTE on the left, LOCAL on the right (the #311 mockup order).
     let dual = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(body_area);
+    app.layout.remote_pane = Some(dual[0]);
+    app.layout.local_pane = Some(dual[1]);
     render_file_pane_list(frame, dual[0], app, theme, BrowserSide::Remote);
     render_file_pane_list(frame, dual[1], app, theme, BrowserSide::Local);
 
@@ -305,7 +321,12 @@ fn render_fullscreen_header(
 /// footer of key hints. Mirrors the GUI `MyServersTable` list view. Quota /
 /// health / time columns are placeholders here and fill in once the df/health
 /// probes are wired (next TUI version toward GUI parity).
-fn render_introhub(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+fn render_introhub(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    app: &mut AppState,
+    theme: TuiTheme,
+) {
     let rows = Layout::vertical([
         Constraint::Length(3), // header (identity + user switcher)
         Constraint::Min(6),    // My Servers table
@@ -314,6 +335,7 @@ fn render_introhub(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, t
     ])
     .split(area);
 
+    app.layout.intro_table = Some(rows[1]);
     render_introhub_header(frame, rows[0], app, theme);
     render_introhub_table(frame, rows[1], app, theme);
     render_introhub_detail(frame, rows[2], app, theme);
@@ -928,7 +950,7 @@ fn progress_bar(ratio: f64, width: usize) -> String {
 
 fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
     match &app.overlay {
-        TuiOverlay::None => {}
+        TuiOverlay::None | TuiOverlay::Palette(_) => {}
         TuiOverlay::Prompt(prompt) => {
             let popup = centered_rect(60, 7, area);
             frame.render_widget(Clear, popup);
@@ -1129,7 +1151,9 @@ fn selection_style(focus: TuiFocus, pane: TuiFocus, theme: TuiTheme) -> Style {
 ///
 /// The restore path is deliberately centralized because every interactive
 /// surface must leave the user's terminal usable even when drawing or input
-/// handling returns an error.
+/// handling returns an error. Mouse capture (added for 1.0.1) is enabled here
+/// and disabled on every exit path (including early errors and the future
+/// panic guard in P4).
 pub fn with_terminal<R>(run: impl FnOnce(&mut CliTuiTerminal) -> io::Result<R>) -> io::Result<R> {
     let mut stdout = io::stdout();
     enable_raw_mode()?;
@@ -1139,12 +1163,19 @@ pub fn with_terminal<R>(run: impl FnOnce(&mut CliTuiTerminal) -> io::Result<R>) 
         return Err(err);
     }
 
+    if let Err(err) = stdout.execute(EnableMouseCapture) {
+        let _ = stdout.execute(LeaveAlternateScreen);
+        let _ = disable_raw_mode();
+        return Err(err);
+    }
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = match Terminal::new(backend) {
         Ok(terminal) => terminal,
         Err(err) => {
-            let _ = disable_raw_mode();
+            let _ = io::stdout().execute(DisableMouseCapture);
             let _ = io::stdout().execute(LeaveAlternateScreen);
+            let _ = disable_raw_mode();
             return Err(err);
         }
     };
@@ -1165,15 +1196,22 @@ pub fn with_terminal<R>(run: impl FnOnce(&mut CliTuiTerminal) -> io::Result<R>) 
 }
 
 fn restore_terminal(terminal: &mut CliTuiTerminal) -> io::Result<()> {
-    let raw_result = disable_raw_mode();
+    // Reverse enable order: mouse, alt screen, raw, cursor.
+    let mouse_result = terminal
+        .backend_mut()
+        .execute(DisableMouseCapture)
+        .map(|_| ());
     let screen_result = terminal
         .backend_mut()
         .execute(LeaveAlternateScreen)
         .map(|_| ());
+    let raw_result = disable_raw_mode();
     let cursor_result = terminal.show_cursor();
 
-    raw_result?;
+    // Return the first error but attempt all restores.
+    mouse_result?;
     screen_result?;
+    raw_result?;
     cursor_result
 }
 
@@ -1244,13 +1282,18 @@ mod render_tests {
     /// size and a deliberately tiny one (layout subtraction overflow guard).
     #[test]
     fn introhub_renders_my_servers_table() {
-        let app = AppState::new_live(smoke_context());
+        let mut app = AppState::new_live(smoke_context());
         let theme = TuiTheme::default();
 
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
         terminal
-            .draw(|frame| render_dashboard(frame, &app, theme))
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
+        // Rects recorded during render for mouse hit-testing (B7 mouse task).
+        assert!(
+            app.layout.intro_table.is_some(),
+            "layout rects recorded for mouse"
+        );
         let text = buffer_text(&terminal);
         assert!(text.contains("My Servers"), "table title present");
         assert!(text.contains("AeroFTP TUI"), "header present");
@@ -1263,7 +1306,7 @@ mod render_tests {
 
         // Tiny terminal must not panic (Length(1)/Min layouts, Table widths).
         let mut tiny = Terminal::new(TestBackend::new(20, 4)).unwrap();
-        tiny.draw(|frame| render_dashboard(frame, &app, theme))
+        tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
     }
 
@@ -1279,15 +1322,19 @@ mod render_tests {
 
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
         terminal
-            .draw(|frame| render_dashboard(frame, &app, theme))
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
+        assert!(
+            app.layout.remote_pane.is_some() && app.layout.local_pane.is_some(),
+            "dual pane rects recorded for mouse"
+        );
         let text = buffer_text(&terminal);
         assert!(text.contains("Remote"), "remote pane present");
         assert!(text.contains("Local"), "local pane present");
         assert!(text.contains("connected"), "connection dot present");
 
         let mut tiny = Terminal::new(TestBackend::new(18, 5)).unwrap();
-        tiny.draw(|frame| render_dashboard(frame, &app, theme))
+        tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
     }
 }

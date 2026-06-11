@@ -43,6 +43,9 @@ pub enum TuiAction {
     /// IntroHub: open the named-group manager for the highlighted profile (`G`),
     /// the generalisation of the `f` favourite toggle. No-op in the browser.
     ManageGroups,
+    /// Open the command palette (`:`) for line-mode dispatch against the live
+    /// session. Connected only.
+    OpenPalette,
     Noop,
 }
 
@@ -75,6 +78,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('Q') => TuiAction::RefreshQuota,
         KeyCode::Char('G') => TuiAction::ManageGroups,
         KeyCode::Char('s') | KeyCode::Char('S') => TuiAction::ToggleShowCredentials,
+        KeyCode::Char(':') => TuiAction::OpenPalette,
         _ => TuiAction::Noop,
     }
 }

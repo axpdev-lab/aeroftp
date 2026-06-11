@@ -17,6 +17,10 @@ pub enum TuiOverlay {
     /// to filter by a group, toggle the profile's membership, and create /
     /// rename / delete groups. The named generalisation of the `f` favourite.
     Groups(GroupsOverlayState),
+    /// `:` command palette (B3): line editor dispatching to existing
+    /// WorkerCommands (ls/cd/get/stat/mkdir/rm) against the held session only.
+    /// Parser + dispatch live in AppState; overlay is pure input state.
+    Palette(PaletteState),
 }
 
 /// Modal group manager state. Acts on the IntroHub's highlighted profile.
@@ -59,6 +63,38 @@ pub struct GroupsOverlayItem {
     pub name: String,
     pub member_count: usize,
     pub is_member: bool,
+}
+
+/// Palette input state for `:` (B3). Dedicated variant (distinct submit
+/// semantics from Prompt which returns a single value to the caller).
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct PaletteState {
+    pub buffer: String,
+    /// Last command echo + one-line result or usage hint (shown above the
+    /// input line while the palette stays open on error).
+    pub last_result: String,
+}
+
+#[allow(dead_code)]
+impl PaletteState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push_char(&mut self, c: char) {
+        if c.is_control() {
+            return;
+        }
+        self.buffer.push(c);
+    }
+
+    pub fn backspace(&mut self) {
+        self.buffer.pop();
+    }
+
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
 }
 
 impl TuiOverlay {

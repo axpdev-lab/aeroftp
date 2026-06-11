@@ -10113,6 +10113,72 @@ async fn stat_local_path(path: &str) -> Result<(String, cli_tui::worker::TuiStat
     Ok((path.to_string(), result))
 }
 
+/// Re-dials the live TUI session after a user-initiated transfer cancel.
+/// Captures the identity and last known cwd (so browsing location survives),
+/// drops the (potentially half-consumed) old provider connection, creates a
+/// fresh one via the blessed factory, optionally re-lists the last cwd to
+/// "re-cd", then emits Busy+SessionReady so the UI shows a brief honest
+/// reconnect beat. On create failure the session is cleared (falls back to
+/// IntroHub). This closes the known risk that a cancelled stream poisons the
+/// session for the next op on some backends (SFTP channels, HTTP bodies, ...).
+async fn reconnect_session_after_transfer_cancel(
+    cli: &mut Cli,
+    format: OutputFormat,
+    session: &mut Option<cli_tui::session::TuiSession>,
+    event_tx: &cli_tui::worker::WorkerEventSender,
+) {
+    use cli_tui::worker::{TuiWorkerOperation, WorkerEvent};
+
+    let identity = session.as_ref().and_then(|s| s.state().identity.clone());
+    let last_cwd = session.as_ref().map(|s| s.state().cwd.clone());
+    let Some(id) = identity else {
+        return;
+    };
+
+    if let Some(mut old) = session.take() {
+        let _ = old.provider_mut().disconnect().await;
+    }
+
+    let _ = event_tx.send(WorkerEvent::Busy {
+        operation: TuiWorkerOperation::Connect,
+        identity: Some(id.clone()),
+    });
+
+    match create_tui_session_via_cli_factory(cli, format, id.clone()).await {
+        Ok(mut new_s) => {
+            let mut eff_cwd = new_s.state().cwd.clone();
+            // Best-effort re-list the user's last browsing location so the
+            // fresh provider reflects the same cwd the UI expects, and we emit
+            // an updated SessionReady. Non-fatal: if the dir vanished we keep
+            // the create-time (initial) cwd.
+            if let Some(target) = last_cwd {
+                if target != eff_cwd {
+                    if let Ok((listed_path, _res)) =
+                        list_tui_session_via_cli_handler(cli, &mut new_s, &target).await
+                    {
+                        new_s.state_mut().mark_connected(&listed_path);
+                        eff_cwd = listed_path;
+                    }
+                }
+            }
+            *session = Some(new_s);
+            let _ = event_tx.send(WorkerEvent::SessionReady {
+                identity: Some(id),
+                cwd: eff_cwd,
+            });
+        }
+        Err(message) => {
+            let _ = event_tx.send(WorkerEvent::Failed {
+                operation: TuiWorkerOperation::Connect,
+                identity: Some(id),
+                message,
+            });
+            // session remains None; next user action will surface the failure
+            // and the UI falls back to IntroHub.
+        }
+    }
+}
+
 async fn run_cli_tui_worker(
     cli: &mut Cli,
     format: OutputFormat,
@@ -10400,6 +10466,13 @@ async fn run_cli_tui_worker(
                     }
                     TransferDrive::Cancelled => {
                         let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        reconnect_session_after_transfer_cancel(
+                            cli,
+                            format,
+                            &mut session,
+                            &event_tx,
+                        )
+                        .await;
                     }
                     TransferDrive::ChannelClosed => {
                         let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
@@ -10447,6 +10520,13 @@ async fn run_cli_tui_worker(
                     }
                     TransferDrive::Cancelled => {
                         let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        reconnect_session_after_transfer_cancel(
+                            cli,
+                            format,
+                            &mut session,
+                            &event_tx,
+                        )
+                        .await;
                     }
                     TransferDrive::ChannelClosed => {
                         let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
