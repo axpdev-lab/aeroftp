@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Tambah teman",
-            "experimentalLabel": "AeroShare (eksperimental)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Bagikan folder langsung dengan teman melalui saluran peer-to-peer terenkripsi, tanpa server perantara.",
-            "experimentalNote": "Eksperimental: transfer peer-to-peer masih dalam pengembangan aktif dan dapat berubah. Koneksi saat ini menggunakan relay publik untuk menembus firewall.",
-            "experimentalTag": "Eksperimental",
+            "experimentalNote": "Beta: transfer peer-to-peer masih dalam pengembangan aktif dan dapat berubah. Koneksi saat ini menggunakan relay publik untuk menembus firewall.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Menyinkronkan",
                 "serving": "Menyajikan",

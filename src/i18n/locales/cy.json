@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Ychwanegu ffrind",
-            "experimentalLabel": "AeroShare (arbrofol)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Rhannwch ffolderi yn uniongyrchol gyda ffrindiau dros sianel peer-to-peer wedi'i hamgryptio, heb weinydd yn y canol.",
-            "experimentalNote": "Arbrofol: mae trosglwyddo peer-to-peer yn cael ei ddatblygu'n weithredol a gall newid. Ar hyn o bryd mae cysylltiadau'n defnyddio relái cyhoeddus i groesi waliau tân.",
-            "experimentalTag": "Arbrofol",
+            "experimentalNote": "Beta: mae trosglwyddo peer-to-peer yn cael ei ddatblygu'n weithredol a gall newid. Ar hyn o bryd mae cysylltiadau'n defnyddio relái cyhoeddus i groesi waliau tân.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Cysoni",
                 "serving": "Gweini",

@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Engadir amigo",
-            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Comparte cartafoles directamente cos teus amigos a través dunha canle cifrada de igual a igual, sen ningún servidor polo medio.",
-            "experimentalNote": "Experimental: a transferencia de igual a igual está en desenvolvemento activo e pode cambiar. As conexións usan actualmente un relé público para atravesar as devasas.",
-            "experimentalTag": "Experimental",
+            "experimentalNote": "Beta: a transferencia de igual a igual está en desenvolvemento activo e pode cambiar. As conexións usan actualmente un relé público para atravesar as devasas.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sincronizando",
                 "serving": "Compartindo",

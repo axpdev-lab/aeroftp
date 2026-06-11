@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Pievienot draugu",
-            "experimentalLabel": "AeroShare (eksperimentāls)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu.",
-            "experimentalNote": "Eksperimentāls: peer-to-peer pārsūtīšana tiek aktīvi izstrādāta un var mainīties. Savienojumi pašlaik izmanto publisku releju, lai šķērsotu ugunsmūrus.",
-            "experimentalTag": "Eksperimentāls",
+            "experimentalNote": "Beta: peer-to-peer pārsūtīšana tiek aktīvi izstrādāta un var mainīties. Savienojumi pašlaik izmanto publisku releju, lai šķērsotu ugunsmūrus.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sinhronizē",
                 "serving": "Apkalpo",

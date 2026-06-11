@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Přidat přítele",
-            "experimentalLabel": "AeroShare (experimentální)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Sdílejte složky přímo s přáteli prostřednictvím šifrovaného kanálu peer-to-peer, bez serveru uprostřed.",
-            "experimentalNote": "Experimentální: přenos peer-to-peer se aktivně vyvíjí a může se změnit. Připojení nyní používají veřejný přenašeč pro průchod přes firewally.",
-            "experimentalTag": "Experimentální",
+            "experimentalNote": "Beta: přenos peer-to-peer se aktivně vyvíjí a může se změnit. Připojení nyní používají veřejný přenašeč pro průchod přes firewally.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Synchronizace",
                 "serving": "Poskytování",

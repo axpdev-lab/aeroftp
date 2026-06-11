@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Magdagdag ng kaibigan",
-            "experimentalLabel": "AeroShare (eksperimental)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Direktang magbahagi ng mga folder sa mga kaibigan sa pamamagitan ng naka-encrypt na peer-to-peer na channel, nang walang server sa pagitan.",
-            "experimentalNote": "Eksperimental: ang peer-to-peer na paglilipat ay aktibong binubuo at maaaring magbago. Kasalukuyang gumagamit ang mga koneksyon ng pampublikong relay upang tumawid sa mga firewall.",
-            "experimentalTag": "Eksperimental",
+            "experimentalNote": "Beta: ang peer-to-peer na paglilipat ay aktibong binubuo at maaaring magbago. Kasalukuyang gumagamit ang mga koneksyon ng pampublikong relay upang tumawid sa mga firewall.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sina-sync",
                 "serving": "Naghahatid",

@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "მეგობრის დამატება",
-            "experimentalLabel": "AeroShare (ექსპერიმენტული)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "გააზიარეთ საქაღალდეები პირდაპირ მეგობრებთან დაშიფრული peer-to-peer არხით, შუა სერვერის გარეშე.",
-            "experimentalNote": "ექსპერიმენტული: peer-to-peer გადაცემა აქტიური განვითარების პროცესშია და შეიძლება შეიცვალოს. კავშირები ამჟამად იყენებს საჯარო რელეს ფაიერვოლების გასავლელად.",
-            "experimentalTag": "ექსპერიმენტული",
+            "experimentalNote": "Beta: peer-to-peer გადაცემა აქტიური განვითარების პროცესშია და შეიძლება შეიცვალოს. კავშირები ამჟამად იყენებს საჯარო რელეს ფაიერვოლების გასავლელად.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "სინქრონიზაცია",
                 "serving": "მომსახურება",

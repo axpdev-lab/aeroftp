@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Vriend toevoegen",
-            "experimentalLabel": "AeroShare (experimenteel)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen.",
-            "experimentalNote": "Experimenteel: peer-to-peer-overdracht is volop in ontwikkeling en kan veranderen. Verbindingen gebruiken momenteel een openbaar relay om firewalls te passeren.",
-            "experimentalTag": "Experimenteel",
+            "experimentalNote": "Beta: peer-to-peer-overdracht is volop in ontwikkeling en kan veranderen. Verbindingen gebruiken momenteel een openbaar relay om firewalls te passeren.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Synchroniseren",
                 "serving": "Aanbieden",

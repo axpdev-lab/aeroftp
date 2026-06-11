@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Adicionar amigo",
-            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Partilhe pastas diretamente com os seus amigos através de um canal encriptado ponto a ponto, sem qualquer servidor pelo meio.",
-            "experimentalNote": "Experimental: a transferência ponto a ponto está em desenvolvimento ativo e pode mudar. As ligações usam atualmente um relé público para atravessar firewalls.",
-            "experimentalTag": "Experimental",
+            "experimentalNote": "Beta: a transferência ponto a ponto está em desenvolvimento ativo e pode mudar. As ligações usam atualmente um relé público para atravessar firewalls.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "A sincronizar",
                 "serving": "A partilhar",

@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Dodaj prijatelja",
-            "experimentalLabel": "AeroShare (eksperimentalno)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Dijelite mape izravno s prijateljima putem šifriranog peer-to-peer kanala, bez poslužitelja u sredini.",
-            "experimentalNote": "Eksperimentalno: peer-to-peer prijenos je u aktivnom razvoju i može se promijeniti. Veze trenutačno koriste javni relej za prolazak kroz vatrozide.",
-            "experimentalTag": "Eksperimentalno",
+            "experimentalNote": "Beta: peer-to-peer prijenos je u aktivnom razvoju i može se promijeniti. Veze trenutačno koriste javni relej za prolazak kroz vatrozide.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sinkronizacija",
                 "serving": "Posluživanje",

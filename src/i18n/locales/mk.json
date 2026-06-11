@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Додај пријател",
-            "experimentalLabel": "AeroShare (експериментално)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Споделувајте папки директно со пријатели преку шифриран peer-to-peer канал, без сервер во средината.",
-            "experimentalNote": "Експериментално: peer-to-peer преносот е во активен развој и може да се промени. Врските моментално користат јавен релеј за поминување низ заштитни ѕидови.",
-            "experimentalTag": "Експериментално",
+            "experimentalNote": "Beta: peer-to-peer преносот е во активен развој и може да се промени. Врските моментално користат јавен релеј за поминување низ заштитни ѕидови.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Синхронизација",
                 "serving": "Опслужување",

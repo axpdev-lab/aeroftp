@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Додај пријатеља",
-            "experimentalLabel": "AeroShare (експериментално)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Делите фасцикле директно са пријатељима преко шифрованог peer-to-peer канала, без сервера у средини.",
-            "experimentalNote": "Експериментално: peer-to-peer пренос је у активном развоју и може се променити. Везе тренутно користе јавни релеј за пролазак кроз заштитне зидове.",
-            "experimentalTag": "Експериментално",
+            "experimentalNote": "Beta: peer-to-peer пренос је у активном развоју и може се променити. Везе тренутно користе јавни релеј за пролазак кроз заштитне зидове.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Синхронизација",
                 "serving": "Услуживање",

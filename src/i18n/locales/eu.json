@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Gehitu laguna",
-            "experimentalLabel": "AeroShare (esperimentala)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Partekatu karpetak zuzenean lagunekin enkriptatutako peer-to-peer kanal baten bidez, tarteko zerbitzaririk gabe.",
-            "experimentalNote": "Esperimentala: peer-to-peer transferentzia garapen aktiboan dago eta alda daiteke. Konexioek gaur egun errele publiko bat erabiltzen dute suebakiak zeharkatzeko.",
-            "experimentalTag": "Esperimentala",
+            "experimentalNote": "Beta: peer-to-peer transferentzia garapen aktiboan dago eta alda daiteke. Konexioek gaur egun errele publiko bat erabiltzen dute suebakiak zeharkatzeko.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sinkronizatzen",
                 "serving": "Zerbitzatzen",

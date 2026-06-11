@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Barát hozzáadása",
-            "experimentalLabel": "AeroShare (kísérleti)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül.",
-            "experimentalNote": "Kísérleti: a peer-to-peer átvitel aktív fejlesztés alatt áll, és változhat. A kapcsolatok jelenleg nyilvános továbbítót használnak a tűzfalak áthidalásához.",
-            "experimentalTag": "Kísérleti",
+            "experimentalNote": "Beta: a peer-to-peer átvitel aktív fejlesztés alatt áll, és változhat. A kapcsolatok jelenleg nyilvános továbbítót használnak a tűzfalak áthidalásához.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Szinkronizálás",
                 "serving": "Kiszolgálás",

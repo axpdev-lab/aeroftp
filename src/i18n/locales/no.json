@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Legg til venn",
-            "experimentalLabel": "AeroShare (eksperimentell)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Del mapper direkte med venner via en kryptert peer-to-peer-kanal, uten noen server i mellom.",
-            "experimentalNote": "Eksperimentell: peer-to-peer-overføring er under aktiv utvikling og kan endres. Tilkoblinger bruker for øyeblikket et offentlig relé for å passere brannmurer.",
-            "experimentalTag": "Eksperimentell",
+            "experimentalNote": "Beta: peer-to-peer-overføring er under aktiv utvikling og kan endres. Tilkoblinger bruker for øyeblikket et offentlig relé for å passere brannmurer.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Synkroniserer",
                 "serving": "Leverer",

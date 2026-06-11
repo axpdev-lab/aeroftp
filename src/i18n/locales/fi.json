@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Lisää kaveri",
-            "experimentalLabel": "AeroShare (kokeellinen)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta.",
-            "experimentalNote": "Kokeellinen: vertaissiirtoa kehitetään aktiivisesti ja se voi muuttua. Yhteydet käyttävät tällä hetkellä julkista välitintä palomuurien läpäisemiseen.",
-            "experimentalTag": "Kokeellinen",
+            "experimentalNote": "Beta: vertaissiirtoa kehitetään aktiivisesti ja se voi muuttua. Yhteydet käyttävät tällä hetkellä julkista välitintä palomuurien läpäisemiseen.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Synkronoidaan",
                 "serving": "Tarjotaan",

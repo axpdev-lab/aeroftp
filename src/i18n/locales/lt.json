@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Pridėti draugą",
-            "experimentalLabel": "AeroShare (eksperimentinė)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Bendrinkite aplankus tiesiogiai su draugais užšifruotu peer-to-peer kanalu, be serverio tarpininkavimo.",
-            "experimentalNote": "Eksperimentinė: peer-to-peer perdavimas yra aktyviai kuriamas ir gali keistis. Ryšiai šiuo metu naudoja viešą relę, kad pereitų per ugniasienes.",
-            "experimentalTag": "Eksperimentinė",
+            "experimentalNote": "Beta: peer-to-peer perdavimas yra aktyviai kuriamas ir gali keistis. Ryšiai šiuo metu naudoja viešą relę, kad pereitų per ugniasienes.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sinchronizuojama",
                 "serving": "Teikiama",

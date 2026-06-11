@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "友達を追加",
-            "experimentalLabel": "AeroShare（実験的）",
+            "experimentalLabel": "AeroShare（beta）",
             "experimentalDesc": "暗号化されたピアツーピア接続を通じて、間にサーバーを介さずに友達と直接フォルダを共有します。",
-            "experimentalNote": "実験的機能：ピアツーピア転送は現在開発中であり、変更される場合があります。接続には現在、ファイアウォールを通過するためにパブリックリレーを使用しています。",
-            "experimentalTag": "実験的",
+            "experimentalNote": "Beta：ピアツーピア転送は現在開発中であり、変更される場合があります。接続には現在、ファイアウォールを通過するためにパブリックリレーを使用しています。",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "同期中",
                 "serving": "提供中",

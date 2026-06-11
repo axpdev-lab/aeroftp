@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "添加好友",
-            "experimentalLabel": "AeroShare（实验性）",
+            "experimentalLabel": "AeroShare（beta）",
             "experimentalDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。",
-            "experimentalNote": "实验性：点对点传输正在积极开发中，可能会有变动。当前连接使用公共中继来穿透防火墙。",
-            "experimentalTag": "实验性",
+            "experimentalNote": "Beta：点对点传输正在积极开发中，可能会有变动。当前连接使用公共中继来穿透防火墙。",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "同步中",
                 "serving": "提供中",

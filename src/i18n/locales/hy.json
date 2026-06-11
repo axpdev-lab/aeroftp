@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Ավելացնել ընկեր",
-            "experimentalLabel": "AeroShare (փորձնական)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Կիսվեք թղթապանակներով անմիջապես ընկերների հետ՝ գաղտնագրված peer-to-peer ալիքով, առանց միջանկյալ սերվերի։",
-            "experimentalNote": "Փորձնական. peer-to-peer փոխանցումը ակտիվ մշակման փուլում է և կարող է փոխվել։ Կապերը ներկայումս օգտագործում են հանրային ռելե՝ firewall-ները հատելու համար։",
-            "experimentalTag": "Փորձնական",
+            "experimentalNote": "Beta. peer-to-peer փոխանցումը ակտիվ մշակման փուլում է և կարող է փոխվել։ Կապերը ներկայումս օգտագործում են հանրային ռելե՝ firewall-ները հատելու համար։",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Համաժամացում",
                 "serving": "Սպասարկում",

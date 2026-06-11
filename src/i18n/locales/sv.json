@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Lägg till vän",
-            "experimentalLabel": "AeroShare (experimentell)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Dela mappar direkt med vänner via en krypterad peer-to-peer-kanal, utan någon server emellan.",
-            "experimentalNote": "Experimentell: peer-to-peer-överföring är under aktiv utveckling och kan ändras. Anslutningar använder för närvarande ett offentligt relä för att ta sig igenom brandväggar.",
-            "experimentalTag": "Experimentell",
+            "experimentalNote": "Beta: peer-to-peer-överföring är under aktiv utveckling och kan ändras. Anslutningar använder för närvarande ett offentligt relä för att ta sig igenom brandväggar.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Synkroniserar",
                 "serving": "Tillhandahåller",

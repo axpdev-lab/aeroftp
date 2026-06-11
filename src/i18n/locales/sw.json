@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Ongeza rafiki",
-            "experimentalLabel": "AeroShare (ya majaribio)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati.",
-            "experimentalNote": "Ya majaribio: uhamishaji wa peer-to-peer unaendelezwa kikamilifu na unaweza kubadilika. Kwa sasa miunganisho hutumia relay ya umma kupita kuta za moto.",
-            "experimentalTag": "Ya majaribio",
+            "experimentalNote": "Beta: uhamishaji wa peer-to-peer unaendelezwa kikamilifu na unaweza kubadilika. Kwa sasa miunganisho hutumia relay ya umma kupita kuta za moto.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Inasawazisha",
                 "serving": "Inahudumu",

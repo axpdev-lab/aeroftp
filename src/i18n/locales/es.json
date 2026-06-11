@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Añadir amigo",
-            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Comparte carpetas directamente con tus amigos a través de un canal cifrado de igual a igual, sin ningún servidor en medio.",
-            "experimentalNote": "Experimental: la transferencia de igual a igual está en desarrollo activo y puede cambiar. Las conexiones usan actualmente un relé público para atravesar los cortafuegos.",
-            "experimentalTag": "Experimental",
+            "experimentalNote": "Beta: la transferencia de igual a igual está en desarrollo activo y puede cambiar. Las conexiones usan actualmente un relé público para atravesar los cortafuegos.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sincronizando",
                 "serving": "Compartiendo",

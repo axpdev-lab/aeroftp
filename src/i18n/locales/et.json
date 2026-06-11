@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Lisa sõber",
-            "experimentalLabel": "AeroShare (katseline)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita.",
-            "experimentalNote": "Katseline: peer-to-peer edastus on aktiivses arenduses ja võib muutuda. Ühendused kasutavad praegu avalikku releed tulemüüride läbimiseks.",
-            "experimentalTag": "Katseline",
+            "experimentalNote": "Beta: peer-to-peer edastus on aktiivses arenduses ja võib muutuda. Ühendused kasutavad praegu avalikku releed tulemüüride läbimiseks.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sünkroonimine",
                 "serving": "Teenindamine",

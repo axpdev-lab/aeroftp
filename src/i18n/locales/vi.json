@@ -4712,10 +4712,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Thêm bạn bè",
-            "experimentalLabel": "AeroShare (thử nghiệm)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Chia sẻ thư mục trực tiếp với bạn bè qua kênh ngang hàng được mã hóa, không có máy chủ trung gian.",
-            "experimentalNote": "Thử nghiệm: tính năng truyền ngang hàng đang được phát triển và có thể thay đổi. Các kết nối hiện sử dụng một relay công khai để vượt qua tường lửa.",
-            "experimentalTag": "Thử nghiệm",
+            "experimentalNote": "Beta: tính năng truyền ngang hàng đang được phát triển và có thể thay đổi. Các kết nối hiện sử dụng một relay công khai để vượt qua tường lửa.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Đang đồng bộ",
                 "serving": "Đang phục vụ",

@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Afegeix un amic",
-            "experimentalLabel": "AeroShare (experimental)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Comparteix carpetes directament amb els amics a través d'un canal xifrat d'igual a igual, sense cap servidor pel mig.",
-            "experimentalNote": "Experimental: la transferència d'igual a igual està en desenvolupament actiu i pot canviar. Les connexions utilitzen actualment un relé públic per travessar els tallafocs.",
-            "experimentalTag": "Experimental",
+            "experimentalNote": "Beta: la transferència d'igual a igual està en desenvolupament actiu i pot canviar. Les connexions utilitzen actualment un relé públic per travessar els tallafocs.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Sincronitzant",
                 "serving": "Compartint",

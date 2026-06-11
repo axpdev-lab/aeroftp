@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, UserPlus } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, UserPlus, Share2 } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -35,6 +35,9 @@ interface MyServersToolbarProps {
     /** Open the AeroShare handshake dialog. Only passed when the experimental
      *  flag is on; renders the "Add friend" toolbar button. */
     onAddFriend?: () => void;
+    /** AeroShare flag. Gates the "AeroShare" (peer) filter chip: when off the
+     *  chip is not rendered, matching the rest of the hidden friend surfaces. */
+    aeroShareEnabled?: boolean;
 }
 
 export function MyServersToolbar({
@@ -60,6 +63,7 @@ export function MyServersToolbar({
     listDensity = 'compact',
     onToggleListDensity,
     onAddFriend,
+    aeroShareEnabled = false,
 }: MyServersToolbarProps) {
     const t = useTranslation();
     // Cross-Profile button visual states:
@@ -95,8 +99,10 @@ export function MyServersToolbar({
                 )}
             </div>
 
-            {/* Filter chips with counts */}
-            {FILTER_CHIPS.map((chip) => {
+            {/* Filter chips with counts. The "peer" (AeroShare) chip is flag-gated:
+                it only appears when the AeroShare flag is on, vanishing with the
+                other friend surfaces when off. */}
+            {FILTER_CHIPS.filter((chip) => chip.id !== 'peer' || aeroShareEnabled).map((chip) => {
                 const count = chipCounts[chip.id] ?? 0;
                 return (
                     <button
@@ -110,6 +116,7 @@ export function MyServersToolbar({
                     >
                         {chip.id === 'favorites' && <Star size={10} />}
                         {chip.id === 'local-bridge' && <HardDrive size={10} />}
+                        {chip.id === 'peer' && <Share2 size={10} className="text-violet-500" />}
                         <span>{t(chip.labelKey)}</span>
                         <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
                             activeFilter === chip.id ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'

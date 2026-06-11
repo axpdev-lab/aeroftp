@@ -479,6 +479,17 @@ export function MyServersPanel({
         localStorage.setItem(VIEW_MODE_KEY, viewMode);
     }, [viewMode]);
 
+    // Safety net: the "peer" (AeroShare) chip is only rendered while the flag
+    // is on. If the user filters by it and then disables AeroShare, the chip
+    // vanishes while the filter stays active -> an empty list with no way back.
+    // Snap the filter to "all" so the grid never gets stuck behind a hidden chip.
+    useEffect(() => {
+        if (!aeroShareEnabled && activeFilter === 'peer') {
+            setActiveFilter('all');
+            localStorage.setItem('aeroftp_myservers_filter', 'all');
+        }
+    }, [aeroShareEnabled, activeFilter]);
+
     const toggleFavorite = useCallback((serverId: string) => {
         setFavorites(prev => {
             const next = new Set(prev);
@@ -788,7 +799,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, peer: 0, favorites: 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
@@ -1208,6 +1219,7 @@ export function MyServersPanel({
                 listDensity={density}
                 onToggleListDensity={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
                 onAddFriend={aeroShareEnabled ? () => setAeroShareDialog({ mode: 'receive' }) : undefined}
+                aeroShareEnabled={aeroShareEnabled}
             />
 
             {filteredServers.length === 0 ? (

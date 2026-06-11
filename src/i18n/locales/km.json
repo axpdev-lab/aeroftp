@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "បន្ថែមមិត្តភក្តិ",
-            "experimentalLabel": "AeroShare (ពិសោធន៍)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "ចែករំលែកថតផ្ទាល់ជាមួយមិត្តភក្តិតាមរយៈបណ្តាញ peer-to-peer ដែលបានអ៊ីនគ្រីប ដោយគ្មានម៉ាស៊ីនមេនៅកណ្តាល។",
-            "experimentalNote": "ពិសោធន៍៖ ការផ្ទេរ peer-to-peer កំពុងស្ថិតក្នុងការអភិវឌ្ឍយ៉ាងសកម្ម ហើយអាចផ្លាស់ប្តូរ។ បច្ចុប្បន្នការតភ្ជាប់ប្រើ relay សាធារណៈដើម្បីឆ្លងកាត់ជញ្ជាំងភ្លើង។",
-            "experimentalTag": "ពិសោធន៍",
+            "experimentalNote": "Beta៖ ការផ្ទេរ peer-to-peer កំពុងស្ថិតក្នុងការអភិវឌ្ឍយ៉ាងសកម្ម ហើយអាចផ្លាស់ប្តូរ។ បច្ចុប្បន្នការតភ្ជាប់ប្រើ relay សាធារណៈដើម្បីឆ្លងកាត់ជញ្ជាំងភ្លើង។",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "កំពុងធ្វើសមកាលកម្ម",
                 "serving": "កំពុងបម្រើ",

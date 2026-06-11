@@ -4731,10 +4731,10 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Bæta við vini",
-            "experimentalLabel": "AeroShare (á tilraunastigi)",
+            "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Deildu möppum beint með vinum um dulkóðaða jafningjarás, án nokkurs þjóns á milli.",
-            "experimentalNote": "Á tilraunastigi: jafningjaflutningur er í virkri þróun og getur breyst. Tengingar nota sem stendur opinbert endurvarp til að komast í gegnum eldveggi.",
-            "experimentalTag": "Á tilraunastigi",
+            "experimentalNote": "Beta: jafningjaflutningur er í virkri þróun og getur breyst. Tengingar nota sem stendur opinbert endurvarp til að komast í gegnum eldveggi.",
+            "experimentalTag": "Beta",
             "driveState": {
                 "syncing": "Samstillir",
                 "serving": "Þjónar",
