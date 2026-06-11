@@ -1,6 +1,9 @@
 use crate::cli_tui::{
     event::{OverlayKey, TuiAction},
-    overlay::{ConfirmKind, ConfirmState, PromptKind, PromptState, TuiOverlay},
+    overlay::{
+        ConfirmKind, ConfirmState, GroupsOverlayItem, GroupsOverlayState, PromptKind, PromptState,
+        TuiOverlay,
+    },
     panes::{
         browser::BrowserPaneState, profiles::ProfilesPaneState, transfers::TransfersPaneState,
     },
@@ -15,6 +18,10 @@ pub struct TuiContext {
     /// Launch CWD captured at TUI entry boundary for absolute download defaults.
     /// Never compute inside pure AppState; threaded from caller.
     pub download_base: String,
+    /// Named saved-server groups (#320), the generalisation of the favourites
+    /// bucket. Global (not per-user) and sorted by the vault `order`; member
+    /// ids live in the vault blob, the TUI carries names + counts only.
+    pub groups: Vec<TuiGroup>,
 }
 
 impl TuiContext {
@@ -23,8 +30,18 @@ impl TuiContext {
             users: Vec::new(),
             initial_user: 0,
             download_base: ".".to_string(),
+            groups: Vec::new(),
         }
     }
+}
+
+/// A named saved-server group as the TUI sees it: a display name and the global
+/// member count. Membership of an individual profile is carried on
+/// [`TuiProfile::groups`]; the vault remains the single source of truth.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct TuiGroup {
+    pub name: String,
+    pub member_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +69,10 @@ pub struct TuiProfile {
     /// If present and non-empty, the Local pane should open here on connect.
     pub default_local_path: String,
     pub favorite: bool,
+    /// Names of the groups this profile belongs to, in vault `order` (#320).
+    /// Empty when ungrouped. Mirrors `group_names_for_profile`; the filter and
+    /// the group overlay read this for the membership indicator.
+    pub groups: Vec<String>,
     /// Cached storage usage from the saved bookmark (the GUI/CLI `lastQuota`),
     /// surfaced read-only in the IntroHub table. Computed in `build_tui_context`
     /// with the same CLI helpers (`profile_effective_used`/`_total`); the TUI
@@ -99,6 +120,10 @@ pub struct AppState {
     pub show_credentials: bool,
     /// When in Browser focus in dual-pane mode (Phase 3), which side is active for navigation/ops.
     pub active_browser_side: BrowserSide,
+    /// IntroHub group filter (#320): when `Some(name)`, the My Servers list is
+    /// narrowed to that group's members. The TUI's first list filter; mutually
+    /// exclusive with any other narrowing (only one at a time). `None` = all.
+    pub selected_group: Option<String>,
 }
 
 impl AppState {
@@ -125,6 +150,7 @@ impl AppState {
             intent: None,
             show_credentials: false,
             active_browser_side: BrowserSide::Remote,
+            selected_group: None,
         };
         state.sync_pane_state();
         // Seed a reasonable starting point for the local pane (Phase 3 dual-pane).
@@ -226,6 +252,7 @@ impl AppState {
             TuiAction::ToggleFavorite => Vec::new(),
             TuiAction::HealthCheck => Vec::new(),
             TuiAction::RefreshQuota => Vec::new(),
+            TuiAction::ManageGroups => Vec::new(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -251,6 +278,8 @@ impl AppState {
             TuiAction::HealthCheck => Some(self.introhub_check_health()),
             // `Q` refreshes the storage quota via a transient connection.
             TuiAction::RefreshQuota => Some(self.introhub_refresh_quota()),
+            // `G` opens the named-group manager for the highlighted profile.
+            TuiAction::ManageGroups => Some(self.introhub_open_groups()),
             // Enter connects to the selected profile (or unlocks a locked user).
             TuiAction::Activate => Some(self.introhub_activate()),
             // Backspace/Parent is meaningless on the picker; swallow it.
@@ -259,10 +288,47 @@ impl AppState {
         }
     }
 
+    /// Indices into the active user's `profiles` that are visible under the
+    /// current group filter (#320). Without a filter, every profile is visible.
+    /// The order matches `profiles`, so the Nth visible row maps back to a real
+    /// profile index for navigation, rendering, and connect.
+    pub fn visible_profile_indices(&self) -> Vec<usize> {
+        let Some(user) = self.selected_user() else {
+            return Vec::new();
+        };
+        match &self.selected_group {
+            None => (0..user.profiles.len()).collect(),
+            Some(group) => user
+                .profiles
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.groups.iter().any(|g| g == group))
+                .map(|(i, _)| i)
+                .collect(),
+        }
+    }
+
     /// Move the highlighted profile in the IntroHub table, reusing the picker's
-    /// Profiles-focus move (which also refreshes the local-pane preview).
+    /// Profiles-focus move (which also refreshes the local-pane preview). When a
+    /// group filter is active the cursor steps within the visible subset only,
+    /// keeping `selected_profile` a real index into the full `profiles` vec.
     fn introhub_move_profile(&mut self, delta: isize) -> Vec<WorkerCommand> {
         self.focus = TuiFocus::Profiles;
+        if self.selected_group.is_some() {
+            let visible = self.visible_profile_indices();
+            if visible.is_empty() {
+                return Vec::new();
+            }
+            let cur = visible
+                .iter()
+                .position(|&i| i == self.selected_profile)
+                .unwrap_or(0);
+            let next = (cur as isize + delta).clamp(0, visible.len() as isize - 1) as usize;
+            self.selected_profile = visible[next];
+            // Reuse the Profiles-focus move with delta 0 to refresh the local
+            // preview at the new position without re-clamping past the filter.
+            return self.move_selection(0);
+        }
         self.move_selection(delta)
     }
 
@@ -333,6 +399,122 @@ impl AppState {
             format!("Removed '{}' from favorites.", name)
         };
         vec![WorkerCommand::ToggleFavorite { profile_id }]
+    }
+
+    /// Open the named-group manager overlay for the highlighted profile (#320).
+    /// The overlay lists every known group with this profile's membership flag,
+    /// plus an "All servers" row that clears the filter. Pure state: the overlay
+    /// is rendered separately and its keys are routed via `handle_overlay_key`.
+    fn introhub_open_groups(&mut self) -> Vec<WorkerCommand> {
+        let (profile_id, profile_name, profile_groups) = match self.selected_profile() {
+            Some(p) => (p.id.clone(), p.name.clone(), p.groups.clone()),
+            None => {
+                self.status = "No profile selected.".to_string();
+                return Vec::new();
+            }
+        };
+        let items: Vec<GroupsOverlayItem> = self
+            .context
+            .groups
+            .iter()
+            .map(|g| GroupsOverlayItem {
+                name: g.name.clone(),
+                member_count: g.member_count,
+                is_member: profile_groups.iter().any(|n| n == &g.name),
+            })
+            .collect();
+        // Start the cursor on the active filter's group when one is set, else on
+        // the "All servers" row (index 0).
+        let cursor = match &self.selected_group {
+            Some(active) => items
+                .iter()
+                .position(|i| &i.name == active)
+                .map(|i| i + 1)
+                .unwrap_or(0),
+            None => 0,
+        };
+        self.overlay = TuiOverlay::Groups(GroupsOverlayState {
+            profile_id,
+            profile_name,
+            cursor,
+            groups: items,
+        });
+        self.status = "Groups: Enter filter  space toggle  n new  r rename  d delete".to_string();
+        Vec::new()
+    }
+
+    /// Apply a group-membership toggle to the in-memory context: flip `group`
+    /// on the named profile across all users, and keep the group list and member
+    /// counts in sync (creating the group when it is new). The optimistic mirror
+    /// of `toggle_group_membership_in_vault`; the worker persists the vault.
+    /// Returns the new membership state (`true` = now a member).
+    fn apply_group_membership(&mut self, profile_id: &str, group: &str) -> bool {
+        let mut now_member = false;
+        for user in &mut self.context.users {
+            for profile in &mut user.profiles {
+                if profile.id != profile_id {
+                    continue;
+                }
+                if let Some(pos) = profile.groups.iter().position(|g| g == group) {
+                    profile.groups.remove(pos);
+                    now_member = false;
+                } else {
+                    profile.groups.push(group.to_string());
+                    now_member = true;
+                }
+            }
+        }
+        // Reflect the count change, creating the group row when it did not exist.
+        if let Some(g) = self.context.groups.iter_mut().find(|g| g.name == group) {
+            if now_member {
+                g.member_count += 1;
+            } else {
+                g.member_count = g.member_count.saturating_sub(1);
+            }
+        } else if now_member {
+            self.context.groups.push(TuiGroup {
+                name: group.to_string(),
+                member_count: 1,
+            });
+        }
+        now_member
+    }
+
+    /// Rename a group in the in-memory context: the group row, every profile's
+    /// membership list, and the active filter. Optimistic mirror of
+    /// `rename_group_in_vault`.
+    fn apply_group_rename(&mut self, old: &str, new: &str) {
+        for user in &mut self.context.users {
+            for profile in &mut user.profiles {
+                for name in &mut profile.groups {
+                    if name == old {
+                        *name = new.to_string();
+                    }
+                }
+            }
+        }
+        if let Some(g) = self.context.groups.iter_mut().find(|g| g.name == old) {
+            g.name = new.to_string();
+        }
+        if self.selected_group.as_deref() == Some(old) {
+            self.selected_group = Some(new.to_string());
+        }
+    }
+
+    /// Delete a group from the in-memory context: drop the group row and the
+    /// membership from every profile (the servers themselves stay), and clear
+    /// the filter if it pointed at the deleted group. Optimistic mirror of
+    /// `delete_group_in_vault`.
+    fn apply_group_delete(&mut self, group: &str) {
+        for user in &mut self.context.users {
+            for profile in &mut user.profiles {
+                profile.groups.retain(|g| g != group);
+            }
+        }
+        self.context.groups.retain(|g| g.name != group);
+        if self.selected_group.as_deref() == Some(group) {
+            self.selected_group = None;
+        }
     }
 
     /// Probe the highlighted profile's reachability. The TUI only requests the
@@ -938,9 +1120,196 @@ impl AppState {
             TuiOverlay::None => Vec::new(),
             TuiOverlay::Prompt(_) => self.handle_prompt_key(key),
             TuiOverlay::Confirm(_) => self.handle_confirm_key(key),
+            TuiOverlay::Groups(_) => self.handle_groups_key(key),
         };
         self.sync_pane_state();
         commands
+    }
+
+    /// Route a key while the group manager overlay (#320) is open. The overlay
+    /// owns the keyboard: `j`/`k` and arrows move the cursor, Enter applies the
+    /// group as the list filter (or clears it on the "All servers" row), space
+    /// toggles the highlighted profile's membership, and `n`/`r`/`d`
+    /// create/rename/delete groups. Esc dismisses.
+    fn handle_groups_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        match key {
+            OverlayKey::Up | OverlayKey::Char('k') => {
+                if let TuiOverlay::Groups(state) = &mut self.overlay {
+                    state.move_cursor(-1);
+                }
+                Vec::new()
+            }
+            OverlayKey::Down | OverlayKey::Char('j') => {
+                if let TuiOverlay::Groups(state) = &mut self.overlay {
+                    state.move_cursor(1);
+                }
+                Vec::new()
+            }
+            OverlayKey::Submit => self.groups_overlay_apply_filter(),
+            OverlayKey::Char(' ') => self.groups_overlay_toggle_membership(),
+            OverlayKey::Char('n') | OverlayKey::Char('N') => self.groups_overlay_new(),
+            OverlayKey::Char('r') | OverlayKey::Char('R') => self.groups_overlay_rename(),
+            OverlayKey::Char('d') | OverlayKey::Char('D') => self.groups_overlay_delete(),
+            OverlayKey::Cancel => self.cancel_overlay(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Enter in the group overlay: set (or clear, on "All servers") the list
+    /// filter to the highlighted group, snap the cursor onto a visible profile,
+    /// and dismiss the overlay.
+    fn groups_overlay_apply_filter(&mut self) -> Vec<WorkerCommand> {
+        let target = if let TuiOverlay::Groups(state) = &self.overlay {
+            state.selected_group().map(|item| item.name.clone())
+        } else {
+            return Vec::new();
+        };
+        self.overlay = TuiOverlay::None;
+        match target {
+            None => {
+                self.selected_group = None;
+                self.status = "Showing all servers.".to_string();
+            }
+            Some(name) => {
+                self.status = format!("Filtering by group '{}'.", name);
+                self.selected_group = Some(name);
+            }
+        }
+        self.snap_selection_to_filter();
+        Vec::new()
+    }
+
+    /// After a filter change, move the profile cursor onto the first visible row
+    /// so navigation and the detail panel never point at a hidden profile.
+    fn snap_selection_to_filter(&mut self) {
+        let visible = self.visible_profile_indices();
+        self.selected_profile = visible.first().copied().unwrap_or(0);
+    }
+
+    /// Space in the group overlay: toggle the acted-on profile's membership in
+    /// the highlighted group, updating both the context and the overlay row in
+    /// place, and ask the worker to persist. No-op on the "All servers" row.
+    fn groups_overlay_toggle_membership(&mut self) -> Vec<WorkerCommand> {
+        let (profile_id, profile_name, group, idx) =
+            if let TuiOverlay::Groups(state) = &self.overlay {
+                match state.selected_group() {
+                    Some(item) => (
+                        state.profile_id.clone(),
+                        state.profile_name.clone(),
+                        item.name.clone(),
+                        state.cursor - 1,
+                    ),
+                    None => {
+                        self.status = "Pick a group row to toggle membership.".to_string();
+                        return Vec::new();
+                    }
+                }
+            } else {
+                return Vec::new();
+            };
+        if profile_id.is_empty() {
+            self.status = "This profile has no saved id; membership not persisted.".to_string();
+            return Vec::new();
+        }
+        let now_member = self.apply_group_membership(&profile_id, &group);
+        if let TuiOverlay::Groups(state) = &mut self.overlay {
+            if let Some(item) = state.groups.get_mut(idx) {
+                item.is_member = now_member;
+                item.member_count = if now_member {
+                    item.member_count + 1
+                } else {
+                    item.member_count.saturating_sub(1)
+                };
+            }
+        }
+        self.status = if now_member {
+            format!("Added '{}' to group '{}'.", profile_name, group)
+        } else {
+            format!("Removed '{}' from group '{}'.", profile_name, group)
+        };
+        vec![WorkerCommand::ToggleGroupMembership {
+            profile_id,
+            group_name: group,
+        }]
+    }
+
+    /// `n` in the group overlay: open a name prompt for a new group seeded with
+    /// the highlighted profile (the TUI analogue of CLI `g <selector> <group>`).
+    fn groups_overlay_new(&mut self) -> Vec<WorkerCommand> {
+        let profile_id = if let TuiOverlay::Groups(state) = &self.overlay {
+            state.profile_id.clone()
+        } else {
+            return Vec::new();
+        };
+        if profile_id.is_empty() {
+            self.status = "This profile has no saved id; cannot seed a group.".to_string();
+            return Vec::new();
+        }
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::GroupName {
+                profile_id,
+                rename_from: None,
+            },
+            "New group",
+            "name (the highlighted server joins it)",
+            String::new(),
+        ));
+        Vec::new()
+    }
+
+    /// `r` in the group overlay: open a name prompt to rename the highlighted
+    /// group. No-op on the "All servers" row.
+    fn groups_overlay_rename(&mut self) -> Vec<WorkerCommand> {
+        let old = if let TuiOverlay::Groups(state) = &self.overlay {
+            match state.selected_group() {
+                Some(item) => item.name.clone(),
+                None => {
+                    self.status = "Pick a group row to rename.".to_string();
+                    return Vec::new();
+                }
+            }
+        } else {
+            return Vec::new();
+        };
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::GroupName {
+                profile_id: String::new(),
+                rename_from: Some(old.clone()),
+            },
+            "Rename group",
+            "new name",
+            old,
+        ));
+        Vec::new()
+    }
+
+    /// `d` in the group overlay: delete the highlighted group (servers untouched)
+    /// from the context and the overlay, and ask the worker to persist. No-op on
+    /// the "All servers" row.
+    fn groups_overlay_delete(&mut self) -> Vec<WorkerCommand> {
+        let (name, idx) = if let TuiOverlay::Groups(state) = &self.overlay {
+            match state.selected_group() {
+                Some(item) => (item.name.clone(), state.cursor - 1),
+                None => {
+                    self.status = "Pick a group row to delete.".to_string();
+                    return Vec::new();
+                }
+            }
+        } else {
+            return Vec::new();
+        };
+        self.apply_group_delete(&name);
+        if let TuiOverlay::Groups(state) = &mut self.overlay {
+            if idx < state.groups.len() {
+                state.groups.remove(idx);
+            }
+            let max = state.row_count().saturating_sub(1);
+            if state.cursor > max {
+                state.cursor = max;
+            }
+        }
+        self.status = format!("Deleted group '{}' (servers kept).", name);
+        vec![WorkerCommand::DeleteGroup { name }]
     }
 
     fn handle_prompt_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
@@ -959,7 +1328,7 @@ impl AppState {
             }
             OverlayKey::Submit => self.submit_prompt(),
             OverlayKey::Cancel => self.cancel_overlay(),
-            OverlayKey::Noop => Vec::new(),
+            OverlayKey::Up | OverlayKey::Down | OverlayKey::Noop => Vec::new(),
         }
     }
 
@@ -1066,6 +1435,44 @@ impl AppState {
                     local_path: value,
                     remote_path: remote,
                 }]
+            }
+            PromptKind::GroupName {
+                profile_id,
+                rename_from,
+            } => {
+                if value.is_empty() {
+                    self.status = "Enter a group name.".to_string();
+                    return Vec::new();
+                }
+                self.overlay = TuiOverlay::None;
+                match rename_from {
+                    Some(old) => {
+                        if value.eq_ignore_ascii_case(&old) {
+                            self.status = "Name unchanged.".to_string();
+                            return Vec::new();
+                        }
+                        self.apply_group_rename(&old, &value);
+                        self.status = format!("Renamed group '{}' to '{}'.", old, value);
+                        vec![WorkerCommand::RenameGroup {
+                            old_name: old,
+                            new_name: value,
+                        }]
+                    }
+                    None => {
+                        // Create-if-new and add the seed profile, mirroring the
+                        // CLI `g` create-or-toggle on `config_server_groups`.
+                        let now_member = self.apply_group_membership(&profile_id, &value);
+                        self.status = if now_member {
+                            format!("Created group '{}'.", value)
+                        } else {
+                            format!("Updated group '{}'.", value)
+                        };
+                        vec![WorkerCommand::ToggleGroupMembership {
+                            profile_id,
+                            group_name: value,
+                        }]
+                    }
+                }
             }
         }
     }
@@ -1730,6 +2137,7 @@ mod tests {
             }],
             initial_user: 0,
             download_base: "/tmp/tui_cwd".to_string(),
+            groups: Vec::new(),
         }
     }
 
@@ -1800,6 +2208,7 @@ mod tests {
             }],
             initial_user: 0,
             download_base: "/tmp/tui_cwd".to_string(),
+            groups: Vec::new(),
         };
         let mut app = AppState::new(context);
         app.apply_action(TuiAction::Activate);
@@ -2193,6 +2602,7 @@ mod tests {
             }],
             initial_user: 0,
             download_base: "/tmp/tui_cwd".to_string(),
+            groups: Vec::new(),
         };
         let app = AppState::new(context);
 
@@ -2233,6 +2643,7 @@ mod tests {
             ],
             initial_user: 0,
             download_base: "/tmp/tui_cwd".to_string(),
+            groups: Vec::new(),
         }
     }
 
@@ -2292,6 +2703,169 @@ mod tests {
         let commands = app.apply_action(TuiAction::ToggleFavorite);
         assert!(commands.is_empty());
         assert!(!app.context.users[0].profiles[0].favorite);
+    }
+
+    /// An IntroHub context where the first user's two profiles have saved ids and
+    /// "Production" already contains the first profile (#320 group tests).
+    fn grouped_context() -> TuiContext {
+        let mut context = introhub_context();
+        context.users[0].profiles[0].id = "srv-1".to_string();
+        context.users[0].profiles[1].id = "srv-2".to_string();
+        context.users[0].profiles[0].groups = vec!["Production".to_string()];
+        context.groups = vec![TuiGroup {
+            name: "Production".to_string(),
+            member_count: 1,
+        }];
+        context
+    }
+
+    #[test]
+    fn introhub_g_opens_the_group_overlay_with_membership() {
+        let mut app = AppState::new_live(grouped_context());
+        let commands = app.apply_action(TuiAction::ManageGroups);
+        assert!(commands.is_empty());
+        match &app.overlay {
+            TuiOverlay::Groups(state) => {
+                assert_eq!(state.profile_id, "srv-1");
+                assert_eq!(state.groups.len(), 1);
+                assert!(state.groups[0].is_member);
+                assert_eq!(state.cursor, 0); // starts on "All servers"
+            }
+            other => panic!("expected a Groups overlay, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn group_overlay_space_toggles_membership_optimistically_and_asks_the_worker() {
+        let mut app = AppState::new_live(grouped_context());
+        app.apply_action(TuiAction::ManageGroups);
+        // Down moves onto the "Production" row, space removes the member.
+        app.handle_overlay_key(OverlayKey::Down);
+        let commands = app.handle_overlay_key(OverlayKey::Char(' '));
+
+        assert!(app.context.users[0].profiles[0].groups.is_empty());
+        assert_eq!(app.context.groups[0].member_count, 0);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::ToggleGroupMembership {
+                profile_id: "srv-1".to_string(),
+                group_name: "Production".to_string(),
+            }]
+        );
+        // The overlay row reflects the new state in place.
+        if let TuiOverlay::Groups(state) = &app.overlay {
+            assert!(!state.groups[0].is_member);
+            assert_eq!(state.groups[0].member_count, 0);
+        } else {
+            panic!("overlay should stay open after a membership toggle");
+        }
+    }
+
+    #[test]
+    fn group_overlay_enter_sets_then_clears_the_filter() {
+        let mut app = AppState::new_live(grouped_context());
+        app.apply_action(TuiAction::ManageGroups);
+        app.handle_overlay_key(OverlayKey::Down); // onto "Production"
+        app.handle_overlay_key(OverlayKey::Submit);
+
+        assert_eq!(app.selected_group.as_deref(), Some("Production"));
+        // Only the member profile is visible under the filter.
+        assert_eq!(app.visible_profile_indices(), vec![0]);
+        assert!(!app.overlay.is_active());
+
+        // Reopen: the cursor seeds onto the active group, so Up returns to the
+        // "All servers" row and Enter clears the filter.
+        app.apply_action(TuiAction::ManageGroups);
+        app.handle_overlay_key(OverlayKey::Up);
+        app.handle_overlay_key(OverlayKey::Submit);
+        assert!(app.selected_group.is_none());
+        assert_eq!(app.visible_profile_indices(), vec![0, 1]);
+    }
+
+    #[test]
+    fn group_filter_narrows_navigation_to_members() {
+        let mut app = AppState::new_live(grouped_context());
+        app.selected_group = Some("Production".to_string());
+        app.selected_profile = 0;
+        // Down stays on the only visible member rather than moving to srv-2.
+        app.apply_action(TuiAction::MoveDown);
+        assert_eq!(app.selected_profile, 0);
+    }
+
+    #[test]
+    fn group_overlay_new_seeds_a_group_with_the_highlighted_profile() {
+        let mut app = AppState::new_live(grouped_context());
+        app.apply_action(TuiAction::ManageGroups);
+        app.handle_overlay_key(OverlayKey::Char('n'));
+        // The naming prompt is open; type a fresh group name and submit.
+        for c in "Staging".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+
+        assert!(app.context.users[0].profiles[0]
+            .groups
+            .iter()
+            .any(|g| g == "Staging"));
+        assert!(app.context.groups.iter().any(|g| g.name == "Staging"));
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::ToggleGroupMembership {
+                profile_id: "srv-1".to_string(),
+                group_name: "Staging".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn group_overlay_rename_updates_context_and_active_filter() {
+        let mut app = AppState::new_live(grouped_context());
+        app.selected_group = Some("Production".to_string());
+        app.apply_action(TuiAction::ManageGroups);
+        app.handle_overlay_key(OverlayKey::Down); // onto "Production"
+        app.handle_overlay_key(OverlayKey::Char('r'));
+        // Rename prompt pre-filled with the old name; clear it and type a new one.
+        for _ in 0.."Production".len() {
+            app.handle_overlay_key(OverlayKey::Backspace);
+        }
+        for c in "Prod".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+
+        assert!(app.context.groups.iter().any(|g| g.name == "Prod"));
+        assert!(app.context.groups.iter().all(|g| g.name != "Production"));
+        assert_eq!(app.context.users[0].profiles[0].groups, vec!["Prod"]);
+        assert_eq!(app.selected_group.as_deref(), Some("Prod"));
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::RenameGroup {
+                old_name: "Production".to_string(),
+                new_name: "Prod".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn group_overlay_delete_removes_the_group_but_keeps_the_servers() {
+        let mut app = AppState::new_live(grouped_context());
+        app.selected_group = Some("Production".to_string());
+        app.apply_action(TuiAction::ManageGroups);
+        app.handle_overlay_key(OverlayKey::Down); // onto "Production"
+        let commands = app.handle_overlay_key(OverlayKey::Char('d'));
+
+        assert!(app.context.groups.is_empty());
+        assert!(app.context.users[0].profiles[0].groups.is_empty());
+        // The profiles themselves survive; only the grouping is gone.
+        assert_eq!(app.context.users[0].profiles.len(), 2);
+        // The filter that pointed at the deleted group is cleared.
+        assert!(app.selected_group.is_none());
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::DeleteGroup {
+                name: "Production".to_string(),
+            }]
+        );
     }
 
     #[test]

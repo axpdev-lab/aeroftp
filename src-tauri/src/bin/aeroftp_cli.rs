@@ -9026,6 +9026,54 @@ fn toggle_group_membership_in_vault(
     Ok((group_name, now_member))
 }
 
+/// Rename a group, matched case-insensitively by its current name. Reads the
+/// list, renames the first match, writes back. A no-op (Ok) when no group
+/// matches or the target is blank, mirroring the GUI `serverGroups.ts` rename.
+fn rename_group_in_vault(
+    store: &CredentialStore,
+    old_name: &str,
+    new_name: &str,
+) -> Result<(), String> {
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+        return Err("Group name cannot be empty".to_string());
+    }
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    if raw.is_empty() {
+        return Ok(());
+    }
+    let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
+    if let Some(g) = groups
+        .iter_mut()
+        .find(|g| g.name.eq_ignore_ascii_case(old_name))
+    {
+        g.name = trimmed.to_string();
+    }
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok(())
+}
+
+/// Delete a group by name (case-insensitive). The member servers are untouched;
+/// only the grouping disappears, mirroring the GUI `serverGroups.ts` delete.
+fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<(), String> {
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    if raw.is_empty() {
+        return Ok(());
+    }
+    let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
+    groups.retain(|g| !g.name.eq_ignore_ascii_case(name));
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok(())
+}
+
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
 /// language EhudKirsh asked for in issue #180: green for creation /
 /// rename, blue for copy / duplicate, red for delete. Tied to
@@ -9391,6 +9439,11 @@ fn build_tui_context(
         .map(|stat| (stat.user_id, stat.profile_count.max(0) as usize))
         .collect();
     let favorites = load_favorite_server_ids(store);
+    // Named server groups (#320), the generalisation of the favourites bucket.
+    // Loaded once; per-profile membership names are attached below and the full
+    // list (with global member counts) is threaded onto the context for the
+    // group filter/overlay, mirroring how favourites are surfaced.
+    let groups = load_server_groups(store);
 
     let users = users
         .into_iter()
@@ -9444,6 +9497,11 @@ fn build_tui_context(
                             .to_string(),
                         default_local_path,
                         favorite: !id.is_empty() && favorites.contains(id),
+                        groups: if id.is_empty() {
+                            Vec::new()
+                        } else {
+                            group_names_for_profile(&groups, id)
+                        },
                         // Reuse the same cached-quota / last-connected logic as
                         // the CLI `profiles` table; the TUI only renders these.
                         used: profile_effective_used(profile),
@@ -9499,10 +9557,21 @@ fn build_tui_context(
             .unwrap_or_default()
     };
 
+    // Surface the full group list (name + global member count) for the filter
+    // chip and the group overlay. Names mirror what every profile carries.
+    let context_groups: Vec<cli_tui::TuiGroup> = groups
+        .iter()
+        .map(|g| cli_tui::TuiGroup {
+            name: g.name.clone(),
+            member_count: g.members.len(),
+        })
+        .collect();
+
     Ok(cli_tui::TuiContext {
         users,
         initial_user,
         download_base,
+        groups: context_groups,
     })
 }
 
@@ -10257,6 +10326,28 @@ async fn run_cli_tui_worker(
                 // write; failures are non-critical for a favorite flag.
                 if let Ok(store) = open_vault(cli) {
                     let _ = toggle_favorite_in_vault(&store, &profile_id);
+                }
+            }
+            WorkerCommand::ToggleGroupMembership {
+                profile_id,
+                group_name,
+            } => {
+                // Persist the membership change the IntroHub already reflected in
+                // its display state. Reuses the same vault helper as the CLI `g`
+                // toggle (create-if-new), so GUI/CLI/TUI converge on
+                // `config_server_groups`. Fire-and-forget like the favourite flip.
+                if let Ok(store) = open_vault(cli) {
+                    let _ = toggle_group_membership_in_vault(&store, &profile_id, &group_name);
+                }
+            }
+            WorkerCommand::RenameGroup { old_name, new_name } => {
+                if let Ok(store) = open_vault(cli) {
+                    let _ = rename_group_in_vault(&store, &old_name, &new_name);
+                }
+            }
+            WorkerCommand::DeleteGroup { name } => {
+                if let Ok(store) = open_vault(cli) {
+                    let _ = delete_group_in_vault(&store, &name);
                 }
             }
             WorkerCommand::HealthCheck {

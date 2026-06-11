@@ -93,6 +93,24 @@ pub enum WorkerCommand {
     ToggleFavorite {
         profile_id: String,
     },
+    /// Add/remove a saved profile to/from a named group (vault
+    /// `config_server_groups`), creating the group when the name is new. The
+    /// named generalisation of `ToggleFavorite` (#320); fire-and-forget, the
+    /// IntroHub already updated its in-memory group state.
+    ToggleGroupMembership {
+        profile_id: String,
+        group_name: String,
+    },
+    /// Rename a group across `config_server_groups`. Fire-and-forget.
+    RenameGroup {
+        old_name: String,
+        new_name: String,
+    },
+    /// Delete a group (members untouched, only the grouping is removed) from
+    /// `config_server_groups`. Fire-and-forget.
+    DeleteGroup {
+        name: String,
+    },
     /// Probe reachability of a saved profile (DNS/TCP/TLS/HTTP) via the shared
     /// `server_health_check`, without opening a provider session. Reports back a
     /// `HealthReady` event the IntroHub renders as a status dot.
@@ -131,6 +149,9 @@ impl WorkerCommand {
                 TuiWorkerOperation::List
             }
             WorkerCommand::ToggleFavorite { .. } => TuiWorkerOperation::Favorite,
+            WorkerCommand::ToggleGroupMembership { .. }
+            | WorkerCommand::RenameGroup { .. }
+            | WorkerCommand::DeleteGroup { .. } => TuiWorkerOperation::Group,
             WorkerCommand::HealthCheck { .. } => TuiWorkerOperation::Health,
             WorkerCommand::RefreshQuota { .. } => TuiWorkerOperation::Quota,
         }
@@ -150,6 +171,7 @@ pub enum TuiWorkerOperation {
     Cancel,
     Discard,
     Favorite,
+    Group,
     Health,
     Quota,
 }
@@ -167,6 +189,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Cancel => "cancel",
             TuiWorkerOperation::Discard => "discard",
             TuiWorkerOperation::Favorite => "favorite",
+            TuiWorkerOperation::Group => "group",
             TuiWorkerOperation::Health => "health",
             TuiWorkerOperation::Quota => "quota",
         }
@@ -432,6 +455,27 @@ mod tests {
 
         for (command, expected) in cases {
             assert_eq!(command.operation(), expected);
+        }
+    }
+
+    #[test]
+    fn group_commands_share_the_group_operation() {
+        let cases = [
+            WorkerCommand::ToggleGroupMembership {
+                profile_id: "srv-1".to_string(),
+                group_name: "Production".to_string(),
+            },
+            WorkerCommand::RenameGroup {
+                old_name: "Production".to_string(),
+                new_name: "Prod".to_string(),
+            },
+            WorkerCommand::DeleteGroup {
+                name: "Production".to_string(),
+            },
+        ];
+        for command in cases {
+            assert_eq!(command.operation(), TuiWorkerOperation::Group);
+            assert_eq!(command.operation().label(), "group");
         }
     }
 

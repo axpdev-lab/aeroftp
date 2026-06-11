@@ -13,6 +13,52 @@ pub enum TuiOverlay {
     None,
     Prompt(PromptState),
     Confirm(ConfirmState),
+    /// The named-group manager for the highlighted saved profile (#320): a menu
+    /// to filter by a group, toggle the profile's membership, and create /
+    /// rename / delete groups. The named generalisation of the `f` favourite.
+    Groups(GroupsOverlayState),
+}
+
+/// Modal group manager state. Acts on the IntroHub's highlighted profile.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct GroupsOverlayState {
+    /// Saved-profile id the overlay acts on (membership toggle / new-group seed).
+    /// Empty when the highlighted entry has no saved id (toggles are then inert).
+    pub profile_id: String,
+    /// Display name of that profile, for the overlay title.
+    pub profile_name: String,
+    /// Cursor: 0 selects the "All servers" row (clear filter); 1..=groups.len()
+    /// indexes `groups[cursor - 1]`.
+    pub cursor: usize,
+    /// Every known group, with the highlighted profile's membership flag.
+    pub groups: Vec<GroupsOverlayItem>,
+}
+
+impl GroupsOverlayState {
+    /// Number of selectable rows: the "All servers" row plus one per group.
+    pub fn row_count(&self) -> usize {
+        self.groups.len() + 1
+    }
+
+    /// Move the cursor by `delta`, clamped to the selectable rows.
+    pub fn move_cursor(&mut self, delta: isize) {
+        let max = self.row_count().saturating_sub(1) as isize;
+        self.cursor = (self.cursor as isize + delta).clamp(0, max) as usize;
+    }
+
+    /// The group under the cursor, or `None` on the "All servers" row.
+    pub fn selected_group(&self) -> Option<&GroupsOverlayItem> {
+        self.cursor.checked_sub(1).and_then(|i| self.groups.get(i))
+    }
+}
+
+/// One row of the group overlay: a group plus whether the acted-on profile
+/// belongs to it.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct GroupsOverlayItem {
+    pub name: String,
+    pub member_count: usize,
+    pub is_member: bool,
 }
 
 impl TuiOverlay {
@@ -80,6 +126,12 @@ pub enum PromptKind {
     Download { remote: String },
     /// Upload the local path in the buffer into `remote_dir`.
     Upload { remote_dir: String },
+    /// Name a group: create a new one seeded with `profile_id`, or rename the
+    /// group named `rename_from` when present (#320). Buffer holds the name.
+    GroupName {
+        profile_id: String,
+        rename_from: Option<String>,
+    },
 }
 
 /// A yes/no confirmation guarding a destructive action.

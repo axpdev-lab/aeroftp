@@ -40,6 +40,9 @@ pub enum TuiAction {
     /// IntroHub: refresh storage quota of the highlighted profile via a
     /// transient connection (`Q`).
     RefreshQuota,
+    /// IntroHub: open the named-group manager for the highlighted profile (`G`),
+    /// the generalisation of the `f` favourite toggle. No-op in the browser.
+    ManageGroups,
     Noop,
 }
 
@@ -70,6 +73,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('f') | KeyCode::Char('F') => TuiAction::ToggleFavorite,
         KeyCode::Char('H') => TuiAction::HealthCheck,
         KeyCode::Char('Q') => TuiAction::RefreshQuota,
+        KeyCode::Char('G') => TuiAction::ManageGroups,
         KeyCode::Char('s') | KeyCode::Char('S') => TuiAction::ToggleShowCredentials,
         _ => TuiAction::Noop,
     }
@@ -86,6 +90,10 @@ pub enum OverlayKey {
     Submit,
     /// Dismiss the overlay without acting (Esc / `n` on a confirmation).
     Cancel,
+    /// Move a menu cursor up (Up arrow). Menu overlays only; ignored by prompts.
+    Up,
+    /// Move a menu cursor down (Down arrow). Menu overlays only; ignored by prompts.
+    Down,
     /// A key with no overlay meaning.
     Noop,
 }
@@ -100,6 +108,8 @@ pub fn key_to_overlay(key: KeyEvent) -> OverlayKey {
         KeyCode::Enter => OverlayKey::Submit,
         KeyCode::Esc => OverlayKey::Cancel,
         KeyCode::Backspace => OverlayKey::Backspace,
+        KeyCode::Up => OverlayKey::Up,
+        KeyCode::Down => OverlayKey::Down,
         KeyCode::Char(c) => OverlayKey::Char(c),
         _ => OverlayKey::Noop,
     }

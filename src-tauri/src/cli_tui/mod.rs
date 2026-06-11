@@ -34,7 +34,7 @@ pub mod session;
 pub mod theme;
 pub mod worker;
 
-pub use app::{TuiContext, TuiIntent, TuiProfile, TuiProfileAction, TuiUser};
+pub use app::{TuiContext, TuiGroup, TuiIntent, TuiProfile, TuiProfileAction, TuiUser};
 
 pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 
@@ -358,6 +358,18 @@ fn render_introhub_header(
             theme.accent_style(),
         ));
     }
+    // Group filter indicator (#320): show the active filter, or the group count.
+    match &app.selected_group {
+        Some(group) => user_line.push(Span::styled(
+            format!("  ·  group: {}", group),
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        )),
+        None if !app.context.groups.is_empty() => user_line.push(Span::styled(
+            format!("  ·  {} groups", app.context.groups.len()),
+            theme.muted_style(),
+        )),
+        None => {}
+    }
 
     let header = Paragraph::new(vec![
         Line::from(vec![
@@ -425,11 +437,25 @@ fn render_introhub_table(
                 theme.muted_style(),
             )),
         ])],
-        Some(user) => user
-            .profiles
-            .iter()
-            .map(|profile| introhub_table_row(profile, app, theme))
-            .collect(),
+        Some(user) => {
+            // Under a group filter (#320) only the group's members are listed.
+            let visible = app.visible_profile_indices();
+            if visible.is_empty() {
+                let label = match &app.selected_group {
+                    Some(group) => format!("No servers in group '{}' for this user", group),
+                    None => "No saved servers for this user".to_string(),
+                };
+                vec![Row::new(vec![
+                    Cell::from(""),
+                    Cell::from(Span::styled(label, theme.muted_style())),
+                ])]
+            } else {
+                visible
+                    .iter()
+                    .map(|&i| introhub_table_row(&user.profiles[i], app, theme))
+                    .collect()
+            }
+        }
         None => vec![Row::new(vec![Cell::from(Span::styled(
             "No users found in the local vault",
             theme.muted_style(),
@@ -450,7 +476,12 @@ fn render_introhub_table(
 
     let mut state = TableState::default();
     if matches!(user, Some(u) if !u.is_locked && !u.profiles.is_empty()) {
-        state.select(Some(app.selected_profile));
+        // Highlight the display row, not the raw profile index: under a filter
+        // the visible rows are a subset, so map the selection into that subset.
+        let visible = app.visible_profile_indices();
+        if let Some(pos) = visible.iter().position(|&i| i == app.selected_profile) {
+            state.select(Some(pos));
+        }
     }
 
     let table = Table::new(rows, widths)
@@ -614,6 +645,14 @@ fn render_introhub_detail(
                         } else {
                             Span::raw("")
                         },
+                        if profile.groups.is_empty() {
+                            Span::raw("")
+                        } else {
+                            Span::styled(
+                                format!("   [{}]", profile.groups.join(", ")),
+                                theme.muted_style(),
+                            )
+                        },
                     ]),
                     Line::from(vec![
                         Span::styled("Host:    ", theme.muted_style()),
@@ -705,6 +744,8 @@ fn render_introhub_footer(
             Span::raw(" connect   "),
             Span::styled("f", theme.accent_style()),
             Span::raw(" favorite   "),
+            Span::styled("G", theme.accent_style()),
+            Span::raw(" groups   "),
             Span::styled("H", theme.accent_style()),
             Span::raw(" health   "),
             Span::styled("Q", theme.accent_style()),
@@ -931,6 +972,83 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             .wrap(Wrap { trim: true });
             frame.render_widget(body, popup);
         }
+        TuiOverlay::Groups(state) => {
+            // List: an "All servers" row (clear filter) then one row per group
+            // with a membership checkbox and the global member count.
+            let rows = state.row_count().max(1) as u16;
+            let height = rows.saturating_add(5).min(area.height);
+            let popup = centered_rect(60, height, area);
+            frame.render_widget(Clear, popup);
+
+            let mut lines: Vec<Line> = Vec::new();
+            let all_selected = state.cursor == 0;
+            let all_style = if all_selected {
+                theme.accent_style().add_modifier(Modifier::BOLD)
+            } else {
+                theme.muted_style()
+            };
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "{}All servers (clear filter)",
+                    if all_selected { "> " } else { "  " }
+                ),
+                all_style,
+            )));
+            for (i, item) in state.groups.iter().enumerate() {
+                let selected = state.cursor == i + 1;
+                let style = if selected {
+                    theme.accent_style().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                let marker = if item.is_member { "[x]" } else { "[ ]" };
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("{}{} ", if selected { "> " } else { "  " }, marker),
+                        style,
+                    ),
+                    Span::styled(item.name.clone(), style),
+                    Span::styled(
+                        format!(
+                            "  ({} member{})",
+                            item.member_count,
+                            if item.member_count == 1 { "" } else { "s" }
+                        ),
+                        theme.muted_style(),
+                    ),
+                ]));
+            }
+            if state.groups.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "  no groups yet, press n to create one",
+                    theme.muted_style(),
+                )));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("Enter", theme.accent_style()),
+                Span::raw(" filter  "),
+                Span::styled("space", theme.accent_style()),
+                Span::raw(" toggle  "),
+                Span::styled("n", theme.accent_style()),
+                Span::raw(" new  "),
+                Span::styled("r", theme.accent_style()),
+                Span::raw(" rename  "),
+                Span::styled("d", theme.accent_style()),
+                Span::raw(" delete  "),
+                Span::styled("Esc", theme.accent_style()),
+                Span::raw(" close"),
+            ]));
+
+            let body = Paragraph::new(lines)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(format!(" Groups: {} ", state.profile_name)),
+                )
+                .wrap(Wrap { trim: true });
+            frame.render_widget(body, popup);
+        }
     }
 }
 
@@ -1077,6 +1195,11 @@ mod render_tests {
             initial_path: "/srv".to_string(),
             default_local_path: "/home/ale/dl".to_string(),
             favorite: sel == "1",
+            groups: if sel == "1" {
+                vec!["Production".to_string()]
+            } else {
+                Vec::new()
+            },
             // Exercise the cached-quota / last-connected render path.
             used: Some(3 * 1024 * 1024 * 1024),
             total: Some(10 * 1024 * 1024 * 1024),
@@ -1100,6 +1223,10 @@ mod render_tests {
             }],
             initial_user: 0,
             download_base: "/home/ale".to_string(),
+            groups: vec![crate::cli_tui::app::TuiGroup {
+                name: "Production".to_string(),
+                member_count: 1,
+            }],
         }
     }
 
