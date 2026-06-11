@@ -141,14 +141,32 @@ function StorageUsageBar({
     );
 }
 
-/** Tone for the live AeroShare drive-state chip. */
-const PEER_STATE_TONE: Record<PeerDriveState, string> = {
-    syncing: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
-    serving: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
-    error: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
-    starting: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-    stopped: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+/** Solid dot color per AeroShare drive-state, for the avatar presence dot.
+ *  Deliberately a different anchor (avatar top-right) from the reachability
+ *  health dot (icon bottom-right) so the two never read as the same signal. */
+const PEER_STATE_DOT: Record<PeerDriveState, string> = {
+    starting: 'bg-amber-400 animate-pulse',
+    syncing: 'bg-blue-500',
+    serving: 'bg-emerald-500',
+    error: 'bg-red-500',
+    stopped: 'bg-gray-400',
 };
+
+/** Presence-style status dot for an AeroShare friend, overlaid on the avatar's
+ *  top-right (a friend's drive is "online/syncing/offline", much like a contact
+ *  presence indicator). The parent must be position:relative. */
+export function PeerPresenceDot({ peerState, className = '' }: { peerState?: PeerDriveState; className?: string }) {
+    const t = useTranslation();
+    const label = peerState ? t(`aeroShare.driveState.${peerState}`) : t('aeroShare.driveState.offline');
+    const color = peerState ? PEER_STATE_DOT[peerState] : 'bg-gray-400';
+    return (
+        <span
+            className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${color} ${className}`}
+            title={label}
+            aria-label={label}
+        />
+    );
+}
 
 export function ServerBadges({ server, peerState }: { server: ServerProfile; peerState?: PeerDriveState }) {
     const t = useTranslation();
@@ -157,20 +175,16 @@ export function ServerBadges({ server, peerState }: { server: ServerProfile; pee
     // Skips the generic protocol/class logic below (a peer is neither FTP nor
     // an "API" cloud), so it never mislabels the card.
     if (proto === 'peer') {
-        const stateKey: PeerDriveState | 'offline' = peerState ?? 'offline';
-        const stateLabel = peerState ? t(`aeroShare.driveState.${peerState}`) : t('aeroShare.driveState.offline');
-        const tone = peerState ? PEER_STATE_TONE[peerState] : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400';
+        // Identity badge only. The live drive-state is shown as a presence dot
+        // on the avatar (PeerPresenceDot), not a second text chip here: stacking
+        // a state chip on the violet AeroShare badge read as clutter (and it
+        // would collide visually with the E2E/health vocabulary). `peerState`
+        // is still accepted (callers render the dot themselves via PeerPresenceDot).
         return (
-            <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">
-                    <Users size={10} />
-                    {t('aeroShare.feature')}
-                </span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 ${tone}`} title={stateLabel}>
-                    {stateKey === 'syncing' ? <RefreshCw size={9} className="animate-spin" /> : <Wifi size={9} />}
-                    {stateLabel}
-                </span>
-            </div>
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">
+                <Users size={10} />
+                {t('aeroShare.feature')}
+            </span>
         );
     }
     // Default tlsMode matches ProtocolSelector: ftp→'explicit', ftps→'implicit'
@@ -619,6 +633,10 @@ export const ServerCard = React.memo(function ServerCard({
                             aria-label={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
                         />
                     )}
+                    {/* AeroShare drive-state: presence dot on the avatar top-right.
+                        Distinct from the bottom-right health dot (peer cards have no
+                        reachability probe), so the two never read as the same signal. */}
+                    {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} />}
                     {/* #180 / 4486730822: standalone connect-failure marker.
                         Anchored top-left so it never overlaps the bottom-right
                         health dot or the detailed-layout HealthRadial. */}

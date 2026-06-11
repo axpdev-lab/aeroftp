@@ -17,7 +17,7 @@ import type { MyServersTableColId } from '../../hooks/useMyServersColumns';
 import type { TableColAlign, TableColumnDef } from '../../hooks/useTableColumns';
 import { useTranslation } from '../../i18n';
 import { HealthRadial } from './HealthRadial';
-import { getServerIcon, getTimeAgo, RenameInput, ServerBadges } from './ServerCard';
+import { getServerIcon, getTimeAgo, RenameInput, ServerBadges, PeerPresenceDot } from './ServerCard';
 import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 
 interface MyServersTableRowProps {
@@ -316,6 +316,8 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                     <AlertTriangle size={9} strokeWidth={2.75} />
                                 </span>
                             )}
+                            {/* AeroShare drive-state presence dot (matches the grid card). */}
+                            {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} />}
                         </div>
                     </td>
                 );
