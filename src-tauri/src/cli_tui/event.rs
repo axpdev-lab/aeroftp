@@ -83,7 +83,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('D') => TuiAction::ClearTransfers,
         KeyCode::Char('r') => TuiAction::Rename,
         KeyCode::Char('g') => TuiAction::Download,
-        KeyCode::Char('u') => TuiAction::Upload,
+        KeyCode::Char('p') => TuiAction::Upload,
         KeyCode::Char('c') => TuiAction::CancelOp,
         KeyCode::Char('f') | KeyCode::Char('F') => TuiAction::ToggleFavorite,
         KeyCode::Char('H') => TuiAction::HealthCheck,

@@ -44,7 +44,7 @@ pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 /// AeroFTP release (a sub-version surfaced in the TUI header). Beta 1.0.0 ships
 /// the IntroHub + multi-user dual-pane file manager with the full transfer set;
 /// later versions grow toward GUI parity (Discover/profile editing, etc).
-pub const TUI_VERSION: &str = "1.0.1";
+pub const TUI_VERSION: &str = "1.0.1-beta";
 
 #[allow(dead_code)]
 pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
@@ -245,7 +245,7 @@ fn render_browser_fullscreen(
             Span::raw(" open   "),
             Span::styled("Bksp", theme.accent_style()),
             Span::raw(" up   "),
-            Span::styled("g/u", theme.accent_style()),
+            Span::styled("g/p", theme.accent_style()),
             Span::raw(" get/put   "),
             Span::styled("n", theme.accent_style()),
             Span::raw(" mkdir   "),
@@ -902,7 +902,7 @@ fn render_file_pane_list(
 fn render_transfers(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
     let items: Vec<ListItem> = if app.transfers.items.is_empty() {
         vec![ListItem::new(Line::from(Span::styled(
-            "No transfers yet. In Browser: g downloads the selected file, u uploads a local file.",
+            "No transfers yet. In Browser: g downloads the selected file, p uploads a local file.",
             theme.muted_style(),
         )))]
     } else {
@@ -990,6 +990,14 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             if !state.last_result.is_empty() {
                 lines.push(Line::from(Span::styled(
                     state.last_result.clone(),
+                    theme.muted_style(),
+                )));
+            } else if state.buffer.is_empty() {
+                // Nothing typed yet and no prior result: show the verb cheatsheet
+                // so the available commands are discoverable on open (type 'help'
+                // re-echoes it). Single source of truth in app::palette_cheatsheet.
+                lines.push(Line::from(Span::styled(
+                    crate::cli_tui::app::palette_cheatsheet(),
                     theme.muted_style(),
                 )));
             }

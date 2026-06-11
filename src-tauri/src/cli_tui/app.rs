@@ -1656,6 +1656,13 @@ impl AppState {
         let parsed = parse_palette_command(&line, &cwd);
         match parsed {
             PaletteCommand::Empty => Vec::new(),
+            PaletteCommand::Help => {
+                if let TuiOverlay::Palette(state) = &mut self.overlay {
+                    state.last_result = palette_cheatsheet().to_string();
+                    state.buffer.clear();
+                }
+                Vec::new()
+            }
             PaletteCommand::Error(hint) => {
                 if let TuiOverlay::Palette(state) = &mut self.overlay {
                     state.last_result = hint;
@@ -2375,7 +2382,7 @@ impl AppState {
                     )
                 })
                 .unwrap_or_else(|| {
-                    "No transfers yet. From Browser: g downloads a file, u uploads into the directory."
+                    "No transfers yet. From Browser: g downloads a file, p uploads into the directory."
                         .to_string()
                 }),
         }
@@ -2701,6 +2708,8 @@ fn mint_profile_id() -> String {
 enum PaletteCommand {
     /// Blank line: a no-op that leaves the palette open.
     Empty,
+    /// `help` / `?`: echo the full verb cheatsheet, palette stays open.
+    Help,
     /// Parse error or unknown verb: a one-line usage hint, palette stays open.
     Error(String),
     /// `ls [path]` / `cd <path>`: list a remote directory (the pane follows).
@@ -2786,6 +2795,7 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
         return PaletteCommand::Empty;
     };
     match verb.as_str() {
+        "help" | "?" => PaletteCommand::Help,
         "ls" => {
             let path = match args.len() {
                 0 => resolve_remote_arg(cwd, "."),
@@ -2840,8 +2850,18 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
                 force: verb == "rm!",
             }
         }
-        other => PaletteCommand::Error(format!("unknown '{}': ls cd get stat mkdir rm rm!", other)),
+        other => PaletteCommand::Error(format!(
+            "unknown '{}': ls cd get stat mkdir rm rm! (type help)",
+            other
+        )),
     }
+}
+
+/// The one-line cheatsheet of every palette verb. Single source of truth for
+/// the `help`/`?` echo and the empty-buffer placeholder hint (rendered in
+/// `mod.rs`). The middot separator matches the header style; no em-dashes.
+pub(crate) fn palette_cheatsheet() -> &'static str {
+    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · rm <path> · rm! <path>"
 }
 
 /// Compact byte size for the status line (the Shape B fullscreen view has no
@@ -4268,6 +4288,30 @@ mod tests {
             PaletteCommand::Error(_)
         ));
         assert_eq!(parse_palette_command("", "/srv"), PaletteCommand::Empty);
+    }
+
+    #[test]
+    fn palette_parses_help_verbs() {
+        assert_eq!(parse_palette_command("help", "/srv"), PaletteCommand::Help);
+        assert_eq!(parse_palette_command("?", "/srv"), PaletteCommand::Help);
+    }
+
+    #[test]
+    fn palette_help_echoes_cheatsheet_and_stays_open() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "help".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert!(commands.is_empty(), "help dispatches no worker command");
+        match &app.overlay {
+            TuiOverlay::Palette(state) => {
+                assert_eq!(state.last_result, palette_cheatsheet());
+                assert!(state.buffer.is_empty(), "buffer cleared after help");
+            }
+            _ => panic!("palette must stay open after help"),
+        }
     }
 
     #[test]
