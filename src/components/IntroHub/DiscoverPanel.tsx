@@ -2,12 +2,14 @@ import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
     Server, Database, Globe, Cloud, Code, Camera, Layers,
-    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, List as ListIcon, RefreshCw,
+    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, List as ListIcon, RefreshCw, Share2,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
+import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
+import { openAeroShareDialog } from '../../utils/aeroShare';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS } from './discoverData';
 import { getProviderById } from '../../providers';
 import { CatalogCategoryId } from '../../types/catalog';
@@ -113,7 +115,9 @@ function ServiceCard({
                 className="relative shrink-0 flex items-center justify-center"
                 style={{ width: iconFrameSize, height: iconFrameSize }}
             >
-                {LogoComponent ? (
+                {item.protocol === 'peer' ? (
+                    <Share2 size={iconSize} className="text-violet-500" />
+                ) : LogoComponent ? (
                     <LogoComponent size={iconSize} />
                 ) : (
                     <ProtocolIcon protocol={item.protocol} size={iconSize} />
@@ -181,6 +185,22 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     const t = useTranslation();
     const introHubIconSize = useIntroHubIconSize();
     const categories = useMemo(() => buildDiscoverCategories(), []);
+    // AeroShare (Beta, OFF by default): when on, a synthetic "AeroShare" tile is
+    // surfaced in Protocols + All. It is NOT a wire protocol, so it does not live
+    // in the provider catalog; clicking it opens the handshake dialog instead of
+    // the connection form (handleSelect intercepts protocol === 'peer').
+    const aeroShareEnabled = useAeroShareEnabled();
+    const peerTile = useMemo<DiscoverItem | null>(() => {
+        if (!aeroShareEnabled) return null;
+        return {
+            id: 'aeroshare-peer',
+            name: t('aeroShare.feature'),
+            description: t('protocol.peerDesc'),
+            protocol: 'peer' as ProviderType,
+            badge: t('aeroShare.experimentalTag'),
+            source: 'protocol',
+        };
+    }, [aeroShareEnabled, t]);
     const [activeCategory, setActiveCategory] = useState<DiscoverCategoryId>(() => {
         const saved = localStorage.getItem(CATEGORY_KEY);
         return (saved as DiscoverCategoryId) || 'protocols';
@@ -205,12 +225,17 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         [categories],
     );
 
-    // Grid data for the active category ('all' flattens every category).
+    // Grid data for the active category ('all' flattens every category). The
+    // AeroShare tile (when enabled) leads the Protocols + All grids.
     const activeItems = useMemo(() => {
-        if (activeCategory === 'all') return categories.flatMap(c => c.items);
-        const cat = categories.find(c => c.id === activeCategory);
-        return cat?.items ?? [];
-    }, [categories, activeCategory]);
+        const base = activeCategory === 'all'
+            ? categories.flatMap(c => c.items)
+            : (categories.find(c => c.id === activeCategory)?.items ?? []);
+        if (peerTile && (activeCategory === 'all' || activeCategory === 'protocols')) {
+            return [peerTile, ...base];
+        }
+        return base;
+    }, [categories, activeCategory, peerTile]);
 
     // Grid view, filtered by the search box (health scans still cover the full
     // category, so a query never changes reachability results).
@@ -331,6 +356,12 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     }, [healthEnabled, usesChunkedScan, chunkedTargets, activeItems, scanItems]);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
+        // AeroShare is a handshake, not a credential connection: route its tile
+        // to the dialog (RECEIVE tab) rather than the provider connection form.
+        if (item.protocol === 'peer') {
+            openAeroShareDialog({ mode: 'receive' });
+            return;
+        }
         onSelectProvider(item.protocol, item.providerId, item.demo);
     }, [onSelectProvider]);
 
@@ -372,7 +403,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                     <span className="text-indigo-400"><Layers size={16} /></span>
                     <span className="flex-1 text-left truncate">{t('introHub.category.all')}</span>
                     <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
-                        {totalItemCount}
+                        {totalItemCount + (peerTile ? 1 : 0)}
                     </span>
                 </button>
                 {categories.map((cat) => (
@@ -390,7 +421,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         </span>
                         <span className="flex-1 text-left truncate">{t(cat.labelKey)}</span>
                         <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
-                            {cat.count}
+                            {cat.count + (peerTile && cat.id === 'protocols' ? 1 : 0)}
                         </span>
                     </button>
                 ))}

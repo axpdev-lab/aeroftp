@@ -1472,6 +1472,7 @@
             "selectProtocol": "Protokol seç...",
             "cloudStorage": "Bulut Depolama",
             "ftpDesc": "Dosya Transfer Protokolü",
+            "peerDesc": "Klasörleri arkadaşlarınızla doğrudan, şifreli bir peer-to-peer kanal üzerinden, aradaki sunucu olmadan paylaşın.",
             "ftpsDesc": "TLS/SSL üzerinden FTP",
             "sftpDesc": "SSH Dosya Transferi",
             "webdavDesc": "Nextcloud, Synology, Koofr",

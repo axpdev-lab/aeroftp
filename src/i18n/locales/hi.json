@@ -1472,6 +1472,7 @@
             "selectProtocol": "प्रोटोकॉल चुनें...",
             "cloudStorage": "क्लाउड स्टोरेज",
             "ftpDesc": "फ़ाइल स्थानांतरण प्रोटोकॉल",
+            "peerDesc": "बिना किसी बीच के सर्वर के, एन्क्रिप्टेड पीयर-टू-पीयर चैनल पर सीधे मित्रों के साथ फ़ोल्डर साझा करें।",
             "ftpsDesc": "TLS/SSL पर FTP",
             "sftpDesc": "SSH फ़ाइल स्थानांतरण",
             "webdavDesc": "Nextcloud, Synology, Koofr",

@@ -1472,6 +1472,7 @@
             "selectProtocol": "选择协议...",
             "cloudStorage": "云存储",
             "ftpDesc": "文件传输协议",
+            "peerDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。",
             "ftpsDesc": "基于TLS/SSL的FTP",
             "sftpDesc": "SSH文件传输",
             "webdavDesc": "Nextcloud, Synology, Koofr",

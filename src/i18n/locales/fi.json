@@ -1472,6 +1472,7 @@
             "selectProtocol": "Valitse protokolla...",
             "cloudStorage": "Pilvitallennus",
             "ftpDesc": "Tiedostonsiirtoprotokolla",
+            "peerDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta.",
             "ftpsDesc": "FTP yli TLS/SSL",
             "sftpDesc": "SSH-tiedostonsiirto",
             "webdavDesc": "Nextcloud, Synology, Koofr",

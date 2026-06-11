@@ -1472,6 +1472,7 @@
             "selectProtocol": "Izaberi protokol...",
             "cloudStorage": "Skladište u oblaku",
             "ftpDesc": "Protokol prenosa datoteka",
+            "peerDesc": "Делите фасцикле директно са пријатељима преко шифрованог peer-to-peer канала, без сервера у средини.",
             "ftpsDesc": "FTP preko TLS/SSL",
             "sftpDesc": "SSH prenos datoteka",
             "webdavDesc": "Nextcloud, Synology, Koofr",

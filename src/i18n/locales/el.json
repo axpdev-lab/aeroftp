@@ -1472,6 +1472,7 @@
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
             "cloudStorage": "Cloud Storage",
             "ftpDesc": "Πρωτόκολλο μεταφοράς αρχείων",
+            "peerDesc": "Μοιραστείτε φακέλους απευθείας με φίλους μέσω κρυπτογραφημένου καναλιού peer-to-peer, χωρίς διακομιστή στη μέση.",
             "ftpsDesc": "FTP μέσω TLS/SSL",
             "sftpDesc": "Μεταφορά αρχείων SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

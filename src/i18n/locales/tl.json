@@ -1472,6 +1472,7 @@
             "selectProtocol": "Pumili ng protocol...",
             "cloudStorage": "Cloud Storage",
             "ftpDesc": "File Transfer Protocol",
+            "peerDesc": "Direktang magbahagi ng mga folder sa mga kaibigan sa pamamagitan ng naka-encrypt na peer-to-peer na channel, nang walang server sa pagitan.",
             "ftpsDesc": "FTP over TLS/SSL",
             "sftpDesc": "SSH File Transfer",
             "webdavDesc": "Nextcloud, Synology, Koofr",

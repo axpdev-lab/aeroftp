@@ -1472,6 +1472,7 @@
             "selectProtocol": "Seleccioneu protocol...",
             "cloudStorage": "Emmagatzematge al Núvol",
             "ftpDesc": "Protocol de Transferència de Fitxers",
+            "peerDesc": "Comparteix carpetes directament amb els amics a través d'un canal xifrat d'igual a igual, sense cap servidor pel mig.",
             "ftpsDesc": "FTP sobre TLS/SSL",
             "sftpDesc": "Transferència de Fitxers SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

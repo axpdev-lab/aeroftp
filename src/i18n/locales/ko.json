@@ -1472,6 +1472,7 @@
             "selectProtocol": "프로토콜 선택...",
             "cloudStorage": "클라우드 스토리지",
             "ftpDesc": "파일 전송 프로토콜",
+            "peerDesc": "중간 서버 없이 암호화된 P2P 채널을 통해 친구와 폴더를 직접 공유합니다.",
             "ftpsDesc": "FTP over TLS/SSL",
             "sftpDesc": "SSH 파일 전송",
             "webdavDesc": "Nextcloud, Synology, Koofr",

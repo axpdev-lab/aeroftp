@@ -1472,6 +1472,7 @@
             "selectProtocol": "Select protocol...",
             "cloudStorage": "Cloud Storage",
             "ftpDesc": "File Transfer Protocol",
+            "peerDesc": "Deildu möppum beint með vinum um dulkóðaða jafningjarás, án nokkurs þjóns á milli.",
             "ftpsDesc": "FTP over TLS/SSL",
             "sftpDesc": "SSH File Transfer",
             "webdavDesc": "Nextcloud, Synology, Koofr",

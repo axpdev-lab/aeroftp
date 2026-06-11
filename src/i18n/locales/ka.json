@@ -1472,6 +1472,7 @@
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
             "cloudStorage": "ღრუბლოვანი საცავი",
             "ftpDesc": "ფაილების გადაცემის პროტოკოლი",
+            "peerDesc": "გააზიარეთ საქაღალდეები პირდაპირ მეგობრებთან დაშიფრული peer-to-peer არხით, შუა სერვერის გარეშე.",
             "ftpsDesc": "FTP TLS/SSL-ით",
             "sftpDesc": "SSH ფაილების გადაცემა",
             "webdavDesc": "Nextcloud, Synology, Koofr",

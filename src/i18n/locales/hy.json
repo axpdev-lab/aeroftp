@@ -1465,6 +1465,7 @@
             "selectProtocol": "Ընտրեք արձանագրություն...",
             "cloudStorage": "Ամպային պահեստ",
             "ftpDesc": "Ֆայլերի փոխանցման արձանագրություն",
+            "peerDesc": "Կիսվեք թղթապանակներով անմիջապես ընկերների հետ՝ գաղտնագրված peer-to-peer ալիքով, առանց միջանկյալ սերվերի։",
             "ftpsDesc": "FTP TLS/SSL-ով",
             "sftpDesc": "SSH ֆայլերի փոխանցում",
             "webdavDesc": "Nextcloud, CloudMe, Koofr",

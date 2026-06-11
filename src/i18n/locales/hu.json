@@ -1472,6 +1472,7 @@
             "selectProtocol": "Protokoll kiválasztása...",
             "cloudStorage": "Felhő tárhely",
             "ftpDesc": "Fájlátviteli protokoll",
+            "peerDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül.",
             "ftpsDesc": "FTP TLS/SSL felett",
             "sftpDesc": "SSH fájlátvitel",
             "webdavDesc": "Nextcloud, Synology, Koofr",

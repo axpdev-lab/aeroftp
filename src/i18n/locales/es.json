@@ -1472,6 +1472,7 @@
             "selectProtocol": "Seleccionar protocolo...",
             "cloudStorage": "Almacenamiento en la Nube",
             "ftpDesc": "Protocolo de Transferencia de Archivos",
+            "peerDesc": "Comparte carpetas directamente con tus amigos a través de un canal cifrado de igual a igual, sin ningún servidor en medio.",
             "ftpsDesc": "FTP sobre TLS/SSL",
             "sftpDesc": "Transferencia de Archivos SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

@@ -1472,6 +1472,7 @@
             "selectProtocol": "Izvēlēties protokolu...",
             "cloudStorage": "Mākoņkrātuve",
             "ftpDesc": "Failu pārsūtīšanas protokols",
+            "peerDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu.",
             "ftpsDesc": "FTP caur TLS/SSL",
             "sftpDesc": "SSH failu pārsūtīšana",
             "webdavDesc": "Nextcloud, Synology, Koofr",

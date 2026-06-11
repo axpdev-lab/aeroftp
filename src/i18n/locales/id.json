@@ -1472,6 +1472,7 @@
             "selectProtocol": "Pilih protokol...",
             "cloudStorage": "Penyimpanan Awan",
             "ftpDesc": "Protokol Transfer File",
+            "peerDesc": "Bagikan folder langsung dengan teman melalui saluran peer-to-peer terenkripsi, tanpa server perantara.",
             "ftpsDesc": "FTP lewat TLS/SSL",
             "sftpDesc": "Transfer File SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

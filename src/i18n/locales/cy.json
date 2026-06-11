@@ -1472,6 +1472,7 @@
             "selectProtocol": "Dewis protocol...",
             "cloudStorage": "Storio Cwmwl",
             "ftpDesc": "Protocol Trosglwyddo Ffeiliau",
+            "peerDesc": "Rhannwch ffolderi yn uniongyrchol gyda ffrindiau dros sianel peer-to-peer wedi'i hamgryptio, heb weinydd yn y canol.",
             "ftpsDesc": "FTP dros TLS/SSL",
             "sftpDesc": "Trosglwyddo Ffeiliau SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

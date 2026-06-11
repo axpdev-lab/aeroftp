@@ -135,6 +135,31 @@ export const shortAfid = (afid: string): string =>
 export const READ_ONLY_ERROR_PREFIX = 'Read-only endpoint:';
 
 // ---------------------------------------------------------------------------
+// Global "open the AeroShare dialog" event.
+//
+// The dialog lives in MyServersPanel (always mounted via display:none, so it
+// keeps its connect/refresh callbacks). Every other entry point - the Discover
+// tile, the titlebar +friend icon and File-menu item, onboarding - is decoupled
+// from that mount: it just dispatches this event, and MyServersPanel listens
+// and opens the dialog. Keeps a single dialog instance without prop-drilling
+// through App.tsx / IntroHub.
+// ---------------------------------------------------------------------------
+
+export const AERO_SHARE_OPEN_EVENT = 'aeroftp-open-aeroshare';
+
+export interface AeroShareOpenDetail {
+  mode: 'receive' | 'share';
+  prefillAfid?: string;
+  prefillAlias?: string;
+}
+
+/** Ask the (always-mounted) MyServersPanel to open the AeroShare dialog.
+ *  No-op surface for callers: if AeroShare is off the listener ignores it. */
+export const openAeroShareDialog = (detail: AeroShareOpenDetail = { mode: 'receive' }): void => {
+  window.dispatchEvent(new CustomEvent<AeroShareOpenDetail>(AERO_SHARE_OPEN_EVENT, { detail }));
+};
+
+// ---------------------------------------------------------------------------
 // Friend <-> saved-profile mapping (task 11 persistence)
 // ---------------------------------------------------------------------------
 

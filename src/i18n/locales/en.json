@@ -2406,6 +2406,7 @@
             "foursharedDesc": "15 GB Free Cloud Storage",
             "foursharedTooltip": "4shared - 15GB free storage, OAuth 1.0 authentication",
             "ftpDesc": "File Transfer Protocol",
+            "peerDesc": "Share folders directly with friends over an encrypted peer-to-peer channel, with no server in the middle.",
             "ftpsDesc": "FTP over TLS/SSL",
             "ftpTooltip": "FTP with configurable TLS encryption. Supports Explicit, Implicit (FTPS), and opportunistic modes.",
             "ftpWarningDesc": "FTP transmits credentials and data in plain text. Consider using FTPS or SFTP for a secure connection.",

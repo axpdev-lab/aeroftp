@@ -1472,6 +1472,7 @@
             "selectProtocol": "Виберіть протокол...",
             "cloudStorage": "Хмарне сховище",
             "ftpDesc": "Протокол передачі файлів",
+            "peerDesc": "Діліться папками безпосередньо з друзями через зашифрований одноранговий канал, без сервера-посередника.",
             "ftpsDesc": "FTP через TLS/SSL",
             "sftpDesc": "SSH передача файлів",
             "webdavDesc": "Nextcloud, Synology, Koofr",

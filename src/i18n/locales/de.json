@@ -1472,6 +1472,7 @@
             "selectProtocol": "Protokoll auswählen...",
             "cloudStorage": "Cloud-Speicher",
             "ftpDesc": "Dateiübertragungsprotokoll",
+            "peerDesc": "Teilen Sie Ordner direkt mit Freunden über einen verschlüsselten Peer-to-Peer-Kanal, ganz ohne Server dazwischen.",
             "ftpsDesc": "FTP über TLS/SSL",
             "sftpDesc": "SSH-Dateiübertragung",
             "webdavDesc": "Nextcloud, Synology, Koofr",

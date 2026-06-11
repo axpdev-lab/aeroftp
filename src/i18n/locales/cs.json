@@ -1472,6 +1472,7 @@
             "selectProtocol": "Vybrat protokol...",
             "cloudStorage": "Cloudové úložiště",
             "ftpDesc": "Protokol přenosu souborů",
+            "peerDesc": "Sdílejte složky přímo s přáteli prostřednictvím šifrovaného kanálu peer-to-peer, bez serveru uprostřed.",
             "ftpsDesc": "FTP přes TLS/SSL",
             "sftpDesc": "SSH přenos souborů",
             "webdavDesc": "Nextcloud, Synology, Koofr",

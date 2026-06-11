@@ -1472,6 +1472,7 @@
             "selectProtocol": "Pilih protokol...",
             "cloudStorage": "Storan Awan",
             "ftpDesc": "Protokol Pemindahan Fail",
+            "peerDesc": "Kongsi folder terus dengan rakan melalui saluran peer-to-peer yang disulitkan, tanpa pelayan di tengah.",
             "ftpsDesc": "FTP melalui TLS/SSL",
             "sftpDesc": "Pemindahan Fail SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

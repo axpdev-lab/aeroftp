@@ -1472,6 +1472,7 @@
             "selectProtocol": "Pasirinkti protokolą...",
             "cloudStorage": "Debesų saugykla",
             "ftpDesc": "Failų perdavimo protokolas",
+            "peerDesc": "Bendrinkite aplankus tiesiogiai su draugais užšifruotu peer-to-peer kanalu, be serverio tarpininkavimo.",
             "ftpsDesc": "FTP per TLS/SSL",
             "sftpDesc": "SSH failų perdavimas",
             "webdavDesc": "Nextcloud, Synology, Koofr",

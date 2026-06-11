@@ -1472,6 +1472,7 @@
             "selectProtocol": "Chọn giao thức...",
             "cloudStorage": "Lưu trữ đám mây",
             "ftpDesc": "Giao thức truyền tệp",
+            "peerDesc": "Chia sẻ thư mục trực tiếp với bạn bè qua kênh ngang hàng được mã hóa, không có máy chủ trung gian.",
             "ftpsDesc": "FTP qua TLS/SSL",
             "sftpDesc": "Truyền tệp SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

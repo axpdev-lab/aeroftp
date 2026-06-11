@@ -1472,6 +1472,7 @@
             "selectProtocol": "Wybierz protokół...",
             "cloudStorage": "Chmura",
             "ftpDesc": "Protokół transferu plików",
+            "peerDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego.",
             "ftpsDesc": "FTP przez TLS/SSL",
             "sftpDesc": "SSH transfer plików",
             "webdavDesc": "Nextcloud, Synology, Koofr",

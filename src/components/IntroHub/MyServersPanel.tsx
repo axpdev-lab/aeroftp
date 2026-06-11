@@ -32,7 +32,7 @@ import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favorite
 import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
 import { usePeerDriveStates, type PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialog';
-import { friendCanConnect } from '../../utils/aeroShare';
+import { friendCanConnect, AERO_SHARE_OPEN_EVENT, type AeroShareOpenDetail } from '../../utils/aeroShare';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
@@ -489,6 +489,24 @@ export function MyServersPanel({
             localStorage.setItem('aeroftp_myservers_filter', 'all');
         }
     }, [aeroShareEnabled, activeFilter]);
+
+    // Global entry-point bridge: the Discover tile, the titlebar +friend icon
+    // and File-menu item all dispatch AERO_SHARE_OPEN_EVENT instead of reaching
+    // into this panel. We hold the only dialog instance (always mounted), so we
+    // listen here. Ignored when the flag is off (the dialog also gates on it).
+    useEffect(() => {
+        if (!aeroShareEnabled) return;
+        const onOpen = (e: Event) => {
+            const d = (e as CustomEvent<AeroShareOpenDetail>).detail;
+            setAeroShareDialog({
+                mode: d?.mode === 'share' ? 'share' : 'receive',
+                prefillAfid: d?.prefillAfid,
+                prefillAlias: d?.prefillAlias,
+            });
+        };
+        window.addEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
+        return () => window.removeEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
+    }, [aeroShareEnabled]);
 
     const toggleFavorite = useCallback((serverId: string) => {
         setFavorites(prev => {

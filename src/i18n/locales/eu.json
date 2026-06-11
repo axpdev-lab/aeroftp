@@ -1472,6 +1472,7 @@
             "selectProtocol": "Aukeratu protokoloa...",
             "cloudStorage": "Hodei Biltegiratzea",
             "ftpDesc": "Fitxategi-transferentzia protokoloa",
+            "peerDesc": "Partekatu karpetak zuzenean lagunekin enkriptatutako peer-to-peer kanal baten bidez, tarteko zerbitzaririk gabe.",
             "ftpsDesc": "FTP TLS/SSL bidez",
             "sftpDesc": "SSH Fitxategi-transferentzia",
             "webdavDesc": "Nextcloud, Synology, Koofr",

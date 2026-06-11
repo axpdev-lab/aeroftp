@@ -1472,6 +1472,7 @@
             "selectProtocol": "Vali protokoll...",
             "cloudStorage": "Pilveruum",
             "ftpDesc": "Failiedastusprotokoll",
+            "peerDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita.",
             "ftpsDesc": "FTP üle TLS/SSL",
             "sftpDesc": "SSH failiedastus",
             "webdavDesc": "Nextcloud, Synology, Koofr",

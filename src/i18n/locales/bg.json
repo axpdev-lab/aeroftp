@@ -1472,6 +1472,7 @@
             "selectProtocol": "Избери протокол...",
             "cloudStorage": "Облачно съхранение",
             "ftpDesc": "Протокол за прехвърляне на файлове",
+            "peerDesc": "Споделяйте папки директно с приятели по шифрован peer-to-peer канал, без сървър по средата.",
             "ftpsDesc": "FTP през TLS/SSL",
             "sftpDesc": "SSH файлов трансфер",
             "webdavDesc": "Nextcloud, Synology, Koofr",

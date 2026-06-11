@@ -1472,6 +1472,7 @@
             "selectProtocol": "Velg protokoll...",
             "cloudStorage": "Skylagring",
             "ftpDesc": "Filoverføringsprotokoll",
+            "peerDesc": "Del mapper direkte med venner via en kryptert peer-to-peer-kanal, uten noen server i mellom.",
             "ftpsDesc": "FTP over TLS/SSL",
             "sftpDesc": "SSH Filoverføring",
             "webdavDesc": "Nextcloud, Synology, Koofr",

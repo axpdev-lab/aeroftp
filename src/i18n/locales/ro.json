@@ -1472,6 +1472,7 @@
             "selectProtocol": "Selectare protocol...",
             "cloudStorage": "Stocare Cloud",
             "ftpDesc": "Protocol transfer fișiere",
+            "peerDesc": "Partajează foldere direct cu prietenii printr-un canal criptat de la egal la egal, fără niciun server la mijloc.",
             "ftpsDesc": "FTP prin TLS/SSL",
             "sftpDesc": "Transfer fișiere SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

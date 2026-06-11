@@ -4,13 +4,15 @@
 import * as React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
-import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud, Home } from 'lucide-react';
+import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud, Home, UserPlus } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { ThemeToggle } from '../hooks/useTheme';
 import type { Theme, EffectiveTheme } from '../hooks/useTheme';
 import { guardedUnlisten } from '../hooks/useTauriListener';
 import { UserDropdown } from './UserDropdown';
+import { useAeroShareEnabled } from '../hooks/useAeroShareEnabled';
+import { openAeroShareDialog } from '../utils/aeroShare';
 
 const SourceForgeLogo = ({ size = 12 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 117 103" fill="currentColor">
@@ -206,6 +208,10 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     } = props;
 
     const t = useTranslation();
+    // AeroShare (Beta) is OFF by default. When on, the titlebar surfaces a
+    // +friend icon and a File-menu entry, both opening the handshake dialog via
+    // the global event (the dialog itself lives in MyServersPanel).
+    const aeroShareEnabled = useAeroShareEnabled();
     // macOS uses the native Overlay title bar (issue #290): the traffic-light
     // controls render top-left over our content, so we pad the bar's left edge
     // to clear them and hide our own redundant window-control cluster.
@@ -255,6 +261,9 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('common.settings'), shortcut: 'Ctrl+,', onClick: onOpenSettings },
         { label: t('settings.exportImport'), onClick: onShowExportImport },
         { label: t('menu.mountManager'), onClick: onShowMountManager },
+        // AeroShare (Beta): a "new connection"-class action, so it lives in File.
+        // Flag-gated; opens the handshake dialog on the RECEIVE tab.
+        ...(aeroShareEnabled ? [{ label: t('aeroShare.addFriend'), onClick: () => openAeroShareDialog({ mode: 'receive' as const }) }] : []),
         { separator: true },
         // L53: Debug Mode only visible in dev builds: in production, Cyber theme auto-enables it
         ...(import.meta.env.DEV ? [{ label: t('menu.debugMode'), shortcut: 'Ctrl+Shift+F12', onClick: onToggleDebugMode }] : []),
@@ -409,6 +418,18 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
             >
                 <Heart size={14} className="text-blue-500 fill-current" />
             </button>
+
+            {/* AeroShare (Beta): +friend. Flag-gated; opens the handshake dialog
+                via the global event (dialog lives in MyServersPanel). */}
+            {aeroShareEnabled && (
+                <button
+                    onClick={() => openAeroShareDialog({ mode: 'receive' })}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                    title={t('aeroShare.addFriend')}
+                >
+                    <UserPlus size={14} className="text-violet-500" />
+                </button>
+            )}
 
             {/* Write a Review (SourceForge) */}
             <button

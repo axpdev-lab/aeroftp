@@ -1472,6 +1472,7 @@
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
             "cloudStorage": "ពពកផ្ទុកទិន្នន័យ",
             "ftpDesc": "ពិធីការផ្ទេរឯកសារ",
+            "peerDesc": "ចែករំលែកថតផ្ទាល់ជាមួយមិត្តភក្តិតាមរយៈបណ្តាញ peer-to-peer ដែលបានអ៊ីនគ្រីប ដោយគ្មានម៉ាស៊ីនមេនៅកណ្តាល។",
             "ftpsDesc": "FTP លើ TLS/SSL",
             "sftpDesc": "ការផ្ទេរឯកសារ SSH",
             "webdavDesc": "Nextcloud, CloudMe, Koofr",

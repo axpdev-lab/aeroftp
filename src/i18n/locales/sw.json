@@ -1472,6 +1472,7 @@
             "selectProtocol": "Chagua itifaki...",
             "cloudStorage": "Hifadhi ya Wingu",
             "ftpDesc": "Itifaki ya Uhamisho wa Faili",
+            "peerDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati.",
             "ftpsDesc": "FTP juu ya TLS/SSL",
             "sftpDesc": "Uhamisho wa Faili wa SSH",
             "webdavDesc": "Nextcloud, Synology, Koofr",

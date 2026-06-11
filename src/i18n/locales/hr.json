@@ -1472,6 +1472,7 @@
             "selectProtocol": "Odaberi protokol...",
             "cloudStorage": "Pohrana u oblaku",
             "ftpDesc": "Protokol prijenosa datoteka",
+            "peerDesc": "Dijelite mape izravno s prijateljima putem šifriranog peer-to-peer kanala, bez poslužitelja u sredini.",
             "ftpsDesc": "FTP preko TLS/SSL",
             "sftpDesc": "SSH prijenos datoteka",
             "webdavDesc": "Nextcloud, Synology, Koofr",

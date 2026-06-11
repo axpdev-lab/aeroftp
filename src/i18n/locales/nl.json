@@ -1472,6 +1472,7 @@
             "selectProtocol": "Selecteer protocol...",
             "cloudStorage": "Cloudopslag",
             "ftpDesc": "Bestandsoverdrachtsprotocol",
+            "peerDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen.",
             "ftpsDesc": "FTP over TLS/SSL",
             "sftpDesc": "SSH Bestandsoverdracht",
             "webdavDesc": "Nextcloud, Synology, Koofr",
