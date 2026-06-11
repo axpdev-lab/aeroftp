@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer perdavimas yra aktyviai kuriamas ir gali keistis. Ryšiai šiuo metu naudoja viešą relę, kad pereitų per ugniasienes.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Prisijungta",
                 "syncing": "Sinchronizuojama",
                 "serving": "Teikiama",
                 "error": "Klaida",

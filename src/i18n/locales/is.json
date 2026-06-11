@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: jafningjaflutningur er í virkri þróun og getur breyst. Tengingar nota sem stendur opinbert endurvarp til að komast í gegnum eldveggi.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Tengt",
                 "syncing": "Samstillir",
                 "serving": "Þjónar",
                 "error": "Villa",

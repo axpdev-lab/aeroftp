@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: a peer-to-peer átvitel aktív fejlesztés alatt áll, és változhat. A kapcsolatok jelenleg nyilvános továbbítót használnak a tűzfalak áthidalásához.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Csatlakozva",
                 "syncing": "Szinkronizálás",
                 "serving": "Kiszolgálás",
                 "error": "Hiba",

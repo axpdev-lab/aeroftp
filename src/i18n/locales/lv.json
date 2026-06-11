@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer pārsūtīšana tiek aktīvi izstrādāta un var mainīties. Savienojumi pašlaik izmanto publisku releju, lai šķērsotu ugunsmūrus.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Savienots",
                 "syncing": "Sinhronizē",
                 "serving": "Apkalpo",
                 "error": "Kļūda",

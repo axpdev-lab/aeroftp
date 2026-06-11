@@ -9107,6 +9107,7 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
                 *watch,
                 store_dir.clone(),
                 relay_urls,
+                None, // CLI: no host-UI status reporter
             )
             .await
             {

@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer prenos je v dejavnem razvoju in se lahko spremeni. Povezave trenutno uporabljajo javni rele za prehod skozi požarne zidove.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Povezano",
                 "syncing": "Sinhronizacija",
                 "serving": "Strežba",
                 "error": "Napaka",

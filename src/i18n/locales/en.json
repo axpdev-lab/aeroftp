@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer transfer is under active development and may change. Connections currently use a public relay to traverse firewalls.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Connected",
                 "syncing": "Syncing",
                 "serving": "Serving",
                 "error": "Error",

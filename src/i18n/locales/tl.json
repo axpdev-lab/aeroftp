@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: ang peer-to-peer na paglilipat ay aktibong binubuo at maaaring magbago. Kasalukuyang gumagamit ang mga koneksyon ng pampublikong relay upang tumawid sa mga firewall.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Nakakonekta",
                 "syncing": "Sina-sync",
                 "serving": "Naghahatid",
                 "error": "May error",

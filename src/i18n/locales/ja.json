@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta：ピアツーピア転送は現在開発中であり、変更される場合があります。接続には現在、ファイアウォールを通過するためにパブリックリレーを使用しています。",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "接続済み",
                 "syncing": "同期中",
                 "serving": "提供中",
                 "error": "エラー",

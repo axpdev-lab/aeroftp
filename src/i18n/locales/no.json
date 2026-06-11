@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: peer-to-peer-overføring er under aktiv utvikling og kan endres. Tilkoblinger bruker for øyeblikket et offentlig relé for å passere brannmurer.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Tilkoblet",
                 "syncing": "Synkroniserer",
                 "serving": "Leverer",
                 "error": "Feil",

@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: vertaissiirtoa kehitetään aktiivisesti ja se voi muuttua. Yhteydet käyttävät tällä hetkellä julkista välitintä palomuurien läpäisemiseen.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Yhdistetty",
                 "syncing": "Synkronoidaan",
                 "serving": "Tarjotaan",
                 "error": "Virhe",

@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: transfer peer-to-peer masih dalam pengembangan aktif dan dapat berubah. Koneksi saat ini menggunakan relay publik untuk menembus firewall.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Terhubung",
                 "syncing": "Menyinkronkan",
                 "serving": "Menyajikan",
                 "error": "Kesalahan",

@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta：点对点传输正在积极开发中，可能会有变动。当前连接使用公共中继来穿透防火墙。",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "已连接",
                 "syncing": "同步中",
                 "serving": "提供中",
                 "error": "错误",

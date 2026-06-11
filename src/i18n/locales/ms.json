@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: pemindahan peer-to-peer sedang dalam pembangunan aktif dan mungkin berubah. Sambungan kini menggunakan relai awam untuk menembusi tembok api.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Disambung",
                 "syncing": "Menyegerakkan",
                 "serving": "Menyajikan",
                 "error": "Ralat",

@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: Die Peer-to-Peer-Übertragung wird aktiv weiterentwickelt und kann sich ändern. Verbindungen nutzen derzeit ein öffentliches Relay, um Firewalls zu durchqueren.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Verbunden",
                 "syncing": "Wird synchronisiert",
                 "serving": "Wird bereitgestellt",
                 "error": "Fehler",

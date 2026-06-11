@@ -477,6 +477,17 @@ async fn sync_loop(
     emit_sync_status(&app, &namespace, "starting", None);
     let out = replica_dir.to_string_lossy().to_string();
     let store = Some(store_dir.to_string_lossy().to_string());
+    // Host-UI status reporter: the replicate worker calls this at phase
+    // boundaries ("live" once a pass has converged and is just watching,
+    // "syncing" when a delta lands), so the friend-card dot settles to green
+    // instead of being pinned to "syncing" for the whole watch window.
+    let reporter: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>> = {
+        let app = app.clone();
+        let namespace = namespace.clone();
+        Some(std::sync::Arc::new(move |state: &str| {
+            emit_sync_status(&app, &namespace, state, None);
+        }))
+    };
     loop {
         if cancel.is_cancelled() {
             break;
@@ -489,6 +500,7 @@ async fn sync_loop(
             WATCH_WINDOW_SECS,
             store.clone(),
             relay_urls_from_env(),
+            reporter.clone(),
         );
         tokio::select! {
             _ = cancel.cancelled() => break,

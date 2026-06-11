@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer-overførsel er under aktiv udvikling og kan ændre sig. Forbindelser bruger i øjeblikket et offentligt relæ til at passere firewalls.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Forbundet",
                 "syncing": "Synkroniserer",
                 "serving": "Leverer",
                 "error": "Fejl",

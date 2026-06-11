@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: a transferencia de igual a igual está en desenvolvemento activo e pode cambiar. As conexións usan actualmente un relé público para atravesar as devasas.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Conectado",
                 "syncing": "Sincronizando",
                 "serving": "Compartindo",
                 "error": "Erro",

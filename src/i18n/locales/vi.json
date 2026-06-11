@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: tính năng truyền ngang hàng đang được phát triển và có thể thay đổi. Các kết nối hiện sử dụng một relay công khai để vượt qua tường lửa.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Đã kết nối",
                 "syncing": "Đang đồng bộ",
                 "serving": "Đang phục vụ",
                 "error": "Lỗi",

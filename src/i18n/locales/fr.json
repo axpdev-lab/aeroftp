@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta : le transfert de pair à pair est en cours de développement et peut évoluer. Les connexions utilisent actuellement un relais public pour traverser les pare-feux.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Connecté",
                 "syncing": "Synchronisation",
                 "serving": "Partage en cours",
                 "error": "Erreur",

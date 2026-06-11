@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: přenos peer-to-peer se aktivně vyvíjí a může se změnit. Připojení nyní používají veřejný přenašeč pro průchod přes firewally.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Připojeno",
                 "syncing": "Synchronizace",
                 "serving": "Poskytování",
                 "error": "Chyba",

@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: transfer peer-to-peer jest aktywnie rozwijany i może ulec zmianie. Połączenia korzystają obecnie z publicznego przekaźnika do omijania zapór sieciowych.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Połączono",
                 "syncing": "Synchronizacja",
                 "serving": "Udostępnianie",
                 "error": "Błąd",

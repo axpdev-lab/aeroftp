@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta. peer-to-peer փոխանցումը ակտիվ մշակման փուլում է և կարող է փոխվել։ Կապերը ներկայումս օգտագործում են հանրային ռելե՝ firewall-ները հատելու համար։",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Կապված ե",
                 "syncing": "Համաժամացում",
                 "serving": "Սպասարկում",
                 "error": "Սխալ",

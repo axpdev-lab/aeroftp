@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer aktarım etkin geliştirme aşamasındadır ve değişebilir. Bağlantılar şu anda güvenlik duvarlarını aşmak için genel bir aktarıcı kullanır.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Bağlandı",
                 "syncing": "Eşitleniyor",
                 "serving": "Sunuluyor",
                 "error": "Hata",

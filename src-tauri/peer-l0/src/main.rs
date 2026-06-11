@@ -402,7 +402,7 @@ async fn main() -> Result<()> {
                     .context("docs-replicate requires --secret (dev path) or --capability (capability path)")?;
                 ReplicateKey::DevSecret(secret)
             };
-            run_docs_replicate(ticket, out, watch_secs, store, docs_cfg, key_src).await?;
+            run_docs_replicate(ticket, out, watch_secs, store, docs_cfg, key_src, None).await?;
             return Ok(());
         }
         Mode::IdentityNew { out } => {

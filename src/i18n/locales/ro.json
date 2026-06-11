@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: transferul de la egal la egal este în dezvoltare activă și se poate modifica. Conexiunile folosesc în prezent un releu public pentru a traversa firewallurile.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Conectat",
                 "syncing": "Se sincronizează",
                 "serving": "Se partajează",
                 "error": "Eroare",

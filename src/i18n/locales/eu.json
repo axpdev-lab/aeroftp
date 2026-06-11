@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: peer-to-peer transferentzia garapen aktiboan dago eta alda daiteke. Konexioek gaur egun errele publiko bat erabiltzen dute suebakiak zeharkatzeko.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Konektatuta",
                 "syncing": "Sinkronizatzen",
                 "serving": "Zerbitzatzen",
                 "error": "Errorea",

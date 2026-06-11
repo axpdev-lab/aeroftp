@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: a transferência ponto a ponto está em desenvolvimento ativo e pode mudar. As ligações usam atualmente um relé público para atravessar firewalls.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Conectado",
                 "syncing": "A sincronizar",
                 "serving": "A partilhar",
                 "error": "Erro",

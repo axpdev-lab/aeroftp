@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: uhamishaji wa peer-to-peer unaendelezwa kikamilifu na unaweza kubadilika. Kwa sasa miunganisho hutumia relay ya umma kupita kuta za moto.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Imeunganishwa",
                 "syncing": "Inasawazisha",
                 "serving": "Inahudumu",
                 "error": "Hitilafu",

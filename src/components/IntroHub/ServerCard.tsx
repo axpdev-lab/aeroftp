@@ -147,6 +147,7 @@ function StorageUsageBar({
 const PEER_STATE_DOT: Record<PeerDriveState, string> = {
     starting: 'bg-amber-400 animate-pulse',
     syncing: 'bg-blue-500',
+    live: 'bg-emerald-500',
     serving: 'bg-emerald-500',
     error: 'bg-red-500',
     stopped: 'bg-gray-400',

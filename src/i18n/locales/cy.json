@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: mae trosglwyddo peer-to-peer yn cael ei ddatblygu'n weithredol a gall newid. Ar hyn o bryd mae cysylltiadau'n defnyddio relái cyhoeddus i groesi waliau tân.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Wedi cysylltu",
                 "syncing": "Cysoni",
                 "serving": "Gweini",
                 "error": "Gwall",

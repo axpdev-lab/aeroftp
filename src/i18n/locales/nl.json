@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer-overdracht is volop in ontwikkeling en kan veranderen. Verbindingen gebruiken momenteel een openbaar relay om firewalls te passeren.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Verbonden",
                 "syncing": "Synchroniseren",
                 "serving": "Aanbieden",
                 "error": "Fout",

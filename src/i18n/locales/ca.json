@@ -4737,6 +4737,7 @@
             "experimentalNote": "Beta: la transferència d'igual a igual està en desenvolupament actiu i pot canviar. Les connexions utilitzen actualment un relé públic per travessar els tallafocs.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Connectat",
                 "syncing": "Sincronitzant",
                 "serving": "Compartint",
                 "error": "Error",

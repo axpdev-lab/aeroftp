@@ -12,7 +12,7 @@
 //! are added here yet.
 
 use aeroftp_peer_l0::drive::{
-    run_docs_publish, run_docs_replicate, CapIssue, PublishKey, ReplicateKey,
+    run_docs_publish, run_docs_replicate, CapIssue, PublishKey, ReplicateKey, StatusReporter,
 };
 use aeroftp_peer_l0::endpoint::{DiscoveryMode, PeerEndpointConfig};
 use aeroftp_peer_l0::{open_capability, seal_capability, Capability, Identity, IdentityPublic};
@@ -237,6 +237,7 @@ pub async fn replicate_drive_cap(
     watch_secs: u64,
     store: Option<String>,
     custom_relay_urls: Option<Vec<String>>,
+    on_status: Option<StatusReporter>,
 ) -> anyhow::Result<()> {
     let content_key: [u8; 32] = content_key
         .try_into()
@@ -248,6 +249,7 @@ pub async fn replicate_drive_cap(
         store,
         endpoint_config(custom_relay_urls),
         ReplicateKey::Content(content_key),
+        on_status,
     )
     .await
 }
@@ -272,6 +274,7 @@ pub async fn replicate_drive_dev(
         store,
         endpoint_config(custom_relay_urls),
         ReplicateKey::DevSecret(secret),
+        None,
     )
     .await
 }

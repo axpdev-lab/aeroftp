@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer edastus on aktiivses arenduses ja võib muutuda. Ühendused kasutavad praegu avalikku releed tulemüüride läbimiseks.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Ühendatud",
                 "syncing": "Sünkroonimine",
                 "serving": "Teenindamine",
                 "error": "Viga",

@@ -616,6 +616,12 @@ pub(crate) async fn wait_entry_hash(
     None
 }
 
+/// Optional drive-state reporter. The replicator calls it at phase boundaries
+/// ("syncing" while a pass is pulling, "live" once converged and just watching)
+/// so a host UI can reflect status without polling. `None` = silent (CLI). The
+/// crate stays UI-agnostic: it only hands back a short state string.
+pub type StatusReporter = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
+
 /// L1 Stage 5: docs-replicate with optional drive + live watch (--out + --watch-secs).
 /// If --out absent: single-entry compat.
 /// If --out present + no watch: Stage-4 one-shot (initial reconstruct + exit).
@@ -631,6 +637,7 @@ pub async fn run_docs_replicate(
     store: Option<String>,
     cfg: crate::endpoint::PeerEndpointConfig,
     key_src: ReplicateKey,
+    on_status: Option<StatusReporter>,
 ) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
@@ -1040,7 +1047,17 @@ pub async fn run_docs_replicate(
             let mut events = events.context(
                 "LiveEvent stream missing (every setup path populates events; unreachable)",
             )?;
+            // Drive-state reporting (event-driven, no polling): announce "live"
+            // on entering the watch and again after any converge settles, and
+            // "syncing" when a delta lands. `live_announced` de-dups the emit.
+            let mut live_announced = false;
             loop {
+                if !live_announced {
+                    if let Some(f) = &on_status {
+                        f("live");
+                    }
+                    live_announced = true;
+                }
                 let rem = deadline.saturating_duration_since(Instant::now());
                 if rem.is_zero() {
                     break;
@@ -1057,6 +1074,12 @@ pub async fn run_docs_replicate(
                             _ => false,
                         };
                         if trigger {
+                            // A new version is converging: flip the host UI back
+                            // to "syncing"; the next loop-top re-announces "live".
+                            if let Some(f) = &on_status {
+                                f("syncing");
+                            }
+                            live_announced = false;
                             // Re-read the manifest (with retry helpers); if version advanced, apply diff:
                             // - skip unchanged (same blake3 in prev_files AND file exists on disk)
                             // - pull/decrypt/verify/write only for changed or added

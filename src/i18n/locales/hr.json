@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer prijenos je u aktivnom razvoju i može se promijeniti. Veze trenutačno koriste javni relej za prolazak kroz vatrozide.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Povezano",
                 "syncing": "Sinkronizacija",
                 "serving": "Posluživanje",
                 "error": "Pogreška",

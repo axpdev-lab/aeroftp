@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: P2P 전송은 현재 활발히 개발 중이며 변경될 수 있습니다. 현재 연결은 방화벽을 통과하기 위해 공용 릴레이를 사용합니다.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "연결됨",
                 "syncing": "동기화 중",
                 "serving": "제공 중",
                 "error": "오류",

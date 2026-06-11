@@ -4718,6 +4718,7 @@
             "experimentalNote": "Beta: peer-to-peer-överföring är under aktiv utveckling och kan ändras. Anslutningar använder för närvarande ett offentligt relä för att ta sig igenom brandväggar.",
             "experimentalTag": "Beta",
             "driveState": {
+                "live": "Ansluten",
                 "syncing": "Synkroniserar",
                 "serving": "Tillhandahåller",
                 "error": "Fel",

@@ -22,7 +22,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { peerDrivesList } from '../utils/aeroShare';
 
-export type PeerDriveState = 'starting' | 'syncing' | 'serving' | 'error' | 'stopped';
+// 'live' = the replica has converged and is just watching for updates (the
+// backend emits it after a replicate pass completes). Distinct from 'syncing'
+// (a pass is actively pulling) so the friend dot can settle green when idle.
+export type PeerDriveState = 'starting' | 'syncing' | 'live' | 'serving' | 'error' | 'stopped';
 
 export interface PeerDriveBadge {
   /** Most recent state for the drive (event- or list-derived). */
@@ -139,9 +142,11 @@ export const usePeerDriveStates = (enabled: boolean): UsePeerDriveStates => {
     const syncP = listen<PeerSyncEvent>('peer://sync-status', (e) => {
       const p = e.payload;
       const stopped = p.state === 'stopped' || p.state === 'error';
+      // 'live' means converged-and-idle: NOT syncing, so derive() settles the
+      // badge to 'live' (green) instead of being pinned to 'syncing' (blue).
       apply(p.namespace, {
         state: p.state as PeerDriveState,
-        syncing: !stopped,
+        syncing: !stopped && p.state !== 'live',
         detail: p.state === 'error' ? p.detail ?? null : null,
         atMs: p.at_ms,
       });
