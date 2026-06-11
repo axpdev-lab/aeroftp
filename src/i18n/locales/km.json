@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ការពិនិត្យសុខភាព",
-            "storageVersioning": "កំណែឯកសារ៖ {size}"
+            "storageVersioning": "កំណែឯកសារ៖ {size}",
+            "group": {
+                "newGroup": "ក្រុមថ្មី",
+                "newGroupEllipsis": "ក្រុមថ្មី...",
+                "addToGroup": "បន្ថែមទៅក្រុម",
+                "newTitle": "ក្រុមថ្មី",
+                "renameTitle": "ប្ដូរឈ្មោះក្រុម",
+                "namePlaceholder": "ឈ្មោះក្រុម",
+                "rename": "ប្ដូរឈ្មោះក្រុម",
+                "delete": "លុបក្រុម",
+                "confirmDelete": "លុបក្រុម \"{name}\"? ម៉ាស៊ីនមេនៅក្នុងវាត្រូវបានរក្សាទុក លុបតែក្រុមប៉ុណ្ណោះ។",
+                "chipHint": "ចុចដើម្បីត្រង; ចុចស្ដាំដើម្បីប្ដូរឈ្មោះ ឬលុប"
+            }
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

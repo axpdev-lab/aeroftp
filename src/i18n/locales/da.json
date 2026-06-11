@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tilgængelighedstjek",
-            "storageVersioning": "Filversioner: {size}"
+            "storageVersioning": "Filversioner: {size}",
+            "group": {
+                "newGroup": "Ny gruppe",
+                "newGroupEllipsis": "Ny gruppe...",
+                "addToGroup": "Føj til gruppe",
+                "newTitle": "Ny gruppe",
+                "renameTitle": "Omdøb gruppe",
+                "namePlaceholder": "Gruppenavn",
+                "rename": "Omdøb gruppe",
+                "delete": "Slet gruppe",
+                "confirmDelete": "Slet gruppen \"{name}\"? Serverne i den bevares, kun gruppen fjernes.",
+                "chipHint": "Klik for at filtrere; højreklik for at omdøbe eller slette"
+            }
         },
         "gitlab": {
             "projectPath": "Projektsti",

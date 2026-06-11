@@ -4350,6 +4350,18 @@
             "backToServers": "Back to servers",
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
+            "group": {
+                "newGroup": "New group",
+                "newGroupEllipsis": "New group...",
+                "addToGroup": "Add to group",
+                "newTitle": "New group",
+                "renameTitle": "Rename group",
+                "namePlaceholder": "Group name",
+                "rename": "Rename group",
+                "delete": "Delete group",
+                "confirmDelete": "Delete the group \"{name}\"? The servers in it are kept, only the group is removed.",
+                "chipHint": "Click to filter; right-click to rename or delete"
+            },
             "storageUsedOf": "{used} used of {total}",
             "storageVersioning": "File versions: {size}",
             "storageQuotaUnavailable": "Connect once to load storage quota",

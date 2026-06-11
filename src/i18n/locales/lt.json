@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pasiekiamumo tikrinimas",
-            "storageVersioning": "Failų versijos: {size}"
+            "storageVersioning": "Failų versijos: {size}",
+            "group": {
+                "newGroup": "Nauja grupė",
+                "newGroupEllipsis": "Nauja grupė...",
+                "addToGroup": "Pridėti į grupę",
+                "newTitle": "Nauja grupė",
+                "renameTitle": "Pervadinti grupę",
+                "namePlaceholder": "Grupės pavadinimas",
+                "rename": "Pervadinti grupę",
+                "delete": "Ištrinti grupę",
+                "confirmDelete": "Ištrinti grupę „{name}“? Joje esantys serveriai išsaugomi, pašalinama tik grupė.",
+                "chipHint": "Spustelėkite, kad filtruotumėte; dešiniuoju pelės mygtuku – pervadinti arba ištrinti"
+            }
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

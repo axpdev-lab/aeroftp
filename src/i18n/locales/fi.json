@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Saatavuuden tarkistus",
-            "storageVersioning": "Tiedostoversiot: {size}"
+            "storageVersioning": "Tiedostoversiot: {size}",
+            "group": {
+                "newGroup": "Uusi ryhmä",
+                "newGroupEllipsis": "Uusi ryhmä...",
+                "addToGroup": "Lisää ryhmään",
+                "newTitle": "Uusi ryhmä",
+                "renameTitle": "Nimeä ryhmä uudelleen",
+                "namePlaceholder": "Ryhmän nimi",
+                "rename": "Nimeä ryhmä uudelleen",
+                "delete": "Poista ryhmä",
+                "confirmDelete": "Poistetaanko ryhmä \"{name}\"? Sen palvelimet säilytetään, vain ryhmä poistetaan.",
+                "chipHint": "Suodata napsauttamalla; nimeä uudelleen tai poista hiiren oikealla painikkeella"
+            }
         },
         "gitlab": {
             "projectPath": "Projektipolku",

@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Kiểm tra tình trạng",
-            "storageVersioning": "Phiên bản tệp: {size}"
+            "storageVersioning": "Phiên bản tệp: {size}",
+            "group": {
+                "newGroup": "Nhóm mới",
+                "newGroupEllipsis": "Nhóm mới...",
+                "addToGroup": "Thêm vào nhóm",
+                "newTitle": "Nhóm mới",
+                "renameTitle": "Đổi tên nhóm",
+                "namePlaceholder": "Tên nhóm",
+                "rename": "Đổi tên nhóm",
+                "delete": "Xóa nhóm",
+                "confirmDelete": "Xóa nhóm \"{name}\"? Các máy chủ trong đó được giữ lại, chỉ nhóm bị xóa.",
+                "chipHint": "Nhấp để lọc; nhấp chuột phải để đổi tên hoặc xóa"
+            }
         },
         "gitlab": {
             "projectPath": "Duong dan du an",

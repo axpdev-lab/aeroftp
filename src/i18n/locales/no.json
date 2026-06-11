@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tilgjengelighetssjekk",
-            "storageVersioning": "Filversjoner: {size}"
+            "storageVersioning": "Filversjoner: {size}",
+            "group": {
+                "newGroup": "Ny gruppe",
+                "newGroupEllipsis": "Ny gruppe...",
+                "addToGroup": "Legg til i gruppe",
+                "newTitle": "Ny gruppe",
+                "renameTitle": "Gi nytt navn til gruppe",
+                "namePlaceholder": "Gruppenavn",
+                "rename": "Gi nytt navn til gruppe",
+                "delete": "Slett gruppe",
+                "confirmDelete": "Slette gruppen \"{name}\"? Serverne i den beholdes, bare gruppen fjernes.",
+                "chipHint": "Klikk for å filtrere; høyreklikk for å gi nytt navn eller slette"
+            }
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

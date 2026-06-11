@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pemeriksaan kesihatan",
-            "storageVersioning": "Versi fail: {size}"
+            "storageVersioning": "Versi fail: {size}",
+            "group": {
+                "newGroup": "Kumpulan baharu",
+                "newGroupEllipsis": "Kumpulan baharu...",
+                "addToGroup": "Tambah ke kumpulan",
+                "newTitle": "Kumpulan baharu",
+                "renameTitle": "Namakan semula kumpulan",
+                "namePlaceholder": "Nama kumpulan",
+                "rename": "Namakan semula kumpulan",
+                "delete": "Padam kumpulan",
+                "confirmDelete": "Padam kumpulan \"{name}\"? Pelayan di dalamnya dikekalkan, hanya kumpulan dialih keluar.",
+                "chipHint": "Klik untuk menapis; klik kanan untuk menamakan semula atau memadam"
+            }
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

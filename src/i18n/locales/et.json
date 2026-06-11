@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Saadavuse kontroll",
-            "storageVersioning": "Faili versioonid: {size}"
+            "storageVersioning": "Faili versioonid: {size}",
+            "group": {
+                "newGroup": "Uus rühm",
+                "newGroupEllipsis": "Uus rühm...",
+                "addToGroup": "Lisa rühma",
+                "newTitle": "Uus rühm",
+                "renameTitle": "Nimeta rühm ümber",
+                "namePlaceholder": "Rühma nimi",
+                "rename": "Nimeta rühm ümber",
+                "delete": "Kustuta rühm",
+                "confirmDelete": "Kustutada rühm „{name}“? Selles olevad serverid säilitatakse, eemaldatakse ainult rühm.",
+                "chipHint": "Filtreerimiseks klõpsa; ümbernimetamiseks või kustutamiseks paremklõpsa"
+            }
         },
         "gitlab": {
             "projectPath": "Projekti tee",

@@ -4363,6 +4363,18 @@
             "backToServers": "Torna ai server",
             "addFavorite": "Aggiungi ai preferiti",
             "removeFavorite": "Rimuovi dai preferiti",
+            "group": {
+                "newGroup": "Nuovo gruppo",
+                "newGroupEllipsis": "Nuovo gruppo...",
+                "addToGroup": "Aggiungi al gruppo",
+                "newTitle": "Nuovo gruppo",
+                "renameTitle": "Rinomina gruppo",
+                "namePlaceholder": "Nome del gruppo",
+                "rename": "Rinomina gruppo",
+                "delete": "Elimina gruppo",
+                "confirmDelete": "Eliminare il gruppo \"{name}\"? I server al suo interno vengono mantenuti, viene rimosso solo il gruppo.",
+                "chipHint": "Clic per filtrare; clic destro per rinominare o eliminare"
+            },
             "discoverTitle": "Scopri i servizi",
             "discoverDescription": "Esplora oltre 29 servizi cloud integrati, storage S3-compatibili, provider WebDAV e altro. Ogni servizio include impostazioni preconfigurate per una configurazione rapida.",
             "searchServices": "Cerca servizi...",

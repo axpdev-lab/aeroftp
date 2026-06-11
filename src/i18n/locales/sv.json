@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tillgänglighetskontroll",
-            "storageVersioning": "Filversioner: {size}"
+            "storageVersioning": "Filversioner: {size}",
+            "group": {
+                "newGroup": "Ny grupp",
+                "newGroupEllipsis": "Ny grupp...",
+                "addToGroup": "Lägg till i grupp",
+                "newTitle": "Ny grupp",
+                "renameTitle": "Byt namn på grupp",
+                "namePlaceholder": "Gruppnamn",
+                "rename": "Byt namn på grupp",
+                "delete": "Ta bort grupp",
+                "confirmDelete": "Ta bort gruppen \"{name}\"? Servrarna i den behålls, endast gruppen tas bort.",
+                "chipHint": "Klicka för att filtrera; högerklicka för att byta namn eller ta bort"
+            }
         },
         "gitlab": {
             "projectPath": "Projektsokvag",

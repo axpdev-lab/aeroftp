@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Sağlık kontrolü",
-            "storageVersioning": "Dosya sürümleri: {size}"
+            "storageVersioning": "Dosya sürümleri: {size}",
+            "group": {
+                "newGroup": "Yeni grup",
+                "newGroupEllipsis": "Yeni grup...",
+                "addToGroup": "Gruba ekle",
+                "newTitle": "Yeni grup",
+                "renameTitle": "Grubu yeniden adlandır",
+                "namePlaceholder": "Grup adı",
+                "rename": "Grubu yeniden adlandır",
+                "delete": "Grubu sil",
+                "confirmDelete": "\"{name}\" grubu silinsin mi? İçindeki sunucular korunur, yalnızca grup kaldırılır.",
+                "chipHint": "Filtrelemek için tıklayın; yeniden adlandırmak veya silmek için sağ tıklayın"
+            }
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

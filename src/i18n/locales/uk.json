@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Перевірка доступності",
-            "storageVersioning": "Версії файлу: {size}"
+            "storageVersioning": "Версії файлу: {size}",
+            "group": {
+                "newGroup": "Нова група",
+                "newGroupEllipsis": "Нова група...",
+                "addToGroup": "Додати до групи",
+                "newTitle": "Нова група",
+                "renameTitle": "Перейменувати групу",
+                "namePlaceholder": "Назва групи",
+                "rename": "Перейменувати групу",
+                "delete": "Видалити групу",
+                "confirmDelete": "Видалити групу «{name}»? Сервери в ній зберігаються, видаляється лише група.",
+                "chipHint": "Натисніть для фільтрування; правий клік для перейменування або видалення"
+            }
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",

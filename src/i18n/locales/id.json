@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pemeriksaan ketersediaan",
-            "storageVersioning": "Versi file: {size}"
+            "storageVersioning": "Versi file: {size}",
+            "group": {
+                "newGroup": "Grup baru",
+                "newGroupEllipsis": "Grup baru...",
+                "addToGroup": "Tambahkan ke grup",
+                "newTitle": "Grup baru",
+                "renameTitle": "Ganti nama grup",
+                "namePlaceholder": "Nama grup",
+                "rename": "Ganti nama grup",
+                "delete": "Hapus grup",
+                "confirmDelete": "Hapus grup \"{name}\"? Server di dalamnya tetap disimpan, hanya grup yang dihapus.",
+                "chipHint": "Klik untuk memfilter; klik kanan untuk mengganti nama atau menghapus"
+            }
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

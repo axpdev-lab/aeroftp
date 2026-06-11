@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Elérhetőség-ellenőrzés",
-            "storageVersioning": "Fájlverziók: {size}"
+            "storageVersioning": "Fájlverziók: {size}",
+            "group": {
+                "newGroup": "Új csoport",
+                "newGroupEllipsis": "Új csoport...",
+                "addToGroup": "Hozzáadás csoporthoz",
+                "newTitle": "Új csoport",
+                "renameTitle": "Csoport átnevezése",
+                "namePlaceholder": "Csoport neve",
+                "rename": "Csoport átnevezése",
+                "delete": "Csoport törlése",
+                "confirmDelete": "Törli a(z) „{name}” csoportot? A benne lévő kiszolgálók megmaradnak, csak a csoport törlődik.",
+                "chipHint": "Kattintson a szűréshez; jobb kattintás az átnevezéshez vagy törléshez"
+            }
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",

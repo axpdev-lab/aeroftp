@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Vérification de disponibilité",
-            "storageVersioning": "Versions du fichier : {size}"
+            "storageVersioning": "Versions du fichier : {size}",
+            "group": {
+                "newGroup": "Nouveau groupe",
+                "newGroupEllipsis": "Nouveau groupe...",
+                "addToGroup": "Ajouter au groupe",
+                "newTitle": "Nouveau groupe",
+                "renameTitle": "Renommer le groupe",
+                "namePlaceholder": "Nom du groupe",
+                "rename": "Renommer le groupe",
+                "delete": "Supprimer le groupe",
+                "confirmDelete": "Supprimer le groupe « {name} » ? Les serveurs qu'il contient sont conservés, seul le groupe est supprimé.",
+                "chipHint": "Cliquez pour filtrer ; clic droit pour renommer ou supprimer"
+            }
         },
         "gitlab": {
             "projectPath": "Chemin du projet",

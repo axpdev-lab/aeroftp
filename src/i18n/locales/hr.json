@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Provjera dostupnosti",
-            "storageVersioning": "Verzije datoteka: {size}"
+            "storageVersioning": "Verzije datoteka: {size}",
+            "group": {
+                "newGroup": "Nova grupa",
+                "newGroupEllipsis": "Nova grupa...",
+                "addToGroup": "Dodaj u grupu",
+                "newTitle": "Nova grupa",
+                "renameTitle": "Preimenuj grupu",
+                "namePlaceholder": "Naziv grupe",
+                "rename": "Preimenuj grupu",
+                "delete": "Izbriši grupu",
+                "confirmDelete": "Izbrisati grupu „{name}“? Poslužitelji u njoj se zadržavaju, uklanja se samo grupa.",
+                "chipHint": "Kliknite za filtriranje; desni klik za preimenovanje ili brisanje"
+            }
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

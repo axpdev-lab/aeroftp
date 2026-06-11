@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Aðgengisathugun",
-            "storageVersioning": "Skráarútgáfur: {size}"
+            "storageVersioning": "Skráarútgáfur: {size}",
+            "group": {
+                "newGroup": "Nýr hópur",
+                "newGroupEllipsis": "Nýr hópur...",
+                "addToGroup": "Bæta við hóp",
+                "newTitle": "Nýr hópur",
+                "renameTitle": "Endurnefna hóp",
+                "namePlaceholder": "Heiti hóps",
+                "rename": "Endurnefna hóp",
+                "delete": "Eyða hópi",
+                "confirmDelete": "Eyða hópnum „{name}“? Netþjónunum í honum er haldið, aðeins hópurinn er fjarlægður.",
+                "chipHint": "Smelltu til að sía; hægrismelltu til að endurnefna eða eyða"
+            }
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

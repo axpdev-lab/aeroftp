@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
-            "storageVersioning": "Fitxategi-bertsioak: {size}"
+            "storageVersioning": "Fitxategi-bertsioak: {size}",
+            "group": {
+                "newGroup": "Talde berria",
+                "newGroupEllipsis": "Talde berria...",
+                "addToGroup": "Gehitu taldera",
+                "newTitle": "Talde berria",
+                "renameTitle": "Aldatu taldearen izena",
+                "namePlaceholder": "Taldearen izena",
+                "rename": "Aldatu taldearen izena",
+                "delete": "Ezabatu taldea",
+                "confirmDelete": "Ezabatu \"{name}\" taldea? Bertako zerbitzariak mantenduko dira, taldea baino ez da kenduko.",
+                "chipHint": "Egin klik iragazteko; eskuin-klika izena aldatzeko edo ezabatzeko"
+            }
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

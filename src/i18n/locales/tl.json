@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Health check",
-            "storageVersioning": "Mga bersyon ng file: {size}"
+            "storageVersioning": "Mga bersyon ng file: {size}",
+            "group": {
+                "newGroup": "Bagong grupo",
+                "newGroupEllipsis": "Bagong grupo...",
+                "addToGroup": "Idagdag sa grupo",
+                "newTitle": "Bagong grupo",
+                "renameTitle": "Palitan ang pangalan ng grupo",
+                "namePlaceholder": "Pangalan ng grupo",
+                "rename": "Palitan ang pangalan ng grupo",
+                "delete": "Tanggalin ang grupo",
+                "confirmDelete": "Tanggalin ang grupong \"{name}\"? Pananatilihin ang mga server dito, ang grupo lang ang aalisin.",
+                "chipHint": "I-click para sa pag-filter; i-right-click para palitan ang pangalan o tanggalin"
+            }
         },
         "gitlab": {
             "projectPath": "Path ng Project",

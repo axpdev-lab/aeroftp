@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "उपलब्धता जाँच",
-            "storageVersioning": "फ़ाइल संस्करण: {size}"
+            "storageVersioning": "फ़ाइल संस्करण: {size}",
+            "group": {
+                "newGroup": "नया समूह",
+                "newGroupEllipsis": "नया समूह...",
+                "addToGroup": "समूह में जोड़ें",
+                "newTitle": "नया समूह",
+                "renameTitle": "समूह का नाम बदलें",
+                "namePlaceholder": "समूह का नाम",
+                "rename": "समूह का नाम बदलें",
+                "delete": "समूह हटाएँ",
+                "confirmDelete": "\"{name}\" समूह हटाएँ? इसके सर्वर रखे जाते हैं, केवल समूह हटाया जाता है।",
+                "chipHint": "फ़िल्टर करने के लिए क्लिक करें; नाम बदलने या हटाने के लिए राइट-क्लिक करें"
+            }
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

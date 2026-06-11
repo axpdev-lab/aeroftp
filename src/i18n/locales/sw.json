@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Ukaguzi wa afya",
-            "storageVersioning": "Matoleo ya faili: {size}"
+            "storageVersioning": "Matoleo ya faili: {size}",
+            "group": {
+                "newGroup": "Kikundi kipya",
+                "newGroupEllipsis": "Kikundi kipya...",
+                "addToGroup": "Ongeza kwenye kikundi",
+                "newTitle": "Kikundi kipya",
+                "renameTitle": "Badilisha jina la kikundi",
+                "namePlaceholder": "Jina la kikundi",
+                "rename": "Badilisha jina la kikundi",
+                "delete": "Futa kikundi",
+                "confirmDelete": "Futa kikundi \"{name}\"? Seva zilizomo zinahifadhiwa, kikundi pekee ndicho kinaondolewa.",
+                "chipHint": "Bofya ili kuchuja; bofya kulia ili kubadilisha jina au kufuta"
+            }
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",

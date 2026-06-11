@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Comprovació de disponibilitat",
-            "storageVersioning": "Versions del fitxer: {size}"
+            "storageVersioning": "Versions del fitxer: {size}",
+            "group": {
+                "newGroup": "Grup nou",
+                "newGroupEllipsis": "Grup nou...",
+                "addToGroup": "Afegeix al grup",
+                "newTitle": "Grup nou",
+                "renameTitle": "Canvia el nom del grup",
+                "namePlaceholder": "Nom del grup",
+                "rename": "Canvia el nom del grup",
+                "delete": "Elimina el grup",
+                "confirmDelete": "Voleu eliminar el grup «{name}»? Els servidors que conté es conserven, només s'elimina el grup.",
+                "chipHint": "Feu clic per filtrar; clic dret per canviar el nom o eliminar"
+            }
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

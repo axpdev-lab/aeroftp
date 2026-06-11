@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Kontrola dostupnosti",
-            "storageVersioning": "Verzie súborov: {size}"
+            "storageVersioning": "Verzie súborov: {size}",
+            "group": {
+                "newGroup": "Nová skupina",
+                "newGroupEllipsis": "Nová skupina...",
+                "addToGroup": "Pridať do skupiny",
+                "newTitle": "Nová skupina",
+                "renameTitle": "Premenovať skupinu",
+                "namePlaceholder": "Názov skupiny",
+                "rename": "Premenovať skupinu",
+                "delete": "Odstrániť skupinu",
+                "confirmDelete": "Odstrániť skupinu „{name}“? Servery v nej zostanú zachované, odstráni sa iba skupina.",
+                "chipHint": "Kliknutím filtrujte; pravým tlačidlom premenujete alebo odstránite"
+            }
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Հասանելիության ստուգում",
-            "storageVersioning": "Ֆայլի տարբերակներ՝ {size}"
+            "storageVersioning": "Ֆայլի տարբերակներ՝ {size}",
+            "group": {
+                "newGroup": "Նոր խումբ",
+                "newGroupEllipsis": "Նոր խումբ...",
+                "addToGroup": "Ավելացնել խմբին",
+                "newTitle": "Նոր խումբ",
+                "renameTitle": "Վերանվանել խումբը",
+                "namePlaceholder": "Խմբի անունը",
+                "rename": "Վերանվանել խումբը",
+                "delete": "Ջնջել խումբը",
+                "confirmDelete": "Ջնջե՞լ «{name}» խումբը։ Դրա սերվերները պահպանվում են, հեռացվում է միայն խումբը։",
+                "chipHint": "Սեղմեք զտելու համար. աջ սեղմումով՝ վերանվանելու կամ ջնջելու համար"
+            }
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",

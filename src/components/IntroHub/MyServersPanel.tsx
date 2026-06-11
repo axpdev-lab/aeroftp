@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -29,6 +29,15 @@ import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favoriteServers';
+import {
+    ServerGroup,
+    loadServerGroups,
+    saveServerGroups,
+    readServerGroupsFromLocalStorage,
+    newServerGroupId,
+    pruneServerFromGroups,
+} from '../../utils/serverGroups';
+import { InputDialog } from '../Dialogs';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
@@ -53,6 +62,10 @@ const MENU_ICON_HEALTH       = <Activity size={14} />;
 const MENU_ICON_SPEED        = <Gauge size={14} />;
 const MENU_ICON_MOUNT        = <HardDrive size={14} />;
 const MENU_ICON_DELETE       = <Trash2 size={14} />;
+const MENU_ICON_GROUP        = <Folder size={14} />;
+const MENU_ICON_GROUP_NEW    = <FolderPlus size={14} />;
+const MENU_ICON_GROUP_CHECK  = <Check size={14} className="text-emerald-500" />;
+const MENU_ICON_GROUP_BLANK  = <Folder size={14} className="opacity-40" />;
 
 /** Load credential from vault with retry if store not ready */
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -358,6 +371,78 @@ export function MyServersPanel({
         })();
         return () => { cancelled = true; };
     }, []);
+    // Server groups (#320): the named generalisation of favourites. Same vault
+    // storage pattern (key `config_server_groups`), boot synchronously from
+    // localStorage, reconcile from the vault below.
+    const [groups, setGroups] = useState<ServerGroup[]>(() => readServerGroupsFromLocalStorage());
+    const [activeGroupId, setActiveGroupId] = useState<string | null>(() => {
+        return localStorage.getItem('aeroftp_myservers_group') || null;
+    });
+    // Group create/rename dialog (null = closed; id null = create, id set =
+    // rename). `seedServerId` (create only) drops the originating server into
+    // the freshly-created group.
+    const [groupDialog, setGroupDialog] = useState<{ id: string | null; name: string; seedServerId?: string } | null>(null);
+    const [groupDeleteTarget, setGroupDeleteTarget] = useState<ServerGroup | null>(null);
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const vaultGroups = await loadServerGroups();
+                if (cancelled) return;
+                setGroups(prev => {
+                    if (JSON.stringify(prev) === JSON.stringify(vaultGroups)) return prev;
+                    return vaultGroups;
+                });
+            } catch { /* vault unreachable: keep localStorage view */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+    const persistGroups = useCallback((next: ServerGroup[]) => {
+        setGroups(next);
+        saveServerGroups(next).catch(() => {
+            // secureStoreAndClean already mirrored to localStorage as a backup.
+        });
+    }, []);
+    const selectGroup = useCallback((groupId: string) => {
+        // Toggle: clicking the active group chip clears the narrowing.
+        setActiveGroupId(prev => {
+            const next = prev === groupId ? null : groupId;
+            if (next) localStorage.setItem('aeroftp_myservers_group', next);
+            else localStorage.removeItem('aeroftp_myservers_group');
+            return next;
+        });
+    }, []);
+    const createGroup = useCallback((name: string, seedServerId?: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const group: ServerGroup = {
+            id: newServerGroupId(),
+            name: trimmed,
+            order: groups.length,
+            members: seedServerId ? [seedServerId] : [],
+        };
+        persistGroups([...groups, group]);
+    }, [groups, persistGroups]);
+    const renameGroup = useCallback((id: string, name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        persistGroups(groups.map(g => (g.id === id ? { ...g, name: trimmed } : g)));
+    }, [groups, persistGroups]);
+    const deleteGroup = useCallback((id: string) => {
+        persistGroups(groups.filter(g => g.id !== id));
+        setActiveGroupId(prev => {
+            if (prev !== id) return prev;
+            localStorage.removeItem('aeroftp_myservers_group');
+            return null;
+        });
+    }, [groups, persistGroups]);
+    const toggleGroupMembership = useCallback((serverId: string, groupId: string) => {
+        persistGroups(groups.map(g => {
+            if (g.id !== groupId) return g;
+            const has = g.members.includes(serverId);
+            return { ...g, members: has ? g.members.filter(m => m !== serverId) : [...g.members, serverId] };
+        }));
+    }, [groups, persistGroups]);
     const [renamingId, setRenamingId] = useState<string | null>(null);
     // Cross-Profile selection: ephemeral, max 2. selection[0] = source, selection[1] = destination.
     const [crossProfileSelection, setCrossProfileSelection] = useState<string[]>([]);
@@ -675,7 +760,13 @@ export function MyServersPanel({
             const q = searchQuery.toLowerCase();
             result = result.filter((server) => (serverSearchTexts.get(server.id) ?? '').includes(q));
         }
-        if (activeFilter === 'favorites') {
+        // A group selection (#320) takes precedence over the static filter chip:
+        // the two narrowings are mutually exclusive in the UI.
+        if (activeGroupId) {
+            const group = groups.find(g => g.id === activeGroupId);
+            const members = new Set(group?.members ?? []);
+            result = result.filter(s => members.has(s.id));
+        } else if (activeFilter === 'favorites') {
             result = result.filter(s => favorites.has(s.id));
         } else if (activeFilter !== 'all') {
             const chip = FILTER_CHIPS.find(c => c.id === activeFilter);
@@ -684,7 +775,17 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, favorites, serverSearchTexts]);
+    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts]);
+
+    // Per-group count of members that still resolve to an existing server.
+    const groupCounts = useMemo(() => {
+        const present = new Set(servers.map(s => s.id));
+        const counts: Record<string, number> = {};
+        for (const g of groups) {
+            counts[g.id] = g.members.reduce((n, id) => (present.has(id) ? n + 1 : n), 0);
+        }
+        return counts;
+    }, [groups, servers]);
 
     const { insertStartIdx, insertEndIdx } = useMemo(() => {
         if (filteredServers.length === 0) {
@@ -1051,12 +1152,16 @@ export function MyServersPanel({
             if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
             if (renamingId) return;
             if (deleteTarget || healthCheckTarget !== false || speedTestTarget !== false) return;
-            const hasNarrowing = searchQuery !== '' || activeFilter !== 'all';
+            const hasNarrowing = searchQuery !== '' || activeFilter !== 'all' || activeGroupId !== null;
             const hasCrossProfileSelection = crossProfileSelection.length > 0;
             if (!hasNarrowing && !hasCrossProfileSelection) return;
             e.preventDefault();
             if (hasCrossProfileSelection) setCrossProfileSelection([]);
             if (searchQuery) setSearchQuery('');
+            if (activeGroupId !== null) {
+                setActiveGroupId(null);
+                localStorage.removeItem('aeroftp_myservers_group');
+            }
             if (activeFilter !== 'all') {
                 setActiveFilter('all');
                 localStorage.setItem('aeroftp_myservers_filter', 'all');
@@ -1064,7 +1169,7 @@ export function MyServersPanel({
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [searchQuery, activeFilter, crossProfileSelection.length, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
+    }, [searchQuery, activeFilter, activeGroupId, crossProfileSelection.length, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
 
     const confirmDelete = useCallback(() => {
         if (!deleteTarget) return;
@@ -1073,6 +1178,13 @@ export function MyServersPanel({
         storeSavedServerProfiles(updated).catch(() => {});
         // Clean up orphaned vault credential
         invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
+        // Drop the deleted profile from any group it belonged to (#320).
+        pruneServerFromGroups(deleteTarget.id).catch(() => {});
+        setGroups(prev => prev.map(g => (
+            g.members.includes(deleteTarget.id)
+                ? { ...g, members: g.members.filter(m => m !== deleteTarget.id) }
+                : g
+        )));
         onServersChange?.(updated.length);
         setDeleteTarget(null);
     }, [deleteTarget, servers, onServersChange]);
@@ -1129,6 +1241,29 @@ export function MyServersPanel({
             { label: t('common.copy'), icon: MENU_ICON_COPY, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: MENU_ICON_FAVORITE, action: () => toggleFavorite(server.id) },
         );
+        // "Add to group" submenu (#320): toggle membership in each existing
+        // group, plus a New group… entry that seeds the group with this server.
+        const groupChildren: ContextMenuItem[] = groups.map((g) => {
+            const inGroup = g.members.includes(server.id);
+            return {
+                label: g.name,
+                icon: inGroup ? MENU_ICON_GROUP_CHECK : MENU_ICON_GROUP_BLANK,
+                action: () => toggleGroupMembership(server.id, g.id),
+            };
+        });
+        groupChildren.push({
+            label: t('introHub.group.newGroupEllipsis'),
+            icon: MENU_ICON_GROUP_NEW,
+            action: () => setGroupDialog({ id: null, name: '', seedServerId: server.id }),
+            divider: groups.length > 0,
+        });
+        // Store the seed server on the create dialog when launched from here.
+        items.push({
+            label: t('introHub.group.addToGroup'),
+            icon: MENU_ICON_GROUP,
+            action: () => { /* parent row: hover opens the submenu */ },
+            children: groupChildren,
+        });
         if (hasOtherUsers) {
             items.push(
                 { label: t('savedServers.copyToUser'), icon: MENU_ICON_COPY, action: () => setRelocateState({ profile: server, mode: 'copy' }), divider: true },
@@ -1160,7 +1295,17 @@ export function MyServersPanel({
             { label: t('common.delete'), icon: MENU_ICON_DELETE, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile, hasOtherUsers]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile, hasOtherUsers, groups, toggleGroupMembership]);
+
+    // Right-click a group chip: rename / delete the group itself.
+    const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string) => {
+        const group = groups.find(g => g.id === groupId);
+        if (!group) return;
+        showContextMenu(e, [
+            { label: t('introHub.group.rename'), icon: MENU_ICON_RENAME, action: () => setGroupDialog({ id: group.id, name: group.name }) },
+            { label: t('introHub.group.delete'), icon: MENU_ICON_DELETE, action: () => setGroupDeleteTarget(group), danger: true },
+        ]);
+    }, [t, groups, showContextMenu]);
 
     return (
         <div className="h-full flex flex-col" onClick={handlePanelBlankClick}>
@@ -1168,7 +1313,19 @@ export function MyServersPanel({
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 activeFilter={activeFilter}
-                onFilterChange={(f: MyServersFilterBy) => { setActiveFilter(f); localStorage.setItem('aeroftp_myservers_filter', f); }}
+                onFilterChange={(f: MyServersFilterBy) => {
+                    setActiveFilter(f);
+                    localStorage.setItem('aeroftp_myservers_filter', f);
+                    // Selecting a static chip clears any active group narrowing.
+                    setActiveGroupId(null);
+                    localStorage.removeItem('aeroftp_myservers_group');
+                }}
+                groups={groups}
+                groupCounts={groupCounts}
+                activeGroupId={activeGroupId}
+                onGroupSelect={selectGroup}
+                onGroupContextMenu={handleGroupContextMenu}
+                onNewGroup={() => setGroupDialog({ id: null, name: '' })}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 credentialsMasked={credentialsMasked}
@@ -1447,6 +1604,32 @@ export function MyServersPanel({
                             setServers(prev => prev.filter(s => s.id !== relocateState.profile.id));
                         }
                     }}
+                />
+            )}
+            {groupDialog && (
+                <InputDialog
+                    title={groupDialog.id ? t('introHub.group.renameTitle') : t('introHub.group.newTitle')}
+                    defaultValue={groupDialog.name}
+                    placeholder={t('introHub.group.namePlaceholder')}
+                    onCancel={() => setGroupDialog(null)}
+                    onConfirm={(value: string) => {
+                        if (value.trim()) {
+                            if (groupDialog.id) renameGroup(groupDialog.id, value);
+                            else createGroup(value, groupDialog.seedServerId);
+                        }
+                        setGroupDialog(null);
+                    }}
+                />
+            )}
+            {groupDeleteTarget && (
+                <AlertDialog
+                    title={t('introHub.group.delete')}
+                    message={t('introHub.group.confirmDelete').replace('{name}', groupDeleteTarget.name)}
+                    type="warning"
+                    onClose={() => setGroupDeleteTarget(null)}
+                    actionLabel={t('introHub.group.delete')}
+                    onAction={() => { deleteGroup(groupDeleteTarget.id); setGroupDeleteTarget(null); }}
+                    actionIcon={<Trash2 size={14} />}
                 />
             )}
         </div>

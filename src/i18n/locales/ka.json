@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ხელმისაწვდომობის შემოწმება",
-            "storageVersioning": "ფაილის ვერსიები: {size}"
+            "storageVersioning": "ფაილის ვერსიები: {size}",
+            "group": {
+                "newGroup": "ახალი ჯგუფი",
+                "newGroupEllipsis": "ახალი ჯგუფი...",
+                "addToGroup": "ჯგუფში დამატება",
+                "newTitle": "ახალი ჯგუფი",
+                "renameTitle": "ჯგუფის გადარქმევა",
+                "namePlaceholder": "ჯგუფის სახელი",
+                "rename": "ჯგუფის გადარქმევა",
+                "delete": "ჯგუფის წაშლა",
+                "confirmDelete": "წავშალოთ ჯგუფი „{name}“? მასში არსებული სერვერები შენარჩუნდება, წაიშლება მხოლოდ ჯგუფი.",
+                "chipHint": "დააწკაპუნეთ გასაფილტრად; მარჯვენა წკაპი გადასარქმევად ან წასაშლელად"
+            }
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

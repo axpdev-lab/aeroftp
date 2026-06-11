@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Έλεγχος διαθεσιμότητας",
-            "storageVersioning": "Εκδόσεις αρχείου: {size}"
+            "storageVersioning": "Εκδόσεις αρχείου: {size}",
+            "group": {
+                "newGroup": "Νέα ομάδα",
+                "newGroupEllipsis": "Νέα ομάδα...",
+                "addToGroup": "Προσθήκη σε ομάδα",
+                "newTitle": "Νέα ομάδα",
+                "renameTitle": "Μετονομασία ομάδας",
+                "namePlaceholder": "Όνομα ομάδας",
+                "rename": "Μετονομασία ομάδας",
+                "delete": "Διαγραφή ομάδας",
+                "confirmDelete": "Διαγραφή της ομάδας «{name}»; Οι διακομιστές της διατηρούνται, αφαιρείται μόνο η ομάδα.",
+                "chipHint": "Κάντε κλικ για φιλτράρισμα· δεξί κλικ για μετονομασία ή διαγραφή"
+            }
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

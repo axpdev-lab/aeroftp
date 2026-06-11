@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "健康检查",
-            "storageVersioning": "文件版本：{size}"
+            "storageVersioning": "文件版本：{size}",
+            "group": {
+                "newGroup": "新建分组",
+                "newGroupEllipsis": "新建分组...",
+                "addToGroup": "添加到分组",
+                "newTitle": "新建分组",
+                "renameTitle": "重命名分组",
+                "namePlaceholder": "分组名称",
+                "rename": "重命名分组",
+                "delete": "删除分组",
+                "confirmDelete": "删除分组“{name}”？其中的服务器将保留，仅移除该分组。",
+                "chipHint": "单击进行筛选；右键单击可重命名或删除"
+            }
         },
         "gitlab": {
             "projectPath": "项目路径",

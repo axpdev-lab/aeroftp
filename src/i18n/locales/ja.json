@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ヘルスチェック",
-            "storageVersioning": "ファイルのバージョン: {size}"
+            "storageVersioning": "ファイルのバージョン: {size}",
+            "group": {
+                "newGroup": "新しいグループ",
+                "newGroupEllipsis": "新しいグループ...",
+                "addToGroup": "グループに追加",
+                "newTitle": "新しいグループ",
+                "renameTitle": "グループ名の変更",
+                "namePlaceholder": "グループ名",
+                "rename": "グループ名の変更",
+                "delete": "グループの削除",
+                "confirmDelete": "グループ「{name}」を削除しますか？ 含まれるサーバーは保持され、グループのみが削除されます。",
+                "chipHint": "クリックで絞り込み、右クリックで名前変更または削除"
+            }
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

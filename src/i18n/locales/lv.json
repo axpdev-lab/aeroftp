@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pieejamības pārbaude",
-            "storageVersioning": "Failu versijas: {size}"
+            "storageVersioning": "Failu versijas: {size}",
+            "group": {
+                "newGroup": "Jauna grupa",
+                "newGroupEllipsis": "Jauna grupa...",
+                "addToGroup": "Pievienot grupai",
+                "newTitle": "Jauna grupa",
+                "renameTitle": "Pārdēvēt grupu",
+                "namePlaceholder": "Grupas nosaukums",
+                "rename": "Pārdēvēt grupu",
+                "delete": "Dzēst grupu",
+                "confirmDelete": "Dzēst grupu “{name}”? Tajā esošie serveri tiek saglabāti, tiek noņemta tikai grupa.",
+                "chipHint": "Noklikšķiniet, lai filtrētu; ar peles labo pogu, lai pārdēvētu vai dzēstu"
+            }
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

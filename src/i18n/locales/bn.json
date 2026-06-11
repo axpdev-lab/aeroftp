@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "হেলথ চেক",
-            "storageVersioning": "ফাইল সংস্করণ: {size}"
+            "storageVersioning": "ফাইল সংস্করণ: {size}",
+            "group": {
+                "newGroup": "নতুন গ্রুপ",
+                "newGroupEllipsis": "নতুন গ্রুপ...",
+                "addToGroup": "গ্রুপে যোগ করুন",
+                "newTitle": "নতুন গ্রুপ",
+                "renameTitle": "গ্রুপের নাম পরিবর্তন",
+                "namePlaceholder": "গ্রুপের নাম",
+                "rename": "গ্রুপের নাম পরিবর্তন",
+                "delete": "গ্রুপ মুছুন",
+                "confirmDelete": "\"{name}\" গ্রুপটি মুছবেন? এর সার্ভারগুলো রাখা হবে, শুধু গ্রুপটি সরানো হবে।",
+                "chipHint": "ফিল্টার করতে ক্লিক করুন; নাম পরিবর্তন বা মুছতে ডান-ক্লিক করুন"
+            }
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

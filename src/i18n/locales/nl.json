@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Beschikbaarheidscontrole",
-            "storageVersioning": "Bestandsversies: {size}"
+            "storageVersioning": "Bestandsversies: {size}",
+            "group": {
+                "newGroup": "Nieuwe groep",
+                "newGroupEllipsis": "Nieuwe groep...",
+                "addToGroup": "Aan groep toevoegen",
+                "newTitle": "Nieuwe groep",
+                "renameTitle": "Groep hernoemen",
+                "namePlaceholder": "Groepsnaam",
+                "rename": "Groep hernoemen",
+                "delete": "Groep verwijderen",
+                "confirmDelete": "De groep \"{name}\" verwijderen? De servers erin blijven behouden, alleen de groep wordt verwijderd.",
+                "chipHint": "Klik om te filteren; rechtsklik om te hernoemen of verwijderen"
+            }
         },
         "gitlab": {
             "projectPath": "Projectpad",

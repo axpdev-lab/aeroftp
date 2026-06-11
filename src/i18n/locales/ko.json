@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "상태 확인",
-            "storageVersioning": "파일 버전: {size}"
+            "storageVersioning": "파일 버전: {size}",
+            "group": {
+                "newGroup": "새 그룹",
+                "newGroupEllipsis": "새 그룹...",
+                "addToGroup": "그룹에 추가",
+                "newTitle": "새 그룹",
+                "renameTitle": "그룹 이름 변경",
+                "namePlaceholder": "그룹 이름",
+                "rename": "그룹 이름 변경",
+                "delete": "그룹 삭제",
+                "confirmDelete": "\"{name}\" 그룹을 삭제할까요? 그룹에 속한 서버는 유지되고 그룹만 제거됩니다.",
+                "chipHint": "클릭하여 필터링, 마우스 오른쪽 클릭으로 이름 변경 또는 삭제"
+            }
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

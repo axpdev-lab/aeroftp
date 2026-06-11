@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Gwiriad iechyd",
-            "storageVersioning": "Fersiynau ffeil: {size}"
+            "storageVersioning": "Fersiynau ffeil: {size}",
+            "group": {
+                "newGroup": "Grŵp newydd",
+                "newGroupEllipsis": "Grŵp newydd...",
+                "addToGroup": "Ychwanegu at grŵp",
+                "newTitle": "Grŵp newydd",
+                "renameTitle": "Ailenwi grŵp",
+                "namePlaceholder": "Enw'r grŵp",
+                "rename": "Ailenwi grŵp",
+                "delete": "Dileu grŵp",
+                "confirmDelete": "Dileu'r grŵp \"{name}\"? Cedwir y gweinyddwyr ynddo, dim ond y grŵp a gaiff ei dynnu.",
+                "chipHint": "Cliciwch i hidlo; de-gliciwch i ailenwi neu ddileu"
+            }
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

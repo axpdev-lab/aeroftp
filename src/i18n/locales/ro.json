@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Verificarea disponibilității",
-            "storageVersioning": "Versiuni fișier: {size}"
+            "storageVersioning": "Versiuni fișier: {size}",
+            "group": {
+                "newGroup": "Grup nou",
+                "newGroupEllipsis": "Grup nou...",
+                "addToGroup": "Adaugă în grup",
+                "newTitle": "Grup nou",
+                "renameTitle": "Redenumește grupul",
+                "namePlaceholder": "Numele grupului",
+                "rename": "Redenumește grupul",
+                "delete": "Șterge grupul",
+                "confirmDelete": "Ștergeți grupul „{name}”? Serverele din el sunt păstrate, se elimină doar grupul.",
+                "chipHint": "Clic pentru filtrare; clic dreapta pentru redenumire sau ștergere"
+            }
         },
         "gitlab": {
             "projectPath": "Calea proiectului",
