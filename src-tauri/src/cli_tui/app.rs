@@ -1258,12 +1258,13 @@ impl AppState {
             self.status = "No file selected to download.".to_string();
             return Vec::new();
         };
-        // Cross default: prefer the launch download_base (for test stability and launch CWD),
-        // else fall back to the local pane's current path.
-        let base = if !self.context.download_base.is_empty() {
-            self.context.download_base.clone()
-        } else if !self.local.path.is_empty() {
+        // Cross default: download into the LOCAL pane's current directory (what
+        // the user sees on the Local side), so `g` mirrors `u`. Fall back to the
+        // launch CWD, then the process CWD, when the local pane has no path yet.
+        let base = if !self.local.path.is_empty() {
             self.local.path.clone()
+        } else if !self.context.download_base.is_empty() {
+            self.context.download_base.clone()
         } else {
             ".".to_string()
         };
@@ -1286,19 +1287,22 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
-        // Phase 3 cross: 'u' sources from local pane, targets the remote pane's current dir.
-        // For simplicity we still prompt for the exact local source (user can have selected in local).
+        // Phase 3 cross: 'u' sources from the LOCAL pane selection, targets the
+        // remote pane's current dir. The source is prefilled with the highlighted
+        // local file (mirror of `g`, which prefills the local destination), so the
+        // common case is just Enter; the field stays editable and a directory or
+        // empty selection leaves it blank to type a path.
         let remote_dir = self.browser.path.clone();
-        // If active is local, we could default the prompt to the active selected local file, but keep prompt for now.
+        let default_source = self.local.selected_file_path().unwrap_or_default();
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Upload {
                 remote_dir: remote_dir.clone(),
             },
             format!("Upload into {}", display_dir(&remote_dir)),
-            "local source file path (cross to remote pane), Enter to start, Esc to cancel",
-            String::new(),
+            "local source file (defaults to the local selection), Enter to start, Esc to cancel",
+            default_source,
         ));
-        self.status = "Uploading a file (cross local→remote).".to_string();
+        self.status = "Uploading a file (cross local->remote).".to_string();
         Vec::new()
     }
 
@@ -2198,11 +2202,19 @@ impl AppState {
                 });
                 self.transfers.mark_done(*id);
                 self.status = message.clone();
-                // An upload adds a file to the current remote directory; refresh
-                // so it appears. Downloads never change the remote listing.
+                // Refresh the destination pane so the transferred file appears:
+                // an upload lands in the REMOTE pane's directory, a download in
+                // the LOCAL pane's directory. Route each to the right side (the
+                // active side is the Transfers pane here, so don't use it).
                 if was_upload {
-                    follow_up.push(WorkerCommand::List {
-                        path: self.current_browser_dir(),
+                    if !self.browser.path.is_empty() {
+                        follow_up.push(WorkerCommand::List {
+                            path: self.browser.path.clone(),
+                        });
+                    }
+                } else if !self.local.path.is_empty() {
+                    follow_up.push(WorkerCommand::LocalList {
+                        path: self.local.path.clone(),
                     });
                 }
             }
@@ -4501,6 +4513,29 @@ mod tests {
     }
 
     #[test]
+    fn upload_prefills_the_source_from_the_local_selection() {
+        // 'u' should not ask for a path when a local file is selected: it
+        // prefills the source so Enter uploads it to the remote pane's dir.
+        let mut app = connected_app_with_local_listing();
+        app.apply_action(TuiAction::Upload);
+        match &app.overlay {
+            TuiOverlay::Prompt(prompt) => {
+                assert_eq!(prompt.buffer, "/home/ale/note.txt");
+            }
+            other => panic!("expected an upload prompt, got {:?}", other),
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Upload {
+                id: 1,
+                local_path: "/home/ale/note.txt".to_string(),
+                remote_path: "/srv/note.txt".to_string(),
+            }]
+        );
+    }
+
+    #[test]
     fn remote_rename_still_routes_to_the_remote_provider() {
         // Regression guard: the Remote side keeps using the provider command.
         let mut app = connected_app_with_listing(); // Remote side active
@@ -4525,12 +4560,14 @@ mod tests {
         app.apply_action(TuiAction::Download);
         let commands = app.handle_overlay_key(OverlayKey::Submit);
 
+        // The destination defaults to the LOCAL pane's current directory
+        // ("/tmp" from the profile's default_local_path), not the launch CWD.
         assert_eq!(
             commands,
             vec![WorkerCommand::Download {
                 id: 1,
                 remote_path: "/srv/readme.txt".to_string(),
-                local_path: "/tmp/tui_cwd/readme.txt".to_string(),
+                local_path: "/tmp/readme.txt".to_string(),
             }]
         );
         assert_eq!(app.focus, TuiFocus::Transfers);
@@ -4602,10 +4639,16 @@ mod tests {
 
         let commands = app.apply_worker_event(WorkerEvent::TransferDone {
             id: 1,
-            message: "Downloaded /srv/readme.txt -> /tmp/tui_cwd/readme.txt".to_string(),
+            message: "Downloaded /srv/readme.txt -> /tmp/readme.txt".to_string(),
         });
-        // A download never changes the remote listing, so no refresh is queued.
-        assert!(commands.is_empty());
+        // A download lands in the LOCAL pane's directory, so it refreshes the
+        // local listing (not the remote one) to surface the new file.
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::LocalList {
+                path: "/tmp".to_string()
+            }]
+        );
         assert_eq!(
             app.transfers.items[0].status,
             crate::cli_tui::panes::transfers::TransferStatus::Done
@@ -4712,7 +4755,7 @@ mod tests {
         let mut app = connected_app_with_listing();
         app.apply_action(TuiAction::MoveDown); // select readme.txt
         app.apply_action(TuiAction::Download);
-        app.handle_overlay_key(OverlayKey::Submit); // id 1, default uses sample download_base
+        app.handle_overlay_key(OverlayKey::Submit); // id 1, default = local pane dir (/tmp)
         app.apply_worker_event(WorkerEvent::TransferDone {
             id: 1,
             message: "done".to_string(),
@@ -4724,7 +4767,7 @@ mod tests {
         assert_eq!(
             commands,
             vec![WorkerCommand::DiscardPartial {
-                local_path: "/tmp/tui_cwd/readme.txt".to_string()
+                local_path: "/tmp/readme.txt".to_string()
             }]
         );
         assert!(app.transfers.items.is_empty());
