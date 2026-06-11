@@ -520,6 +520,18 @@ impl FtpProvider {
         let lower = message.to_lowercase();
         lower.contains("data connection is already open")
             || (lower.contains("425") && lower.contains("data connection"))
+            // Control-connection desync on a reused session: a prior operation
+            // left the control stream misaligned, so suppaftp fails to parse the
+            // next reply ("Response contains an invalid syntax"). This is the
+            // failure the interactive TUI hits on the first transfer after
+            // navigating; reconnecting a clean control session recovers it. A
+            // server's own "501 Syntax error" is "syntax error", not "invalid
+            // syntax", so this stays narrowly the parser-desync signature.
+            || lower.contains("invalid syntax")
+            || lower.contains("invalid response")
+            // A dropped/idle control connection: reconnect and retry.
+            || lower.contains("connection reset")
+            || lower.contains("broken pipe")
     }
 
     async fn reconnect_after_data_error(
@@ -900,56 +912,34 @@ impl StorageProvider for FtpProvider {
                 .await;
         }
 
-        let stream = self.stream_mut()?;
-
-        // Set binary mode
-        stream
-            .transfer_type(FileType::Binary)
+        // Single-stream download with one reconnect-and-retry on a desynced
+        // control connection. A reused FTP session (the interactive TUI after
+        // navigation) can leave the control stream misaligned so the TYPE/RETR
+        // reply fails to parse; reconnecting a clean session recovers it. A
+        // fresh single-shot CLI connection never hits this, so the retry is a
+        // no-op there.
+        match self
+            .download_single(remote_path, local_path, total_size, on_progress)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-
-        // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
-        let mut data_stream = stream
-            .retr_as_stream(remote_path)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        let mut chunk = vec![0u8; self.buffer_size];
-        let mut transferred: u64 = 0;
-
-        loop {
-            let n = data_stream
-                .read(&mut chunk)
-                .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            if n == 0 {
-                break;
+        {
+            Ok(()) => Ok(()),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("RETR", remote_path, &err)
+                    .await?;
+                let total_size = {
+                    let stream = self.stream_mut()?;
+                    stream
+                        .size(remote_path)
+                        .await
+                        .unwrap_or(total_size as usize) as u64
+                };
+                // Progress is dropped on the first attempt; the rare retry runs
+                // without it (the transfer still completes).
+                self.download_single(remote_path, local_path, total_size, None)
+                    .await
             }
-            atomic
-                .write_all(&chunk[..n])
-                .await
-                .map_err(ProviderError::IoError)?;
-            transferred += n as u64;
-
-            if let Some(ref progress) = on_progress {
-                progress(transferred, total_size);
-            }
+            Err(err) => Err(err),
         }
-
-        atomic.commit().await.map_err(ProviderError::IoError)?;
-
-        // Finalize the stream - need to get stream again after the borrow
-        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        stream
-            .finalize_retr_stream(data_stream)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        Ok(())
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
@@ -1028,9 +1018,6 @@ impl StorageProvider for FtpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use suppaftp::types::FileType;
-        use tokio::io::AsyncReadExt;
-
         // PD-FTP-1: a `clone_for_transfer()` pool worker starts unconnected
         // and carries only the spec; it must dial its own control+data
         // connection on the first transfer. `download()` and `read_range()`
@@ -1039,103 +1026,22 @@ impl StorageProvider for FtpProvider {
         // `NotConnected`. A no-op when the provider is already connected.
         self.ensure_connected().await?;
 
-        // Capture before the &mut self borrow below; needed later to decide
-        // whether to insert the TLS-drain sleep.
-        let tls_active = !matches!(self.config.tls_mode, FtpTlsMode::None);
-
-        let stream = self.stream_mut()?;
-
-        // Set binary transfer mode explicitly
-        stream
-            .transfer_type(FileType::Binary)
+        // One reconnect-and-retry on a desynced control connection (same
+        // reused-session recovery as download); a fresh CLI connection never
+        // hits it, so this is a no-op for the single-shot path. Progress is
+        // dropped on the rare retry (the transfer still completes).
+        match self
+            .upload_single(local_path, remote_path, on_progress)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        let mut file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
-
-        // Open streaming upload channel (PASV + STOR)
-        let mut data_stream = stream
-            .put_with_stream(remote_path)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        // Write in 64KB chunks for optimal throughput
-        let mut chunk = [0u8; 65536];
-        let mut total_written: u64 = 0;
-
-        loop {
-            let n = file
-                .read(&mut chunk)
-                .await
-                .map_err(ProviderError::IoError)?;
-            if n == 0 {
-                break;
+        {
+            Ok(()) => Ok(()),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("STOR", remote_path, &err)
+                    .await?;
+                self.upload_single(local_path, remote_path, None).await
             }
-            data_stream
-                .write_all(&chunk[..n])
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
-            total_written += n as u64;
-            if let Some(ref progress) = on_progress {
-                progress(total_written, total_size);
-            }
+            Err(err) => Err(err),
         }
-
-        // Flush all (TLS) buffers to the wire
-        data_stream
-            .flush()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
-
-        // TLS shutdown races with TCP send buffer when a close_notify is
-        // sent before the kernel has drained the last TLS records. On
-        // **TLS-protected** FTP connections we therefore wait for the
-        // socket to drain in proportion to the upload size before letting
-        // suppaftp issue close_notify and read the 226 reply. Plain FTP
-        // has no close_notify and the underlying TCP FIN ordering is fine
-        //: the sleep there is pure dead time and was the dominant cost
-        // on small/medium uploads (50-100ms per file × 500 files = 25-50s
-        // wasted on the bulk-of-small-files benchmark).
-        if tls_active {
-            let drain_ms = (total_written / 4096).clamp(100, 2000);
-            tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
-        }
-
-        // Finalize: sends TLS close_notify (when TLS), reads 226 from control channel
-        stream
-            .finalize_put_stream(data_stream)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        // Preserve local file's mtime on the remote file via MFMT (draft-somers-ftp-mfxx).
-        // MFMT is a standalone FTP command, NOT a SITE sub-command.
-        // Best practice: FileZilla, WinSCP, lftp all do this after upload.
-        if self.mfmt_supported {
-            if let Ok(local_meta) = std::fs::metadata(local_path) {
-                if let Ok(mtime) = local_meta.modified() {
-                    if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                        let dt = chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0);
-                        if let Some(dt) = dt {
-                            let mfmt_time = dt.format("%Y%m%d%H%M%S").to_string();
-                            if let Some(stream) = self.stream.as_mut() {
-                                // MFMT <time-val> <pathname>: expects 213 response
-                                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
-                                if let Err(e) =
-                                    stream.custom_command(&cmd, &[suppaftp::Status::File]).await
-                                {
-                                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1640,6 +1546,180 @@ fn canonical_hash_key(server_algo: &str) -> String {
 }
 
 impl FtpProvider {
+    /// One single-stream RETR attempt. Factored out of the trait `download` so
+    /// it can be retried once after reconnecting a clean control session
+    /// (reused-session recovery). `on_progress` is owned; the retry passes
+    /// `None`.
+    async fn download_single(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let stream = self.stream_mut()?;
+
+        // Set binary mode
+        stream
+            .transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+
+        // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
+        let mut data_stream = stream
+            .retr_as_stream(remote_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+
+        let mut chunk = vec![0u8; self.buffer_size];
+        let mut transferred: u64 = 0;
+
+        loop {
+            let n = data_stream
+                .read(&mut chunk)
+                .await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if n == 0 {
+                break;
+            }
+            atomic
+                .write_all(&chunk[..n])
+                .await
+                .map_err(ProviderError::IoError)?;
+            transferred += n as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+        }
+
+        atomic.commit().await.map_err(ProviderError::IoError)?;
+
+        // Finalize the stream - need to get stream again after the borrow
+        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
+        stream
+            .finalize_retr_stream(data_stream)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// One STOR attempt. Factored out of the trait `upload` so it can be retried
+    /// once after reconnecting a clean control session. `on_progress` is owned;
+    /// the retry passes `None`.
+    async fn upload_single(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        use suppaftp::types::FileType;
+        use tokio::io::AsyncReadExt;
+
+        // Capture before the &mut self borrow below; needed later to decide
+        // whether to insert the TLS-drain sleep.
+        let tls_active = !matches!(self.config.tls_mode, FtpTlsMode::None);
+
+        let stream = self.stream_mut()?;
+
+        // Set binary transfer mode explicitly
+        stream
+            .transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let mut file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
+
+        // Open streaming upload channel (PASV + STOR)
+        let mut data_stream = stream
+            .put_with_stream(remote_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        // Write in 64KB chunks for optimal throughput
+        let mut chunk = [0u8; 65536];
+        let mut total_written: u64 = 0;
+
+        loop {
+            let n = file
+                .read(&mut chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            if n == 0 {
+                break;
+            }
+            data_stream
+                .write_all(&chunk[..n])
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
+            total_written += n as u64;
+            if let Some(ref progress) = on_progress {
+                progress(total_written, total_size);
+            }
+        }
+
+        // Flush all (TLS) buffers to the wire
+        data_stream
+            .flush()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+
+        // TLS shutdown races with TCP send buffer when a close_notify is
+        // sent before the kernel has drained the last TLS records. On
+        // **TLS-protected** FTP connections we therefore wait for the
+        // socket to drain in proportion to the upload size before letting
+        // suppaftp issue close_notify and read the 226 reply. Plain FTP
+        // has no close_notify and the underlying TCP FIN ordering is fine
+        //: the sleep there is pure dead time and was the dominant cost
+        // on small/medium uploads (50-100ms per file × 500 files = 25-50s
+        // wasted on the bulk-of-small-files benchmark).
+        if tls_active {
+            let drain_ms = (total_written / 4096).clamp(100, 2000);
+            tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
+        }
+
+        // Finalize: sends TLS close_notify (when TLS), reads 226 from control channel
+        stream
+            .finalize_put_stream(data_stream)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        // Preserve local file's mtime on the remote file via MFMT (draft-somers-ftp-mfxx).
+        // MFMT is a standalone FTP command, NOT a SITE sub-command.
+        // Best practice: FileZilla, WinSCP, lftp all do this after upload.
+        if self.mfmt_supported {
+            if let Ok(local_meta) = std::fs::metadata(local_path) {
+                if let Ok(mtime) = local_meta.modified() {
+                    if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                        let dt = chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0);
+                        if let Some(dt) = dt {
+                            let mfmt_time = dt.format("%Y%m%d%H%M%S").to_string();
+                            if let Some(stream) = self.stream.as_mut() {
+                                // MFMT <time-val> <pathname>: expects 213 response
+                                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
+                                if let Err(e) =
+                                    stream.custom_command(&cmd, &[suppaftp::Status::File]).await
+                                {
+                                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Compute a remote file checksum using the best available command.
     /// Returns a map like {"MD5": "abc123..."} or {"CRC32": "..."} etc.
     pub async fn remote_checksum(
@@ -1813,6 +1893,43 @@ async fn ftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stale_control_connection_error_is_detected_for_reconnect() {
+        // The reused-session desync (suppaftp parse failure) and dropped
+        // control connections must trigger the reconnect-and-retry path.
+        let stale = [
+            "Response contains an invalid syntax",
+            "Invalid response: bad",
+            "an invalid response",
+            "connection reset by peer",
+            "broken pipe",
+            "425 Can't open data connection",
+            "data connection is already open",
+        ];
+        for msg in stale {
+            assert!(
+                FtpProvider::is_stale_data_connection_error(&ProviderError::ServerError(
+                    msg.to_string()
+                )),
+                "expected '{}' to be recoverable",
+                msg
+            );
+        }
+        // A server's own 5xx (not a parser desync) must NOT trigger a reconnect.
+        for msg in [
+            "550 No such file or directory",
+            "501 Syntax error in parameters",
+        ] {
+            assert!(
+                !FtpProvider::is_stale_data_connection_error(&ProviderError::ServerError(
+                    msg.to_string()
+                )),
+                "expected '{}' to be non-recoverable",
+                msg
+            );
+        }
+    }
 
     #[test]
     fn test_parse_unix_listing() {
