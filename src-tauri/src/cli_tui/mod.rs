@@ -78,7 +78,8 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
         }
     }
     let mut worker = worker;
-    let theme = TuiTheme::default();
+    // Honour NO_COLOR: a monochrome palette when the variable is set (P4 A3).
+    let theme = TuiTheme::from_env();
 
     with_terminal(|terminal| {
         loop {
@@ -254,7 +255,10 @@ fn render_browser_fullscreen(
             Span::styled("q", theme.accent_style()),
             Span::raw(" quit"),
         ]),
-        Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
+        Line::from(Span::styled(
+            sanitize_display(&app.status),
+            theme.muted_style(),
+        )),
     ]);
     frame.render_widget(footer, rows[2]);
 }
@@ -781,7 +785,10 @@ fn render_introhub_footer(
             Span::styled("q", theme.accent_style()),
             Span::raw(" quit"),
         ]),
-        Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
+        Line::from(Span::styled(
+            sanitize_display(&app.status),
+            theme.muted_style(),
+        )),
     ]);
     frame.render_widget(footer, area);
 }
@@ -1196,11 +1203,23 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     }
 }
 
+/// Neutralise control characters in a string that originates from a remote
+/// (a listing entry name, a server-supplied timestamp, a provider error body in
+/// the status line) before it reaches the terminal. A crafted name carrying an
+/// ESC sequence could otherwise inject cursor moves or colour codes, or a
+/// newline could break the single-line layout. Control chars become spaces,
+/// preserving the visual width (P4 audit, injection hardening).
+pub(crate) fn sanitize_display(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
 fn format_browser_entry(entry: &crate::cli_tui::panes::browser::BrowserEntry) -> String {
     if entry.is_dir {
-        format!("{}/", entry.name)
+        format!("{}/", sanitize_display(&entry.name))
     } else {
-        entry.name.clone()
+        sanitize_display(&entry.name)
     }
 }
 
@@ -1209,14 +1228,14 @@ fn browser_entry_meta(entry: &crate::cli_tui::panes::browser::BrowserEntry) -> S
         return entry
             .modified
             .as_ref()
-            .map(|modified| format!("  {}", short_modified(modified)))
+            .map(|modified| format!("  {}", sanitize_display(short_modified(modified))))
             .unwrap_or_default();
     }
 
     let modified = entry
         .modified
         .as_ref()
-        .map(|modified| format!("  {}", short_modified(modified)))
+        .map(|modified| format!("  {}", sanitize_display(short_modified(modified))))
         .unwrap_or_default();
     format!("  {}{}", format_browser_size(entry.size), modified)
 }
@@ -1256,13 +1275,77 @@ fn selection_style(focus: TuiFocus, pane: TuiFocus, theme: TuiTheme) -> Style {
             .add_modifier(Modifier::BOLD)
     }
 }
+/// A scope guard whose `Drop` runs a restore closure unless it has been
+/// disarmed. The closure is generic so the restore steps can be unit-tested
+/// without a real terminal (P4 A1): the production guard restores raw mode,
+/// the alternate screen, mouse capture, and the cursor; a test guard records
+/// that its `Drop` ran. The guard is the robustness backstop for a panic
+/// mid-draw, which unwinds past the normal restore call; `disarm` is called on
+/// the normal exit path so the explicit, error-surfacing restore runs instead.
+struct ScopeGuard<F: FnMut()> {
+    armed: bool,
+    on_drop: F,
+}
+
+impl<F: FnMut()> ScopeGuard<F> {
+    fn armed(on_drop: F) -> Self {
+        Self {
+            armed: true,
+            on_drop,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl<F: FnMut()> Drop for ScopeGuard<F> {
+    fn drop(&mut self) {
+        if self.armed {
+            (self.on_drop)();
+        }
+    }
+}
+
+/// Restore the terminal from a fresh stdout handle (no `Terminal` needed), so
+/// it can run from a panic hook as well as the scope guard. Reverses the enable
+/// order: mouse capture, alternate screen, raw mode, then show the cursor.
+fn restore_terminal_raw() -> io::Result<()> {
+    use crossterm::cursor::Show;
+    let mut stdout = io::stdout();
+    let _ = stdout.execute(DisableMouseCapture);
+    let _ = stdout.execute(LeaveAlternateScreen);
+    let raw_result = disable_raw_mode();
+    let _ = stdout.execute(Show);
+    raw_result
+}
+
+/// Install, exactly once per process, a panic hook that restores the terminal
+/// before delegating to the previous hook. A panic mid-draw would otherwise
+/// print its message into a raw-mode alternate screen with the cursor hidden,
+/// wrecking the user's shell. Chaining the prior hook keeps the normal panic
+/// output (and any backtrace) intact, now on a clean terminal.
+fn install_tui_panic_hook() {
+    use std::sync::Once;
+    static HOOK: Once = Once::new();
+    HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = restore_terminal_raw();
+            previous(info);
+        }));
+    });
+}
+
 /// Run a ratatui surface in raw-mode alternate-screen mode.
 ///
 /// The restore path is deliberately centralized because every interactive
 /// surface must leave the user's terminal usable even when drawing or input
-/// handling returns an error. Mouse capture (added for 1.0.1) is enabled here
-/// and disabled on every exit path (including early errors and the future
-/// panic guard in P4).
+/// handling returns an error - or panics. Mouse capture (1.0.1) is enabled here
+/// and disabled on every exit path: an early `Err` (explicit), a normal return
+/// (the explicit `restore_terminal`), an unwinding panic (the `ScopeGuard`),
+/// and as a last resort the process-wide panic hook.
 pub fn with_terminal<R>(run: impl FnOnce(&mut CliTuiTerminal) -> io::Result<R>) -> io::Result<R> {
     let mut stdout = io::stdout();
     enable_raw_mode()?;
@@ -1278,18 +1361,27 @@ pub fn with_terminal<R>(run: impl FnOnce(&mut CliTuiTerminal) -> io::Result<R>) 
         return Err(err);
     }
 
+    // From here on the terminal is in raw + alt-screen + mouse-capture mode, so
+    // any panic must restore it. The hook covers panic=abort and runs before the
+    // unwind; the guard covers the unwind itself and early returns.
+    install_tui_panic_hook();
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = match Terminal::new(backend) {
         Ok(terminal) => terminal,
         Err(err) => {
-            let _ = io::stdout().execute(DisableMouseCapture);
-            let _ = io::stdout().execute(LeaveAlternateScreen);
-            let _ = disable_raw_mode();
+            let _ = restore_terminal_raw();
             return Err(err);
         }
     };
 
+    let mut guard = ScopeGuard::armed(|| {
+        let _ = restore_terminal_raw();
+    });
     let run_result = run(&mut terminal);
+    // Normal/Err return: disarm the guard and run the explicit restore so its
+    // errors can be surfaced (the guard's restore is best-effort).
+    guard.disarm();
     let restore_result = restore_terminal(&mut terminal);
 
     match run_result {
@@ -1507,5 +1599,130 @@ mod render_tests {
         let mut tiny = Terminal::new(TestBackend::new(20, 6)).unwrap();
         tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
+    }
+
+    /// P4 A3: the monochrome (NO_COLOR) theme renders the IntroHub and the
+    /// connected view without colour styles and without panicking.
+    #[test]
+    fn monochrome_theme_renders() {
+        let theme = TuiTheme::monochrome();
+        assert_eq!(theme.accent, Color::Reset);
+
+        let mut app = AppState::new_live(smoke_context());
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("My Servers"), "IntroHub renders monochrome");
+
+        // Connected view too.
+        app.session.phase = TuiSessionPhase::Connected;
+        app.focus = TuiFocus::Browser;
+        terminal
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+    }
+
+    /// P4 A2: every overlay renders without panic on a cramped 60x18 terminal
+    /// (the IntroHub table, the dual panes, and each modal popup).
+    #[test]
+    fn overlays_render_on_a_cramped_terminal() {
+        use crate::cli_tui::overlay::{
+            ConfirmKind, ConfirmState, GroupsOverlayItem, GroupsOverlayState, PaletteState,
+            ProfileFormState, PromptKind, PromptState, TuiOverlay,
+        };
+        let theme = TuiTheme::default();
+        let overlays = [
+            TuiOverlay::Palette(PaletteState {
+                buffer: "cd /very/long/remote/path/that/wraps".to_string(),
+                last_result: "unknown 'foo'".to_string(),
+            }),
+            TuiOverlay::ProfileForm(ProfileFormState::new_create("ale".to_string())),
+            TuiOverlay::Prompt(PromptState::new(
+                PromptKind::Mkdir {
+                    parent: "/srv".to_string(),
+                },
+                "New folder",
+                "type a name",
+                String::new(),
+            )),
+            TuiOverlay::Confirm(ConfirmState {
+                kind: ConfirmKind::Delete {
+                    path: "/srv/old".to_string(),
+                    recursive: false,
+                },
+                message: "Delete '/srv/old'?".to_string(),
+            }),
+            TuiOverlay::Groups(GroupsOverlayState {
+                profile_id: "srv-1".to_string(),
+                profile_name: "NAS".to_string(),
+                cursor: 0,
+                groups: vec![GroupsOverlayItem {
+                    name: "Production".to_string(),
+                    member_count: 2,
+                    is_member: true,
+                }],
+            }),
+        ];
+        for overlay in overlays {
+            let mut app = AppState::new_live(smoke_context());
+            app.session.phase = TuiSessionPhase::Connected;
+            app.focus = TuiFocus::Browser;
+            app.overlay = overlay;
+            for (w, h) in [(60u16, 18u16), (80, 24), (20, 6)] {
+                let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+                terminal
+                    .draw(|frame| render_dashboard(frame, &mut app, theme))
+                    .unwrap();
+            }
+        }
+    }
+
+    /// P4 A1: the terminal-restore scope guard runs its restore on a normal
+    /// drop and while unwinding from a panic, but not after it is disarmed
+    /// (the normal exit path runs the explicit, error-surfacing restore). Tests
+    /// the guard's `Drop` logic without a real terminal via a recording closure.
+    #[test]
+    fn scope_guard_restores_on_drop_and_unwind_but_not_after_disarm() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        // Armed guard runs its restore on a normal drop.
+        let calls = Arc::new(AtomicUsize::new(0));
+        {
+            let c = Arc::clone(&calls);
+            let _g = ScopeGuard::armed(move || {
+                c.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Disarmed guard does not run its restore.
+        let calls = Arc::new(AtomicUsize::new(0));
+        {
+            let c = Arc::clone(&calls);
+            let mut g = ScopeGuard::armed(move || {
+                c.fetch_add(1, Ordering::SeqCst);
+            });
+            g.disarm();
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        // The guard restores while unwinding from a panic mid-closure. Silence
+        // the panic output so the test log stays clean.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let c = Arc::clone(&calls);
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _g = ScopeGuard::armed(|| {
+                c.fetch_add(1, Ordering::SeqCst);
+            });
+            panic!("boom mid-draw");
+        }));
+        std::panic::set_hook(prev);
+        assert!(result.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "guard restored on unwind");
     }
 }

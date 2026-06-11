@@ -2337,6 +2337,13 @@ impl AppState {
     pub fn handle_mouse(&mut self, ev: MouseEvent) -> Vec<WorkerCommand> {
         use crossterm::event::MouseEventKind;
 
+        // A modal overlay owns all input while it is open: a click or wheel must
+        // not reach the view behind it (it would select rows or switch sides
+        // under the modal). The overlays are keyboard-driven, so swallow mouse.
+        if self.overlay.is_active() {
+            return Vec::new();
+        }
+
         // Double-click detection (update last on Down Left).
         let mut is_double = false;
         if let ::crossterm::event::MouseEventKind::Down(MouseButton::Left) = ev.kind {
@@ -4797,28 +4804,70 @@ mod tests {
         let mut app = connected_app_with_listing();
         app.focus = TuiFocus::Browser;
         app.active_browser_side = BrowserSide::Remote;
+        // Bordered pane at y=2: the first entry row is data_top = y + 1 = 3.
         app.layout.remote_pane = Some(Rect {
             x: 0,
             y: 2,
             width: 40,
             height: 10,
         });
-        // Simulate first down to prime double detection.
+        // First down primes double-click detection on row 3 (the `docs/` dir).
         let _ = app.handle_mouse(sample_mouse_event(
             ::crossterm::event::MouseEventKind::Down(MouseButton::Left),
             10,
-            5,
+            3,
         ));
-        // Second down fast on same cell -> double.
-        let me2 = sample_mouse_event(
+        // Second down fast on the same cell -> double-click -> open the entry.
+        let cmds = app.handle_mouse(sample_mouse_event(
             ::crossterm::event::MouseEventKind::Down(MouseButton::Left),
             10,
-            5,
+            3,
+        ));
+        // Row 0 (`docs`) is a directory, so opening it lists that path.
+        assert_eq!(app.browser.selected, 0);
+        assert_eq!(
+            cmds,
+            vec![WorkerCommand::List {
+                path: "/srv/docs".to_string()
+            }]
         );
-        let cmds = app.handle_mouse(me2);
-        // Double should attempt activate (list dir or stat file) -> non-empty cmds.
-        // Even if no entries under click coord, the path exercises the double path.
-        // We only assert it did not panic and returned a vec (may be empty if no hit row).
-        let _ = cmds;
+    }
+
+    #[test]
+    fn mouse_is_swallowed_while_an_overlay_is_open() {
+        let mut app = connected_app_with_listing();
+        app.focus = TuiFocus::Browser;
+        app.active_browser_side = BrowserSide::Remote;
+        app.layout.local_pane = Some(Rect {
+            x: 40,
+            y: 2,
+            width: 40,
+            height: 10,
+        });
+        // Open the palette, then click in the local pane behind it.
+        app.apply_action(TuiAction::OpenPalette);
+        let before_side = app.active_browser_side;
+        let cmds = app.handle_mouse(sample_mouse_event(
+            ::crossterm::event::MouseEventKind::Down(MouseButton::Left),
+            50,
+            5,
+        ));
+        assert!(cmds.is_empty(), "no command from a click under a modal");
+        assert_eq!(
+            app.active_browser_side, before_side,
+            "the view behind the overlay is not touched"
+        );
+        assert!(matches!(app.overlay, TuiOverlay::Palette(_)));
+    }
+
+    #[test]
+    fn remote_file_names_with_control_chars_are_sanitized_for_display() {
+        // A crafted listing name carrying an ESC sequence must not reach the
+        // terminal verbatim (P4 injection hardening).
+        let cleaned = crate::cli_tui::sanitize_display("evil\u{1b}[31mname\nsecond");
+        assert!(!cleaned.contains('\u{1b}'));
+        assert!(!cleaned.contains('\n'));
+        assert!(cleaned.contains("evil"));
+        assert!(cleaned.contains("name"));
     }
 }
