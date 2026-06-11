@@ -9215,6 +9215,60 @@ fn toggle_group_membership_in_vault(
     Ok((group_name, now_member))
 }
 
+/// Rename a group, looked up case-insensitively by its current name. Returns
+/// the canonical old name on success. Mirrors `renameGroup` in serverGroups.ts.
+fn rename_group_in_vault(
+    store: &CredentialStore,
+    old_name: &str,
+    new_name: &str,
+) -> Result<String, String> {
+    let new_trimmed = new_name.trim();
+    if new_trimmed.is_empty() {
+        return Err("New group name cannot be empty".to_string());
+    }
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let g = groups
+        .iter_mut()
+        .find(|g| g.name.eq_ignore_ascii_case(old_name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", old_name.trim()))?;
+    let was = g.name.clone();
+    g.name = new_trimmed.to_string();
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok(was)
+}
+
+/// Delete a group by name (case-insensitive). The member servers are kept: a
+/// group is just a label, so removing it only drops the grouping, mirroring
+/// `deleteGroup` in serverGroups.ts. Returns the canonical name removed.
+fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, String> {
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let pos = groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", name.trim()))?;
+    let removed = groups.remove(pos).name;
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok(removed)
+}
+
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
 /// language EhudKirsh asked for in issue #180: green for creation /
 /// rename, blue for copy / duplicate, red for delete. Tied to
@@ -10249,7 +10303,7 @@ fn interactive_profiles_loop(
             cmd
         } else {
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove group  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -10595,24 +10649,71 @@ fn interactive_profiles_loop(
             continue;
         }
 
-        // `g` (group): the LAST token is the group name; the rest are profile
-        // selectors. Toggles each selected profile's membership in that group,
-        // creating the group if the name is new (#320). Mirrors the `f`
-        // favourite toggle but with a named bucket.
+        // `g` (group): membership toggle, or a rename/delete verb (#320).
+        //   g <selector> [selector ...] <group>   toggle membership (create if new)
+        //   g rename <old> <new>                   rename a group
+        //   g delete <group>                       delete a group (servers kept)
+        // Group names are single tokens in interactive mode (whitespace splits).
         let mut group_name_arg: Option<String> = None;
         if action == 'g' {
-            let popped = selectors.pop();
-            let valid_name = popped
-                .as_deref()
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-            if !valid_name || selectors.is_empty() {
-                eprintln!(
-                    "Usage: g <selector> [selector ...] <group-name>   (toggles membership; creates the group if new)"
-                );
-                continue;
+            let verb = selectors.first().map(|s| s.to_ascii_lowercase());
+            match verb.as_deref() {
+                Some("rename") | Some("mv") => {
+                    if selectors.len() != 3 {
+                        eprintln!("Usage: g rename <old-group> <new-group>");
+                        continue;
+                    }
+                    match rename_group_in_vault(store, &selectors[1], &selectors[2]) {
+                        Ok(old) => eprintln!(
+                            "{}",
+                            paint_green(&format!(
+                                "Group '{}' renamed to '{}'.",
+                                old,
+                                selectors[2].trim()
+                            ))
+                        ),
+                        Err(e) => {
+                            eprintln!("{}", paint_red(&format!("Group rename failed: {}", e)))
+                        }
+                    }
+                    continue;
+                }
+                Some("delete") | Some("del") | Some("rm") => {
+                    if selectors.len() != 2 {
+                        eprintln!("Usage: g delete <group>   (the member servers are kept)");
+                        continue;
+                    }
+                    match delete_group_in_vault(store, &selectors[1]) {
+                        Ok(name) => eprintln!(
+                            "{}",
+                            paint_yellow(&format!(
+                                "Group '{}' deleted. Its servers were kept.",
+                                name
+                            ))
+                        ),
+                        Err(e) => {
+                            eprintln!("{}", paint_red(&format!("Group delete failed: {}", e)))
+                        }
+                    }
+                    continue;
+                }
+                _ => {
+                    // Membership toggle: LAST token is the group name, the rest
+                    // are profile selectors. Mirrors the `f` favourite toggle.
+                    let popped = selectors.pop();
+                    let valid_name = popped
+                        .as_deref()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false);
+                    if !valid_name || selectors.is_empty() {
+                        eprintln!(
+                            "Usage: g <selector> [selector ...] <group>  -  g rename <old> <new>  -  g delete <group>"
+                        );
+                        continue;
+                    }
+                    group_name_arg = popped;
+                }
             }
-            group_name_arg = popped;
         }
 
         // Optional tree depth: a `:N` token (u8) among the selectors overrides
