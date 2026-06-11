@@ -9274,6 +9274,156 @@ fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, 
     Ok(removed)
 }
 
+/// Remove a deleted profile id from every group's member list and from the
+/// favourites set (B4 DiscoveryHub delete). Mirrors `pruneServerFromGroups` in
+/// `serverGroups.ts`: the group rows themselves stay (a group is just a label),
+/// only the membership is dropped. Best-effort; a malformed blob is left alone.
+fn prune_profile_from_groups_and_favorites(store: &CredentialStore, profile_id: &str) {
+    // Favourites: drop the id from `config_favorite_servers`.
+    if let Ok(raw) = store.get("config_favorite_servers") {
+        if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&raw) {
+            let before = ids.len();
+            ids.retain(|i| i != profile_id);
+            if ids.len() != before {
+                if let Ok(payload) = serde_json::to_string(&ids) {
+                    let _ = store.store("config_favorite_servers", &payload);
+                }
+            }
+        }
+    }
+    // Groups: drop the id from every group's `members`.
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    if !raw.is_empty() {
+        if let Ok(mut groups) = serde_json::from_str::<Vec<CliServerGroup>>(&raw) {
+            let mut changed = false;
+            for g in groups.iter_mut() {
+                let before = g.members.len();
+                g.members.retain(|m| m != profile_id);
+                if g.members.len() != before {
+                    changed = true;
+                }
+            }
+            if changed {
+                if let Ok(payload) = serde_json::to_string(&groups) {
+                    let _ = store.store("config_server_groups", &payload);
+                }
+            }
+        }
+    }
+}
+
+/// Delete a saved profile from `user_name`'s partition (B4 DiscoveryHub): drop
+/// the row by id, prune the id from groups/favourites, and best-effort delete
+/// its `server_<id>` credential. Best-effort like the favourite/group flips:
+/// the IntroHub already removed the row optimistically. A locked user partition
+/// or a missing user simply skips the write.
+fn tui_delete_profile(store: &CredentialStore, user_name: &str, profile_id: &str) {
+    use ftp_client_gui_lib::user_partitions;
+    let Ok(user) = user_partitions::cli_find_user_by_name(store, user_name) else {
+        return;
+    };
+    let Ok(mut profiles) = user_partitions::cli_list_server_profiles_for_user(store, user.id)
+    else {
+        return;
+    };
+    let before = profiles.len();
+    profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
+    if profiles.len() == before {
+        return; // nothing to delete
+    }
+    if user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).is_err() {
+        return;
+    }
+    prune_profile_from_groups_and_favorites(store, profile_id);
+    dual_delete_server_cred(store, Some(user.id), &format!("server_{}", profile_id));
+}
+
+/// Create or edit a saved profile in `user_name`'s partition (B4 DiscoveryHub).
+/// An empty `draft.id` would be a bug (the TUI mints before sending); a
+/// non-matching id appends as a create. On edit the existing row's unmanaged
+/// keys (options, lastConnected, color, providerId) are preserved and only the
+/// form-owned fields are overwritten. When `secret` is present the password is
+/// dual-written under `server_<id>`. Best-effort, like the favourite/group flips.
+fn tui_save_profile(
+    store: &CredentialStore,
+    user_name: &str,
+    draft: &cli_tui::worker::TuiProfileDraft,
+    secret: Option<&cli_tui::worker::TuiSecret>,
+) {
+    use ftp_client_gui_lib::user_partitions;
+    if draft.id.is_empty() {
+        return;
+    }
+    let Ok(user) = user_partitions::cli_find_user_by_name(store, user_name) else {
+        return;
+    };
+    let Ok(mut profiles) = user_partitions::cli_list_server_profiles_for_user(store, user.id)
+    else {
+        return;
+    };
+
+    let apply_fields = |entry: &mut serde_json::Map<String, serde_json::Value>| {
+        entry.insert("id".into(), serde_json::Value::String(draft.id.clone()));
+        entry.insert("name".into(), serde_json::Value::String(draft.name.clone()));
+        entry.insert(
+            "protocol".into(),
+            serde_json::Value::String(draft.protocol.clone()),
+        );
+        entry.insert("host".into(), serde_json::Value::String(draft.host.clone()));
+        entry.insert("port".into(), serde_json::json!(draft.port));
+        entry.insert(
+            "username".into(),
+            serde_json::Value::String(draft.username.clone()),
+        );
+        entry.insert(
+            "initialPath".into(),
+            serde_json::Value::String(if draft.initial_path.is_empty() {
+                "/".to_string()
+            } else {
+                draft.initial_path.clone()
+            }),
+        );
+        if draft.local_initial_path.is_empty() {
+            entry.remove("localInitialPath");
+        } else {
+            entry.insert(
+                "localInitialPath".into(),
+                serde_json::Value::String(draft.local_initial_path.clone()),
+            );
+        }
+    };
+
+    let existing = profiles
+        .iter_mut()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(draft.id.as_str()));
+    if let Some(value) = existing {
+        // Edit: preserve unmanaged keys, overwrite the form-owned ones.
+        if let Some(map) = value.as_object_mut() {
+            apply_fields(map);
+        }
+    } else {
+        // Create: prepend like `cmd_profile_create` so it surfaces on top.
+        let mut entry = serde_json::Map::new();
+        apply_fields(&mut entry);
+        profiles.insert(0, serde_json::Value::Object(entry));
+    }
+
+    if user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).is_err() {
+        return;
+    }
+
+    if let Some(secret) = secret {
+        if !secret.is_empty() {
+            dual_store_server_cred(
+                store,
+                Some(user.id),
+                &format!("server_{}", draft.id),
+                secret.expose(),
+            );
+        }
+    }
+}
+
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
 /// language EhudKirsh asked for in issue #180: green for creation /
 /// rename, blue for copy / duplicate, red for delete. Tied to
@@ -10628,6 +10778,30 @@ async fn run_cli_tui_worker(
             WorkerCommand::DeleteGroup { name } => {
                 if let Ok(store) = open_vault(cli) {
                     let _ = delete_group_in_vault(&store, &name);
+                }
+            }
+            WorkerCommand::DeleteProfile {
+                user_name,
+                profile_id,
+            } => {
+                // Persist the profile delete the IntroHub already applied
+                // optimistically (B4): drop the row, prune groups/favourites,
+                // remove the credential. Fire-and-forget like the group flips.
+                if let Ok(store) = open_vault(cli) {
+                    tui_delete_profile(&store, &user_name, &profile_id);
+                }
+            }
+            WorkerCommand::SaveProfile {
+                user_name,
+                draft,
+                secret,
+            } => {
+                // Persist the profile create/edit the IntroHub already applied
+                // optimistically (B4). The secret (when present) is dual-written
+                // under `server_<id>` and zeroized when it drops at the end of
+                // this arm.
+                if let Ok(store) = open_vault(cli) {
+                    tui_save_profile(&store, &user_name, &draft, secret.as_ref());
                 }
             }
             WorkerCommand::HealthCheck {

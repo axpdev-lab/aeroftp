@@ -1,5 +1,77 @@
 use crate::cli_tui::session::TuiSessionIdentity;
+use std::fmt;
 use tokio::sync::mpsc;
+use zeroize::Zeroize;
+
+/// A profile credential (password / token) carried from the DiscoveryHub form
+/// (B4) to the worker. The inner secret is zeroized on drop and redacted in
+/// `Debug`, so it never lands in a log line, a status string, or a panic
+/// payload. `Eq`/`PartialEq` compare the inner value so `WorkerCommand` stays
+/// `Eq`-clean. The vault write happens in the worker; the TUI only holds it long
+/// enough to send it across the channel.
+#[derive(Clone, Default)]
+pub struct TuiSecret(String);
+
+impl TuiSecret {
+    /// Expose the raw secret. Call sites are limited to the worker's vault write
+    /// and the form's masked-length render; never log the result.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.chars().count()
+    }
+
+    pub fn push(&mut self, c: char) {
+        self.0.push(c);
+    }
+
+    pub fn pop(&mut self) {
+        self.0.pop();
+    }
+}
+
+impl fmt::Debug for TuiSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Never render the secret; only whether one is present and its length.
+        write!(f, "TuiSecret(len={})", self.0.chars().count())
+    }
+}
+
+impl PartialEq for TuiSecret {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for TuiSecret {}
+
+impl Drop for TuiSecret {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+/// A profile draft built by the DiscoveryHub form (B4) and persisted by the
+/// worker. Typed (not `serde_json::Value`) so `WorkerCommand` stays `Eq`-clean;
+/// the worker turns it into the GUI `ServerProfile` JSON shape. An empty `id`
+/// means "create" (the worker mints one); a non-empty `id` means "edit".
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct TuiProfileDraft {
+    pub id: String,
+    pub name: String,
+    pub protocol: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub initial_path: String,
+    pub local_initial_path: String,
+}
 
 pub type WorkerCommandSender = mpsc::UnboundedSender<WorkerCommand>;
 pub type WorkerCommandReceiver = mpsc::UnboundedReceiver<WorkerCommand>;
@@ -111,6 +183,25 @@ pub enum WorkerCommand {
     DeleteGroup {
         name: String,
     },
+    /// Delete a saved profile from the named user's partition (B4
+    /// DiscoveryHub): drop the row by id, then prune the id from
+    /// `config_server_groups` and `config_favorite_servers`, and best-effort
+    /// delete its `server_<id>` credential. Optimistic: the IntroHub already
+    /// removed the row. Fire-and-forget like the favourite/group flips.
+    DeleteProfile {
+        user_name: String,
+        profile_id: String,
+    },
+    /// Create (empty `draft.id`) or edit (non-empty `draft.id`) a saved profile
+    /// in the named user's partition (B4). When `secret` is `Some`, the password
+    /// is dual-written under `server_<id>` (vault + user partition). Optimistic;
+    /// fire-and-forget. The worker mints the id on create and echoes it back so
+    /// the IntroHub can adopt it.
+    SaveProfile {
+        user_name: String,
+        draft: TuiProfileDraft,
+        secret: Option<TuiSecret>,
+    },
     /// Probe reachability of a saved profile (DNS/TCP/TLS/HTTP) via the shared
     /// `server_health_check`, without opening a provider session. Reports back a
     /// `HealthReady` event the IntroHub renders as a status dot.
@@ -152,6 +243,9 @@ impl WorkerCommand {
             WorkerCommand::ToggleGroupMembership { .. }
             | WorkerCommand::RenameGroup { .. }
             | WorkerCommand::DeleteGroup { .. } => TuiWorkerOperation::Group,
+            WorkerCommand::DeleteProfile { .. } | WorkerCommand::SaveProfile { .. } => {
+                TuiWorkerOperation::Profile
+            }
             WorkerCommand::HealthCheck { .. } => TuiWorkerOperation::Health,
             WorkerCommand::RefreshQuota { .. } => TuiWorkerOperation::Quota,
         }
@@ -172,6 +266,7 @@ pub enum TuiWorkerOperation {
     Discard,
     Favorite,
     Group,
+    Profile,
     Health,
     Quota,
 }
@@ -190,6 +285,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Discard => "discard",
             TuiWorkerOperation::Favorite => "favorite",
             TuiWorkerOperation::Group => "group",
+            TuiWorkerOperation::Profile => "profile",
             TuiWorkerOperation::Health => "health",
             TuiWorkerOperation::Quota => "quota",
         }

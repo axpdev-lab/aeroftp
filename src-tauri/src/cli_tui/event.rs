@@ -46,6 +46,12 @@ pub enum TuiAction {
     /// Open the command palette (`:`) for line-mode dispatch against the live
     /// session. Connected only.
     OpenPalette,
+    /// IntroHub: open the DiscoveryHub form to add a new saved profile (`a`).
+    AddProfile,
+    /// IntroHub: open the DiscoveryHub form to edit the highlighted profile (`e`).
+    EditProfile,
+    /// IntroHub: confirm-then-delete the highlighted saved profile (`x`).
+    DeleteProfile,
     Noop,
 }
 
@@ -79,6 +85,9 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('G') => TuiAction::ManageGroups,
         KeyCode::Char('s') | KeyCode::Char('S') => TuiAction::ToggleShowCredentials,
         KeyCode::Char(':') => TuiAction::OpenPalette,
+        KeyCode::Char('a') | KeyCode::Char('A') => TuiAction::AddProfile,
+        KeyCode::Char('e') | KeyCode::Char('E') => TuiAction::EditProfile,
+        KeyCode::Char('x') | KeyCode::Char('X') => TuiAction::DeleteProfile,
         _ => TuiAction::Noop,
     }
 }
@@ -98,6 +107,15 @@ pub enum OverlayKey {
     Up,
     /// Move a menu cursor down (Down arrow). Menu overlays only; ignored by prompts.
     Down,
+    /// Move left (Left arrow). Cycles the profile-form protocol field (B4);
+    /// ignored by text prompts and menus.
+    Left,
+    /// Move right (Right arrow). Cycles the profile-form protocol field (B4);
+    /// ignored by text prompts and menus.
+    Right,
+    /// Advance to the next field (Tab). Used by the profile form (B4); ignored
+    /// by text prompts and menus.
+    Tab,
     /// A key with no overlay meaning.
     Noop,
 }
@@ -112,8 +130,11 @@ pub fn key_to_overlay(key: KeyEvent) -> OverlayKey {
         KeyCode::Enter => OverlayKey::Submit,
         KeyCode::Esc => OverlayKey::Cancel,
         KeyCode::Backspace => OverlayKey::Backspace,
+        KeyCode::Tab => OverlayKey::Tab,
         KeyCode::Up => OverlayKey::Up,
         KeyCode::Down => OverlayKey::Down,
+        KeyCode::Left => OverlayKey::Left,
+        KeyCode::Right => OverlayKey::Right,
         KeyCode::Char(c) => OverlayKey::Char(c),
         _ => OverlayKey::Noop,
     }

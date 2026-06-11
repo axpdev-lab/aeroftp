@@ -7,6 +7,8 @@
 //! [`crate::cli_tui::worker::WorkerCommand`], keeping the "TUI is state, render
 //! and input only" invariant intact.
 
+use crate::cli_tui::worker::TuiSecret;
+
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum TuiOverlay {
     #[default]
@@ -21,6 +23,12 @@ pub enum TuiOverlay {
     /// WorkerCommands (ls/cd/get/stat/mkdir/rm) against the held session only.
     /// Parser + dispatch live in AppState; overlay is pure input state.
     Palette(PaletteState),
+    /// DiscoveryHub profile form (B4): create or edit a saved profile's
+    /// metadata (and, optionally, its credential). A vertical list of labelled
+    /// fields with one focused field; Tab/Up/Down move, Left/Right cycle the
+    /// protocol, Enter submits, Esc cancels. The vault write happens in the
+    /// worker via `SaveProfile`; the form only collects intent.
+    ProfileForm(ProfileFormState),
 }
 
 /// Modal group manager state. Acts on the IntroHub's highlighted profile.
@@ -103,6 +111,213 @@ impl TuiOverlay {
     }
 }
 
+/// Protocols offered by the DiscoveryHub form's cycling protocol field (B4).
+/// Limited to the connection-oriented backends a plain host/port/credential
+/// form can express; the OAuth/cloud providers need their own flow and are a
+/// later increment (tracked in `todo.md`). Editing a profile whose protocol is
+/// outside this list keeps the existing value (the cycle just starts here).
+pub const TUI_FORM_PROTOCOLS: &[&str] = &["sftp", "ftp", "ftps", "webdav", "s3"];
+
+/// Whether the DiscoveryHub form is creating a new profile or editing one.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ProfileFormMode {
+    /// Create a new profile; the worker mints the id.
+    Create,
+    /// Edit the saved profile with this id.
+    Edit { id: String },
+}
+
+/// The fields of the DiscoveryHub form, in tab order. `Password` is masked in
+/// the render and never echoed; the rest are plain text.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ProfileFieldKind {
+    Name,
+    Protocol,
+    Host,
+    Port,
+    Username,
+    InitialPath,
+    LocalPath,
+    Password,
+}
+
+/// Tab order for the form fields.
+pub const PROFILE_FIELD_ORDER: [ProfileFieldKind; 8] = [
+    ProfileFieldKind::Name,
+    ProfileFieldKind::Protocol,
+    ProfileFieldKind::Host,
+    ProfileFieldKind::Port,
+    ProfileFieldKind::Username,
+    ProfileFieldKind::InitialPath,
+    ProfileFieldKind::LocalPath,
+    ProfileFieldKind::Password,
+];
+
+impl ProfileFieldKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            ProfileFieldKind::Name => "Name",
+            ProfileFieldKind::Protocol => "Protocol",
+            ProfileFieldKind::Host => "Host",
+            ProfileFieldKind::Port => "Port",
+            ProfileFieldKind::Username => "Username",
+            ProfileFieldKind::InitialPath => "Remote path",
+            ProfileFieldKind::LocalPath => "Local path",
+            ProfileFieldKind::Password => "Password",
+        }
+    }
+}
+
+/// State of the DiscoveryHub profile form (B4). Pure input state: navigation,
+/// per-field editing, and a transient validation error. AppState turns a
+/// submitted form into a `SaveProfile` worker command; the form never touches
+/// the vault. The password lives in a [`TuiSecret`] so it is masked in `Debug`
+/// and zeroized on drop.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ProfileFormState {
+    pub mode: ProfileFormMode,
+    /// User partition the profile belongs to (the IntroHub's selected user).
+    pub user_name: String,
+    pub name: String,
+    pub protocol: String,
+    pub host: String,
+    pub port: String,
+    pub username: String,
+    pub initial_path: String,
+    pub local_path: String,
+    pub password: TuiSecret,
+    /// Set once the password field is edited, so an untouched edit-form does not
+    /// overwrite an existing credential with an empty one.
+    pub password_touched: bool,
+    /// Index into [`PROFILE_FIELD_ORDER`].
+    pub focus: usize,
+    /// Last validation error, shown under the fields until the next submit.
+    pub error: Option<String>,
+}
+
+impl ProfileFormState {
+    /// An empty create-form for `user_name`, focused on the first field with the
+    /// first cycling protocol pre-selected.
+    pub fn new_create(user_name: String) -> Self {
+        Self {
+            mode: ProfileFormMode::Create,
+            user_name,
+            name: String::new(),
+            protocol: TUI_FORM_PROTOCOLS[0].to_string(),
+            host: String::new(),
+            port: String::new(),
+            username: String::new(),
+            initial_path: String::new(),
+            local_path: String::new(),
+            password: TuiSecret::default(),
+            password_touched: false,
+            focus: 0,
+            error: None,
+        }
+    }
+
+    /// The field currently under the cursor.
+    pub fn current_field(&self) -> ProfileFieldKind {
+        PROFILE_FIELD_ORDER[self.focus.min(PROFILE_FIELD_ORDER.len() - 1)]
+    }
+
+    pub fn focus_next(&mut self) {
+        self.focus = (self.focus + 1) % PROFILE_FIELD_ORDER.len();
+    }
+
+    pub fn focus_prev(&mut self) {
+        self.focus = (self.focus + PROFILE_FIELD_ORDER.len() - 1) % PROFILE_FIELD_ORDER.len();
+    }
+
+    /// Append a character to the focused field. The port field accepts digits
+    /// only; the password field records that it was touched.
+    pub fn push_char(&mut self, c: char) {
+        if c.is_control() {
+            return;
+        }
+        match self.current_field() {
+            ProfileFieldKind::Name => self.name.push(c),
+            // Protocol is normally cycled with Left/Right, but typing is also
+            // allowed (then validated on submit).
+            ProfileFieldKind::Protocol => self.protocol.push(c),
+            ProfileFieldKind::Host => self.host.push(c),
+            ProfileFieldKind::Port => {
+                if c.is_ascii_digit() && self.port.len() < 5 {
+                    self.port.push(c);
+                }
+            }
+            ProfileFieldKind::Username => self.username.push(c),
+            ProfileFieldKind::InitialPath => self.initial_path.push(c),
+            ProfileFieldKind::LocalPath => self.local_path.push(c),
+            ProfileFieldKind::Password => {
+                self.password.push(c);
+                self.password_touched = true;
+            }
+        }
+    }
+
+    /// Delete the last character of the focused field.
+    pub fn backspace(&mut self) {
+        match self.current_field() {
+            ProfileFieldKind::Name => {
+                self.name.pop();
+            }
+            ProfileFieldKind::Protocol => {
+                self.protocol.pop();
+            }
+            ProfileFieldKind::Host => {
+                self.host.pop();
+            }
+            ProfileFieldKind::Port => {
+                self.port.pop();
+            }
+            ProfileFieldKind::Username => {
+                self.username.pop();
+            }
+            ProfileFieldKind::InitialPath => {
+                self.initial_path.pop();
+            }
+            ProfileFieldKind::LocalPath => {
+                self.local_path.pop();
+            }
+            ProfileFieldKind::Password => {
+                self.password.pop();
+                self.password_touched = true;
+            }
+        }
+    }
+
+    /// Cycle the protocol field through [`TUI_FORM_PROTOCOLS`]. A no-op unless
+    /// the protocol field is focused. `delta` is +1 (Right) or -1 (Left).
+    pub fn cycle_protocol(&mut self, delta: isize) {
+        if self.current_field() != ProfileFieldKind::Protocol {
+            return;
+        }
+        let n = TUI_FORM_PROTOCOLS.len() as isize;
+        let cur = TUI_FORM_PROTOCOLS
+            .iter()
+            .position(|p| p.eq_ignore_ascii_case(&self.protocol))
+            .map(|i| i as isize)
+            .unwrap_or(0);
+        let next = (cur + delta).rem_euclid(n) as usize;
+        self.protocol = TUI_FORM_PROTOCOLS[next].to_string();
+    }
+
+    /// The display string for a field; the password is rendered as bullets.
+    pub fn field_display(&self, kind: ProfileFieldKind) -> String {
+        match kind {
+            ProfileFieldKind::Name => self.name.clone(),
+            ProfileFieldKind::Protocol => self.protocol.clone(),
+            ProfileFieldKind::Host => self.host.clone(),
+            ProfileFieldKind::Port => self.port.clone(),
+            ProfileFieldKind::Username => self.username.clone(),
+            ProfileFieldKind::InitialPath => self.initial_path.clone(),
+            ProfileFieldKind::LocalPath => self.local_path.clone(),
+            ProfileFieldKind::Password => "\u{2022}".repeat(self.password.len()),
+        }
+    }
+}
+
 /// A single-line text prompt (create directory, rename, transfer paths).
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PromptState {
@@ -181,6 +396,14 @@ pub struct ConfirmState {
 pub enum ConfirmKind {
     /// Delete `path`; `recursive` when the entry is a non-empty directory.
     Delete { path: String, recursive: bool },
+    /// Delete a saved profile (B4 DiscoveryHub) from `user_name`'s partition.
+    /// Carries the display name for the confirmation message and the id for the
+    /// optimistic removal + worker `DeleteProfile`.
+    DeleteProfile {
+        user_name: String,
+        profile_id: String,
+        profile_name: String,
+    },
 }
 
 #[cfg(test)]

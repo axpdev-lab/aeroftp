@@ -247,6 +247,8 @@ fn render_browser_fullscreen(
             Span::raw(" cancel   "),
             Span::styled("D", theme.accent_style()),
             Span::raw(" clear   "),
+            Span::styled(":", theme.accent_style()),
+            Span::raw(" palette   "),
             Span::styled("s", theme.accent_style()),
             Span::raw(" show   "),
             Span::styled("q", theme.accent_style()),
@@ -768,6 +770,8 @@ fn render_introhub_footer(
             Span::raw(" favorite   "),
             Span::styled("G", theme.accent_style()),
             Span::raw(" groups   "),
+            Span::styled("a/e/x", theme.accent_style()),
+            Span::raw(" add/edit/del   "),
             Span::styled("H", theme.accent_style()),
             Span::raw(" health   "),
             Span::styled("Q", theme.accent_style()),
@@ -950,7 +954,44 @@ fn progress_bar(ratio: f64, width: usize) -> String {
 
 fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
     match &app.overlay {
-        TuiOverlay::None | TuiOverlay::Palette(_) => {}
+        TuiOverlay::None => {}
+        TuiOverlay::Palette(state) => {
+            // Bottom-anchored input line (the #311 footer slot): the last result
+            // above, then a ':' prefixed editor with a cursor. Clamped so it
+            // never overflows a short terminal.
+            let height = 4u16.min(area.height.max(1));
+            let width = area.width;
+            let popup = Rect {
+                x: area.x,
+                y: area.y + area.height.saturating_sub(height),
+                width,
+                height,
+            };
+            frame.render_widget(Clear, popup);
+            let mut lines: Vec<Line> = Vec::new();
+            if !state.last_result.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    state.last_result.clone(),
+                    theme.muted_style(),
+                )));
+            }
+            lines.push(Line::from(vec![
+                Span::styled(":", theme.accent_style().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    state.buffer.clone(),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("_", theme.accent_style()),
+            ]));
+            let body = Paragraph::new(lines)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Palette  (Enter run  Esc close) "),
+                )
+                .wrap(Wrap { trim: false });
+            frame.render_widget(body, popup);
+        }
         TuiOverlay::Prompt(prompt) => {
             let popup = centered_rect(60, 7, area);
             frame.render_widget(Clear, popup);
@@ -1069,6 +1110,74 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
                         .title(format!(" Groups: {} ", state.profile_name)),
                 )
                 .wrap(Wrap { trim: true });
+            frame.render_widget(body, popup);
+        }
+        TuiOverlay::ProfileForm(form) => {
+            use crate::cli_tui::overlay::{ProfileFormMode, PROFILE_FIELD_ORDER};
+            // One row per field plus borders, a footer hint, and an optional
+            // error line. Clamped to the available height.
+            let rows = PROFILE_FIELD_ORDER.len() as u16;
+            let height = rows.saturating_add(5).min(area.height);
+            let popup = centered_rect(70, height, area);
+            frame.render_widget(Clear, popup);
+
+            let mut lines: Vec<Line> = Vec::new();
+            for (i, kind) in PROFILE_FIELD_ORDER.iter().enumerate() {
+                let selected = i == form.focus;
+                let label_style = if selected {
+                    theme.accent_style().add_modifier(Modifier::BOLD)
+                } else {
+                    theme.muted_style()
+                };
+                let value_style = if selected {
+                    Style::default().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                let cursor = if selected { "_" } else { "" };
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!(
+                            "{}{:>11}: ",
+                            if selected { "> " } else { "  " },
+                            kind.label()
+                        ),
+                        label_style,
+                    ),
+                    Span::styled(form.field_display(*kind), value_style),
+                    Span::styled(cursor.to_string(), theme.accent_style()),
+                ]));
+            }
+            if let Some(err) = &form.error {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    err.clone(),
+                    Style::default()
+                        .fg(theme.planned)
+                        .add_modifier(Modifier::BOLD),
+                )));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("Tab", theme.accent_style()),
+                Span::raw(" next  "),
+                Span::styled("Up/Down", theme.accent_style()),
+                Span::raw(" move  "),
+                Span::styled("Left/Right", theme.accent_style()),
+                Span::raw(" protocol  "),
+                Span::styled("Enter", theme.accent_style()),
+                Span::raw(" save  "),
+                Span::styled("Esc", theme.accent_style()),
+                Span::raw(" cancel"),
+            ]));
+
+            let title = match &form.mode {
+                ProfileFormMode::Create => format!(" Add profile ({}) ", form.user_name),
+                ProfileFormMode::Edit { .. } => format!(" Edit profile ({}) ", form.user_name),
+            };
+            let body = Paragraph::new(lines)
+                .block(Block::default().borders(Borders::ALL).title(title))
+                .wrap(Wrap { trim: false });
             frame.render_widget(body, popup);
         }
     }
@@ -1334,6 +1443,68 @@ mod render_tests {
         assert!(text.contains("connected"), "connection dot present");
 
         let mut tiny = Terminal::new(TestBackend::new(18, 5)).unwrap();
+        tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+    }
+
+    /// The `:` command palette overlay (B3) renders its input line over the
+    /// connected view without panicking, at a normal and a tiny size.
+    #[test]
+    fn palette_overlay_renders() {
+        use crate::cli_tui::overlay::{PaletteState, TuiOverlay};
+        let mut app = AppState::new_live(smoke_context());
+        app.session.phase = TuiSessionPhase::Connected;
+        app.focus = TuiFocus::Browser;
+        app.overlay = TuiOverlay::Palette(PaletteState {
+            buffer: "cd docs".to_string(),
+            last_result: "unknown 'foo'".to_string(),
+        });
+        let theme = TuiTheme::default();
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("Palette"), "palette overlay drawn");
+        assert!(text.contains("cd docs"), "palette buffer drawn");
+
+        let mut tiny = Terminal::new(TestBackend::new(16, 4)).unwrap();
+        tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+    }
+
+    /// The DiscoveryHub profile form (B4) renders its fields over the IntroHub
+    /// without panicking, at a normal and a tiny size, and masks the password.
+    #[test]
+    fn profile_form_overlay_renders_and_masks_password() {
+        use crate::cli_tui::overlay::{ProfileFormState, TuiOverlay};
+        let mut app = AppState::new_live(smoke_context());
+        let mut form = ProfileFormState::new_create("ale".to_string());
+        form.name = "NAS".to_string();
+        form.host = "nas.local".to_string();
+        // Move to the password field and type a secret.
+        form.focus = 7;
+        for c in "secret".chars() {
+            form.push_char(c);
+        }
+        app.overlay = TuiOverlay::ProfileForm(form);
+        let theme = TuiTheme::default();
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("Add profile"), "form title drawn");
+        assert!(text.contains("NAS"), "name field drawn");
+        assert!(
+            !text.contains("secret"),
+            "password is never rendered in clear"
+        );
+        assert!(text.contains('\u{2022}'), "password masked as bullets");
+
+        let mut tiny = Terminal::new(TestBackend::new(20, 6)).unwrap();
         tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
     }

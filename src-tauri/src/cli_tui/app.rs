@@ -1,14 +1,17 @@
 use crate::cli_tui::{
     event::{OverlayKey, TuiAction},
     overlay::{
-        ConfirmKind, ConfirmState, GroupsOverlayItem, GroupsOverlayState, PaletteState, PromptKind,
-        PromptState, TuiOverlay,
+        ConfirmKind, ConfirmState, GroupsOverlayItem, GroupsOverlayState, PaletteState,
+        ProfileFormMode, ProfileFormState, PromptKind, PromptState, TuiOverlay,
     },
     panes::{
         browser::BrowserPaneState, profiles::ProfilesPaneState, transfers::TransfersPaneState,
     },
     session::{TuiSessionIdentity, TuiSessionPhase, TuiSessionState},
-    worker::{TransferDirection, TuiWorkerOperation, WorkerCommand, WorkerEvent},
+    worker::{
+        TransferDirection, TuiProfileDraft, TuiSecret, TuiWorkerOperation, WorkerCommand,
+        WorkerEvent,
+    },
 };
 
 use crossterm::event::{MouseButton, MouseEvent};
@@ -279,6 +282,11 @@ impl AppState {
             TuiAction::HealthCheck => Vec::new(),
             TuiAction::RefreshQuota => Vec::new(),
             TuiAction::ManageGroups => Vec::new(),
+            // Profile management (DiscoveryHub, B4) is IntroHub-only; in the
+            // connected browser these keys are typed into nothing and ignored.
+            TuiAction::AddProfile => Vec::new(),
+            TuiAction::EditProfile => Vec::new(),
+            TuiAction::DeleteProfile => Vec::new(),
             TuiAction::OpenPalette => {
                 if self.is_live_connected() {
                     self.overlay = TuiOverlay::Palette(PaletteState::new());
@@ -319,6 +327,10 @@ impl AppState {
             TuiAction::RefreshQuota => Some(self.introhub_refresh_quota()),
             // `G` opens the named-group manager for the highlighted profile.
             TuiAction::ManageGroups => Some(self.introhub_open_groups()),
+            // `a`/`e`/`x` manage saved profiles (DiscoveryHub, B4).
+            TuiAction::AddProfile => Some(self.introhub_add_profile()),
+            TuiAction::EditProfile => Some(self.introhub_edit_profile()),
+            TuiAction::DeleteProfile => Some(self.introhub_delete_profile()),
             // Enter connects to the selected profile (or unlocks a locked user).
             TuiAction::Activate => Some(self.introhub_activate()),
             // Backspace/Parent is meaningless on the picker; swallow it.
@@ -553,6 +565,173 @@ impl AppState {
         self.context.groups.retain(|g| g.name != group);
         if self.selected_group.as_deref() == Some(group) {
             self.selected_group = None;
+        }
+    }
+
+    // --- B4 DiscoveryHub: in-TUI profile management ------------------------
+
+    /// `a` on the IntroHub: open an empty DiscoveryHub form to add a profile to
+    /// the selected user. Refused on a locked user (their partition is sealed).
+    fn introhub_add_profile(&mut self) -> Vec<WorkerCommand> {
+        let Some(user) = self.selected_user() else {
+            self.status = "No user selected.".to_string();
+            return Vec::new();
+        };
+        if user.is_locked {
+            self.status = "Unlock the user before adding a profile.".to_string();
+            return Vec::new();
+        }
+        self.overlay = TuiOverlay::ProfileForm(ProfileFormState::new_create(user.name.clone()));
+        self.status = "New profile: Tab move  arrows protocol  Enter save  Esc cancel".to_string();
+        Vec::new()
+    }
+
+    /// `e` on the IntroHub: open the DiscoveryHub form pre-filled from the
+    /// highlighted profile. Refused on a locked user or an unsaved (no id) row.
+    fn introhub_edit_profile(&mut self) -> Vec<WorkerCommand> {
+        let Some(user) = self.selected_user() else {
+            self.status = "No user selected.".to_string();
+            return Vec::new();
+        };
+        if user.is_locked {
+            self.status = "Unlock the user before editing a profile.".to_string();
+            return Vec::new();
+        }
+        let user_name = user.name.clone();
+        let Some(profile) = self.selected_profile() else {
+            self.status = "No profile selected to edit.".to_string();
+            return Vec::new();
+        };
+        if profile.id.is_empty() {
+            self.status = "This profile has no saved id; cannot edit it.".to_string();
+            return Vec::new();
+        }
+        let form = ProfileFormState {
+            mode: ProfileFormMode::Edit {
+                id: profile.id.clone(),
+            },
+            user_name,
+            name: profile.name.clone(),
+            protocol: profile.protocol.clone(),
+            host: profile.host.clone(),
+            port: if profile.port == 0 {
+                String::new()
+            } else {
+                profile.port.to_string()
+            },
+            username: profile.username.clone(),
+            initial_path: profile.initial_path.clone(),
+            local_path: profile.default_local_path.clone(),
+            password: TuiSecret::default(),
+            password_touched: false,
+            focus: 0,
+            error: None,
+        };
+        self.overlay = TuiOverlay::ProfileForm(form);
+        self.status = "Edit profile: Tab move  arrows protocol  Enter save  Esc cancel".to_string();
+        Vec::new()
+    }
+
+    /// `x` on the IntroHub: confirm-then-delete the highlighted profile. Refused
+    /// on a locked user or an unsaved (no id) row.
+    fn introhub_delete_profile(&mut self) -> Vec<WorkerCommand> {
+        let Some(user) = self.selected_user() else {
+            self.status = "No user selected.".to_string();
+            return Vec::new();
+        };
+        if user.is_locked {
+            self.status = "Unlock the user before deleting a profile.".to_string();
+            return Vec::new();
+        }
+        let user_name = user.name.clone();
+        let Some(profile) = self.selected_profile() else {
+            self.status = "No profile selected to delete.".to_string();
+            return Vec::new();
+        };
+        if profile.id.is_empty() {
+            self.status = "This profile has no saved id; cannot delete it.".to_string();
+            return Vec::new();
+        }
+        let profile_id = profile.id.clone();
+        let profile_name = profile.name.clone();
+        let message = format!(
+            "Delete saved profile '{}' for user '{}'? (credential is removed too)",
+            profile_name, user_name
+        );
+        self.overlay = TuiOverlay::Confirm(ConfirmState {
+            kind: ConfirmKind::DeleteProfile {
+                user_name,
+                profile_id,
+                profile_name,
+            },
+            message,
+        });
+        self.status = "Confirm profile delete (y/n).".to_string();
+        Vec::new()
+    }
+
+    /// Optimistically remove a saved profile from the in-memory context: drop
+    /// the row, decrement the member counts of every group it belonged to,
+    /// renumber the remaining selectors (they are 1-based positions used as the
+    /// connection key), and keep `selected_profile` valid under any filter.
+    fn apply_profile_delete(&mut self, user_name: &str, profile_id: &str) {
+        let Some(user) = self.context.users.iter_mut().find(|u| u.name == user_name) else {
+            return;
+        };
+        let Some(pos) = user.profiles.iter().position(|p| p.id == profile_id) else {
+            return;
+        };
+        let removed = user.profiles.remove(pos);
+        // The deleted profile leaves every group it was a member of.
+        for group_name in &removed.groups {
+            if let Some(g) = self
+                .context
+                .groups
+                .iter_mut()
+                .find(|g| &g.name == group_name)
+            {
+                g.member_count = g.member_count.saturating_sub(1);
+            }
+        }
+        Self::renumber_selectors(user_name, &mut self.context.users);
+        // Keep the cursor on a still-visible row.
+        self.snap_selection_to_filter();
+    }
+
+    /// Optimistically insert a created profile, or update an edited one in
+    /// place, in the selected user's list. On create the new profile is
+    /// prepended (matching `cmd_profile_create`) and selectors are renumbered.
+    fn apply_profile_upsert(&mut self, user_name: &str, profile: TuiProfile) {
+        let Some(user) = self.context.users.iter_mut().find(|u| u.name == user_name) else {
+            return;
+        };
+        if let Some(existing) = user.profiles.iter_mut().find(|p| p.id == profile.id) {
+            // Edit: preserve the group/favorite/health/quota state the form does
+            // not own; only the editable metadata changes.
+            existing.name = profile.name;
+            existing.protocol = profile.protocol;
+            existing.host = profile.host;
+            existing.username = profile.username;
+            existing.initial_path = profile.initial_path;
+            existing.default_local_path = profile.default_local_path;
+            existing.port = profile.port;
+        } else {
+            user.profiles.insert(0, profile);
+            user.profile_count = user.profile_count.saturating_add(1);
+            Self::renumber_selectors(user_name, &mut self.context.users);
+            self.selected_profile = 0;
+        }
+        self.snap_selection_to_filter();
+    }
+
+    /// Renumber the 1-based `selector` of every profile of `user_name` to its
+    /// position, so the connection key stays in sync with the list order after
+    /// an insert or delete.
+    fn renumber_selectors(user_name: &str, users: &mut [TuiUser]) {
+        if let Some(user) = users.iter_mut().find(|u| u.name == user_name) {
+            for (idx, profile) in user.profiles.iter_mut().enumerate() {
+                profile.selector = (idx + 1).to_string();
+            }
         }
     }
 
@@ -1160,15 +1339,8 @@ impl AppState {
             TuiOverlay::Prompt(_) => self.handle_prompt_key(key),
             TuiOverlay::Confirm(_) => self.handle_confirm_key(key),
             TuiOverlay::Groups(_) => self.handle_groups_key(key),
-            TuiOverlay::Palette(_) => {
-                // B3 palette: for this checkpoint the open sets overlay+status;
-                // submit/close is Esc only (full parser in follow-up edit).
-                if matches!(key, OverlayKey::Cancel) {
-                    self.overlay = TuiOverlay::None;
-                    self.status = "palette closed (B3 stub)".to_string();
-                }
-                Vec::new()
-            }
+            TuiOverlay::Palette(_) => self.handle_palette_key(key),
+            TuiOverlay::ProfileForm(_) => self.handle_profile_form_key(key),
         };
         self.sync_pane_state();
         commands
@@ -1376,8 +1548,301 @@ impl AppState {
             }
             OverlayKey::Submit => self.submit_prompt(),
             OverlayKey::Cancel => self.cancel_overlay(),
-            OverlayKey::Up | OverlayKey::Down | OverlayKey::Noop => Vec::new(),
+            OverlayKey::Up
+            | OverlayKey::Down
+            | OverlayKey::Left
+            | OverlayKey::Right
+            | OverlayKey::Tab
+            | OverlayKey::Noop => Vec::new(),
         }
+    }
+
+    /// Route a key while the `:` command palette (B3) is open. The palette is a
+    /// single-line editor: printable chars append, Backspace deletes, Enter
+    /// dispatches the parsed line through existing `WorkerCommand`s, Esc closes.
+    /// Up/Down/Left/Right are reserved (command history is a later increment).
+    fn handle_palette_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        match key {
+            OverlayKey::Char(c) => {
+                if let TuiOverlay::Palette(state) = &mut self.overlay {
+                    state.push_char(c);
+                }
+                Vec::new()
+            }
+            OverlayKey::Backspace => {
+                if let TuiOverlay::Palette(state) = &mut self.overlay {
+                    state.backspace();
+                }
+                Vec::new()
+            }
+            OverlayKey::Submit => self.submit_palette(),
+            OverlayKey::Cancel => {
+                self.overlay = TuiOverlay::None;
+                self.status = "Palette closed.".to_string();
+                Vec::new()
+            }
+            OverlayKey::Up
+            | OverlayKey::Down
+            | OverlayKey::Left
+            | OverlayKey::Right
+            | OverlayKey::Tab
+            | OverlayKey::Noop => Vec::new(),
+        }
+    }
+
+    /// Parse the palette buffer and dispatch it through the existing worker
+    /// command path (the #311 invariant: the palette never re-implements a
+    /// provider op, it only maps a verb onto a `WorkerCommand` the connected
+    /// worker already handles). A parse error keeps the palette open with a
+    /// one-line usage hint in `last_result`; a successful dispatch closes it.
+    fn submit_palette(&mut self) -> Vec<WorkerCommand> {
+        let line = match &self.overlay {
+            TuiOverlay::Palette(state) => state.buffer.clone(),
+            _ => return Vec::new(),
+        };
+        // Connected-only for v1 (there must be a held session to run against).
+        if !self.is_live_connected() {
+            if let TuiOverlay::Palette(state) = &mut self.overlay {
+                state.last_result = "not connected".to_string();
+            }
+            return Vec::new();
+        }
+        let cwd = self.current_browser_dir();
+        let parsed = parse_palette_command(&line, &cwd);
+        match parsed {
+            PaletteCommand::Empty => Vec::new(),
+            PaletteCommand::Error(hint) => {
+                if let TuiOverlay::Palette(state) = &mut self.overlay {
+                    state.last_result = hint;
+                }
+                Vec::new()
+            }
+            PaletteCommand::List { path } => {
+                self.overlay = TuiOverlay::None;
+                self.focus = TuiFocus::Browser;
+                self.active_browser_side = BrowserSide::Remote;
+                self.begin_mutation(TuiWorkerOperation::List, format!("Listing {}.", path));
+                vec![WorkerCommand::List { path }]
+            }
+            PaletteCommand::Stat { path } => {
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(
+                    TuiWorkerOperation::Stat,
+                    format!("Loading metadata for {}.", path),
+                );
+                vec![WorkerCommand::Stat { path }]
+            }
+            PaletteCommand::Mkdir { path } => {
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(TuiWorkerOperation::Mkdir, format!("Creating {}.", path));
+                vec![WorkerCommand::Mkdir { path }]
+            }
+            PaletteCommand::Get { remote, local } => {
+                let name = remote_basename(&remote);
+                let base = if !self.context.download_base.is_empty() {
+                    self.context.download_base.clone()
+                } else if !self.local.path.is_empty() {
+                    self.local.path.clone()
+                } else {
+                    ".".to_string()
+                };
+                let local_path =
+                    local.unwrap_or_else(|| format!("{}/{}", base.trim_end_matches('/'), name));
+                let id = self.transfers.enqueue(
+                    TransferDirection::Download,
+                    name,
+                    remote.clone(),
+                    local_path.clone(),
+                );
+                self.overlay = TuiOverlay::None;
+                self.focus = TuiFocus::Transfers;
+                self.begin_mutation(
+                    TuiWorkerOperation::Transfer,
+                    format!("Downloading {} -> {}.", remote, local_path),
+                );
+                vec![WorkerCommand::Download {
+                    id,
+                    remote_path: remote,
+                    local_path,
+                }]
+            }
+            PaletteCommand::Rm { path, force } => {
+                if force {
+                    self.overlay = TuiOverlay::None;
+                    self.begin_mutation(TuiWorkerOperation::Remove, format!("Deleting {}.", path));
+                    // Best-effort recursive flag: the palette cannot stat the
+                    // entry here, so route as non-recursive and let the provider
+                    // report a non-empty directory. `rm!` is the power-user verb.
+                    vec![WorkerCommand::Remove {
+                        path,
+                        recursive: false,
+                    }]
+                } else {
+                    // Route through the same confirm overlay the `d` key uses.
+                    let message = format!("Delete '{}'?", path);
+                    self.overlay = TuiOverlay::Confirm(ConfirmState {
+                        kind: ConfirmKind::Delete {
+                            path,
+                            recursive: false,
+                        },
+                        message,
+                    });
+                    self.status = "Confirm delete (y/n).".to_string();
+                    Vec::new()
+                }
+            }
+        }
+    }
+
+    /// Route a key while the DiscoveryHub profile form (B4) is open. Tab and
+    /// Up/Down move between fields, Left/Right cycle the protocol field,
+    /// printable chars edit the focused field, Enter submits, Esc cancels.
+    fn handle_profile_form_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        match key {
+            OverlayKey::Tab | OverlayKey::Down => {
+                if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+                    form.focus_next();
+                }
+                Vec::new()
+            }
+            OverlayKey::Char(c) => {
+                if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+                    form.push_char(c);
+                }
+                Vec::new()
+            }
+            OverlayKey::Backspace => {
+                if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+                    form.backspace();
+                }
+                Vec::new()
+            }
+            OverlayKey::Up => {
+                if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+                    form.focus_prev();
+                }
+                Vec::new()
+            }
+            OverlayKey::Left => {
+                if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+                    form.cycle_protocol(-1);
+                }
+                Vec::new()
+            }
+            OverlayKey::Right => {
+                if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+                    form.cycle_protocol(1);
+                }
+                Vec::new()
+            }
+            OverlayKey::Submit => self.submit_profile_form(),
+            OverlayKey::Cancel => self.cancel_overlay(),
+            OverlayKey::Noop => Vec::new(),
+        }
+    }
+
+    /// Validate the DiscoveryHub form and emit a `SaveProfile` worker command,
+    /// optimistically upserting the profile in the in-memory context. A
+    /// validation error is shown in the form and the overlay stays open.
+    fn submit_profile_form(&mut self) -> Vec<WorkerCommand> {
+        let form = match &self.overlay {
+            TuiOverlay::ProfileForm(form) => form.clone(),
+            _ => return Vec::new(),
+        };
+        // Validate. Keep the form open and surface the first problem.
+        let name = form.name.trim().to_string();
+        if name.is_empty() {
+            self.set_form_error("Name cannot be empty.");
+            return Vec::new();
+        }
+        let protocol = form.protocol.trim().to_ascii_lowercase();
+        if protocol.is_empty() {
+            self.set_form_error("Protocol cannot be empty.");
+            return Vec::new();
+        }
+        let host = form.host.trim().to_string();
+        if host.is_empty() {
+            self.set_form_error("Host cannot be empty.");
+            return Vec::new();
+        }
+        let port: u16 = if form.port.trim().is_empty() {
+            default_port_for(&protocol)
+        } else {
+            match form.port.trim().parse::<u16>() {
+                Ok(p) if p > 0 => p,
+                _ => {
+                    self.set_form_error("Port must be a number in 1..=65535.");
+                    return Vec::new();
+                }
+            }
+        };
+
+        let id = match &form.mode {
+            ProfileFormMode::Edit { id } => id.clone(),
+            ProfileFormMode::Create => mint_profile_id(),
+        };
+
+        let draft = TuiProfileDraft {
+            id: id.clone(),
+            name: name.clone(),
+            protocol: protocol.clone(),
+            host: host.clone(),
+            port,
+            username: form.username.trim().to_string(),
+            initial_path: form.initial_path.trim().to_string(),
+            local_initial_path: form.local_path.trim().to_string(),
+        };
+
+        // The secret only crosses the channel when the field was actually
+        // touched, so an untouched edit never overwrites an existing credential.
+        let secret = if form.password_touched && !form.password.is_empty() {
+            Some(form.password.clone())
+        } else {
+            None
+        };
+
+        let user_name = form.user_name.clone();
+        // Optimistic in-memory upsert (favourites/groups pattern). Health/quota
+        // and group/favourite state are preserved on edit; a created profile
+        // starts clean with the minted id.
+        let optimistic = TuiProfile {
+            selector: String::new(), // renumbered by apply_profile_upsert
+            id,
+            name,
+            protocol,
+            host,
+            username: draft.username.clone(),
+            initial_path: draft.initial_path.clone(),
+            default_local_path: draft.local_initial_path.clone(),
+            favorite: false,
+            groups: Vec::new(),
+            used: None,
+            total: None,
+            last_connected_label: None,
+            port,
+            endpoint: None,
+            health: None,
+        };
+        self.apply_profile_upsert(&user_name, optimistic);
+
+        self.overlay = TuiOverlay::None;
+        self.status = match &form.mode {
+            ProfileFormMode::Create => format!("Created profile '{}'.", draft.name),
+            ProfileFormMode::Edit { .. } => format!("Updated profile '{}'.", draft.name),
+        };
+        vec![WorkerCommand::SaveProfile {
+            user_name,
+            draft,
+            secret,
+        }]
+    }
+
+    /// Record a validation error on the open profile form (no-op otherwise).
+    fn set_form_error(&mut self, message: &str) {
+        if let TuiOverlay::ProfileForm(form) = &mut self.overlay {
+            form.error = Some(message.to_string());
+        }
+        self.status = message.to_string();
     }
 
     fn handle_confirm_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
@@ -1535,6 +2000,19 @@ impl AppState {
                 self.overlay = TuiOverlay::None;
                 self.begin_mutation(TuiWorkerOperation::Remove, format!("Deleting {}.", path));
                 vec![WorkerCommand::Remove { path, recursive }]
+            }
+            ConfirmKind::DeleteProfile {
+                user_name,
+                profile_id,
+                profile_name,
+            } => {
+                self.overlay = TuiOverlay::None;
+                self.apply_profile_delete(&user_name, &profile_id);
+                self.status = format!("Deleted profile '{}'.", profile_name);
+                vec![WorkerCommand::DeleteProfile {
+                    user_name,
+                    profile_id,
+                }]
             }
         }
     }
@@ -2083,6 +2561,193 @@ fn local_basename(path: &str) -> String {
         .next()
         .unwrap_or(path)
         .to_string()
+}
+
+/// Default port for a protocol when the DiscoveryHub form leaves it blank (B4).
+/// Mirrors the connection defaults the CLI/GUI use; unknown protocols get 0,
+/// which the connect path resolves from its own defaults.
+fn default_port_for(protocol: &str) -> u16 {
+    match protocol {
+        "sftp" => 22,
+        "ftp" | "ftps" => 21,
+        "webdav" | "s3" => 443,
+        _ => 0,
+    }
+}
+
+/// Mint a new saved-profile id, matching the CLI/GUI scheme
+/// (`srv_<unix_ms>_<rand9>`) so the TUI, CLI, and GUI converge on one format.
+/// Impure (time + rng); kept out of the pure form state so the state machine
+/// stays deterministic and unit-testable.
+fn mint_profile_id() -> String {
+    use rand::Rng;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut rng = rand::thread_rng();
+    let suffix: String = (0..9)
+        .map(|_| {
+            let idx: u8 = rng.gen_range(0..36);
+            if idx < 10 {
+                (b'0' + idx) as char
+            } else {
+                (b'a' + (idx - 10)) as char
+            }
+        })
+        .collect();
+    format!("srv_{}_{}", now_ms, suffix)
+}
+
+/// A parsed `:` command-palette line (B3). The verb table is a single match in
+/// [`parse_palette_command`]; widening the palette later is adding a variant
+/// and a row, not threading new plumbing. Paths are already resolved against the
+/// remote cwd so the dispatcher only has to enqueue/emit.
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum PaletteCommand {
+    /// Blank line: a no-op that leaves the palette open.
+    Empty,
+    /// Parse error or unknown verb: a one-line usage hint, palette stays open.
+    Error(String),
+    /// `ls [path]` / `cd <path>`: list a remote directory (the pane follows).
+    List { path: String },
+    /// `stat <path>`: load metadata for a remote entry.
+    Stat { path: String },
+    /// `mkdir <path>`: create a remote directory.
+    Mkdir { path: String },
+    /// `get <remote> [local]`: enqueue a download (local defaults like `g`).
+    Get {
+        remote: String,
+        local: Option<String>,
+    },
+    /// `rm <path>` (confirm) / `rm! <path>` (force): delete a remote entry.
+    Rm { path: String, force: bool },
+}
+
+/// Split a palette line shell-style, honouring double quotes so a single
+/// argument can carry spaces (`get "a b.txt"`). Backslash escaping is not
+/// supported (remote paths are POSIX); an unterminated quote simply runs to the
+/// end of the line. Pure and unit-tested.
+fn tokenize_palette_line(line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+    let mut has_token = false;
+    for c in line.chars() {
+        match c {
+            '"' => {
+                in_quote = !in_quote;
+                has_token = true;
+            }
+            c if c.is_whitespace() && !in_quote => {
+                if has_token {
+                    tokens.push(std::mem::take(&mut current));
+                    has_token = false;
+                }
+            }
+            c => {
+                current.push(c);
+                has_token = true;
+            }
+        }
+    }
+    if has_token {
+        tokens.push(current);
+    }
+    tokens
+}
+
+/// Resolve a palette path argument against the remote cwd: `.` is the cwd, `..`
+/// the parent, an absolute path is normalised, and anything else is joined onto
+/// the cwd. Mirrors keyboard navigation so the palette inherits the same paths.
+fn resolve_remote_arg(cwd: &str, arg: &str) -> String {
+    match arg {
+        "." => {
+            if cwd.is_empty() {
+                "/".to_string()
+            } else {
+                cwd.to_string()
+            }
+        }
+        ".." => parent_remote(cwd),
+        _ if arg.starts_with('/') => {
+            let trimmed = arg.trim_end_matches('/');
+            if trimmed.is_empty() {
+                "/".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+        _ => join_remote(cwd, arg),
+    }
+}
+
+/// Parse a palette line into a [`PaletteCommand`]. The first token is the verb;
+/// remaining tokens are arguments resolved against `cwd`. Unknown verbs and
+/// wrong arity return [`PaletteCommand::Error`] with a short usage hint so the
+/// palette can stay open without ever running a half-parsed command.
+fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
+    let tokens = tokenize_palette_line(line);
+    let Some((verb, args)) = tokens.split_first() else {
+        return PaletteCommand::Empty;
+    };
+    match verb.as_str() {
+        "ls" => {
+            let path = match args.len() {
+                0 => resolve_remote_arg(cwd, "."),
+                1 => resolve_remote_arg(cwd, &args[0]),
+                _ => return PaletteCommand::Error("usage: ls [path]".to_string()),
+            };
+            PaletteCommand::List { path }
+        }
+        "cd" => {
+            if args.len() != 1 {
+                return PaletteCommand::Error("usage: cd <path>".to_string());
+            }
+            PaletteCommand::List {
+                path: resolve_remote_arg(cwd, &args[0]),
+            }
+        }
+        "stat" => {
+            if args.len() != 1 {
+                return PaletteCommand::Error("usage: stat <path>".to_string());
+            }
+            PaletteCommand::Stat {
+                path: resolve_remote_arg(cwd, &args[0]),
+            }
+        }
+        "mkdir" => {
+            if args.len() != 1 {
+                return PaletteCommand::Error("usage: mkdir <path>".to_string());
+            }
+            PaletteCommand::Mkdir {
+                path: resolve_remote_arg(cwd, &args[0]),
+            }
+        }
+        "get" => match args.len() {
+            1 => PaletteCommand::Get {
+                remote: resolve_remote_arg(cwd, &args[0]),
+                local: None,
+            },
+            2 => PaletteCommand::Get {
+                remote: resolve_remote_arg(cwd, &args[0]),
+                local: Some(args[1].clone()),
+            },
+            _ => PaletteCommand::Error("usage: get <remote> [local]".to_string()),
+        },
+        "rm" | "rm!" => {
+            if args.len() != 1 {
+                return PaletteCommand::Error(
+                    "usage: rm <path>  (rm! to skip confirm)".to_string(),
+                );
+            }
+            PaletteCommand::Rm {
+                path: resolve_remote_arg(cwd, &args[0]),
+                force: verb == "rm!",
+            }
+        }
+        other => PaletteCommand::Error(format!("unknown '{}': ls cd get stat mkdir rm rm!", other)),
+    }
 }
 
 /// Compact byte size for the status line (the Shape B fullscreen view has no
@@ -3078,6 +3743,208 @@ mod tests {
         );
     }
 
+    // --- B4 DiscoveryHub: profile add / edit / delete ---------------------
+
+    #[test]
+    fn introhub_x_confirms_then_deletes_profile_and_prunes_groups() {
+        let mut app = AppState::new_live(grouped_context());
+        // srv-1 is the first profile and a member of "Production" (count 1).
+        let commands = app.apply_action(TuiAction::DeleteProfile);
+        assert!(commands.is_empty(), "delete waits for confirmation");
+        assert!(matches!(app.overlay, TuiOverlay::Confirm(_)));
+
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::DeleteProfile {
+                user_name: "ale".to_string(),
+                profile_id: "srv-1".to_string(),
+            }]
+        );
+        // The row is gone, only "Archive" remains, renumbered to selector 1.
+        assert_eq!(app.context.users[0].profiles.len(), 1);
+        assert_eq!(app.context.users[0].profiles[0].name, "Archive");
+        assert_eq!(app.context.users[0].profiles[0].selector, "1");
+        // Its group membership count is decremented.
+        assert_eq!(app.context.groups[0].member_count, 0);
+    }
+
+    #[test]
+    fn introhub_x_is_a_noop_without_a_saved_id() {
+        let mut app = AppState::new_live(introhub_context()); // ids empty
+        let commands = app.apply_action(TuiAction::DeleteProfile);
+        assert!(commands.is_empty());
+        assert!(!app.overlay_active());
+        assert_eq!(app.context.users[0].profiles.len(), 2);
+    }
+
+    #[test]
+    fn introhub_a_opens_an_empty_create_form() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::AddProfile);
+        match &app.overlay {
+            TuiOverlay::ProfileForm(form) => {
+                assert!(matches!(form.mode, ProfileFormMode::Create));
+                assert_eq!(form.user_name, "ale");
+                assert!(form.name.is_empty());
+                assert_eq!(form.protocol, "sftp");
+            }
+            other => panic!("expected a ProfileForm overlay, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn profile_form_create_submits_save_and_inserts_optimistically() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::AddProfile);
+        for c in "NAS".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        // Tab past Protocol to Host, then type a host.
+        app.handle_overlay_key(OverlayKey::Tab); // -> Protocol
+        app.handle_overlay_key(OverlayKey::Tab); // -> Host
+        for c in "nas.local".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            WorkerCommand::SaveProfile {
+                user_name,
+                draft,
+                secret,
+            } => {
+                assert_eq!(user_name, "ale");
+                assert_eq!(draft.name, "NAS");
+                assert_eq!(draft.protocol, "sftp");
+                assert_eq!(draft.host, "nas.local");
+                assert_eq!(draft.port, 22); // default for sftp
+                assert!(draft.id.starts_with("srv_"));
+                assert!(secret.is_none(), "no credential typed");
+            }
+            other => panic!("expected SaveProfile, got {:?}", other),
+        }
+        // The new profile is prepended and selectors renumbered.
+        assert_eq!(app.context.users[0].profiles.len(), 3);
+        assert_eq!(app.context.users[0].profiles[0].name, "NAS");
+        assert_eq!(app.context.users[0].profiles[0].selector, "1");
+        assert!(!app.overlay_active());
+    }
+
+    #[test]
+    fn profile_form_validation_keeps_the_form_open() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::AddProfile);
+        // Submit with an empty name.
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert!(commands.is_empty());
+        match &app.overlay {
+            TuiOverlay::ProfileForm(form) => assert!(form.error.is_some()),
+            _ => panic!("form must stay open on a validation error"),
+        }
+    }
+
+    #[test]
+    fn profile_form_edit_prefills_and_preserves_group_state() {
+        let mut app = AppState::new_live(grouped_context());
+        // srv-1 is a member of "Production".
+        app.apply_action(TuiAction::EditProfile);
+        match &app.overlay {
+            TuiOverlay::ProfileForm(form) => {
+                assert!(matches!(form.mode, ProfileFormMode::Edit { .. }));
+                assert_eq!(form.name, "Production");
+                assert_eq!(form.host, "example.com");
+            }
+            other => panic!("expected an edit ProfileForm, got {:?}", other),
+        }
+        // Rename via backspacing to empty then typing a new name.
+        for _ in 0.."Production".len() {
+            app.handle_overlay_key(OverlayKey::Backspace);
+        }
+        for c in "Prod".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        match &commands[0] {
+            WorkerCommand::SaveProfile { draft, .. } => {
+                assert_eq!(draft.id, "srv-1");
+                assert_eq!(draft.name, "Prod");
+            }
+            other => panic!("expected SaveProfile, got {:?}", other),
+        }
+        // Edit preserves the group membership the form does not own.
+        assert_eq!(app.context.users[0].profiles[0].name, "Prod");
+        assert_eq!(app.context.users[0].profiles[0].groups, vec!["Production"]);
+        assert_eq!(app.context.users[0].profiles.len(), 2);
+    }
+
+    #[test]
+    fn profile_form_protocol_cycles_with_arrows() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::AddProfile);
+        app.handle_overlay_key(OverlayKey::Tab); // focus Protocol
+        app.handle_overlay_key(OverlayKey::Right);
+        match &app.overlay {
+            TuiOverlay::ProfileForm(form) => assert_eq!(form.protocol, "ftp"),
+            _ => panic!("form missing"),
+        }
+        app.handle_overlay_key(OverlayKey::Left);
+        match &app.overlay {
+            TuiOverlay::ProfileForm(form) => assert_eq!(form.protocol, "sftp"),
+            _ => panic!("form missing"),
+        }
+    }
+
+    #[test]
+    fn profile_form_sends_the_credential_only_when_touched() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::AddProfile);
+        for c in "NAS".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        app.handle_overlay_key(OverlayKey::Tab); // Protocol
+        app.handle_overlay_key(OverlayKey::Tab); // Host
+        for c in "nas.local".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        // Walk to the password field (Host -> Port -> Username -> Remote ->
+        // Local -> Password) and type a secret.
+        for _ in 0..5 {
+            app.handle_overlay_key(OverlayKey::Tab);
+        }
+        for c in "hunter2".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        match &commands[0] {
+            WorkerCommand::SaveProfile { secret, .. } => {
+                let secret = secret.as_ref().expect("secret sent when touched");
+                assert_eq!(secret.expose(), "hunter2");
+            }
+            other => panic!("expected SaveProfile, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn introhub_add_profile_refused_on_a_locked_user() {
+        let context = TuiContext {
+            users: vec![TuiUser {
+                name: "locked".to_string(),
+                is_active: true,
+                is_locked: true,
+                is_admin: false,
+                profile_count: 0,
+                profiles: Vec::new(),
+            }],
+            initial_user: 0,
+            download_base: "/tmp".to_string(),
+            groups: Vec::new(),
+        };
+        let mut app = AppState::new_live(context);
+        app.apply_action(TuiAction::AddProfile);
+        assert!(!app.overlay_active(), "no form for a locked user");
+    }
+
     #[test]
     fn introhub_h_requests_a_health_probe_and_applies_the_result() {
         let mut context = introhub_context();
@@ -3203,6 +4070,196 @@ mod tests {
         assert_eq!(app.session.phase, TuiSessionPhase::Connected);
         assert_eq!(app.focus, TuiFocus::Browser);
         app
+    }
+
+    // --- B3 command palette ------------------------------------------------
+
+    #[test]
+    fn palette_tokenizer_honors_double_quotes() {
+        assert_eq!(
+            tokenize_palette_line("get \"a b.txt\" ./out"),
+            vec![
+                "get".to_string(),
+                "a b.txt".to_string(),
+                "./out".to_string()
+            ]
+        );
+        assert_eq!(tokenize_palette_line("   ls   /srv  "), vec!["ls", "/srv"]);
+        assert!(tokenize_palette_line("   ").is_empty());
+    }
+
+    #[test]
+    fn palette_resolves_paths_against_the_remote_cwd() {
+        assert_eq!(resolve_remote_arg("/srv", "docs"), "/srv/docs");
+        assert_eq!(resolve_remote_arg("/srv", "/etc/hosts"), "/etc/hosts");
+        assert_eq!(resolve_remote_arg("/srv/docs", ".."), "/srv");
+        assert_eq!(resolve_remote_arg("/srv", "."), "/srv");
+    }
+
+    #[test]
+    fn palette_parses_each_verb() {
+        assert_eq!(
+            parse_palette_command("ls /srv", "/home"),
+            PaletteCommand::List {
+                path: "/srv".to_string()
+            }
+        );
+        // ls with no argument lists the current directory.
+        assert_eq!(
+            parse_palette_command("ls", "/srv"),
+            PaletteCommand::List {
+                path: "/srv".to_string()
+            }
+        );
+        assert_eq!(
+            parse_palette_command("cd docs", "/srv"),
+            PaletteCommand::List {
+                path: "/srv/docs".to_string()
+            }
+        );
+        assert_eq!(
+            parse_palette_command("stat readme.txt", "/srv"),
+            PaletteCommand::Stat {
+                path: "/srv/readme.txt".to_string()
+            }
+        );
+        assert_eq!(
+            parse_palette_command("mkdir out", "/srv"),
+            PaletteCommand::Mkdir {
+                path: "/srv/out".to_string()
+            }
+        );
+        assert_eq!(
+            parse_palette_command("get \"a b.txt\" ./b", "/srv"),
+            PaletteCommand::Get {
+                remote: "/srv/a b.txt".to_string(),
+                local: Some("./b".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_palette_command("get a.txt", "/srv"),
+            PaletteCommand::Get {
+                remote: "/srv/a.txt".to_string(),
+                local: None,
+            }
+        );
+        assert_eq!(
+            parse_palette_command("rm old", "/srv"),
+            PaletteCommand::Rm {
+                path: "/srv/old".to_string(),
+                force: false,
+            }
+        );
+        assert_eq!(
+            parse_palette_command("rm! old", "/srv"),
+            PaletteCommand::Rm {
+                path: "/srv/old".to_string(),
+                force: true,
+            }
+        );
+    }
+
+    #[test]
+    fn palette_reports_unknown_verbs_and_bad_arity() {
+        assert!(matches!(
+            parse_palette_command("bogus", "/srv"),
+            PaletteCommand::Error(_)
+        ));
+        assert!(matches!(
+            parse_palette_command("cd", "/srv"),
+            PaletteCommand::Error(_)
+        ));
+        assert!(matches!(
+            parse_palette_command("get a b c", "/srv"),
+            PaletteCommand::Error(_)
+        ));
+        assert_eq!(parse_palette_command("", "/srv"), PaletteCommand::Empty);
+    }
+
+    #[test]
+    fn palette_opens_only_when_connected() {
+        // Pre-connect IntroHub: ':' explains it needs a session, no overlay.
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::OpenPalette);
+        assert!(!app.overlay_active(), "palette must not open pre-connect");
+
+        // Connected: ':' opens the palette overlay.
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        assert!(matches!(app.overlay, TuiOverlay::Palette(_)));
+    }
+
+    #[test]
+    fn palette_submit_dispatches_ls_and_closes() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "cd docs".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/srv/docs".to_string()
+            }]
+        );
+        assert!(
+            !app.overlay_active(),
+            "palette closes after a valid command"
+        );
+    }
+
+    #[test]
+    fn palette_submit_get_enqueues_a_transfer() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "get readme.txt".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(commands.len(), 1);
+        assert!(matches!(
+            &commands[0],
+            WorkerCommand::Download { remote_path, .. } if remote_path == "/srv/readme.txt"
+        ));
+        assert_eq!(app.focus, TuiFocus::Transfers);
+        assert_eq!(app.transfers.items.len(), 1);
+    }
+
+    #[test]
+    fn palette_rm_routes_through_the_confirm_overlay() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "rm old".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert!(commands.is_empty(), "rm waits for confirmation");
+        assert!(matches!(app.overlay, TuiOverlay::Confirm(_)));
+        // Confirming issues the non-recursive remove.
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Remove {
+                path: "/srv/old".to_string(),
+                recursive: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn palette_unknown_keeps_open_with_a_hint() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenPalette);
+        for c in "bogus".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert!(commands.is_empty());
+        match &app.overlay {
+            TuiOverlay::Palette(state) => assert!(!state.last_result.is_empty()),
+            _ => panic!("palette must stay open on a parse error"),
+        }
     }
 
     #[test]
