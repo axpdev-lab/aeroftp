@@ -185,6 +185,8 @@ export interface FriendBinding {
   localFolder?: string;
   role?: string;
   driveName?: string;
+  /** Custom avatar/icon (data URL) for the friend card. */
+  customIconUrl?: string;
 }
 
 /**
@@ -215,6 +217,7 @@ export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfi
     port: 0,
     username: alias,
     protocol: 'peer',
+    customIconUrl: b.customIconUrl ?? existing?.customIconUrl,
     options,
   };
 

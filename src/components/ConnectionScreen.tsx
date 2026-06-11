@@ -19,6 +19,7 @@ import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
+import { AeroShareHandshakeBody } from './AeroShare/AeroShareHandshakeBody';
 import { TotpLivePreview } from './TotpLivePreview';
 import { findActiveMode, findActiveModeGroup, resolveModeHeader } from './providerModeGroups';
 import { OAuthConnect } from './OAuthConnect';
@@ -2115,6 +2116,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         );
     };
 
+    /**
+     * Persist a peer-card edit (My Servers). The shared AeroShareHandshakeBody
+     * owns the EDIT form (so it stays identical to the ADD form); it hands the
+     * updated friend name / local folder / icon back here, and we merge them
+     * onto the existing saved profile. No drive re-import: editing a received
+     * connection only changes local metadata + the replica path
+     * (options.peerLocalFolder). Friend name drives both the card title and the
+     * saved alias (the old redundant Connection-name field is gone).
+     */
+    const savePeerEditedProfile = async (v: { alias: string; localFolder: string; customIconUrl?: string }) => {
+        const id = editingProfileId ?? editingProfile?.id;
+        if (!id) return;
+        const servers = await loadSavedServerProfiles();
+        const alias = v.alias.trim();
+        const updated = servers.map((s) => s.id === id ? {
+            ...s,
+            name: alias || s.name,
+            username: alias || s.username,
+            customIconUrl: v.customIconUrl,
+            options: { ...(s.options || {}), peerLocalFolder: v.localFolder },
+        } : s);
+        await storeSavedServerProfiles(updated).catch(() => { });
+        setSavedServersUpdate(Date.now());
+        const saved = updated.find((s) => s.id === id);
+        if (saved) {
+            logActivity('PROFILE_SAVE', `Profile updated: "${saved.name}"`, 'success', `dedupKey=${getStorageDedupKey(saved)}`);
+        }
+    };
+
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
     const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
@@ -2501,6 +2531,46 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <p className="text-xs text-gray-500 text-center mt-3">
                                     {t('connection.selectProviderPrompt')}
                                 </p>
+                            </div>
+                        ) : isPeer && !editingProfileId && !editingProfile ? (
+                            /* AeroShare peer-ADD (reached via the Discover tile ->
+                               onSelectProvider('peer')): render the SHARED handshake body
+                               instead of the credential cascade, so add/edit feel like any
+                               other server but reuse ONE form. -mx-6 -mb-6 cancels the card
+                               padding so the body sits edge-to-edge like in the modal.
+                               onClose -> onFormSaved closes the form tab, returns to My
+                               Servers and refreshes the list (the saved friend appears as a
+                               card). "Connect now" is intentionally omitted here: peer-add
+                               behaves like every other server (save -> appears -> Connect).
+                               Peer-EDIT (editingProfileId set) keeps the peer-aware form below. */
+                            <div className="-mx-6 -mb-6">
+                                <AeroShareHandshakeBody
+                                    variant="page"
+                                    initialMode="receive"
+                                    onClose={() => { onFormSaved?.(); }}
+                                />
+                            </div>
+                        ) : isPeer ? (
+                            /* AeroShare peer-EDIT (editingProfileId / editingProfile set):
+                               the ADD branch above already handled the !editing case, so
+                               reaching here means we are editing a received connection.
+                               Reuse the SAME AeroShareHandshakeBody in edit mode so the
+                               edit form is identical to the add form (labels, violet
+                               Server Icon, styling). The body owns the form; persistence
+                               of the saved profile stays here via onSaveEdit. -mx-6 -mb-6
+                               cancels the card padding so it sits edge-to-edge like add. */
+                            <div className="-mx-6 -mb-6">
+                                <AeroShareHandshakeBody
+                                    variant="page"
+                                    editConnection={{
+                                        afid: connectionParams.server || editingProfile?.host || '',
+                                        alias: connectionName || connectionParams.username || editingProfile?.name || '',
+                                        localFolder: connectionParams.options?.peerLocalFolder ?? editingProfile?.options?.peerLocalFolder ?? '',
+                                        customIconUrl: customIconForSave ?? editingProfile?.customIconUrl,
+                                    }}
+                                    onSaveEdit={savePeerEditedProfile}
+                                    onClose={() => { onFormSaved?.(); }}
+                                />
                             </div>
                         ) : (
                             <>

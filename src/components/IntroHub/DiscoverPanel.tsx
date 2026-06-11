@@ -9,7 +9,6 @@ import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
 import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
-import { openAeroShareDialog } from '../../utils/aeroShare';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS } from './discoverData';
 import { getProviderById } from '../../providers';
 import { CatalogCategoryId } from '../../types/catalog';
@@ -360,12 +359,11 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     }, [healthEnabled, usesChunkedScan, chunkedTargets, activeItems, scanItems]);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
-        // AeroShare is a handshake, not a credential connection: route its tile
-        // to the dialog (RECEIVE tab) rather than the provider connection form.
-        if (item.protocol === 'peer') {
-            openAeroShareDialog({ mode: 'receive' });
-            return;
-        }
+        // AeroShare (peer) now routes through the standard provider form like any
+        // other tile. ConnectionScreen renders the shared <AeroShareHandshakeBody>
+        // for the peer-ADD case, so the modal (+friend quick-add) and the form-tab
+        // reuse ONE handshake body (no duplication). The +friend icon / File menu /
+        // My Servers button still open the modal for a quick add.
         onSelectProvider(item.protocol, item.providerId, item.demo);
     }, [onSelectProvider]);
 
