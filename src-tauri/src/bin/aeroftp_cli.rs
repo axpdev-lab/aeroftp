@@ -2195,6 +2195,12 @@ enum Commands {
         /// in JSON / non-interactive mode.
         #[arg(long, short = 'i')]
         interactive: bool,
+
+        /// Show only profiles in this group (case-insensitive name), the CLI
+        /// analogue of the GUI group filter chip. Groups are managed from the
+        /// interactive prompt (`g <selector> <group>`) or the GUI.
+        #[arg(long, value_name = "NAME")]
+        group: Option<String>,
     },
     /// Manage local AeroFTP user partitions
     ///
@@ -8477,6 +8483,9 @@ struct ProfilesViewOverrides {
     /// prompt loop after rendering the table: `<n>l` lists a profile,
     /// `<n>t` trees it, `<n>d` deletes it from the vault, `q` quits.
     interactive: bool,
+    /// Restrict the listing to profiles in this group (case-insensitive name),
+    /// the CLI analogue of the GUI group filter chip (#320).
+    group: Option<String>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -8493,6 +8502,7 @@ enum ProfileColId {
     Paths,
     Time,
     Favorite,
+    Groups,
 }
 
 impl ProfileColId {
@@ -8510,12 +8520,17 @@ impl ProfileColId {
             ProfileColId::Paths => "Path",
             ProfileColId::Time => "Last",
             ProfileColId::Favorite => "Fav",
+            ProfileColId::Groups => "Groups",
         }
     }
 
     fn is_sortable(self) -> bool {
         // Mirrors MY_SERVERS_TABLE_COLUMNS sortable flag: subtitle/paths excluded.
-        !matches!(self, ProfileColId::Subtitle | ProfileColId::Paths)
+        // Groups is a free-text multi-value cell, not a meaningful sort key.
+        !matches!(
+            self,
+            ProfileColId::Subtitle | ProfileColId::Paths | ProfileColId::Groups
+        )
     }
 
     /// Translate a CLI alias (case-insensitive) into the corresponding column.
@@ -8536,6 +8551,7 @@ impl ProfileColId {
             "path" | "paths" => Some(ProfileColId::Paths),
             "last" | "time" => Some(ProfileColId::Time),
             "fav" | "favorite" | "favourite" | "favs" => Some(ProfileColId::Favorite),
+            "group" | "groups" | "category" | "categories" | "cat" => Some(ProfileColId::Groups),
             _ => None,
         }
     }
@@ -8554,6 +8570,7 @@ const PROFILE_COL_ORDER: &[ProfileColId] = &[
     ProfileColId::Paths,
     ProfileColId::Time,
     ProfileColId::Favorite,
+    ProfileColId::Groups,
 ];
 
 /// Columns the table renderer never hides: `#` and `Name` stay pinned exactly
@@ -8931,6 +8948,7 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
                 ProfileColId::Paths => "paths",
                 ProfileColId::Time => "time",
                 ProfileColId::Favorite => "favorite",
+                ProfileColId::Groups => "groups",
             };
             match vis.get(key).and_then(|v| v.as_bool()) {
                 Some(false) => {
@@ -8938,13 +8956,16 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
                 }
                 Some(true) => {} // explicitly visible
                 None => {
-                    // Missing key: fall back to defaultVisibility(). Paths
-                    // and the optional compression columns are hidden by
-                    // default (Ehud #162: opt-in via --show or the GUI
-                    // column picker).
+                    // Missing key: fall back to defaultVisibility(). Paths,
+                    // the optional compression columns, and Groups (#320) are
+                    // hidden by default (Ehud #162: opt-in via --show or the
+                    // GUI column picker).
                     if matches!(
                         col,
-                        ProfileColId::Paths | ProfileColId::Saved | ProfileColId::SavedPct
+                        ProfileColId::Paths
+                            | ProfileColId::Saved
+                            | ProfileColId::SavedPct
+                            | ProfileColId::Groups
                     ) {
                         out.hidden.insert(*col);
                     }
@@ -9091,6 +9112,107 @@ fn toggle_favorite_in_vault(store: &CredentialStore, profile_id: &str) -> Result
         .store("config_favorite_servers", &payload)
         .map_err(|e| format!("Failed to write favourites: {}", e))?;
     Ok(now_favoured)
+}
+
+/// A saved-server group: the named generalisation of a favourite (#320). The
+/// GUI persists these under `config_server_groups`; membership is stored here
+/// in the group blob (by profile id), never on the profile itself, so the CLI
+/// and GUI converge on one key without touching the profile format.
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct CliServerGroup {
+    id: String,
+    name: String,
+    #[serde(default)]
+    color: Option<String>,
+    #[serde(default)]
+    order: i64,
+    #[serde(default)]
+    members: Vec<String>,
+}
+
+/// Read the groups list from the vault, sorted by `order`. Returns an empty
+/// vec on any failure (missing or malformed entry collapses to "no groups"),
+/// mirroring `load_favorite_server_ids`.
+fn load_server_groups(store: &CredentialStore) -> Vec<CliServerGroup> {
+    let raw = match store.get("config_server_groups") {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
+    groups.sort_by_key(|g| g.order);
+    groups
+}
+
+/// Names of the groups a profile belongs to, in `order`. Empty when ungrouped.
+fn group_names_for_profile(groups: &[CliServerGroup], profile_id: &str) -> Vec<String> {
+    groups
+        .iter()
+        .filter(|g| g.members.iter().any(|m| m == profile_id))
+        .map(|g| g.name.clone())
+        .collect()
+}
+
+/// Toggle a profile's membership in a group, looked up case-insensitively by
+/// name. Reads the current groups, flips membership, writes back. Returns
+/// `(group_name, now_member)`. A new group is created when `name` matches none.
+/// Mirrors `toggle_favorite_in_vault` so GUI and CLI share `config_server_groups`.
+fn toggle_group_membership_in_vault(
+    store: &CredentialStore,
+    profile_id: &str,
+    name: &str,
+) -> Result<(String, bool), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Group name cannot be empty".to_string());
+    }
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let now_member;
+    let group_name;
+    if let Some(g) = groups
+        .iter_mut()
+        .find(|g| g.name.eq_ignore_ascii_case(trimmed))
+    {
+        group_name = g.name.clone();
+        if let Some(pos) = g.members.iter().position(|m| m == profile_id) {
+            g.members.remove(pos);
+            now_member = false;
+        } else {
+            g.members.push(profile_id.to_string());
+            now_member = true;
+        }
+    } else {
+        let order = groups.iter().map(|g| g.order).max().unwrap_or(-1) + 1;
+        groups.push(CliServerGroup {
+            id: format!(
+                "grp_{}_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0),
+                profile_id.chars().take(6).collect::<String>()
+            ),
+            name: trimmed.to_string(),
+            color: None,
+            order,
+            members: vec![profile_id.to_string()],
+        });
+        group_name = trimmed.to_string();
+        now_member = true;
+    }
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok((group_name, now_member))
 }
 
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
@@ -9274,7 +9396,7 @@ fn compare_profiles(
                 .unwrap_or(false);
             bf.cmp(&af)
         }
-        ProfileColId::Subtitle | ProfileColId::Paths => Ordering::Equal,
+        ProfileColId::Subtitle | ProfileColId::Paths | ProfileColId::Groups => Ordering::Equal,
     }
 }
 
@@ -9287,13 +9409,30 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         }
     };
 
-    let profiles = match load_active_user_profiles(cli, &store) {
+    let mut profiles = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("Failed to load profiles: {}", e), 5);
             return 5;
         }
     };
+
+    // --group filter (#320): keep only profiles that belong to the named group
+    // (case-insensitive). The CLI analogue of selecting a GUI group chip.
+    if let Some(group_name) = overrides.group.as_deref() {
+        let groups = load_server_groups(&store);
+        let member_ids: std::collections::HashSet<&str> = groups
+            .iter()
+            .find(|g| g.name.eq_ignore_ascii_case(group_name.trim()))
+            .map(|g| g.members.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_default();
+        profiles.retain(|p| {
+            p.get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| member_ids.contains(id))
+                .unwrap_or(false)
+        });
+    }
 
     if profiles.is_empty() {
         if matches!(format, OutputFormat::Json) {
@@ -9314,6 +9453,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             .into_iter()
             .collect();
         let favorites = load_favorite_server_ids(&store);
+        let groups = load_server_groups(&store);
         let safe: Vec<serde_json::Value> = profiles
             .iter()
             .enumerate()
@@ -9357,6 +9497,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                     "auth_state": auth_state,
                     "providerId": p.get("providerId").and_then(|v| v.as_str()),
                     "favorite": !id.is_empty() && favorites.contains(id),
+                    "groups": group_names_for_profile(&groups, id),
                     "lastQuota": match (used, total) {
                         (Some(u), Some(t)) if t > 0 => serde_json::json!({
                             "used": u,
@@ -9457,6 +9598,19 @@ fn render_profiles_text(
     let color_on = use_color();
     let mut settings = read_ui_table_settings(store);
     let favorites = load_favorite_server_ids(store);
+    let groups = load_server_groups(store);
+    // Per-profile group label ("GroupA, GroupB" or "-"), keyed by profile id (#320).
+    let group_label = |id: &str| -> String {
+        if id.is_empty() {
+            return "-".to_string();
+        }
+        let names = group_names_for_profile(&groups, id);
+        if names.is_empty() {
+            "-".to_string()
+        } else {
+            names.join(", ")
+        }
+    };
 
     // Apply --hide / --show overrides for this run only. `--hide` is
     // subtractive (add columns to the hidden set). `--show` is an exclusive
@@ -9593,6 +9747,7 @@ fn render_profiles_text(
                     | ProfileColId::Badges
                     | ProfileColId::Subtitle
                     | ProfileColId::Paths
+                    | ProfileColId::Groups
             )
         })
         .count()
@@ -9642,6 +9797,18 @@ fn render_profiles_text(
         .unwrap_or(4)
         .max(4);
 
+    // Groups cell width (#320): the comma-joined group label, capped like the
+    // other shrinkable columns.
+    let groups_width = sorted
+        .iter()
+        .map(|(_, p)| {
+            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            group_label(id).chars().count().min(per_col_cap)
+        })
+        .max()
+        .unwrap_or(6)
+        .max(6);
+
     let col_width = |c: ProfileColId| -> usize {
         match c {
             ProfileColId::Index => index_width.max(c.header().chars().count()),
@@ -9656,6 +9823,7 @@ fn render_profiles_text(
             ProfileColId::Paths => path_width.max(c.header().chars().count()),
             ProfileColId::Time => last_width,
             ProfileColId::Favorite => fav_width,
+            ProfileColId::Groups => groups_width.max(c.header().chars().count()),
         }
     };
 
@@ -9772,6 +9940,13 @@ fn render_profiles_text(
                         "-"
                     };
                     format!("{:^w$}", marker, w = w)
+                }
+                ProfileColId::Groups => {
+                    // Comma-joined group names from `config_server_groups`, the
+                    // CLI view of the GUI's group chips (#320).
+                    let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let cap = groups_width.max(c.header().chars().count());
+                    format!("{:<w$}", truncate_cell(&group_label(id), cap), w = w)
                 }
             };
             cells.push(cell);
@@ -10015,6 +10190,9 @@ fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
     if ov.breakdown {
         args.push("--breakdown".to_string());
     }
+    if let Some(g) = &ov.group {
+        args.push(format!("--group={}", g));
+    }
     args
 }
 
@@ -10071,7 +10249,7 @@ fn interactive_profiles_loop(
             cmd
         } else {
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove group  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -10394,7 +10572,7 @@ fn interactive_profiles_loop(
         // Falls back to the legacy compact `1l`/`l1` parser when the input
         // doesn't match the new shape (so existing muscle memory still
         // works).
-        let (action, selectors) = match parse_interactive_action(raw) {
+        let (action, mut selectors) = match parse_interactive_action(raw) {
             Some(v) => v,
             None => {
                 if let Some((idx, act)) = parse_interactive_token(&lower) {
@@ -10406,12 +10584,35 @@ fn interactive_profiles_loop(
             }
         };
 
-        if !matches!(action, 'l' | 't' | 'd' | 'f' | 'r' | 'c' | 'e' | 's' | 'v') {
+        if !matches!(
+            action,
+            'l' | 't' | 'd' | 'f' | 'g' | 'r' | 'c' | 'e' | 's' | 'v'
+        ) {
             eprintln!(
-                "Unknown action '{}'. Supported: l, t, d, f, r, c, e, s, v. Type '?' for help.",
+                "Unknown action '{}'. Supported: l, t, d, f, g, r, c, e, s, v. Type '?' for help.",
                 action
             );
             continue;
+        }
+
+        // `g` (group): the LAST token is the group name; the rest are profile
+        // selectors. Toggles each selected profile's membership in that group,
+        // creating the group if the name is new (#320). Mirrors the `f`
+        // favourite toggle but with a named bucket.
+        let mut group_name_arg: Option<String> = None;
+        if action == 'g' {
+            let popped = selectors.pop();
+            let valid_name = popped
+                .as_deref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if !valid_name || selectors.is_empty() {
+                eprintln!(
+                    "Usage: g <selector> [selector ...] <group-name>   (toggles membership; creates the group if new)"
+                );
+                continue;
+            }
+            group_name_arg = popped;
         }
 
         // Optional tree depth: a `:N` token (u8) among the selectors overrides
@@ -10611,6 +10812,46 @@ fn interactive_profiles_loop(
                         Err(e) => eprintln!(
                             "{}",
                             paint_red(&format!("Favourite toggle '{}' failed: {}", name, e))
+                        ),
+                    }
+                }
+            }
+            'g' => {
+                // Group membership toggle. Writes `config_server_groups`
+                // directly so the GUI picks it up on its next mount reconcile,
+                // the named generalisation of the `f` favourite toggle (#320).
+                let group = group_name_arg.clone().unwrap_or_default();
+                for (zero, profile) in &targets {
+                    let id = profile
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = profile
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    if id.is_empty() {
+                        eprintln!("Profile '{}' has no id; skipping.", name);
+                        continue;
+                    }
+                    match toggle_group_membership_in_vault(store, &id, &group) {
+                        Ok((gname, true)) => eprintln!(
+                            "{}",
+                            paint_green(&format!(
+                                "#{} '{}' added to group '{}'.",
+                                zero + 1,
+                                name,
+                                gname
+                            ))
+                        ),
+                        Ok((gname, false)) => {
+                            eprintln!("#{} '{}' removed from group '{}'.", zero + 1, name, gname)
+                        }
+                        Err(e) => eprintln!(
+                            "{}",
+                            paint_red(&format!("Group change for '{}' failed: {}", name, e))
                         ),
                     }
                 }
@@ -44023,6 +44264,7 @@ async fn main() {
             show,
             breakdown,
             interactive,
+            group,
         } => list_vault_profiles(
             &cli,
             format,
@@ -44032,6 +44274,7 @@ async fn main() {
                 show: show.clone(),
                 breakdown: *breakdown,
                 interactive: *interactive,
+                group: group.clone(),
             },
         ),
         Commands::Users { command } => cmd_users(&cli, command, format),
@@ -45158,6 +45401,7 @@ mod tests {
                 show: None,
                 breakdown: false,
                 interactive: false,
+                group: None,
             },
         }
     }
@@ -47914,6 +48158,7 @@ mod tests {
             show: None,
             breakdown: false,
             interactive: true,
+            group: None,
         };
         assert_eq!(profiles_view_args(&plain), vec!["profiles".to_string()]);
         // `interactive` must NOT leak into the refresh args.
@@ -47926,6 +48171,7 @@ mod tests {
             show: Some("name".to_string()),
             breakdown: true,
             interactive: true,
+            group: Some("Production".to_string()),
         };
         assert_eq!(
             profiles_view_args(&full),
@@ -47935,6 +48181,7 @@ mod tests {
                 "--hide=host".to_string(),
                 "--show=name".to_string(),
                 "--breakdown".to_string(),
+                "--group=Production".to_string(),
             ]
         );
     }
