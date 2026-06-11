@@ -209,7 +209,7 @@ impl Default for CompareOptions {
     }
 }
 
-pub(crate) fn ensure_error_correction_exclude_patterns(patterns: &mut Vec<String>) {
+pub fn ensure_error_correction_exclude_patterns(patterns: &mut Vec<String>) {
     if !patterns
         .iter()
         .any(|pattern| pattern == AEROSYNC_EC_EXCLUDE_PATTERN)
@@ -1801,6 +1801,23 @@ async fn generate_sync_ec_after_upload(
             Some(SyncEcStatus::GenerateFailed)
         }
     }
+}
+
+pub async fn generate_sync_error_correction_sidecar_after_upload(
+    provider: &mut dyn StorageProvider,
+    rel: &str,
+    local_path: &str,
+    remote_path: &str,
+    pct: u32,
+) -> SyncEcStatus {
+    let options = SyncErrorCorrectionOptions {
+        enabled: true,
+        pct,
+        max_file_size: AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+    };
+    generate_sync_ec_after_upload(provider, rel, local_path, remote_path, &options)
+        .await
+        .unwrap_or(SyncEcStatus::GenerateFailed)
 }
 
 async fn verify_repair_sync_ec_after_download(

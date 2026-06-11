@@ -1714,6 +1714,17 @@ enum Commands {
         /// Exclude patterns (can repeat: --exclude "*.tmp" --exclude ".git")
         #[arg(long, short)]
         exclude: Vec<String>,
+        /// Generate AeroSync Reed-Solomon .aerorec sidecars after uploads.
+        /// Optional level: low, medium, quartile, high, or a percentage 5-50.
+        #[arg(
+            long = "error-correction",
+            visible_alias = "ec",
+            value_name = "LEVEL",
+            num_args = 0..=1,
+            require_equals = true,
+            default_missing_value = "medium"
+        )]
+        error_correction: Option<String>,
         /// Detect renamed files by hash to avoid re-upload
         #[arg(long)]
         track_renames: bool,
@@ -3885,6 +3896,12 @@ struct CliSyncResult {
     downloaded: u32,
     deleted: u32,
     skipped: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_generated: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_too_large: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_generate_failed: Option<u32>,
     errors: Vec<String>,
     elapsed_secs: f64,
     /// Per-file execution plan. Populated in `--dry-run` so agents can pilot
@@ -3922,6 +3939,9 @@ struct SyncCycleStats {
     downloaded: u32,
     deleted: u32,
     skipped: u32,
+    ec_generated: u32,
+    ec_skipped_too_large: u32,
+    ec_generate_failed: u32,
     error_count: u32,
 }
 
@@ -4763,6 +4783,104 @@ async fn reject_restricted_target(
 
 fn is_valid_sync_direction(direction: &str) -> bool {
     matches!(direction, "upload" | "download" | "both")
+}
+
+const SYNC_ERROR_CORRECTION_DEFAULT_PCT: u32 = 15;
+const SYNC_ERROR_CORRECTION_MIN_PCT: u32 = 5;
+const SYNC_ERROR_CORRECTION_MAX_PCT: u32 = 50;
+
+fn parse_sync_error_correction_level_pct(level: Option<&str>) -> Result<Option<u32>, String> {
+    let Some(raw) = level else {
+        return Ok(None);
+    };
+    let normalized = raw.trim().trim_end_matches('%').to_ascii_lowercase();
+    let pct = match normalized.as_str() {
+        "" | "medium" | "med" => SYNC_ERROR_CORRECTION_DEFAULT_PCT,
+        "low" => 7,
+        "quartile" => 25,
+        "high" => 30,
+        other => other.parse::<u32>().map_err(|_| {
+            format!(
+                "Invalid --error-correction level '{}'. Expected low, medium, quartile, high, or a percentage from {} to {}.",
+                raw, SYNC_ERROR_CORRECTION_MIN_PCT, SYNC_ERROR_CORRECTION_MAX_PCT
+            )
+        })?,
+    };
+    Ok(Some(pct.clamp(
+        SYNC_ERROR_CORRECTION_MIN_PCT,
+        SYNC_ERROR_CORRECTION_MAX_PCT,
+    )))
+}
+
+#[derive(Default, Clone, Copy)]
+struct CliSyncEcCounters {
+    generated: u32,
+    skipped_too_large: u32,
+    generate_failed: u32,
+}
+
+impl CliSyncEcCounters {
+    fn record(&mut self, status: ftp_client_gui_lib::sync::SyncEcStatus) {
+        match status {
+            ftp_client_gui_lib::sync::SyncEcStatus::Generated => self.generated += 1,
+            ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge => self.skipped_too_large += 1,
+            ftp_client_gui_lib::sync::SyncEcStatus::GenerateFailed => self.generate_failed += 1,
+            _ => {}
+        }
+    }
+}
+
+fn sync_ec_json_counter(enabled: bool, value: u32) -> Option<u32> {
+    enabled.then_some(value)
+}
+
+fn sync_effective_exclude_patterns(
+    exclude: &[String],
+    error_correction_enabled: bool,
+) -> Vec<String> {
+    let mut patterns = exclude.to_vec();
+    if error_correction_enabled {
+        ftp_client_gui_lib::sync::ensure_error_correction_exclude_patterns(&mut patterns);
+    }
+    patterns
+}
+
+async fn record_sync_ec_after_successful_upload(
+    provider: &mut dyn StorageProvider,
+    relative: &str,
+    local_path: &str,
+    remote_path: &str,
+    pct: Option<u32>,
+    counters: &mut CliSyncEcCounters,
+    quiet: bool,
+) {
+    let Some(pct) = pct else {
+        return;
+    };
+    let status = ftp_client_gui_lib::sync::generate_sync_error_correction_sidecar_after_upload(
+        provider,
+        relative,
+        local_path,
+        remote_path,
+        pct,
+    )
+    .await;
+    counters.record(status);
+    match status {
+        ftp_client_gui_lib::sync::SyncEcStatus::GenerateFailed if !quiet => {
+            eprintln!(
+                "Warning: AeroSync EC sidecar generation failed for {} (file uploaded)",
+                relative
+            );
+        }
+        ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge if !quiet => {
+            eprintln!(
+                "Note: AeroSync EC skipped {} because it exceeds the Phase 1 size cap",
+                relative
+            );
+        }
+        _ => {}
+    }
 }
 
 fn format_size(bytes: u64) -> String {
@@ -19431,6 +19549,9 @@ async fn cmd_get_recursive(
                 skipped: (total_files as u32)
                     .saturating_sub(downloaded)
                     .saturating_sub(errors.len() as u32),
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_generate_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -19656,6 +19777,9 @@ async fn cmd_get_glob(
                 downloaded,
                 deleted: 0,
                 skipped: 0,
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_generate_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -20278,6 +20402,9 @@ async fn cmd_put_recursive(
                 downloaded: 0,
                 deleted: 0,
                 skipped,
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_generate_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -28806,6 +28933,7 @@ async fn cmd_sync(
     dry_run: bool,
     delete: bool,
     exclude: &[String],
+    error_correction_pct: Option<u32>,
     track_renames: bool,
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
@@ -28845,6 +28973,8 @@ async fn cmd_sync(
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let error_correction_enabled = error_correction_pct.is_some();
+    let mut ec_counters = CliSyncEcCounters::default();
     let start = Instant::now();
 
     if !quiet {
@@ -28861,7 +28991,8 @@ async fn cmd_sync(
     }
 
     // Pre-compile exclude matchers (avoids O(n*m) recompilation)
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
+    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
         .iter()
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
@@ -29750,6 +29881,9 @@ async fn cmd_sync(
                     downloaded: to_download.len() as u32,
                     deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
                     skipped,
+                    ec_generated: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_skipped_too_large: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_generate_failed: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     errors: vec![],
                     elapsed_secs: start.elapsed().as_secs_f64(),
                     plan,
@@ -29764,6 +29898,9 @@ async fn cmd_sync(
             downloaded: to_download.len() as u32,
             deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
             skipped,
+            ec_generated: 0,
+            ec_skipped_too_large: 0,
+            ec_generate_failed: 0,
             error_count: 0,
         };
     }
@@ -29858,7 +29995,7 @@ async fn cmd_sync(
     #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut leftover_upload_jobs: Vec<(String, String, String, u64)> = upload_jobs.clone();
     #[cfg(feature = "aerorsync")]
-    if use_aerorsync_batch && !leftover_upload_jobs.is_empty() {
+    if use_aerorsync_batch && !error_correction_enabled && !leftover_upload_jobs.is_empty() {
         use ftp_client_gui_lib::delta_sync_rsync::{
             open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
         };
@@ -29950,36 +30087,43 @@ async fn cmd_sync(
         // non-pool-backed providers (FTP, single-conn APIs) fall back to
         // the legacy independent-connection batch: honest fallback, no
         // overclaim.
-        let upload_files: Vec<(String, String, u64)> = leftover_upload_jobs
-            .iter()
-            .map(|(_, local_path, remote_path, size)| {
-                (local_path.clone(), remote_path.clone(), *size)
-            })
-            .collect();
+        let use_legacy_upload = if error_correction_enabled {
+            // EC sidecars must be generated only for uploads that are known
+            // to have succeeded. The shared batch reports aggregate counters,
+            // so keep the per-file result path while EC is enabled.
+            true
+        } else {
+            let upload_files: Vec<(String, String, u64)> = leftover_upload_jobs
+                .iter()
+                .map(|(_, local_path, remote_path, size)| {
+                    (local_path.clone(), remote_path.clone(), *size)
+                })
+                .collect();
 
-        let use_legacy_upload = match create_and_connect(url, cli, format).await {
-            Ok((base, _)) => match run_shared_provider_upload_batch(
-                base,
-                &upload_files,
-                cli,
-                overall_pb.clone(),
-                cancelled.clone(),
-            )
-            .await
-            {
-                Ok(outcome) => {
-                    uploaded += outcome.uploaded;
-                    errors.extend(outcome.errors);
-                    false
-                }
-                Err(mut base) => {
-                    let _ = base.disconnect().await;
-                    true
-                }
-            },
-            // Could not open the shared base (transient): degrade to the
-            // legacy per-file path rather than dropping the uploads.
-            Err(_) => true,
+            match create_and_connect(url, cli, format).await {
+                Ok((base, _)) => match run_shared_provider_upload_batch(
+                    base,
+                    &upload_files,
+                    cli,
+                    overall_pb.clone(),
+                    cancelled.clone(),
+                )
+                .await
+                {
+                    Ok(outcome) => {
+                        uploaded += outcome.uploaded;
+                        errors.extend(outcome.errors);
+                        false
+                    }
+                    Err(mut base) => {
+                        let _ = base.disconnect().await;
+                        true
+                    }
+                },
+                // Could not open the shared base (transient): degrade to the
+                // legacy per-file path rather than dropping the uploads.
+                Err(_) => true,
+            }
         };
 
         if use_legacy_upload {
@@ -29992,10 +30136,11 @@ async fn cmd_sync(
                         if cancelled.load(Ordering::Relaxed) {
                             return Err(format!("upload {}: cancelled", path));
                         }
+                        let display_path = path.clone();
                         match upload_transfer_task(
                             url,
-                            local_path,
-                            remote_path,
+                            local_path.clone(),
+                            remote_path.clone(),
                             cli,
                             format,
                             Some(aggregate),
@@ -30004,8 +30149,8 @@ async fn cmd_sync(
                         )
                         .await
                         {
-                            Ok(()) => Ok(path),
-                            Err(err) => Err(format!("upload {}: {}", path, err)),
+                            Ok(()) => Ok((path, local_path, remote_path)),
+                            Err(err) => Err(format!("upload {}: {}", display_path, err)),
                         }
                     }
                 },
@@ -30016,7 +30161,19 @@ async fn cmd_sync(
 
             for result in upload_results {
                 match result {
-                    Ok(_) => uploaded += 1,
+                    Ok((path, local_path, remote_path)) => {
+                        uploaded += 1;
+                        record_sync_ec_after_successful_upload(
+                            provider.as_mut(),
+                            &path,
+                            &local_path,
+                            &remote_path,
+                            error_correction_pct,
+                            &mut ec_counters,
+                            cli.quiet,
+                        )
+                        .await;
+                    }
                     Err(err) => errors.push(err),
                 }
             }
@@ -30041,6 +30198,8 @@ async fn cmd_sync(
             .to_string_lossy()
             .to_string();
         let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
+        let local_path_for_ec = local_path.clone();
+        let remote_conflict_for_ec = remote_conflict.clone();
         match upload_transfer_task(
             url,
             local_path,
@@ -30056,6 +30215,16 @@ async fn cmd_sync(
             Ok(()) => {
                 conflict_uploaded += 1;
                 preserved_conflict_downloads.insert(orig_path.clone());
+                record_sync_ec_after_successful_upload(
+                    provider.as_mut(),
+                    conflict_path,
+                    &local_path_for_ec,
+                    &remote_conflict_for_ec,
+                    error_correction_pct,
+                    &mut ec_counters,
+                    cli.quiet,
+                )
+                .await;
                 if !quiet {
                     eprintln!("  CONFLICT-RENAME  {} -> {}", orig_path, conflict_path);
                 }
@@ -30272,6 +30441,14 @@ async fn cmd_sync(
                     conflict_uploaded,
                     elapsed.as_secs_f64()
                 );
+                if error_correction_enabled {
+                    println!(
+                        "AeroSync EC: {} generated, {} skipped too large, {} failed",
+                        ec_counters.generated,
+                        ec_counters.skipped_too_large,
+                        ec_counters.generate_failed
+                    );
+                }
                 for err in &errors {
                     eprintln!("  Error: {}", err);
                 }
@@ -30288,6 +30465,18 @@ async fn cmd_sync(
                 downloaded,
                 deleted,
                 skipped,
+                ec_generated: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.generated,
+                ),
+                ec_skipped_too_large: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.skipped_too_large,
+                ),
+                ec_generate_failed: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.generate_failed,
+                ),
                 errors: errors.clone(),
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -30314,6 +30503,9 @@ async fn cmd_sync(
         downloaded,
         deleted,
         skipped,
+        ec_generated: ec_counters.generated,
+        ec_skipped_too_large: ec_counters.skipped_too_large,
+        ec_generate_failed: ec_counters.generate_failed,
         error_count: errors.len() as u32,
     }
 }
@@ -34046,6 +34238,9 @@ async fn cmd_put_glob(
                 downloaded: 0,
                 deleted: 0,
                 skipped: 0,
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_generate_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -34245,6 +34440,7 @@ async fn cmd_sync_watch(
     dry_run: bool,
     delete: bool,
     exclude: &[String],
+    error_correction_pct: Option<u32>,
     track_renames: bool,
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
@@ -34364,6 +34560,7 @@ async fn cmd_sync_watch(
                 dry_run,
                 delete,
                 exclude,
+                error_correction_pct,
                 track_renames,
                 max_delete,
                 backup_dir,
@@ -34391,7 +34588,7 @@ async fn cmd_sync_watch(
             // Emit cycle status with detailed stats
             if matches!(format, OutputFormat::Json) {
                 let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                print_json(&serde_json::json!({
+                let mut payload = serde_json::json!({
                     "cycle": cycle,
                     "trigger": trigger_label,
                     "exit_code": stats.exit_code,
@@ -34402,7 +34599,14 @@ async fn cmd_sync_watch(
                     "errors": stats.error_count,
                     "elapsed_secs": (elapsed.as_millis() as f64) / 1000.0,
                     "timestamp": ts,
-                }));
+                });
+                if error_correction_pct.is_some() {
+                    payload["ec_generated"] = serde_json::json!(stats.ec_generated);
+                    payload["ec_skipped_too_large"] =
+                        serde_json::json!(stats.ec_skipped_too_large);
+                    payload["ec_generate_failed"] = serde_json::json!(stats.ec_generate_failed);
+                }
+                print_json(&payload);
             } else if !quiet {
                 let ts = chrono::Local::now().format("%H:%M:%S");
                 if total_changes == 0 && stats.error_count == 0 {
@@ -34434,7 +34638,9 @@ async fn cmd_sync_watch(
     }
 
     // Pre-compile exclude matchers for incremental scan
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+    let effective_exclude =
+        sync_effective_exclude_patterns(exclude, error_correction_pct.is_some());
+    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
         .iter()
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
@@ -37845,6 +38051,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     false,
                     &[],
+                    None,
                     false,
                     None,
                     None,
@@ -42342,6 +42549,7 @@ async fn main() {
             dry_run,
             delete,
             exclude,
+            error_correction,
             track_renames,
             max_delete,
             backup_dir,
@@ -42390,6 +42598,9 @@ async fn main() {
             }
 
             if local_to_local_match {
+                if error_correction.is_some() && !cli.quiet {
+                    eprintln!("Warning: --error-correction is ignored for local-to-local sync");
+                }
                 let stats = cmd_sync_local_to_local(
                     local_to_local_src,
                     local_to_local_dst,
@@ -42403,92 +42614,103 @@ async fn main() {
                 .await;
                 stats.exit_code
             } else {
-                let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str(), local.as_str())
-                } else {
-                    (url.as_str(), local.as_str(), remote.as_str())
-                };
+                match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
+                    Err(err) => {
+                        print_error(format, &err, 5);
+                        5
+                    }
+                    Ok(error_correction_pct) => {
+                        let (u, l, r) =
+                            if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                                ("_", url.as_str(), local.as_str())
+                            } else {
+                                (url.as_str(), local.as_str(), remote.as_str())
+                            };
 
-                if *watch {
-                    cmd_sync_watch(
-                        u,
-                        l,
-                        r,
-                        direction,
-                        *dry_run,
-                        *delete,
-                        exclude,
-                        *track_renames,
-                        max_delete.as_deref(),
-                        backup_dir.as_deref(),
-                        backup_suffix,
-                        *suffix_keep_extension,
-                        compare_dest.as_deref(),
-                        copy_dest.as_deref(),
-                        from_reconcile.as_deref(),
-                        conflict_mode,
-                        *skip_matching,
-                        *resync,
-                        watch_mode,
-                        *watch_debounce_ms,
-                        *watch_cooldown,
-                        *watch_rescan,
-                        *watch_no_initial,
-                        &cli,
-                        format,
-                        cancelled.clone(),
-                    )
-                    .await
-                } else {
-                    let max_attempts = cli.retries.max(1);
-                    let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-                    let max_transfer_limit = resolve_max_transfer(&cli);
-                    let mut last_code = 0i32;
-                    for attempt in 1..=max_attempts {
-                        last_code = cmd_sync(
-                            u,
-                            l,
-                            r,
-                            direction,
-                            *dry_run,
-                            *delete,
-                            exclude,
-                            *track_renames,
-                            max_delete.as_deref(),
-                            backup_dir.as_deref(),
-                            backup_suffix,
-                            *suffix_keep_extension,
-                            compare_dest.as_deref(),
-                            copy_dest.as_deref(),
-                            from_reconcile.as_deref(),
-                            conflict_mode,
-                            *skip_matching,
-                            *resync,
-                            &cli,
-                            format,
-                            cancelled.clone(),
-                            None,
-                            *delta,
-                        )
-                        .await
-                        .exit_code;
-                        if !is_retryable_exit(last_code)
-                            || session_transfer_exceeded(max_transfer_limit)
-                            || attempt == max_attempts
-                        {
-                            break;
-                        }
-                        if !cli.quiet {
-                            eprintln!(
-                                "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                                attempt, max_attempts, last_code, sleep_dur
-                            );
-                        }
-                        if !sleep_dur.is_zero() {
-                            tokio::time::sleep(sleep_dur).await;
+                        if *watch {
+                            cmd_sync_watch(
+                                u,
+                                l,
+                                r,
+                                direction,
+                                *dry_run,
+                                *delete,
+                                exclude,
+                                error_correction_pct,
+                                *track_renames,
+                                max_delete.as_deref(),
+                                backup_dir.as_deref(),
+                                backup_suffix,
+                                *suffix_keep_extension,
+                                compare_dest.as_deref(),
+                                copy_dest.as_deref(),
+                                from_reconcile.as_deref(),
+                                conflict_mode,
+                                *skip_matching,
+                                *resync,
+                                watch_mode,
+                                *watch_debounce_ms,
+                                *watch_cooldown,
+                                *watch_rescan,
+                                *watch_no_initial,
+                                &cli,
+                                format,
+                                cancelled.clone(),
+                            )
+                            .await
+                        } else {
+                            let max_attempts = cli.retries.max(1);
+                            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+                            let max_transfer_limit = resolve_max_transfer(&cli);
+                            let mut last_code = 0i32;
+                            for attempt in 1..=max_attempts {
+                                last_code = cmd_sync(
+                                    u,
+                                    l,
+                                    r,
+                                    direction,
+                                    *dry_run,
+                                    *delete,
+                                    exclude,
+                                    error_correction_pct,
+                                    *track_renames,
+                                    max_delete.as_deref(),
+                                    backup_dir.as_deref(),
+                                    backup_suffix,
+                                    *suffix_keep_extension,
+                                    compare_dest.as_deref(),
+                                    copy_dest.as_deref(),
+                                    from_reconcile.as_deref(),
+                                    conflict_mode,
+                                    *skip_matching,
+                                    *resync,
+                                    &cli,
+                                    format,
+                                    cancelled.clone(),
+                                    None,
+                                    *delta,
+                                )
+                                .await
+                                .exit_code;
+                                if !is_retryable_exit(last_code)
+                                    || session_transfer_exceeded(max_transfer_limit)
+                                    || attempt == max_attempts
+                                {
+                                    break;
+                                }
+                                if !cli.quiet {
+                                    eprintln!(
+                                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                                        attempt, max_attempts, last_code, sleep_dur
+                                    );
+                                }
+                                if !sleep_dur.is_zero() {
+                                    tokio::time::sleep(sleep_dur).await;
+                                }
+                            }
+                            last_code
                         }
                     }
-                    last_code
                 }
             }
         }
@@ -44146,6 +44368,48 @@ mod tests {
         assert!(should_skip_cli_config(&argv(&["catalog", "--json"])));
         assert!(should_skip_cli_config(&argv(&["profiles", "--json"])));
         assert!(!should_skip_cli_config(&argv(&["ls", "/"])));
+    }
+
+    #[test]
+    fn sync_error_correction_level_maps_named_values() {
+        assert_eq!(parse_sync_error_correction_level_pct(None), Ok(None));
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("low")),
+            Ok(Some(7))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("medium")),
+            Ok(Some(15))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("med")),
+            Ok(Some(15))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("quartile")),
+            Ok(Some(25))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("high")),
+            Ok(Some(30))
+        );
+    }
+
+    #[test]
+    fn sync_error_correction_level_clamps_numeric_values() {
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("4")),
+            Ok(Some(5))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("17%")),
+            Ok(Some(17))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("99")),
+            Ok(Some(50))
+        );
+        assert!(parse_sync_error_correction_level_pct(Some("banana")).is_err());
     }
 
     #[test]

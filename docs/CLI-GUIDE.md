@@ -752,9 +752,17 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "08:00,512k 12:0
 
 # Simple bandwidth limit (alternative to --limit-rate with schedule syntax)
 aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "1M"
+
+# Generate Reed-Solomon recovery sidecars after successful uploads
+aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload --error-correction
+
+# Pick an overhead level: low=7, medium=15, quartile=25, high=30, or 5-50
+aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload --ec=quartile
 ```
 
-Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
+
+`--error-correction` is opt-in for CLI sync and protects uploaded remote files at rest by writing a sibling `<remote>.aerorec` sidecar after each successful upload. If no level is supplied the CLI uses `medium` (15% target overhead). When enabled, sync automatically excludes `*.aerorec` from comparisons so parity sidecars are not mirrored back as user data or deleted as orphans. Phase 1 sidecar generation is capped at 256 MiB per source file; larger files are uploaded normally and counted as `ec_skipped_too_large`. JSON sync reports include `ec_generated`, `ec_skipped_too_large`, and `ec_generate_failed` when EC is enabled. Local-to-local sync ignores this flag.
 
 #### Bisync (bidirectional)
 
@@ -849,6 +857,22 @@ aeroftp-cli sync-doctor --profile "server" ./local /remote --json
 ```
 
 Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
+
+### AEROSYNC-EC - Sync Error Correction Sidecars
+
+AEROSYNC-EC extends AeroSync backups with Reed-Solomon parity stored next to each protected remote file. It reuses the same AVEC codec family as AeroVault error correction, but wraps sync parity in an `AERC1` sidecar:
+
+```text
+<remote-file>.aerorec
+magic: "AERC1\0\0\0"
+binding: BLAKE3("aerosync-recovery-binding-v1" || relative_path || file_size || content_sha256)
+segments: Phase 1 emits one whole-file AVEC segment
+checksum: trailing BLAKE3 over the sidecar body
+```
+
+The binding prevents stale or mismatched sidecars from being trusted: if the file path, size, or content hash changes, the sidecar no longer matches that file. Backup-class sync profiles use Medium EC by default in the app; the CLI command surface is explicit per run via `sync --error-correction` or `sync --ec`.
+
+Honest limits: EC protects against localized at-rest corruption after upload, not TCP/SSH/TLS wire corruption, logical deletes, ransomware, whole-file loss, or truncation beyond the Reed-Solomon parity budget. Each protected file creates one extra remote object and consumes the selected storage overhead. Phase 1 skips files larger than 256 MiB until the later windowed multi-segment generator lands.
 
 ### transfer - Cross-Profile Transfer
 
