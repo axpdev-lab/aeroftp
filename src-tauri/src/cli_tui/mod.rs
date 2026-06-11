@@ -855,23 +855,35 @@ fn render_file_pane_list(
             theme.muted_style(),
         )))]
     } else {
+        // Modern dual-pane style (1.0.1 mock): no "DIR "/"FILE" prefix - the
+        // trailing slash and the accent colour already mark a directory - and a
+        // baked left accent bar marks the cursor row on the active pane. The bar
+        // is baked into the item (not `highlight_symbol`) so it keeps its accent
+        // colour: `highlight_symbol` would inherit the row's highlight fg.
+        let cursor = if is_active {
+            Some(state.selected)
+        } else {
+            None
+        };
+        let bar_style = Style::default()
+            .fg(theme.ready)
+            .add_modifier(Modifier::BOLD);
         state
             .entries
             .iter()
-            .map(|entry| {
-                let kind = if entry.is_dir { "DIR " } else { "FILE" };
-                let kind_style = if entry.is_dir {
-                    theme.accent_style()
+            .enumerate()
+            .map(|(i, entry)| {
+                let (gutter, gutter_style) = if cursor == Some(i) {
+                    ("\u{258f} ", bar_style)
                 } else {
-                    theme.muted_style()
+                    ("  ", Style::default())
                 };
                 ListItem::new(Line::from(vec![
-                    Span::styled(kind, kind_style),
-                    Span::raw(" "),
+                    Span::styled(gutter, gutter_style),
                     Span::styled(
                         format_browser_entry(entry),
                         if entry.is_dir {
-                            Style::default().add_modifier(Modifier::BOLD)
+                            theme.accent_style().add_modifier(Modifier::BOLD)
                         } else {
                             Style::default()
                         },
@@ -886,17 +898,20 @@ fn render_file_pane_list(
     if is_active && !state.entries.is_empty() {
         list_state.select(Some(state.selected));
     }
-    // For inactive pane, no cursor highlight (or very subtle). We still show the list content.
+    // Active pane: a subtle row fill behind the baked accent bar. No `fg`
+    // override so the bar (green) and directory names (cyan) keep their colour.
+    // Inactive pane: no cursor highlight at all.
     let highlight = if is_active {
-        selection_style(app.focus, TuiFocus::Browser, theme)
+        Style::default()
+            .bg(theme.selection)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title(title))
-        .highlight_style(highlight)
-        .highlight_symbol(if is_active { "> " } else { "  " });
+        .highlight_style(highlight);
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 fn render_transfers(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
@@ -1557,6 +1572,55 @@ mod render_tests {
         let mut tiny = Terminal::new(TestBackend::new(18, 5)).unwrap();
         tiny.draw(|frame| render_dashboard(frame, &mut app, theme))
             .unwrap();
+    }
+
+    /// The dual-pane rows follow the 1.0.1 mock: no "DIR "/"FILE" prefix (the
+    /// trailing slash marks a directory) and a left accent bar on the active
+    /// pane's cursor row.
+    #[test]
+    fn browser_rows_drop_type_prefix_and_mark_the_cursor() {
+        use crate::cli_tui::panes::browser::BrowserEntry;
+        let mut app = AppState::new_live(smoke_context());
+        app.session.phase = TuiSessionPhase::Connected;
+        app.focus = TuiFocus::Browser;
+        app.active_browser_side = BrowserSide::Remote;
+        app.browser.path = "/srv".to_string();
+        app.browser.entries = vec![
+            BrowserEntry {
+                name: "docs".to_string(),
+                path: "/srv/docs".to_string(),
+                is_dir: true,
+                size: 0,
+                modified: None,
+            },
+            BrowserEntry {
+                name: "readme.txt".to_string(),
+                path: "/srv/readme.txt".to_string(),
+                is_dir: false,
+                size: 42,
+                modified: None,
+            },
+        ];
+        app.browser.selected = 0;
+        let theme = TuiTheme::default();
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| render_dashboard(frame, &mut app, theme))
+            .unwrap();
+        let text = buffer_text(&terminal);
+
+        assert!(!text.contains("DIR "), "no DIR prefix in the mock style");
+        assert!(!text.contains("FILE "), "no FILE prefix in the mock style");
+        assert!(
+            text.contains("docs/"),
+            "directory shown with trailing slash"
+        );
+        assert!(text.contains("readme.txt"), "file name shown plain");
+        assert!(
+            text.contains('\u{258f}'),
+            "active pane cursor row carries the accent bar"
+        );
     }
 
     /// The `:` command palette overlay (B3) renders its input line over the
