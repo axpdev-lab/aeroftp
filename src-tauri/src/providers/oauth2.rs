@@ -766,6 +766,11 @@ impl OAuth2Manager {
             store
                 .store(&account, &json)
                 .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
+            // MUV-4: mirror the refreshed token into the active user's partition
+            // (per-profile keys only; the legacy singleton stays vault-only).
+            if !profile_id.is_empty() {
+                crate::user_partitions::mirror_active_credential(&store, &account, "oauth", &json);
+            }
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
         }
@@ -776,6 +781,11 @@ impl OAuth2Manager {
                 store
                     .store(&account, &json)
                     .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
+                if !profile_id.is_empty() {
+                    crate::user_partitions::mirror_active_credential(
+                        &store, &account, "oauth", &json,
+                    );
+                }
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());
             }
@@ -804,6 +814,21 @@ impl OAuth2Manager {
     ) -> Result<StoredTokens, ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
         let legacy = Self::legacy_token_account_key(provider);
+
+        // MUV-4: prefer the active user's partition (with vault fallback inside)
+        // for the per-profile key. On a miss we fall through to the legacy
+        // singleton / memory-cache / plaintext-file cascade below.
+        if !profile_id.is_empty() {
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                if let Ok(Some(json)) =
+                    crate::user_partitions::resolve_active_credential(&store, &account)
+                {
+                    return serde_json::from_str(&json).map_err(|e| {
+                        ProviderError::Other(format!("Failed to parse tokens: {}", e))
+                    });
+                }
+            }
+        }
 
         // Try vault first under the per-profile (or legacy when profile_id is empty) key.
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
@@ -930,6 +955,10 @@ impl OAuth2Manager {
         // Delete from vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             let _ = store.delete(&account);
+        }
+        // MUV-4: drop the per-profile token from the active user's partition too.
+        if !profile_id.is_empty() {
+            crate::user_partitions::unmirror_active_credential(&account);
         }
 
         // Delete from in-memory cache

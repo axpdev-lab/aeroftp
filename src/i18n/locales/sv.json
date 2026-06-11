@@ -3210,7 +3210,7 @@
             "website": "Webbplats",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Monteringshanterare...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerade serverkort",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Visa systemmenyrad",
             "aerovaultOverlayActive": "AeroVault-containeröverlägg aktivt - klicka för att koppla från",
             "aerovaultOverlayInactive": "Öppna en .aerovault-container som virtuell fjärrpanel. Använd högerklick på en fjärrmapp för rclone-crypt-överlägg.",
-            "aerocryptOverlayActive": "AeroCrypt-överlägg aktivt: uppladdningar och nedladdningar i den här panelen krypteras. Klicka för att koppla bort.",
+            "aerocryptOverlayActive": "Rclone Crypt-överlägg aktivt: uppladdningar och nedladdningar i den här panelen krypteras. Klicka för att koppla bort.",
             "aerocryptOverlayInactive": "Öppna en rclone-crypt-fjärr (eller skapa en ny) som transparent överlägg.",
             "aerocryptImportTitle": "Rclone Crypt-överlägg upptäckt",
             "aerocryptImportDesc": "Profil importerad från rclone.conf för {name}: öppna överlägget nu?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tillgänglighetskontroll",
-            "storageVersioning": "Filversioner: {size}"
+            "storageVersioning": "Filversioner: {size}",
+            "group": {
+                "newGroup": "Ny grupp",
+                "newGroupEllipsis": "Ny grupp...",
+                "addToGroup": "Lägg till i grupp",
+                "newTitle": "Ny grupp",
+                "renameTitle": "Byt namn på grupp",
+                "namePlaceholder": "Gruppnamn",
+                "rename": "Byt namn på grupp",
+                "delete": "Ta bort grupp",
+                "confirmDelete": "Ta bort gruppen \"{name}\"? Servrarna i den behålls, endast gruppen tas bort.",
+                "chipHint": "Klicka för att filtrera; högerklicka för att byta namn eller ta bort"
+            }
         },
         "gitlab": {
             "projectPath": "Projektsokvag",
@@ -4370,7 +4382,7 @@
             "alignRight": "Högerjustera"
         },
         "mountManager": {
-            "title": "Monteringshanterare",
+            "title": "AeroMount",
             "subtitle": "Montera sparade servrar som lokala enheter. Monteringar använder den medföljande aeroftp-cli (FUSE på Linux, WebDAV-brygga på Windows).",
             "addMount": "Lägg till montering",
             "newMount": "Ny montering",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Återanslutning misslyckades. Återanslut manuellt."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt-överlägg",
+            "title": "Rclone Crypt-överlägg",
             "intro": {
                 "heading": "Vad det här överlägget gör",
                 "p1": "Krypterar filnamn och innehåll <strong>i farten</strong>, innan de skickas till servern, och dekrypterar dem vid nedladdning. Servern ser bara blobbar med base32-namn. Du ser de ursprungliga namnen.",
-                "p2": "När överlägget är aktivt: din fjärrsession visar innehåll i klartext, varje uppladdning krypteras, varje nedladdning dekrypteras. Leta efter <em>AEROCRYPT</em>-märket i sökvägsfältet.",
-                "p3": "Skillnad mot AeroVault: AeroVault är en enda fristående <code>.aerovault</code>-fil (AeroFTP-format). AeroCrypt är ett lager ovanpå en befintlig fjärrresurs (S3/SFTP/WebDAV/...) som använder det publika rclone crypt-formatet. Lås upp med samma lösenord som du skulle använda i <code>rclone</code>."
+                "p2": "När överlägget är aktivt: din fjärrsession visar innehåll i klartext, varje uppladdning krypteras, varje nedladdning dekrypteras. Leta efter <em>RCLONE CRYPT</em>-märket i sökvägsfältet.",
+                "p3": "Skillnad mot AeroVault: AeroVault är en enda fristående <code>.aerovault</code>-fil (AeroFTP-format). Rclone Crypt är ett lager ovanpå en befintlig fjärrresurs (S3/SFTP/WebDAV/...) som använder det publika rclone crypt-formatet. Lås upp med samma lösenord som du skulle använda i <code>rclone</code>."
             },
             "openExisting": "Öppna befintlig",
             "createNew": "Skapa ny",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive-sekretess",
             "privacyUpdated": "OpenDrive-sekretess uppdaterad"
+        },
+        "manageUsers": {
+            "title": "Hantera användare",
+            "close": "Stäng",
+            "closePanel": "Stäng användarpanelen",
+            "accountName": "Kontonamn",
+            "avatar": "Avatar",
+            "add": "Lägg till",
+            "accountPasswordOptional": "Kontolösenord (valfritt)",
+            "noRecovery": "Ingen återställning",
+            "noRecoveryTitle": "Kontolösenordet kan inte återställas.",
+            "noRecoveryBody": "Om du glömmer detta lösenord blir kontots sparade servrar, inställningar och historik permanent otillgängliga. Spara lösenordet på en säker plats innan du fortsätter.",
+            "noRecoveryAck": "Jag förstår och accepterar ansvaret för detta lösenord.",
+            "adminRequired": "Administratörsbehörighet krävs för att lägga till eller ordna om konton.",
+            "loading": "Läser in användare...",
+            "editAvatar": "Redigera avatar",
+            "saveName": "Spara namn",
+            "active": "Aktiv",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profiler",
+            "settingsCount": "{count} inställningar",
+            "never": "Aldrig",
+            "rename": "Byt namn",
+            "changeMyPassword": "Ändra mitt lösenord",
+            "setPassword": "Ange lösenord",
+            "resetPassword": "Återställ lösenord",
+            "revokeAdmin": "Återkalla administratör",
+            "promoteAdmin": "Befordra till administratör",
+            "cannotDeleteLastAdmin": "Det går inte att ta bort den sista administratören",
+            "delete": "Ta bort",
+            "currentPassword": "Nuvarande lösenord",
+            "newPasswordBlankRemoves": "Nytt lösenord (tomt tar bort det)",
+            "newPassword": "Nytt lösenord",
+            "save": "Spara",
+            "cancelPasswordEdit": "Avbryt lösenordsredigering",
+            "closeAvatarEditor": "Stäng avatarredigeraren",
+            "accountIdentity": "Kontoidentitet",
+            "iconLibrary": "Ikonbibliotek",
+            "color": "Färg",
+            "cancel": "Avbryt",
+            "errAckRequired": "Bekräfta att kontolösenord inte kan återställas.",
+            "errCurrentRequired": "Nuvarande kontolösenord krävs.",
+            "errNewRequired": "Nytt kontolösenord krävs.",
+            "confirmRemovePassword": "Ta bort kontolösenordet för \"{name}\"?",
+            "confirmDelete": "Ta bort kontot \"{name}\"?\n\nKrypterade data att ta bort: {profiles} profiler, {settings} inställningsområden.",
+            "passwordChoiceNote": "Att ange ett kontolösenord är valfritt. Det hindrar andra som använder den här enheten från att öppna ditt konto; dina sparade data förblir krypterade oavsett. Hoppa över det här steget om du är den enda här eller om du litar på alla som använder den här enheten."
         }
     }
 }

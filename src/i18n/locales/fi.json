@@ -3210,7 +3210,7 @@
             "website": "Verkkosivusto",
             "documentation": "Dokumentaatio",
             "mcp": "MCP Server...",
-            "mountManager": "Liitäntöjen hallinta...",
+            "mountManager": "AeroMount...",
             "activityLog": "Tapahtumaloki",
             "detailedCards": "Yksityiskohtaiset palvelinkortit",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Näytä järjestelmävalikkorivi",
             "aerovaultOverlayActive": "AeroVault-säilön peittokerros aktiivinen - irrota napsauttamalla",
             "aerovaultOverlayInactive": "Avaa .aerovault-säilö virtuaalisena etäpaneelina. rclone-crypt-peittokerrokseen napsauta hiiren oikealla painikkeella etäkansiota.",
-            "aerocryptOverlayActive": "AeroCrypt-peittokerros aktiivinen: tämän paneelin lähetykset ja lataukset on salattu. Napsauta irrottaaksesi.",
+            "aerocryptOverlayActive": "Rclone Crypt-peittokerros aktiivinen: tämän paneelin lähetykset ja lataukset on salattu. Napsauta irrottaaksesi.",
             "aerocryptOverlayInactive": "Avaa rclone-crypt-etäpaikka (tai luo uusi) läpinäkyvänä peittokerroksena.",
             "aerocryptImportTitle": "Rclone Crypt -peittokerros havaittu",
             "aerocryptImportDesc": "Profiili tuotu rclone.conf-tiedostosta nimelle {name}: avataanko peittokerros nyt?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Saatavuuden tarkistus",
-            "storageVersioning": "Tiedostoversiot: {size}"
+            "storageVersioning": "Tiedostoversiot: {size}",
+            "group": {
+                "newGroup": "Uusi ryhmä",
+                "newGroupEllipsis": "Uusi ryhmä...",
+                "addToGroup": "Lisää ryhmään",
+                "newTitle": "Uusi ryhmä",
+                "renameTitle": "Nimeä ryhmä uudelleen",
+                "namePlaceholder": "Ryhmän nimi",
+                "rename": "Nimeä ryhmä uudelleen",
+                "delete": "Poista ryhmä",
+                "confirmDelete": "Poistetaanko ryhmä \"{name}\"? Sen palvelimet säilytetään, vain ryhmä poistetaan.",
+                "chipHint": "Suodata napsauttamalla; nimeä uudelleen tai poista hiiren oikealla painikkeella"
+            }
         },
         "gitlab": {
             "projectPath": "Projektipolku",
@@ -4370,7 +4382,7 @@
             "alignRight": "Tasaa oikealle"
         },
         "mountManager": {
-            "title": "Liitäntöjen hallinta",
+            "title": "AeroMount",
             "subtitle": "Liitä tallennetut palvelimet paikallisiksi asemiksi. Liitännät käyttävät mukana toimitettua aeroftp-cli:tä (FUSE Linuxissa, WebDAV-silta Windowsissa).",
             "addMount": "Lisää liitäntä",
             "newMount": "Uusi liitäntä",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Uudelleenyhdistäminen epäonnistui. Yhdistä manuaalisesti."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt -peittokerros",
+            "title": "Rclone Crypt -peittokerros",
             "intro": {
                 "heading": "Mitä tämä peittokerros tekee",
                 "p1": "Salaa tiedostonimet ja sisällön <strong>lennossa</strong>, ennen kuin ne lähetetään palvelimelle, ja purkaa salauksen lataamisen yhteydessä. Palvelin näkee vain blob-tiedostoja base32-nimillä. Sinä näet alkuperäiset nimet.",
-                "p2": "Kun peittokerros on aktiivinen: etäistuntosi näyttää sisällön selkeänä, jokainen lähetys salataan, jokainen lataus puretaan. Etsi <em>AEROCRYPT</em>-merkkiä polkupalkista.",
-                "p3": "Ero AeroVaultiin: AeroVault on yksittäinen itsenäinen <code>.aerovault</code>-tiedosto (AeroFTP-muoto). AeroCrypt on kerros olemassa olevan etäpaikan päällä (S3/SFTP/WebDAV/...), joka käyttää julkista rclone crypt -muotoa. Avaa lukitus samalla salasanalla, jota käyttäisit <code>rclone</code>-ohjelmassa."
+                "p2": "Kun peittokerros on aktiivinen: etäistuntosi näyttää sisällön selkeänä, jokainen lähetys salataan, jokainen lataus puretaan. Etsi <em>RCLONE CRYPT</em>-merkkiä polkupalkista.",
+                "p3": "Ero AeroVaultiin: AeroVault on yksittäinen itsenäinen <code>.aerovault</code>-tiedosto (AeroFTP-muoto). Rclone Crypt on kerros olemassa olevan etäpaikan päällä (S3/SFTP/WebDAV/...), joka käyttää julkista rclone crypt -muotoa. Avaa lukitus samalla salasanalla, jota käyttäisit <code>rclone</code>-ohjelmassa."
             },
             "openExisting": "Avaa olemassa oleva",
             "createNew": "Luo uusi",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive-yksityisyys",
             "privacyUpdated": "OpenDrive-yksityisyys päivitetty"
+        },
+        "manageUsers": {
+            "title": "Hallitse käyttäjiä",
+            "close": "Sulje",
+            "closePanel": "Sulje käyttäjäpaneeli",
+            "accountName": "Tilin nimi",
+            "avatar": "Avatar",
+            "add": "Lisää",
+            "accountPasswordOptional": "Tilin salasana (valinnainen)",
+            "noRecovery": "Ei palautusta",
+            "noRecoveryTitle": "Tilin salasanaa ei voi palauttaa.",
+            "noRecoveryBody": "Jos unohdat tämän salasanan, tilin tallennetut palvelimet, asetukset ja historia ovat pysyvästi saavuttamattomissa. Tallenna salasana turvalliseen paikkaan ennen jatkamista.",
+            "noRecoveryAck": "Ymmärrän ja hyväksyn vastuun tästä salasanasta.",
+            "adminRequired": "Tilien lisääminen tai järjestäminen vaatii järjestelmänvalvojan oikeudet.",
+            "loading": "Ladataan käyttäjiä...",
+            "editAvatar": "Muokkaa avataria",
+            "saveName": "Tallenna nimi",
+            "active": "Aktiivinen",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profiilia",
+            "settingsCount": "{count} asetusta",
+            "never": "Ei koskaan",
+            "rename": "Nimeä uudelleen",
+            "changeMyPassword": "Vaihda salasanani",
+            "setPassword": "Aseta salasana",
+            "resetPassword": "Nollaa salasana",
+            "revokeAdmin": "Peru järjestelmänvalvojan oikeudet",
+            "promoteAdmin": "Ylennä järjestelmänvalvojaksi",
+            "cannotDeleteLastAdmin": "Viimeistä järjestelmänvalvojaa ei voi poistaa",
+            "delete": "Poista",
+            "currentPassword": "Nykyinen salasana",
+            "newPasswordBlankRemoves": "Uusi salasana (tyhjä poistaa)",
+            "newPassword": "Uusi salasana",
+            "save": "Tallenna",
+            "cancelPasswordEdit": "Peruuta salasanan muokkaus",
+            "closeAvatarEditor": "Sulje avatar-editori",
+            "accountIdentity": "Tilin identiteetti",
+            "iconLibrary": "Kuvakekirjasto",
+            "color": "Väri",
+            "cancel": "Peruuta",
+            "errAckRequired": "Vahvista, että ymmärrät, ettei tilien salasanoja voi palauttaa.",
+            "errCurrentRequired": "Tilin nykyinen salasana vaaditaan.",
+            "errNewRequired": "Tilin uusi salasana vaaditaan.",
+            "confirmRemovePassword": "Poistetaanko tilin \"{name}\" salasana?",
+            "confirmDelete": "Poistetaanko tili \"{name}\"?\n\nPoistettavat salatut tiedot: {profiles} profiilia, {settings} asetusaluetta.",
+            "passwordChoiceNote": "Tilin salasanan asettaminen on valinnaista. Se estää muita tätä laitetta käyttäviä avaamasta tiliäsi; tallennetut tietosi pysyvät joka tapauksessa salattuina. Ohita tämä, jos olet ainoa käyttäjä tai luotat kaikkiin, jotka käyttävät tätä laitetta."
         }
     }
 }

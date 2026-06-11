@@ -3210,7 +3210,7 @@
             "website": "वेबसाइट",
             "documentation": "दस्तावेज़",
             "mcp": "MCP Server...",
-            "mountManager": "माउंट प्रबंधक...",
+            "mountManager": "AeroMount...",
             "activityLog": "गतिविधि लॉग",
             "detailedCards": "विस्तृत सर्वर कार्ड",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "सिस्टम मेनू बार दिखाएं",
             "aerovaultOverlayActive": "AeroVault कंटेनर ओवरले सक्रिय - अलग करने के लिए क्लिक करें",
             "aerovaultOverlayInactive": ".aerovault कंटेनर को वर्चुअल रिमोट पैनल के रूप में खोलें। rclone-crypt ओवरले के लिए रिमोट फ़ोल्डर पर राइट-क्लिक का उपयोग करें।",
-            "aerocryptOverlayActive": "AeroCrypt ओवरले सक्रिय: इस पैनल में अपलोड और डाउनलोड एन्क्रिप्टेड हैं। अलग करने के लिए क्लिक करें।",
+            "aerocryptOverlayActive": "Rclone Crypt ओवरले सक्रिय: इस पैनल में अपलोड और डाउनलोड एन्क्रिप्टेड हैं। अलग करने के लिए क्लिक करें।",
             "aerocryptOverlayInactive": "एक rclone-crypt रिमोट खोलें (या नया बनाएं) पारदर्शी ओवरले के रूप में।",
             "aerocryptImportTitle": "Rclone Crypt ओवरले का पता चला",
             "aerocryptImportDesc": "{name} के लिए rclone.conf से प्रोफ़ाइल आयात किया गया: अभी ओवरले खोलें?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "उपलब्धता जाँच",
-            "storageVersioning": "फ़ाइल संस्करण: {size}"
+            "storageVersioning": "फ़ाइल संस्करण: {size}",
+            "group": {
+                "newGroup": "नया समूह",
+                "newGroupEllipsis": "नया समूह...",
+                "addToGroup": "समूह में जोड़ें",
+                "newTitle": "नया समूह",
+                "renameTitle": "समूह का नाम बदलें",
+                "namePlaceholder": "समूह का नाम",
+                "rename": "समूह का नाम बदलें",
+                "delete": "समूह हटाएँ",
+                "confirmDelete": "\"{name}\" समूह हटाएँ? इसके सर्वर रखे जाते हैं, केवल समूह हटाया जाता है।",
+                "chipHint": "फ़िल्टर करने के लिए क्लिक करें; नाम बदलने या हटाने के लिए राइट-क्लिक करें"
+            }
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",
@@ -4370,7 +4382,7 @@
             "alignRight": "दाएं संरेखित करें"
         },
         "mountManager": {
-            "title": "माउंट प्रबंधक",
+            "title": "AeroMount",
             "subtitle": "सहेजे गए सर्वर को स्थानीय ड्राइव के रूप में माउंट करें। माउंट्स बंडल किए गए aeroftp-cli का उपयोग करते हैं (Linux पर FUSE, Windows पर WebDAV ब्रिज)।",
             "addMount": "माउंट जोड़ें",
             "newMount": "नया माउंट",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "पुनः कनेक्शन विफल। कृपया मैन्युअल रूप से पुनः कनेक्ट करें।"
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt ओवरले",
+            "title": "Rclone Crypt ओवरले",
             "intro": {
                 "heading": "यह ओवरले क्या करता है",
                 "p1": "सर्वर पर भेजने से पहले फ़ाइल नामों और सामग्री को <strong>तुरंत</strong> एन्क्रिप्ट करता है, और जब आप डाउनलोड करते हैं तो उन्हें डिक्रिप्ट करता है। सर्वर केवल base32 नामों वाले blobs देखता है। आप मूल नाम देखते हैं।",
-                "p2": "जब तक ओवरले सक्रिय है: आपका रिमोट सत्र सामग्री को स्पष्ट रूप से दिखाता है, प्रत्येक अपलोड एन्क्रिप्ट किया जाता है, प्रत्येक डाउनलोड डिक्रिप्ट किया जाता है। पथ बार में <em>AEROCRYPT</em> बैज देखें।",
-                "p3": "AeroVault से अंतर: AeroVault एक एकल स्वतंत्र <code>.aerovault</code> फ़ाइल है (AeroFTP प्रारूप)। AeroCrypt सार्वजनिक rclone crypt प्रारूप का उपयोग करते हुए मौजूदा रिमोट (S3/SFTP/WebDAV/...) के ऊपर एक परत है। उसी पासवर्ड से अनलॉक करें जो आप <code>rclone</code> में उपयोग करेंगे।"
+                "p2": "जब तक ओवरले सक्रिय है: आपका रिमोट सत्र सामग्री को स्पष्ट रूप से दिखाता है, प्रत्येक अपलोड एन्क्रिप्ट किया जाता है, प्रत्येक डाउनलोड डिक्रिप्ट किया जाता है। पथ बार में <em>RCLONE CRYPT</em> बैज देखें।",
+                "p3": "AeroVault से अंतर: AeroVault एक एकल स्वतंत्र <code>.aerovault</code> फ़ाइल है (AeroFTP प्रारूप)। Rclone Crypt सार्वजनिक rclone crypt प्रारूप का उपयोग करते हुए मौजूदा रिमोट (S3/SFTP/WebDAV/...) के ऊपर एक परत है। उसी पासवर्ड से अनलॉक करें जो आप <code>rclone</code> में उपयोग करेंगे।"
             },
             "openExisting": "मौजूदा खोलें",
             "createNew": "नया बनाएं",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive गोपनीयता",
             "privacyUpdated": "OpenDrive गोपनीयता अपडेट की गई"
+        },
+        "manageUsers": {
+            "title": "उपयोगकर्ता प्रबंधित करें",
+            "close": "बंद करें",
+            "closePanel": "उपयोगकर्ता पैनल बंद करें",
+            "accountName": "खाता नाम",
+            "avatar": "अवतार",
+            "add": "जोड़ें",
+            "accountPasswordOptional": "खाता पासवर्ड (वैकल्पिक)",
+            "noRecovery": "कोई पुनर्प्राप्ति नहीं",
+            "noRecoveryTitle": "खाता पासवर्ड पुनर्प्राप्त नहीं किया जा सकता।",
+            "noRecoveryBody": "यदि आप यह पासवर्ड भूल जाते हैं, तो खाते के सहेजे गए सर्वर, सेटिंग्स और इतिहास स्थायी रूप से दुर्गम हो जाते हैं। जारी रखने से पहले पासवर्ड को किसी सुरक्षित स्थान पर संग्रहीत करें।",
+            "noRecoveryAck": "मैं समझता हूँ और इस पासवर्ड की जिम्मेदारी स्वीकार करता हूँ।",
+            "adminRequired": "खाते जोड़ने या पुनर्व्यवस्थित करने के लिए व्यवस्थापक पहुँच आवश्यक है।",
+            "loading": "उपयोगकर्ता लोड हो रहे हैं...",
+            "editAvatar": "अवतार संपादित करें",
+            "saveName": "नाम सहेजें",
+            "active": "सक्रिय",
+            "admin": "ADMIN",
+            "profilesCount": "{count} प्रोफ़ाइल",
+            "settingsCount": "{count} सेटिंग्स",
+            "never": "कभी नहीं",
+            "rename": "नाम बदलें",
+            "changeMyPassword": "मेरा पासवर्ड बदलें",
+            "setPassword": "पासवर्ड सेट करें",
+            "resetPassword": "पासवर्ड रीसेट करें",
+            "revokeAdmin": "व्यवस्थापक हटाएँ",
+            "promoteAdmin": "व्यवस्थापक बनाएँ",
+            "cannotDeleteLastAdmin": "अंतिम व्यवस्थापक को हटाया नहीं जा सकता",
+            "delete": "हटाएँ",
+            "currentPassword": "वर्तमान पासवर्ड",
+            "newPasswordBlankRemoves": "नया पासवर्ड (खाली छोड़ने पर हट जाएगा)",
+            "newPassword": "नया पासवर्ड",
+            "save": "सहेजें",
+            "cancelPasswordEdit": "पासवर्ड संपादन रद्द करें",
+            "closeAvatarEditor": "अवतार संपादक बंद करें",
+            "accountIdentity": "खाता पहचान",
+            "iconLibrary": "आइकन लाइब्रेरी",
+            "color": "रंग",
+            "cancel": "रद्द करें",
+            "errAckRequired": "कृपया स्वीकार करें कि खाता पासवर्ड पुनर्प्राप्त नहीं किए जा सकते।",
+            "errCurrentRequired": "खाते का वर्तमान पासवर्ड आवश्यक है।",
+            "errNewRequired": "खाते का नया पासवर्ड आवश्यक है।",
+            "confirmRemovePassword": "\"{name}\" के लिए खाता पासवर्ड हटाएँ?",
+            "confirmDelete": "खाता \"{name}\" हटाएँ?\n\nहटाए जाने वाले एन्क्रिप्टेड पेलोड: {profiles} प्रोफ़ाइल, {settings} सेटिंग्स क्षेत्र।",
+            "passwordChoiceNote": "खाते का पासवर्ड सेट करना वैकल्पिक है। यह इस डिवाइस का उपयोग करने वाले अन्य लोगों को आपका खाता खोलने से रोकता है; आपका सहेजा गया डेटा वैसे भी एन्क्रिप्टेड रहता है। यदि यहाँ केवल आप ही हैं, या इस डिवाइस का उपयोग करने वाले सभी पर आपको भरोसा है, तो इसे छोड़ दें।"
         }
     }
 }

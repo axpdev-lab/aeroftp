@@ -80,6 +80,11 @@ interface IconPickerDialogProps {
      *  without forcing the user to reconnect. Returns the data URL (or null if
      *  the server has no detectable favicon). */
     onRescan?: () => Promise<string | null>;
+    /** Restrict the picker to the custom-icons library only, hiding the
+     *  "Shipped" tab of built-in provider logos. Used for preconfigured
+     *  providers (Filen, OneDrive, ...) so they cannot be assigned another
+     *  provider's logo: they only ever need their own preset or a custom icon. */
+    customIconsOnly?: boolean;
 }
 
 type Tab = 'shipped' | 'custom';
@@ -174,9 +179,9 @@ function persistCustomIcons(icons: CustomIcon[]) {
     }
 }
 
-export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavicon, onRescan }: IconPickerDialogProps) {
+export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavicon, onRescan, customIconsOnly }: IconPickerDialogProps) {
     const t = useTranslation();
-    const [tab, setTab] = useState<Tab>('shipped');
+    const [tab, setTab] = useState<Tab>(customIconsOnly ? 'custom' : 'shipped');
     const [search, setSearch] = useState('');
     const [customIcons, setCustomIcons] = useState<CustomIcon[]>(() => loadCustomIcons());
     const [uploading, setUploading] = useState(false);
@@ -489,9 +494,10 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                     </button>
                 </div>
 
-                {/* Tabs */}
+                {/* Tabs. Preconfigured providers get the custom library only:
+                    the "Shipped" catalog of other providers' logos is hidden. */}
                 <div className="flex items-center gap-1 px-5 pt-3">
-                    {(['shipped', 'custom'] as Tab[]).map(id => (
+                    {((customIconsOnly ? ['custom'] : ['shipped', 'custom']) as Tab[]).map(id => (
                         <button
                             key={id}
                             onClick={() => setTab(id)}

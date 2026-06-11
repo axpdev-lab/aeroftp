@@ -3210,7 +3210,7 @@
             "website": "Website",
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
-            "mountManager": "Koppelingsbeheer...",
+            "mountManager": "AeroMount...",
             "activityLog": "Activiteitenlog",
             "detailedCards": "Gedetailleerde serverkaarten",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Systeemmenubalk weergeven",
             "aerovaultOverlayActive": "AeroVault-container-overlay actief - klik om los te koppelen",
             "aerovaultOverlayInactive": "Open een .aerovault-container als virtueel extern paneel. Gebruik voor rclone-crypt-overlay rechts klikken op een externe map.",
-            "aerocryptOverlayActive": "AeroCrypt-laag actief: uploads en downloads in dit paneel zijn versleuteld. Klik om los te koppelen.",
+            "aerocryptOverlayActive": "Rclone Crypt-laag actief: uploads en downloads in dit paneel zijn versleuteld. Klik om los te koppelen.",
             "aerocryptOverlayInactive": "Open een rclone-crypt externe opslag (of maak een nieuwe) als transparante laag.",
             "aerocryptImportTitle": "Rclone Crypt-laag gedetecteerd",
             "aerocryptImportDesc": "Profiel geïmporteerd uit rclone.conf voor {name}: nu de laag openen?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Beschikbaarheidscontrole",
-            "storageVersioning": "Bestandsversies: {size}"
+            "storageVersioning": "Bestandsversies: {size}",
+            "group": {
+                "newGroup": "Nieuwe groep",
+                "newGroupEllipsis": "Nieuwe groep...",
+                "addToGroup": "Aan groep toevoegen",
+                "newTitle": "Nieuwe groep",
+                "renameTitle": "Groep hernoemen",
+                "namePlaceholder": "Groepsnaam",
+                "rename": "Groep hernoemen",
+                "delete": "Groep verwijderen",
+                "confirmDelete": "De groep \"{name}\" verwijderen? De servers erin blijven behouden, alleen de groep wordt verwijderd.",
+                "chipHint": "Klik om te filteren; rechtsklik om te hernoemen of verwijderen"
+            }
         },
         "gitlab": {
             "projectPath": "Projectpad",
@@ -4370,7 +4382,7 @@
             "alignRight": "Rechts uitlijnen"
         },
         "mountManager": {
-            "title": "Koppelingsbeheer",
+            "title": "AeroMount",
             "subtitle": "Koppel opgeslagen servers als lokale schijven. Koppelingen gebruiken de meegeleverde aeroftp-cli (FUSE op Linux, WebDAV-brug op Windows).",
             "addMount": "Koppeling toevoegen",
             "newMount": "Nieuwe koppeling",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Opnieuw verbinden mislukt. Verbind handmatig opnieuw."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt-laag",
+            "title": "Rclone Crypt-laag",
             "intro": {
                 "heading": "Wat deze laag doet",
                 "p1": "Versleutelt bestandsnamen en inhoud <strong>direct</strong>, voordat ze naar de server worden verzonden, en ontsleutelt ze bij downloaden. De server ziet alleen blobs met base32-namen. U ziet de originele namen.",
-                "p2": "Terwijl de laag actief is: uw externe sessie toont inhoud in leesbare vorm, elke upload wordt versleuteld, elke download wordt ontsleuteld. Zoek de <em>AEROCRYPT</em>-badge in de padbalk.",
-                "p3": "Verschil met AeroVault: AeroVault is één op zichzelf staand <code>.aerovault</code>-bestand (AeroFTP-formaat). AeroCrypt is een laag bovenop een bestaande externe opslag (S3/SFTP/WebDAV/...) die het publieke rclone crypt-formaat gebruikt. Ontgrendel met hetzelfde wachtwoord dat u in <code>rclone</code> zou gebruiken."
+                "p2": "Terwijl de laag actief is: uw externe sessie toont inhoud in leesbare vorm, elke upload wordt versleuteld, elke download wordt ontsleuteld. Zoek de <em>RCLONE CRYPT</em>-badge in de padbalk.",
+                "p3": "Verschil met AeroVault: AeroVault is één op zichzelf staand <code>.aerovault</code>-bestand (AeroFTP-formaat). Rclone Crypt is een laag bovenop een bestaande externe opslag (S3/SFTP/WebDAV/...) die het publieke rclone crypt-formaat gebruikt. Ontgrendel met hetzelfde wachtwoord dat u in <code>rclone</code> zou gebruiken."
             },
             "openExisting": "Bestaande openen",
             "createNew": "Nieuwe maken",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive Privacy",
             "privacyUpdated": "OpenDrive-privacy bijgewerkt"
+        },
+        "manageUsers": {
+            "title": "Gebruikers beheren",
+            "close": "Sluiten",
+            "closePanel": "Gebruikerspaneel sluiten",
+            "accountName": "Accountnaam",
+            "avatar": "Avatar",
+            "add": "Toevoegen",
+            "accountPasswordOptional": "Accountwachtwoord (optioneel)",
+            "noRecovery": "Geen herstel",
+            "noRecoveryTitle": "Het accountwachtwoord kan niet worden hersteld.",
+            "noRecoveryBody": "Als u dit wachtwoord vergeet, zijn de opgeslagen servers, instellingen en geschiedenis van het account permanent ontoegankelijk. Bewaar het wachtwoord op een veilige plek voordat u doorgaat.",
+            "noRecoveryAck": "Ik begrijp en aanvaard de verantwoordelijkheid voor dit wachtwoord.",
+            "adminRequired": "Beheerderstoegang is vereist om accounts toe te voegen of opnieuw te ordenen.",
+            "loading": "Gebruikers laden...",
+            "editAvatar": "Avatar bewerken",
+            "saveName": "Naam opslaan",
+            "active": "Actief",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profielen",
+            "settingsCount": "{count} instellingen",
+            "never": "Nooit",
+            "rename": "Naam wijzigen",
+            "changeMyPassword": "Mijn wachtwoord wijzigen",
+            "setPassword": "Wachtwoord instellen",
+            "resetPassword": "Wachtwoord opnieuw instellen",
+            "revokeAdmin": "Beheerder intrekken",
+            "promoteAdmin": "Promoveren tot beheerder",
+            "cannotDeleteLastAdmin": "Kan de laatste beheerder niet verwijderen",
+            "delete": "Verwijderen",
+            "currentPassword": "Huidig wachtwoord",
+            "newPasswordBlankRemoves": "Nieuw wachtwoord (leeg verwijdert het)",
+            "newPassword": "Nieuw wachtwoord",
+            "save": "Opslaan",
+            "cancelPasswordEdit": "Wachtwoordbewerking annuleren",
+            "closeAvatarEditor": "Avatarbewerker sluiten",
+            "accountIdentity": "Accountidentiteit",
+            "iconLibrary": "Pictogrammenbibliotheek",
+            "color": "Kleur",
+            "cancel": "Annuleren",
+            "errAckRequired": "Bevestig dat accountwachtwoorden niet kunnen worden hersteld.",
+            "errCurrentRequired": "Het huidige accountwachtwoord is vereist.",
+            "errNewRequired": "Het nieuwe accountwachtwoord is vereist.",
+            "confirmRemovePassword": "Het accountwachtwoord voor \"{name}\" verwijderen?",
+            "confirmDelete": "Account \"{name}\" verwijderen?\n\nTe verwijderen versleutelde gegevens: {profiles} profielen, {settings} instellingsbereiken.",
+            "passwordChoiceNote": "Een accountwachtwoord instellen is optioneel. Het voorkomt dat andere mensen die dit apparaat gebruiken je account openen; je opgeslagen gegevens blijven hoe dan ook versleuteld. Sla dit over als je de enige gebruiker bent of als je iedereen vertrouwt die dit apparaat gebruikt."
         }
     }
 }

@@ -18,6 +18,27 @@ use super::remote_backend::{RemoteBackend, StorageQuota};
 use crate::ai_stream::StreamChunk;
 use crate::providers::{RemoteEntry, StorageProvider};
 
+/// MUV-3: read a `server_<id>` secret for the active user (per-user partition
+/// with fallback to the legacy vault). The CLI AI-core RemoteBackend has no
+/// `Cli` in scope, so it resolves against the persisted active user.
+fn read_active_server_secret(
+    store: &crate::credential_store::CredentialStore,
+    server_id: &str,
+) -> Option<String> {
+    let key = format!("server_{}", server_id);
+    match crate::user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+    {
+        Some(uid) => crate::user_partitions::cli_read_credential_with_fallback(store, uid, &key)
+            .ok()
+            .flatten()
+            .map(|s| s.to_string()),
+        None => store.get(&key).ok(),
+    }
+}
+
 // ─── CliEventSink ─────────────────────────────────────────────────────
 
 /// CLI event sink: writes streaming output to stdout/stderr.
@@ -178,9 +199,9 @@ impl CredentialProvider for CliCredentialProvider {
     }
 
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {
-        // 1. Try vault
+        // 1. Try vault (MUV-3: active user's partition, vault fallback)
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if let Ok(json_str) = store.get(&format!("server_{}", server_id)) {
+            if let Some(json_str) = read_active_server_secret(&store, server_id) {
                 #[derive(serde::Deserialize)]
                 struct Creds {
                     #[serde(default)]
@@ -227,7 +248,7 @@ impl CredentialProvider for CliCredentialProvider {
         ];
 
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if let Ok(json_str) = store.get(&format!("server_{}", server_id)) {
+            if let Some(json_str) = read_active_server_secret(&store, server_id) {
                 let val: Value = serde_json::from_str(&json_str).unwrap_or(serde_json::json!({}));
                 let mut opts = ProviderExtraOptions::new();
                 if let Some(obj) = val.as_object() {

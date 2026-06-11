@@ -3210,7 +3210,7 @@
             "website": "Webgunea",
             "documentation": "Dokumentazioa",
             "mcp": "MCP Server...",
-            "mountManager": "Muntaketa-kudeatzailea...",
+            "mountManager": "AeroMount...",
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Erakutsi sistemaren menu-barra",
             "aerovaultOverlayActive": "AeroVault edukiontziaren gainjartzea aktibo - egin klik askatzeko",
             "aerovaultOverlayInactive": "Ireki .aerovault edukiontzi bat urruneko panel birtual gisa. rclone-crypt gainjartzerako, egin klik eskuineko botoiarekin urruneko karpeta batean.",
-            "aerocryptOverlayActive": "AeroCrypt geruza aktibo: panel honetako kargak eta deskargak zifratuta daude. Egin klik deskonektatzeko.",
+            "aerocryptOverlayActive": "Rclone Crypt geruza aktibo: panel honetako kargak eta deskargak zifratuta daude. Egin klik deskonektatzeko.",
             "aerocryptOverlayInactive": "Ireki rclone-crypt urruneko bat (edo sortu berri bat) gardena geruza gisa.",
             "aerocryptImportTitle": "Rclone Crypt geruza detektatu da",
             "aerocryptImportDesc": "{name}(r)entzat rclone.conf-etik inportatutako profila: orain ireki geruza?",
@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
-            "storageVersioning": "Fitxategi-bertsioak: {size}"
+            "storageVersioning": "Fitxategi-bertsioak: {size}",
+            "group": {
+                "newGroup": "Talde berria",
+                "newGroupEllipsis": "Talde berria...",
+                "addToGroup": "Gehitu taldera",
+                "newTitle": "Talde berria",
+                "renameTitle": "Aldatu taldearen izena",
+                "namePlaceholder": "Taldearen izena",
+                "rename": "Aldatu taldearen izena",
+                "delete": "Ezabatu taldea",
+                "confirmDelete": "Ezabatu \"{name}\" taldea? Bertako zerbitzariak mantenduko dira, taldea baino ez da kenduko.",
+                "chipHint": "Egin klik iragazteko; eskuin-klika izena aldatzeko edo ezabatzeko"
+            }
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",
@@ -4389,7 +4401,7 @@
             "alignRight": "Lerrokatu eskuinera"
         },
         "mountManager": {
-            "title": "Muntaketa-kudeatzailea",
+            "title": "AeroMount",
             "subtitle": "Muntatu gordetako zerbitzariak unitate lokal gisa. Muntaketek aeroftp-cli barneratua erabiltzen dute (FUSE Linux-en, WebDAV zubia Windows-en).",
             "addMount": "Gehitu muntaketa",
             "newMount": "Muntaketa berria",
@@ -4427,12 +4439,12 @@
             "reconnectFailed": "Birkonexioak huts egin du. Mesedez, eskuz berriro konektatu."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt geruza",
+            "title": "Rclone Crypt geruza",
             "intro": {
                 "heading": "Geruza honek zer egiten duen",
                 "p1": "Fitxategi-izenak eta edukiak <strong>bidean</strong> zifratzen ditu, zerbitzarira bidali aurretik, eta deszifratu egiten ditu deskargatzean. Zerbitzariak base32 izenak dituzten blob-ak baino ez ditu ikusten. Zuk jatorrizko izenak ikusten dituzu.",
-                "p2": "Geruza aktibo dagoen bitartean: zure urruneko saioak edukia argi erakusten du, kargatze guztiak zifratu egiten dira, deskarga guztiak deszifratu egiten dira. Bilatu <em>AEROCRYPT</em> bereizgarria bide-barran.",
-                "p3": "AeroVaultekiko aldea: AeroVault fitxategi bakar autoeraman bat da <code>.aerovault</code> (AeroFTP formatua). AeroCrypt urruneko sistema baten gainean dagoen geruza bat da (S3/SFTP/WebDAV/...) rclone crypt formatu publikoa erabiliz. Desblokeatu <code>rclone</code>-n erabiliko zenukeen pasahitz berarekin."
+                "p2": "Geruza aktibo dagoen bitartean: zure urruneko saioak edukia argi erakusten du, kargatze guztiak zifratu egiten dira, deskarga guztiak deszifratu egiten dira. Bilatu <em>RCLONE CRYPT</em> bereizgarria bide-barran.",
+                "p3": "AeroVaultekiko aldea: AeroVault fitxategi bakar autoeraman bat da <code>.aerovault</code> (AeroFTP formatua). Rclone Crypt urruneko sistema baten gainean dagoen geruza bat da (S3/SFTP/WebDAV/...) rclone crypt formatu publikoa erabiliz. Desblokeatu <code>rclone</code>-n erabiliko zenukeen pasahitz berarekin."
             },
             "openExisting": "Ireki dagoena",
             "createNew": "Sortu berria",
@@ -4701,6 +4713,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive pribatutasuna",
             "privacyUpdated": "OpenDrive pribatutasuna eguneratuta"
+        },
+        "manageUsers": {
+            "title": "Kudeatu erabiltzaileak",
+            "close": "Itxi",
+            "closePanel": "Itxi erabiltzaileen panela",
+            "accountName": "Kontuaren izena",
+            "avatar": "Avatarra",
+            "add": "Gehitu",
+            "accountPasswordOptional": "Kontuaren pasahitza (aukerakoa)",
+            "noRecovery": "Berreskuratzerik ez",
+            "noRecoveryTitle": "Kontuaren pasahitza ezin da berreskuratu.",
+            "noRecoveryBody": "Pasahitz hau ahazten baduzu, kontuaren gordetako zerbitzariak, ezarpenak eta historia betiko eskuraezin geratuko dira. Gorde pasahitza leku seguru batean jarraitu aurretik.",
+            "noRecoveryAck": "Ulertzen dut eta pasahitz honen ardura onartzen dut.",
+            "adminRequired": "Administratzaile-baimena behar da kontuak gehitzeko edo berrantolatzeko.",
+            "loading": "Erabiltzaileak kargatzen...",
+            "editAvatar": "Editatu avatarra",
+            "saveName": "Gorde izena",
+            "active": "Aktibo",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profil",
+            "settingsCount": "{count} ezarpen",
+            "never": "Inoiz ez",
+            "rename": "Berrizendatu",
+            "changeMyPassword": "Aldatu nire pasahitza",
+            "setPassword": "Ezarri pasahitza",
+            "resetPassword": "Berrezarri pasahitza",
+            "revokeAdmin": "Kendu admin baimena",
+            "promoteAdmin": "Igo admin mailara",
+            "cannotDeleteLastAdmin": "Ezin da azken administratzailea ezabatu",
+            "delete": "Ezabatu",
+            "currentPassword": "Uneko pasahitza",
+            "newPasswordBlankRemoves": "Pasahitz berria (hutsik kentzeko)",
+            "newPassword": "Pasahitz berria",
+            "save": "Gorde",
+            "cancelPasswordEdit": "Utzi pasahitz-edizioa",
+            "closeAvatarEditor": "Itxi avatar-editorea",
+            "accountIdentity": "Kontuaren identitatea",
+            "iconLibrary": "Ikonoen liburutegia",
+            "color": "Kolorea",
+            "cancel": "Utzi",
+            "errAckRequired": "Berretsi kontuen pasahitzak ezin direla berreskuratu ulertzen duzula.",
+            "errCurrentRequired": "Kontuaren uneko pasahitza beharrezkoa da.",
+            "errNewRequired": "Kontuaren pasahitz berria beharrezkoa da.",
+            "confirmRemovePassword": "\"{name}\" kontuaren pasahitza kendu?",
+            "confirmDelete": "\"{name}\" kontua ezabatu?\n\nKendu beharreko karga zifratuak: {profiles} profil, {settings} ezarpen-eremu.",
+            "passwordChoiceNote": "Kontuaren pasahitza ezartzea aukerakoa da. Gailu hau erabiltzen duten beste pertsona batzuek zure kontua irekitzea eragozten du; zure gordetako datuak zifratuta jarraitzen dute edonola ere. Saltatu hau gailua erabiltzen duen bakarra bazara, edo gailu hau erabiltzen duten guztiengan konfiantza baduzu."
         }
     }
 }

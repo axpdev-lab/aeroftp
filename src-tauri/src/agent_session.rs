@@ -642,9 +642,15 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
     let Some(store) = CredentialStore::from_cache() else {
         return ConnectOutcome::Err("Vault not open".to_string());
     };
-    let password = store
-        .get(&format!("server_{}", profile.id))
-        .unwrap_or_default();
+    // MUV-3: per-user store (active user) with fallback to the legacy vault.
+    let password = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("server_{}", profile.id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .unwrap_or_default();
 
     let Some(provider_type) = resolve_provider_type(&profile.protocol) else {
         return ConnectOutcome::Unsupported;

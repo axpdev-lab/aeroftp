@@ -3210,7 +3210,7 @@
             "website": "Sitio web",
             "documentation": "Documentacion",
             "mcp": "MCP Server...",
-            "mountManager": "Xestor de montaxes...",
+            "mountManager": "AeroMount...",
             "activityLog": "Rexistro de actividade",
             "detailedCards": "Tarxetas de servidor detalladas",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Mostrar barra de menú do sistema",
             "aerovaultOverlayActive": "Superposición de contedor AeroVault activa - fai clic para desconectar",
             "aerovaultOverlayInactive": "Abrir un contedor .aerovault como panel remoto virtual. Para a superposición rclone-crypt, fai clic dereito nun cartafol remoto.",
-            "aerocryptOverlayActive": "Capa AeroCrypt activa: as subidas e descargas neste panel están cifradas. Fai clic para desconectar.",
+            "aerocryptOverlayActive": "Capa Rclone Crypt activa: as subidas e descargas neste panel están cifradas. Fai clic para desconectar.",
             "aerocryptOverlayInactive": "Abre un remoto rclone-crypt (ou crea un novo) como capa transparente.",
             "aerocryptImportTitle": "Detectada capa Rclone Crypt",
             "aerocryptImportDesc": "Perfil importado dende rclone.conf para {name}: queres abrir a capa agora?",
@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Comprobación de dispoñibilidade",
-            "storageVersioning": "Versións do ficheiro: {size}"
+            "storageVersioning": "Versións do ficheiro: {size}",
+            "group": {
+                "newGroup": "Novo grupo",
+                "newGroupEllipsis": "Novo grupo...",
+                "addToGroup": "Engadir ao grupo",
+                "newTitle": "Novo grupo",
+                "renameTitle": "Renomear grupo",
+                "namePlaceholder": "Nome do grupo",
+                "rename": "Renomear grupo",
+                "delete": "Eliminar grupo",
+                "confirmDelete": "Eliminar o grupo «{name}»? Os servidores que contén consérvanse, só se elimina o grupo.",
+                "chipHint": "Fai clic para filtrar; clic dereito para renomear ou eliminar"
+            }
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",
@@ -4389,7 +4401,7 @@
             "alignRight": "Aliñar á dereita"
         },
         "mountManager": {
-            "title": "Xestor de montaxes",
+            "title": "AeroMount",
             "subtitle": "Monta servidores gardados como unidades locais. As montaxes usan aeroftp-cli incluído (FUSE en Linux, ponte WebDAV en Windows).",
             "addMount": "Engadir montaxe",
             "newMount": "Nova montaxe",
@@ -4427,12 +4439,12 @@
             "reconnectFailed": "A reconexión fallou. Reconecta manualmente."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Capa Rclone Crypt",
+            "title": "Capa Rclone Crypt",
             "intro": {
                 "heading": "Que fai esta capa",
                 "p1": "Cifra os nomes e contidos dos ficheiros <strong>ao voo</strong>, antes de envialos ao servidor, e desciframos cando os descargas. O servidor só ve blobs con nomes en base32. Ti ves os nomes orixinais.",
-                "p2": "Mentres a capa está activa: a túa sesión remota mostra os contidos en claro, cada subida cífrase, cada descarga descifrarse. Busca a insignia <em>AEROCRYPT</em> na barra de ruta.",
-                "p3": "Diferenza respecto a AeroVault: AeroVault é un único ficheiro autocontido <code>.aerovault</code> (formato AeroFTP). AeroCrypt é unha capa sobre un remoto existente (S3/SFTP/WebDAV/...) que usa o formato público rclone crypt. Desbloquea co mesmo contrasinal que usarías en <code>rclone</code>."
+                "p2": "Mentres a capa está activa: a túa sesión remota mostra os contidos en claro, cada subida cífrase, cada descarga descifrarse. Busca a insignia <em>RCLONE CRYPT</em> na barra de ruta.",
+                "p3": "Diferenza respecto a AeroVault: AeroVault é un único ficheiro autocontido <code>.aerovault</code> (formato AeroFTP). Rclone Crypt é unha capa sobre un remoto existente (S3/SFTP/WebDAV/...) que usa o formato público rclone crypt. Desbloquea co mesmo contrasinal que usarías en <code>rclone</code>."
             },
             "openExisting": "Abrir existente",
             "createNew": "Crear novo",
@@ -4701,6 +4713,52 @@
         "opendrive": {
             "privacyTitle": "Privacidade de OpenDrive",
             "privacyUpdated": "Privacidade de OpenDrive actualizada"
+        },
+        "manageUsers": {
+            "title": "Xestionar usuarios",
+            "close": "Pechar",
+            "closePanel": "Pechar o panel de usuarios",
+            "accountName": "Nome da conta",
+            "avatar": "Avatar",
+            "add": "Engadir",
+            "accountPasswordOptional": "Contrasinal da conta (opcional)",
+            "noRecovery": "Sen recuperación",
+            "noRecoveryTitle": "O contrasinal da conta non se pode recuperar.",
+            "noRecoveryBody": "Se esqueces este contrasinal, os servidores gardados, a configuración e o historial da conta quedan permanentemente inaccesibles. Garda o contrasinal nun lugar seguro antes de continuar.",
+            "noRecoveryAck": "Entendo e acepto a responsabilidade deste contrasinal.",
+            "adminRequired": "Necesítase acceso de administrador para engadir ou reordenar contas.",
+            "loading": "Cargando usuarios...",
+            "editAvatar": "Editar avatar",
+            "saveName": "Gardar nome",
+            "active": "Activo",
+            "admin": "ADMIN",
+            "profilesCount": "{count} perfís",
+            "settingsCount": "{count} axustes",
+            "never": "Nunca",
+            "rename": "Renomear",
+            "changeMyPassword": "Cambiar o meu contrasinal",
+            "setPassword": "Establecer contrasinal",
+            "resetPassword": "Restablecer contrasinal",
+            "revokeAdmin": "Revogar administrador",
+            "promoteAdmin": "Promover a administrador",
+            "cannotDeleteLastAdmin": "Non se pode eliminar o último administrador",
+            "delete": "Eliminar",
+            "currentPassword": "Contrasinal actual",
+            "newPasswordBlankRemoves": "Novo contrasinal (baleiro para eliminalo)",
+            "newPassword": "Novo contrasinal",
+            "save": "Gardar",
+            "cancelPasswordEdit": "Cancelar a edición do contrasinal",
+            "closeAvatarEditor": "Pechar o editor de avatar",
+            "accountIdentity": "Identidade da conta",
+            "iconLibrary": "Biblioteca de iconas",
+            "color": "Cor",
+            "cancel": "Cancelar",
+            "errAckRequired": "Confirma que entendes que os contrasinais das contas non se poden recuperar.",
+            "errCurrentRequired": "O contrasinal actual da conta é obrigatorio.",
+            "errNewRequired": "O novo contrasinal da conta é obrigatorio.",
+            "confirmRemovePassword": "Eliminar o contrasinal da conta para \"{name}\"?",
+            "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDatos cifrados que eliminar: {profiles} perfís, {settings} ámbitos de configuración.",
+            "passwordChoiceNote": "Establecer un contrasinal da conta é opcional. Evita que outras persoas que usan este dispositivo abran a túa conta; os teus datos gardados seguen cifrados en calquera caso. Omíteo se es o único que o usa, ou se confías en todos os que usan este dispositivo."
         }
     }
 }

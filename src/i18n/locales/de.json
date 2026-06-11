@@ -3210,7 +3210,7 @@
             "website": "Webseite",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Mount-Manager...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitätsprotokoll",
             "detailedCards": "Detaillierte Serverkarten",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Systemmenüleiste anzeigen",
             "aerovaultOverlayActive": "AeroVault-Container-Overlay aktiv - klicken zum Trennen",
             "aerovaultOverlayInactive": "Einen .aerovault-Container als virtuelles Remote-Panel öffnen. Für Rclone-Crypt-Overlay Rechtsklick auf einen Remote-Ordner verwenden.",
-            "aerocryptOverlayActive": "AeroCrypt-Overlay aktiv: Uploads und Downloads in diesem Bereich werden verschlüsselt. Zum Trennen klicken.",
+            "aerocryptOverlayActive": "Rclone Crypt-Overlay aktiv: Uploads und Downloads in diesem Bereich werden verschlüsselt. Zum Trennen klicken.",
             "aerocryptOverlayInactive": "Öffnen Sie ein rclone-crypt-Remote (oder erstellen Sie ein neues) als transparentes Overlay.",
             "aerocryptImportTitle": "Rclone-Crypt-Overlay erkannt",
             "aerocryptImportDesc": "Profil aus rclone.conf für {name} importiert: Overlay jetzt öffnen?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Verfügbarkeitsprüfung",
-            "storageVersioning": "Dateiversionen: {size}"
+            "storageVersioning": "Dateiversionen: {size}",
+            "group": {
+                "newGroup": "Neue Gruppe",
+                "newGroupEllipsis": "Neue Gruppe...",
+                "addToGroup": "Zur Gruppe hinzufügen",
+                "newTitle": "Neue Gruppe",
+                "renameTitle": "Gruppe umbenennen",
+                "namePlaceholder": "Gruppenname",
+                "rename": "Gruppe umbenennen",
+                "delete": "Gruppe löschen",
+                "confirmDelete": "Die Gruppe „{name}“ löschen? Die enthaltenen Server bleiben erhalten, nur die Gruppe wird entfernt.",
+                "chipHint": "Klicken zum Filtern; Rechtsklick zum Umbenennen oder Löschen"
+            }
         },
         "gitlab": {
             "projectPath": "Projektpfad",
@@ -4370,7 +4382,7 @@
             "alignRight": "Rechtsbündig"
         },
         "mountManager": {
-            "title": "Mount-Manager",
+            "title": "AeroMount",
             "subtitle": "Hängen Sie gespeicherte Server als lokale Laufwerke ein. Mounts verwenden das mitgelieferte aeroftp-cli (FUSE unter Linux, WebDAV-Bridge unter Windows).",
             "addMount": "Mount hinzufügen",
             "newMount": "Neuer Mount",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Wiederverbindung fehlgeschlagen. Bitte manuell erneut verbinden."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone-Crypt-Overlay",
+            "title": "Rclone-Crypt-Overlay",
             "intro": {
                 "heading": "Was dieses Overlay tut",
                 "p1": "Verschlüsselt Dateinamen und Inhalte <strong>im laufenden Betrieb</strong>, bevor sie an den Server gesendet werden, und entschlüsselt sie beim Herunterladen. Der Server sieht nur Blobs mit base32-Namen. Sie sehen die Originalnamen.",
-                "p2": "Während das Overlay aktiv ist: Ihre Remote-Sitzung zeigt Inhalte im Klartext an, jeder Upload wird verschlüsselt, jeder Download wird entschlüsselt. Achten Sie auf das <em>AEROCRYPT</em>-Symbol in der Pfadleiste.",
-                "p3": "Unterschied zu AeroVault: AeroVault ist eine einzelne, eigenständige <code>.aerovault</code>-Datei (AeroFTP-Format). AeroCrypt ist eine Schicht über einem vorhandenen Remote (S3/SFTP/WebDAV/...) und verwendet das öffentliche rclone-crypt-Format. Entsperren Sie mit demselben Passwort, das Sie in <code>rclone</code> verwenden würden."
+                "p2": "Während das Overlay aktiv ist: Ihre Remote-Sitzung zeigt Inhalte im Klartext an, jeder Upload wird verschlüsselt, jeder Download wird entschlüsselt. Achten Sie auf das <em>RCLONE CRYPT</em>-Symbol in der Pfadleiste.",
+                "p3": "Unterschied zu AeroVault: AeroVault ist eine einzelne, eigenständige <code>.aerovault</code>-Datei (AeroFTP-Format). Rclone Crypt ist eine Schicht über einem vorhandenen Remote (S3/SFTP/WebDAV/...) und verwendet das öffentliche rclone-crypt-Format. Entsperren Sie mit demselben Passwort, das Sie in <code>rclone</code> verwenden würden."
             },
             "openExisting": "Vorhandenes öffnen",
             "createNew": "Neu erstellen",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive Datenschutz",
             "privacyUpdated": "OpenDrive Datenschutz aktualisiert"
+        },
+        "manageUsers": {
+            "title": "Benutzer verwalten",
+            "close": "Schließen",
+            "closePanel": "Benutzerbereich schließen",
+            "accountName": "Kontoname",
+            "avatar": "Avatar",
+            "add": "Hinzufügen",
+            "accountPasswordOptional": "Kontopasswort (optional)",
+            "noRecovery": "Keine Wiederherstellung",
+            "noRecoveryTitle": "Das Kontopasswort kann nicht wiederhergestellt werden.",
+            "noRecoveryBody": "Wenn Sie dieses Passwort vergessen, sind die gespeicherten Server, Einstellungen und der Verlauf des Kontos dauerhaft nicht mehr zugänglich. Bewahren Sie das Passwort an einem sicheren Ort auf, bevor Sie fortfahren.",
+            "noRecoveryAck": "Ich verstehe und übernehme die Verantwortung für dieses Passwort.",
+            "adminRequired": "Zum Hinzufügen oder Neuanordnen von Konten sind Administratorrechte erforderlich.",
+            "loading": "Benutzer werden geladen...",
+            "editAvatar": "Avatar bearbeiten",
+            "saveName": "Namen speichern",
+            "active": "Aktiv",
+            "admin": "ADMIN",
+            "profilesCount": "{count} Profile",
+            "settingsCount": "{count} Einstellungen",
+            "never": "Nie",
+            "rename": "Umbenennen",
+            "changeMyPassword": "Mein Passwort ändern",
+            "setPassword": "Passwort festlegen",
+            "resetPassword": "Passwort zurücksetzen",
+            "revokeAdmin": "Admin entziehen",
+            "promoteAdmin": "Zum Admin befördern",
+            "cannotDeleteLastAdmin": "Der letzte Administrator kann nicht gelöscht werden",
+            "delete": "Löschen",
+            "currentPassword": "Aktuelles Passwort",
+            "newPasswordBlankRemoves": "Neues Passwort (leer entfernt es)",
+            "newPassword": "Neues Passwort",
+            "save": "Speichern",
+            "cancelPasswordEdit": "Passwortbearbeitung abbrechen",
+            "closeAvatarEditor": "Avatar-Editor schließen",
+            "accountIdentity": "Kontoidentität",
+            "iconLibrary": "Symbolbibliothek",
+            "color": "Farbe",
+            "cancel": "Abbrechen",
+            "errAckRequired": "Bitte bestätigen Sie, dass Kontopasswörter nicht wiederhergestellt werden können.",
+            "errCurrentRequired": "Das aktuelle Kontopasswort ist erforderlich.",
+            "errNewRequired": "Das neue Kontopasswort ist erforderlich.",
+            "confirmRemovePassword": "Das Kontopasswort für \"{name}\" entfernen?",
+            "confirmDelete": "Konto \"{name}\" löschen?\n\nZu entfernende verschlüsselte Daten: {profiles} Profile, {settings} Einstellungsbereiche.",
+            "passwordChoiceNote": "Das Festlegen eines Kontopassworts ist optional. Es verhindert, dass andere Personen, die dieses Gerät nutzen, Ihr Konto öffnen; Ihre gespeicherten Daten bleiben in beiden Fällen verschlüsselt. Überspringen Sie es, wenn Sie der einzige Nutzer sind oder allen vertrauen, die dieses Gerät verwenden."
         }
     }
 }

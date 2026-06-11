@@ -8272,9 +8272,17 @@ pub async fn github_get_app_credentials() -> Result<serde_json::Value, String> {
 pub async fn github_store_pat(pat: String) -> Result<(), String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    store
-        .store("github_pat", &pat)
-        .map_err(|e| format!("Failed to store PAT: {}", e))?;
+    // MUV-5: per-user dual-write. The vault stays source of truth + fallback;
+    // the token is mirrored into the active user's partition with an explicit
+    // "github" type (the prefix classifier deliberately excludes `github_*` so
+    // it never touches the machine-global `github_pem_*` / app credentials).
+    crate::user_partitions::store_active_credential_typed_dual(
+        &store,
+        "github_pat",
+        "github",
+        &pat,
+    )
+    .map_err(|e| format!("Failed to store PAT: {}", e))?;
     log::info!("GitHub PAT stored in vault");
     Ok(())
 }
@@ -8290,9 +8298,15 @@ pub async fn github_store_pat_from_held(state: State<'_, ProviderState>) -> Resu
     if let Some(token) = token {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Vault not ready".to_string())?;
-        store
-            .store("github_oauth_token", &token)
-            .map_err(|e| format!("Failed to store OAuth token: {}", e))?;
+        // MUV-5: per-user dual-write with an explicit "github" type (see
+        // github_store_pat).
+        crate::user_partitions::store_active_credential_typed_dual(
+            &store,
+            "github_oauth_token",
+            "github",
+            &token,
+        )
+        .map_err(|e| format!("Failed to store OAuth token: {}", e))?;
         log::info!("GitHub Device Flow token stored in vault as OAuth token");
     }
     Ok(())
@@ -8306,9 +8320,14 @@ pub async fn github_load_oauth_token(
 ) -> Result<serde_json::Value, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    let token = store
-        .get("github_oauth_token")
-        .map_err(|_| "No OAuth token stored in vault".to_string())?;
+    // MUV-5: resolve from the active user's partition, falling back to the
+    // dual-written vault copy (a not-yet-migrated key or a non-admin active user
+    // still resolves the shared singleton).
+    let token = crate::user_partitions::resolve_active_credential(&store, "github_oauth_token")
+        .ok()
+        .flatten()
+        .ok_or_else(|| "No OAuth token stored in vault".to_string())?
+        .to_string();
     {
         let mut held = state.held_github_app_token.lock().await;
         *held = Some(token);
@@ -8322,9 +8341,13 @@ pub async fn github_load_oauth_token(
 pub async fn github_get_pat(state: State<'_, ProviderState>) -> Result<serde_json::Value, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    let pat = store
-        .get("github_pat")
-        .map_err(|_| "No PAT stored in vault".to_string())?;
+    // MUV-5: resolve from the active user's partition, falling back to the
+    // dual-written vault copy (see github_load_oauth_token).
+    let pat = crate::user_partitions::resolve_active_credential(&store, "github_pat")
+        .ok()
+        .flatten()
+        .ok_or_else(|| "No PAT stored in vault".to_string())?
+        .to_string();
     {
         let mut held = state.held_github_app_token.lock().await;
         *held = Some(pat);

@@ -29,6 +29,7 @@ import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { carryFavoriteServer } from '../utils/favoriteServers';
+import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
 import { formatBytes, parseHumanSize } from '../utils/formatters';
 import { useActivityLog } from '../hooks/useActivityLog';
@@ -1009,12 +1010,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    // True when this provider/protocol ships a built-in preset logo (Filen,
+    // OneDrive, ...). The icon picker is shown for every Quick Connect page now,
+    // but preset providers are restricted to the custom-icons library so they
+    // cannot be assigned a *different* provider's logo (#270).
     const hasProviderLogoForSave = !!PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
 
     const renderIconPicker = () => {
-        if (hasProviderLogoForSave) return null;
         const proto = connectionParams.protocol || 'ftp';
-        const hasIcon = !!customIconForSave || !!faviconForSave;
+        const PresetLogo = PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+        const hasIcon = !!customIconForSave || !!faviconForSave || !!PresetLogo;
         const letter = (connectionName || connectionParams.server || '?').charAt(0).toUpperCase();
         return (
             <div className="mt-2">
@@ -1026,6 +1031,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <img src={customIconForSave} alt="" className="w-6 h-6 rounded object-contain" />
                             ) : faviconForSave ? (
                                 <img src={faviconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                            ) : PresetLogo ? (
+                                <PresetLogo size={24} />
                             ) : (
                                 <span className="font-bold text-sm">{letter}</span>
                             )}
@@ -1212,6 +1219,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // well (removeOld=false): a duplicate leaves both rows in the list.
         if (modeChanged && originalServer) {
             await carryFavoriteServer(originalServer.id, newId, false);
+            await carryServerGroups(originalServer.id, newId, false);
         }
         setSavedServersUpdate(Date.now());
 
@@ -1311,6 +1319,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Move the ⭐ favourite flag from the deleted original to the new
         // profile (issue #215): convert replaces in place, so remove the old id.
         await carryFavoriteServer(originalServer.id, newId, true);
+        await carryServerGroups(originalServer.id, newId, true);
         setSavedServersUpdate(Date.now());
 
         // 10s Undo toast (via window event so we don't need to plumb a
@@ -1329,6 +1338,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         // Reverse the favourite move so the restored original
                         // keeps its ⭐ and the discarded new id doesn't dangle.
                         await carryFavoriteServer(newId, originalServer.id, true);
+                        await carryServerGroups(newId, originalServer.id, true);
                         setSavedServersUpdate(Date.now());
                         window.dispatchEvent(new CustomEvent('aeroftp-toast', {
                             detail: {
@@ -5077,6 +5087,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     onClose={() => setShowIconPicker(false)}
                     currentIcon={customIconForSave || faviconForSave}
                     detectedFavicon={faviconForSave}
+                    customIconsOnly={hasProviderLogoForSave}
                     onRescan={async () => {
                         // Live re-detection: re-runs the same Tauri commands as
                         // the auto-detection hook, so a favicon that changed on

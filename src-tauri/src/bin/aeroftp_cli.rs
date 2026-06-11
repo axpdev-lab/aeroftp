@@ -1670,6 +1670,20 @@ enum Commands {
         /// WebDAV servers) that reject overwrite-on-PUT.
         #[arg(long)]
         pre_delete: bool,
+        /// Many-small-files workload: number of files to exercise (e.g. 100,
+        /// 1000). When > 0, runs a dedicated small-files benchmark on a separate
+        /// axis (upload-all / download-all / list-dir / stat-all / delete-all)
+        /// reporting files/sec and mean per-file time, in addition to the
+        /// single-file size sweep. This is the workload where per-file overhead
+        /// (handshake, signing, metadata round-trips) dominates and S3 typically
+        /// pulls ahead of WebDAV and FTP.
+        #[arg(long, value_name = "N")]
+        file_count: Option<u32>,
+        /// Size of each file in the many-small-files workload (e.g. 4K, 64K,
+        /// 1M). Defaults to 64K. Total payload (file-count x file-size) is
+        /// capped at 5 GiB.
+        #[arg(long, value_name = "SIZE", default_value = "64K")]
+        file_size: String,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -3074,6 +3088,39 @@ enum KeystoreCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Health check of the credential vault: reports the key mode and whether
+    /// the vault can be opened right now. Detects a lost or overwritten keyring
+    /// entry (zero-password vault that no longer unlocks). Read-only; exits 0
+    /// when healthy, 1 when the vault cannot be opened.
+    Status {
+        /// Output a JSON summary on stdout
+        #[arg(long)]
+        json: bool,
+    },
+    /// Recover a credential vault that can no longer be unlocked (e.g. its
+    /// system-keyring entry was lost or overwritten). Snapshots and resets
+    /// `vault.db` + `vault.key`, re-initialises a fresh vault, then imports the
+    /// given `.aeroftp-keystore` backup. The pre-reset state is preserved in a
+    /// timestamped snapshot under the config directory (reversible).
+    Repair {
+        /// Backup `.aeroftp-keystore` to restore from
+        #[arg(long, short = 'i')]
+        input: String,
+        /// Decryption password (same resolution order as `import`)
+        #[arg(long)]
+        password: Option<String>,
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Override the destination config directory
+        #[arg(long = "config-dir")]
+        config_dir: Option<String>,
+        /// Skip the destructive-action confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// Output a JSON summary on stdout
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4048,6 +4095,15 @@ struct BenchmarkResult {
     payload_size_bytes: u64,
     runs: u32,
     warmup_runs_discarded: u32,
+    // Many-small-files axis (schema v1, additive): number of files exercised by
+    // a batch operation (upload-all / download-all / list-dir / stat-all /
+    // delete-all) and the resulting files-per-second. Omitted for the
+    // single-file size sweep, where `latency_ms` and `throughput_mbps` already
+    // carry the meaningful numbers. See APPENDIX-BENCHMARK schema doc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    files_per_second: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     throughput_mbps: Option<BenchmarkStats>,
     latency_ms: BenchmarkStats,
@@ -7663,6 +7719,144 @@ fn ensure_active_user_unlocked(
     }
 }
 
+// --- MUV-3: per-user `server_*` credential dual-write helpers (CLI) ---------
+//
+// The vault stays the source of truth + fallback; `server_<id>` secrets are
+// additionally mirrored into the scoped user's partition. Resolving the scoped
+// user id is best-effort and NEVER prompts for a passphrase (zero-password
+// invariant): a locked partition simply skips the mirror and keeps the vault
+// copy, and the reader falls back to the vault. `--user` selects the scoped
+// user per-invocation; contexts without a `Cli` use the persisted active user.
+
+/// Scoped user id for `--user`-aware credential reads/writes, resolved without
+/// unlocking. `None` means "no user resolvable" -> vault-only.
+fn scoped_credential_user_id(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Option<i64> {
+    use ftp_client_gui_lib::user_partitions;
+    if let Some(ref name) = cli.user {
+        user_partitions::cli_find_user_by_name(store, name)
+            .ok()
+            .map(|u| u.id)
+    } else {
+        user_partitions::cli_get_active_user(store)
+            .ok()
+            .flatten()
+            .map(|u| u.id)
+    }
+}
+
+/// Active user id for credential reads in contexts with no `Cli` in scope (the
+/// agent connect path, the export scaffold). `None` -> vault-only.
+fn active_credential_user_id(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Option<i64> {
+    ftp_client_gui_lib::user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+}
+
+/// Read a `server_<id>` secret preferring the user's partition (when `uid` is
+/// known) and falling back to the legacy vault.
+fn read_server_cred(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+) -> Option<String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::cli_read_credential_with_fallback(
+            store,
+            uid,
+            credential_id,
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string()),
+        None => store.get(credential_id).ok(),
+    }
+}
+
+/// Dual-write a `server_<id>` secret (vault + the user's partition when `uid` is
+/// known), returning the authoritative vault error. Use at sites that surface a
+/// hard error on a failed credential write.
+fn dual_store_server_cred_checked(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::store_credential_for_user_dual(
+            store,
+            uid,
+            credential_id,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| e.to_string()),
+    }
+}
+
+/// Dual-write with an EXPLICIT credential type (vault + the user's partition
+/// when `uid` is known), returning the authoritative vault error. For
+/// non-`server_` keys (OAuth tokens, Jottacloud refresh) the prefix classifier
+/// does not apply, so the type is supplied by the caller (MUV-4).
+fn dual_store_typed_cred_checked(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::store_credential_for_user_typed_dual(
+            store,
+            uid,
+            credential_id,
+            credential_type,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| e.to_string()),
+    }
+}
+
+/// Best-effort dual-write (ignores the result). Use at sites where a missing
+/// credential is acceptable (cloning, optional restore).
+fn dual_store_server_cred(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    secret: &str,
+) {
+    let _ = dual_store_server_cred_checked(store, uid, credential_id, secret);
+}
+
+/// Best-effort dual-delete a `server_<id>` secret (vault + the user's partition
+/// when `uid` is known).
+fn dual_delete_server_cred(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+) {
+    match uid {
+        Some(uid) => {
+            let _ = ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
+                store,
+                uid,
+                credential_id,
+            );
+        }
+        None => {
+            let _ = store.delete(credential_id);
+        }
+    }
+}
+
 /// Load the target user's server profiles. `--user` selects per-invocation,
 /// falling back to the persistent `active_user_id` when absent. Falls back
 /// to the legacy `config_server_profiles` blob only on partition errors
@@ -9026,52 +9220,58 @@ fn toggle_group_membership_in_vault(
     Ok((group_name, now_member))
 }
 
-/// Rename a group, matched case-insensitively by its current name. Reads the
-/// list, renames the first match, writes back. A no-op (Ok) when no group
-/// matches or the target is blank, mirroring the GUI `serverGroups.ts` rename.
+/// Rename a group, looked up case-insensitively by its current name. Returns
+/// the canonical old name on success. Mirrors `renameGroup` in serverGroups.ts.
 fn rename_group_in_vault(
     store: &CredentialStore,
     old_name: &str,
     new_name: &str,
-) -> Result<(), String> {
-    let trimmed = new_name.trim();
-    if trimmed.is_empty() {
-        return Err("Group name cannot be empty".to_string());
+) -> Result<String, String> {
+    let new_trimmed = new_name.trim();
+    if new_trimmed.is_empty() {
+        return Err("New group name cannot be empty".to_string());
     }
     let raw = store.get("config_server_groups").unwrap_or_default();
-    if raw.is_empty() {
-        return Ok(());
-    }
-    let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
-    if let Some(g) = groups
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let g = groups
         .iter_mut()
-        .find(|g| g.name.eq_ignore_ascii_case(old_name))
-    {
-        g.name = trimmed.to_string();
-    }
+        .find(|g| g.name.eq_ignore_ascii_case(old_name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", old_name.trim()))?;
+    let was = g.name.clone();
+    g.name = new_trimmed.to_string();
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
     store
         .store("config_server_groups", &payload)
         .map_err(|e| format!("Failed to write groups: {}", e))?;
-    Ok(())
+    Ok(was)
 }
 
-/// Delete a group by name (case-insensitive). The member servers are untouched;
-/// only the grouping disappears, mirroring the GUI `serverGroups.ts` delete.
-fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<(), String> {
+/// Delete a group by name (case-insensitive). The member servers are kept: a
+/// group is just a label, so removing it only drops the grouping, mirroring
+/// `deleteGroup` in serverGroups.ts. Returns the canonical name removed.
+fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, String> {
     let raw = store.get("config_server_groups").unwrap_or_default();
-    if raw.is_empty() {
-        return Ok(());
-    }
-    let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
-    groups.retain(|g| !g.name.eq_ignore_ascii_case(name));
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let pos = groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", name.trim()))?;
+    let removed = groups.remove(pos).name;
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
     store
         .store("config_server_groups", &payload)
         .map_err(|e| format!("Failed to write groups: {}", e))?;
-    Ok(())
+    Ok(removed)
 }
 
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
@@ -11144,10 +11344,49 @@ fn render_profiles_text(
 
     if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
-        return interactive_profiles_loop(cli, store, ordered);
+        return interactive_profiles_loop(cli, store, ordered, overrides);
     }
 
     0
+}
+
+/// Reconstruct the `profiles` view arguments (minus the interactive flag)
+/// from the active view overrides, so a refresh reprints the SAME view the
+/// user originally asked for (`--sort`, `--hide`, `--show`, `--breakdown`).
+fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
+    let mut args = vec!["profiles".to_string()];
+    if let Some(s) = &ov.sort {
+        args.push(format!("--sort={}", s));
+    }
+    if let Some(h) = &ov.hide {
+        args.push(format!("--hide={}", h));
+    }
+    if let Some(s) = &ov.show {
+        args.push(format!("--show={}", s));
+    }
+    if ov.breakdown {
+        args.push("--breakdown".to_string());
+    }
+    if let Some(g) = &ov.group {
+        args.push(format!("--group={}", g));
+    }
+    args
+}
+
+/// Clear the screen (only when ANSI output is allowed) and reprint the
+/// profiles table by re-running the binary's own `profiles` view. Re-running
+/// re-reads the vault, so the table reflects any change made elsewhere since
+/// the loop started (discussion #266). Mirrors how `l`/`t` reuse the binary
+/// for bit-identical output.
+fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
+    if use_color() {
+        // ESC[2J clears the screen, ESC[H homes the cursor.
+        eprint!("\x1b[2J\x1b[H");
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }
+    let args = profiles_view_args(ov);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let _ = run_self_subcommand(&refs);
 }
 
 /// rclone-config-style prompt loop on `aeroftp profiles -i`.
@@ -11163,6 +11402,7 @@ fn interactive_profiles_loop(
     cli: &Cli,
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
+    overrides: &ProfilesViewOverrides,
 ) -> i32 {
     use std::io::{self, BufRead, Write};
 
@@ -11186,7 +11426,7 @@ fn interactive_profiles_loop(
             cmd
         } else {
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove group  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -11233,11 +11473,23 @@ fn interactive_profiles_loop(
                 "  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually"
             );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
+            eprintln!(
+                "  refresh / .     clear screen + reprint table (reloads from vault; 'clear' also works)"
+            );
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
             eprintln!("  Example: c \"My Cloud Drive\" 7 box     d 4 box 10 7 mega     f mybox");
             eprintln!("  Mode switch: s 3 (then prompts for mode label: api, webdav, s3, ftp)");
+            continue;
+        }
+
+        // F5-style refresh (discussion #266). Explicit opt-in only: a bare
+        // empty Enter deliberately does nothing, since wiping the terminal on
+        // an accidental keystroke is intrusive. Re-runs the same view, which
+        // re-reads the vault and picks up changes made in another session.
+        if lower == "refresh" || lower == "clear" || lower == "." {
+            refresh_profiles_view(overrides);
             continue;
         }
 
@@ -11520,24 +11772,71 @@ fn interactive_profiles_loop(
             continue;
         }
 
-        // `g` (group): the LAST token is the group name; the rest are profile
-        // selectors. Toggles each selected profile's membership in that group,
-        // creating the group if the name is new (#320). Mirrors the `f`
-        // favourite toggle but with a named bucket.
+        // `g` (group): membership toggle, or a rename/delete verb (#320).
+        //   g <selector> [selector ...] <group>   toggle membership (create if new)
+        //   g rename <old> <new>                   rename a group
+        //   g delete <group>                       delete a group (servers kept)
+        // Group names are single tokens in interactive mode (whitespace splits).
         let mut group_name_arg: Option<String> = None;
         if action == 'g' {
-            let popped = selectors.pop();
-            let valid_name = popped
-                .as_deref()
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-            if !valid_name || selectors.is_empty() {
-                eprintln!(
-                    "Usage: g <selector> [selector ...] <group-name>   (toggles membership; creates the group if new)"
-                );
-                continue;
+            let verb = selectors.first().map(|s| s.to_ascii_lowercase());
+            match verb.as_deref() {
+                Some("rename") | Some("mv") => {
+                    if selectors.len() != 3 {
+                        eprintln!("Usage: g rename <old-group> <new-group>");
+                        continue;
+                    }
+                    match rename_group_in_vault(store, &selectors[1], &selectors[2]) {
+                        Ok(old) => eprintln!(
+                            "{}",
+                            paint_green(&format!(
+                                "Group '{}' renamed to '{}'.",
+                                old,
+                                selectors[2].trim()
+                            ))
+                        ),
+                        Err(e) => {
+                            eprintln!("{}", paint_red(&format!("Group rename failed: {}", e)))
+                        }
+                    }
+                    continue;
+                }
+                Some("delete") | Some("del") | Some("rm") => {
+                    if selectors.len() != 2 {
+                        eprintln!("Usage: g delete <group>   (the member servers are kept)");
+                        continue;
+                    }
+                    match delete_group_in_vault(store, &selectors[1]) {
+                        Ok(name) => eprintln!(
+                            "{}",
+                            paint_yellow(&format!(
+                                "Group '{}' deleted. Its servers were kept.",
+                                name
+                            ))
+                        ),
+                        Err(e) => {
+                            eprintln!("{}", paint_red(&format!("Group delete failed: {}", e)))
+                        }
+                    }
+                    continue;
+                }
+                _ => {
+                    // Membership toggle: LAST token is the group name, the rest
+                    // are profile selectors. Mirrors the `f` favourite toggle.
+                    let popped = selectors.pop();
+                    let valid_name = popped
+                        .as_deref()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false);
+                    if !valid_name || selectors.is_empty() {
+                        eprintln!(
+                            "Usage: g <selector> [selector ...] <group>  -  g rename <old> <new>  -  g delete <group>"
+                        );
+                        continue;
+                    }
+                    group_name_arg = popped;
+                }
             }
-            group_name_arg = popped;
         }
 
         // Optional tree depth: a `:N` token (u8) among the selectors overrides
@@ -12518,12 +12817,14 @@ fn print_profiles_summary_with_tombstones(
 
 /// Reprint the profile table after a `#` reorder, showing the move visually
 /// instead of leaving the user to play "spot the differences" (Discussion
-/// #270, EhudKirsh). The moved profile appears twice: a red, struck-through
-/// ghost at its old slot and a live row at its new slot, joined by a left
-/// gutter arrow. Every row whose index shifted shows `old -> new` with the old
-/// number struck through. `src`/`dst` are the zero-based source and (clamped)
-/// destination positions; `live` is the post-move list. Caller guarantees
-/// `src != dst`.
+/// #270, EhudKirsh). The index splits into two sub-columns: struck OLD indices
+/// on the left and the resulting CURRENT indices on the right, so reading the
+/// right column top to bottom yields the final 1..N numbering. The moved
+/// profile appears twice: a struck ghost at its old slot (whose left arrow
+/// merges into the strikethrough) and a live row at its new slot, joined by a
+/// left gutter arrow whose head points at the live row. `src`/`dst` are the
+/// zero-based source and (clamped) destination positions; `live` is the
+/// post-move list. Caller guarantees `src != dst`.
 fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, dst: usize) {
     let color_on = use_color();
     let red = |s: &str| {
@@ -12536,6 +12837,15 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     let strikethrough = |s: &str| {
         if color_on {
             format!("\x1b[9m{}\x1b[29m", s)
+        } else {
+            s.to_string()
+        }
+    };
+    // New/changed index numbers read as "added" in a diff, so paint them green
+    // (the struck old number stays red). #270, EhudKirsh.
+    let green = |s: &str| {
+        if color_on {
+            format!("\x1b[32m{}\x1b[0m", s)
         } else {
             s.to_string()
         }
@@ -12558,9 +12868,13 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     };
 
     // One display row. `profile_ci` indexes into `live` (the post-move list).
+    // `old_num` is the struck source index (ghost + shifted rows); `new_num` is
+    // the resulting index (every row except the ghost). `new_changed` marks the
+    // rows whose new index reads as "added" and is painted green (shifted/live).
     struct Row {
-        idx_plain: String,    // index cell without ANSI, used for width
-        idx_rendered: String, // index cell with ANSI applied
+        old_num: Option<String>,
+        new_num: Option<String>,
+        new_changed: bool,
         profile_ci: usize,
         old_index: Option<usize>, // 1-based, for finding splice/arrow anchors
         ghost: bool,              // struck old-slot copy of the moved profile
@@ -12573,40 +12887,33 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     for old in 0..live.len() {
         let new = new_index_of(old);
         if old == src {
-            // Ghost: show the old index, struck through.
-            let plain = (old + 1).to_string();
+            // Ghost: only the struck old index, in the OLD sub-column.
             rows.push(Row {
-                idx_rendered: red(&strikethrough(&plain)),
-                idx_plain: plain,
+                old_num: Some((old + 1).to_string()),
+                new_num: None,
+                new_changed: false,
                 profile_ci: dst, // moved profile now sits at dst in `live`
                 old_index: Some(old + 1),
                 ghost: true,
                 live_row: false,
             });
         } else if new != old {
-            // Shifted: old struck, new beside it.
-            let (plain, rendered) = if color_on {
-                (
-                    format!("{}{}", old + 1, new + 1),
-                    format!("{}{}", red(&strikethrough(&(old + 1).to_string())), new + 1),
-                )
-            } else {
-                let s = format!("{}>{}", old + 1, new + 1);
-                (s.clone(), s)
-            };
+            // Shifted: struck old on the left, green new on the right.
             rows.push(Row {
-                idx_plain: plain,
-                idx_rendered: rendered,
+                old_num: Some((old + 1).to_string()),
+                new_num: Some((new + 1).to_string()),
+                new_changed: true,
                 profile_ci: new,
                 old_index: Some(old + 1),
                 ghost: false,
                 live_row: false,
             });
         } else {
-            let plain = (new + 1).to_string();
+            // Unchanged: a single index, in the NEW sub-column.
             rows.push(Row {
-                idx_rendered: plain.clone(),
-                idx_plain: plain,
+                old_num: None,
+                new_num: Some((new + 1).to_string()),
+                new_changed: false,
                 profile_ci: new,
                 old_index: Some(old + 1),
                 ghost: false,
@@ -12623,12 +12930,12 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         .position(|r| r.old_index == Some(dst + 1))
         .unwrap_or(rows.len().saturating_sub(1));
     let live_pos = if down { anchor + 1 } else { anchor };
-    let live_plain = (dst + 1).to_string();
     rows.insert(
         live_pos,
         Row {
-            idx_rendered: live_plain.clone(),
-            idx_plain: live_plain,
+            old_num: None,
+            new_num: Some((dst + 1).to_string()),
+            new_changed: true,
             profile_ci: dst,
             old_index: None,
             ghost: false,
@@ -12642,24 +12949,24 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     let live_row_pos = rows.iter().position(|r| r.live_row).unwrap_or(0);
     let arrow_top = ghost_pos.min(live_row_pos);
     let arrow_bot = ghost_pos.max(live_row_pos);
+    // Three-cell left gutter: a corner/vertical bar, a connector dash, and the
+    // arrowhead. The arrowhead (`>`) lands only on the live (destination) row;
+    // the ghost endpoint closes the bracket with a second dash. The extra dash
+    // (vs a bare `>`) is Ehud's #270 polish: `└─>` reads better than `└>`.
     let gutter = |i: usize, is_live: bool| -> String {
-        let bar = if i == arrow_top {
-            '\u{250c}' // top corner
-        } else if i == arrow_bot {
-            '\u{2514}' // bottom corner
+        if i == arrow_top || i == arrow_bot {
+            let corner = if i == arrow_top {
+                '\u{250c}'
+            } else {
+                '\u{2514}'
+            };
+            let head = if is_live { '>' } else { '\u{2500}' };
+            format!("{}\u{2500}{}", corner, head)
         } else if i > arrow_top && i < arrow_bot {
-            '\u{2502}' // vertical
+            format!("{}  ", '\u{2502}') // vertical bar + two spaces
         } else {
-            ' '
-        };
-        let head = if is_live {
-            '>'
-        } else if i == arrow_top || i == arrow_bot {
-            '\u{2500}' // dash on the non-live endpoint
-        } else {
-            ' '
-        };
-        format!("{}{}", bar, head)
+            "   ".to_string() // three spaces: no arrow on this row
+        }
     };
 
     // Column widths over every referenced profile.
@@ -12687,35 +12994,61 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         .max()
         .unwrap_or(4)
         .clamp(4, 28);
-    let idx_w = rows
+    // The index splits into an OLD sub-column (struck source indices) and a NEW
+    // sub-column (resulting indices), each sized to its widest number.
+    let old_w = rows
         .iter()
-        .map(|r| r.idx_plain.chars().count())
+        .filter_map(|r| r.old_num.as_ref().map(|s| s.chars().count()))
         .max()
-        .unwrap_or(2)
-        .max(2);
+        .unwrap_or(1)
+        .max(1);
+    let new_w = rows
+        .iter()
+        .filter_map(|r| r.new_num.as_ref().map(|s| s.chars().count()))
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
+    // Lead-in: three-cell gutter + one connector cell (4 chars), then the OLD
+    // sub-column (blank in the header) and the `#` sitting over the NEW column.
     eprintln!();
     eprintln!(
-        "   {:>idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
+        "    {}{:>nw$}  {:<name$}  {:<bw$}  {:<hw$}",
+        " ".repeat(old_w),
         "#",
         "Name",
         "Badges",
         "Host",
-        idx = idx_w,
-        nw = name_w,
+        nw = new_w,
+        name = name_w,
         bw = badge_w,
         hw = host_w,
     );
-    let total_w = idx_w + 2 + name_w + 2 + badge_w + 2 + host_w;
-    eprintln!("   {}", "\u{2500}".repeat(total_w));
+    let total_w = old_w + new_w + 2 + name_w + 2 + badge_w + 2 + host_w;
+    eprintln!("    {}", "\u{2500}".repeat(total_w));
     for (i, r) in rows.iter().enumerate() {
         let p = &live[r.profile_ci];
         let name = truncate_cell(p.get("name").and_then(|v| v.as_str()).unwrap_or(""), name_w);
         let badge = truncate_cell(&badge_display_label(p), badge_w);
         let host = truncate_cell(&host_subtitle(p), host_w);
-        // Right-align the index cell honouring its ANSI-free display width.
-        let pad = idx_w.saturating_sub(r.idx_plain.chars().count());
-        let idx_cell = format!("{}{}", " ".repeat(pad), r.idx_rendered);
+        let g = gutter(i, r.live_row);
+        // On the ghost the connector cell is a dash so the arrow flows straight
+        // into the struck row; every other row gets a plain space.
+        let sep = if r.ghost { '\u{2500}' } else { ' ' };
+        // OLD sub-column: red, struck source index, right-aligned. On the ghost
+        // the left padding is dashes so the merged arrow reaches the number.
+        let old_field = match &r.old_num {
+            Some(num) => {
+                let pad = old_w.saturating_sub(num.chars().count());
+                let fill = if r.ghost {
+                    "\u{2500}".repeat(pad)
+                } else {
+                    " ".repeat(pad)
+                };
+                format!("{}{}", fill, red(&strikethrough(num)))
+            }
+            None => " ".repeat(old_w),
+        };
         let body = format!(
             "{:<nw$}  {:<bw$}  {:<hw$}",
             name,
@@ -12725,12 +13058,28 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
             bw = badge_w,
             hw = host_w,
         );
-        let body = if r.ghost {
-            red(&strikethrough(&body))
+        if r.ghost {
+            // The moved profile is relocated, not deleted: continue the line as
+            // a plain (white) strikethrough across the empty NEW column and the
+            // body, so it reads as one struck row, not a tombstone. #270.
+            let tail = strikethrough(&format!("{}  {}", " ".repeat(new_w), body));
+            eprintln!("{}{}{}{}", g, sep, old_field, tail);
         } else {
-            body
-        };
-        eprintln!("{} {}  {}", gutter(i, r.live_row), idx_cell, body);
+            // NEW sub-column: the resulting index, green when it changed.
+            let new_field = match &r.new_num {
+                Some(num) => {
+                    let pad = new_w.saturating_sub(num.chars().count());
+                    let cell = if r.new_changed {
+                        green(num)
+                    } else {
+                        num.clone()
+                    };
+                    format!("{}{}", " ".repeat(pad), cell)
+                }
+                None => " ".repeat(new_w),
+            };
+            eprintln!("{}{}{}{}  {}", g, sep, old_field, new_field, body);
+        }
     }
 }
 
@@ -13156,10 +13505,11 @@ fn cmd_profile_duplicate(
 
     // Best-effort credential clone. Missing credentials are valid for many
     // protocols (OAuth, GitHub PAT-only flows) so we don't fail when the
-    // source key isn't present.
+    // source key isn't present. MUV-3: same scoped user, dual-write.
     if !source_id.is_empty() {
-        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-            let _ = store.store(&format!("server_{}", new_id), &cred);
+        let scoped_uid = scoped_credential_user_id(cli, &store);
+        if let Some(cred) = read_server_cred(&store, scoped_uid, &format!("server_{}", source_id)) {
+            dual_store_server_cred(&store, scoped_uid, &format!("server_{}", new_id), &cred);
         }
     }
 
@@ -13359,26 +13709,33 @@ fn cmd_profile_relocate_user(
         target_passphrase.as_deref(),
         remove_from_source,
     );
-    if let Some(p) = target_passphrase.as_mut() {
-        p.zeroize();
-    }
     let relocation = match relocation {
         Ok(r) => r,
         Err(e) => {
+            if let Some(p) = target_passphrase.as_mut() {
+                p.zeroize();
+            }
             let code = if e.contains("PASSPHRASE") { 6 } else { 5 };
             print_error(format, &format!("{} failed: {}", verb, e), code);
             return code;
         }
     };
 
-    // Credential bookkeeping (outside the partition DB).
-    if !relocation.already_present {
-        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-            let _ = store.store(&format!("server_{}", new_id), &cred);
-        }
+    // MUV-3: relocate the `server_<id>` secret while the target passphrase is
+    // still live. The vault stays in sync (copy onto the new id, drop the
+    // orphan on a Move) and the secret is mirrored onto the target user's
+    // partition under its scoped DEK.
+    let _ = user_partitions::cli_relocate_server_credential_dual(
+        &store,
+        source_user.id,
+        &relocation,
+        target_passphrase.as_deref(),
+    );
+    if let Some(p) = target_passphrase.as_mut() {
+        p.zeroize();
     }
+
     if relocation.moved {
-        let _ = store.delete(&format!("server_{}", source_id));
         // Drop the moved id from the favourites set (best effort).
         if let Ok(fav_raw) = store.get("config_favorite_servers") {
             if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
@@ -13749,11 +14106,13 @@ fn duplicate_or_convert_mode_in_vault(
     // Credential handling: explicit override wins; otherwise clone the
     // source's credential best-effort (works for same-credentials groups
     // like Koofr/OpenDrive; user must provide --password for the others).
+    // MUV-3: same scoped user, dual-write.
+    let scoped_uid = scoped_credential_user_id(cli, store);
     if let Some(pwd) = password {
-        let _ = store.store(&format!("server_{}", new_id), pwd);
+        dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), pwd);
     } else if !source_id.is_empty() {
-        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-            let _ = store.store(&format!("server_{}", new_id), &cred);
+        if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
+            dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
         }
     }
 
@@ -13761,7 +14120,7 @@ fn duplicate_or_convert_mode_in_vault(
     // profile is gone from the list, the credential would orphan). Best-
     // effort; ignore errors.
     if replace_in_slot && !source_id.is_empty() {
-        let _ = store.delete(&format!("server_{}", source_id));
+        dual_delete_server_cred(store, scoped_uid, &format!("server_{}", source_id));
     }
 
     // Carry the ⭐ favourite flag onto the new profile so switching a profile's
@@ -13925,7 +14284,12 @@ fn delete_profile_in_vault(
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
 
     // Orphan credential cleanup (matches MyServersPanel.tsx confirmDelete).
-    let _ = store.delete(&format!("server_{}", profile_id));
+    // MUV-3: dual-delete from vault + the scoped user's partition.
+    dual_delete_server_cred(
+        store,
+        scoped_credential_user_id(cli, store),
+        &format!("server_{}", profile_id),
+    );
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.
@@ -14222,7 +14586,10 @@ fn cmd_profile_set_password(
     }
 
     let key = format!("server_{}", target_id);
-    if let Err(e) = store.store(&key, &credential_value) {
+    // MUV-3: dual-write (vault is authoritative; the scoped user's partition is
+    // mirrored best-effort). The vault error is surfaced as a hard failure.
+    let scoped_uid = scoped_credential_user_id(cli, &store);
+    if let Err(e) = dual_store_server_cred_checked(&store, scoped_uid, &key, &credential_value) {
         print_error(
             format,
             &format!("Failed to write credential to vault: {}", e),
@@ -14308,8 +14675,10 @@ fn duplicate_profile_in_vault(
     profiles.insert(0, copy);
     save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
-    if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
-        let _ = store.store(&format!("server_{}", new_id), &cred);
+    // MUV-3: clone the credential into vault + the scoped user's partition.
+    let scoped_uid = scoped_credential_user_id(cli, store);
+    if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
+        dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
     }
     Ok((new_id, resolved_name, profiles))
 }
@@ -14453,10 +14822,12 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
                         continue;
                     }
 
-                    // Check if API key exists for this provider
+                    // Check if API key exists for this provider. MUV-5: AI keys
+                    // are per-user now, so resolve through the scoped user's
+                    // partition (falling back to the dual-written vault).
                     let vault_key = format!("ai_apikey_{}", id);
-                    let has_vault_key = store
-                        .get(&vault_key)
+                    let ai_key_uid = scoped_credential_user_id(cli, &store);
+                    let has_vault_key = read_server_cred(&store, ai_key_uid, &vault_key)
                         .map(|v| !v.is_empty())
                         .unwrap_or(false);
                     let env_name = env_var_for(ptype);
@@ -14816,10 +15187,14 @@ async fn create_and_connect_for_agent(
         .and_then(|v| v.as_str())
         .unwrap_or("/");
 
-    // Resolve password from vault
-    let password = store
-        .get(&format!("server_{}", profile_id))
-        .unwrap_or_default();
+    // Resolve password from the active user's partition (profiles were listed
+    // for the active user above), falling back to the legacy vault (MUV-3).
+    let password = read_server_cred(
+        &store,
+        active_credential_user_id(&store),
+        &format!("server_{}", profile_id),
+    )
+    .unwrap_or_default();
 
     // Build provider config
     let provider_type = match protocol.to_uppercase().as_str() {
@@ -15857,11 +16232,16 @@ fn profile_to_provider_config(
         &username,
     );
 
-    // Load credentials from vault
-    // Password is stored as a raw string (not JSON) in server_{id}
+    // Load credentials from the scoped user's partition, falling back to the
+    // legacy vault (MUV-3). Password is stored as a raw string (not JSON) in
+    // server_{id}.
     let (cred_user, cred_pass) = if !id.is_empty() {
-        match store.get(&format!("server_{}", id)) {
-            Ok(password_str) => {
+        match read_server_cred(
+            &store,
+            scoped_credential_user_id(cli, &store),
+            &format!("server_{}", id),
+        ) {
+            Some(password_str) => {
                 // The vault stores just the password as a plain string
                 // Try to parse as JSON first (legacy format), fall back to raw string
                 if let Ok(cred) = serde_json::from_str::<serde_json::Value>(&password_str) {
@@ -15887,7 +16267,7 @@ fn profile_to_provider_config(
                     (username.clone(), password_str)
                 }
             }
-            Err(_) => (username.clone(), String::new()),
+            None => (username.clone(), String::new()),
         }
     } else {
         (username.clone(), String::new())
@@ -23030,11 +23410,18 @@ async fn apply_rclone_import_to_vault(
     let mut oauth_tokens_stored = 0usize;
     let mut jotta_refresh_stored = 0usize;
 
+    // MUV-3: dual-write each imported credential (vault + the scoped user's
+    // partition). The vault write stays authoritative (hard error on failure).
+    let scoped_uid = scoped_credential_user_id(cli, &store);
     for server in &result.servers {
         if let Some(ref cred) = server.credential {
-            store
-                .store(&format!("server_{}", server.id), cred)
-                .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+            dual_store_server_cred_checked(
+                &store,
+                scoped_uid,
+                &format!("server_{}", server.id),
+                cred,
+            )
+            .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
             passwords_stored += 1;
         }
     }
@@ -23056,17 +23443,28 @@ async fn apply_rclone_import_to_vault(
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = cli_oauth_vault_slug_for_protocol(protocol) {
-                store
-                    .store(&format!("oauth_{}_{}", slug, profile_id), oauth_json)
-                    .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
+                // MUV-4: dual-write into vault + the scoped user's partition.
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("oauth_{}_{}", slug, profile_id),
+                    "oauth",
+                    oauth_json,
+                )
+                .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
                 oauth_tokens_stored += 1;
             }
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                store
-                    .store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
-                    .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("jottacloud_refresh_{}", profile_id),
+                    "jottacloud_refresh",
+                    jotta_json,
+                )
+                .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
                 jotta_refresh_stored += 1;
             }
         }
@@ -23406,11 +23804,16 @@ fn collect_export_scaffold(
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
+        // MUV-3: active user's partition with fallback to the legacy vault.
         let secret = if id.is_empty() {
             String::new()
         } else {
-            match store.get(&format!("server_{}", id)) {
-                Ok(stored) => {
+            match read_server_cred(
+                store,
+                active_credential_user_id(store),
+                &format!("server_{}", id),
+            ) {
+                Some(stored) => {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
                         v.get("password")
                             .and_then(|x| x.as_str())
@@ -23420,7 +23823,7 @@ fn collect_export_scaffold(
                         stored
                     }
                 }
-                Err(_) => String::new(),
+                None => String::new(),
             }
         };
 
@@ -24265,6 +24668,153 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
     0
 }
 
+/// `keystore status`: read-only health probe of the credential vault. Reports
+/// the key mode and whether the vault opens right now. Exit codes:
+/// 0 = healthy and unlockable now; 2 = healthy but locked (master mode, password
+/// not supplied); 1 = unopenable (e.g. lost/overwritten keyring entry).
+fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
+    let h = ftp_client_gui_lib::credential_store::CredentialStore::health();
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "mode": h.mode,
+                "vault_db_present": h.vault_db_present,
+                "unlockable": h.unlockable,
+                "needs_password": h.needs_password,
+                "detail": h.detail,
+            })
+        );
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!("Vault key mode:  {}", h.mode);
+        eprintln!(
+            "vault.db:        {}",
+            if h.vault_db_present {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+        eprintln!(
+            "Unlockable now:  {}",
+            if h.unlockable {
+                "yes"
+            } else if h.needs_password {
+                "no (needs master password)"
+            } else {
+                "no"
+            }
+        );
+        eprintln!("{}", h.detail);
+    }
+    if h.unlockable {
+        0
+    } else if h.needs_password {
+        // Healthy but locked: distinct from a broken vault so scripts can tell
+        // "supply a password" apart from "recover the vault".
+        2
+    } else {
+        1
+    }
+}
+
+/// `keystore repair`: recover a vault that can no longer be unlocked. Snapshots
+/// and resets `vault.db` + `vault.key`, re-initialises a fresh vault, then
+/// imports the given backup. Destructive (asks for confirmation unless `-y`),
+/// but the pre-reset state is preserved in a timestamped snapshot.
+#[allow(clippy::too_many_arguments)]
+async fn cmd_keystore_repair(
+    cli: &Cli,
+    input: &str,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+    config_dir_override: &Option<String>,
+    yes: bool,
+    json: bool,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::credential_store::CredentialStore;
+
+    if !std::path::Path::new(input).is_file() {
+        print_error(format, &format!("Backup file not found: {input}"), 2);
+        return 2;
+    }
+
+    // Destructive-action confirmation (skipped with -y or in JSON mode).
+    if !yes && !json {
+        eprintln!(
+            "This RESETS the credential vault (vault.db + vault.key) and restores from:\n  {input}"
+        );
+        eprintln!("A timestamped snapshot of the current vault is saved first (reversible).");
+        eprint!("Continue? [y/N] ");
+        use std::io::Write as _;
+        let _ = std::io::stderr().flush();
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line).is_err()
+            || !matches!(line.trim(), "y" | "Y" | "yes" | "YES")
+        {
+            eprintln!("Aborted.");
+            return 5;
+        }
+    }
+
+    // Snapshot + reset the live vault so init() performs a clean first-run.
+    let label = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "repair".to_string());
+    let snapshot = match CredentialStore::reset_with_snapshot(&label) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("vault reset failed: {e}"), 11);
+            return 11;
+        }
+    };
+    if !json {
+        eprintln!("Pre-reset snapshot saved: {}", snapshot.display());
+    }
+
+    // Re-initialise a fresh, internally-consistent vault (open_vault -> init()).
+    if let Err(e) = open_vault(cli) {
+        print_error(
+            format,
+            &format!(
+                "re-init failed after reset (snapshot preserved at {}): {e}",
+                snapshot.display()
+            ),
+            6,
+        );
+        return 6;
+    }
+
+    // Restore the backup into the fresh vault. Overwrite merge: the vault is
+    // empty, so this is a full restore.
+    let rc = cmd_keystore_import(
+        cli,
+        input,
+        cli_password,
+        password_stdin,
+        KeystoreMergeArg::Overwrite,
+        false,
+        false,
+        false,
+        false,
+        config_dir_override,
+        json,
+        format,
+    )
+    .await;
+
+    if rc == 0 && !json {
+        eprintln!(
+            "Vault repaired. If the backup restored SQLite databases, restart AeroFTP. \
+             The previous vault is preserved at {}.",
+            snapshot.display()
+        );
+    }
+    rc
+}
+
 // =====================================================================
 // AeroRsync subcommands (Z.4.5 R1 dispatch step + CLI parity)
 // =====================================================================
@@ -24533,7 +25083,12 @@ async fn cmd_aerorsync_probe(
         // fall back to the raw string. Missing credential is not a hard
         // error: we let the regular --password-* / TTY path take over.
         if !target_id.is_empty() {
-            if let Ok(blob) = store.get(&format!("server_{}", target_id)) {
+            // MUV-3: scoped user's partition with fallback to the legacy vault.
+            if let Some(blob) = read_server_cred(
+                &store,
+                scoped_credential_user_id(cli, &store),
+                &format!("server_{}", target_id),
+            ) {
                 let trimmed = blob.trim();
                 if !trimmed.is_empty() {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
@@ -27872,6 +28427,386 @@ async fn cmd_speed_compare(
 
 const BENCHMARK_MAX_SIZE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 const BENCHMARK_TOTAL_TIMEOUT_SECS: u64 = 60 * 60;
+/// Upper bound on `--file-count` for the many-small-files workload. A run of
+/// 100k metadata round-trips is already long enough to be meaningful; beyond
+/// this the wall time is dominated by the workload itself, not the protocol.
+const BENCHMARK_MAX_FILE_COUNT: u32 = 100_000;
+
+/// Resolved parameters for the many-small-files axis. Built only when
+/// `--file-count` is provided; the single-file size sweep is unaffected.
+#[derive(Debug, Clone, Copy)]
+struct ManyFilesConfig {
+    file_count: u32,
+    file_size_bytes: u64,
+}
+
+/// Validate and resolve the many-small-files workload parameters. Returns
+/// `Ok(None)` when the workload is not requested (`file_count` is `None`/0).
+fn resolve_many_files_config(
+    file_count: Option<u32>,
+    file_size: &str,
+) -> Result<Option<ManyFilesConfig>, String> {
+    let count = match file_count {
+        Some(n) if n > 0 => n,
+        _ => return Ok(None),
+    };
+    if count > BENCHMARK_MAX_FILE_COUNT {
+        return Err(format!(
+            "--file-count {} exceeds the {} cap",
+            count, BENCHMARK_MAX_FILE_COUNT
+        ));
+    }
+    let file_size_bytes = parse_size_filter(file_size.trim())?;
+    if file_size_bytes == 0 {
+        return Err("--file-size cannot be zero".into());
+    }
+    // Bound the aggregate payload so a careless `--file-count 100000 --file-size
+    // 1M` cannot try to push 100 GiB. The product is checked in u128 to avoid
+    // overflow on the multiply.
+    let total = file_size_bytes as u128 * count as u128;
+    if total > BENCHMARK_MAX_SIZE_BYTES as u128 {
+        return Err(format!(
+            "many-files payload {} (file-count {} x file-size {}) exceeds the 5 GiB cap",
+            format_size((total.min(u64::MAX as u128)) as u64),
+            count,
+            format_size(file_size_bytes)
+        ));
+    }
+    Ok(Some(ManyFilesConfig {
+        file_count: count,
+        file_size_bytes,
+    }))
+}
+
+/// Accumulated output of the many-small-files workload, merged back into the
+/// main benchmark report by the caller.
+struct ManyFilesOutcome {
+    results: Vec<BenchmarkResult>,
+    bytes_transferred: u64,
+    runs: u32,
+    errors: Vec<String>,
+}
+
+/// Build a single batch-operation result for the many-small-files axis.
+/// `per_file_ms` carries the per-file latency distribution (its p50 is the mean
+/// per-file time); `files_per_second` is the headline rate over the whole batch.
+#[allow(clippy::too_many_arguments)]
+fn many_files_result(
+    protocol: &str,
+    anonymize_extra: bool,
+    report_id: &str,
+    operation: &str,
+    payload_size_bytes: u64,
+    files: u32,
+    files_per_second: f64,
+    per_file_ms: &[f64],
+    throughput_mbps: Option<&[f64]>,
+    fatal: u32,
+) -> BenchmarkResult {
+    let (hint, hash) = benchmark_provider_hint(protocol, anonymize_extra, report_id);
+    let raw_runs = per_file_ms
+        .iter()
+        .map(|ms| BenchmarkRawRun {
+            duration_ms: *ms as u64,
+            bytes: payload_size_bytes,
+            throughput_mbps: None,
+        })
+        .collect();
+    BenchmarkResult {
+        protocol: protocol.to_string(),
+        provider_hint: hint,
+        provider_hash: hash,
+        operation: operation.to_string(),
+        payload_size_bytes,
+        // `runs` is the number of timed measurements (one list-dir call vs. one
+        // per file for the batch ops); `file_count` is how many files the op
+        // touched (the N entries listed, the N files uploaded, etc.).
+        runs: per_file_ms.len() as u32,
+        warmup_runs_discarded: 0,
+        file_count: Some(files),
+        files_per_second: Some(files_per_second),
+        throughput_mbps: throughput_mbps.map(benchmark_stats_from),
+        latency_ms: benchmark_stats_from(per_file_ms),
+        tls_handshake_ms: None,
+        errors: BenchmarkErrors {
+            transient: 0,
+            fatal,
+        },
+        raw_runs,
+    }
+}
+
+/// Run the many-small-files axis: create N files of a fixed small size and
+/// measure upload-all / list-dir / stat-all / download-all / delete-all,
+/// reporting files/sec and per-file latency. This is the workload where
+/// per-file overhead (handshake, signing, metadata round-trips) dominates and
+/// S3 typically beats WebDAV/FTP.
+///
+/// Unlike the single-file size sweep (which goes through the transfer DAG to
+/// mirror a real transfer), these ops call the provider directly so the numbers
+/// isolate the protocol's raw per-file cost, the dimension being compared.
+#[allow(clippy::too_many_arguments)]
+async fn run_many_files_workload(
+    provider: &mut Box<dyn StorageProvider>,
+    mf: ManyFilesConfig,
+    test_root: &str,
+    protocol: &str,
+    anonymize_extra: bool,
+    report_id: &str,
+    deadline_secs: u64,
+    total_start: Instant,
+    cli: &Cli,
+    format: OutputFormat,
+) -> ManyFilesOutcome {
+    let mut out = ManyFilesOutcome {
+        results: Vec::new(),
+        bytes_transferred: 0,
+        runs: 0,
+        errors: Vec::new(),
+    };
+
+    let many_dir = format!("{}/manyfiles", test_root);
+    if let Err(e) = provider.mkdir(&many_dir).await {
+        if !matches!(e, ProviderError::AlreadyExists(_)) {
+            out.errors.push(format!(
+                "many-files: cannot create scratch dir '{}': {}",
+                many_dir, e
+            ));
+            return out;
+        }
+    }
+
+    let size = mf.file_size_bytes;
+    let remote_name = |i: u32| format!("{}/f{:06}.bin", many_dir, i);
+
+    if !cli.quiet && matches!(format, OutputFormat::Text) {
+        eprintln!(
+            "running many-small-files workload: {} files of {}",
+            mf.file_count,
+            format_size(size)
+        );
+    }
+
+    // ── upload-all ──────────────────────────────────────────────────
+    let local_up = match NamedTempFile::new() {
+        Ok(f) => f,
+        Err(e) => {
+            out.errors
+                .push(format!("many-files: cannot create local temp: {}", e));
+            return out;
+        }
+    };
+    let local_up_path = local_up.path().to_string_lossy().to_string();
+    let mut up_ms: Vec<f64> = Vec::new();
+    let mut up_mbps: Vec<f64> = Vec::new();
+    let mut up_fatal = 0u32;
+    let mut uploaded = 0u32;
+    let up_start = Instant::now();
+    for i in 0..mf.file_count {
+        if total_start.elapsed().as_secs() > deadline_secs {
+            out.errors
+                .push("many-files: hit profile-timeout during upload-all".into());
+            break;
+        }
+        // Fresh random content per file (untimed) so content-dedup backends
+        // cannot short-circuit the upload and inflate files/sec.
+        if let Err(e) = write_speed_test_file_random(local_up.path(), size) {
+            out.errors.push(format!("many-files: {}", e));
+            break;
+        }
+        let remote = remote_name(i);
+        let start = Instant::now();
+        match provider.upload(&local_up_path, &remote, None).await {
+            Ok(()) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                up_ms.push(ms);
+                up_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
+                uploaded += 1;
+                out.bytes_transferred += size;
+                out.runs += 1;
+            }
+            Err(e) => {
+                up_fatal += 1;
+                out.errors
+                    .push(format!("many-files: upload of file {} failed: {}", i, e));
+                break;
+            }
+        }
+    }
+    if uploaded > 0 {
+        let secs = up_start.elapsed().as_secs_f64().max(1e-6);
+        out.results.push(many_files_result(
+            protocol,
+            anonymize_extra,
+            report_id,
+            "upload-all",
+            size,
+            uploaded,
+            uploaded as f64 / secs,
+            &up_ms,
+            Some(&up_mbps),
+            up_fatal,
+        ));
+    }
+    if uploaded == 0 {
+        // Nothing landed remotely: the remaining ops have no payload to act on.
+        return out;
+    }
+
+    // ── list-dir (one call, returns N entries) ──────────────────────
+    let list_start = Instant::now();
+    match provider.list(&many_dir).await {
+        Ok(entries) => {
+            let ms = list_start.elapsed().as_secs_f64() * 1000.0;
+            let listed = entries.iter().filter(|e| !e.is_dir).count() as u32;
+            let fps = listed as f64 / (ms / 1000.0).max(1e-6);
+            out.results.push(many_files_result(
+                protocol,
+                anonymize_extra,
+                report_id,
+                "list-dir",
+                0,
+                listed,
+                fps,
+                &[ms],
+                None,
+                0,
+            ));
+            out.runs += 1;
+        }
+        Err(e) => out
+            .errors
+            .push(format!("many-files: list-dir failed: {}", e)),
+    }
+
+    // ── stat-all ────────────────────────────────────────────────────
+    let mut stat_ms: Vec<f64> = Vec::new();
+    let mut stat_fatal = 0u32;
+    let stat_start = Instant::now();
+    for i in 0..uploaded {
+        if total_start.elapsed().as_secs() > deadline_secs {
+            out.errors
+                .push("many-files: hit profile-timeout during stat-all".into());
+            break;
+        }
+        let start = Instant::now();
+        match provider.stat(&remote_name(i)).await {
+            Ok(_) => stat_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Err(e) => {
+                stat_fatal += 1;
+                out.errors
+                    .push(format!("many-files: stat of file {} failed: {}", i, e));
+            }
+        }
+    }
+    if !stat_ms.is_empty() {
+        let secs = stat_start.elapsed().as_secs_f64().max(1e-6);
+        out.results.push(many_files_result(
+            protocol,
+            anonymize_extra,
+            report_id,
+            "stat-all",
+            0,
+            stat_ms.len() as u32,
+            stat_ms.len() as f64 / secs,
+            &stat_ms,
+            None,
+            stat_fatal,
+        ));
+        out.runs += stat_ms.len() as u32;
+    }
+
+    // ── download-all ────────────────────────────────────────────────
+    let local_dn = match NamedTempFile::new() {
+        Ok(f) => Some(f),
+        Err(e) => {
+            out.errors
+                .push(format!("many-files: cannot create download temp: {}", e));
+            None
+        }
+    };
+    if let Some(local_dn) = local_dn {
+        let local_dn_path = local_dn.path().to_string_lossy().to_string();
+        let mut dn_ms: Vec<f64> = Vec::new();
+        let mut dn_mbps: Vec<f64> = Vec::new();
+        let mut dn_fatal = 0u32;
+        let dn_start = Instant::now();
+        for i in 0..uploaded {
+            if total_start.elapsed().as_secs() > deadline_secs {
+                out.errors
+                    .push("many-files: hit profile-timeout during download-all".into());
+                break;
+            }
+            let start = Instant::now();
+            match provider
+                .download(&remote_name(i), &local_dn_path, None)
+                .await
+            {
+                Ok(()) => {
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    dn_ms.push(ms);
+                    dn_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
+                    out.bytes_transferred += size;
+                    out.runs += 1;
+                }
+                Err(e) => {
+                    dn_fatal += 1;
+                    out.errors
+                        .push(format!("many-files: download of file {} failed: {}", i, e));
+                }
+            }
+        }
+        if !dn_ms.is_empty() {
+            let secs = dn_start.elapsed().as_secs_f64().max(1e-6);
+            out.results.push(many_files_result(
+                protocol,
+                anonymize_extra,
+                report_id,
+                "download-all",
+                size,
+                dn_ms.len() as u32,
+                dn_ms.len() as f64 / secs,
+                &dn_ms,
+                Some(&dn_mbps),
+                dn_fatal,
+            ));
+        }
+    }
+
+    // ── delete-all (also clears the scratch files) ──────────────────
+    let mut del_ms: Vec<f64> = Vec::new();
+    let mut del_fatal = 0u32;
+    let del_start = Instant::now();
+    for i in 0..uploaded {
+        let start = Instant::now();
+        match provider.delete(&remote_name(i)).await {
+            Ok(()) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Err(e) => {
+                del_fatal += 1;
+                out.errors
+                    .push(format!("many-files: delete of file {} failed: {}", i, e));
+            }
+        }
+    }
+    if !del_ms.is_empty() {
+        let secs = del_start.elapsed().as_secs_f64().max(1e-6);
+        out.results.push(many_files_result(
+            protocol,
+            anonymize_extra,
+            report_id,
+            "delete-all",
+            0,
+            del_ms.len() as u32,
+            del_ms.len() as f64 / secs,
+            &del_ms,
+            None,
+            del_fatal,
+        ));
+        out.runs += del_ms.len() as u32;
+    }
+
+    out
+}
 
 #[derive(Debug)]
 struct BenchmarkConfig {
@@ -28262,6 +29197,8 @@ async fn cmd_benchmark(
     profile_timeout_override: Option<u64>,
     test_root_prefix_override: Option<&str>,
     pre_delete: bool,
+    file_count: Option<u32>,
+    file_size: &str,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -28276,6 +29213,16 @@ async fn cmd_benchmark(
         );
         return 5;
     }
+
+    // Resolve the optional many-small-files axis up front so a bad
+    // --file-count / --file-size fails before we connect or transfer anything.
+    let many_files_cfg = match resolve_many_files_config(file_count, file_size) {
+        Ok(c) => c,
+        Err(msg) => {
+            print_error(format, &msg, 5);
+            return 5;
+        }
+    };
 
     // PATH-01: `--test-root-prefix` is honored verbatim and becomes the root for
     // mkdir/upload/rmdir_recursive. Reject `..`/null so the scratch tree (and its
@@ -28470,6 +29417,8 @@ async fn cmd_benchmark(
                             payload_size_bytes: size,
                             runs: 0,
                             warmup_runs_discarded: cfg.warmup_runs,
+                            file_count: None,
+                            files_per_second: None,
                             throughput_mbps: None,
                             latency_ms: BenchmarkStats {
                                 p50: 0.0,
@@ -28554,6 +29503,8 @@ async fn cmd_benchmark(
                 payload_size_bytes: size,
                 runs: upload_durations_ms.len() as u32,
                 warmup_runs_discarded: cfg.warmup_runs,
+                file_count: None,
+                files_per_second: None,
                 throughput_mbps: Some(benchmark_stats_from(&upload_throughput_mbps)),
                 latency_ms: benchmark_stats_from(&upload_durations_ms),
                 tls_handshake_ms: None,
@@ -28573,6 +29524,8 @@ async fn cmd_benchmark(
                 payload_size_bytes: size,
                 runs: download_durations_ms.len() as u32,
                 warmup_runs_discarded: cfg.warmup_runs,
+                file_count: None,
+                files_per_second: None,
                 throughput_mbps: Some(benchmark_stats_from(&download_throughput_mbps)),
                 latency_ms: benchmark_stats_from(&download_durations_ms),
                 tls_handshake_ms: None,
@@ -28600,6 +29553,8 @@ async fn cmd_benchmark(
                         payload_size_bytes: 0,
                         runs: 1,
                         warmup_runs_discarded: 0,
+                        file_count: None,
+                        files_per_second: None,
                         throughput_mbps: None,
                         latency_ms: BenchmarkStats {
                             p50: ms,
@@ -28639,6 +29594,8 @@ async fn cmd_benchmark(
                         payload_size_bytes: 0,
                         runs: 1,
                         warmup_runs_discarded: 0,
+                        file_count: None,
+                        files_per_second: None,
                         throughput_mbps: None,
                         latency_ms: BenchmarkStats {
                             p50: ms,
@@ -28678,6 +29635,8 @@ async fn cmd_benchmark(
                         payload_size_bytes: 0,
                         runs: 1,
                         warmup_runs_discarded: 0,
+                        file_count: None,
+                        files_per_second: None,
                         throughput_mbps: None,
                         latency_ms: BenchmarkStats {
                             p50: ms,
@@ -28701,6 +29660,31 @@ async fn cmd_benchmark(
                 }
                 Err(e) => errors.push(format!("delete failed: {}", e)),
             }
+        }
+    }
+
+    // Many-small-files axis (separate from the size sweep above): only run when
+    // requested via --file-count and when the size sweep did not already abort
+    // on a fatal/connection error.
+    if let Some(mf) = many_files_cfg {
+        if !early_abort && total_start.elapsed().as_secs() <= profile_timeout_secs {
+            let outcome = run_many_files_workload(
+                &mut provider,
+                mf,
+                &test_root,
+                &protocol,
+                anonymize_extra,
+                &report_id,
+                profile_timeout_secs,
+                total_start,
+                cli,
+                format,
+            )
+            .await;
+            total_bytes_transferred += outcome.bytes_transferred;
+            total_runs += outcome.runs;
+            results.extend(outcome.results);
+            errors.extend(outcome.errors);
         }
     }
 
@@ -28859,12 +29843,19 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
     );
     println!();
     for r in &report.results {
-        let throughput = match &r.throughput_mbps {
-            Some(t) => format!("{:7.2} Mbps p50, {:7.2} Mbps p95", t.p50, t.p95),
-            None => "n/a".into(),
+        // Many-files batch ops lead with files/sec (the headline for that axis);
+        // single-file ops keep showing raw throughput in Mbps.
+        let trailing = match (r.files_per_second, &r.throughput_mbps) {
+            (Some(fps), Some(t)) => format!(
+                "{:8.1} files/s  {:7.2} Mbps p50, {:7.2} Mbps p95",
+                fps, t.p50, t.p95
+            ),
+            (Some(fps), None) => format!("{:8.1} files/s", fps),
+            (None, Some(t)) => format!("{:7.2} Mbps p50, {:7.2} Mbps p95", t.p50, t.p95),
+            (None, None) => "n/a".into(),
         };
         println!(
-            "  {:>8} {:>10}  {:>3} runs  latency p50={:6.1}ms p95={:6.1}ms  {}",
+            "  {:>12} {:>10}  {:>4} runs  latency p50={:6.1}ms p95={:6.1}ms  {}",
             r.operation,
             if r.payload_size_bytes == 0 {
                 "-".into()
@@ -28874,7 +29865,7 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
             r.runs,
             r.latency_ms.p50,
             r.latency_ms.p95,
-            throughput
+            trailing
         );
     }
     if !report.summary.errors.is_empty() {
@@ -39719,10 +40710,13 @@ fn resolve_vault_ai_provider(
             .sort_by_key(|(ptype, _, _, _)| priority.iter().position(|p| p == ptype).unwrap_or(99));
     }
 
-    // Find first candidate with a valid API key in vault
+    // Find first candidate with a valid API key. MUV-5: AI keys are per-user;
+    // this context has no `Cli`, so resolve against the persistent active user's
+    // partition (falling back to the dual-written vault).
+    let ai_key_uid = active_credential_user_id(store);
     for (ptype, id, url, _) in &candidates {
         let vault_key = format!("ai_apikey_{}", id);
-        if let Ok(key) = store.get(&vault_key) {
+        if let Some(key) = read_server_cred(store, ai_key_uid, &vault_key) {
             if !key.is_empty() {
                 eprintln!("Using AI provider '{}' from AeroFTP vault.", ptype);
                 return Some((ptype.clone(), key, url.clone()));
@@ -44081,6 +45075,8 @@ async fn main() {
             profile_timeout,
             test_root_prefix,
             pre_delete,
+            file_count,
+            file_size,
         } => {
             cmd_benchmark(
                 *level,
@@ -44093,6 +45089,8 @@ async fn main() {
                 *profile_timeout,
                 test_root_prefix.as_deref(),
                 *pre_delete,
+                *file_count,
+                file_size,
                 &cli,
                 format,
             )
@@ -45156,6 +46154,27 @@ async fn main() {
                 .await
             }
             KeystoreCommands::Info { input, json } => cmd_keystore_info(input, *json, format),
+            KeystoreCommands::Status { json } => cmd_keystore_status(*json, format),
+            KeystoreCommands::Repair {
+                input,
+                password,
+                password_stdin,
+                config_dir,
+                yes,
+                json,
+            } => {
+                cmd_keystore_repair(
+                    &cli,
+                    input,
+                    password,
+                    *password_stdin,
+                    config_dir,
+                    *yes,
+                    *json,
+                    format,
+                )
+                .await
+            }
         },
         Commands::Transfer {
             source_profile,
@@ -47774,6 +48793,68 @@ mod tests {
     }
 
     #[test]
+    fn many_files_config_absent_when_not_requested() {
+        assert!(resolve_many_files_config(None, "64K").unwrap().is_none());
+        assert!(resolve_many_files_config(Some(0), "64K").unwrap().is_none());
+    }
+
+    #[test]
+    fn many_files_config_resolves_count_and_size() {
+        let mf = resolve_many_files_config(Some(100), "64K")
+            .unwrap()
+            .expect("workload requested");
+        assert_eq!(mf.file_count, 100);
+        assert_eq!(mf.file_size_bytes, 64 * 1024);
+    }
+
+    #[test]
+    fn many_files_config_rejects_excessive_count() {
+        let err = resolve_many_files_config(Some(BENCHMARK_MAX_FILE_COUNT + 1), "1K").unwrap_err();
+        assert!(err.contains("cap"), "got: {}", err);
+    }
+
+    #[test]
+    fn many_files_config_rejects_zero_size() {
+        let err = resolve_many_files_config(Some(10), "0").unwrap_err();
+        assert!(err.contains("zero"), "got: {}", err);
+    }
+
+    #[test]
+    fn many_files_config_rejects_oversized_aggregate() {
+        // 100k files x 1 MiB = ~100 GiB, well over the 5 GiB cap.
+        let err = resolve_many_files_config(Some(100_000), "1M").unwrap_err();
+        assert!(err.contains("5 GiB cap"), "got: {}", err);
+    }
+
+    #[test]
+    fn many_files_result_carries_files_per_second_and_count() {
+        let r = many_files_result(
+            "s3",
+            false,
+            "rid",
+            "upload-all",
+            64 * 1024,
+            3,
+            250.0,
+            &[3.0, 4.0, 5.0],
+            Some(&[120.0, 130.0, 140.0]),
+            0,
+        );
+        assert_eq!(r.operation, "upload-all");
+        assert_eq!(r.file_count, Some(3));
+        assert_eq!(r.files_per_second, Some(250.0));
+        assert_eq!(r.runs, 3);
+        assert!(r.throughput_mbps.is_some());
+        assert_eq!(r.latency_ms.p50, 4.0);
+        assert_eq!(r.raw_runs.len(), 3);
+        // Serialized many-files result must still pass the PII sweep.
+        let pretty = serde_json::to_string_pretty(&r).unwrap();
+        assert!(benchmark_sanitization_sweep(&pretty).is_ok());
+        assert!(pretty.contains("files_per_second"));
+        assert!(pretty.contains("file_count"));
+    }
+
+    #[test]
     fn benchmark_sanitization_sweep_passes_clean_payload() {
         let clean = r#"{"protocol":"s3","provider_hint":"amazon-s3-eu-west-1","level":"standard"}"#;
         assert!(benchmark_sanitization_sweep(clean).is_ok());
@@ -48357,5 +49438,45 @@ mod tests {
         assert_eq!(names[0], "with.txt");
         assert_eq!(names[1], "older.txt");
         assert_eq!(names[2], "no_mtime.txt");
+    }
+
+    #[test]
+    fn profiles_view_args_reconstructs_the_view_flags() {
+        // The `refresh` command (discussion #266) reprints the table by
+        // re-running `profiles` with the original view flags, never `-i`.
+
+        // No overrides -> bare `profiles`.
+        let plain = ProfilesViewOverrides {
+            sort: None,
+            hide: None,
+            show: None,
+            breakdown: false,
+            interactive: true,
+            group: None,
+        };
+        assert_eq!(profiles_view_args(&plain), vec!["profiles".to_string()]);
+        // `interactive` must NOT leak into the refresh args.
+        assert!(!profiles_view_args(&plain).iter().any(|a| a == "-i"));
+
+        // Every view flag is reconstructed; interactive stays dropped.
+        let full = ProfilesViewOverrides {
+            sort: Some("used:desc".to_string()),
+            hide: Some("host".to_string()),
+            show: Some("name".to_string()),
+            breakdown: true,
+            interactive: true,
+            group: Some("Production".to_string()),
+        };
+        assert_eq!(
+            profiles_view_args(&full),
+            vec![
+                "profiles".to_string(),
+                "--sort=used:desc".to_string(),
+                "--hide=host".to_string(),
+                "--show=name".to_string(),
+                "--breakdown".to_string(),
+                "--group=Production".to_string(),
+            ]
+        );
     }
 }

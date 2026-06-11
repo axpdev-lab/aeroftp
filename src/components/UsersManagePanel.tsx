@@ -8,6 +8,7 @@ import {
     Eye,
     EyeOff,
     GripVertical,
+    Info,
     KeyRound,
     Loader2,
     Lock,
@@ -65,8 +66,8 @@ const formatBytes = (bytes: number): string => {
     return `${(kib / 1024).toFixed(1)} MiB`;
 };
 
-const formatLastUnlocked = (timestamp?: number | null): string => {
-    if (!timestamp) return 'Never';
+const formatLastUnlocked = (timestamp: number | null | undefined, neverLabel: string): string => {
+    if (!timestamp) return neverLabel;
     return new Date(timestamp).toLocaleString();
 };
 
@@ -198,7 +199,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         event.preventDefault();
         if (!newName.trim()) return;
         if (newPassphrase && !acknowledgeNoRecoveryNew) {
-            setError('Please acknowledge that account passwords cannot be recovered.');
+            setError(t('manageUsers.errAckRequired'));
             return;
         }
         setError('');
@@ -251,7 +252,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         const profileCount = userStats?.profileCount ?? 0;
         const settingsCount = userStats?.settingsCount ?? 0;
         const confirmed = window.confirm(
-            `Delete account "${user.name}"?\n\nEncrypted payloads to remove: ${profileCount} profiles, ${settingsCount} settings scopes.`,
+            t('manageUsers.confirmDelete')
+                .replace('{name}', user.name)
+                .replace('{profiles}', String(profileCount))
+                .replace('{settings}', String(settingsCount)),
         );
         if (!confirmed) return;
         setBusyUserId(user.id);
@@ -271,20 +275,22 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         event.preventDefault();
         if (!passphraseForm || passphraseForm.userId !== user.id) return;
         if (user.hasPassphrase && !passphraseForm.oldPassphrase) {
-            setError('Current account password is required.');
+            setError(t('manageUsers.errCurrentRequired'));
             return;
         }
         if (!user.hasPassphrase && !passphraseForm.newPassphrase) {
-            setError('New account password is required.');
+            setError(t('manageUsers.errNewRequired'));
             return;
         }
         if (user.hasPassphrase && !passphraseForm.newPassphrase) {
-            const confirmed = window.confirm(`Remove the account password for "${user.name}"?`);
+            const confirmed = window.confirm(
+                t('manageUsers.confirmRemovePassword').replace('{name}', user.name),
+            );
             if (!confirmed) return;
         }
         // First-time setup requires explicit acknowledgement.
         if (!user.hasPassphrase && passphraseForm.newPassphrase && !acknowledgeNoRecoveryForm) {
-            setError('Please acknowledge that account passwords cannot be recovered.');
+            setError(t('manageUsers.errAckRequired'));
             return;
         }
         setBusyUserId(user.id);
@@ -384,7 +390,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         <div className="fixed inset-0 z-[80] flex items-start justify-center pt-[7vh]">
             <button
                 type="button"
-                aria-label="Close users panel"
+                aria-label={t('manageUsers.closePanel')}
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
                 onClick={onClose}
             />
@@ -398,13 +404,13 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 >
                     <div className="flex items-center gap-2">
                         <Shield size={18} className="text-blue-500" />
-                        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Manage Users</h2>
+                        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('manageUsers.title')}</h2>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                        aria-label="Close"
+                        aria-label={t('manageUsers.close')}
                     >
                         <X size={17} />
                     </button>
@@ -429,7 +435,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                     <input
                                         value={newName}
                                         onChange={(event) => setNewName(event.target.value)}
-                                        placeholder="Account name"
+                                        placeholder={t('manageUsers.accountName')}
                                         className="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                                     />
                                     <div className="flex items-center gap-1">
@@ -437,7 +443,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             value={newAvatar}
                                             onChange={(event) => setNewAvatar(event.target.value)}
                                             className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                                            aria-label="Avatar"
+                                            aria-label={t('manageUsers.avatar')}
                                         >
                                             {AVATAR_CHOICES.map((avatar) => (
                                                 <option key={avatar} value={avatar}>{avatar}</option>
@@ -463,7 +469,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                     className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                                 >
                                     <Plus size={15} />
-                                    Add
+                                    {t('manageUsers.add')}
                                 </button>
                             </div>
                             <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -472,7 +478,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                         type={showNewPassphrase ? 'text' : 'password'}
                                         value={newPassphrase}
                                         onChange={(event) => setNewPassphrase(event.target.value)}
-                                        placeholder="Account password (optional)"
+                                        placeholder={t('manageUsers.accountPasswordOptional')}
                                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                                         autoComplete="new-password"
                                     />
@@ -480,16 +486,20 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                         type="button"
                                         onClick={() => setShowNewPassphrase((value) => !value)}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                                        aria-label={showNewPassphrase ? 'Hide password' : 'Show password'}
+                                        aria-label={showNewPassphrase ? t('accountLock.hidePassword') : t('accountLock.showPassword')}
                                     >
                                         {showNewPassphrase ? <EyeOff size={15} /> : <Eye size={15} />}
                                     </button>
                                 </div>
                                 <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                                     <KeyRound size={14} />
-                                    No recovery
+                                    {t('manageUsers.noRecovery')}
                                 </div>
                             </div>
+                            <p className="mt-2 flex items-start gap-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                                <Info size={13} className="mt-0.5 flex-shrink-0" />
+                                <span>{t('manageUsers.passwordChoiceNote')}</span>
+                            </p>
                             <div className="mt-2 max-w-md">
                                 <PasswordStrengthBar password={newPassphrase} />
                             </div>
@@ -497,10 +507,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                 <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
                                     <div className="mb-1.5 flex items-start gap-2 font-medium">
                                         <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                                        <span>Account password cannot be recovered.</span>
+                                        <span>{t('manageUsers.noRecoveryTitle')}</span>
                                     </div>
                                     <p className="mb-2 leading-relaxed opacity-90">
-                                        If you forget this password, the account&apos;s saved servers, settings, and history are permanently inaccessible. Store the password somewhere safe before continuing.
+                                        {t('manageUsers.noRecoveryBody')}
                                     </p>
                                     <label className="flex items-start gap-2 cursor-pointer select-none">
                                         <input
@@ -509,21 +519,21 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             onChange={(event) => setAcknowledgeNoRecoveryNew(event.target.checked)}
                                             className="mt-0.5 h-3.5 w-3.5"
                                         />
-                                        <span>I understand and accept the responsibility for this password.</span>
+                                        <span>{t('manageUsers.noRecoveryAck')}</span>
                                     </label>
                                 </div>
                             )}
                         </form>
                     ) : (
                         <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
-                            Admin access is required to add or reorder accounts.
+                            {t('manageUsers.adminRequired')}
                         </div>
                     )}
 
                     <div className="space-y-2">
                         {loading && users.length === 0 ? (
                             <div className="rounded-lg border border-gray-200 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                                Loading users...
+                                {t('manageUsers.loading')}
                             </div>
                         ) : users.map((user) => {
                             const userStats = statsByUserId.get(user.id);
@@ -570,8 +580,8 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 onClick={() => openAvatarEditor(user)}
                                                 disabled={busyUserId === user.id}
                                                 className="group/avatar relative shrink-0 rounded-full outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
-                                                title="Edit avatar"
-                                                aria-label="Edit avatar"
+                                                title={t('manageUsers.editAvatar')}
+                                                aria-label={t('manageUsers.editAvatar')}
                                             >
                                                 <UserAvatar name={user.name} avatarEmoji={user.avatarEmoji} avatarColor={user.avatarColor} size="lg" />
                                                 <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-white opacity-0 shadow transition-opacity group-hover/avatar:opacity-100 group-focus-visible/avatar:opacity-100">
@@ -600,7 +610,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     <button
                                                         type="submit"
                                                         className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white"
-                                                        aria-label="Save name"
+                                                        aria-label={t('manageUsers.saveName')}
                                                     >
                                                         <Check size={14} />
                                                     </button>
@@ -610,13 +620,13 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{user.name}</span>
                                                     {user.isActive && (
                                                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                                                            Active
+                                                            {t('manageUsers.active')}
                                                         </span>
                                                     )}
                                                     {user.isAdmin && (
                                                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
                                                             <ShieldCheck size={11} />
-                                                            ADMIN
+                                                            {t('manageUsers.admin')}
                                                         </span>
                                                     )}
                                                     {user.hasPassphrase ? (
@@ -627,10 +637,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 </div>
                                             )}
                                             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                                <span>{userStats?.profileCount ?? 0} profiles</span>
-                                                <span>{userStats?.settingsCount ?? 0} settings</span>
+                                                <span>{t('manageUsers.profilesCount').replace('{count}', String(userStats?.profileCount ?? 0))}</span>
+                                                <span>{t('manageUsers.settingsCount').replace('{count}', String(userStats?.settingsCount ?? 0))}</span>
                                                 <span>{formatBytes(userStats?.encryptedBytes ?? 0)}</span>
-                                                <span>{formatLastUnlocked(user.lastUnlockedAt)}</span>
+                                                <span>{formatLastUnlocked(user.lastUnlockedAt, t('manageUsers.never'))}</span>
                                             </div>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-1">
@@ -657,7 +667,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         onClick={() => startRename(user)}
                                                         disabled={busyUserId === user.id}
                                                         className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                                                        title="Rename"
+                                                        title={t('manageUsers.rename')}
                                                     >
                                                         <Pencil size={15} />
                                                     </button>
@@ -675,7 +685,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     })}
                                                     disabled={busyUserId === user.id}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                                                    title={user.hasPassphrase ? 'Change my password' : 'Set password'}
+                                                    title={user.hasPassphrase ? t('manageUsers.changeMyPassword') : t('manageUsers.setPassword')}
                                                 >
                                                     <KeyRound size={15} />
                                                 </button>
@@ -686,7 +696,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     onClick={() => setResetTarget(user)}
                                                     disabled={busyUserId === user.id}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/30"
-                                                    title="Reset password"
+                                                    title={t('manageUsers.resetPassword')}
                                                 >
                                                     <RotateCcw size={15} />
                                                 </button>
@@ -697,7 +707,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     onClick={() => { void handleSetAdmin(user, !user.isAdmin); }}
                                                     disabled={busyUserId === user.id || (user.isAdmin && isLastAdmin)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-emerald-950/30"
-                                                    title={user.isAdmin ? 'Revoke admin' : 'Promote to admin'}
+                                                    title={user.isAdmin ? t('manageUsers.revokeAdmin') : t('manageUsers.promoteAdmin')}
                                                 >
                                                     <ShieldCheck size={15} />
                                                 </button>
@@ -708,7 +718,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     onClick={() => { void handleDelete(user); }}
                                                     disabled={busyUserId === user.id || !canDelete}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"
-                                                    title={isLastAdmin ? 'Cannot delete the last admin' : 'Delete'}
+                                                    title={isLastAdmin ? t('manageUsers.cannotDeleteLastAdmin') : t('manageUsers.delete')}
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>
@@ -724,7 +734,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         type={passphraseForm.showOld ? 'text' : 'password'}
                                                         value={passphraseForm.oldPassphrase}
                                                         onChange={(event) => setPassphraseForm({ ...passphraseForm, oldPassphrase: event.target.value })}
-                                                        placeholder="Current password"
+                                                        placeholder={t('manageUsers.currentPassword')}
                                                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm dark:border-gray-600 dark:bg-gray-900"
                                                         autoComplete="current-password"
                                                     />
@@ -732,7 +742,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         type="button"
                                                         onClick={() => setPassphraseForm({ ...passphraseForm, showOld: !passphraseForm.showOld })}
                                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                                                        aria-label={passphraseForm.showOld ? 'Hide password' : 'Show password'}
+                                                        aria-label={passphraseForm.showOld ? t('accountLock.hidePassword') : t('accountLock.showPassword')}
                                                     >
                                                         {passphraseForm.showOld ? <EyeOff size={15} /> : <Eye size={15} />}
                                                     </button>
@@ -743,7 +753,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     type={passphraseForm.showNew ? 'text' : 'password'}
                                                     value={passphraseForm.newPassphrase}
                                                     onChange={(event) => setPassphraseForm({ ...passphraseForm, newPassphrase: event.target.value })}
-                                                    placeholder={user.hasPassphrase ? 'New password (blank removes)' : 'New password'}
+                                                    placeholder={user.hasPassphrase ? t('manageUsers.newPasswordBlankRemoves') : t('manageUsers.newPassword')}
                                                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm dark:border-gray-600 dark:bg-gray-900"
                                                     autoComplete="new-password"
                                                 />
@@ -751,7 +761,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     type="button"
                                                     onClick={() => setPassphraseForm({ ...passphraseForm, showNew: !passphraseForm.showNew })}
                                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                                                    aria-label={passphraseForm.showNew ? 'Hide password' : 'Show password'}
+                                                    aria-label={passphraseForm.showNew ? t('accountLock.hidePassword') : t('accountLock.showPassword')}
                                                 >
                                                     {passphraseForm.showNew ? <EyeOff size={15} /> : <Eye size={15} />}
                                                 </button>
@@ -763,17 +773,23 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:bg-blue-300"
                                                 >
                                                     <Check size={15} />
-                                                    Save
+                                                    {t('manageUsers.save')}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => { setPassphraseForm(null); setAcknowledgeNoRecoveryForm(false); }}
                                                     className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                                                    aria-label="Cancel password edit"
+                                                    aria-label={t('manageUsers.cancelPasswordEdit')}
                                                 >
                                                     <X size={15} />
                                                 </button>
                                             </div>
+                                            {!user.hasPassphrase && (
+                                                <p className="sm:col-span-3 flex items-start gap-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                                                    <Info size={13} className="mt-0.5 flex-shrink-0" />
+                                                    <span>{t('manageUsers.passwordChoiceNote')}</span>
+                                                </p>
+                                            )}
                                             <div className="sm:col-span-3 max-w-md">
                                                 <PasswordStrengthBar password={passphraseForm.newPassphrase} />
                                             </div>
@@ -781,10 +797,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <div className="sm:col-span-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
                                                     <div className="mb-1.5 flex items-start gap-2 font-medium">
                                                         <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                                                        <span>Account password cannot be recovered.</span>
+                                                        <span>{t('manageUsers.noRecoveryTitle')}</span>
                                                     </div>
                                                     <p className="mb-2 leading-relaxed opacity-90">
-                                                        If you forget this password, the account&apos;s saved servers, settings, and history are permanently inaccessible. Store the password somewhere safe before continuing.
+                                                        {t('manageUsers.noRecoveryBody')}
                                                     </p>
                                                     <label className="flex items-start gap-2 cursor-pointer select-none">
                                                         <input
@@ -793,7 +809,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                             onChange={(event) => setAcknowledgeNoRecoveryForm(event.target.checked)}
                                                             className="mt-0.5 h-3.5 w-3.5"
                                                         />
-                                                        <span>I understand and accept the responsibility for this password.</span>
+                                                        <span>{t('manageUsers.noRecoveryAck')}</span>
                                                     </label>
                                                 </div>
                                             )}
@@ -817,7 +833,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 <div className="fixed inset-0 z-[90] flex items-start justify-center pt-[10vh]">
                     <button
                         type="button"
-                        aria-label="Close avatar editor"
+                        aria-label={t('manageUsers.closeAvatarEditor')}
                         className="absolute inset-0 bg-black/55 backdrop-blur-sm"
                         onClick={avatarSaving ? undefined : () => setAvatarEditingUser(null)}
                     />
@@ -825,14 +841,14 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
                             <div className="flex min-w-0 items-center gap-2">
                                 <Palette size={18} className="text-blue-500" />
-                                <h3 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">Edit avatar</h3>
+                                <h3 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{t('manageUsers.editAvatar')}</h3>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setAvatarEditingUser(null)}
                                 disabled={avatarSaving}
                                 className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                                aria-label="Close"
+                                aria-label={t('manageUsers.close')}
                             >
                                 <X size={16} />
                             </button>
@@ -848,12 +864,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                 />
                                 <div className="min-w-0">
                                     <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{avatarEditingUser.name}</div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">Account identity</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('manageUsers.accountIdentity')}</div>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">Avatar</label>
+                                <label className="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">{t('manageUsers.avatar')}</label>
                                 <div className="flex flex-wrap gap-2">
                                     {AVATAR_CHOICES.map((avatar) => (
                                         <button
@@ -875,13 +891,13 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                         className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
                                     >
                                         <Palette size={14} />
-                                        Icon library
+                                        {t('manageUsers.iconLibrary')}
                                     </button>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">Color</label>
+                                <label className="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">{t('manageUsers.color')}</label>
                                 <div className="flex flex-wrap gap-2">
                                     {COLOR_CHOICES.map((color) => (
                                         <button
@@ -903,7 +919,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                 disabled={avatarSaving}
                                 className="inline-flex h-9 items-center justify-center rounded-lg bg-gray-100 px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                             >
-                                Cancel
+                                {t('manageUsers.cancel')}
                             </button>
                             <button
                                 type="button"
@@ -912,7 +928,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                 className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:bg-blue-300"
                             >
                                 {avatarSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                                Save
+                                {t('manageUsers.save')}
                             </button>
                         </div>
                     </div>

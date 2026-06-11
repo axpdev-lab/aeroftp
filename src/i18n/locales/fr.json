@@ -3210,7 +3210,7 @@
             "website": "Site web",
             "documentation": "Documentation",
             "mcp": "MCP Server...",
-            "mountManager": "Gestionnaire de montages...",
+            "mountManager": "AeroMount...",
             "activityLog": "Journal d'activité",
             "detailedCards": "Cartes serveur détaillées",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Afficher la barre de menu système",
             "aerovaultOverlayActive": "Superposition de conteneur AeroVault active - cliquez pour détacher",
             "aerovaultOverlayInactive": "Ouvrir un conteneur .aerovault comme panneau distant virtuel. Pour la superposition rclone-crypt, faites un clic droit sur un dossier distant.",
-            "aerocryptOverlayActive": "Couche AeroCrypt active : les envois et téléchargements de ce panneau sont chiffrés. Cliquez pour détacher.",
+            "aerocryptOverlayActive": "Couche Rclone Crypt active : les envois et téléchargements de ce panneau sont chiffrés. Cliquez pour détacher.",
             "aerocryptOverlayInactive": "Ouvrez un dépôt rclone-crypt (ou créez-en un nouveau) en tant que couche transparente.",
             "aerocryptImportTitle": "Couche Rclone Crypt détectée",
             "aerocryptImportDesc": "Profil importé depuis rclone.conf pour {name} : ouvrir la couche maintenant ?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Vérification de disponibilité",
-            "storageVersioning": "Versions du fichier : {size}"
+            "storageVersioning": "Versions du fichier : {size}",
+            "group": {
+                "newGroup": "Nouveau groupe",
+                "newGroupEllipsis": "Nouveau groupe...",
+                "addToGroup": "Ajouter au groupe",
+                "newTitle": "Nouveau groupe",
+                "renameTitle": "Renommer le groupe",
+                "namePlaceholder": "Nom du groupe",
+                "rename": "Renommer le groupe",
+                "delete": "Supprimer le groupe",
+                "confirmDelete": "Supprimer le groupe « {name} » ? Les serveurs qu'il contient sont conservés, seul le groupe est supprimé.",
+                "chipHint": "Cliquez pour filtrer ; clic droit pour renommer ou supprimer"
+            }
         },
         "gitlab": {
             "projectPath": "Chemin du projet",
@@ -4370,7 +4382,7 @@
             "alignRight": "Aligner à droite"
         },
         "mountManager": {
-            "title": "Gestionnaire de montages",
+            "title": "AeroMount",
             "subtitle": "Montez les serveurs enregistrés en tant que lecteurs locaux. Les montages utilisent l'aeroftp-cli intégré (FUSE sous Linux, pont WebDAV sous Windows).",
             "addMount": "Ajouter un montage",
             "newMount": "Nouveau montage",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Échec de la reconnexion. Veuillez vous reconnecter manuellement."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Couche Rclone Crypt",
+            "title": "Couche Rclone Crypt",
             "intro": {
                 "heading": "Ce que fait cette couche",
                 "p1": "Chiffre les noms et contenus des fichiers <strong>à la volée</strong>, avant de les envoyer au serveur, et les déchiffre lors du téléchargement. Le serveur ne voit que des blobs avec des noms en base32. Vous voyez les noms d'origine.",
-                "p2": "Tant que la couche est active : votre session distante affiche les contenus en clair, chaque envoi est chiffré, chaque téléchargement est déchiffré. Cherchez le badge <em>AEROCRYPT</em> dans la barre de chemin.",
-                "p3": "Différence par rapport à AeroVault : AeroVault est un fichier autonome unique <code>.aerovault</code> (format AeroFTP). AeroCrypt est une couche au-dessus d'un dépôt distant existant (S3/SFTP/WebDAV/...) utilisant le format public rclone crypt. Déverrouillez avec le même mot de passe que vous utiliseriez dans <code>rclone</code>."
+                "p2": "Tant que la couche est active : votre session distante affiche les contenus en clair, chaque envoi est chiffré, chaque téléchargement est déchiffré. Cherchez le badge <em>RCLONE CRYPT</em> dans la barre de chemin.",
+                "p3": "Différence par rapport à AeroVault : AeroVault est un fichier autonome unique <code>.aerovault</code> (format AeroFTP). Rclone Crypt est une couche au-dessus d'un dépôt distant existant (S3/SFTP/WebDAV/...) utilisant le format public rclone crypt. Déverrouillez avec le même mot de passe que vous utiliseriez dans <code>rclone</code>."
             },
             "openExisting": "Ouvrir existant",
             "createNew": "Créer nouveau",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "Confidentialité OpenDrive",
             "privacyUpdated": "Confidentialité OpenDrive mise à jour"
+        },
+        "manageUsers": {
+            "title": "Gérer les utilisateurs",
+            "close": "Fermer",
+            "closePanel": "Fermer le panneau des utilisateurs",
+            "accountName": "Nom du compte",
+            "avatar": "Avatar",
+            "add": "Ajouter",
+            "accountPasswordOptional": "Mot de passe du compte (facultatif)",
+            "noRecovery": "Aucune récupération",
+            "noRecoveryTitle": "Le mot de passe du compte ne peut pas être récupéré.",
+            "noRecoveryBody": "Si vous oubliez ce mot de passe, les serveurs enregistrés, les paramètres et l'historique du compte deviennent définitivement inaccessibles. Conservez le mot de passe en lieu sûr avant de continuer.",
+            "noRecoveryAck": "Je comprends et j'accepte la responsabilité de ce mot de passe.",
+            "adminRequired": "Un accès administrateur est requis pour ajouter ou réorganiser les comptes.",
+            "loading": "Chargement des utilisateurs...",
+            "editAvatar": "Modifier l'avatar",
+            "saveName": "Enregistrer le nom",
+            "active": "Actif",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profils",
+            "settingsCount": "{count} paramètres",
+            "never": "Jamais",
+            "rename": "Renommer",
+            "changeMyPassword": "Changer mon mot de passe",
+            "setPassword": "Définir le mot de passe",
+            "resetPassword": "Réinitialiser le mot de passe",
+            "revokeAdmin": "Révoquer l'administrateur",
+            "promoteAdmin": "Promouvoir administrateur",
+            "cannotDeleteLastAdmin": "Impossible de supprimer le dernier administrateur",
+            "delete": "Supprimer",
+            "currentPassword": "Mot de passe actuel",
+            "newPasswordBlankRemoves": "Nouveau mot de passe (vide pour le supprimer)",
+            "newPassword": "Nouveau mot de passe",
+            "save": "Enregistrer",
+            "cancelPasswordEdit": "Annuler la modification du mot de passe",
+            "closeAvatarEditor": "Fermer l'éditeur d'avatar",
+            "accountIdentity": "Identité du compte",
+            "iconLibrary": "Bibliothèque d'icônes",
+            "color": "Couleur",
+            "cancel": "Annuler",
+            "errAckRequired": "Veuillez confirmer que les mots de passe des comptes ne peuvent pas être récupérés.",
+            "errCurrentRequired": "Le mot de passe actuel du compte est requis.",
+            "errNewRequired": "Le nouveau mot de passe du compte est requis.",
+            "confirmRemovePassword": "Supprimer le mot de passe du compte pour \"{name}\" ?",
+            "confirmDelete": "Supprimer le compte \"{name}\" ?\n\nDonnées chiffrées à supprimer : {profiles} profils, {settings} domaines de paramètres.",
+            "passwordChoiceNote": "Définir un mot de passe de compte est facultatif. Cela empêche les autres personnes qui utilisent cet appareil d'ouvrir votre compte; vos données enregistrées restent chiffrées dans tous les cas. Ignorez cette étape si vous êtes le seul utilisateur ou si vous faites confiance à tous ceux qui utilisent cet appareil."
         }
     }
 }

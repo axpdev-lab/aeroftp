@@ -6,7 +6,7 @@ import { ChevronDown, FolderOpen, HardDrive, Server } from 'lucide-react';
 import type { PanelEndpoint } from '../types/aerofile';
 import type { ServerProfile } from '../types';
 import { getEndpointLabel } from '../utils/panelEndpoints';
-import { PROVIDER_LOGOS } from './ProviderLogos';
+import { getServerIcon } from './IntroHub/ServerCard';
 
 export interface PanelEndpointSelectorProps {
     endpoint: PanelEndpoint;
@@ -16,11 +16,12 @@ export interface PanelEndpointSelectorProps {
     onChooseRemoteProfile: (profile: ServerProfile) => void;
 }
 
-const ProfileIcon: React.FC<{ profile: ServerProfile }> = ({ profile }) => {
-    const Logo = PROVIDER_LOGOS[profile.providerId || profile.protocol || ''];
-    if (Logo) return <Logo size={16} />;
-    return <Server size={14} />;
-};
+// Route through the shared resolver so a user's custom icon (or detected
+// favicon) overrides the built-in preset logo here too: a profile's icon must
+// look the same on every surface, not just on the saved-servers card.
+const ProfileIcon: React.FC<{ profile: ServerProfile }> = ({ profile }) => (
+    <>{getServerIcon(profile, 16)}</>
+);
 
 export const PanelEndpointSelector: React.FC<PanelEndpointSelectorProps> = ({
     endpoint,

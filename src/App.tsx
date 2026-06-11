@@ -10640,7 +10640,7 @@ interface UpdateVerificationInfo {
 
     // Rclone Crypt overlay non e' piu' nel context menu file/cartelle:
     // l'overlay e' una proprieta' del pannello remoto, non del singolo entry.
-    // L'aggancio primario vive ora nel pulsante toolbar AeroCrypt.
+    // L'aggancio primario vive ora nel pulsante toolbar Rclone Crypt.
 
     // Ask AeroAgent
     items.push({
@@ -12601,9 +12601,9 @@ interface UpdateVerificationInfo {
                     });
                     setRcloneCryptVaultId(info.vault_id);
                     void loadRcloneCryptOverlayFiles(info.vault_id);
-                    notify.success('AeroCrypt', t('toolbar.aerocryptOverlayActive'));
+                    notify.success('Rclone Crypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
-                    notify.error('AeroCrypt', String(err));
+                    notify.error('Rclone Crypt', String(err));
                   }
                 }}
                 className="px-3 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white font-semibold"
@@ -13513,9 +13513,9 @@ interface UpdateVerificationInfo {
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                             }`}
                           title={rcloneCryptVaultId
-                            ? `AeroCrypt ON: ${t('toolbar.aerocryptOverlayActive')}`
-                            : `AeroCrypt: ${t('toolbar.aerocryptOverlayInactive')}`}
-                          aria-label={rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
+                            ? `Rclone Crypt ON: ${t('toolbar.aerocryptOverlayActive')}`
+                            : `Rclone Crypt: ${t('toolbar.aerocryptOverlayInactive')}`}
+                          aria-label={rcloneCryptVaultId ? 'Rclone Crypt ON' : 'Rclone Crypt'}
                         >
                           <OverlayIcon size={16} className={rcloneCryptVaultId ? 'text-white' : ''} />
                         </button>
@@ -13719,7 +13719,7 @@ interface UpdateVerificationInfo {
                         title={t('toolbar.aerocryptOverlayActive')}
                       >
                         <OverlayIcon size={11} className="text-blue-400" />
-                        AEROCRYPT
+                        RCLONE CRYPT
                       </span>
                     )}
                     {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (

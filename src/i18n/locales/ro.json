@@ -3210,7 +3210,7 @@
             "website": "Site web",
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
-            "mountManager": "Manager de montări...",
+            "mountManager": "AeroMount...",
             "activityLog": "Jurnal activitate",
             "detailedCards": "Carduri server detaliate",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Afișează bara de meniu sistem",
             "aerovaultOverlayActive": "Suprapunere container AeroVault activă - clic pentru detașare",
             "aerovaultOverlayInactive": "Deschide un container .aerovault ca panou la distanță virtual. Pentru suprapunerea rclone-crypt, fă clic dreapta pe un folder la distanță.",
-            "aerocryptOverlayActive": "Suprapunere AeroCrypt activă: încărcările și descărcările din acest panou sunt criptate. Fă clic pentru a detașa.",
+            "aerocryptOverlayActive": "Suprapunere Rclone Crypt activă: încărcările și descărcările din acest panou sunt criptate. Fă clic pentru a detașa.",
             "aerocryptOverlayInactive": "Deschide un remote rclone-crypt (sau creează unul nou) ca suprapunere transparentă.",
             "aerocryptImportTitle": "Suprapunere Rclone Crypt detectată",
             "aerocryptImportDesc": "Profil importat din rclone.conf pentru {name}: deschizi suprapunerea acum?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Verificarea disponibilității",
-            "storageVersioning": "Versiuni fișier: {size}"
+            "storageVersioning": "Versiuni fișier: {size}",
+            "group": {
+                "newGroup": "Grup nou",
+                "newGroupEllipsis": "Grup nou...",
+                "addToGroup": "Adaugă în grup",
+                "newTitle": "Grup nou",
+                "renameTitle": "Redenumește grupul",
+                "namePlaceholder": "Numele grupului",
+                "rename": "Redenumește grupul",
+                "delete": "Șterge grupul",
+                "confirmDelete": "Ștergeți grupul „{name}”? Serverele din el sunt păstrate, se elimină doar grupul.",
+                "chipHint": "Clic pentru filtrare; clic dreapta pentru redenumire sau ștergere"
+            }
         },
         "gitlab": {
             "projectPath": "Calea proiectului",
@@ -4370,7 +4382,7 @@
             "alignRight": "Aliniază la dreapta"
         },
         "mountManager": {
-            "title": "Manager de montări",
+            "title": "AeroMount",
             "subtitle": "Montează serverele salvate ca unități locale. Montările folosesc aeroftp-cli inclus (FUSE pe Linux, punte WebDAV pe Windows).",
             "addMount": "Adaugă montare",
             "newMount": "Montare nouă",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Reconectarea a eșuat. Reconectați-vă manual."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Suprapunere Rclone Crypt",
+            "title": "Suprapunere Rclone Crypt",
             "intro": {
                 "heading": "Ce face această suprapunere",
                 "p1": "Criptează numele fișierelor și conținutul <strong>din mers</strong>, înainte de a le trimite pe server, și le decriptează la descărcare. Serverul vede doar blob-uri cu nume în base32. Tu vezi numele originale.",
-                "p2": "Cât timp suprapunerea este activă: sesiunea ta de la distanță afișează conținutul în clar, fiecare încărcare este criptată, fiecare descărcare este decriptată. Caută insigna <em>AEROCRYPT</em> în bara căii.",
-                "p3": "Diferența față de AeroVault: AeroVault este un singur fișier de sine stătător <code>.aerovault</code> (format AeroFTP). AeroCrypt este un strat peste un remote existent (S3/SFTP/WebDAV/...) care folosește formatul public rclone crypt. Deblochează cu aceeași parolă pe care ai folosi-o în <code>rclone</code>."
+                "p2": "Cât timp suprapunerea este activă: sesiunea ta de la distanță afișează conținutul în clar, fiecare încărcare este criptată, fiecare descărcare este decriptată. Caută insigna <em>RCLONE CRYPT</em> în bara căii.",
+                "p3": "Diferența față de AeroVault: AeroVault este un singur fișier de sine stătător <code>.aerovault</code> (format AeroFTP). Rclone Crypt este un strat peste un remote existent (S3/SFTP/WebDAV/...) care folosește formatul public rclone crypt. Deblochează cu aceeași parolă pe care ai folosi-o în <code>rclone</code>."
             },
             "openExisting": "Deschide existent",
             "createNew": "Creează nou",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "Confidențialitate OpenDrive",
             "privacyUpdated": "Confidențialitate OpenDrive actualizată"
+        },
+        "manageUsers": {
+            "title": "Gestionează utilizatorii",
+            "close": "Închide",
+            "closePanel": "Închide panoul de utilizatori",
+            "accountName": "Nume cont",
+            "avatar": "Avatar",
+            "add": "Adaugă",
+            "accountPasswordOptional": "Parola contului (opțional)",
+            "noRecovery": "Fără recuperare",
+            "noRecoveryTitle": "Parola contului nu poate fi recuperată.",
+            "noRecoveryBody": "Dacă uiți această parolă, serverele salvate, setările și istoricul contului devin permanent inaccesibile. Păstrează parola într-un loc sigur înainte de a continua.",
+            "noRecoveryAck": "Înțeleg și îmi asum responsabilitatea pentru această parolă.",
+            "adminRequired": "Pentru a adăuga sau reordona conturi este necesar accesul de administrator.",
+            "loading": "Se încarcă utilizatorii...",
+            "editAvatar": "Editează avatarul",
+            "saveName": "Salvează numele",
+            "active": "Activ",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profiluri",
+            "settingsCount": "{count} setări",
+            "never": "Niciodată",
+            "rename": "Redenumește",
+            "changeMyPassword": "Schimbă-mi parola",
+            "setPassword": "Setează parola",
+            "resetPassword": "Resetează parola",
+            "revokeAdmin": "Revocă administrator",
+            "promoteAdmin": "Promovează la administrator",
+            "cannotDeleteLastAdmin": "Nu se poate șterge ultimul administrator",
+            "delete": "Șterge",
+            "currentPassword": "Parola actuală",
+            "newPasswordBlankRemoves": "Parolă nouă (gol elimină)",
+            "newPassword": "Parolă nouă",
+            "save": "Salvează",
+            "cancelPasswordEdit": "Anulează editarea parolei",
+            "closeAvatarEditor": "Închide editorul de avatar",
+            "accountIdentity": "Identitatea contului",
+            "iconLibrary": "Bibliotecă de pictograme",
+            "color": "Culoare",
+            "cancel": "Anulează",
+            "errAckRequired": "Confirmă că parolele conturilor nu pot fi recuperate.",
+            "errCurrentRequired": "Parola actuală a contului este obligatorie.",
+            "errNewRequired": "Parola nouă a contului este obligatorie.",
+            "confirmRemovePassword": "Elimini parola contului pentru „{name}”?",
+            "confirmDelete": "Ștergi contul „{name}”?\n\nDate criptate de eliminat: {profiles} profiluri, {settings} domenii de setări.",
+            "passwordChoiceNote": "Setarea unei parole de cont este opțională. Împiedică alte persoane care folosesc acest dispozitiv să îți deschidă contul; datele tale salvate rămân criptate oricum. Sari peste acest pas dacă ești singurul utilizator aici sau dacă ai încredere în toți cei care folosesc acest dispozitiv."
         }
     }
 }

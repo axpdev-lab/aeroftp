@@ -3210,7 +3210,7 @@
             "website": "Hjemmeside",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Mount-håndtering...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitetslog",
             "detailedCards": "Detaljerede serverkort",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Vis systemmenulinje",
             "aerovaultOverlayActive": "AeroVault-container-overlay aktiv - klik for at frakoble",
             "aerovaultOverlayInactive": "Åbn en .aerovault-container som virtuelt fjernpanel. Brug højreklik på en fjernmappe for rclone-crypt-overlay.",
-            "aerocryptOverlayActive": "AeroCrypt-overlay aktiv: uploads og downloads i dette panel er krypterede. Klik for at frakoble.",
+            "aerocryptOverlayActive": "Rclone Crypt-overlay aktiv: uploads og downloads i dette panel er krypterede. Klik for at frakoble.",
             "aerocryptOverlayInactive": "Åbn en rclone-crypt-fjernlagring (eller opret en ny) som transparent overlay.",
             "aerocryptImportTitle": "Rclone Crypt-overlay registreret",
             "aerocryptImportDesc": "Profil importeret fra rclone.conf for {name}: åbn overlayen nu?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tilgængelighedstjek",
-            "storageVersioning": "Filversioner: {size}"
+            "storageVersioning": "Filversioner: {size}",
+            "group": {
+                "newGroup": "Ny gruppe",
+                "newGroupEllipsis": "Ny gruppe...",
+                "addToGroup": "Føj til gruppe",
+                "newTitle": "Ny gruppe",
+                "renameTitle": "Omdøb gruppe",
+                "namePlaceholder": "Gruppenavn",
+                "rename": "Omdøb gruppe",
+                "delete": "Slet gruppe",
+                "confirmDelete": "Slet gruppen \"{name}\"? Serverne i den bevares, kun gruppen fjernes.",
+                "chipHint": "Klik for at filtrere; højreklik for at omdøbe eller slette"
+            }
         },
         "gitlab": {
             "projectPath": "Projektsti",
@@ -4370,7 +4382,7 @@
             "alignRight": "Højrejuster"
         },
         "mountManager": {
-            "title": "Mount-håndtering",
+            "title": "AeroMount",
             "subtitle": "Monter gemte servere som lokale drev. Mounts bruger den indbyggede aeroftp-cli (FUSE på Linux, WebDAV-bro på Windows).",
             "addMount": "Tilføj mount",
             "newMount": "Nyt mount",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Genoprettelse af forbindelse mislykkedes. Opret forbindelse manuelt igen."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt-overlay",
+            "title": "Rclone Crypt-overlay",
             "intro": {
                 "heading": "Hvad denne overlay gør",
                 "p1": "Krypterer filnavne og indhold <strong>i farten</strong>, før de sendes til serveren, og dekrypterer dem, når du downloader. Serveren ser kun blobs med base32-navne. Du ser de oprindelige navne.",
-                "p2": "Mens overlayen er aktiv: din fjernsession viser indholdet i klartekst, hver upload krypteres, hver download dekrypteres. Se efter <em>AEROCRYPT</em>-mærket i stilinjen.",
-                "p3": "Forskel sammenlignet med AeroVault: AeroVault er en enkelt selvstændig <code>.aerovault</code>-fil (AeroFTP-format). AeroCrypt er et lag oven på en eksisterende fjernlagring (S3/SFTP/WebDAV/...) ved hjælp af det offentlige rclone crypt-format. Lås op med samme adgangskode, som du ville bruge i <code>rclone</code>."
+                "p2": "Mens overlayen er aktiv: din fjernsession viser indholdet i klartekst, hver upload krypteres, hver download dekrypteres. Se efter <em>RCLONE CRYPT</em>-mærket i stilinjen.",
+                "p3": "Forskel sammenlignet med AeroVault: AeroVault er en enkelt selvstændig <code>.aerovault</code>-fil (AeroFTP-format). Rclone Crypt er et lag oven på en eksisterende fjernlagring (S3/SFTP/WebDAV/...) ved hjælp af det offentlige rclone crypt-format. Lås op med samme adgangskode, som du ville bruge i <code>rclone</code>."
             },
             "openExisting": "Åbn eksisterende",
             "createNew": "Opret ny",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive-privatliv",
             "privacyUpdated": "OpenDrive-privatliv opdateret"
+        },
+        "manageUsers": {
+            "title": "Administrer brugere",
+            "close": "Luk",
+            "closePanel": "Luk brugerpanelet",
+            "accountName": "Kontonavn",
+            "avatar": "Avatar",
+            "add": "Tilføj",
+            "accountPasswordOptional": "Adgangskode til konto (valgfrit)",
+            "noRecovery": "Ingen gendannelse",
+            "noRecoveryTitle": "Kontoens adgangskode kan ikke gendannes.",
+            "noRecoveryBody": "Hvis du glemmer denne adgangskode, bliver kontoens gemte servere, indstillinger og historik permanent utilgængelige. Gem adgangskoden et sikkert sted, før du fortsætter.",
+            "noRecoveryAck": "Jeg forstår og påtager mig ansvaret for denne adgangskode.",
+            "adminRequired": "Administratoradgang kræves for at tilføje eller omarrangere konti.",
+            "loading": "Indlæser brugere...",
+            "editAvatar": "Rediger avatar",
+            "saveName": "Gem navn",
+            "active": "Aktiv",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profiler",
+            "settingsCount": "{count} indstillinger",
+            "never": "Aldrig",
+            "rename": "Omdøb",
+            "changeMyPassword": "Skift min adgangskode",
+            "setPassword": "Angiv adgangskode",
+            "resetPassword": "Nulstil adgangskode",
+            "revokeAdmin": "Tilbagekald admin",
+            "promoteAdmin": "Forfrem til admin",
+            "cannotDeleteLastAdmin": "Kan ikke slette den sidste administrator",
+            "delete": "Slet",
+            "currentPassword": "Nuværende adgangskode",
+            "newPasswordBlankRemoves": "Ny adgangskode (tom fjerner den)",
+            "newPassword": "Ny adgangskode",
+            "save": "Gem",
+            "cancelPasswordEdit": "Annuller redigering af adgangskode",
+            "closeAvatarEditor": "Luk avatar-editor",
+            "accountIdentity": "Kontoidentitet",
+            "iconLibrary": "Ikonbibliotek",
+            "color": "Farve",
+            "cancel": "Annuller",
+            "errAckRequired": "Bekræft, at kontoadgangskoder ikke kan gendannes.",
+            "errCurrentRequired": "Den nuværende kontoadgangskode er påkrævet.",
+            "errNewRequired": "Den nye kontoadgangskode er påkrævet.",
+            "confirmRemovePassword": "Fjern kontoadgangskoden for \"{name}\"?",
+            "confirmDelete": "Slet kontoen \"{name}\"?\n\nKrypterede data, der skal fjernes: {profiles} profiler, {settings} indstillingsområder.",
+            "passwordChoiceNote": "Det er valgfrit at angive en adgangskode til kontoen. Den forhindrer andre, der bruger denne enhed, i at åbne din konto; dine gemte data forbliver krypterede under alle omstændigheder. Spring det over, hvis du er den eneste her, eller hvis du har tillid til alle, der bruger denne enhed."
         }
     }
 }

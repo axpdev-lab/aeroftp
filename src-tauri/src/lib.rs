@@ -8856,10 +8856,24 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
         }
     }
 
-    // 1. Close splash: GTK window destruction is async, takes ~500ms
-    if let Some(splash) = app.get_webview_window("splashscreen") {
-        let _ = splash.close();
-        info!("Splash screen closed");
+    // app_ready is an ASYNC command, so it runs on the async runtime and OFF the
+    // GTK main thread. Every GTK/GLib touch below (splash teardown, app menu,
+    // window restore/show, monitor + scale queries) MUST be marshalled onto the
+    // main thread via `run_on_main_thread`; doing it directly from here races the
+    // GLib main loop and corrupts the GLib heap, which later aborts a GDBus worker
+    // with "malloc(): unaligned fastbin chunk detected" (intermittent, surfaces on
+    // suspend / monitor standby). Same discipline as tray_badge::update_tray_badge.
+    // The async sleeps that pace the splash teardown stay off the main thread.
+
+    // 1. Close splash on the main thread (GTK window destruction, ~500ms async).
+    {
+        let app_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(splash) = app_main.get_webview_window("splashscreen") {
+                let _ = splash.close();
+                info!("Splash screen closed");
+            }
+        });
     }
 
     // 2. Wait for GTK to fully destroy the splash window (Linux only).
@@ -8868,62 +8882,80 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
     #[cfg(target_os = "linux")]
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
-    // 3. Splash is dead: safe to set the global app menu
-    if let Some(deferred) =
-        app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
+    // 3 + 4. On the main thread: install the deferred app menu (splash is dead now),
+    // restore the saved size/position/maximized state, heal a poisoned 0x0 size
+    // (#290) and show the window. APP_READY_DONE is flipped LAST, inside this same
+    // main-thread closure after the menu is installed, preserving the invariant
+    // rebuild_menu relies on (it defers its own set_menu while the flag is false).
     {
-        if let Ok(mut guard) = deferred.lock() {
-            if let Some(menu) = guard.take() {
-                let _ = app.set_menu(menu);
-                info!("App menu set (deferred)");
-            }
-        }
-    }
-
-    // 4. Restore saved size/position/maximized state only after splash teardown,
-    // then show the main window without menu (frontend controls visibility via toggle_menu_bar).
-    // When start_minimized is true (autostart launch + user opt-in), keep the window
-    // hidden: user reaches the app via the tray icon.
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.remove_menu();
-        let _ = main_window
-            .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
-        // Heal a poisoned 0x0 size restored from a saved state (#290) before the
-        // window is shown, so it never flashes at zero size on that path.
-        log_window_diagnostics(&main_window, "app_ready pre-show");
-        heal_restored_window_size(&main_window);
-        if start_minimized {
-            info!("Main window kept hidden (autostart minimized)");
-        } else {
-            let _ = main_window.show();
-            let _ = main_window.set_focus();
-            info!("Main window shown");
-            log_window_diagnostics(&main_window, "app_ready post-show");
-            // macOS 26 Tahoe: the window can collapse to a 0x0 content frame at
-            // show() time even with a valid built size and no saved state at all
-            // (#290, confirmed: fresh config and forced `maximized:true` both
-            // still report inner_size=0x0). The documented WebKit workaround is
-            // to re-assert the size once the window is actually on screen, so we
-            // heal again post-show and re-check on a short delay because the
-            // collapse can land a frame or two after present. The timestamped
-            // diagnostics pinpoint exactly when (if) it goes degenerate.
-            heal_restored_window_size(&main_window);
-            let w = main_window.clone();
-            tauri::async_runtime::spawn(async move {
-                for (delay_ms, ctx) in
-                    [(300u64, "app_ready +300ms"), (1200u64, "app_ready +1200ms")]
-                {
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                    log_window_diagnostics(&w, ctx);
-                    heal_restored_window_size(&w);
+        let app_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            // 3. Splash is dead: safe to set the global app menu.
+            if let Some(deferred) =
+                app_main.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
+            {
+                if let Ok(mut guard) = deferred.lock() {
+                    if let Some(menu) = guard.take() {
+                        let _ = app_main.set_menu(menu);
+                        info!("App menu set (deferred)");
+                    }
                 }
-            });
-        }
+            }
+
+            // 4. Restore saved size/position/maximized state, then show the main
+            // window without a menu (the frontend controls visibility via
+            // toggle_menu_bar). When start_minimized is true (autostart launch +
+            // user opt-in) the window stays hidden and the user reaches the app
+            // via the tray icon.
+            if let Some(main_window) = app_main.get_webview_window("main") {
+                let _ = main_window.remove_menu();
+                let _ = main_window
+                    .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
+                // Heal a poisoned 0x0 size restored from a saved state (#290) before
+                // the window is shown, so it never flashes at zero size on that path.
+                log_window_diagnostics(&main_window, "app_ready pre-show");
+                heal_restored_window_size(&main_window);
+                if start_minimized {
+                    info!("Main window kept hidden (autostart minimized)");
+                } else {
+                    let _ = main_window.show();
+                    let _ = main_window.set_focus();
+                    info!("Main window shown");
+                    log_window_diagnostics(&main_window, "app_ready post-show");
+                    // macOS 26 Tahoe: the window can collapse to a 0x0 content frame
+                    // at show() time even with a valid built size and no saved state
+                    // at all (#290). Re-assert the size once it is on screen; the
+                    // +300ms/+1200ms re-heal below catches a collapse that lands a
+                    // frame or two after present.
+                    heal_restored_window_size(&main_window);
+                }
+            }
+
+            // 5. LAST (still on the main thread, right after the menu is installed):
+            // let rebuild_menu call app.set_menu() freely and tell the safety
+            // timeout it does not need to fire.
+            APP_READY_DONE.store(true, Ordering::SeqCst);
+        });
     }
 
-    // 5. LAST: set the flag so rebuild_menu can freely call app.set_menu()
-    // and the safety timeout knows not to fire.
-    APP_READY_DONE.store(true, Ordering::SeqCst);
+    // 4b. macOS/#290 follow-up: the 0x0 collapse can land a frame or two after
+    // present, so re-heal at +300ms and +1200ms. The delays stay off the main
+    // thread; only the GTK queries + heal are marshalled back onto it.
+    if !start_minimized {
+        let app_spawn = app.clone();
+        tauri::async_runtime::spawn(async move {
+            for (delay_ms, ctx) in [(300u64, "app_ready +300ms"), (1200u64, "app_ready +1200ms")] {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                let app_cb = app_spawn.clone();
+                let _ = app_spawn.run_on_main_thread(move || {
+                    if let Some(w) = app_cb.get_webview_window("main") {
+                        log_window_diagnostics(&w, ctx);
+                        heal_restored_window_size(&w);
+                    }
+                });
+            }
+        });
+    }
 }
 
 #[tauri::command]
@@ -13184,9 +13216,14 @@ async fn save_server_credentials(
         "password": password,
     });
 
-    store
-        .store(&format!("server_{}", profile_name), &value.to_string())
-        .map_err(|e| format!("Failed to save credentials: {}", e))?;
+    // MUV-3: dual-write the per-profile credential blob (vault + active user's
+    // partition).
+    user_partitions::store_active_credential_dual(
+        &store,
+        &format!("server_{}", profile_name),
+        &value.to_string(),
+    )
+    .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
     info!("Saved credentials for profile: {}", profile_name);
     Ok(())
@@ -13336,8 +13373,12 @@ async fn get_credential_store_status(
 async fn store_credential(account: String, password: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .store(&account, &password)
+    // Dual-write. The vault is written for every key (source of truth +
+    // fallback); `server_*` (MUV-3) and `ai_apikey_*` (MUV-5) keys are also
+    // mirrored into the active user's partition by the prefix classifier. OAuth
+    // and GitHub tokens stay vault-only on this generic path: they are mirrored
+    // by their own type-explicit call-sites (MUV-4/5).
+    user_partitions::store_active_credential_dual(&store, &account, &password)
         .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
@@ -13354,8 +13395,10 @@ async fn get_credential(account: String) -> Result<String, String> {
 async fn delete_credential(account: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .delete(&account)
+    // Dual-delete. Removes from the vault and, for the prefix-classified keys
+    // (`server_*`, `ai_apikey_*`), best-effort from the active user's partition.
+    // Not a mass purge (that is MUV-6).
+    user_partitions::delete_active_credential_dual(&store, &account)
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
@@ -13564,10 +13607,12 @@ fn collect_provider_secrets_for_server(
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
+    // MUV-4: read the per-profile token from the active user's partition (vault
+    // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
-        if let Ok(value) = store.get(&per_profile) {
-            out.oauth = Some(value);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+            out.oauth = Some(value.to_string());
         } else {
             // Legacy singleton key path: only honoured when nothing has been
             // migrated yet for this provider on this device.
@@ -13580,8 +13625,8 @@ fn collect_provider_secrets_for_server(
 
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
-        if let Ok(value) = store.get(&per_profile) {
-            out.jotta_refresh = Some(value);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+            out.jotta_refresh = Some(value.to_string());
         } else if let Ok(value) = store.get("jottacloud_refresh") {
             out.jotta_refresh = Some(value);
         }
@@ -13608,8 +13653,13 @@ async fn export_server_profiles(
         match credential_store::CredentialStore::from_cache() {
             Some(store) => {
                 for server in &mut servers {
-                    if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
-                        server.credential = Some(cred);
+                    // MUV-3: export the active user's per-user credential, with
+                    // fallback to the legacy vault.
+                    if let Ok(Some(cred)) = user_partitions::resolve_active_credential(
+                        &store,
+                        &format!("server_{}", server.id),
+                    ) {
+                        server.credential = Some(cred.to_string());
                     }
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
@@ -13650,7 +13700,13 @@ async fn import_server_profiles(
         Some(store) => {
             for server in &servers {
                 if let Some(ref cred) = server.credential {
-                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                    // MUV-3: dual-write the imported credential (vault + active
+                    // user's partition).
+                    if let Err(e) = user_partitions::store_active_credential_dual(
+                        &store,
+                        &format!("server_{}", server.id),
+                        cred,
+                    ) {
                         cred_errors.push(format!("{}: {}", server.id, e));
                     }
                 }
@@ -13677,7 +13733,10 @@ async fn import_server_profiles(
                 if let Some(ref oauth_json) = secrets.oauth {
                     if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
                         let key = format!("oauth_{}_{}", slug, profile_id);
-                        if let Err(e) = store.store(&key, oauth_json) {
+                        // MUV-4: dual-write into vault + active user's partition.
+                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                            &store, &key, "oauth", oauth_json,
+                        ) {
                             cred_errors.push(format!("{} oauth: {}", profile_id, e));
                         }
                     }
@@ -13685,7 +13744,12 @@ async fn import_server_profiles(
                 if let Some(ref jotta_json) = secrets.jotta_refresh {
                     if protocol == "jottacloud" {
                         let key = format!("jottacloud_refresh_{}", profile_id);
-                        if let Err(e) = store.store(&key, jotta_json) {
+                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                            &store,
+                            &key,
+                            "jottacloud_refresh",
+                            jotta_json,
+                        ) {
                             cred_errors.push(format!("{} jotta: {}", profile_id, e));
                         }
                     }
@@ -14042,6 +14106,19 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+
+        // Pin a stable GTK program name so the window's WM_CLASS is always
+        // "aeroftp", regardless of which path launched the binary. GNOME maps a
+        // window to its .desktop entry (and thus its icon) by matching WM_CLASS
+        // against `StartupWMClass=aeroftp` in AeroFTP.desktop. A normal launch
+        // goes through `Exec=/usr/bin/aeroftp` (WM_CLASS "aeroftp" -> match), but
+        // the post-update restart from tauri-plugin-updater relaunches
+        // `current_exe()` = /usr/lib/aeroftp/aeroftp.bin, whose default WM_CLASS
+        // "aeroftp.bin" does NOT match -> GNOME falls back to a generic icon.
+        // Setting prgname here (before any GTK/WebKit init) makes WM_CLASS
+        // deterministic and fixes the generic-icon-after-update bug.
+        gtk::glib::set_prgname(Some("aeroftp"));
+        gtk::glib::set_application_name("AeroFTP");
     }
 
     // Serve frontend via real HTTP server to fix WebKitGTK rendering issues.
@@ -14703,30 +14780,37 @@ pub fn run() {
                     return; // app_ready already handled everything
                 }
                 warn!("Splash screen safety timeout reached, force-closing");
-                if let Some(splash) = app_handle.get_webview_window("splashscreen") {
-                    let _ = splash.close();
-                }
-                // Set deferred menu
-                if let Some(deferred) = app_handle
-                    .try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
-                {
-                    if let Ok(mut guard) = deferred.lock() {
-                        if let Some(menu) = guard.take() {
-                            let _ = app_handle.set_menu(menu);
+                // This runs on a std thread (OFF the GTK main thread). The splash
+                // teardown, deferred menu and window show below all touch GTK/GLib,
+                // so marshal them onto the main thread or they corrupt the GLib heap
+                // (same "malloc(): unaligned fastbin chunk" abort as app_ready).
+                let app_main = app_handle.clone();
+                let _ = app_handle.run_on_main_thread(move || {
+                    if let Some(splash) = app_main.get_webview_window("splashscreen") {
+                        let _ = splash.close();
+                    }
+                    // Set deferred menu
+                    if let Some(deferred) = app_main
+                        .try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
+                    {
+                        if let Ok(mut guard) = deferred.lock() {
+                            if let Some(menu) = guard.take() {
+                                let _ = app_main.set_menu(menu);
+                            }
                         }
                     }
-                }
-                if let Some(main_window) = app_handle.get_webview_window("main") {
-                    let _ = main_window.remove_menu();
-                    let _ = main_window.restore_state(
-                        StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
-                    );
-                    // Heal a poisoned 0x0 size restored from earlier broken builds (#290).
-                    heal_restored_window_size(&main_window);
-                    let _ = main_window.show();
-                    let _ = main_window.set_focus();
-                    log_window_diagnostics(&main_window, "safety-timeout post-show");
-                }
+                    if let Some(main_window) = app_main.get_webview_window("main") {
+                        let _ = main_window.remove_menu();
+                        let _ = main_window.restore_state(
+                            StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
+                        );
+                        // Heal a poisoned 0x0 size restored from earlier broken builds (#290).
+                        heal_restored_window_size(&main_window);
+                        let _ = main_window.show();
+                        let _ = main_window.set_focus();
+                        log_window_diagnostics(&main_window, "safety-timeout post-show");
+                    }
+                });
             });
             // ============ System Tray Icon ============
             // Create tray menu
@@ -15149,6 +15233,9 @@ pub fn run() {
             user_partitions::user_partitions_set_active_setting,
             user_partitions::user_partitions_delete_active_setting,
             user_partitions::user_partitions_list_active_setting_scopes,
+            user_partitions::user_partitions_get_user_credential,
+            user_partitions::user_partitions_set_user_credential,
+            user_partitions::user_partitions_delete_user_credential,
             user_partitions::user_partitions_find_cross_user_dedup,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]

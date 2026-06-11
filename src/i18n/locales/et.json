@@ -3210,7 +3210,7 @@
             "website": "Veebileht",
             "documentation": "Dokumentatsioon",
             "mcp": "MCP Server...",
-            "mountManager": "Ühenduste haldur...",
+            "mountManager": "AeroMount...",
             "activityLog": "Tegevuslogi",
             "detailedCards": "Üksikasjalikud serverikaardid",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Näita süsteemi menüüriba",
             "aerovaultOverlayActive": "AeroVault konteineri kate aktiivne - klõpsake lahti ühendamiseks",
             "aerovaultOverlayInactive": "Avage .aerovault konteiner virtuaalse kaugpaneelina. rclone-crypt katte jaoks kasutage paremklõpsu kaugkaustal.",
-            "aerocryptOverlayActive": "AeroCrypti kiht aktiivne: üleslaadimised ja allalaadimised selles paneelis on krüpteeritud. Klõpsa lahti ühendamiseks.",
+            "aerocryptOverlayActive": "Rclone Crypti kiht aktiivne: üleslaadimised ja allalaadimised selles paneelis on krüpteeritud. Klõpsa lahti ühendamiseks.",
             "aerocryptOverlayInactive": "Ava rclone-crypti kaughoidla (või loo uus) läbipaistva kihina.",
             "aerocryptImportTitle": "Tuvastati Rclone Crypti kiht",
             "aerocryptImportDesc": "Profiil imporditud rclone.conf-ist {name} jaoks: kas avada kiht nüüd?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Saadavuse kontroll",
-            "storageVersioning": "Faili versioonid: {size}"
+            "storageVersioning": "Faili versioonid: {size}",
+            "group": {
+                "newGroup": "Uus rühm",
+                "newGroupEllipsis": "Uus rühm...",
+                "addToGroup": "Lisa rühma",
+                "newTitle": "Uus rühm",
+                "renameTitle": "Nimeta rühm ümber",
+                "namePlaceholder": "Rühma nimi",
+                "rename": "Nimeta rühm ümber",
+                "delete": "Kustuta rühm",
+                "confirmDelete": "Kustutada rühm „{name}“? Selles olevad serverid säilitatakse, eemaldatakse ainult rühm.",
+                "chipHint": "Filtreerimiseks klõpsa; ümbernimetamiseks või kustutamiseks paremklõpsa"
+            }
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -4370,7 +4382,7 @@
             "alignRight": "Joonda paremale"
         },
         "mountManager": {
-            "title": "Ühenduste haldur",
+            "title": "AeroMount",
             "subtitle": "Ühenda salvestatud serverid kohalike ketastena. Ühendused kasutavad kaasasolevat aeroftp-cli (FUSE Linuxis, WebDAV-sild Windowsis).",
             "addMount": "Lisa ühendus",
             "newMount": "Uus ühendus",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Uuestiühendamine ebaõnnestus. Palun ühenda käsitsi uuesti."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypti kiht",
+            "title": "Rclone Crypti kiht",
             "intro": {
                 "heading": "Mida see kiht teeb",
                 "p1": "Krüpteerib failinimed ja sisu <strong>lennult</strong>, enne kui need serverisse saadetakse, ning dekrüpteerib need allalaadimisel. Server näeb ainult base32-nimedega blobisid. Sina näed algseid nimesid.",
-                "p2": "Kuni kiht on aktiivne: sinu kaugseanss kuvab sisu loetavalt, iga üleslaadimine krüpteeritakse, iga allalaadimine dekrüpteeritakse. Otsi tee-ribalt märki <em>AEROCRYPT</em>.",
-                "p3": "Erinevus AeroVaultist: AeroVault on üks iseseisev fail <code>.aerovault</code> (AeroFTP vorming). AeroCrypt on kiht olemasoleva kaughoidla peal (S3/SFTP/WebDAV/...), mis kasutab avalikku rclone crypti vormingut. Ava sama parooliga, mida kasutaksid <code>rclone</code>'is."
+                "p2": "Kuni kiht on aktiivne: sinu kaugseanss kuvab sisu loetavalt, iga üleslaadimine krüpteeritakse, iga allalaadimine dekrüpteeritakse. Otsi tee-ribalt märki <em>RCLONE CRYPT</em>.",
+                "p3": "Erinevus AeroVaultist: AeroVault on üks iseseisev fail <code>.aerovault</code> (AeroFTP vorming). Rclone Crypt on kiht olemasoleva kaughoidla peal (S3/SFTP/WebDAV/...), mis kasutab avalikku rclone crypti vormingut. Ava sama parooliga, mida kasutaksid <code>rclone</code>'is."
             },
             "openExisting": "Ava olemasolev",
             "createNew": "Loo uus",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive'i privaatsus",
             "privacyUpdated": "OpenDrive'i privaatsus uuendatud"
+        },
+        "manageUsers": {
+            "title": "Halda kasutajaid",
+            "close": "Sulge",
+            "closePanel": "Sulge kasutajate paneel",
+            "accountName": "Konto nimi",
+            "avatar": "Avatar",
+            "add": "Lisa",
+            "accountPasswordOptional": "Konto parool (valikuline)",
+            "noRecovery": "Taastamine puudub",
+            "noRecoveryTitle": "Konto parooli ei saa taastada.",
+            "noRecoveryBody": "Kui unustad selle parooli, muutuvad konto salvestatud serverid, seaded ja ajalugu jäädavalt ligipääsmatuks. Salvesta parool turvalisse kohta enne jätkamist.",
+            "noRecoveryAck": "Saan aru ja võtan selle parooli eest vastutuse.",
+            "adminRequired": "Kontode lisamiseks või ümberkorraldamiseks on vaja administraatori õigusi.",
+            "loading": "Kasutajate laadimine...",
+            "editAvatar": "Muuda avatari",
+            "saveName": "Salvesta nimi",
+            "active": "Aktiivne",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profiili",
+            "settingsCount": "{count} seadet",
+            "never": "Mitte kunagi",
+            "rename": "Nimeta ümber",
+            "changeMyPassword": "Muuda minu parooli",
+            "setPassword": "Määra parool",
+            "resetPassword": "Lähtesta parool",
+            "revokeAdmin": "Tühista administraator",
+            "promoteAdmin": "Ülenda administraatoriks",
+            "cannotDeleteLastAdmin": "Viimast administraatorit ei saa kustutada",
+            "delete": "Kustuta",
+            "currentPassword": "Praegune parool",
+            "newPasswordBlankRemoves": "Uus parool (tühi eemaldab selle)",
+            "newPassword": "Uus parool",
+            "save": "Salvesta",
+            "cancelPasswordEdit": "Tühista parooli muutmine",
+            "closeAvatarEditor": "Sulge avatari redaktor",
+            "accountIdentity": "Konto identiteet",
+            "iconLibrary": "Ikoonide teek",
+            "color": "Värv",
+            "cancel": "Tühista",
+            "errAckRequired": "Palun kinnita, et konto paroole ei saa taastada.",
+            "errCurrentRequired": "Konto praegune parool on kohustuslik.",
+            "errNewRequired": "Konto uus parool on kohustuslik.",
+            "confirmRemovePassword": "Kas eemaldada konto parool kasutajale \"{name}\"?",
+            "confirmDelete": "Kas kustutada konto \"{name}\"?\n\nEemaldatavad krüpteeritud andmed: {profiles} profiili, {settings} seadete ulatust.",
+            "passwordChoiceNote": "Konto parooli määramine on valikuline. See takistab teistel seda seadet kasutavatel inimestel teie kontot avada; teie salvestatud andmed jäävad nii või teisiti krüptituks. Jätke see vahele, kui olete ainus kasutaja või kui usaldate kõiki, kes seda seadet kasutavad."
         }
     }
 }

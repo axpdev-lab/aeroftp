@@ -258,16 +258,25 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
-                if let Err(e) = store.store(&format!("oauth_{}_{}", slug, profile_id), oauth_json) {
+                // MUV-4: dual-write into vault + active user's partition.
+                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                    &store,
+                    &format!("oauth_{}_{}", slug, profile_id),
+                    "oauth",
+                    oauth_json,
+                ) {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
                 }
             }
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                if let Err(e) =
-                    store.store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
-                {
+                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                    &store,
+                    &format!("jottacloud_refresh_{}", profile_id),
+                    "jottacloud_refresh",
+                    jotta_json,
+                ) {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
                 }
             }
@@ -325,7 +334,12 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let cred = s.get("credential").and_then(|v| v.as_str()).unwrap_or("");
                 if !id.is_empty() && !cred.is_empty() {
-                    if let Err(e) = store.store(&format!("server_{}", id), cred) {
+                    // MUV-3: dual-write into vault + active user's partition.
+                    if let Err(e) = crate::user_partitions::store_active_credential_dual(
+                        &store,
+                        &format!("server_{}", id),
+                        cred,
+                    ) {
                         cred_errors.push(format!("{id}: {e}"));
                     }
                 }
@@ -452,7 +466,15 @@ pub async fn export_bridge_config(
                         entry.get("id").and_then(|v| v.as_str()),
                         store.as_ref(),
                     ) {
-                        if let Ok(stored) = st.get(&format!("server_{}", id)) {
+                        // MUV-3: per-user store (active user) with vault fallback.
+                        if let Some(stored) = crate::user_partitions::resolve_active_credential(
+                            st,
+                            &format!("server_{}", id),
+                        )
+                        .ok()
+                        .flatten()
+                        .map(|s| s.to_string())
+                        {
                             // Stored value may be a JSON credential blob
                             // ({"password": "..."}) or a bare string.
                             let pw = serde_json::from_str::<Value>(&stored)

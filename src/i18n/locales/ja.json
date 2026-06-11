@@ -3175,7 +3175,7 @@
             "website": "ウェブサイト",
             "documentation": "ドキュメント",
             "mcp": "MCP Server...",
-            "mountManager": "マウントマネージャー...",
+            "mountManager": "AeroMount...",
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
@@ -3551,7 +3551,7 @@
             "showSystemMenu": "システムメニューバーを表示",
             "aerovaultOverlayActive": "AeroVault コンテナオーバーレイが有効 - クリックして切り離す",
             "aerovaultOverlayInactive": ".aerovault コンテナを仮想リモートパネルとして開きます。rclone-crypt オーバーレイにはリモートフォルダで右クリックを使用してください。",
-            "aerocryptOverlayActive": "AeroCrypt オーバーレイが有効: このパネル内のアップロードとダウンロードは暗号化されます。クリックして切り離します。",
+            "aerocryptOverlayActive": "Rclone Crypt オーバーレイが有効: このパネル内のアップロードとダウンロードは暗号化されます。クリックして切り離します。",
             "aerocryptOverlayInactive": "rclone-crypt リモートを開く（または新規作成する）と透過オーバーレイになります。",
             "aerocryptImportTitle": "Rclone Crypt オーバーレイが検出されました",
             "aerocryptImportDesc": "{name} 用のプロファイルが rclone.conf からインポートされました: オーバーレイを今開きますか？",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ヘルスチェック",
-            "storageVersioning": "ファイルのバージョン: {size}"
+            "storageVersioning": "ファイルのバージョン: {size}",
+            "group": {
+                "newGroup": "新しいグループ",
+                "newGroupEllipsis": "新しいグループ...",
+                "addToGroup": "グループに追加",
+                "newTitle": "新しいグループ",
+                "renameTitle": "グループ名の変更",
+                "namePlaceholder": "グループ名",
+                "rename": "グループ名の変更",
+                "delete": "グループの削除",
+                "confirmDelete": "グループ「{name}」を削除しますか？ 含まれるサーバーは保持され、グループのみが削除されます。",
+                "chipHint": "クリックで絞り込み、右クリックで名前変更または削除"
+            }
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",
@@ -4370,7 +4382,7 @@
             "alignRight": "右揃え"
         },
         "mountManager": {
-            "title": "マウントマネージャー",
+            "title": "AeroMount",
             "subtitle": "保存済みサーバーをローカルドライブとしてマウントします。マウントには同梱の aeroftp-cli を使用します（Linux では FUSE、Windows では WebDAV ブリッジ）。",
             "addMount": "マウントを追加",
             "newMount": "新しいマウント",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "再接続に失敗しました。手動で再接続してください。"
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt オーバーレイ",
+            "title": "Rclone Crypt オーバーレイ",
             "intro": {
                 "heading": "このオーバーレイの機能",
                 "p1": "ファイル名と内容を<strong>オンザフライで</strong>暗号化してからサーバーに送信し、ダウンロード時に復号します。サーバーからは base32 名のブロブのみが見えます。あなたには元の名前が見えます。",
-                "p2": "オーバーレイが有効な間: リモートセッションでは内容が平文で表示され、すべてのアップロードは暗号化され、すべてのダウンロードは復号されます。パスバーの <em>AEROCRYPT</em> バッジを確認してください。",
-                "p3": "AeroVault との違い: AeroVault は単一の自己完結型 <code>.aerovault</code> ファイル（AeroFTP 形式）です。AeroCrypt は既存のリモート（S3/SFTP/WebDAV/...）の上に重ねるレイヤーで、公開されている rclone crypt 形式を使用します。<code>rclone</code> で使用するのと同じパスワードでロック解除します。"
+                "p2": "オーバーレイが有効な間: リモートセッションでは内容が平文で表示され、すべてのアップロードは暗号化され、すべてのダウンロードは復号されます。パスバーの <em>RCLONE CRYPT</em> バッジを確認してください。",
+                "p3": "AeroVault との違い: AeroVault は単一の自己完結型 <code>.aerovault</code> ファイル（AeroFTP 形式）です。Rclone Crypt は既存のリモート（S3/SFTP/WebDAV/...）の上に重ねるレイヤーで、公開されている rclone crypt 形式を使用します。<code>rclone</code> で使用するのと同じパスワードでロック解除します。"
             },
             "openExisting": "既存を開く",
             "createNew": "新規作成",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive プライバシー",
             "privacyUpdated": "OpenDrive のプライバシーを更新しました"
+        },
+        "manageUsers": {
+            "title": "ユーザー管理",
+            "close": "閉じる",
+            "closePanel": "ユーザーパネルを閉じる",
+            "accountName": "アカウント名",
+            "avatar": "アバター",
+            "add": "追加",
+            "accountPasswordOptional": "アカウントパスワード（任意）",
+            "noRecovery": "復元不可",
+            "noRecoveryTitle": "アカウントパスワードは復元できません。",
+            "noRecoveryBody": "このパスワードを忘れると、アカウントに保存されたサーバー、設定、履歴に永久にアクセスできなくなります。続行する前にパスワードを安全な場所に保管してください。",
+            "noRecoveryAck": "このパスワードに関する責任を理解し、承諾します。",
+            "adminRequired": "アカウントの追加や並べ替えには管理者権限が必要です。",
+            "loading": "ユーザーを読み込み中...",
+            "editAvatar": "アバターを編集",
+            "saveName": "名前を保存",
+            "active": "アクティブ",
+            "admin": "ADMIN",
+            "profilesCount": "{count} 件のプロファイル",
+            "settingsCount": "{count} 件の設定",
+            "never": "なし",
+            "rename": "名前を変更",
+            "changeMyPassword": "自分のパスワードを変更",
+            "setPassword": "パスワードを設定",
+            "resetPassword": "パスワードをリセット",
+            "revokeAdmin": "管理者権限を取り消す",
+            "promoteAdmin": "管理者に昇格",
+            "cannotDeleteLastAdmin": "最後の管理者は削除できません",
+            "delete": "削除",
+            "currentPassword": "現在のパスワード",
+            "newPasswordBlankRemoves": "新しいパスワード（空欄で削除）",
+            "newPassword": "新しいパスワード",
+            "save": "保存",
+            "cancelPasswordEdit": "パスワード編集をキャンセル",
+            "closeAvatarEditor": "アバターエディターを閉じる",
+            "accountIdentity": "アカウントの識別情報",
+            "iconLibrary": "アイコンライブラリ",
+            "color": "色",
+            "cancel": "キャンセル",
+            "errAckRequired": "アカウントパスワードは復元できないことを承諾してください。",
+            "errCurrentRequired": "現在のアカウントパスワードが必要です。",
+            "errNewRequired": "新しいアカウントパスワードが必要です。",
+            "confirmRemovePassword": "「{name}」のアカウントパスワードを削除しますか？",
+            "confirmDelete": "アカウント「{name}」を削除しますか？\n\n削除される暗号化データ: {profiles} 件のプロファイル、{settings} 件の設定スコープ。",
+            "passwordChoiceNote": "アカウントパスワードの設定は任意です。このデバイスを使う他の人があなたのアカウントを開くのを防ぎます。保存したデータはどちらの場合でも暗号化されたままです。あなたが唯一の利用者であるか、このデバイスを使う全員を信頼できる場合は、この手順をスキップしてかまいません。"
         }
     }
 }

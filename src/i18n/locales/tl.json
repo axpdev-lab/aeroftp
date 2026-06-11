@@ -3210,7 +3210,7 @@
             "website": "Website",
             "documentation": "Dokumentasyon",
             "mcp": "MCP Server...",
-            "mountManager": "Tagapamahala ng Mount...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Ipakita ang system menu bar",
             "aerovaultOverlayActive": "Aktibo ang AeroVault container overlay - mag-click upang ihiwalay",
             "aerovaultOverlayInactive": "Buksan ang .aerovault container bilang virtual remote panel. Para sa rclone-crypt overlay, gumamit ng right-click sa remote folder.",
-            "aerocryptOverlayActive": "Aktibo ang overlay ng AeroCrypt: ang mga upload at download sa panel na ito ay encrypted. I-click upang i-detach.",
+            "aerocryptOverlayActive": "Aktibo ang overlay ng Rclone Crypt: ang mga upload at download sa panel na ito ay encrypted. I-click upang i-detach.",
             "aerocryptOverlayInactive": "Magbukas ng remote ng rclone-crypt (o gumawa ng bago) bilang transparent na overlay.",
             "aerocryptImportTitle": "Natukoy ang overlay ng Rclone Crypt",
             "aerocryptImportDesc": "Na-import ang profile mula sa rclone.conf para sa {name}: buksan ang overlay ngayon?",
@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Health check",
-            "storageVersioning": "Mga bersyon ng file: {size}"
+            "storageVersioning": "Mga bersyon ng file: {size}",
+            "group": {
+                "newGroup": "Bagong grupo",
+                "newGroupEllipsis": "Bagong grupo...",
+                "addToGroup": "Idagdag sa grupo",
+                "newTitle": "Bagong grupo",
+                "renameTitle": "Palitan ang pangalan ng grupo",
+                "namePlaceholder": "Pangalan ng grupo",
+                "rename": "Palitan ang pangalan ng grupo",
+                "delete": "Tanggalin ang grupo",
+                "confirmDelete": "Tanggalin ang grupong \"{name}\"? Pananatilihin ang mga server dito, ang grupo lang ang aalisin.",
+                "chipHint": "I-click para sa pag-filter; i-right-click para palitan ang pangalan o tanggalin"
+            }
         },
         "gitlab": {
             "projectPath": "Path ng Project",
@@ -4389,7 +4401,7 @@
             "alignRight": "Ihanay sa kanan"
         },
         "mountManager": {
-            "title": "Tagapamahala ng Mount",
+            "title": "AeroMount",
             "subtitle": "I-mount ang mga naka-save na server bilang lokal na drive. Gumagamit ang mga mount ng built-in na aeroftp-cli (FUSE sa Linux, WebDAV bridge sa Windows).",
             "addMount": "Magdagdag ng Mount",
             "newMount": "Bagong mount",
@@ -4427,12 +4439,12 @@
             "reconnectFailed": "Nabigo ang muling pagkonekta. Mangyaring muling kumonekta nang manu-mano."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Overlay ng Rclone Crypt",
+            "title": "Overlay ng Rclone Crypt",
             "intro": {
                 "heading": "Ano ang ginagawa ng overlay na ito",
                 "p1": "Ineencrypt ang mga pangalan ng file at nilalaman <strong>habang ginagawa</strong>, bago ipadala sa server, at dineencrypt kapag dina-download. Ang server ay nakikita lamang ang mga blob na may mga pangalan sa base32. Nakikita mo ang mga orihinal na pangalan.",
-                "p2": "Habang aktibo ang overlay: ang iyong remote session ay nagpapakita ng nilalaman nang maliwanag, ang bawat upload ay encrypted, ang bawat download ay decrypted. Hanapin ang badge ng <em>AEROCRYPT</em> sa path bar.",
-                "p3": "Pagkakaiba sa AeroVault: Ang AeroVault ay isang nag-iisang self-contained na file na <code>.aerovault</code> (format ng AeroFTP). Ang AeroCrypt ay isang layer sa ibabaw ng umiiral nang remote (S3/SFTP/WebDAV/...) na gumagamit ng pampublikong format ng rclone crypt. I-unlock gamit ang parehong password na gagamitin mo sa <code>rclone</code>."
+                "p2": "Habang aktibo ang overlay: ang iyong remote session ay nagpapakita ng nilalaman nang maliwanag, ang bawat upload ay encrypted, ang bawat download ay decrypted. Hanapin ang badge ng <em>RCLONE CRYPT</em> sa path bar.",
+                "p3": "Pagkakaiba sa AeroVault: Ang AeroVault ay isang nag-iisang self-contained na file na <code>.aerovault</code> (format ng AeroFTP). Ang Rclone Crypt ay isang layer sa ibabaw ng umiiral nang remote (S3/SFTP/WebDAV/...) na gumagamit ng pampublikong format ng rclone crypt. I-unlock gamit ang parehong password na gagamitin mo sa <code>rclone</code>."
             },
             "openExisting": "Buksan ang umiiral",
             "createNew": "Gumawa ng bago",
@@ -4701,6 +4713,52 @@
         "opendrive": {
             "privacyTitle": "Privacy ng OpenDrive",
             "privacyUpdated": "Na-update ang privacy ng OpenDrive"
+        },
+        "manageUsers": {
+            "title": "Pamahalaan ang mga User",
+            "close": "Isara",
+            "closePanel": "Isara ang panel ng mga user",
+            "accountName": "Pangalan ng account",
+            "avatar": "Avatar",
+            "add": "Idagdag",
+            "accountPasswordOptional": "Password ng account (opsyonal)",
+            "noRecovery": "Walang pagbawi",
+            "noRecoveryTitle": "Hindi mababawi ang password ng account.",
+            "noRecoveryBody": "Kung makalimutan mo ang password na ito, ang mga naka-save na server, setting, at kasaysayan ng account ay permanenteng hindi maa-access. Itago ang password sa ligtas na lugar bago magpatuloy.",
+            "noRecoveryAck": "Naiintindihan ko at tinatanggap ko ang responsibilidad para sa password na ito.",
+            "adminRequired": "Kailangan ng access ng admin para magdagdag o mag-ayos ng mga account.",
+            "loading": "Nilo-load ang mga user...",
+            "editAvatar": "I-edit ang avatar",
+            "saveName": "I-save ang pangalan",
+            "active": "Aktibo",
+            "admin": "ADMIN",
+            "profilesCount": "{count} na profile",
+            "settingsCount": "{count} na setting",
+            "never": "Hindi kailanman",
+            "rename": "Palitan ang pangalan",
+            "changeMyPassword": "Palitan ang aking password",
+            "setPassword": "Itakda ang password",
+            "resetPassword": "I-reset ang password",
+            "revokeAdmin": "Bawiin ang admin",
+            "promoteAdmin": "I-promote bilang admin",
+            "cannotDeleteLastAdmin": "Hindi maaaring tanggalin ang huling admin",
+            "delete": "Tanggalin",
+            "currentPassword": "Kasalukuyang password",
+            "newPasswordBlankRemoves": "Bagong password (blangko para tanggalin)",
+            "newPassword": "Bagong password",
+            "save": "I-save",
+            "cancelPasswordEdit": "Kanselahin ang pag-edit ng password",
+            "closeAvatarEditor": "Isara ang editor ng avatar",
+            "accountIdentity": "Pagkakakilanlan ng account",
+            "iconLibrary": "Aklatan ng icon",
+            "color": "Kulay",
+            "cancel": "Kanselahin",
+            "errAckRequired": "Mangyaring kilalanin na hindi mababawi ang mga password ng account.",
+            "errCurrentRequired": "Kinakailangan ang kasalukuyang password ng account.",
+            "errNewRequired": "Kinakailangan ang bagong password ng account.",
+            "confirmRemovePassword": "Tanggalin ang password ng account para sa \"{name}\"?",
+            "confirmDelete": "Tanggalin ang account na \"{name}\"?\n\nMga naka-encrypt na payload na tatanggalin: {profiles} na profile, {settings} na saklaw ng setting.",
+            "passwordChoiceNote": "Opsyonal ang pagtatakda ng password ng account. Pinipigilan nito ang ibang taong gumagamit ng device na ito na buksan ang iyong account; mananatiling naka-encrypt ang iyong naka-save na data sa alinmang paraan. Laktawan ito kung ikaw lang ang gumagamit dito, o kung pinagkakatiwalaan mo ang lahat ng gumagamit ng device na ito."
         }
     }
 }

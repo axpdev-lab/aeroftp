@@ -3210,7 +3210,7 @@
             "website": "เว็บไซต์",
             "documentation": "เอกสารประกอบ",
             "mcp": "MCP Server...",
-            "mountManager": "ตัวจัดการการเมาท์...",
+            "mountManager": "AeroMount...",
             "activityLog": "บันทึกกิจกรรม",
             "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "แสดงแถบเมนูระบบ",
             "aerovaultOverlayActive": "การซ้อนทับคอนเทนเนอร์ AeroVault ใช้งานอยู่ - คลิกเพื่อยกเลิก",
             "aerovaultOverlayInactive": "เปิดคอนเทนเนอร์ .aerovault เป็นแผงรีโมตเสมือน สำหรับการซ้อนทับ rclone-crypt ให้ใช้คลิกขวาบนโฟลเดอร์รีโมต",
-            "aerocryptOverlayActive": "เลเยอร์ AeroCrypt ทำงานอยู่: การอัปโหลดและดาวน์โหลดในแผงนี้ถูกเข้ารหัส คลิกเพื่อถอด",
+            "aerocryptOverlayActive": "เลเยอร์ Rclone Crypt ทำงานอยู่: การอัปโหลดและดาวน์โหลดในแผงนี้ถูกเข้ารหัส คลิกเพื่อถอด",
             "aerocryptOverlayInactive": "เปิดรีโมต rclone-crypt (หรือสร้างใหม่) เป็นเลเยอร์โปร่งใส",
             "aerocryptImportTitle": "ตรวจพบเลเยอร์ Rclone Crypt",
             "aerocryptImportDesc": "นำเข้าโปรไฟล์จาก rclone.conf สำหรับ {name}: เปิดเลเยอร์ตอนนี้หรือไม่?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "การตรวจสอบสถานะ",
-            "storageVersioning": "เวอร์ชันไฟล์: {size}"
+            "storageVersioning": "เวอร์ชันไฟล์: {size}",
+            "group": {
+                "newGroup": "กลุ่มใหม่",
+                "newGroupEllipsis": "กลุ่มใหม่...",
+                "addToGroup": "เพิ่มไปยังกลุ่ม",
+                "newTitle": "กลุ่มใหม่",
+                "renameTitle": "เปลี่ยนชื่อกลุ่ม",
+                "namePlaceholder": "ชื่อกลุ่ม",
+                "rename": "เปลี่ยนชื่อกลุ่ม",
+                "delete": "ลบกลุ่ม",
+                "confirmDelete": "ลบกลุ่ม \"{name}\" หรือไม่? เซิร์ฟเวอร์ในกลุ่มจะถูกเก็บไว้ ลบเฉพาะกลุ่มเท่านั้น",
+                "chipHint": "คลิกเพื่อกรอง คลิกขวาเพื่อเปลี่ยนชื่อหรือลบ"
+            }
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",
@@ -4370,7 +4382,7 @@
             "alignRight": "จัดชิดขวา"
         },
         "mountManager": {
-            "title": "ตัวจัดการการเมาท์",
+            "title": "AeroMount",
             "subtitle": "เมาท์เซิร์ฟเวอร์ที่บันทึกไว้เป็นไดรฟ์ภายในเครื่อง การเมาท์ใช้ aeroftp-cli ที่มาพร้อมกัน (FUSE บน Linux, WebDAV bridge บน Windows)",
             "addMount": "เพิ่มการเมาท์",
             "newMount": "การเมาท์ใหม่",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "การเชื่อมต่อใหม่ล้มเหลว โปรดเชื่อมต่อใหม่ด้วยตนเอง"
         },
         "aerocrypt": {
-            "title": "AeroCrypt · เลเยอร์ Rclone Crypt",
+            "title": "เลเยอร์ Rclone Crypt",
             "intro": {
                 "heading": "เลเยอร์นี้ทำอะไร",
                 "p1": "เข้ารหัสชื่อไฟล์และเนื้อหา<strong>แบบทันที</strong>ก่อนส่งไปยังเซิร์ฟเวอร์ และถอดรหัสเมื่อคุณดาวน์โหลด เซิร์ฟเวอร์จะเห็นเฉพาะ blob ที่มีชื่อแบบ base32 คุณจะเห็นชื่อต้นฉบับ",
-                "p2": "ขณะที่เลเยอร์ทำงาน: เซสชันรีโมตของคุณจะแสดงเนื้อหาแบบเปิดเผย ทุกการอัปโหลดจะถูกเข้ารหัส ทุกการดาวน์โหลดจะถูกถอดรหัส ให้มองหาป้าย <em>AEROCRYPT</em> ในแถบเส้นทาง",
-                "p3": "ความแตกต่างจาก AeroVault: AeroVault เป็นไฟล์ <code>.aerovault</code> เดี่ยวแบบสมบูรณ์ในตัว (รูปแบบ AeroFTP) ส่วน AeroCrypt เป็นเลเยอร์ที่อยู่บนรีโมตที่มีอยู่ (S3/SFTP/WebDAV/...) โดยใช้รูปแบบสาธารณะ rclone crypt ปลดล็อกด้วยรหัสผ่านเดียวกับที่คุณใช้ใน <code>rclone</code>"
+                "p2": "ขณะที่เลเยอร์ทำงาน: เซสชันรีโมตของคุณจะแสดงเนื้อหาแบบเปิดเผย ทุกการอัปโหลดจะถูกเข้ารหัส ทุกการดาวน์โหลดจะถูกถอดรหัส ให้มองหาป้าย <em>RCLONE CRYPT</em> ในแถบเส้นทาง",
+                "p3": "ความแตกต่างจาก AeroVault: AeroVault เป็นไฟล์ <code>.aerovault</code> เดี่ยวแบบสมบูรณ์ในตัว (รูปแบบ AeroFTP) ส่วน Rclone Crypt เป็นเลเยอร์ที่อยู่บนรีโมตที่มีอยู่ (S3/SFTP/WebDAV/...) โดยใช้รูปแบบสาธารณะ rclone crypt ปลดล็อกด้วยรหัสผ่านเดียวกับที่คุณใช้ใน <code>rclone</code>"
             },
             "openExisting": "เปิดที่มีอยู่",
             "createNew": "สร้างใหม่",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "ความเป็นส่วนตัว OpenDrive",
             "privacyUpdated": "อัปเดตความเป็นส่วนตัว OpenDrive แล้ว"
+        },
+        "manageUsers": {
+            "title": "จัดการผู้ใช้",
+            "close": "ปิด",
+            "closePanel": "ปิดแผงผู้ใช้",
+            "accountName": "ชื่อบัญชี",
+            "avatar": "อวาตาร์",
+            "add": "เพิ่ม",
+            "accountPasswordOptional": "รหัสผ่านบัญชี (ไม่บังคับ)",
+            "noRecovery": "กู้คืนไม่ได้",
+            "noRecoveryTitle": "ไม่สามารถกู้คืนรหัสผ่านบัญชีได้",
+            "noRecoveryBody": "หากคุณลืมรหัสผ่านนี้ เซิร์ฟเวอร์ที่บันทึกไว้ การตั้งค่า และประวัติของบัญชีจะไม่สามารถเข้าถึงได้อย่างถาวร โปรดเก็บรหัสผ่านไว้ในที่ปลอดภัยก่อนดำเนินการต่อ",
+            "noRecoveryAck": "ฉันเข้าใจและยอมรับความรับผิดชอบสำหรับรหัสผ่านนี้",
+            "adminRequired": "ต้องมีสิทธิ์ผู้ดูแลระบบเพื่อเพิ่มหรือจัดเรียงบัญชีใหม่",
+            "loading": "กำลังโหลดผู้ใช้...",
+            "editAvatar": "แก้ไขอวาตาร์",
+            "saveName": "บันทึกชื่อ",
+            "active": "ใช้งานอยู่",
+            "admin": "ADMIN",
+            "profilesCount": "{count} โปรไฟล์",
+            "settingsCount": "{count} การตั้งค่า",
+            "never": "ไม่เคย",
+            "rename": "เปลี่ยนชื่อ",
+            "changeMyPassword": "เปลี่ยนรหัสผ่านของฉัน",
+            "setPassword": "ตั้งรหัสผ่าน",
+            "resetPassword": "รีเซ็ตรหัสผ่าน",
+            "revokeAdmin": "เพิกถอนสิทธิ์ผู้ดูแลระบบ",
+            "promoteAdmin": "เลื่อนเป็นผู้ดูแลระบบ",
+            "cannotDeleteLastAdmin": "ไม่สามารถลบผู้ดูแลระบบคนสุดท้ายได้",
+            "delete": "ลบ",
+            "currentPassword": "รหัสผ่านปัจจุบัน",
+            "newPasswordBlankRemoves": "รหัสผ่านใหม่ (เว้นว่างเพื่อลบ)",
+            "newPassword": "รหัสผ่านใหม่",
+            "save": "บันทึก",
+            "cancelPasswordEdit": "ยกเลิกการแก้ไขรหัสผ่าน",
+            "closeAvatarEditor": "ปิดตัวแก้ไขอวาตาร์",
+            "accountIdentity": "ข้อมูลระบุตัวตนบัญชี",
+            "iconLibrary": "คลังไอคอน",
+            "color": "สี",
+            "cancel": "ยกเลิก",
+            "errAckRequired": "โปรดยืนยันว่ารหัสผ่านบัญชีไม่สามารถกู้คืนได้",
+            "errCurrentRequired": "ต้องระบุรหัสผ่านบัญชีปัจจุบัน",
+            "errNewRequired": "ต้องระบุรหัสผ่านบัญชีใหม่",
+            "confirmRemovePassword": "ลบรหัสผ่านบัญชีสำหรับ \"{name}\" หรือไม่?",
+            "confirmDelete": "ลบบัญชี \"{name}\" หรือไม่?\n\nข้อมูลที่เข้ารหัสที่จะลบ: {profiles} โปรไฟล์, {settings} ขอบเขตการตั้งค่า",
+            "passwordChoiceNote": "การตั้งรหัสผ่านบัญชีเป็นทางเลือก ช่วยป้องกันไม่ให้คนอื่นที่ใช้อุปกรณ์นี้เปิดบัญชีของคุณได้ ข้อมูลที่คุณบันทึกไว้ยังคงถูกเข้ารหัสอยู่ดี ข้ามขั้นตอนนี้ได้หากคุณเป็นผู้ใช้คนเดียวที่นี่ หรือคุณไว้ใจทุกคนที่ใช้อุปกรณ์นี้"
         }
     }
 }

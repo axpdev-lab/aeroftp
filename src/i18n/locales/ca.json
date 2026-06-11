@@ -3210,7 +3210,7 @@
             "website": "Lloc web",
             "documentation": "Documentació",
             "mcp": "MCP Server...",
-            "mountManager": "Gestor de muntatges...",
+            "mountManager": "AeroMount...",
             "activityLog": "Registre d'Activitat",
             "detailedCards": "Targetes de servidor detallades",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Mostrar barra de menú del sistema",
             "aerovaultOverlayActive": "Superposició de contenidor AeroVault activa - feu clic per desconnectar",
             "aerovaultOverlayInactive": "Obre un contenidor .aerovault com a panell remot virtual. Per a la superposició rclone-crypt, feu clic dret en una carpeta remota.",
-            "aerocryptOverlayActive": "Capa AeroCrypt activa: les pujades i descàrregues d'aquest panell es xifren. Fes clic per separar.",
+            "aerocryptOverlayActive": "Capa Rclone Crypt activa: les pujades i descàrregues d'aquest panell es xifren. Fes clic per separar.",
             "aerocryptOverlayInactive": "Obre un remot rclone-crypt (o crea'n un de nou) com a capa transparent.",
             "aerocryptImportTitle": "Capa Rclone Crypt detectada",
             "aerocryptImportDesc": "Perfil importat des de rclone.conf per a {name}: vols obrir la capa ara?",
@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Comprovació de disponibilitat",
-            "storageVersioning": "Versions del fitxer: {size}"
+            "storageVersioning": "Versions del fitxer: {size}",
+            "group": {
+                "newGroup": "Grup nou",
+                "newGroupEllipsis": "Grup nou...",
+                "addToGroup": "Afegeix al grup",
+                "newTitle": "Grup nou",
+                "renameTitle": "Canvia el nom del grup",
+                "namePlaceholder": "Nom del grup",
+                "rename": "Canvia el nom del grup",
+                "delete": "Elimina el grup",
+                "confirmDelete": "Voleu eliminar el grup «{name}»? Els servidors que conté es conserven, només s'elimina el grup.",
+                "chipHint": "Feu clic per filtrar; clic dret per canviar el nom o eliminar"
+            }
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",
@@ -4389,7 +4401,7 @@
             "alignRight": "Alinea a la dreta"
         },
         "mountManager": {
-            "title": "Gestor de muntatges",
+            "title": "AeroMount",
             "subtitle": "Munta servidors desats com a unitats locals. Els muntatges utilitzen aeroftp-cli inclòs (FUSE a Linux, pont WebDAV a Windows).",
             "addMount": "Afegeix muntatge",
             "newMount": "Nou muntatge",
@@ -4427,12 +4439,12 @@
             "reconnectFailed": "Ha fallat la reconnexió. Reconnecta manualment."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Capa Rclone Crypt",
+            "title": "Capa Rclone Crypt",
             "intro": {
                 "heading": "Què fa aquesta capa",
                 "p1": "Xifra els noms i continguts dels fitxers <strong>al vol</strong>, abans d'enviar-los al servidor, i els desxifra quan els descarregues. El servidor només veu blobs amb noms en base32. Tu veus els noms originals.",
-                "p2": "Mentre la capa està activa: la sessió remota mostra els continguts en clar, cada pujada es xifra, cada descàrrega es desxifra. Cerca la insígnia <em>AEROCRYPT</em> a la barra de ruta.",
-                "p3": "Diferència respecte a AeroVault: AeroVault és un únic fitxer autocontingut <code>.aerovault</code> (format AeroFTP). AeroCrypt és una capa sobre un remot existent (S3/SFTP/WebDAV/...) utilitzant el format públic rclone crypt. Desbloqueja amb la mateixa contrasenya que faries servir a <code>rclone</code>."
+                "p2": "Mentre la capa està activa: la sessió remota mostra els continguts en clar, cada pujada es xifra, cada descàrrega es desxifra. Cerca la insígnia <em>RCLONE CRYPT</em> a la barra de ruta.",
+                "p3": "Diferència respecte a AeroVault: AeroVault és un únic fitxer autocontingut <code>.aerovault</code> (format AeroFTP). Rclone Crypt és una capa sobre un remot existent (S3/SFTP/WebDAV/...) utilitzant el format públic rclone crypt. Desbloqueja amb la mateixa contrasenya que faries servir a <code>rclone</code>."
             },
             "openExisting": "Obre existent",
             "createNew": "Crea nou",
@@ -4701,6 +4713,52 @@
         "opendrive": {
             "privacyTitle": "Privacitat d'OpenDrive",
             "privacyUpdated": "Privacitat d'OpenDrive actualitzada"
+        },
+        "manageUsers": {
+            "title": "Gestió d'usuaris",
+            "close": "Tanca",
+            "closePanel": "Tanca el tauler d'usuaris",
+            "accountName": "Nom del compte",
+            "avatar": "Avatar",
+            "add": "Afegeix",
+            "accountPasswordOptional": "Contrasenya del compte (opcional)",
+            "noRecovery": "Sense recuperació",
+            "noRecoveryTitle": "La contrasenya del compte no es pot recuperar.",
+            "noRecoveryBody": "Si oblideu aquesta contrasenya, els servidors desats, la configuració i l'historial del compte seran permanentment inaccessibles. Deseu la contrasenya en un lloc segur abans de continuar.",
+            "noRecoveryAck": "Ho entenc i accepto la responsabilitat d'aquesta contrasenya.",
+            "adminRequired": "Cal accés d'administrador per afegir o reordenar comptes.",
+            "loading": "S'estan carregant els usuaris...",
+            "editAvatar": "Edita l'avatar",
+            "saveName": "Desa el nom",
+            "active": "Actiu",
+            "admin": "ADMIN",
+            "profilesCount": "{count} perfils",
+            "settingsCount": "{count} configuracions",
+            "never": "Mai",
+            "rename": "Canvia el nom",
+            "changeMyPassword": "Canvia la meva contrasenya",
+            "setPassword": "Defineix la contrasenya",
+            "resetPassword": "Restableix la contrasenya",
+            "revokeAdmin": "Revoca l'administrador",
+            "promoteAdmin": "Promou a administrador",
+            "cannotDeleteLastAdmin": "No es pot eliminar l'últim administrador",
+            "delete": "Elimina",
+            "currentPassword": "Contrasenya actual",
+            "newPasswordBlankRemoves": "Contrasenya nova (en blanc l'elimina)",
+            "newPassword": "Contrasenya nova",
+            "save": "Desa",
+            "cancelPasswordEdit": "Cancel·la l'edició de la contrasenya",
+            "closeAvatarEditor": "Tanca l'editor d'avatars",
+            "accountIdentity": "Identitat del compte",
+            "iconLibrary": "Biblioteca d'icones",
+            "color": "Color",
+            "cancel": "Cancel·la",
+            "errAckRequired": "Confirmeu que les contrasenyes dels comptes no es poden recuperar.",
+            "errCurrentRequired": "La contrasenya actual del compte és obligatòria.",
+            "errNewRequired": "La nova contrasenya del compte és obligatòria.",
+            "confirmRemovePassword": "Voleu eliminar la contrasenya del compte de \"{name}\"?",
+            "confirmDelete": "Voleu eliminar el compte \"{name}\"?\n\nDades xifrades a eliminar: {profiles} perfils, {settings} àmbits de configuració.",
+            "passwordChoiceNote": "Establir una contrasenya del compte és opcional. Evita que altres persones que utilitzen aquest dispositiu obrin el vostre compte; les vostres dades desades es mantenen xifrades en qualsevol cas. Ometeu-ho si sou l'única persona que l'utilitza, o si confieu en tothom qui utilitza aquest dispositiu."
         }
     }
 }

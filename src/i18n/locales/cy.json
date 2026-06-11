@@ -3210,7 +3210,7 @@
             "website": "Gwefan",
             "documentation": "Dogfennaeth",
             "mcp": "MCP Server...",
-            "mountManager": "Rheolwr Mowntio...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log Gweithgaredd",
             "detailedCards": "Cardiau gweinydd manwl",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Dangos bar dewislen y system",
             "aerovaultOverlayActive": "Troshaen cynhwysydd AeroVault yn weithredol - cliciwch i ddatgysylltu",
             "aerovaultOverlayInactive": "Agorwch gynhwysydd .aerovault fel panel pell rhithwir. Ar gyfer troshaen rclone-crypt, defnyddiwch glic dde ar ffolder pell.",
-            "aerocryptOverlayActive": "Haen AeroCrypt yn weithredol: mae lanlwythiadau a lawrlwythiadau yn y panel hwn wedi'u hamgryptio. Cliciwch i ddatgysylltu.",
+            "aerocryptOverlayActive": "Haen Rclone Crypt yn weithredol: mae lanlwythiadau a lawrlwythiadau yn y panel hwn wedi'u hamgryptio. Cliciwch i ddatgysylltu.",
             "aerocryptOverlayInactive": "Agorwch anghysbell rclone-crypt (neu creu un newydd) fel haen dryloyw.",
             "aerocryptImportTitle": "Canfuwyd haen Rclone Crypt",
             "aerocryptImportDesc": "Proffil wedi'i fewnforio o rclone.conf ar gyfer {name}: agor yr haen nawr?",
@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Gwiriad iechyd",
-            "storageVersioning": "Fersiynau ffeil: {size}"
+            "storageVersioning": "Fersiynau ffeil: {size}",
+            "group": {
+                "newGroup": "Grŵp newydd",
+                "newGroupEllipsis": "Grŵp newydd...",
+                "addToGroup": "Ychwanegu at grŵp",
+                "newTitle": "Grŵp newydd",
+                "renameTitle": "Ailenwi grŵp",
+                "namePlaceholder": "Enw'r grŵp",
+                "rename": "Ailenwi grŵp",
+                "delete": "Dileu grŵp",
+                "confirmDelete": "Dileu'r grŵp \"{name}\"? Cedwir y gweinyddwyr ynddo, dim ond y grŵp a gaiff ei dynnu.",
+                "chipHint": "Cliciwch i hidlo; de-gliciwch i ailenwi neu ddileu"
+            }
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",
@@ -4389,7 +4401,7 @@
             "alignRight": "Alinio i'r dde"
         },
         "mountManager": {
-            "title": "Rheolwr Mowntio",
+            "title": "AeroMount",
             "subtitle": "Mowntiwch weinyddion wedi'u cadw fel gyriannau lleol. Mae mowntiau'n defnyddio aeroftp-cli gynwysedig (FUSE ar Linux, pont WebDAV ar Windows).",
             "addMount": "Ychwanegu Mownt",
             "newMount": "Mownt newydd",
@@ -4427,12 +4439,12 @@
             "reconnectFailed": "Methodd yr ailgysylltiad. Ailgysylltwch â llaw."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Haen Rclone Crypt",
+            "title": "Haen Rclone Crypt",
             "intro": {
                 "heading": "Beth mae'r haen hon yn ei wneud",
                 "p1": "Yn amgryptio enwau a chynnwys ffeiliau <strong>wrth fynd</strong>, cyn eu hanfon i'r gweinydd, ac yn eu dadgryptio pan fyddwch yn eu lawrlwytho. Dim ond blobiau ag enwau base32 mae'r gweinydd yn eu gweld. Rydych chi'n gweld yr enwau gwreiddiol.",
-                "p2": "Tra bo'r haen yn weithredol: mae eich sesiwn anghysbell yn dangos cynnwys yn glir, mae pob lanlwytho wedi'i amgryptio, mae pob lawrlwythiad wedi'i ddadgryptio. Chwiliwch am y bathodyn <em>AEROCRYPT</em> yn y bar llwybr.",
-                "p3": "Gwahaniaeth o'i gymharu ag AeroVault: mae AeroVault yn ffeil <code>.aerovault</code> hunangynhwysol unigol (fformat AeroFTP). Mae AeroCrypt yn haen ar ben anghysbell sy'n bodoli (S3/SFTP/WebDAV/...) gan ddefnyddio'r fformat rclone crypt cyhoeddus. Datgloiwch gyda'r un cyfrinair y byddech yn ei ddefnyddio yn <code>rclone</code>."
+                "p2": "Tra bo'r haen yn weithredol: mae eich sesiwn anghysbell yn dangos cynnwys yn glir, mae pob lanlwytho wedi'i amgryptio, mae pob lawrlwythiad wedi'i ddadgryptio. Chwiliwch am y bathodyn <em>RCLONE CRYPT</em> yn y bar llwybr.",
+                "p3": "Gwahaniaeth o'i gymharu ag AeroVault: mae AeroVault yn ffeil <code>.aerovault</code> hunangynhwysol unigol (fformat AeroFTP). Mae Rclone Crypt yn haen ar ben anghysbell sy'n bodoli (S3/SFTP/WebDAV/...) gan ddefnyddio'r fformat rclone crypt cyhoeddus. Datgloiwch gyda'r un cyfrinair y byddech yn ei ddefnyddio yn <code>rclone</code>."
             },
             "openExisting": "Agor un sy'n bodoli",
             "createNew": "Creu un newydd",
@@ -4701,6 +4713,52 @@
         "opendrive": {
             "privacyTitle": "Preifatrwydd OpenDrive",
             "privacyUpdated": "Preifatrwydd OpenDrive wedi'i ddiweddaru"
+        },
+        "manageUsers": {
+            "title": "Rheoli Defnyddwyr",
+            "close": "Cau",
+            "closePanel": "Cau'r panel defnyddwyr",
+            "accountName": "Enw'r cyfrif",
+            "avatar": "Afatar",
+            "add": "Ychwanegu",
+            "accountPasswordOptional": "Cyfrinair y cyfrif (dewisol)",
+            "noRecovery": "Dim adfer",
+            "noRecoveryTitle": "Ni ellir adfer cyfrinair y cyfrif.",
+            "noRecoveryBody": "Os anghofiwch y cyfrinair hwn, bydd gweinyddwyr wedi'u cadw, gosodiadau a hanes y cyfrif yn anhygyrch yn barhaol. Cadwch y cyfrinair mewn lle diogel cyn parhau.",
+            "noRecoveryAck": "Rwy'n deall ac yn derbyn y cyfrifoldeb am y cyfrinair hwn.",
+            "adminRequired": "Mae angen mynediad gweinyddwr i ychwanegu neu aildrefnu cyfrifon.",
+            "loading": "Yn llwytho defnyddwyr...",
+            "editAvatar": "Golygu afatar",
+            "saveName": "Cadw'r enw",
+            "active": "Gweithredol",
+            "admin": "ADMIN",
+            "profilesCount": "{count} proffil",
+            "settingsCount": "{count} gosodiad",
+            "never": "Byth",
+            "rename": "Ailenwi",
+            "changeMyPassword": "Newid fy nghyfrinair",
+            "setPassword": "Gosod cyfrinair",
+            "resetPassword": "Ailosod cyfrinair",
+            "revokeAdmin": "Dirymu gweinyddwr",
+            "promoteAdmin": "Dyrchafu'n weinyddwr",
+            "cannotDeleteLastAdmin": "Ni ellir dileu'r gweinyddwr olaf",
+            "delete": "Dileu",
+            "currentPassword": "Cyfrinair presennol",
+            "newPasswordBlankRemoves": "Cyfrinair newydd (mae gwag yn ei dynnu)",
+            "newPassword": "Cyfrinair newydd",
+            "save": "Cadw",
+            "cancelPasswordEdit": "Canslo golygu'r cyfrinair",
+            "closeAvatarEditor": "Cau'r golygydd afatar",
+            "accountIdentity": "Hunaniaeth y cyfrif",
+            "iconLibrary": "Llyfrgell eiconau",
+            "color": "Lliw",
+            "cancel": "Canslo",
+            "errAckRequired": "Cadarnhewch na ellir adfer cyfrineiriau cyfrifon.",
+            "errCurrentRequired": "Mae angen cyfrinair presennol y cyfrif.",
+            "errNewRequired": "Mae angen cyfrinair newydd y cyfrif.",
+            "confirmRemovePassword": "Tynnu cyfrinair y cyfrif ar gyfer \"{name}\"?",
+            "confirmDelete": "Dileu'r cyfrif \"{name}\"?\n\nLlwythi wedi'u hamgryptio i'w tynnu: {profiles} proffil, {settings} cwmpas gosodiadau.",
+            "passwordChoiceNote": "Mae gosod cyfrinair cyfrif yn ddewisol. Mae'n atal pobl eraill sy'n defnyddio'r ddyfais hon rhag agor eich cyfrif; mae eich data sydd wedi'i gadw yn aros wedi'i amgryptio y naill ffordd neu'r llall. Hepgorwch ef os mai chi yw'r unig un yma, neu os ydych yn ymddiried yn bawb sy'n defnyddio'r ddyfais hon."
         }
     }
 }

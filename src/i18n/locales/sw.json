@@ -3210,7 +3210,7 @@
             "website": "Tovuti",
             "documentation": "Nyaraka",
             "mcp": "MCP Server...",
-            "mountManager": "Kidhibiti cha Kupachika...",
+            "mountManager": "AeroMount...",
             "activityLog": "Kumbukumbu ya Shughuli",
             "detailedCards": "Kadi za seva za kina",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Onyesha upau wa menyu ya mfumo",
             "aerovaultOverlayActive": "Uwekeleaji wa kontena la AeroVault unaendelea - bofya kutenganisha",
             "aerovaultOverlayInactive": "Fungua kontena la .aerovault kama paneli pepe ya mbali. Kwa uwekeleaji wa rclone-crypt tumia mbofyo wa kulia kwenye folda ya mbali.",
-            "aerocryptOverlayActive": "Tabaka ya AeroCrypt iko hai: upakiaji na upakuaji katika paneli hii vimesimbwa. Bofya ili kutenganisha.",
+            "aerocryptOverlayActive": "Tabaka ya Rclone Crypt iko hai: upakiaji na upakuaji katika paneli hii vimesimbwa. Bofya ili kutenganisha.",
             "aerocryptOverlayInactive": "Fungua hifadhi ya mbali ya rclone-crypt (au unda mpya) kama tabaka inayoonekana wazi.",
             "aerocryptImportTitle": "Tabaka ya Rclone Crypt imegunduliwa",
             "aerocryptImportDesc": "Wasifu umeingizwa kutoka rclone.conf kwa {name}: fungua tabaka sasa?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Ukaguzi wa afya",
-            "storageVersioning": "Matoleo ya faili: {size}"
+            "storageVersioning": "Matoleo ya faili: {size}",
+            "group": {
+                "newGroup": "Kikundi kipya",
+                "newGroupEllipsis": "Kikundi kipya...",
+                "addToGroup": "Ongeza kwenye kikundi",
+                "newTitle": "Kikundi kipya",
+                "renameTitle": "Badilisha jina la kikundi",
+                "namePlaceholder": "Jina la kikundi",
+                "rename": "Badilisha jina la kikundi",
+                "delete": "Futa kikundi",
+                "confirmDelete": "Futa kikundi \"{name}\"? Seva zilizomo zinahifadhiwa, kikundi pekee ndicho kinaondolewa.",
+                "chipHint": "Bofya ili kuchuja; bofya kulia ili kubadilisha jina au kufuta"
+            }
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
@@ -4370,7 +4382,7 @@
             "alignRight": "Pangilia kulia"
         },
         "mountManager": {
-            "title": "Kidhibiti cha Kupachika",
+            "title": "AeroMount",
             "subtitle": "Pachika seva zilizohifadhiwa kama hifadhi za ndani. Upachikaji unatumia aeroftp-cli iliyojengwa ndani (FUSE kwenye Linux, daraja la WebDAV kwenye Windows).",
             "addMount": "Ongeza upachikaji",
             "newMount": "Upachikaji mpya",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Kuunganisha tena kumeshindwa. Tafadhali unganisha tena mwenyewe."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Tabaka ya Rclone Crypt",
+            "title": "Tabaka ya Rclone Crypt",
             "intro": {
                 "heading": "Tabaka hii hufanya nini",
                 "p1": "Husimba majina ya faili na maudhui <strong>papo hapo</strong>, kabla ya kuyatuma kwenye seva, na kuyafichua wakati wa kupakua. Seva inaona tu vipande vyenye majina ya base32. Wewe unaona majina halisi.",
-                "p2": "Wakati tabaka iko hai: kikao chako cha mbali huonyesha maudhui kwa wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>AEROCRYPT</em> kwenye upau wa njia.",
-                "p3": "Tofauti dhidi ya AeroVault: AeroVault ni faili moja inayojitegemea <code>.aerovault</code> (umbizo la AeroFTP). AeroCrypt ni tabaka juu ya hifadhi ya mbali iliyopo (S3/SFTP/WebDAV/...) inayotumia umbizo la umma la rclone crypt. Fungua kwa nenosiri lile lile ungelilitumia kwenye <code>rclone</code>."
+                "p2": "Wakati tabaka iko hai: kikao chako cha mbali huonyesha maudhui kwa wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>RCLONE CRYPT</em> kwenye upau wa njia.",
+                "p3": "Tofauti dhidi ya AeroVault: AeroVault ni faili moja inayojitegemea <code>.aerovault</code> (umbizo la AeroFTP). Rclone Crypt ni tabaka juu ya hifadhi ya mbali iliyopo (S3/SFTP/WebDAV/...) inayotumia umbizo la umma la rclone crypt. Fungua kwa nenosiri lile lile ungelilitumia kwenye <code>rclone</code>."
             },
             "openExisting": "Fungua iliyopo",
             "createNew": "Unda mpya",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "Faragha ya OpenDrive",
             "privacyUpdated": "Faragha ya OpenDrive imesasishwa"
+        },
+        "manageUsers": {
+            "title": "Dhibiti watumiaji",
+            "close": "Funga",
+            "closePanel": "Funga paneli ya watumiaji",
+            "accountName": "Jina la akaunti",
+            "avatar": "Avatar",
+            "add": "Ongeza",
+            "accountPasswordOptional": "Nenosiri la akaunti (si lazima)",
+            "noRecovery": "Hakuna urejeshaji",
+            "noRecoveryTitle": "Nenosiri la akaunti haliwezi kurejeshwa.",
+            "noRecoveryBody": "Ukisahau nenosiri hili, seva zilizohifadhiwa, mipangilio na historia ya akaunti vitakuwa havipatikani kabisa. Hifadhi nenosiri mahali salama kabla ya kuendelea.",
+            "noRecoveryAck": "Ninaelewa na ninakubali jukumu la nenosiri hili.",
+            "adminRequired": "Ufikiaji wa msimamizi unahitajika ili kuongeza au kupanga upya akaunti.",
+            "loading": "Inapakia watumiaji...",
+            "editAvatar": "Hariri avatar",
+            "saveName": "Hifadhi jina",
+            "active": "Inatumika",
+            "admin": "ADMIN",
+            "profilesCount": "wasifu {count}",
+            "settingsCount": "mipangilio {count}",
+            "never": "Kamwe",
+            "rename": "Badilisha jina",
+            "changeMyPassword": "Badilisha nenosiri langu",
+            "setPassword": "Weka nenosiri",
+            "resetPassword": "Weka upya nenosiri",
+            "revokeAdmin": "Ondoa umsimamizi",
+            "promoteAdmin": "Pandisha kuwa msimamizi",
+            "cannotDeleteLastAdmin": "Haiwezekani kufuta msimamizi wa mwisho",
+            "delete": "Futa",
+            "currentPassword": "Nenosiri la sasa",
+            "newPasswordBlankRemoves": "Nenosiri jipya (tupu huliondoa)",
+            "newPassword": "Nenosiri jipya",
+            "save": "Hifadhi",
+            "cancelPasswordEdit": "Ghairi uhariri wa nenosiri",
+            "closeAvatarEditor": "Funga kihariri cha avatar",
+            "accountIdentity": "Utambulisho wa akaunti",
+            "iconLibrary": "Maktaba ya aikoni",
+            "color": "Rangi",
+            "cancel": "Ghairi",
+            "errAckRequired": "Tafadhali thibitisha kuwa manenosiri ya akaunti hayawezi kurejeshwa.",
+            "errCurrentRequired": "Nenosiri la sasa la akaunti linahitajika.",
+            "errNewRequired": "Nenosiri jipya la akaunti linahitajika.",
+            "confirmRemovePassword": "Ondoa nenosiri la akaunti kwa \"{name}\"?",
+            "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}.",
+            "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki."
         }
     }
 }

@@ -3210,7 +3210,7 @@
             "website": "Webova stranka",
             "documentation": "Dokumentacia",
             "mcp": "MCP Server...",
-            "mountManager": "Správca pripojení...",
+            "mountManager": "AeroMount...",
             "activityLog": "Denník aktivít",
             "detailedCards": "Podrobné karty serverov",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Zobraziť systémové menu",
             "aerovaultOverlayActive": "Prekrytie kontajnera AeroVault aktívne - kliknutím odpojte",
             "aerovaultOverlayInactive": "Otvoriť kontajner .aerovault ako virtuálny vzdialený panel. Pre prekrytie rclone-crypt použite pravé kliknutie na vzdialený priečinok.",
-            "aerocryptOverlayActive": "Prekrytie AeroCrypt aktívne: nahrávania a sťahovania v tomto paneli sú šifrované. Kliknutím odpojíte.",
+            "aerocryptOverlayActive": "Prekrytie Rclone Crypt aktívne: nahrávania a sťahovania v tomto paneli sú šifrované. Kliknutím odpojíte.",
             "aerocryptOverlayInactive": "Otvorte vzdialené úložisko rclone-crypt (alebo vytvorte nové) ako priehľadné prekrytie.",
             "aerocryptImportTitle": "Zistené prekrytie Rclone Crypt",
             "aerocryptImportDesc": "Profil importovaný z rclone.conf pre {name}: otvoriť prekrytie teraz?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Kontrola dostupnosti",
-            "storageVersioning": "Verzie súborov: {size}"
+            "storageVersioning": "Verzie súborov: {size}",
+            "group": {
+                "newGroup": "Nová skupina",
+                "newGroupEllipsis": "Nová skupina...",
+                "addToGroup": "Pridať do skupiny",
+                "newTitle": "Nová skupina",
+                "renameTitle": "Premenovať skupinu",
+                "namePlaceholder": "Názov skupiny",
+                "rename": "Premenovať skupinu",
+                "delete": "Odstrániť skupinu",
+                "confirmDelete": "Odstrániť skupinu „{name}“? Servery v nej zostanú zachované, odstráni sa iba skupina.",
+                "chipHint": "Kliknutím filtrujte; pravým tlačidlom premenujete alebo odstránite"
+            }
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",
@@ -4370,7 +4382,7 @@
             "alignRight": "Zarovnať doprava"
         },
         "mountManager": {
-            "title": "Správca pripojení",
+            "title": "AeroMount",
             "subtitle": "Pripojte uložené servery ako lokálne disky. Pripojenia používajú vstavané aeroftp-cli (FUSE v systéme Linux, most WebDAV v systéme Windows).",
             "addMount": "Pridať pripojenie",
             "newMount": "Nové pripojenie",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Opätovné pripojenie zlyhalo. Pripojte sa znovu manuálne."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Prekrytie Rclone Crypt",
+            "title": "Prekrytie Rclone Crypt",
             "intro": {
                 "heading": "Čo toto prekrytie robí",
                 "p1": "Šifruje názvy súborov a obsah <strong>za behu</strong>, pred odoslaním na server, a pri sťahovaní ich dešifruje. Server vidí iba bloby s názvami v base32. Vy vidíte pôvodné názvy.",
-                "p2": "Kým je prekrytie aktívne: vaša vzdialená relácia zobrazuje obsah v čistej podobe, každé nahrávanie sa šifruje, každé sťahovanie sa dešifruje. Hľadajte odznak <em>AEROCRYPT</em> v paneli cesty.",
-                "p3": "Rozdiel oproti AeroVault: AeroVault je jediný samostatný súbor <code>.aerovault</code> (formát AeroFTP). AeroCrypt je vrstva nad existujúcim vzdialeným úložiskom (S3/SFTP/WebDAV/...) používajúca verejný formát rclone crypt. Odomknite rovnakým heslom, aké by ste použili v <code>rclone</code>."
+                "p2": "Kým je prekrytie aktívne: vaša vzdialená relácia zobrazuje obsah v čistej podobe, každé nahrávanie sa šifruje, každé sťahovanie sa dešifruje. Hľadajte odznak <em>RCLONE CRYPT</em> v paneli cesty.",
+                "p3": "Rozdiel oproti AeroVault: AeroVault je jediný samostatný súbor <code>.aerovault</code> (formát AeroFTP). Rclone Crypt je vrstva nad existujúcim vzdialeným úložiskom (S3/SFTP/WebDAV/...) používajúca verejný formát rclone crypt. Odomknite rovnakým heslom, aké by ste použili v <code>rclone</code>."
             },
             "openExisting": "Otvoriť existujúci",
             "createNew": "Vytvoriť nový",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "Súkromie OpenDrive",
             "privacyUpdated": "Súkromie OpenDrive aktualizované"
+        },
+        "manageUsers": {
+            "title": "Spravovať používateľov",
+            "close": "Zavrieť",
+            "closePanel": "Zavrieť panel používateľov",
+            "accountName": "Názov účtu",
+            "avatar": "Avatar",
+            "add": "Pridať",
+            "accountPasswordOptional": "Heslo účtu (voliteľné)",
+            "noRecovery": "Bez obnovenia",
+            "noRecoveryTitle": "Heslo účtu nie je možné obnoviť.",
+            "noRecoveryBody": "Ak toto heslo zabudnete, uložené servery, nastavenia a história účtu budú natrvalo neprístupné. Pred pokračovaním si heslo uložte na bezpečné miesto.",
+            "noRecoveryAck": "Rozumiem a preberám zodpovednosť za toto heslo.",
+            "adminRequired": "Na pridávanie alebo zmenu poradia účtov je potrebný prístup správcu.",
+            "loading": "Načítavajú sa používatelia...",
+            "editAvatar": "Upraviť avatar",
+            "saveName": "Uložiť názov",
+            "active": "Aktívny",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profilov",
+            "settingsCount": "{count} nastavení",
+            "never": "Nikdy",
+            "rename": "Premenovať",
+            "changeMyPassword": "Zmeniť moje heslo",
+            "setPassword": "Nastaviť heslo",
+            "resetPassword": "Obnoviť heslo",
+            "revokeAdmin": "Odobrať práva správcu",
+            "promoteAdmin": "Povýšiť na správcu",
+            "cannotDeleteLastAdmin": "Posledného správcu nie je možné odstrániť",
+            "delete": "Odstrániť",
+            "currentPassword": "Aktuálne heslo",
+            "newPasswordBlankRemoves": "Nové heslo (prázdne odstráni)",
+            "newPassword": "Nové heslo",
+            "save": "Uložiť",
+            "cancelPasswordEdit": "Zrušiť úpravu hesla",
+            "closeAvatarEditor": "Zavrieť editor avatara",
+            "accountIdentity": "Identita účtu",
+            "iconLibrary": "Knižnica ikon",
+            "color": "Farba",
+            "cancel": "Zrušiť",
+            "errAckRequired": "Potvrďte, že heslá účtov nie je možné obnoviť.",
+            "errCurrentRequired": "Aktuálne heslo účtu je povinné.",
+            "errNewRequired": "Nové heslo účtu je povinné.",
+            "confirmRemovePassword": "Odstrániť heslo účtu pre „{name}“?",
+            "confirmDelete": "Odstrániť účet „{name}“?\n\nZašifrované údaje na odstránenie: {profiles} profilov, {settings} rozsahov nastavení.",
+            "passwordChoiceNote": "Nastavenie hesla účtu je voliteľné. Zabráni ostatným ľuďom, ktorí používajú toto zariadenie, otvoriť váš účet; vaše uložené údaje zostávajú tak či tak zašifrované. Tento krok preskočte, ak ste tu jediný používateľ alebo ak dôverujete všetkým, ktorí toto zariadenie používajú."
         }
     }
 }

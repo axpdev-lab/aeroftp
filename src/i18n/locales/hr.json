@@ -3210,7 +3210,7 @@
             "website": "Web stranica",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Upravitelj montiranja...",
+            "mountManager": "AeroMount...",
             "activityLog": "Dnevnik aktivnosti",
             "detailedCards": "Detaljne kartice poslužitelja",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Prikaži sistemski izbornik",
             "aerovaultOverlayActive": "Prekrivač AeroVault spremnika aktivan - kliknite za odvajanje",
             "aerovaultOverlayInactive": "Otvori .aerovault spremnik kao virtualni udaljeni panel. Za prekrivač rclone-crypt koristite desni klik na udaljenu mapu.",
-            "aerocryptOverlayActive": "AeroCrypt sloj aktivan: uploadi i downloadi u ovom panelu su šifrirani. Kliknite za odvajanje.",
+            "aerocryptOverlayActive": "Rclone Crypt sloj aktivan: uploadi i downloadi u ovom panelu su šifrirani. Kliknite za odvajanje.",
             "aerocryptOverlayInactive": "Otvorite rclone-crypt udaljeni sustav (ili stvorite novi) kao transparentan sloj.",
             "aerocryptImportTitle": "Otkriven Rclone Crypt sloj",
             "aerocryptImportDesc": "Profil uvezen iz rclone.conf za {name}: otvoriti sloj sada?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Provjera dostupnosti",
-            "storageVersioning": "Verzije datoteka: {size}"
+            "storageVersioning": "Verzije datoteka: {size}",
+            "group": {
+                "newGroup": "Nova grupa",
+                "newGroupEllipsis": "Nova grupa...",
+                "addToGroup": "Dodaj u grupu",
+                "newTitle": "Nova grupa",
+                "renameTitle": "Preimenuj grupu",
+                "namePlaceholder": "Naziv grupe",
+                "rename": "Preimenuj grupu",
+                "delete": "Izbriši grupu",
+                "confirmDelete": "Izbrisati grupu „{name}“? Poslužitelji u njoj se zadržavaju, uklanja se samo grupa.",
+                "chipHint": "Kliknite za filtriranje; desni klik za preimenovanje ili brisanje"
+            }
         },
         "gitlab": {
             "projectPath": "Putanja projekta",
@@ -4370,7 +4382,7 @@
             "alignRight": "Poravnaj desno"
         },
         "mountManager": {
-            "title": "Upravitelj montiranja",
+            "title": "AeroMount",
             "subtitle": "Montirajte spremljene poslužitelje kao lokalne diskove. Montaže koriste ugrađeni aeroftp-cli (FUSE na Linuxu, WebDAV most na Windowsima).",
             "addMount": "Dodaj montažu",
             "newMount": "Nova montaža",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Ponovno povezivanje nije uspjelo. Ručno se ponovno povežite."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt sloj",
+            "title": "Rclone Crypt sloj",
             "intro": {
                 "heading": "Što ovaj sloj radi",
                 "p1": "Šifrira nazive datoteka i sadržaje <strong>u letu</strong>, prije slanja na poslužitelj, te ih dešifrira pri preuzimanju. Poslužitelj vidi samo binarne podatke s base32 nazivima. Vi vidite originalne nazive.",
-                "p2": "Dok je sloj aktivan: vaša udaljena sesija prikazuje sadržaj otvoreno, svaki upload je šifriran, svaki download je dešifriran. Tražite oznaku <em>AEROCRYPT</em> u traci puta.",
-                "p3": "Razlika u odnosu na AeroVault: AeroVault je jedna samostalna <code>.aerovault</code> datoteka (AeroFTP format). AeroCrypt je sloj povrh postojećeg udaljenog sustava (S3/SFTP/WebDAV/...) koji koristi javni rclone crypt format. Otključajte istom lozinkom koju biste koristili u <code>rclone</code>."
+                "p2": "Dok je sloj aktivan: vaša udaljena sesija prikazuje sadržaj otvoreno, svaki upload je šifriran, svaki download je dešifriran. Tražite oznaku <em>RCLONE CRYPT</em> u traci puta.",
+                "p3": "Razlika u odnosu na AeroVault: AeroVault je jedna samostalna <code>.aerovault</code> datoteka (AeroFTP format). Rclone Crypt je sloj povrh postojećeg udaljenog sustava (S3/SFTP/WebDAV/...) koji koristi javni rclone crypt format. Otključajte istom lozinkom koju biste koristili u <code>rclone</code>."
             },
             "openExisting": "Otvori postojeći",
             "createNew": "Stvori novi",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "Privatnost OpenDrive",
             "privacyUpdated": "Privatnost OpenDrive ažurirana"
+        },
+        "manageUsers": {
+            "title": "Upravljanje korisnicima",
+            "close": "Zatvori",
+            "closePanel": "Zatvori ploču korisnika",
+            "accountName": "Naziv računa",
+            "avatar": "Avatar",
+            "add": "Dodaj",
+            "accountPasswordOptional": "Lozinka računa (neobavezno)",
+            "noRecovery": "Bez oporavka",
+            "noRecoveryTitle": "Lozinka računa ne može se oporaviti.",
+            "noRecoveryBody": "Ako zaboravite ovu lozinku, spremljeni poslužitelji, postavke i povijest računa postaju trajno nedostupni. Pohranite lozinku na sigurno mjesto prije nastavka.",
+            "noRecoveryAck": "Razumijem i prihvaćam odgovornost za ovu lozinku.",
+            "adminRequired": "Za dodavanje ili preraspoređivanje računa potreban je administratorski pristup.",
+            "loading": "Učitavanje korisnika...",
+            "editAvatar": "Uredi avatar",
+            "saveName": "Spremi naziv",
+            "active": "Aktivan",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profila",
+            "settingsCount": "{count} postavki",
+            "never": "Nikad",
+            "rename": "Preimenuj",
+            "changeMyPassword": "Promijeni moju lozinku",
+            "setPassword": "Postavi lozinku",
+            "resetPassword": "Ponovno postavi lozinku",
+            "revokeAdmin": "Opozovi admina",
+            "promoteAdmin": "Promakni u admina",
+            "cannotDeleteLastAdmin": "Nije moguće izbrisati posljednjeg administratora",
+            "delete": "Izbriši",
+            "currentPassword": "Trenutna lozinka",
+            "newPasswordBlankRemoves": "Nova lozinka (prazno uklanja)",
+            "newPassword": "Nova lozinka",
+            "save": "Spremi",
+            "cancelPasswordEdit": "Odustani od promjene lozinke",
+            "closeAvatarEditor": "Zatvori uređivač avatara",
+            "accountIdentity": "Identitet računa",
+            "iconLibrary": "Biblioteka ikona",
+            "color": "Boja",
+            "cancel": "Odustani",
+            "errAckRequired": "Potvrdite da znate da se lozinke računa ne mogu oporaviti.",
+            "errCurrentRequired": "Trenutna lozinka računa je obavezna.",
+            "errNewRequired": "Nova lozinka računa je obavezna.",
+            "confirmRemovePassword": "Ukloniti lozinku računa za \"{name}\"?",
+            "confirmDelete": "Izbrisati račun \"{name}\"?\n\nŠifrirani podaci za uklanjanje: {profiles} profila, {settings} opsega postavki.",
+            "passwordChoiceNote": "Postavljanje lozinke za račun nije obavezno. Sprječava druge osobe koje koriste ovaj uređaj da otvore vaš račun; vaši spremljeni podaci u svakom slučaju ostaju šifrirani. Preskočite ovo ako ste jedini korisnik ili ako vjerujete svima koji koriste ovaj uređaj."
         }
     }
 }

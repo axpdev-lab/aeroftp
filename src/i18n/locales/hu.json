@@ -3210,7 +3210,7 @@
             "website": "Weboldal",
             "documentation": "Dokumentáció",
             "mcp": "MCP Server...",
-            "mountManager": "Csatolási kezelő...",
+            "mountManager": "AeroMount...",
             "activityLog": "Tevékenységnapló",
             "detailedCards": "Részletes szerverkártyák",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Rendszer menüsor megjelenítése",
             "aerovaultOverlayActive": "AeroVault konténer fedőréteg aktív - kattintson a leválasztáshoz",
             "aerovaultOverlayInactive": "Nyisson meg egy .aerovault konténert virtuális távoli panelként. Az rclone-crypt fedőréteghez kattintson a jobb gombbal egy távoli mappára.",
-            "aerocryptOverlayActive": "AeroCrypt réteg aktív: a feltöltések és letöltések ezen a panelen titkosítottak. Kattintson a leválasztáshoz.",
+            "aerocryptOverlayActive": "Rclone Crypt réteg aktív: a feltöltések és letöltések ezen a panelen titkosítottak. Kattintson a leválasztáshoz.",
             "aerocryptOverlayInactive": "Nyisson meg egy rclone-crypt távoli tárolót (vagy hozzon létre újat) átlátszó rétegként.",
             "aerocryptImportTitle": "Rclone Crypt réteg észlelve",
             "aerocryptImportDesc": "Profil importálva a rclone.conf fájlból ehhez: {name}: megnyitja most a réteget?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Elérhetőség-ellenőrzés",
-            "storageVersioning": "Fájlverziók: {size}"
+            "storageVersioning": "Fájlverziók: {size}",
+            "group": {
+                "newGroup": "Új csoport",
+                "newGroupEllipsis": "Új csoport...",
+                "addToGroup": "Hozzáadás csoporthoz",
+                "newTitle": "Új csoport",
+                "renameTitle": "Csoport átnevezése",
+                "namePlaceholder": "Csoport neve",
+                "rename": "Csoport átnevezése",
+                "delete": "Csoport törlése",
+                "confirmDelete": "Törli a(z) „{name}” csoportot? A benne lévő kiszolgálók megmaradnak, csak a csoport törlődik.",
+                "chipHint": "Kattintson a szűréshez; jobb kattintás az átnevezéshez vagy törléshez"
+            }
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",
@@ -4370,7 +4382,7 @@
             "alignRight": "Jobbra igazítás"
         },
         "mountManager": {
-            "title": "Csatolási kezelő",
+            "title": "AeroMount",
             "subtitle": "Csatlakoztassa a mentett kiszolgálókat helyi meghajtókként. A csatolások a beépített aeroftp-cli-t használják (FUSE Linuxon, WebDAV híd Windowson).",
             "addMount": "Csatolás hozzáadása",
             "newMount": "Új csatolás",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Az újracsatlakozás nem sikerült. Csatlakozzon újra manuálisan."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt réteg",
+            "title": "Rclone Crypt réteg",
             "intro": {
                 "heading": "Mit csinál ez a réteg",
                 "p1": "Titkosítja a fájlneveket és a tartalmakat <strong>menet közben</strong>, mielőtt a szerverre küldené, és visszafejti letöltéskor. A szerver csak base32 nevű blobokat lát. Ön az eredeti neveket látja.",
-                "p2": "Amíg a réteg aktív: a távoli munkamenet tisztán jeleníti meg a tartalmat, minden feltöltés titkosított, minden letöltés visszafejtett. Keresse az <em>AEROCRYPT</em> jelvényt az útvonalsávban.",
-                "p3": "Eltérés az AeroVaulttól: az AeroVault egy önálló <code>.aerovault</code> fájl (AeroFTP formátum). Az AeroCrypt egy réteg a meglévő távoli tároló (S3/SFTP/WebDAV/...) tetején, a nyilvános rclone crypt formátumot használva. Ugyanazzal a jelszóval oldja fel, amit a <code>rclone</code>-ban is használna."
+                "p2": "Amíg a réteg aktív: a távoli munkamenet tisztán jeleníti meg a tartalmat, minden feltöltés titkosított, minden letöltés visszafejtett. Keresse az <em>RCLONE CRYPT</em> jelvényt az útvonalsávban.",
+                "p3": "Eltérés az AeroVaulttól: az AeroVault egy önálló <code>.aerovault</code> fájl (AeroFTP formátum). Az Rclone Crypt egy réteg a meglévő távoli tároló (S3/SFTP/WebDAV/...) tetején, a nyilvános rclone crypt formátumot használva. Ugyanazzal a jelszóval oldja fel, amit a <code>rclone</code>-ban is használna."
             },
             "openExisting": "Meglévő megnyitása",
             "createNew": "Új létrehozása",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive adatvédelem",
             "privacyUpdated": "OpenDrive adatvédelem frissítve"
+        },
+        "manageUsers": {
+            "title": "Felhasználók kezelése",
+            "close": "Bezárás",
+            "closePanel": "Felhasználói panel bezárása",
+            "accountName": "Fiók neve",
+            "avatar": "Avatar",
+            "add": "Hozzáadás",
+            "accountPasswordOptional": "Fiók jelszava (nem kötelező)",
+            "noRecovery": "Nincs helyreállítás",
+            "noRecoveryTitle": "A fiók jelszava nem állítható helyre.",
+            "noRecoveryBody": "Ha elfelejti ezt a jelszót, a fiók mentett kiszolgálói, beállításai és előzményei véglegesen elérhetetlenné válnak. A folytatás előtt tárolja a jelszót biztonságos helyen.",
+            "noRecoveryAck": "Megértettem és vállalom a felelősséget ezért a jelszóért.",
+            "adminRequired": "Fiókok hozzáadásához vagy átrendezéséhez rendszergazdai hozzáférés szükséges.",
+            "loading": "Felhasználók betöltése...",
+            "editAvatar": "Avatar szerkesztése",
+            "saveName": "Név mentése",
+            "active": "Aktív",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profil",
+            "settingsCount": "{count} beállítás",
+            "never": "Soha",
+            "rename": "Átnevezés",
+            "changeMyPassword": "Saját jelszó módosítása",
+            "setPassword": "Jelszó beállítása",
+            "resetPassword": "Jelszó visszaállítása",
+            "revokeAdmin": "Rendszergazda visszavonása",
+            "promoteAdmin": "Előléptetés rendszergazdává",
+            "cannotDeleteLastAdmin": "Az utolsó rendszergazda nem törölhető",
+            "delete": "Törlés",
+            "currentPassword": "Jelenlegi jelszó",
+            "newPasswordBlankRemoves": "Új jelszó (üresen hagyva eltávolítja)",
+            "newPassword": "Új jelszó",
+            "save": "Mentés",
+            "cancelPasswordEdit": "Jelszó szerkesztésének megszakítása",
+            "closeAvatarEditor": "Avatar-szerkesztő bezárása",
+            "accountIdentity": "Fiók azonosítója",
+            "iconLibrary": "Ikonkönyvtár",
+            "color": "Szín",
+            "cancel": "Mégse",
+            "errAckRequired": "Kérjük, erősítse meg, hogy tudomásul vette, hogy a fiókok jelszavai nem állíthatók helyre.",
+            "errCurrentRequired": "A fiók jelenlegi jelszava kötelező.",
+            "errNewRequired": "A fiók új jelszava kötelező.",
+            "confirmRemovePassword": "Eltávolítja a fiók jelszavát ehhez: \"{name}\"?",
+            "confirmDelete": "Törli a(z) \"{name}\" fiókot?\n\nEltávolítandó titkosított adatok: {profiles} profil, {settings} beállítási hatókör.",
+            "passwordChoiceNote": "A fiókjelszó beállítása nem kötelező. Megakadályozza, hogy mások, akik ezt az eszközt használják, megnyissák a fiókodat; a mentett adataid mindkét esetben titkosítva maradnak. Hagyd ki, ha egyedül használod, vagy ha megbízol mindenkiben, aki ezt az eszközt használja."
         }
     }
 }

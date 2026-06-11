@@ -3210,7 +3210,7 @@
             "website": "Trang web",
             "documentation": "Tài liệu",
             "mcp": "MCP Server...",
-            "mountManager": "Trình quản lý gắn kết...",
+            "mountManager": "AeroMount...",
             "activityLog": "Nhật ký hoạt động",
             "detailedCards": "Thẻ máy chủ chi tiết",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Hiện thanh menu hệ thống",
             "aerovaultOverlayActive": "Lớp phủ container AeroVault đang hoạt động - bấm để tách",
             "aerovaultOverlayInactive": "Mở container .aerovault làm bảng điều khiển từ xa ảo. Đối với lớp phủ rclone-crypt, dùng bấm chuột phải trên thư mục từ xa.",
-            "aerocryptOverlayActive": "Lớp phủ AeroCrypt đang hoạt động: tải lên và tải xuống trong bảng này được mã hóa. Nhấp để gỡ.",
+            "aerocryptOverlayActive": "Lớp phủ Rclone Crypt đang hoạt động: tải lên và tải xuống trong bảng này được mã hóa. Nhấp để gỡ.",
             "aerocryptOverlayInactive": "Mở một remote rclone-crypt (hoặc tạo mới) làm lớp phủ trong suốt.",
             "aerocryptImportTitle": "Đã phát hiện lớp phủ Rclone Crypt",
             "aerocryptImportDesc": "Đã nhập hồ sơ từ rclone.conf cho {name}: mở lớp phủ ngay bây giờ?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Kiểm tra tình trạng",
-            "storageVersioning": "Phiên bản tệp: {size}"
+            "storageVersioning": "Phiên bản tệp: {size}",
+            "group": {
+                "newGroup": "Nhóm mới",
+                "newGroupEllipsis": "Nhóm mới...",
+                "addToGroup": "Thêm vào nhóm",
+                "newTitle": "Nhóm mới",
+                "renameTitle": "Đổi tên nhóm",
+                "namePlaceholder": "Tên nhóm",
+                "rename": "Đổi tên nhóm",
+                "delete": "Xóa nhóm",
+                "confirmDelete": "Xóa nhóm \"{name}\"? Các máy chủ trong đó được giữ lại, chỉ nhóm bị xóa.",
+                "chipHint": "Nhấp để lọc; nhấp chuột phải để đổi tên hoặc xóa"
+            }
         },
         "gitlab": {
             "projectPath": "Duong dan du an",
@@ -4370,7 +4382,7 @@
             "alignRight": "Căn phải"
         },
         "mountManager": {
-            "title": "Trình quản lý gắn kết",
+            "title": "AeroMount",
             "subtitle": "Gắn máy chủ đã lưu dưới dạng ổ đĩa cục bộ. Việc gắn kết sử dụng aeroftp-cli đi kèm (FUSE trên Linux, cầu WebDAV trên Windows).",
             "addMount": "Thêm gắn kết",
             "newMount": "Gắn kết mới",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Kết nối lại thất bại. Vui lòng kết nối lại thủ công."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Lớp phủ Rclone Crypt",
+            "title": "Lớp phủ Rclone Crypt",
             "intro": {
                 "heading": "Lớp phủ này làm gì",
                 "p1": "Mã hóa tên tệp và nội dung <strong>tức thời</strong>, trước khi gửi đến máy chủ, và giải mã khi bạn tải xuống. Máy chủ chỉ thấy các blob với tên dạng base32. Bạn thấy các tên gốc.",
-                "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>AEROCRYPT</em> trong thanh đường dẫn.",
-                "p3": "Khác biệt so với AeroVault: AeroVault là một tệp <code>.aerovault</code> độc lập (định dạng AeroFTP). AeroCrypt là một lớp phủ trên một remote hiện có (S3/SFTP/WebDAV/...) sử dụng định dạng rclone crypt công khai. Mở khóa bằng cùng mật khẩu mà bạn sẽ dùng trong <code>rclone</code>."
+                "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>RCLONE CRYPT</em> trong thanh đường dẫn.",
+                "p3": "Khác biệt so với AeroVault: AeroVault là một tệp <code>.aerovault</code> độc lập (định dạng AeroFTP). Rclone Crypt là một lớp phủ trên một remote hiện có (S3/SFTP/WebDAV/...) sử dụng định dạng rclone crypt công khai. Mở khóa bằng cùng mật khẩu mà bạn sẽ dùng trong <code>rclone</code>."
             },
             "openExisting": "Mở cái hiện có",
             "createNew": "Tạo mới",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "Quyền riêng tư OpenDrive",
             "privacyUpdated": "Đã cập nhật quyền riêng tư OpenDrive"
+        },
+        "manageUsers": {
+            "title": "Quản lý người dùng",
+            "close": "Đóng",
+            "closePanel": "Đóng bảng người dùng",
+            "accountName": "Tên tài khoản",
+            "avatar": "Ảnh đại diện",
+            "add": "Thêm",
+            "accountPasswordOptional": "Mật khẩu tài khoản (tùy chọn)",
+            "noRecovery": "Không khôi phục",
+            "noRecoveryTitle": "Không thể khôi phục mật khẩu tài khoản.",
+            "noRecoveryBody": "Nếu bạn quên mật khẩu này, các máy chủ đã lưu, cài đặt và lịch sử của tài khoản sẽ vĩnh viễn không thể truy cập. Hãy lưu mật khẩu ở nơi an toàn trước khi tiếp tục.",
+            "noRecoveryAck": "Tôi hiểu và chấp nhận trách nhiệm đối với mật khẩu này.",
+            "adminRequired": "Cần quyền quản trị để thêm hoặc sắp xếp lại tài khoản.",
+            "loading": "Đang tải người dùng...",
+            "editAvatar": "Chỉnh sửa ảnh đại diện",
+            "saveName": "Lưu tên",
+            "active": "Đang hoạt động",
+            "admin": "ADMIN",
+            "profilesCount": "{count} hồ sơ",
+            "settingsCount": "{count} cài đặt",
+            "never": "Không bao giờ",
+            "rename": "Đổi tên",
+            "changeMyPassword": "Đổi mật khẩu của tôi",
+            "setPassword": "Đặt mật khẩu",
+            "resetPassword": "Đặt lại mật khẩu",
+            "revokeAdmin": "Thu hồi quyền quản trị",
+            "promoteAdmin": "Nâng lên quản trị viên",
+            "cannotDeleteLastAdmin": "Không thể xóa quản trị viên cuối cùng",
+            "delete": "Xóa",
+            "currentPassword": "Mật khẩu hiện tại",
+            "newPasswordBlankRemoves": "Mật khẩu mới (để trống để xóa)",
+            "newPassword": "Mật khẩu mới",
+            "save": "Lưu",
+            "cancelPasswordEdit": "Hủy chỉnh sửa mật khẩu",
+            "closeAvatarEditor": "Đóng trình chỉnh sửa ảnh đại diện",
+            "accountIdentity": "Danh tính tài khoản",
+            "iconLibrary": "Thư viện biểu tượng",
+            "color": "Màu sắc",
+            "cancel": "Hủy",
+            "errAckRequired": "Vui lòng xác nhận rằng không thể khôi phục mật khẩu tài khoản.",
+            "errCurrentRequired": "Cần có mật khẩu tài khoản hiện tại.",
+            "errNewRequired": "Cần có mật khẩu tài khoản mới.",
+            "confirmRemovePassword": "Xóa mật khẩu tài khoản cho \"{name}\"?",
+            "confirmDelete": "Xóa tài khoản \"{name}\"?\n\nDữ liệu mã hóa cần xóa: {profiles} hồ sơ, {settings} phạm vi cài đặt.",
+            "passwordChoiceNote": "Việc đặt mật khẩu tài khoản là tùy chọn. Nó ngăn những người khác dùng thiết bị này mở tài khoản của bạn; dữ liệu đã lưu của bạn vẫn được mã hóa trong mọi trường hợp. Bỏ qua bước này nếu bạn là người duy nhất ở đây, hoặc nếu bạn tin tưởng tất cả những người dùng thiết bị này."
         }
     }
 }

@@ -3210,7 +3210,7 @@
             "website": "Vefsíða",
             "documentation": "Skjölun",
             "mcp": "MCP Server...",
-            "mountManager": "Tengingarstjóri...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aðgerðaskrá",
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Sýna valmyndarstiku kerfis",
             "aerovaultOverlayActive": "AeroVault gáms yfirlag virkt - smelltu til að aftengja",
             "aerovaultOverlayInactive": "Opnaðu .aerovault gám sem sýndarfjarstýriborð. Fyrir rclone-crypt yfirlag notaðu hægrismell á fjartengda möppu.",
-            "aerocryptOverlayActive": "AeroCrypt yfirlag virkt: upphlóðsla og niðurhal í þessari spjaldtöku eru dulkóðuð. Smelltu til að aftengja.",
+            "aerocryptOverlayActive": "Rclone Crypt yfirlag virkt: upphlóðsla og niðurhal í þessari spjaldtöku eru dulkóðuð. Smelltu til að aftengja.",
             "aerocryptOverlayInactive": "Opnaðu rclone-crypt fjarlæga geymslu (eða búðu til nýja) sem gegnsætt yfirlag.",
             "aerocryptImportTitle": "Rclone Crypt yfirlag fundið",
             "aerocryptImportDesc": "Snið flutt inn úr rclone.conf fyrir {name}: opna yfirlagið núna?",
@@ -4293,7 +4293,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Aðgengisathugun",
-            "storageVersioning": "Skráarútgáfur: {size}"
+            "storageVersioning": "Skráarútgáfur: {size}",
+            "group": {
+                "newGroup": "Nýr hópur",
+                "newGroupEllipsis": "Nýr hópur...",
+                "addToGroup": "Bæta við hóp",
+                "newTitle": "Nýr hópur",
+                "renameTitle": "Endurnefna hóp",
+                "namePlaceholder": "Heiti hóps",
+                "rename": "Endurnefna hóp",
+                "delete": "Eyða hópi",
+                "confirmDelete": "Eyða hópnum „{name}“? Netþjónunum í honum er haldið, aðeins hópurinn er fjarlægður.",
+                "chipHint": "Smelltu til að sía; hægrismelltu til að endurnefna eða eyða"
+            }
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
@@ -4389,7 +4401,7 @@
             "alignRight": "Jafna til hægri"
         },
         "mountManager": {
-            "title": "Tengingarstjóri",
+            "title": "AeroMount",
             "subtitle": "Tengdu vistaða þjóna sem staðbundin drif. Tengingar nota innbyggða aeroftp-cli (FUSE á Linux, WebDAV brú á Windows).",
             "addMount": "Bæta við tengingu",
             "newMount": "Ný tenging",
@@ -4427,12 +4439,12 @@
             "reconnectFailed": "Endurtenging mistókst. Vinsamlega tengstu handvirkt aftur."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt yfirlag",
+            "title": "Rclone Crypt yfirlag",
             "intro": {
                 "heading": "Hvað gerir þetta yfirlag",
                 "p1": "Dulkóðar skráarnöfn og innihald <strong>jafnóðum</strong>, áður en þeim er sent á þjóninn, og afkóðar þau þegar þú sækir. Þjónninn sér aðeins blokkir með base32 nöfnum. Þú sérð upprunalegu nöfnin.",
-                "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihald á skýru formi, hver upphlóðsla er dulkóðuð, hver niðurhal er afkóðuð. Leitaðu að <em>AEROCRYPT</em> merkinu í slóðarstikunni.",
-                "p3": "Munur frá AeroVault: AeroVault er ein sjálfstæð <code>.aerovault</code> skrá (AeroFTP snið). AeroCrypt er lag ofan á núverandi fjarlægu geymslu (S3/SFTP/WebDAV/...) sem notar opna rclone crypt sniðið. Opnaðu með sama lykilorði og þú myndir nota í <code>rclone</code>."
+                "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihald á skýru formi, hver upphlóðsla er dulkóðuð, hver niðurhal er afkóðuð. Leitaðu að <em>RCLONE CRYPT</em> merkinu í slóðarstikunni.",
+                "p3": "Munur frá AeroVault: AeroVault er ein sjálfstæð <code>.aerovault</code> skrá (AeroFTP snið). Rclone Crypt er lag ofan á núverandi fjarlægu geymslu (S3/SFTP/WebDAV/...) sem notar opna rclone crypt sniðið. Opnaðu með sama lykilorði og þú myndir nota í <code>rclone</code>."
             },
             "openExisting": "Opna núverandi",
             "createNew": "Búa til nýtt",
@@ -4701,6 +4713,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive persónuvernd",
             "privacyUpdated": "OpenDrive persónuvernd uppfærð"
+        },
+        "manageUsers": {
+            "title": "Stjórna notendum",
+            "close": "Loka",
+            "closePanel": "Loka notendaspjaldi",
+            "accountName": "Heiti reiknings",
+            "avatar": "Avatar",
+            "add": "Bæta við",
+            "accountPasswordOptional": "Lykilorð reiknings (valfrjálst)",
+            "noRecovery": "Engin endurheimt",
+            "noRecoveryTitle": "Ekki er hægt að endurheimta lykilorð reiknings.",
+            "noRecoveryBody": "Ef þú gleymir þessu lykilorði verða vistaðir þjónar, stillingar og ferill reikningsins varanlega óaðgengileg. Geymdu lykilorðið á öruggum stað áður en þú heldur áfram.",
+            "noRecoveryAck": "Ég skil og tek ábyrgð á þessu lykilorði.",
+            "adminRequired": "Kerfisstjóraaðgangs er krafist til að bæta við eða endurraða reikningum.",
+            "loading": "Hleð notendum...",
+            "editAvatar": "Breyta avatar",
+            "saveName": "Vista heiti",
+            "active": "Virkur",
+            "admin": "ADMIN",
+            "profilesCount": "{count} snið",
+            "settingsCount": "{count} stillingar",
+            "never": "Aldrei",
+            "rename": "Endurnefna",
+            "changeMyPassword": "Breyta lykilorðinu mínu",
+            "setPassword": "Stilla lykilorð",
+            "resetPassword": "Endurstilla lykilorð",
+            "revokeAdmin": "Afturkalla kerfisstjóra",
+            "promoteAdmin": "Gera að kerfisstjóra",
+            "cannotDeleteLastAdmin": "Ekki er hægt að eyða síðasta kerfisstjóranum",
+            "delete": "Eyða",
+            "currentPassword": "Núverandi lykilorð",
+            "newPasswordBlankRemoves": "Nýtt lykilorð (autt fjarlægir)",
+            "newPassword": "Nýtt lykilorð",
+            "save": "Vista",
+            "cancelPasswordEdit": "Hætta við breytingu á lykilorði",
+            "closeAvatarEditor": "Loka avatar-ritli",
+            "accountIdentity": "Auðkenni reiknings",
+            "iconLibrary": "Táknasafn",
+            "color": "Litur",
+            "cancel": "Hætta við",
+            "errAckRequired": "Vinsamlegast staðfestu að þú skiljir að ekki er hægt að endurheimta lykilorð reikninga.",
+            "errCurrentRequired": "Núverandi lykilorð reiknings er nauðsynlegt.",
+            "errNewRequired": "Nýtt lykilorð reiknings er nauðsynlegt.",
+            "confirmRemovePassword": "Fjarlægja lykilorð reiknings fyrir \"{name}\"?",
+            "confirmDelete": "Eyða reikningnum \"{name}\"?\n\nDulkóðuð gögn til að fjarlægja: {profiles} snið, {settings} stillingasvið.",
+            "passwordChoiceNote": "Það er valfrjálst að setja lykilorð fyrir reikninginn. Það kemur í veg fyrir að aðrir sem nota þetta tæki opni reikninginn þinn; vistuðu gögnin þín haldast dulkóðuð hvort sem er. Slepptu þessu ef þú ert eini notandinn, eða ef þú treystir öllum sem nota þetta tæki."
         }
     }
 }

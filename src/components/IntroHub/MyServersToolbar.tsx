@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, FolderPlus, Folder } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
+import type { ServerGroup } from '../../utils/serverGroups';
 
 interface MyServersToolbarProps {
     searchQuery: string;
@@ -32,6 +33,18 @@ interface MyServersToolbarProps {
     listDensity?: MyServersDensity;
     /** Cycle the row density. Only rendered when in list view. */
     onToggleListDensity?: () => void;
+    /** User-defined server groups (#320), rendered as chips after the static filters. */
+    groups?: ServerGroup[];
+    /** Per-group count of existing members, keyed by group id. */
+    groupCounts?: Record<string, number>;
+    /** Currently selected group id, or null when a static filter chip is active. */
+    activeGroupId?: string | null;
+    /** Select a group chip (mutually exclusive with the static filter chips). */
+    onGroupSelect?: (groupId: string) => void;
+    /** Right-click a group chip (rename/delete menu lives in the panel). */
+    onGroupContextMenu?: (e: React.MouseEvent, groupId: string) => void;
+    /** Create a new group. */
+    onNewGroup?: () => void;
 }
 
 export function MyServersToolbar({
@@ -56,6 +69,12 @@ export function MyServersToolbar({
     crossProfileSelectionCount = 0,
     listDensity = 'compact',
     onToggleListDensity,
+    groups = [],
+    groupCounts = {},
+    activeGroupId = null,
+    onGroupSelect,
+    onGroupContextMenu,
+    onNewGroup,
 }: MyServersToolbarProps) {
     const t = useTranslation();
     // Cross-Profile button visual states:
@@ -91,15 +110,18 @@ export function MyServersToolbar({
                 )}
             </div>
 
-            {/* Filter chips with counts */}
+            {/* Filter chips with counts. A static chip never reads as active
+                while a group chip (#320) is selected: the two narrowings are
+                mutually exclusive. */}
             {FILTER_CHIPS.map((chip) => {
                 const count = chipCounts[chip.id] ?? 0;
+                const isActive = activeGroupId === null && activeFilter === chip.id;
                 return (
                     <button
                         key={chip.id}
                         onClick={() => onFilterChange(chip.id)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                            activeFilter === chip.id
+                            isActive
                                 ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700'
                                 : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
                         }`}
@@ -108,11 +130,49 @@ export function MyServersToolbar({
                         {chip.id === 'local-bridge' && <HardDrive size={10} />}
                         <span>{t(chip.labelKey)}</span>
                         <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
-                            activeFilter === chip.id ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
+                            isActive ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
                         }`}>{count}</span>
                     </button>
                 );
             })}
+
+            {/* User-defined group chips (#320): a group is a named favourites
+                list. Selecting one is mutually exclusive with the static chips. */}
+            {groups.map((group) => {
+                const isActive = activeGroupId === group.id;
+                const count = groupCounts[group.id] ?? 0;
+                return (
+                    <button
+                        key={group.id}
+                        onClick={() => onGroupSelect?.(group.id)}
+                        onContextMenu={(e) => onGroupContextMenu?.(e, group.id)}
+                        title={t('introHub.group.chipHint')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                            isActive
+                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700'
+                                : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                        <Folder size={10} style={group.color ? { color: group.color } : undefined} />
+                        <span className="max-w-[140px] truncate">{group.name}</span>
+                        <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
+                            isActive ? 'bg-emerald-200/50 dark:bg-emerald-800/40 text-emerald-500 dark:text-emerald-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
+                        }`}>{count}</span>
+                    </button>
+                );
+            })}
+
+            {/* New group (#320) */}
+            {onNewGroup && (
+                <button
+                    onClick={onNewGroup}
+                    title={t('introHub.group.newGroup')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap text-gray-400 dark:text-gray-500 border border-dashed border-gray-300 dark:border-gray-600 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
+                >
+                    <FolderPlus size={12} />
+                    <span>{t('introHub.group.newGroup')}</span>
+                </button>
+            )}
 
             {/* View mode toggle: show only the inactive view as a single
                 "switch to" button. Two buttons (active highlighted + inactive)

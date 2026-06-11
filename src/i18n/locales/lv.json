@@ -3210,7 +3210,7 @@
             "website": "Tīmekļa vietne",
             "documentation": "Dokumentācija",
             "mcp": "MCP Server...",
-            "mountManager": "Montēšanas pārvaldnieks...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitāšu žurnāls",
             "detailedCards": "Detalizētas serveru kartes",
             "debugPanel": "Debug Panel",
@@ -3586,7 +3586,7 @@
             "showSystemMenu": "Rādīt sistēmas izvēlnes joslu",
             "aerovaultOverlayActive": "AeroVault konteinera pārklājums aktīvs - klikšķiniet, lai atvienotu",
             "aerovaultOverlayInactive": "Atveriet .aerovault konteineru kā virtuālu attālo paneli. rclone-crypt pārklājumam izmantojiet labo klikšķi uz attālās mapes.",
-            "aerocryptOverlayActive": "AeroCrypt slānis aktīvs: augšupielādes un lejupielādes šajā panelī tiek šifrētas. Noklikšķiniet, lai atvienotu.",
+            "aerocryptOverlayActive": "Rclone Crypt slānis aktīvs: augšupielādes un lejupielādes šajā panelī tiek šifrētas. Noklikšķiniet, lai atvienotu.",
             "aerocryptOverlayInactive": "Atveriet rclone-crypt attālo krātuvi (vai izveidojiet jaunu) kā caurspīdīgu slāni.",
             "aerocryptImportTitle": "Atklāts Rclone Crypt slānis",
             "aerocryptImportDesc": "Profils importēts no rclone.conf priekš {name}: atvērt slāni tagad?",
@@ -4274,7 +4274,19 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pieejamības pārbaude",
-            "storageVersioning": "Failu versijas: {size}"
+            "storageVersioning": "Failu versijas: {size}",
+            "group": {
+                "newGroup": "Jauna grupa",
+                "newGroupEllipsis": "Jauna grupa...",
+                "addToGroup": "Pievienot grupai",
+                "newTitle": "Jauna grupa",
+                "renameTitle": "Pārdēvēt grupu",
+                "namePlaceholder": "Grupas nosaukums",
+                "rename": "Pārdēvēt grupu",
+                "delete": "Dzēst grupu",
+                "confirmDelete": "Dzēst grupu “{name}”? Tajā esošie serveri tiek saglabāti, tiek noņemta tikai grupa.",
+                "chipHint": "Noklikšķiniet, lai filtrētu; ar peles labo pogu, lai pārdēvētu vai dzēstu"
+            }
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",
@@ -4370,7 +4382,7 @@
             "alignRight": "Līdzināt pa labi"
         },
         "mountManager": {
-            "title": "Montēšanas pārvaldnieks",
+            "title": "AeroMount",
             "subtitle": "Montējiet saglabātos serverus kā lokālus diskus. Montāžas izmanto iebūvēto aeroftp-cli (FUSE operētājsistēmā Linux, WebDAV tilts operētājsistēmā Windows).",
             "addMount": "Pievienot montāžu",
             "newMount": "Jauna montāža",
@@ -4408,12 +4420,12 @@
             "reconnectFailed": "Atkārtota savienošana neizdevās. Lūdzu, atkārtoti savienojieties manuāli."
         },
         "aerocrypt": {
-            "title": "AeroCrypt · Rclone Crypt slānis",
+            "title": "Rclone Crypt slānis",
             "intro": {
                 "heading": "Ko dara šis slānis",
                 "p1": "Šifrē failu nosaukumus un saturu <strong>uzreiz</strong>, pirms tos nosūtīt uz serveri, un atšifrē, kad lejupielādējat. Serveris redz tikai blobus ar base32 nosaukumiem. Jūs redzat oriģinālos nosaukumus.",
-                "p2": "Kamēr slānis ir aktīvs: jūsu attālā sesija parāda saturu skaidrā tekstā, katra augšupielāde tiek šifrēta, katra lejupielāde tiek atšifrēta. Meklējiet <em>AEROCRYPT</em> emblēmu ceļa joslā.",
-                "p3": "Atšķirība no AeroVault: AeroVault ir viens patstāvīgs <code>.aerovault</code> fails (AeroFTP formāts). AeroCrypt ir slānis virs esošas attālās krātuves (S3/SFTP/WebDAV/...), izmantojot publisko rclone crypt formātu. Atbloķējiet ar to pašu paroli, kuru izmantotu <code>rclone</code>."
+                "p2": "Kamēr slānis ir aktīvs: jūsu attālā sesija parāda saturu skaidrā tekstā, katra augšupielāde tiek šifrēta, katra lejupielāde tiek atšifrēta. Meklējiet <em>RCLONE CRYPT</em> emblēmu ceļa joslā.",
+                "p3": "Atšķirība no AeroVault: AeroVault ir viens patstāvīgs <code>.aerovault</code> fails (AeroFTP formāts). Rclone Crypt ir slānis virs esošas attālās krātuves (S3/SFTP/WebDAV/...), izmantojot publisko rclone crypt formātu. Atbloķējiet ar to pašu paroli, kuru izmantotu <code>rclone</code>."
             },
             "openExisting": "Atvērt esošu",
             "createNew": "Izveidot jaunu",
@@ -4682,6 +4694,52 @@
         "opendrive": {
             "privacyTitle": "OpenDrive privātums",
             "privacyUpdated": "OpenDrive privātums atjaunināts"
+        },
+        "manageUsers": {
+            "title": "Pārvaldīt lietotājus",
+            "close": "Aizvērt",
+            "closePanel": "Aizvērt lietotāju paneli",
+            "accountName": "Konta nosaukums",
+            "avatar": "Avatars",
+            "add": "Pievienot",
+            "accountPasswordOptional": "Konta parole (neobligāti)",
+            "noRecovery": "Bez atkopšanas",
+            "noRecoveryTitle": "Konta paroli nevar atkopt.",
+            "noRecoveryBody": "Ja aizmirsīsiet šo paroli, konta saglabātie serveri, iestatījumi un vēsture kļūs neatgriezeniski nepieejami. Pirms turpināt, saglabājiet paroli drošā vietā.",
+            "noRecoveryAck": "Es saprotu un uzņemos atbildību par šo paroli.",
+            "adminRequired": "Lai pievienotu vai pārkārtotu kontus, ir nepieciešama administratora piekļuve.",
+            "loading": "Notiek lietotāju ielāde...",
+            "editAvatar": "Rediģēt avataru",
+            "saveName": "Saglabāt nosaukumu",
+            "active": "Aktīvs",
+            "admin": "ADMIN",
+            "profilesCount": "{count} profili",
+            "settingsCount": "{count} iestatījumi",
+            "never": "Nekad",
+            "rename": "Pārdēvēt",
+            "changeMyPassword": "Mainīt manu paroli",
+            "setPassword": "Iestatīt paroli",
+            "resetPassword": "Atiestatīt paroli",
+            "revokeAdmin": "Atsaukt administratoru",
+            "promoteAdmin": "Paaugstināt par administratoru",
+            "cannotDeleteLastAdmin": "Nevar dzēst pēdējo administratoru",
+            "delete": "Dzēst",
+            "currentPassword": "Pašreizējā parole",
+            "newPasswordBlankRemoves": "Jaunā parole (tukša lauks noņem)",
+            "newPassword": "Jaunā parole",
+            "save": "Saglabāt",
+            "cancelPasswordEdit": "Atcelt paroles rediģēšanu",
+            "closeAvatarEditor": "Aizvērt avatara redaktoru",
+            "accountIdentity": "Konta identitāte",
+            "iconLibrary": "Ikonu bibliotēka",
+            "color": "Krāsa",
+            "cancel": "Atcelt",
+            "errAckRequired": "Lūdzu, apstipriniet, ka kontu paroles nevar atkopt.",
+            "errCurrentRequired": "Pašreizējā konta parole ir obligāta.",
+            "errNewRequired": "Jaunā konta parole ir obligāta.",
+            "confirmRemovePassword": "Noņemt konta paroli kontam \"{name}\"?",
+            "confirmDelete": "Dzēst kontu \"{name}\"?\n\nNoņemamie šifrētie dati: {profiles} profili, {settings} iestatījumu jomas.",
+            "passwordChoiceNote": "Konta paroles iestatīšana nav obligāta. Tā neļauj citiem cilvēkiem, kuri izmanto šo ierīci, atvērt jūsu kontu; jūsu saglabātie dati abos gadījumos paliek šifrēti. Izlaidiet to, ja esat vienīgais lietotājs vai ja uzticaties visiem, kas izmanto šo ierīci."
         }
     }
 }
