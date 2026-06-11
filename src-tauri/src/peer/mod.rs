@@ -143,6 +143,10 @@ fn endpoint_config(custom_relay_urls: Option<Vec<String>>) -> PeerEndpointConfig
         secret_key_path: None,
         custom_relay_urls,
         discovery: discovery_from_env(),
+        // The docs publish/replicate paths keep an ephemeral node identity (the
+        // ticket carries addresses). The identity-seeded endpoint is the
+        // "Send file" one-shot path's own seam, built separately.
+        identity_secret_key: None,
     }
 }
 
@@ -282,6 +286,68 @@ pub async fn replicate_drive_dev(
         None,
     )
     .await
+}
+
+// ----------------------------------------------------------------------------
+// "Send file to user" one-shot (AirDrop) facade. Thin wrappers over the peer-l0
+// `send` primitives, applying the app's shared endpoint config (discovery +
+// relay). The endpoint identity is seeded from `my_secret` INSIDE the peer-l0
+// calls (so the recipient authenticates the sender / the receiver is dialable by
+// AFID), so the `endpoint_config` `identity_secret_key: None` is overwritten there.
+// ----------------------------------------------------------------------------
+
+/// Send a single file to `recipient_afid` (ephemeral, E2EE, no persistent drive).
+/// `my_secret` is the active user's 64-byte peer identity. Returns once the
+/// recipient has ACKed a verified receipt, or errors (including an explicit
+/// recipient decline). `custom_relay_urls` mirrors the rest of the peer stack.
+pub async fn send_file_oneshot(
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
+    custom_relay_urls: Option<Vec<String>>,
+) -> anyhow::Result<()> {
+    aeroftp_peer_l0::send::run_send_file(
+        recipient_afid,
+        my_secret,
+        file_path,
+        endpoint_config(custom_relay_urls),
+    )
+    .await
+}
+
+/// Run the standing one-shot receive loop. `decide` is awaited per incoming offer
+/// (returns `Some(dest_dir)` to accept, `None` to decline); `notify` reports each
+/// outcome. The loop owns the iroh accept loop and only returns on error or when
+/// the caller drops the future. See [`runtime::PeerRuntime::start_receiver`].
+pub async fn run_receiver<D, DF, N>(
+    my_secret: &[u8],
+    custom_relay_urls: Option<Vec<String>>,
+    decide: D,
+    notify: N,
+) -> anyhow::Result<()>
+where
+    D: Fn(aeroftp_peer_l0::IncomingOffer) -> DF,
+    DF: std::future::Future<Output = Option<std::path::PathBuf>>,
+    N: Fn(aeroftp_peer_l0::ReceiveEvent),
+{
+    aeroftp_peer_l0::send::run_receiver(
+        my_secret,
+        endpoint_config(custom_relay_urls),
+        decide,
+        notify,
+    )
+    .await
+}
+
+/// Probe which of `afids` are online/receiving right now (presence). Reuses one
+/// identity-seeded endpoint; result order matches `afids`.
+pub async fn probe_presence(
+    my_secret: &[u8],
+    afids: &[String],
+    custom_relay_urls: Option<Vec<String>>,
+) -> anyhow::Result<Vec<bool>> {
+    aeroftp_peer_l0::send::probe_presence_many(my_secret, afids, endpoint_config(custom_relay_urls))
+        .await
 }
 
 #[cfg(test)]

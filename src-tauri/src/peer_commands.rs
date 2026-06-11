@@ -498,6 +498,146 @@ pub async fn peer_share_remove(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// "Send file to user" one-shot: peer_send_file + the receive-side commands
+// (peer_receiver_start/stop/status, peer_incoming_respond).
+// ---------------------------------------------------------------------------
+
+/// Default inbox root: `~/AeroShare Inbox`. Received files land in a per-sender
+/// subfolder beneath it. Fixed for the first cut (a Setting later).
+fn default_inbox_root() -> Result<std::path::PathBuf, String> {
+    dirs::home_dir()
+        .map(|h| h.join("AeroShare Inbox"))
+        .ok_or_else(|| "could not resolve the home directory for the AeroShare inbox".to_string())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerSendFileParams {
+    /// The recipient's AeroFTP-ID.
+    pub recipient_afid: String,
+    /// Absolute path of the local file to send.
+    pub file_path: String,
+}
+
+/// Send a single file to a friend (one-shot, E2EE, no persistent drive). Mints
+/// the active user's identity on first use (the sender must have one so the
+/// recipient can authenticate them and dial-by-AFID works). Resolves once the
+/// recipient ACKs a verified receipt; a recipient decline is returned as an error.
+#[tauri::command]
+pub async fn peer_send_file(app: AppHandle, params: PeerSendFileParams) -> Result<(), String> {
+    let recipient = crate::peer::validate_aeroftp_id(params.recipient_afid.trim())
+        .map_err(|e| format!("invalid recipient AeroFTP-ID: {e}"))?;
+    let file_path = params.file_path.trim();
+    if !Path::new(file_path).is_file() {
+        return Err(format!("{file_path} is not a file"));
+    }
+
+    crate::user_partitions::gui_peer_identity_get_or_create(&app, true)?
+        .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+        .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+
+    crate::peer::send_file_oneshot(
+        &recipient,
+        &identity_secret,
+        file_path,
+        crate::peer::runtime::relay_urls_from_env(),
+    )
+    .await
+    .map_err(|e| format!("send failed: {e}"))
+}
+
+/// Start the standing receive loop (the Ricezione toggle = ON). Mints the
+/// identity if needed (the receive endpoint is seeded from it so friends can dial
+/// by AFID) and listens until [`peer_receiver_stop`]. Idempotent.
+#[tauri::command]
+pub async fn peer_receiver_start(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+) -> Result<(), String> {
+    crate::user_partitions::gui_peer_identity_get_or_create(&app, true)?
+        .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+        .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    let inbox_root = default_inbox_root()?;
+    peer_runtime
+        .start_receiver(&app, &identity_secret, inbox_root)
+        .await
+}
+
+/// Stop the receive loop (toggle = OFF).
+#[tauri::command]
+pub async fn peer_receiver_stop(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+) -> Result<(), String> {
+    peer_runtime.stop_receiver(&app).await;
+    Ok(())
+}
+
+/// Whether the receive loop is currently listening.
+#[tauri::command]
+pub async fn peer_receiver_status(peer_runtime: State<'_, PeerRuntime>) -> Result<bool, String> {
+    Ok(peer_runtime.is_receiving().await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerIncomingRespondParams {
+    /// The `transferId` from the `peer://incoming-offer` event.
+    pub transfer_id: String,
+    /// Accept (write to the inbox) or decline.
+    pub accept: bool,
+    /// Optional friendly per-sender subfolder name (the friend's alias); falls
+    /// back to a short AFID when absent.
+    pub sender_label: Option<String>,
+}
+
+/// Answer a pending incoming offer (Accept/Decline). The FE applies the
+/// auto-accept-from-known-friends opt-in by calling this with `accept = true`
+/// immediately for a known sender; otherwise it shows the prompt first.
+#[tauri::command]
+pub async fn peer_incoming_respond(
+    peer_runtime: State<'_, PeerRuntime>,
+    params: PeerIncomingRespondParams,
+) -> Result<(), String> {
+    peer_runtime
+        .respond_to_offer(&params.transfer_id, params.accept, params.sender_label)
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerPresenceParams {
+    /// AeroFTP-IDs to probe (the friends shown in the Send dialog).
+    pub afids: Vec<String>,
+}
+
+/// Probe which friends are online/receiving right now (presence). Returns one
+/// bool per input AFID, in order. Best-effort: needs the active user's identity
+/// (minted on first use) to seed the probing endpoint.
+#[tauri::command]
+pub async fn peer_friends_presence(
+    app: AppHandle,
+    params: PeerPresenceParams,
+) -> Result<Vec<bool>, String> {
+    if params.afids.is_empty() {
+        return Ok(Vec::new());
+    }
+    crate::user_partitions::gui_peer_identity_get_or_create(&app, true)?
+        .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+        .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    crate::peer::probe_presence(
+        &identity_secret,
+        &params.afids,
+        crate::peer::runtime::relay_urls_from_env(),
+    )
+    .await
+    .map_err(|e| format!("presence probe failed: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

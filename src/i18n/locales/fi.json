@@ -4791,7 +4791,44 @@
                 "shareFolder": "Jaa kansio",
                 "removeTitle": "Lopeta jakaminen",
                 "removeMessage": "Lopetetaanko kohteen \"{name}\" jakaminen ja poistetaanko se tästä luettelosta? Tiedostosi pysyvät laitteellasi; henkilöt, joiden kanssa jaoit, säilyttävät jo saamansa, mutta eivät enää saa päivityksiä."
-            }
+            },
+            "send": {
+                "menu": "Lähetä AeroSharen kautta",
+                "title": "Lähetä tiedosto",
+                "file": "Tiedosto",
+                "pickFriend": "Valitse kaveri",
+                "noFriends": "Ei vielä tallennettuja kavereita. Lisää kaveri lähettääksesi tiedostoja.",
+                "orAfid": "tai liitä AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Lähetä",
+                "sending": "Lähetetään...",
+                "sent": "Tiedosto lähetetty",
+                "sentDesc": "{name} toimitettu vastaanottajalle {friend}.",
+                "failed": "Lähetys epäonnistui"
+            },
+            "receive": {
+                "offerTitle": "Saapuva tiedosto",
+                "offerMessage": "{sender} haluaa lähettää sinulle tiedoston {name} ({size}).",
+                "unknownSender": "Tuntematon lähettäjä",
+                "accept": "Hyväksy",
+                "decline": "Hylkää",
+                "receivingTitle": "Vastaanotetaan tiedostoa",
+                "receivingDesc": "{name} lähettäjältä {sender}",
+                "completedTitle": "Tiedosto vastaanotettu",
+                "completedDesc": "{name} lähettäjältä {sender}",
+                "failedTitle": "Siirto epäonnistui",
+                "startError": "Vastaanottoa ei voitu aloittaa"
+            },
+            "inbox": {
+                "title": "AeroShare-saapuneet",
+                "empty": "Tässä istunnossa ei vastaanotettu tiedostoja.",
+                "from": "lähettäjältä {sender}",
+                "receiverOff": "Vastaanotto on pois päältä. Ota se käyttöön Asetuksista vastaanottaaksesi tiedostoja."
+            },
+            "receiveLabel": "Vastaanota tiedostoja",
+            "receiveDesc": "Anna kaverien lähettää tiedostoja suoraan sinulle (kertaluonteinen, päästä päähän salattu). Pitää kuuntelijan käynnissä, kun käytössä.",
+            "autoAcceptLabel": "Hyväksy automaattisesti tallennetuilta kavereilta",
+            "autoAcceptDesc": "Ohita kysely tiedostoille henkilöiltä kaverilistallasi. Tuntemattomilta lähettäjiltä kysytään aina."
         }
     }
 }

@@ -4791,7 +4791,44 @@
                 "shareFolder": "Een map delen",
                 "removeTitle": "Delen stoppen",
                 "removeMessage": "\"{name}\" niet meer delen en uit deze lijst verwijderen? Je bestanden blijven op je apparaat; mensen met wie je hebt gedeeld houden wat ze al hebben ontvangen, maar krijgen geen updates meer."
-            }
+            },
+            "send": {
+                "menu": "Verzenden via AeroShare",
+                "title": "Een bestand verzenden",
+                "file": "Bestand",
+                "pickFriend": "Kies een vriend",
+                "noFriends": "Nog geen opgeslagen vrienden. Voeg een vriend toe om bestanden te verzenden.",
+                "orAfid": "of plak een AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Verzenden",
+                "sending": "Bezig met verzenden...",
+                "sent": "Bestand verzonden",
+                "sentDesc": "{name} afgeleverd bij {friend}.",
+                "failed": "Verzenden mislukt"
+            },
+            "receive": {
+                "offerTitle": "Binnenkomend bestand",
+                "offerMessage": "{sender} wil je {name} ({size}) sturen.",
+                "unknownSender": "Onbekende afzender",
+                "accept": "Accepteren",
+                "decline": "Weigeren",
+                "receivingTitle": "Bestand ontvangen",
+                "receivingDesc": "{name} van {sender}",
+                "completedTitle": "Bestand ontvangen",
+                "completedDesc": "{name} van {sender}",
+                "failedTitle": "Overdracht mislukt",
+                "startError": "Kon ontvangst niet starten"
+            },
+            "inbox": {
+                "title": "AeroShare-postvak IN",
+                "empty": "Deze sessie zijn er geen bestanden ontvangen.",
+                "from": "van {sender}",
+                "receiverOff": "Ontvangen staat uit. Schakel het in bij Instellingen om bestanden te ontvangen."
+            },
+            "receiveLabel": "Bestanden ontvangen",
+            "receiveDesc": "Laat vrienden bestanden rechtstreeks naar je sturen (eenmalig, end-to-end versleuteld). Houdt een luisteraar actief zolang dit aanstaat.",
+            "autoAcceptLabel": "Automatisch accepteren van opgeslagen vrienden",
+            "autoAcceptDesc": "Sla de vraag over voor bestanden van mensen in je vriendenlijst. Bij onbekende afzenders wordt altijd gevraagd."
         }
     }
 }

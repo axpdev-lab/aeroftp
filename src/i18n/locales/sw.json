@@ -4791,7 +4791,44 @@
                 "shareFolder": "Shiriki folda",
                 "removeTitle": "Acha kushiriki",
                 "removeMessage": "Uache kushiriki \"{name}\" na uiondoe kwenye orodha hii? Faili zako zinabaki kwenye kifaa chako; watu uliowashirikisha watabaki na walichokwisha kupokea lakini hawatapata masasisho tena."
-            }
+            },
+            "send": {
+                "menu": "Tuma kupitia AeroShare",
+                "title": "Tuma faili",
+                "file": "Faili",
+                "pickFriend": "Chagua rafiki",
+                "noFriends": "Bado hakuna marafiki waliohifadhiwa. Ongeza rafiki ili kutuma faili.",
+                "orAfid": "au bandika AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Tuma",
+                "sending": "Inatuma...",
+                "sent": "Faili imetumwa",
+                "sentDesc": "{name} imefikishwa kwa {friend}.",
+                "failed": "Kutuma kumeshindwa"
+            },
+            "receive": {
+                "offerTitle": "Faili inayoingia",
+                "offerMessage": "{sender} anataka kukutumia {name} ({size}).",
+                "unknownSender": "Mtumaji asiyejulikana",
+                "accept": "Kubali",
+                "decline": "Kataa",
+                "receivingTitle": "Inapokea faili",
+                "receivingDesc": "{name} kutoka kwa {sender}",
+                "completedTitle": "Faili imepokelewa",
+                "completedDesc": "{name} kutoka kwa {sender}",
+                "failedTitle": "Uhamishaji umeshindwa",
+                "startError": "Imeshindwa kuanza kupokea"
+            },
+            "inbox": {
+                "title": "Kikasha cha AeroShare",
+                "empty": "Hakuna faili zilizopokelewa kikao hiki.",
+                "from": "kutoka kwa {sender}",
+                "receiverOff": "Upokeaji umezimwa. Iwashe katika Mipangilio ili kupokea faili."
+            },
+            "receiveLabel": "Pokea faili",
+            "receiveDesc": "Ruhusu marafiki kukutumia faili moja kwa moja (mara moja, zilizosimbwa mwanzo hadi mwisho). Inaendesha kisikilizaji ikiwa imewashwa.",
+            "autoAcceptLabel": "Kubali kiotomatiki kutoka kwa marafiki waliohifadhiwa",
+            "autoAcceptDesc": "Ruka ombi kwa faili kutoka kwa watu walio katika orodha yako ya marafiki. Watumaji wasiojulikana huulizwa kila wakati."
         }
     }
 }

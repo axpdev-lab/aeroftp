@@ -4791,7 +4791,44 @@
                 "shareFolder": "Share a folder",
                 "removeTitle": "Stop sharing",
                 "removeMessage": "Stop sharing \"{name}\" and remove it from this list? Your files stay on your device; people you shared with keep what they already received but will no longer get updates."
-            }
+            },
+            "send": {
+                "menu": "Send via AeroShare",
+                "title": "Send a file",
+                "file": "File",
+                "pickFriend": "Choose a friend",
+                "noFriends": "No saved friends yet. Add a friend to send files.",
+                "orAfid": "or paste an AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Send",
+                "sending": "Sending...",
+                "sent": "File sent",
+                "sentDesc": "{name} delivered to {friend}.",
+                "failed": "Send failed"
+            },
+            "receive": {
+                "offerTitle": "Incoming file",
+                "offerMessage": "{sender} wants to send you {name} ({size}).",
+                "unknownSender": "Unknown sender",
+                "accept": "Accept",
+                "decline": "Decline",
+                "receivingTitle": "Receiving file",
+                "receivingDesc": "{name} from {sender}",
+                "completedTitle": "File received",
+                "completedDesc": "{name} from {sender}",
+                "failedTitle": "Transfer failed",
+                "startError": "Could not start receiving"
+            },
+            "inbox": {
+                "title": "AeroShare Inbox",
+                "empty": "No files received this session.",
+                "from": "from {sender}",
+                "receiverOff": "Receiving is off. Turn it on in Settings to receive files."
+            },
+            "receiveLabel": "Receive files",
+            "receiveDesc": "Let friends send files straight to you (one-shot, end-to-end encrypted). Runs a listener while on.",
+            "autoAcceptLabel": "Auto-accept from saved friends",
+            "autoAcceptDesc": "Skip the prompt for files from people in your friends list. Unknown senders always ask."
         }
     }
 }

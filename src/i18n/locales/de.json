@@ -4791,7 +4791,44 @@
                 "shareFolder": "Einen Ordner teilen",
                 "removeTitle": "Teilen beenden",
                 "removeMessage": "Das Teilen von \"{name}\" beenden und aus dieser Liste entfernen? Deine Dateien bleiben auf deinem Gerät; Personen, mit denen du geteilt hast, behalten das bereits Empfangene, erhalten aber keine Aktualisierungen mehr."
-            }
+            },
+            "send": {
+                "menu": "Über AeroShare senden",
+                "title": "Datei senden",
+                "file": "Datei",
+                "pickFriend": "Freund auswählen",
+                "noFriends": "Noch keine gespeicherten Freunde. Füge einen Freund hinzu, um Dateien zu senden.",
+                "orAfid": "oder eine AeroFTP-ID einfügen",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Senden",
+                "sending": "Wird gesendet...",
+                "sent": "Datei gesendet",
+                "sentDesc": "{name} an {friend} zugestellt.",
+                "failed": "Senden fehlgeschlagen"
+            },
+            "receive": {
+                "offerTitle": "Eingehende Datei",
+                "offerMessage": "{sender} möchte dir {name} ({size}) senden.",
+                "unknownSender": "Unbekannter Absender",
+                "accept": "Annehmen",
+                "decline": "Ablehnen",
+                "receivingTitle": "Datei wird empfangen",
+                "receivingDesc": "{name} von {sender}",
+                "completedTitle": "Datei empfangen",
+                "completedDesc": "{name} von {sender}",
+                "failedTitle": "Übertragung fehlgeschlagen",
+                "startError": "Empfang konnte nicht gestartet werden"
+            },
+            "inbox": {
+                "title": "AeroShare-Posteingang",
+                "empty": "In dieser Sitzung wurden keine Dateien empfangen.",
+                "from": "von {sender}",
+                "receiverOff": "Der Empfang ist deaktiviert. Aktiviere ihn in den Einstellungen, um Dateien zu empfangen."
+            },
+            "receiveLabel": "Dateien empfangen",
+            "receiveDesc": "Lass Freunde dir Dateien direkt senden (einmalig, Ende-zu-Ende-verschlüsselt). Hält im aktivierten Zustand einen Listener bereit.",
+            "autoAcceptLabel": "Von gespeicherten Freunden automatisch annehmen",
+            "autoAcceptDesc": "Überspringe die Abfrage für Dateien von Personen in deiner Freundesliste. Bei unbekannten Absendern wird immer nachgefragt."
         }
     }
 }

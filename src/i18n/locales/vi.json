@@ -4791,7 +4791,44 @@
                 "shareFolder": "Chia sẻ một thư mục",
                 "removeTitle": "Dừng chia sẻ",
                 "removeMessage": "Dừng chia sẻ \"{name}\" và xóa khỏi danh sách này? Tệp của bạn vẫn ở trên thiết bị của bạn; những người bạn đã chia sẻ vẫn giữ những gì họ đã nhận nhưng sẽ không nhận được cập nhật nữa."
-            }
+            },
+            "send": {
+                "menu": "Gửi qua AeroShare",
+                "title": "Gửi tệp",
+                "file": "Tệp",
+                "pickFriend": "Chọn một người bạn",
+                "noFriends": "Chưa có người bạn nào được lưu. Thêm một người bạn để gửi tệp.",
+                "orAfid": "hoặc dán AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Gửi",
+                "sending": "Đang gửi...",
+                "sent": "Đã gửi tệp",
+                "sentDesc": "Đã chuyển {name} đến {friend}.",
+                "failed": "Gửi thất bại"
+            },
+            "receive": {
+                "offerTitle": "Tệp đến",
+                "offerMessage": "{sender} muốn gửi cho bạn {name} ({size}).",
+                "unknownSender": "Người gửi không xác định",
+                "accept": "Chấp nhận",
+                "decline": "Từ chối",
+                "receivingTitle": "Đang nhận tệp",
+                "receivingDesc": "{name} từ {sender}",
+                "completedTitle": "Đã nhận tệp",
+                "completedDesc": "{name} từ {sender}",
+                "failedTitle": "Truyền thất bại",
+                "startError": "Không thể bắt đầu nhận"
+            },
+            "inbox": {
+                "title": "Hộp thư đến AeroShare",
+                "empty": "Không có tệp nào được nhận trong phiên này.",
+                "from": "từ {sender}",
+                "receiverOff": "Tính năng nhận đang tắt. Bật trong Cài đặt để nhận tệp."
+            },
+            "receiveLabel": "Nhận tệp",
+            "receiveDesc": "Cho phép bạn bè gửi tệp trực tiếp cho bạn (một lần, mã hóa đầu cuối). Chạy một trình lắng nghe khi bật.",
+            "autoAcceptLabel": "Tự động chấp nhận từ bạn bè đã lưu",
+            "autoAcceptDesc": "Bỏ qua lời nhắc cho các tệp từ những người trong danh sách bạn bè của bạn. Người gửi không xác định luôn được hỏi."
         }
     }
 }

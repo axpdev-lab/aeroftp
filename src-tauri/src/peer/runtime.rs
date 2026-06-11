@@ -79,6 +79,95 @@ fn now_ms() -> u64 {
     chrono::Utc::now().timestamp_millis().max(0) as u64
 }
 
+/// How long the receive loop waits for the user's Accept/Decline before treating
+/// the offer as declined. Kept BELOW the sender's decision window (peer-l0
+/// `DECISION_WAIT_SECS` = 120) so a no-response resolves as a clean decline on the
+/// sender rather than a connection timeout.
+const INCOMING_RESPONSE_TIMEOUT_SECS: u64 = 110;
+
+/// Payload for `peer://incoming-offer` (an incoming one-shot "Send file" offer
+/// awaiting the user's Accept/Decline). `transfer_id` is echoed back by
+/// `peer_incoming_respond`.
+#[derive(Clone, serde::Serialize)]
+pub struct PeerIncomingOfferEvent {
+    pub transfer_id: String,
+    pub sender_afid: String,
+    pub name: String,
+    pub size: u64,
+    pub at_ms: u64,
+}
+
+/// Payload for `peer://incoming-status` (the outcome of an incoming transfer).
+/// `state` is one of `completed`, `declined`, `failed`.
+#[derive(Clone, serde::Serialize)]
+pub struct PeerIncomingStatusEvent {
+    pub state: String,
+    pub sender_afid: String,
+    pub name: String,
+    pub path: Option<String>,
+    pub error: Option<String>,
+    pub at_ms: u64,
+}
+
+/// Payload for `peer://receiver-status` (the receive loop's lifecycle). `state`
+/// is one of `listening`, `stopped`, `error`.
+#[derive(Clone, serde::Serialize)]
+pub struct PeerReceiverStatusEvent {
+    pub state: String,
+    pub detail: Option<String>,
+    pub at_ms: u64,
+}
+
+/// Short display form of an AeroFTP-ID, the default per-sender inbox subfolder
+/// when the FE does not supply a friendly alias.
+fn short_afid(afid: &str) -> String {
+    if afid.len() > 13 {
+        format!("{}_{}", &afid[..8], &afid[afid.len() - 4..])
+    } else {
+        afid.to_string()
+    }
+}
+
+/// Sanitize a per-sender inbox subfolder name to a single safe path component.
+fn sanitize_subfolder(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    let trimmed = safe.trim_matches(['.', ' ', '/']).to_string();
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed
+    }
+}
+
+/// A pending incoming offer awaiting the user's decision. The receive loop parks
+/// on `tx`'s receiver; `peer_incoming_respond` resolves it with the destination
+/// directory (accept) or `None` (decline).
+struct PendingOffer {
+    tx: tokio::sync::oneshot::Sender<Option<PathBuf>>,
+    sender_afid: String,
+}
+
+/// The standing receive loop's handle (the "Send file" toggle = ON state).
+struct ReceiverHandle {
+    cancel: CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+    /// Inbox root; received files land in `<inbox_root>/<sender subfolder>/`.
+    inbox_root: PathBuf,
+}
+
+impl ReceiverHandle {
+    fn is_live(&self) -> bool {
+        !self.cancel.is_cancelled() && !self.task.is_finished()
+    }
+}
+
 fn emit_sync_status(app: &AppHandle, namespace: &str, state: &str, detail: Option<String>) {
     let _ = app.emit(
         "peer://sync-status",
@@ -130,7 +219,7 @@ fn emit_share_status(
 /// `AEROFTP_PEER_TICKET_ADDRS`, the GUI tasks accept a comma-separated
 /// relay override from `AEROFTP_PEER_RELAY` until the Connectivity Settings
 /// surface (Phase 3) exists. `None` = the engine's research default.
-fn relay_urls_from_env() -> Option<Vec<String>> {
+pub(crate) fn relay_urls_from_env() -> Option<Vec<String>> {
     let raw = std::env::var("AEROFTP_PEER_RELAY").ok()?;
     let urls: Vec<String> = raw
         .split(',')
@@ -211,6 +300,16 @@ pub struct PeerRuntime {
     /// durable across a remount" bug, F3). A std Mutex (never held across an
     /// await) so the sync engine reporter closure can record without async.
     states: std::sync::Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// The standing one-shot "Send file" receive loop (the Ricezione toggle).
+    /// `None`/dead = not receiving. Toggle-driven today; an "always-on" future
+    /// just calls `start_receiver` from boot (the loop hardcodes no policy).
+    receiver: tokio::sync::Mutex<Option<ReceiverHandle>>,
+    /// Incoming offers awaiting the user's Accept/Decline, keyed by transfer id.
+    /// Shared with the receive task (which inserts) and `peer_incoming_respond`
+    /// (which resolves). A std Mutex, never held across an await.
+    pending_offers: std::sync::Arc<std::sync::Mutex<HashMap<String, PendingOffer>>>,
+    /// Monotonic source of transfer ids (paired with `now_ms` for readability).
+    next_transfer_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl PeerRuntime {
@@ -549,6 +648,257 @@ impl PeerRuntime {
                 true
             }
             None => false,
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // One-shot "Send file to user" receive side (the Ricezione toggle).
+    // ------------------------------------------------------------------
+
+    /// Whether the standing receive loop is live.
+    pub async fn is_receiving(&self) -> bool {
+        self.receiver
+            .lock()
+            .await
+            .as_ref()
+            .map(ReceiverHandle::is_live)
+            .unwrap_or(false)
+    }
+
+    /// Start the standing receive loop (idempotent). Binds an identity-seeded
+    /// endpoint (`my_secret` -> `NodeId == my AFID.ed`) so friends can dial us by
+    /// AFID, and writes accepted files under `inbox_root/<sender subfolder>/`.
+    /// While the loop runs, each incoming offer is surfaced on
+    /// `peer://incoming-offer` and parked until `respond_to_offer` resolves it.
+    pub async fn start_receiver(
+        &self,
+        app: &AppHandle,
+        my_secret: &[u8],
+        inbox_root: PathBuf,
+    ) -> Result<(), String> {
+        let mut guard = self.receiver.lock().await;
+        if let Some(handle) = guard.as_ref() {
+            if handle.is_live() {
+                return Ok(());
+            }
+        }
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(receive_loop(
+            app.clone(),
+            cancel.clone(),
+            my_secret.to_vec(),
+            inbox_root.clone(),
+            self.pending_offers.clone(),
+            self.next_transfer_id.clone(),
+        ));
+        *guard = Some(ReceiverHandle {
+            cancel,
+            task,
+            inbox_root,
+        });
+        Ok(())
+    }
+
+    /// Stop the receive loop (toggle OFF). Cancels the accept loop (freeing the
+    /// endpoint + relay) and drops any still-pending offers (they resolve as
+    /// declines on the senders). No-op when not receiving.
+    pub async fn stop_receiver(&self, app: &AppHandle) {
+        let handle = { self.receiver.lock().await.take() };
+        if let Some(handle) = handle {
+            handle.cancel.cancel();
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.task).await;
+        }
+        // Drop any parked offers: their senders get a clean decline.
+        let drained: Vec<PendingOffer> = {
+            let mut pending = self
+                .pending_offers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            pending.drain().map(|(_, v)| v).collect()
+        };
+        for offer in drained {
+            let _ = offer.tx.send(None);
+        }
+        emit_receiver_status(app, "stopped", None);
+        tracing::info!("AeroShare: receive loop stopped");
+    }
+
+    /// Resolve a pending incoming offer. `accept = true` writes the file into
+    /// `inbox_root/<label or short-AFID>/`; `accept = false` declines. `label`
+    /// is the FE's friendly per-sender folder name (the friend alias). Errors if
+    /// the transfer id is unknown (already resolved or timed out).
+    pub async fn respond_to_offer(
+        &self,
+        transfer_id: &str,
+        accept: bool,
+        label: Option<String>,
+    ) -> Result<(), String> {
+        let entry = {
+            let mut pending = self
+                .pending_offers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            pending.remove(transfer_id)
+        };
+        let entry = entry.ok_or_else(|| {
+            "this transfer is no longer pending (already answered or timed out)".to_string()
+        })?;
+        if !accept {
+            let _ = entry.tx.send(None);
+            return Ok(());
+        }
+        let inbox_root = {
+            self.receiver
+                .lock()
+                .await
+                .as_ref()
+                .map(|h| h.inbox_root.clone())
+        }
+        .ok_or_else(|| "the receive loop is not running".to_string())?;
+        let sub = sanitize_subfolder(
+            &label
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| short_afid(&entry.sender_afid)),
+        );
+        let dest = inbox_root.join(sub);
+        let _ = entry.tx.send(Some(dest));
+        Ok(())
+    }
+}
+
+fn emit_incoming_status(
+    app: &AppHandle,
+    state: &str,
+    sender_afid: &str,
+    name: &str,
+    path: Option<String>,
+    error: Option<String>,
+) {
+    let _ = app.emit(
+        "peer://incoming-status",
+        PeerIncomingStatusEvent {
+            state: state.to_string(),
+            sender_afid: sender_afid.to_string(),
+            name: name.to_string(),
+            path,
+            error,
+            at_ms: now_ms(),
+        },
+    );
+}
+
+fn emit_receiver_status(app: &AppHandle, state: &str, detail: Option<String>) {
+    let _ = app.emit(
+        "peer://receiver-status",
+        PeerReceiverStatusEvent {
+            state: state.to_string(),
+            detail,
+            at_ms: now_ms(),
+        },
+    );
+}
+
+/// The standing receive loop. Runs `peer::run_receiver` (which owns the iroh
+/// accept loop) with two callbacks: `decide` surfaces each offer to the FE and
+/// parks until the user answers; `notify` emits the per-transfer outcome. Wrapped
+/// in `select!` so a toggle-OFF cancel tears the endpoint down promptly.
+async fn receive_loop(
+    app: AppHandle,
+    cancel: CancellationToken,
+    my_secret: Vec<u8>,
+    _inbox_root: PathBuf,
+    pending_offers: std::sync::Arc<std::sync::Mutex<HashMap<String, PendingOffer>>>,
+    next_transfer_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
+) {
+    emit_receiver_status(&app, "listening", None);
+
+    let decide = {
+        let app = app.clone();
+        let pending_offers = pending_offers.clone();
+        let next_transfer_id = next_transfer_id.clone();
+        move |offer: aeroftp_peer_l0::IncomingOffer| {
+            let app = app.clone();
+            let pending_offers = pending_offers.clone();
+            let next_transfer_id = next_transfer_id.clone();
+            async move {
+                let seq = next_transfer_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let transfer_id = format!("{}-{}", now_ms(), seq);
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                {
+                    let mut pending = pending_offers.lock().unwrap_or_else(|e| e.into_inner());
+                    pending.insert(
+                        transfer_id.clone(),
+                        PendingOffer {
+                            tx,
+                            sender_afid: offer.sender_afid.clone(),
+                        },
+                    );
+                }
+                let _ = app.emit(
+                    "peer://incoming-offer",
+                    PeerIncomingOfferEvent {
+                        transfer_id: transfer_id.clone(),
+                        sender_afid: offer.sender_afid.clone(),
+                        name: offer.name.clone(),
+                        size: offer.size,
+                        at_ms: now_ms(),
+                    },
+                );
+                let answered = tokio::time::timeout(
+                    std::time::Duration::from_secs(INCOMING_RESPONSE_TIMEOUT_SECS),
+                    rx,
+                )
+                .await;
+                match answered {
+                    Ok(Ok(dest)) => dest,
+                    // Timed out or the responder dropped: clean up + decline.
+                    _ => {
+                        let mut pending = pending_offers.lock().unwrap_or_else(|e| e.into_inner());
+                        pending.remove(&transfer_id);
+                        None
+                    }
+                }
+            }
+        }
+    };
+
+    let notify = {
+        let app = app.clone();
+        move |ev: aeroftp_peer_l0::ReceiveEvent| match ev {
+            aeroftp_peer_l0::ReceiveEvent::Completed {
+                sender_afid,
+                name,
+                path,
+            } => emit_incoming_status(
+                &app,
+                "completed",
+                &sender_afid,
+                &name,
+                Some(path.to_string_lossy().to_string()),
+                None,
+            ),
+            aeroftp_peer_l0::ReceiveEvent::Declined { sender_afid, name } => {
+                emit_incoming_status(&app, "declined", &sender_afid, &name, None, None)
+            }
+            aeroftp_peer_l0::ReceiveEvent::Failed {
+                sender_afid,
+                name,
+                error,
+            } => emit_incoming_status(&app, "failed", &sender_afid, &name, None, Some(error)),
+        }
+    };
+
+    let fut = crate::peer::run_receiver(&my_secret, relay_urls_from_env(), decide, notify);
+    tokio::select! {
+        _ = cancel.cancelled() => {
+            tracing::info!("AeroShare: receive loop cancelled");
+        }
+        result = fut => {
+            if let Err(e) = result {
+                tracing::warn!("AeroShare receive loop ended with error: {e}");
+                emit_receiver_status(&app, "error", Some(e.to_string()));
+            }
         }
     }
 }

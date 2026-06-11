@@ -4791,7 +4791,44 @@
                 "shareFolder": "Sdílet složku",
                 "removeTitle": "Zastavit sdílení",
                 "removeMessage": "Zastavit sdílení \"{name}\" a odebrat ji z tohoto seznamu? Vaše soubory zůstanou ve vašem zařízení; lidé, se kterými jste sdíleli, si ponechají to, co již obdrželi, ale nebudou dostávat další aktualizace."
-            }
+            },
+            "send": {
+                "menu": "Odeslat přes AeroShare",
+                "title": "Odeslat soubor",
+                "file": "Soubor",
+                "pickFriend": "Vyberte přítele",
+                "noFriends": "Zatím nejsou uloženi žádní přátelé. Přidejte přítele pro odesílání souborů.",
+                "orAfid": "nebo vložte AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Odeslat",
+                "sending": "Odesílání...",
+                "sent": "Soubor odeslán",
+                "sentDesc": "{name} doručeno příjemci {friend}.",
+                "failed": "Odeslání selhalo"
+            },
+            "receive": {
+                "offerTitle": "Příchozí soubor",
+                "offerMessage": "{sender} vám chce poslat {name} ({size}).",
+                "unknownSender": "Neznámý odesílatel",
+                "accept": "Přijmout",
+                "decline": "Odmítnout",
+                "receivingTitle": "Přijímání souboru",
+                "receivingDesc": "{name} od {sender}",
+                "completedTitle": "Soubor přijat",
+                "completedDesc": "{name} od {sender}",
+                "failedTitle": "Přenos selhal",
+                "startError": "Přijímání se nepodařilo zahájit"
+            },
+            "inbox": {
+                "title": "Doručená pošta AeroShare",
+                "empty": "V této relaci nebyly přijaty žádné soubory.",
+                "from": "od {sender}",
+                "receiverOff": "Přijímání je vypnuté. Zapněte ho v Nastavení pro příjem souborů."
+            },
+            "receiveLabel": "Přijímat soubory",
+            "receiveDesc": "Umožněte přátelům posílat soubory přímo vám (jednorázově, šifrované od konce ke konci). Při zapnutí běží naslouchací proces.",
+            "autoAcceptLabel": "Automaticky přijímat od uložených přátel",
+            "autoAcceptDesc": "Přeskočit výzvu u souborů od lidí ve vašem seznamu přátel. Neznámí odesílatelé se vždy zeptají."
         }
     }
 }

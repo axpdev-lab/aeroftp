@@ -4810,7 +4810,44 @@
                 "shareFolder": "Rhannu ffolder",
                 "removeTitle": "Stopio rhannu",
                 "removeMessage": "Stopio rhannu \"{name}\" a'i dynnu o'r rhestr hon? Mae eich ffeiliau yn aros ar eich dyfais; bydd y bobl y gwnaethoch rannu â hwy yn cadw'r hyn maent eisoes wedi'i dderbyn ond ni fyddant yn cael diweddariadau mwyach."
-            }
+            },
+            "send": {
+                "menu": "Anfon drwy AeroShare",
+                "title": "Anfon ffeil",
+                "file": "Ffeil",
+                "pickFriend": "Dewiswch ffrind",
+                "noFriends": "Dim ffrindiau wedi'u cadw eto. Ychwanegwch ffrind i anfon ffeiliau.",
+                "orAfid": "neu gludwch AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Anfon",
+                "sending": "Yn anfon...",
+                "sent": "Ffeil wedi'i hanfon",
+                "sentDesc": "{name} wedi'i danfon at {friend}.",
+                "failed": "Methodd yr anfon"
+            },
+            "receive": {
+                "offerTitle": "Ffeil yn cyrraedd",
+                "offerMessage": "Mae {sender} am anfon {name} ({size}) atoch.",
+                "unknownSender": "Anfonwr anhysbys",
+                "accept": "Derbyn",
+                "decline": "Gwrthod",
+                "receivingTitle": "Yn derbyn ffeil",
+                "receivingDesc": "{name} gan {sender}",
+                "completedTitle": "Ffeil wedi'i derbyn",
+                "completedDesc": "{name} gan {sender}",
+                "failedTitle": "Methodd y trosglwyddo",
+                "startError": "Methwyd a dechrau derbyn"
+            },
+            "inbox": {
+                "title": "Mewnflwch AeroShare",
+                "empty": "Dim ffeiliau wedi'u derbyn yn y sesiwn hon.",
+                "from": "gan {sender}",
+                "receiverOff": "Mae derbyn wedi'i ddiffodd. Trowch ef ymlaen yn y Gosodiadau i dderbyn ffeiliau."
+            },
+            "receiveLabel": "Derbyn ffeiliau",
+            "receiveDesc": "Caniatewch i ffrindiau anfon ffeiliau'n syth atoch (un-tro, wedi'u hamgryptio o ben i ben). Mae'n rhedeg gwrandawr tra'i fod ymlaen.",
+            "autoAcceptLabel": "Derbyn yn awtomatig gan ffrindiau wedi'u cadw",
+            "autoAcceptDesc": "Hepgorwch yr anogwr ar gyfer ffeiliau gan bobl ar eich rhestr ffrindiau. Mae anfonwyr anhysbys bob amser yn gofyn."
         }
     }
 }

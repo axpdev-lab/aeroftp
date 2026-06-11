@@ -4791,7 +4791,44 @@
                 "shareFolder": "Bir klasör paylaş",
                 "removeTitle": "Paylaşımı durdur",
                 "removeMessage": "\"{name}\" paylaşımını durdurup bu listeden kaldırmak istiyor musun? Dosyaların cihazında kalır; paylaştığın kişiler daha önce aldıklarını saklar ama artık güncelleme almaz."
-            }
+            },
+            "send": {
+                "menu": "AeroShare ile gönder",
+                "title": "Dosya gönder",
+                "file": "Dosya",
+                "pickFriend": "Bir arkadaş seçin",
+                "noFriends": "Henüz kayıtlı arkadaş yok. Dosya göndermek için bir arkadaş ekleyin.",
+                "orAfid": "veya bir AeroFTP-ID yapıştırın",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Gönder",
+                "sending": "Gönderiliyor...",
+                "sent": "Dosya gönderildi",
+                "sentDesc": "{name} dosyası {friend} kişisine ulaştırıldı.",
+                "failed": "Gönderme başarısız"
+            },
+            "receive": {
+                "offerTitle": "Gelen dosya",
+                "offerMessage": "{sender} size {name} ({size}) göndermek istiyor.",
+                "unknownSender": "Bilinmeyen gönderen",
+                "accept": "Kabul et",
+                "decline": "Reddet",
+                "receivingTitle": "Dosya alınıyor",
+                "receivingDesc": "{sender} kişisinden {name}",
+                "completedTitle": "Dosya alındı",
+                "completedDesc": "{sender} kişisinden {name}",
+                "failedTitle": "Aktarım başarısız",
+                "startError": "Alma işlemi başlatılamadı"
+            },
+            "inbox": {
+                "title": "AeroShare Gelen Kutusu",
+                "empty": "Bu oturumda alınan dosya yok.",
+                "from": "{sender} kişisinden",
+                "receiverOff": "Alma kapalı. Dosya almak için Ayarlar bölümünden açın."
+            },
+            "receiveLabel": "Dosya al",
+            "receiveDesc": "Arkadaşların doğrudan size dosya göndermesine izin verin (tek seferlik, uçtan uca şifreli). Açıkken bir dinleyici çalıştırır.",
+            "autoAcceptLabel": "Kayıtlı arkadaşlardan otomatik kabul",
+            "autoAcceptDesc": "Arkadaş listenizdeki kişilerden gelen dosyalar için istemi atlayın. Bilinmeyen gönderenler her zaman sorulur."
         }
     }
 }

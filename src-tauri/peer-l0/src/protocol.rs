@@ -117,8 +117,23 @@ pub async fn recv_encrypted_blob(
     offer: &PeerBlobOffer,
     key: &[u8; 32],
 ) -> Result<Vec<u8>> {
-    if offer.size > MAX_BLOB_FOR_GATE {
-        bail!("blob larger than L0 gate safety cap");
+    recv_encrypted_blob_capped(conn, offer, key, MAX_BLOB_FOR_GATE).await
+}
+
+/// Like [`recv_encrypted_blob`] but with a caller-chosen plaintext-size cap. The
+/// "Send file to user" one-shot path uses a larger cap than the L0 gate's 64 MiB
+/// safety limit (the gate keeps its small cap unchanged). Everything else - the
+/// nonce + length framing, the decrypt, the BLAKE3 verify, and the end-to-end
+/// receipt ACK the sender waits on - is identical, so the proven receipt logic is
+/// shared rather than duplicated.
+pub async fn recv_encrypted_blob_capped(
+    conn: &Connection,
+    offer: &PeerBlobOffer,
+    key: &[u8; 32],
+    max_size: u64,
+) -> Result<Vec<u8>> {
+    if offer.size > max_size {
+        bail!("blob larger than the receive safety cap");
     }
     let (mut send, mut recv) = conn
         .accept_bi()

@@ -4791,7 +4791,44 @@
                 "shareFolder": "Dela en mapp",
                 "removeTitle": "Sluta dela",
                 "removeMessage": "Sluta dela \"{name}\" och ta bort den från den här listan? Dina filer stannar på din enhet; personerna du delat med behåller det de redan fått men får inga fler uppdateringar."
-            }
+            },
+            "send": {
+                "menu": "Skicka via AeroShare",
+                "title": "Skicka en fil",
+                "file": "Fil",
+                "pickFriend": "Välj en vän",
+                "noFriends": "Inga sparade vänner ännu. Lägg till en vän för att skicka filer.",
+                "orAfid": "eller klistra in ett AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Skicka",
+                "sending": "Skickar...",
+                "sent": "Fil skickad",
+                "sentDesc": "{name} levererad till {friend}.",
+                "failed": "Sändningen misslyckades"
+            },
+            "receive": {
+                "offerTitle": "Inkommande fil",
+                "offerMessage": "{sender} vill skicka {name} ({size}) till dig.",
+                "unknownSender": "Okänd avsändare",
+                "accept": "Acceptera",
+                "decline": "Avböj",
+                "receivingTitle": "Tar emot fil",
+                "receivingDesc": "{name} från {sender}",
+                "completedTitle": "Fil mottagen",
+                "completedDesc": "{name} från {sender}",
+                "failedTitle": "Överföringen misslyckades",
+                "startError": "Kunde inte börja ta emot"
+            },
+            "inbox": {
+                "title": "AeroShare-inkorg",
+                "empty": "Inga filer har tagits emot under den här sessionen.",
+                "from": "från {sender}",
+                "receiverOff": "Mottagning är av. Slå på den i Inställningar för att ta emot filer."
+            },
+            "receiveLabel": "Ta emot filer",
+            "receiveDesc": "Låt vänner skicka filer direkt till dig (engångs, totalsträckskrypterat). Kör en lyssnare medan den är på.",
+            "autoAcceptLabel": "Acceptera automatiskt från sparade vänner",
+            "autoAcceptDesc": "Hoppa över frågan för filer från personer i din vänlista. Okända avsändare tillfrågas alltid."
         }
     }
 }

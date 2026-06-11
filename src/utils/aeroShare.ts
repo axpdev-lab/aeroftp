@@ -140,6 +140,112 @@ export const peerShareRemove = (namespace: string): Promise<void> =>
   invoke('peer_share_remove', { namespace });
 
 // ---------------------------------------------------------------------------
+// "Send file to user" one-shot (AirDrop)
+// ---------------------------------------------------------------------------
+
+export interface PeerSendFileParams {
+  recipientAfid: string;
+  filePath: string;
+}
+
+/** Send a single file to a friend (one-shot, E2EE, no persistent drive).
+ *  Resolves once the recipient ACKs a verified receipt; rejects on an explicit
+ *  recipient decline or any transport error. */
+export const peerSendFile = (params: PeerSendFileParams): Promise<void> =>
+  invoke('peer_send_file', { params });
+
+/** Start the standing receive loop (the Ricezione toggle = ON). Idempotent. */
+export const peerReceiverStart = (): Promise<void> => invoke('peer_receiver_start');
+
+/** Stop the receive loop (toggle = OFF). */
+export const peerReceiverStop = (): Promise<void> => invoke('peer_receiver_stop');
+
+/** Whether the receive loop is currently listening. */
+export const peerReceiverStatus = (): Promise<boolean> =>
+  invoke<boolean>('peer_receiver_status');
+
+export interface PeerIncomingRespondParams {
+  transferId: string;
+  accept: boolean;
+  /** Friendly per-sender subfolder name (the friend alias); falls back to a
+   *  short AFID when omitted. */
+  senderLabel?: string;
+}
+
+/** Answer a pending incoming offer (Accept/Decline). */
+export const peerIncomingRespond = (params: PeerIncomingRespondParams): Promise<void> =>
+  invoke('peer_incoming_respond', { params });
+
+/** Probe which friends are online/receiving right now. Returns one bool per
+ *  input AFID, in order. */
+export const peerFriendsPresence = (afids: string[]): Promise<boolean[]> =>
+  invoke<boolean[]>('peer_friends_presence', { params: { afids } });
+
+/** Payload of the `peer://incoming-offer` event (an incoming send awaiting
+ *  the user's Accept/Decline). */
+export interface PeerIncomingOfferEvent {
+  transfer_id: string;
+  sender_afid: string;
+  name: string;
+  size: number;
+  at_ms: number;
+}
+
+/** Payload of the `peer://incoming-status` event (outcome of an incoming
+ *  transfer): state is `completed` | `declined` | `failed`. */
+export interface PeerIncomingStatusEvent {
+  state: 'completed' | 'declined' | 'failed';
+  sender_afid: string;
+  name: string;
+  path: string | null;
+  error: string | null;
+  at_ms: number;
+}
+
+// --- Global "open the Send-file dialog" event (mirrors AERO_SHARE_OPEN_EVENT) ---
+
+export const AERO_SHARE_SEND_EVENT = 'aeroftp-open-aeroshare-send';
+
+export interface AeroShareSendDetail {
+  /** Absolute path of the local file to send. */
+  filePath: string;
+}
+
+/** Ask the (always-mounted) AeroShare hub to open the Send-file dialog for a
+ *  file. No-op if AeroShare is off (the listener is only mounted when on). */
+export const openAeroShareSend = (detail: AeroShareSendDetail): void => {
+  window.dispatchEvent(new CustomEvent<AeroShareSendDetail>(AERO_SHARE_SEND_EVENT, { detail }));
+};
+
+/** Global "open the received-files Inbox" event. */
+export const AERO_SHARE_INBOX_EVENT = 'aeroftp-open-aeroshare-inbox';
+
+export const openAeroShareInbox = (): void => {
+  window.dispatchEvent(new CustomEvent(AERO_SHARE_INBOX_EVENT));
+};
+
+/** Last path component of an absolute path (handles both `/` and `\`). */
+export const basenameOf = (p: string): string => {
+  const trimmed = p.replace(/[/\\]+$/, '');
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+};
+
+/** Human-readable byte size for offer prompts/toasts (e.g. "2.3 MB"). */
+export const formatBytes = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+};
+
+// ---------------------------------------------------------------------------
 // Share-link helpers (LOCKED format: aeroftp-share://v1/<ticket>/<cap>)
 // ---------------------------------------------------------------------------
 

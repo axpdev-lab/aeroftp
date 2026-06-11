@@ -4791,7 +4791,44 @@
                 "shareFolder": "Condividi una cartella",
                 "removeTitle": "Interrompi condivisione",
                 "removeMessage": "Interrompere la condivisione di \"{name}\" e rimuoverla da questo elenco? I tuoi file restano sul tuo dispositivo; le persone con cui hai condiviso conservano ciò che hanno già ricevuto ma non riceveranno più aggiornamenti."
-            }
+            },
+            "send": {
+                "menu": "Invia tramite AeroShare",
+                "title": "Invia un file",
+                "file": "File",
+                "pickFriend": "Scegli un amico",
+                "noFriends": "Nessun amico salvato. Aggiungi un amico per inviare file.",
+                "orAfid": "oppure incolla un AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Invia",
+                "sending": "Invio in corso...",
+                "sent": "File inviato",
+                "sentDesc": "{name} consegnato a {friend}.",
+                "failed": "Invio non riuscito"
+            },
+            "receive": {
+                "offerTitle": "File in arrivo",
+                "offerMessage": "{sender} vuole inviarti {name} ({size}).",
+                "unknownSender": "Mittente sconosciuto",
+                "accept": "Accetta",
+                "decline": "Rifiuta",
+                "receivingTitle": "Ricezione file",
+                "receivingDesc": "{name} da {sender}",
+                "completedTitle": "File ricevuto",
+                "completedDesc": "{name} da {sender}",
+                "failedTitle": "Trasferimento non riuscito",
+                "startError": "Impossibile avviare la ricezione"
+            },
+            "inbox": {
+                "title": "Posta in arrivo AeroShare",
+                "empty": "Nessun file ricevuto in questa sessione.",
+                "from": "da {sender}",
+                "receiverOff": "La ricezione è disattivata. Attivala nelle Impostazioni per ricevere file."
+            },
+            "receiveLabel": "Ricevi file",
+            "receiveDesc": "Consenti agli amici di inviarti file direttamente (una tantum, crittografato end-to-end). Mantiene attivo un ricevitore mentre è acceso.",
+            "autoAcceptLabel": "Accetta automaticamente dagli amici salvati",
+            "autoAcceptDesc": "Salta la conferma per i file delle persone nella tua lista di amici. I mittenti sconosciuti chiedono sempre conferma."
         }
     }
 }

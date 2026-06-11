@@ -4791,7 +4791,44 @@
                 "shareFolder": "Udostępnij folder",
                 "removeTitle": "Zatrzymaj udostępnianie",
                 "removeMessage": "Zatrzymać udostępnianie \"{name}\" i usunąć je z tej listy? Twoje pliki pozostają na Twoim urządzeniu; osoby, którym udostępniono, zachowują to, co już otrzymały, ale nie będą otrzymywać aktualizacji."
-            }
+            },
+            "send": {
+                "menu": "Wyślij przez AeroShare",
+                "title": "Wyślij plik",
+                "file": "Plik",
+                "pickFriend": "Wybierz znajomego",
+                "noFriends": "Brak zapisanych znajomych. Dodaj znajomego, aby wysyłać pliki.",
+                "orAfid": "lub wklej AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Wyślij",
+                "sending": "Wysyłanie...",
+                "sent": "Plik wysłany",
+                "sentDesc": "{name} dostarczono do {friend}.",
+                "failed": "Wysyłanie nie powiodło się"
+            },
+            "receive": {
+                "offerTitle": "Plik przychodzący",
+                "offerMessage": "{sender} chce wysłać ci {name} ({size}).",
+                "unknownSender": "Nieznany nadawca",
+                "accept": "Akceptuj",
+                "decline": "Odrzuć",
+                "receivingTitle": "Odbieranie pliku",
+                "receivingDesc": "{name} od {sender}",
+                "completedTitle": "Plik odebrany",
+                "completedDesc": "{name} od {sender}",
+                "failedTitle": "Transfer nie powiódł się",
+                "startError": "Nie udało się rozpocząć odbierania"
+            },
+            "inbox": {
+                "title": "Skrzynka odbiorcza AeroShare",
+                "empty": "W tej sesji nie odebrano żadnych plików.",
+                "from": "od {sender}",
+                "receiverOff": "Odbieranie jest wyłączone. Włącz je w Ustawieniach, aby odbierać pliki."
+            },
+            "receiveLabel": "Odbieraj pliki",
+            "receiveDesc": "Pozwól znajomym wysyłać pliki bezpośrednio do ciebie (jednorazowo, szyfrowane od końca do końca). Gdy włączone, działa nasłuch.",
+            "autoAcceptLabel": "Automatycznie akceptuj od zapisanych znajomych",
+            "autoAcceptDesc": "Pomiń pytanie dla plików od osób z twojej listy znajomych. Nieznani nadawcy zawsze pytają."
         }
     }
 }

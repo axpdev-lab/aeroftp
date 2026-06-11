@@ -264,7 +264,7 @@ pub(crate) async fn publish_drive_version(
         new_state.insert(rel_key.clone(), pt_blake3.clone());
 
         let is_unchanged = if let Some(p) = prev {
-            p.get(rel_key).map_or(false, |old| old == &pt_blake3)
+            p.get(rel_key).is_some_and(|old| old == &pt_blake3)
         } else {
             false
         };
@@ -288,7 +288,7 @@ pub(crate) async fn publish_drive_version(
         let content_hash = doc
             .set_bytes(author, Bytes::from(rel_key.clone()), Bytes::from(blob))
             .await?;
-        let action = if prev.map_or(true, |p| !p.contains_key(rel_key)) {
+        let action = if prev.is_none_or(|p| !p.contains_key(rel_key)) {
             "added"
         } else {
             "updated"
@@ -350,6 +350,7 @@ pub(crate) async fn publish_drive_version(
 /// If --store absent: EXACT current in-memory behavior (no regression for single-entry / Stage 4-7 drive).
 /// If --store <dir> present: use FsStore + Docs::persistent + author_default + list/open-or-create.
 /// Drive content (entries + blobs) survives publisher restart. Replicate side remains in-memory.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_docs_publish(
     key: String,
     dir: Option<String>,
@@ -1146,7 +1147,7 @@ pub async fn run_docs_replicate(
                                     f["plaintext_blake3"].as_str().unwrap_or("").to_string();
 
                                 let is_unchanged =
-                                    prev_files.get(&rkey).map_or(false, |h| h == &eblake);
+                                    prev_files.get(&rkey).is_some_and(|h| h == &eblake);
                                 let target = out_path.join(&rkey);
                                 if is_unchanged && target.exists() {
                                     println!("skip unchanged {}", rkey);

@@ -4810,7 +4810,44 @@
                 "shareFolder": "Deila möppu",
                 "removeTitle": "Hætta að deila",
                 "removeMessage": "Hætta að deila \"{name}\" og fjarlægja hana af þessum lista? Skrárnar þínar verða áfram á tækinu þínu; fólkið sem þú deildir með heldur því sem það hefur þegar fengið en fær ekki fleiri uppfærslur."
-            }
+            },
+            "send": {
+                "menu": "Senda með AeroShare",
+                "title": "Senda skrá",
+                "file": "Skrá",
+                "pickFriend": "Veldu vin",
+                "noFriends": "Engir vistaðir vinir enn. Bættu við vini til að senda skrár.",
+                "orAfid": "eða límdu inn AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Senda",
+                "sending": "Sendi...",
+                "sent": "Skrá send",
+                "sentDesc": "{name} afhent til {friend}.",
+                "failed": "Sending mistókst"
+            },
+            "receive": {
+                "offerTitle": "Innkomandi skrá",
+                "offerMessage": "{sender} vill senda þér {name} ({size}).",
+                "unknownSender": "Óþekktur sendandi",
+                "accept": "Samþykkja",
+                "decline": "Hafna",
+                "receivingTitle": "Tek á móti skrá",
+                "receivingDesc": "{name} frá {sender}",
+                "completedTitle": "Skrá móttekin",
+                "completedDesc": "{name} frá {sender}",
+                "failedTitle": "Flutningur mistókst",
+                "startError": "Tókst ekki að hefja móttöku"
+            },
+            "inbox": {
+                "title": "AeroShare-innhólf",
+                "empty": "Engar skrár mótteknar í þessari lotu.",
+                "from": "frá {sender}",
+                "receiverOff": "Móttaka er slökkt. Kveiktu á henni í Stillingum til að taka á móti skrám."
+            },
+            "receiveLabel": "Taka á móti skrám",
+            "receiveDesc": "Leyfðu vinum að senda þér skrár beint (einnota, dulkóðað enda í enda). Keyrir hlustanda á meðan kveikt er á.",
+            "autoAcceptLabel": "Samþykkja sjálfkrafa frá vistuðum vinum",
+            "autoAcceptDesc": "Slepptu spurningunni fyrir skrár frá fólki á vinalistanum þínum. Óþekktir sendendur eru alltaf spurðir."
         }
     }
 }

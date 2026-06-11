@@ -39,6 +39,16 @@ pub struct PeerEndpointConfig {
     /// Discovery backend selection (WI-5a). Default `Both` adds the Mainline DHT
     /// alongside n0 DNS (decentralized + additive). `Dht` drops n0 entirely.
     pub discovery: DiscoveryMode,
+    /// Optional 32-byte ed25519 secret SEED to bind the endpoint with, instead of
+    /// a fresh random key (the default when `None`). This is the "Send file to
+    /// user" seam: pass the active user's peer-identity ed seed
+    /// (`Identity::to_secret_bytes()[..32]`) and the endpoint's `NodeId` becomes
+    /// the SAME 32 bytes as the AFID's ed key (`IdentityPublic::ed_bytes`), so a
+    /// sender can dial a recipient BY AFID with no mapping table - n0/DHT
+    /// discovery resolves that NodeId's live address. The docs publish/replicate
+    /// paths leave this `None` (their node identity is ephemeral; the ticket
+    /// carries addresses).
+    pub identity_secret_key: Option<[u8; 32]>,
 }
 
 /// Apply the selected discovery service(s) to an endpoint builder. Factored out so the
@@ -114,12 +124,24 @@ impl PeerEndpoint {
             }
             _ => iroh::RelayMode::Staging,
         };
-        let builder = apply_discovery(
-            Endpoint::builder()
-                .alpns(vec![crate::PEER_L0_ALPN.to_vec()])
-                .relay_mode(relay_mode),
-            cfg.discovery,
-        );
+        // Register BOTH the L0 spike ALPN and the one-shot send ALPN: the L0 gate
+        // binary dials with `PEER_L0_ALPN`, the app's "Send file" receive loop
+        // accepts `PEER_SEND_ALPN`. The dialer selects which one per connection,
+        // so coexisting is harmless and keeps a single endpoint constructor.
+        let mut base = Endpoint::builder()
+            .alpns(vec![
+                crate::PEER_L0_ALPN.to_vec(),
+                crate::send::PEER_SEND_ALPN.to_vec(),
+                crate::send::PEER_PING_ALPN.to_vec(),
+            ])
+            .relay_mode(relay_mode);
+        // Identity-seeded endpoint (the dial-by-AFID seam): bind with the user's
+        // ed seed so `NodeId == AFID.ed`. Infallible: the 32 bytes are an
+        // ed25519 seed, exactly what `SecretKey::from_bytes` wants.
+        if let Some(seed) = cfg.identity_secret_key {
+            base = base.secret_key(iroh::SecretKey::from_bytes(&seed));
+        }
+        let builder = apply_discovery(base, cfg.discovery);
 
         // Older iroh 0.9x API on our rust-version uses bind_addr_v4 / bind_addr_v6
         // or simply lets the builder pick. For the spike we keep it simple.
@@ -177,7 +199,10 @@ impl PeerEndpoint {
     }
 
     pub fn close(&self) {
-        // Endpoint::close returns a type that must be used in some iroh versions.
+        // Endpoint::close returns a future in this iroh version. This is a sync,
+        // best-effort fire-and-forget teardown (callers that need a graceful close
+        // drop the owning task instead), so we deliberately do not await it.
+        #[allow(clippy::let_underscore_future)]
         let _ = self.endpoint.close();
     }
 }
@@ -296,7 +321,11 @@ pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
         }
         _ => iroh::RelayMode::Staging,
     };
-    let builder = apply_discovery(Endpoint::builder().relay_mode(relay_mode), cfg.discovery);
+    let mut base = Endpoint::builder().relay_mode(relay_mode);
+    if let Some(seed) = cfg.identity_secret_key {
+        base = base.secret_key(iroh::SecretKey::from_bytes(&seed));
+    }
+    let builder = apply_discovery(base, cfg.discovery);
 
     // bind_addr is best-effort / ignored for 0.92 compat (same as L0)
     if let Some(_addr) = cfg.bind_addr {
@@ -308,4 +337,43 @@ pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
         .await
         .context("failed to bind iroh endpoint (L1 docs)")?;
     Ok(endpoint)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::identity::Identity;
+
+    /// S1 (Send-file): the dial-by-AFID seam. iroh's `NodeId` is the ed25519
+    /// PUBLIC key, and so is the `ed` half of an AeroFTP-ID. Binding an iroh
+    /// `SecretKey` from the SAME 32-byte ed seed the identity stores must yield a
+    /// `NodeId` byte-equal to `IdentityPublic::ed_bytes()`. If this holds, a
+    /// sender derives a recipient's NodeId straight from their AFID (no mapping
+    /// table) and discovery resolves the address. Offline + deterministic.
+    #[test]
+    fn node_id_equals_identity_ed_key() {
+        let id = Identity::generate();
+        let secret = id.to_secret_bytes();
+        let mut ed_seed = [0u8; 32];
+        ed_seed.copy_from_slice(&secret[..32]);
+
+        // What the receive endpoint will be bound with (see `identity_secret_key`).
+        let node_id = iroh::SecretKey::from_bytes(&ed_seed).public();
+
+        assert_eq!(
+            node_id.as_bytes(),
+            &id.public().ed_bytes(),
+            "iroh NodeId from the AFID ed seed must equal the AFID's ed bytes \
+             (dial-by-AFID seam)"
+        );
+
+        // And a round-trip through the AFID string (what the sender actually
+        // parses) recovers the SAME NodeId bytes.
+        let afid = id.public().to_aeroftp_id();
+        let parsed = crate::IdentityPublic::from_aeroftp_id(&afid).expect("valid AFID");
+        assert_eq!(
+            node_id.as_bytes(),
+            &parsed.ed_bytes(),
+            "the recipient's NodeId is derivable purely from their shared AFID string"
+        );
+    }
 }

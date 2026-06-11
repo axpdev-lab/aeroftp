@@ -4791,7 +4791,44 @@
                 "shareFolder": "Partajează un folder",
                 "removeTitle": "Oprește partajarea",
                 "removeMessage": "Oprești partajarea \"{name}\" și o elimini din această listă? Fișierele tale rămân pe dispozitivul tău; persoanele cu care ai partajat păstrează ce au primit deja, dar nu vor mai primi actualizări."
-            }
+            },
+            "send": {
+                "menu": "Trimite prin AeroShare",
+                "title": "Trimite un fișier",
+                "file": "Fișier",
+                "pickFriend": "Alege un prieten",
+                "noFriends": "Niciun prieten salvat încă. Adaugă un prieten pentru a trimite fișiere.",
+                "orAfid": "sau lipește un AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Trimite",
+                "sending": "Se trimite...",
+                "sent": "Fișier trimis",
+                "sentDesc": "{name} livrat către {friend}.",
+                "failed": "Trimiterea a eșuat"
+            },
+            "receive": {
+                "offerTitle": "Fișier primit",
+                "offerMessage": "{sender} vrea să îți trimită {name} ({size}).",
+                "unknownSender": "Expeditor necunoscut",
+                "accept": "Acceptă",
+                "decline": "Refuză",
+                "receivingTitle": "Se primește fișierul",
+                "receivingDesc": "{name} de la {sender}",
+                "completedTitle": "Fișier primit",
+                "completedDesc": "{name} de la {sender}",
+                "failedTitle": "Transferul a eșuat",
+                "startError": "Recepția nu a putut fi pornită"
+            },
+            "inbox": {
+                "title": "Mesaje primite AeroShare",
+                "empty": "Niciun fișier primit în această sesiune.",
+                "from": "de la {sender}",
+                "receiverOff": "Recepția este oprită. Activeaz-o în Setări pentru a primi fișiere."
+            },
+            "receiveLabel": "Primește fișiere",
+            "receiveDesc": "Permite prietenilor să îți trimită fișiere direct (o singură dată, criptat de la cap la cap). Rulează un receptor cât timp este pornit.",
+            "autoAcceptLabel": "Acceptă automat de la prietenii salvați",
+            "autoAcceptDesc": "Omite confirmarea pentru fișierele de la persoanele din lista ta de prieteni. Expeditorii necunoscuți cer întotdeauna confirmare."
         }
     }
 }

@@ -15171,6 +15171,13 @@ pub fn run() {
             peer_commands::peer_share_stop,
             peer_commands::peer_share_resume,
             peer_commands::peer_share_remove,
+            // AeroShare "Send file to user" one-shot (AirDrop)
+            peer_commands::peer_send_file,
+            peer_commands::peer_receiver_start,
+            peer_commands::peer_receiver_stop,
+            peer_commands::peer_receiver_status,
+            peer_commands::peer_incoming_respond,
+            peer_commands::peer_friends_presence,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,

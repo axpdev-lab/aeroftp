@@ -4791,7 +4791,44 @@
                 "shareFolder": "共享文件夹",
                 "removeTitle": "停止共享",
                 "removeMessage": "停止共享“{name}”并将其从此列表中移除？你的文件仍保留在你的设备上；与你共享的人会保留已经收到的内容，但不会再收到更新。"
-            }
+            },
+            "send": {
+                "menu": "通过 AeroShare 发送",
+                "title": "发送文件",
+                "file": "文件",
+                "pickFriend": "选择一位好友",
+                "noFriends": "尚未保存任何好友。添加好友以发送文件。",
+                "orAfid": "或粘贴 AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "发送",
+                "sending": "正在发送...",
+                "sent": "文件已发送",
+                "sentDesc": "{name} 已送达 {friend}。",
+                "failed": "发送失败"
+            },
+            "receive": {
+                "offerTitle": "传入文件",
+                "offerMessage": "{sender} 想向您发送 {name}（{size}）。",
+                "unknownSender": "未知发送者",
+                "accept": "接受",
+                "decline": "拒绝",
+                "receivingTitle": "正在接收文件",
+                "receivingDesc": "来自 {sender} 的 {name}",
+                "completedTitle": "文件已接收",
+                "completedDesc": "来自 {sender} 的 {name}",
+                "failedTitle": "传输失败",
+                "startError": "无法开始接收"
+            },
+            "inbox": {
+                "title": "AeroShare 收件箱",
+                "empty": "本次会话未收到任何文件。",
+                "from": "来自 {sender}",
+                "receiverOff": "接收功能已关闭。在设置中开启以接收文件。"
+            },
+            "receiveLabel": "接收文件",
+            "receiveDesc": "允许好友直接向您发送文件（一次性，端到端加密）。开启时会运行一个监听器。",
+            "autoAcceptLabel": "自动接受来自已保存好友的文件",
+            "autoAcceptDesc": "跳过来自好友列表中人员的文件提示。未知发送者始终会询问。"
         }
     }
 }

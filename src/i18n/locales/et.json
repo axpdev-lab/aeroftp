@@ -4791,7 +4791,44 @@
                 "shareFolder": "Jaga kausta",
                 "removeTitle": "Lõpeta jagamine",
                 "removeMessage": "Kas lõpetada \"{name}\" jagamine ja eemaldada see sellest loendist? Sinu failid jäävad sinu seadmesse; inimesed, kellega jagasid, säilitavad juba saadu, kuid ei saa enam uuendusi."
-            }
+            },
+            "send": {
+                "menu": "Saada AeroShare kaudu",
+                "title": "Saada fail",
+                "file": "Fail",
+                "pickFriend": "Vali sõber",
+                "noFriends": "Salvestatud sõpru veel pole. Lisa sõber, et faile saata.",
+                "orAfid": "või kleebi AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Saada",
+                "sending": "Saatmine...",
+                "sent": "Fail saadetud",
+                "sentDesc": "{name} toimetati kasutajale {friend}.",
+                "failed": "Saatmine ebaõnnestus"
+            },
+            "receive": {
+                "offerTitle": "Sissetulev fail",
+                "offerMessage": "{sender} soovib sulle saata faili {name} ({size}).",
+                "unknownSender": "Tundmatu saatja",
+                "accept": "Nõustu",
+                "decline": "Keeldu",
+                "receivingTitle": "Faili vastuvõtmine",
+                "receivingDesc": "{name} kasutajalt {sender}",
+                "completedTitle": "Fail vastu võetud",
+                "completedDesc": "{name} kasutajalt {sender}",
+                "failedTitle": "Ülekanne ebaõnnestus",
+                "startError": "Vastuvõtmist ei õnnestunud alustada"
+            },
+            "inbox": {
+                "title": "AeroShare'i postkast",
+                "empty": "Selles seansis pole faile vastu võetud.",
+                "from": "kasutajalt {sender}",
+                "receiverOff": "Vastuvõtmine on väljas. Lülita see sätetes sisse, et faile vastu võtta."
+            },
+            "receiveLabel": "Failide vastuvõtmine",
+            "receiveDesc": "Luba sõpradel saata faile otse sulle (ühekordne, läbivalt krüpteeritud). Sisselülitatuna töötab kuulaja.",
+            "autoAcceptLabel": "Automaatne nõustumine salvestatud sõpradelt",
+            "autoAcceptDesc": "Jäta vahele küsimine failide puhul, mis tulevad su sõbralistis olevatelt inimestelt. Tundmatud saatjad küsivad alati."
         }
     }
 }

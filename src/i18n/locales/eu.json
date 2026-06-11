@@ -4810,7 +4810,44 @@
                 "shareFolder": "Partekatu karpeta bat",
                 "removeTitle": "Utzi partekatzeari",
                 "removeMessage": "\"{name}\" partekatzeari utzi eta zerrenda honetatik kendu nahi duzu? Zure fitxategiak zure gailuan geratzen dira; partekatu duzun jendeak jada jasotakoa gordeko du, baina ez du eguneratze gehiagorik jasoko."
-            }
+            },
+            "send": {
+                "menu": "Bidali AeroShare bidez",
+                "title": "Bidali fitxategi bat",
+                "file": "Fitxategia",
+                "pickFriend": "Aukeratu lagun bat",
+                "noFriends": "Oraindik ez dago gordetako lagunik. Gehitu lagun bat fitxategiak bidaltzeko.",
+                "orAfid": "edo itsatsi AeroFTP-ID bat",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Bidali",
+                "sending": "Bidaltzen...",
+                "sent": "Fitxategia bidalita",
+                "sentDesc": "{name} {friend} erabiltzaileari entregatu zaio.",
+                "failed": "Bidalketak huts egin du"
+            },
+            "receive": {
+                "offerTitle": "Sarrerako fitxategia",
+                "offerMessage": "{sender} erabiltzaileak {name} ({size}) bidali nahi dizu.",
+                "unknownSender": "Bidaltzaile ezezaguna",
+                "accept": "Onartu",
+                "decline": "Ukatu",
+                "receivingTitle": "Fitxategia jasotzen",
+                "receivingDesc": "{name} {sender} erabiltzailearena",
+                "completedTitle": "Fitxategia jasota",
+                "completedDesc": "{name} {sender} erabiltzailearena",
+                "failedTitle": "Transferentziak huts egin du",
+                "startError": "Ezin izan da jasotzen hasi"
+            },
+            "inbox": {
+                "title": "AeroShare sarrera-ontzia",
+                "empty": "Saio honetan ez da fitxategirik jaso.",
+                "from": "{sender} erabiltzailearena",
+                "receiverOff": "Jasotzea itzalita dago. Piztu ezazu Ezarpenetan fitxategiak jasotzeko."
+            },
+            "receiveLabel": "Jaso fitxategiak",
+            "receiveDesc": "Utzi lagunei fitxategiak zuzenean bidaltzen (behin batekoa, muturretik muturrera enkriptatua). Piztuta dagoenean entzule bat exekutatzen du.",
+            "autoAcceptLabel": "Onartu automatikoki gordetako lagunengandik",
+            "autoAcceptDesc": "Saltatu galdera zure lagun-zerrendako pertsonen fitxategietarako. Bidaltzaile ezezagunek beti galdetzen dute."
         }
     }
 }

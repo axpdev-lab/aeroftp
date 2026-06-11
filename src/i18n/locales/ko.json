@@ -4791,7 +4791,44 @@
                 "shareFolder": "폴더 공유",
                 "removeTitle": "공유 중지",
                 "removeMessage": "\"{name}\" 공유를 중지하고 이 목록에서 제거할까요? 파일은 내 기기에 그대로 남습니다. 공유한 사람들은 이미 받은 내용은 유지하지만 더 이상 업데이트를 받지 못합니다."
-            }
+            },
+            "send": {
+                "menu": "AeroShare로 보내기",
+                "title": "파일 보내기",
+                "file": "파일",
+                "pickFriend": "친구 선택",
+                "noFriends": "저장된 친구가 아직 없습니다. 파일을 보내려면 친구를 추가하세요.",
+                "orAfid": "또는 AeroFTP-ID 붙여넣기",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "보내기",
+                "sending": "보내는 중...",
+                "sent": "파일을 보냈습니다",
+                "sentDesc": "{name}을(를) {friend}에게 전달했습니다.",
+                "failed": "보내기 실패"
+            },
+            "receive": {
+                "offerTitle": "수신 파일",
+                "offerMessage": "{sender}님이 회원님에게 {name}({size})을(를) 보내려고 합니다.",
+                "unknownSender": "알 수 없는 보낸 사람",
+                "accept": "수락",
+                "decline": "거절",
+                "receivingTitle": "파일 수신 중",
+                "receivingDesc": "{sender}님이 보낸 {name}",
+                "completedTitle": "파일을 받았습니다",
+                "completedDesc": "{sender}님이 보낸 {name}",
+                "failedTitle": "전송 실패",
+                "startError": "수신을 시작할 수 없습니다"
+            },
+            "inbox": {
+                "title": "AeroShare 받은 편지함",
+                "empty": "이 세션에서 받은 파일이 없습니다.",
+                "from": "{sender}님으로부터",
+                "receiverOff": "수신이 꺼져 있습니다. 파일을 받으려면 설정에서 켜세요."
+            },
+            "receiveLabel": "파일 받기",
+            "receiveDesc": "친구가 회원님에게 직접 파일을 보낼 수 있도록 합니다 (일회성, 종단 간 암호화). 켜져 있는 동안 수신기가 실행됩니다.",
+            "autoAcceptLabel": "저장된 친구로부터 자동 수락",
+            "autoAcceptDesc": "친구 목록에 있는 사람의 파일에 대한 확인을 건너뜁니다. 알 수 없는 보낸 사람에게는 항상 확인합니다."
         }
     }
 }

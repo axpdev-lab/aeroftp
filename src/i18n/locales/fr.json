@@ -4791,7 +4791,44 @@
                 "shareFolder": "Partager un dossier",
                 "removeTitle": "Arrêter le partage",
                 "removeMessage": "Arrêter le partage de \"{name}\" et le retirer de cette liste ? Vos fichiers restent sur votre appareil ; les personnes avec qui vous avez partagé conservent ce qu'elles ont déjà reçu mais ne recevront plus de mises à jour."
-            }
+            },
+            "send": {
+                "menu": "Envoyer via AeroShare",
+                "title": "Envoyer un fichier",
+                "file": "Fichier",
+                "pickFriend": "Choisir un ami",
+                "noFriends": "Aucun ami enregistré pour l'instant. Ajoutez un ami pour envoyer des fichiers.",
+                "orAfid": "ou collez un AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Envoyer",
+                "sending": "Envoi en cours...",
+                "sent": "Fichier envoyé",
+                "sentDesc": "{name} remis à {friend}.",
+                "failed": "Échec de l'envoi"
+            },
+            "receive": {
+                "offerTitle": "Fichier entrant",
+                "offerMessage": "{sender} veut vous envoyer {name} ({size}).",
+                "unknownSender": "Expéditeur inconnu",
+                "accept": "Accepter",
+                "decline": "Refuser",
+                "receivingTitle": "Réception du fichier",
+                "receivingDesc": "{name} de {sender}",
+                "completedTitle": "Fichier reçu",
+                "completedDesc": "{name} de {sender}",
+                "failedTitle": "Échec du transfert",
+                "startError": "Impossible de démarrer la réception"
+            },
+            "inbox": {
+                "title": "Boîte de réception AeroShare",
+                "empty": "Aucun fichier reçu durant cette session.",
+                "from": "de {sender}",
+                "receiverOff": "La réception est désactivée. Activez-la dans les Paramètres pour recevoir des fichiers."
+            },
+            "receiveLabel": "Recevoir des fichiers",
+            "receiveDesc": "Laissez vos amis vous envoyer des fichiers directement (en une fois, chiffré de bout en bout). Exécute un récepteur tant que c'est activé.",
+            "autoAcceptLabel": "Accepter automatiquement des amis enregistrés",
+            "autoAcceptDesc": "Ignore la confirmation pour les fichiers provenant des personnes de votre liste d'amis. Les expéditeurs inconnus demandent toujours une confirmation."
         }
     }
 }

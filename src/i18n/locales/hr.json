@@ -4791,7 +4791,44 @@
                 "shareFolder": "Podijeli mapu",
                 "removeTitle": "Zaustavi dijeljenje",
                 "removeMessage": "Zaustaviti dijeljenje mape \"{name}\" i ukloniti je s ovog popisa? Vaše datoteke ostaju na vašem uređaju; osobe s kojima ste dijelili zadržavaju ono što su već primile, ali više neće dobivati ažuriranja."
-            }
+            },
+            "send": {
+                "menu": "Pošalji putem AeroSharea",
+                "title": "Pošalji datoteku",
+                "file": "Datoteka",
+                "pickFriend": "Odaberite prijatelja",
+                "noFriends": "Još nema spremljenih prijatelja. Dodajte prijatelja za slanje datoteka.",
+                "orAfid": "ili zalijepite AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Pošalji",
+                "sending": "Slanje...",
+                "sent": "Datoteka poslana",
+                "sentDesc": "{name} dostavljeno korisniku {friend}.",
+                "failed": "Slanje nije uspjelo"
+            },
+            "receive": {
+                "offerTitle": "Dolazna datoteka",
+                "offerMessage": "{sender} vam želi poslati {name} ({size}).",
+                "unknownSender": "Nepoznati pošiljatelj",
+                "accept": "Prihvati",
+                "decline": "Odbij",
+                "receivingTitle": "Primanje datoteke",
+                "receivingDesc": "{name} od {sender}",
+                "completedTitle": "Datoteka primljena",
+                "completedDesc": "{name} od {sender}",
+                "failedTitle": "Prijenos nije uspio",
+                "startError": "Primanje se nije moglo pokrenuti"
+            },
+            "inbox": {
+                "title": "AeroShare ulazni pretinac",
+                "empty": "U ovoj sesiji nije primljena nijedna datoteka.",
+                "from": "od {sender}",
+                "receiverOff": "Primanje je isključeno. Uključite ga u Postavkama za primanje datoteka."
+            },
+            "receiveLabel": "Primaj datoteke",
+            "receiveDesc": "Dopustite prijateljima da vam šalju datoteke izravno (jednokratno, šifrirano s kraja na kraj). Dok je uključeno, radi slušatelj.",
+            "autoAcceptLabel": "Automatski prihvati od spremljenih prijatelja",
+            "autoAcceptDesc": "Preskočite upit za datoteke od ljudi s vašeg popisa prijatelja. Nepoznati pošiljatelji uvijek pitaju."
         }
     }
 }

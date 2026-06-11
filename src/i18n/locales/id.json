@@ -4791,7 +4791,44 @@
                 "shareFolder": "Bagikan folder",
                 "removeTitle": "Hentikan berbagi",
                 "removeMessage": "Hentikan berbagi \"{name}\" dan hapus dari daftar ini? File Anda tetap di perangkat Anda; orang yang Anda bagikan tetap memiliki apa yang sudah mereka terima tetapi tidak akan mendapatkan pembaruan lagi."
-            }
+            },
+            "send": {
+                "menu": "Kirim via AeroShare",
+                "title": "Kirim file",
+                "file": "File",
+                "pickFriend": "Pilih teman",
+                "noFriends": "Belum ada teman tersimpan. Tambahkan teman untuk mengirim file.",
+                "orAfid": "atau tempel AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Kirim",
+                "sending": "Mengirim...",
+                "sent": "File terkirim",
+                "sentDesc": "{name} terkirim ke {friend}.",
+                "failed": "Pengiriman gagal"
+            },
+            "receive": {
+                "offerTitle": "File masuk",
+                "offerMessage": "{sender} ingin mengirim {name} ({size}) kepada Anda.",
+                "unknownSender": "Pengirim tidak dikenal",
+                "accept": "Terima",
+                "decline": "Tolak",
+                "receivingTitle": "Menerima file",
+                "receivingDesc": "{name} dari {sender}",
+                "completedTitle": "File diterima",
+                "completedDesc": "{name} dari {sender}",
+                "failedTitle": "Transfer gagal",
+                "startError": "Tidak dapat memulai penerimaan"
+            },
+            "inbox": {
+                "title": "Kotak Masuk AeroShare",
+                "empty": "Tidak ada file yang diterima pada sesi ini.",
+                "from": "dari {sender}",
+                "receiverOff": "Penerimaan dimatikan. Aktifkan di Pengaturan untuk menerima file."
+            },
+            "receiveLabel": "Terima file",
+            "receiveDesc": "Biarkan teman mengirim file langsung kepada Anda (sekali kirim, terenkripsi ujung ke ujung). Menjalankan pendengar saat aktif.",
+            "autoAcceptLabel": "Terima otomatis dari teman tersimpan",
+            "autoAcceptDesc": "Lewati permintaan untuk file dari orang dalam daftar teman Anda. Pengirim tidak dikenal selalu ditanyakan."
         }
     }
 }

@@ -4791,7 +4791,44 @@
                 "shareFolder": "Partilhar uma pasta",
                 "removeTitle": "Parar a partilha",
                 "removeMessage": "Parar a partilha de \"{name}\" e removê-la desta lista? Os teus ficheiros permanecem no teu dispositivo; as pessoas com quem partilhaste mantêm o que já receberam, mas deixarão de receber atualizações."
-            }
+            },
+            "send": {
+                "menu": "Enviar via AeroShare",
+                "title": "Enviar um ficheiro",
+                "file": "Ficheiro",
+                "pickFriend": "Escolher um amigo",
+                "noFriends": "Ainda não há amigos guardados. Adicione um amigo para enviar ficheiros.",
+                "orAfid": "ou cole um AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Enviar",
+                "sending": "A enviar...",
+                "sent": "Ficheiro enviado",
+                "sentDesc": "{name} entregue a {friend}.",
+                "failed": "Falha no envio"
+            },
+            "receive": {
+                "offerTitle": "Ficheiro recebido",
+                "offerMessage": "{sender} quer enviar-lhe {name} ({size}).",
+                "unknownSender": "Remetente desconhecido",
+                "accept": "Aceitar",
+                "decline": "Recusar",
+                "receivingTitle": "A receber ficheiro",
+                "receivingDesc": "{name} de {sender}",
+                "completedTitle": "Ficheiro recebido",
+                "completedDesc": "{name} de {sender}",
+                "failedTitle": "Falha na transferência",
+                "startError": "Não foi possível iniciar a receção"
+            },
+            "inbox": {
+                "title": "Caixa de entrada do AeroShare",
+                "empty": "Nenhum ficheiro recebido nesta sessão.",
+                "from": "de {sender}",
+                "receiverOff": "A receção está desativada. Ative-a nas Definições para receber ficheiros."
+            },
+            "receiveLabel": "Receber ficheiros",
+            "receiveDesc": "Permita que os amigos lhe enviem ficheiros diretamente (de uma só vez, encriptado de ponta a ponta). Mantém um recetor ativo enquanto estiver ligado.",
+            "autoAcceptLabel": "Aceitar automaticamente de amigos guardados",
+            "autoAcceptDesc": "Ignora a confirmação para ficheiros de pessoas na sua lista de amigos. Os remetentes desconhecidos pedem sempre confirmação."
         }
     }
 }

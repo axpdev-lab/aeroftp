@@ -4791,7 +4791,44 @@
                 "shareFolder": "Deli mapo",
                 "removeTitle": "Ustavi deljenje",
                 "removeMessage": "Ustavim deljenje mape \"{name}\" in jo odstranim s tega seznama? Vaše datoteke ostanejo v vaši napravi; osebe, s katerimi ste delili, obdržijo, kar so že prejele, vendar ne bodo več prejemale posodobitev."
-            }
+            },
+            "send": {
+                "menu": "Pošlji prek AeroShare",
+                "title": "Pošlji datoteko",
+                "file": "Datoteka",
+                "pickFriend": "Izberite prijatelja",
+                "noFriends": "Še ni shranjenih prijateljev. Dodajte prijatelja za pošiljanje datotek.",
+                "orAfid": "ali prilepite AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Pošlji",
+                "sending": "Pošiljanje...",
+                "sent": "Datoteka poslana",
+                "sentDesc": "{name} dostavljeno prejemniku {friend}.",
+                "failed": "Pošiljanje ni uspelo"
+            },
+            "receive": {
+                "offerTitle": "Dohodna datoteka",
+                "offerMessage": "{sender} vam želi poslati {name} ({size}).",
+                "unknownSender": "Neznani pošiljatelj",
+                "accept": "Sprejmi",
+                "decline": "Zavrni",
+                "receivingTitle": "Prejemanje datoteke",
+                "receivingDesc": "{name} od {sender}",
+                "completedTitle": "Datoteka prejeta",
+                "completedDesc": "{name} od {sender}",
+                "failedTitle": "Prenos ni uspel",
+                "startError": "Prejemanja ni bilo mogoče zagnati"
+            },
+            "inbox": {
+                "title": "Prejeto AeroShare",
+                "empty": "V tej seji ni bila prejeta nobena datoteka.",
+                "from": "od {sender}",
+                "receiverOff": "Prejemanje je izklopljeno. Vklopite ga v Nastavitvah za prejemanje datotek."
+            },
+            "receiveLabel": "Prejemaj datoteke",
+            "receiveDesc": "Dovolite prijateljem, da vam datoteke pošljejo neposredno (enkratno, šifrirano od konca do konca). Ko je vklopljeno, teče poslušalec.",
+            "autoAcceptLabel": "Samodejno sprejmi od shranjenih prijateljev",
+            "autoAcceptDesc": "Preskočite poziv za datoteke od ljudi na vašem seznamu prijateljev. Neznani pošiljatelji vedno vprašajo."
         }
     }
 }

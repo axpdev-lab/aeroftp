@@ -7,6 +7,7 @@ pub mod drive;
 pub mod endpoint;
 pub mod identity;
 pub mod protocol;
+pub mod send;
 
 pub use crypto::{
     decode_secret, decrypt_blob, derive_drive_key, derive_session_key, encode_secret, encrypt_blob,
@@ -15,7 +16,12 @@ pub use crypto::{
 pub use endpoint::{PeerBlobOffer, PeerEndpoint, PeerEndpointConfig};
 pub use identity::{open_capability, seal, seal_capability, Capability, Identity, IdentityPublic};
 pub use protocol::{
-    recv_blob, recv_encrypted_blob, recv_offer, send_blob, send_encrypted_blob, send_offer,
+    recv_blob, recv_encrypted_blob, recv_encrypted_blob_capped, recv_offer, send_blob,
+    send_encrypted_blob, send_offer,
+};
+pub use send::{
+    probe_presence_many, run_receiver, run_send_file, IncomingOffer, ReceiveEvent, SendOffer,
+    MAX_SEND_BYTES, PEER_PING_ALPN, PEER_SEND_ALPN,
 };
 
 pub use crate::endpoint::ConnectivitySample;

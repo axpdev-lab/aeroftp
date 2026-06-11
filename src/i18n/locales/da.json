@@ -4791,7 +4791,44 @@
                 "shareFolder": "Del en mappe",
                 "removeTitle": "Stop deling",
                 "removeMessage": "Stop deling af \"{name}\" og fjern den fra denne liste? Dine filer bliver på din enhed; de personer, du har delt med, beholder det, de allerede har modtaget, men får ikke flere opdateringer."
-            }
+            },
+            "send": {
+                "menu": "Send via AeroShare",
+                "title": "Send en fil",
+                "file": "Fil",
+                "pickFriend": "Vælg en ven",
+                "noFriends": "Ingen gemte venner endnu. Tilføj en ven for at sende filer.",
+                "orAfid": "eller indsæt et AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Send",
+                "sending": "Sender...",
+                "sent": "Fil sendt",
+                "sentDesc": "{name} leveret til {friend}.",
+                "failed": "Afsendelse mislykkedes"
+            },
+            "receive": {
+                "offerTitle": "Indgående fil",
+                "offerMessage": "{sender} vil sende dig {name} ({size}).",
+                "unknownSender": "Ukendt afsender",
+                "accept": "Accepter",
+                "decline": "Afvis",
+                "receivingTitle": "Modtager fil",
+                "receivingDesc": "{name} fra {sender}",
+                "completedTitle": "Fil modtaget",
+                "completedDesc": "{name} fra {sender}",
+                "failedTitle": "Overførsel mislykkedes",
+                "startError": "Kunne ikke starte modtagelse"
+            },
+            "inbox": {
+                "title": "AeroShare-indbakke",
+                "empty": "Der er ikke modtaget filer i denne session.",
+                "from": "fra {sender}",
+                "receiverOff": "Modtagelse er slået fra. Slå den til i Indstillinger for at modtage filer."
+            },
+            "receiveLabel": "Modtag filer",
+            "receiveDesc": "Lad venner sende filer direkte til dig (engangs, end-til-end-krypteret). Kører en lytter, mens den er slået til.",
+            "autoAcceptLabel": "Accepter automatisk fra gemte venner",
+            "autoAcceptDesc": "Spring spørgsmålet over for filer fra personer på din venneliste. Ukendte afsendere bliver altid spurgt."
         }
     }
 }

@@ -4791,7 +4791,44 @@
                 "shareFolder": "フォルダを共有",
                 "removeTitle": "共有を停止",
                 "removeMessage": "「{name}」の共有を停止してこの一覧から削除しますか？ファイルはお使いのデバイスに残ります。共有した相手はすでに受け取った内容を保持しますが、今後の更新は受け取れなくなります。"
-            }
+            },
+            "send": {
+                "menu": "AeroShare で送信",
+                "title": "ファイルを送信",
+                "file": "ファイル",
+                "pickFriend": "友達を選択",
+                "noFriends": "保存された友達がまだいません。ファイルを送信するには友達を追加してください。",
+                "orAfid": "または AeroFTP-ID を貼り付け",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "送信",
+                "sending": "送信中...",
+                "sent": "ファイルを送信しました",
+                "sentDesc": "{name} を {friend} に送信しました。",
+                "failed": "送信に失敗しました"
+            },
+            "receive": {
+                "offerTitle": "受信ファイル",
+                "offerMessage": "{sender} があなたに {name}（{size}）を送ろうとしています。",
+                "unknownSender": "不明な送信者",
+                "accept": "受け入れる",
+                "decline": "拒否する",
+                "receivingTitle": "ファイルを受信中",
+                "receivingDesc": "{sender} からの {name}",
+                "completedTitle": "ファイルを受信しました",
+                "completedDesc": "{sender} からの {name}",
+                "failedTitle": "転送に失敗しました",
+                "startError": "受信を開始できませんでした"
+            },
+            "inbox": {
+                "title": "AeroShare 受信トレイ",
+                "empty": "このセッションで受信したファイルはありません。",
+                "from": "{sender} から",
+                "receiverOff": "受信がオフになっています。ファイルを受信するには設定でオンにしてください。"
+            },
+            "receiveLabel": "ファイルを受信",
+            "receiveDesc": "友達があなたに直接ファイルを送信できるようにします（一回限り、エンドツーエンド暗号化）。オンの間はリスナーが動作します。",
+            "autoAcceptLabel": "保存された友達から自動的に受け入れる",
+            "autoAcceptDesc": "友達リストにいる人からのファイルの確認をスキップします。不明な送信者には常に確認します。"
         }
     }
 }

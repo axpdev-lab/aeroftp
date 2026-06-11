@@ -4791,7 +4791,44 @@
                 "shareFolder": "Kopīgot mapi",
                 "removeTitle": "Pārtraukt kopīgošanu",
                 "removeMessage": "Vai pārtraukt mapes \"{name}\" kopīgošanu un noņemt to no šī saraksta? Jūsu faili paliek jūsu ierīcē; cilvēki, ar kuriem kopīgojāt, saglabā jau saņemto, taču vairs nesaņems atjauninājumus."
-            }
+            },
+            "send": {
+                "menu": "Sūtīt, izmantojot AeroShare",
+                "title": "Sūtīt failu",
+                "file": "Fails",
+                "pickFriend": "Izvēlieties draugu",
+                "noFriends": "Vēl nav saglabātu draugu. Pievienojiet draugu, lai sūtītu failus.",
+                "orAfid": "vai ielīmējiet AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Sūtīt",
+                "sending": "Notiek sūtīšana...",
+                "sent": "Fails nosūtīts",
+                "sentDesc": "{name} piegādāts saņēmējam {friend}.",
+                "failed": "Sūtīšana neizdevās"
+            },
+            "receive": {
+                "offerTitle": "Ienākošs fails",
+                "offerMessage": "{sender} vēlas jums nosūtīt {name} ({size}).",
+                "unknownSender": "Nezināms sūtītājs",
+                "accept": "Pieņemt",
+                "decline": "Noraidīt",
+                "receivingTitle": "Notiek faila saņemšana",
+                "receivingDesc": "{name} no {sender}",
+                "completedTitle": "Fails saņemts",
+                "completedDesc": "{name} no {sender}",
+                "failedTitle": "Pārsūtīšana neizdevās",
+                "startError": "Neizdevās sākt saņemšanu"
+            },
+            "inbox": {
+                "title": "AeroShare iesūtne",
+                "empty": "Šajā sesijā nav saņemts neviens fails.",
+                "from": "no {sender}",
+                "receiverOff": "Saņemšana ir izslēgta. Ieslēdziet to Iestatījumos, lai saņemtu failus."
+            },
+            "receiveLabel": "Saņemt failus",
+            "receiveDesc": "Ļaujiet draugiem sūtīt failus tieši jums (vienreizējs, pilnībā šifrēts). Ieslēgtā stāvoklī darbina klausītāju.",
+            "autoAcceptLabel": "Automātiski pieņemt no saglabātajiem draugiem",
+            "autoAcceptDesc": "Izlaidiet uzvedni failiem no cilvēkiem jūsu draugu sarakstā. Nezināmi sūtītāji vienmēr jautā."
         }
     }
 }

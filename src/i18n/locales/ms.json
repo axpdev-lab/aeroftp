@@ -4791,7 +4791,44 @@
                 "shareFolder": "Kongsi folder",
                 "removeTitle": "Hentikan perkongsian",
                 "removeMessage": "Hentikan perkongsian \"{name}\" dan alih keluar daripada senarai ini? Fail anda kekal pada peranti anda; orang yang anda kongsi mengekalkan apa yang telah mereka terima tetapi tidak akan mendapat kemas kini lagi."
-            }
+            },
+            "send": {
+                "menu": "Hantar melalui AeroShare",
+                "title": "Hantar fail",
+                "file": "Fail",
+                "pickFriend": "Pilih rakan",
+                "noFriends": "Belum ada rakan disimpan. Tambah rakan untuk menghantar fail.",
+                "orAfid": "atau tampal AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Hantar",
+                "sending": "Menghantar...",
+                "sent": "Fail dihantar",
+                "sentDesc": "{name} dihantar kepada {friend}.",
+                "failed": "Penghantaran gagal"
+            },
+            "receive": {
+                "offerTitle": "Fail masuk",
+                "offerMessage": "{sender} ingin menghantar {name} ({size}) kepada anda.",
+                "unknownSender": "Penghantar tidak dikenali",
+                "accept": "Terima",
+                "decline": "Tolak",
+                "receivingTitle": "Menerima fail",
+                "receivingDesc": "{name} daripada {sender}",
+                "completedTitle": "Fail diterima",
+                "completedDesc": "{name} daripada {sender}",
+                "failedTitle": "Pemindahan gagal",
+                "startError": "Tidak dapat memulakan penerimaan"
+            },
+            "inbox": {
+                "title": "Peti Masuk AeroShare",
+                "empty": "Tiada fail diterima sesi ini.",
+                "from": "daripada {sender}",
+                "receiverOff": "Penerimaan dimatikan. Hidupkannya dalam Tetapan untuk menerima fail."
+            },
+            "receiveLabel": "Terima fail",
+            "receiveDesc": "Benarkan rakan menghantar fail terus kepada anda (sekali hantar, disulitkan hujung ke hujung). Menjalankan pendengar semasa hidup.",
+            "autoAcceptLabel": "Terima automatik daripada rakan disimpan",
+            "autoAcceptDesc": "Langkau gesaan untuk fail daripada orang dalam senarai rakan anda. Penghantar tidak dikenali sentiasa ditanya."
         }
     }
 }

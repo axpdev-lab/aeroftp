@@ -4791,7 +4791,44 @@
                 "shareFolder": "Mappa megosztása",
                 "removeTitle": "Megosztás leállítása",
                 "removeMessage": "Leállítod a(z) \"{name}\" megosztását, és eltávolítod ebből a listából? A fájljaid az eszközödön maradnak; akikkel megosztottad, megtartják a már megkapott tartalmat, de nem kapnak több frissítést."
-            }
+            },
+            "send": {
+                "menu": "Küldés AeroShare-en keresztül",
+                "title": "Fájl küldése",
+                "file": "Fájl",
+                "pickFriend": "Válasszon barátot",
+                "noFriends": "Még nincsenek mentett barátok. Adjon hozzá egy barátot fájlok küldéséhez.",
+                "orAfid": "vagy illesszen be egy AeroFTP-ID-t",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Küldés",
+                "sending": "Küldés...",
+                "sent": "Fájl elküldve",
+                "sentDesc": "{name} kézbesítve neki: {friend}.",
+                "failed": "A küldés sikertelen"
+            },
+            "receive": {
+                "offerTitle": "Bejövő fájl",
+                "offerMessage": "{sender} el szeretné küldeni a következőt: {name} ({size}).",
+                "unknownSender": "Ismeretlen küldő",
+                "accept": "Elfogadás",
+                "decline": "Elutasítás",
+                "receivingTitle": "Fájl fogadása",
+                "receivingDesc": "{name} tőle: {sender}",
+                "completedTitle": "Fájl fogadva",
+                "completedDesc": "{name} tőle: {sender}",
+                "failedTitle": "Az átvitel sikertelen",
+                "startError": "A fogadást nem sikerült elindítani"
+            },
+            "inbox": {
+                "title": "AeroShare bejövő mappa",
+                "empty": "Ebben a munkamenetben nem érkezett fájl.",
+                "from": "tőle: {sender}",
+                "receiverOff": "A fogadás ki van kapcsolva. Kapcsolja be a Beállításokban a fájlok fogadásához."
+            },
+            "receiveLabel": "Fájlok fogadása",
+            "receiveDesc": "Engedje, hogy barátai közvetlenül küldjenek Önnek fájlokat (egyszeri, végpontok közötti titkosítással). Bekapcsolt állapotban figyelőt futtat.",
+            "autoAcceptLabel": "Automatikus elfogadás mentett barátoktól",
+            "autoAcceptDesc": "Hagyja ki a kérdést a barátlistáján szereplő emberek fájljainál. Az ismeretlen küldők mindig rákérdeznek."
         }
     }
 }

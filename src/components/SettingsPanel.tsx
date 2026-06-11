@@ -151,6 +151,13 @@ interface AppSettings {
      *  false (default) every AeroShare surface is hidden. Read app-wide via
      *  {@link useAeroShareEnabled}. */
     aeroShareEnabled: boolean;
+    /** "Send file to user" RECEIVE toggle. When on, the app runs a standing
+     *  receive loop so friends can send files (one-shot, E2EE). Default OFF.
+     *  Read app-wide via {@link useAeroShareReceiveSettings}. */
+    aeroShareReceiving: boolean;
+    /** OPT-IN: auto-accept incoming sends from SAVED friends (skip the prompt).
+     *  Unknown senders always prompt. Default OFF (prompt everyone). */
+    aeroShareAutoAcceptFriends: boolean;
     // Transfers
     maxConcurrentTransfers: number;
     retryCount: number;
@@ -205,6 +212,8 @@ const defaultSettings: AppSettings = {
     reconnectDelay: 5,
     ftpMode: 'passive',
     aeroShareEnabled: false,
+    aeroShareReceiving: false,
+    aeroShareAutoAcceptFriends: false,
     maxConcurrentTransfers: 5,
     retryCount: 3,
     downloadSegments: 0,
@@ -1236,6 +1245,42 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 }
                                             />
                                             <p className="text-xs text-amber-600 mt-2 ml-6">{t('aeroShare.experimentalNote')}</p>
+
+                                            {/* "Send file to user" RECEIVE settings: the Ricezione
+                                                toggle + the auto-accept-from-friends opt-in (shown
+                                                only when AeroShare is on). The accept opt-in is a
+                                                sub-option of receiving. */}
+                                            {settings.aeroShareEnabled && (
+                                                <div className="mt-4 ml-6 space-y-3">
+                                                    <Checkbox
+                                                        checked={settings.aeroShareReceiving}
+                                                        onChange={(v) => updateSetting('aeroShareReceiving', v)}
+                                                        label={
+                                                            <div>
+                                                                <p className="font-medium flex items-center gap-2">
+                                                                    <Download size={15} className="text-violet-500" />
+                                                                    {t('aeroShare.receiveLabel')}
+                                                                </p>
+                                                                <p className="text-sm text-gray-500">{t('aeroShare.receiveDesc')}</p>
+                                                            </div>
+                                                        }
+                                                    />
+                                                    {settings.aeroShareReceiving && (
+                                                        <div className="ml-6">
+                                                            <Checkbox
+                                                                checked={settings.aeroShareAutoAcceptFriends}
+                                                                onChange={(v) => updateSetting('aeroShareAutoAcceptFriends', v)}
+                                                                label={
+                                                                    <div>
+                                                                        <p className="font-medium">{t('aeroShare.autoAcceptLabel')}</p>
+                                                                        <p className="text-sm text-gray-500">{t('aeroShare.autoAcceptDesc')}</p>
+                                                                    </div>
+                                                                }
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

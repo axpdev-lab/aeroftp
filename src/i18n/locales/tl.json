@@ -4810,7 +4810,44 @@
                 "shareFolder": "Magbahagi ng folder",
                 "removeTitle": "Itigil ang pagbabahagi",
                 "removeMessage": "Itigil ang pagbabahagi ng \"{name}\" at alisin ito sa listahang ito? Mananatili ang iyong mga file sa iyong device; ang mga taong binahagian mo ay pananatilihin ang natanggap na nila ngunit hindi na makakatanggap ng mga update."
-            }
+            },
+            "send": {
+                "menu": "Ipadala sa pamamagitan ng AeroShare",
+                "title": "Magpadala ng file",
+                "file": "File",
+                "pickFriend": "Pumili ng kaibigan",
+                "noFriends": "Wala pang naka-save na kaibigan. Magdagdag ng kaibigan para makapagpadala ng file.",
+                "orAfid": "o i-paste ang AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Ipadala",
+                "sending": "Ipinapadala...",
+                "sent": "Naipadala ang file",
+                "sentDesc": "Naihatid ang {name} kay {friend}.",
+                "failed": "Nabigo ang pagpapadala"
+            },
+            "receive": {
+                "offerTitle": "Papasok na file",
+                "offerMessage": "Gustong ipadala sa iyo ni {sender} ang {name} ({size}).",
+                "unknownSender": "Hindi kilalang nagpadala",
+                "accept": "Tanggapin",
+                "decline": "Tanggihan",
+                "receivingTitle": "Tinatanggap ang file",
+                "receivingDesc": "{name} mula kay {sender}",
+                "completedTitle": "Natanggap ang file",
+                "completedDesc": "{name} mula kay {sender}",
+                "failedTitle": "Nabigo ang paglipat",
+                "startError": "Hindi masimulan ang pagtanggap"
+            },
+            "inbox": {
+                "title": "Inbox ng AeroShare",
+                "empty": "Walang natanggap na file sa session na ito.",
+                "from": "mula kay {sender}",
+                "receiverOff": "Naka-off ang pagtanggap. I-on ito sa Settings para makatanggap ng mga file."
+            },
+            "receiveLabel": "Tumanggap ng mga file",
+            "receiveDesc": "Hayaang magpadala ang mga kaibigan ng file nang direkta sa iyo (isang beses, naka-encrypt nang end-to-end). Nagpapatakbo ng listener habang naka-on.",
+            "autoAcceptLabel": "Awtomatikong tanggapin mula sa mga naka-save na kaibigan",
+            "autoAcceptDesc": "Laktawan ang prompt para sa mga file mula sa mga tao sa iyong listahan ng kaibigan. Palaging tatanungin ang hindi kilalang nagpadala."
         }
     }
 }

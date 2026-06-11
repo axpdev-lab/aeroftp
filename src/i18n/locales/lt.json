@@ -4791,7 +4791,44 @@
                 "shareFolder": "Bendrinti aplanką",
                 "removeTitle": "Stabdyti bendrinimą",
                 "removeMessage": "Stabdyti aplanko \"{name}\" bendrinimą ir pašalinti jį iš šio sąrašo? Jūsų failai lieka jūsų įrenginyje; žmonės, su kuriais dalijotės, išsaugo tai, ką jau gavo, bet daugiau negaus atnaujinimų."
-            }
+            },
+            "send": {
+                "menu": "Siųsti per AeroShare",
+                "title": "Siųsti failą",
+                "file": "Failas",
+                "pickFriend": "Pasirinkite draugą",
+                "noFriends": "Įrašytų draugų dar nėra. Pridėkite draugą, kad galėtumėte siųsti failus.",
+                "orAfid": "arba įklijuokite AeroFTP-ID",
+                "afidPlaceholder": "AFID1...",
+                "sendButton": "Siųsti",
+                "sending": "Siunčiama...",
+                "sent": "Failas išsiųstas",
+                "sentDesc": "{name} pristatytas gavėjui {friend}.",
+                "failed": "Siuntimas nepavyko"
+            },
+            "receive": {
+                "offerTitle": "Gaunamas failas",
+                "offerMessage": "{sender} nori jums atsiųsti {name} ({size}).",
+                "unknownSender": "Nežinomas siuntėjas",
+                "accept": "Priimti",
+                "decline": "Atmesti",
+                "receivingTitle": "Gaunamas failas",
+                "receivingDesc": "{name} nuo {sender}",
+                "completedTitle": "Failas gautas",
+                "completedDesc": "{name} nuo {sender}",
+                "failedTitle": "Perdavimas nepavyko",
+                "startError": "Nepavyko pradėti gauti"
+            },
+            "inbox": {
+                "title": "AeroShare gauti laiškai",
+                "empty": "Šioje sesijoje failų negauta.",
+                "from": "nuo {sender}",
+                "receiverOff": "Gavimas išjungtas. Įjunkite jį Nustatymuose, kad galėtumėte gauti failus."
+            },
+            "receiveLabel": "Gauti failus",
+            "receiveDesc": "Leiskite draugams siųsti failus tiesiai jums (vienkartinis, ištisai šifruotas). Įjungtas paleidžia klausytoją.",
+            "autoAcceptLabel": "Automatiškai priimti iš įrašytų draugų",
+            "autoAcceptDesc": "Praleiskite užklausą dėl failų iš žmonių jūsų draugų sąraše. Nežinomų siuntėjų visada klausiama."
         }
     }
 }
