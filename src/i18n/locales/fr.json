@@ -4724,7 +4724,8 @@
                 "error": "Erreur",
                 "starting": "Démarrage",
                 "stopped": "Arrêté",
-                "offline": "Hors ligne"
+                "offline": "Hors ligne",
+                "standby": "Inactif"
             },
             "status": {
                 "starting": "Démarrage...",

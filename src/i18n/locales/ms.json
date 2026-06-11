@@ -4724,7 +4724,8 @@
                 "error": "Ralat",
                 "starting": "Memulakan",
                 "stopped": "Dihentikan",
-                "offline": "Luar talian"
+                "offline": "Luar talian",
+                "standby": "Melahu"
             },
             "status": {
                 "starting": "Memulakan...",

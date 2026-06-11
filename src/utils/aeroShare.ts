@@ -43,6 +43,10 @@ export interface PeerDriveInfo {
   syncing: boolean;
   /** A live publish task is serving this drive right now. */
   serving: boolean;
+  /** Runtime's authoritative state (starting|syncing|live|serving|error|
+   *  stopped|standby). Trusted by usePeerDriveStates on a re-pull so the dot
+   *  stays green across a remount instead of reverting to syncing (F3). */
+  state?: string;
 }
 
 export interface PeerShareStarted {

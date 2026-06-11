@@ -144,11 +144,19 @@ function StorageUsageBar({
 /** Solid dot color per AeroShare drive-state, for the avatar presence dot.
  *  Deliberately a different anchor (avatar top-right) from the reachability
  *  health dot (icon bottom-right) so the two never read as the same signal. */
+// Both connection states stay COOL (not amber): connecting/starting and an
+// active pull are a pulsing azzurro, distinct from the calm green of a settled
+// (live/serving) drive. The 'live' green is now durable across a remount (F3),
+// so the pulse only shows while genuinely starting/syncing, never when idle.
 const PEER_STATE_DOT: Record<PeerDriveState, string> = {
-    starting: 'bg-amber-400 animate-pulse',
-    syncing: 'bg-blue-500',
+    starting: 'bg-sky-400 animate-pulse',
+    syncing: 'bg-sky-400 animate-pulse',
     live: 'bg-emerald-500',
     serving: 'bg-emerald-500',
+    // Idle (tab closed): a calm dark blue, with a slight gradient so it reads
+    // as a deliberate "paused/standby" state distinct from gray (off) and
+    // pulsing azzurro (syncing).
+    standby: 'bg-gradient-to-br from-blue-600 to-blue-800',
     error: 'bg-red-500',
     stopped: 'bg-gray-400',
 };
@@ -156,10 +164,17 @@ const PEER_STATE_DOT: Record<PeerDriveState, string> = {
 /** Presence-style status dot for an AeroShare friend, overlaid on the avatar's
  *  top-right (a friend's drive is "online/syncing/offline", much like a contact
  *  presence indicator). The parent must be position:relative. */
-export function PeerPresenceDot({ peerState, className = '' }: { peerState?: PeerDriveState; className?: string }) {
+export function PeerPresenceDot({ peerState, hasActiveSession = false, className = '' }: { peerState?: PeerDriveState; hasActiveSession?: boolean; className?: string }) {
     const t = useTranslation();
-    const label = peerState ? t(`aeroShare.driveState.${peerState}`) : t('aeroShare.driveState.offline');
-    const color = peerState ? PEER_STATE_DOT[peerState] : 'bg-gray-400';
+    // The dot follows the REAL session state (robust, no backend-task race):
+    //  - active session  -> the live sync state (green live / azzurro syncing),
+    //  - no active session but the drive was brought up -> idle (dark-blue standby),
+    //  - never connected this run -> gray (initial/off).
+    const effective: PeerDriveState | undefined = hasActiveSession
+        ? (peerState ?? 'starting')
+        : (peerState && peerState !== 'stopped' ? 'standby' : peerState);
+    const label = effective ? t(`aeroShare.driveState.${effective}`) : t('aeroShare.driveState.offline');
+    const color = effective ? PEER_STATE_DOT[effective] : 'bg-gray-400';
     return (
         <span
             className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${color} ${className}`}
@@ -637,7 +652,7 @@ export const ServerCard = React.memo(function ServerCard({
                     {/* AeroShare drive-state: presence dot on the avatar top-right.
                         Distinct from the bottom-right health dot (peer cards have no
                         reachability probe), so the two never read as the same signal. */}
-                    {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} />}
+                    {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} hasActiveSession={hasActiveSession} />}
                     {/* #180 / 4486730822: standalone connect-failure marker.
                         Anchored top-left so it never overlaps the bottom-right
                         health dot or the detailed-layout HealthRadial. */}

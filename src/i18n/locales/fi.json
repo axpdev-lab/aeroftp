@@ -4724,7 +4724,8 @@
                 "error": "Virhe",
                 "starting": "Käynnistetään",
                 "stopped": "Pysäytetty",
-                "offline": "Offline-tilassa"
+                "offline": "Offline-tilassa",
+                "standby": "Lepotilassa"
             },
             "status": {
                 "starting": "Käynnistetään...",

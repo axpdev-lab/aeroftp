@@ -4724,7 +4724,8 @@
                 "error": "Kļūda",
                 "starting": "Startē",
                 "stopped": "Apturēts",
-                "offline": "Bezsaistē"
+                "offline": "Bezsaistē",
+                "standby": "Dīkstāvē"
             },
             "status": {
                 "starting": "Startē...",

@@ -4724,7 +4724,8 @@
                 "error": "Chyba",
                 "starting": "Spúšťanie",
                 "stopped": "Zastavené",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Nečinné"
             },
             "status": {
                 "starting": "Spúšťanie...",

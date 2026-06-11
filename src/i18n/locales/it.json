@@ -4724,7 +4724,8 @@
                 "error": "Errore",
                 "starting": "Avvio",
                 "stopped": "Fermato",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Inattivo"
             },
             "status": {
                 "starting": "Avvio...",

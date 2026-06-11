@@ -4724,7 +4724,8 @@
                 "error": "Hata",
                 "starting": "Başlatılıyor",
                 "stopped": "Durduruldu",
-                "offline": "Çevrimdışı"
+                "offline": "Çevrimdışı",
+                "standby": "Boşta"
             },
             "status": {
                 "starting": "Başlatılıyor...",

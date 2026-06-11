@@ -4724,7 +4724,8 @@
                 "error": "Hiba",
                 "starting": "Indítás",
                 "stopped": "Leállítva",
-                "offline": "Kapcsolat nélkül"
+                "offline": "Kapcsolat nélkül",
+                "standby": "Tétlen"
             },
             "status": {
                 "starting": "Indítás...",

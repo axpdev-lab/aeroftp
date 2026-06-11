@@ -4743,7 +4743,8 @@
                 "error": "Erro",
                 "starting": "Iniciando",
                 "stopped": "Detido",
-                "offline": "Sen conexión"
+                "offline": "Sen conexión",
+                "standby": "Inactivo"
             },
             "status": {
                 "starting": "Iniciando...",

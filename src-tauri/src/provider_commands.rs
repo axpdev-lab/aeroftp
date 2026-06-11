@@ -1064,12 +1064,31 @@ pub async fn cancel_connection(
 
 /// Disconnect from the current provider
 #[tauri::command]
-pub async fn provider_disconnect(state: State<'_, ProviderState>) -> Result<(), String> {
+pub async fn provider_disconnect(
+    app: tauri::AppHandle,
+    state: State<'_, ProviderState>,
+    peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+) -> Result<(), String> {
     // Issue #233: wait for any in-flight DAG transfer to drain before
     // mutating the provider slot. Without this, an active download/upload
     // sees the box yanked and surfaces a spurious `NotConnected` instead
     // of completing or failing on its real I/O error.
     drain_in_flight_transfers(&state, Duration::from_secs(30)).await;
+
+    // AeroShare: closing a peer connection tab stands the received drive down
+    // to STANDBY - cancel the replication task (frees CPU/relay and fixes the
+    // orphan-task leak) and mark it idle (dark-blue dot), resumable on the next
+    // connect. Done while the config is still present so we know the namespace.
+    {
+        let config_lock = state.config.lock().await;
+        if let Some(cfg) = config_lock.as_ref() {
+            if cfg.provider_type == ProviderType::Peer {
+                if let Some(ns) = cfg.extra.get(crate::providers::peer::PEER_EXTRA_NAMESPACE) {
+                    peer_runtime.standby(&app, ns).await;
+                }
+            }
+        }
+    }
 
     let mut provider_lock = state.provider.lock().await;
 

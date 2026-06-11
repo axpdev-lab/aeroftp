@@ -4724,7 +4724,8 @@
                 "error": "Lỗi",
                 "starting": "Đang khởi động",
                 "stopped": "Đã dừng",
-                "offline": "Ngoại tuyến"
+                "offline": "Ngoại tuyến",
+                "standby": "Chờ"
             },
             "status": {
                 "starting": "Đang khởi động...",

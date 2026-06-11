@@ -317,7 +317,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                 </span>
                             )}
                             {/* AeroShare drive-state presence dot (matches the grid card). */}
-                            {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} />}
+                            {server.protocol === 'peer' && <PeerPresenceDot peerState={peerState} hasActiveSession={hasActiveSession} />}
                         </div>
                     </td>
                 );

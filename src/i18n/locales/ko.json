@@ -4724,7 +4724,8 @@
                 "error": "오류",
                 "starting": "시작 중",
                 "stopped": "중지됨",
-                "offline": "오프라인"
+                "offline": "오프라인",
+                "standby": "유휴"
             },
             "status": {
                 "starting": "시작 중...",

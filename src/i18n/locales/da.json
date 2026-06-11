@@ -4724,7 +4724,8 @@
                 "error": "Fejl",
                 "starting": "Starter",
                 "stopped": "Stoppet",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Inaktiv"
             },
             "status": {
                 "starting": "Starter...",

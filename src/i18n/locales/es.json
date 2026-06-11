@@ -4724,7 +4724,8 @@
                 "error": "Error",
                 "starting": "Iniciando",
                 "stopped": "Detenido",
-                "offline": "Sin conexión"
+                "offline": "Sin conexión",
+                "standby": "Inactivo"
             },
             "status": {
                 "starting": "Iniciando...",

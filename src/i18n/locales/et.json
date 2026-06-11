@@ -4724,7 +4724,8 @@
                 "error": "Viga",
                 "starting": "Käivitamine",
                 "stopped": "Peatatud",
-                "offline": "Võrguühenduseta"
+                "offline": "Võrguühenduseta",
+                "standby": "Jõude"
             },
             "status": {
                 "starting": "Käivitamine...",

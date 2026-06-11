@@ -4724,7 +4724,8 @@
                 "error": "Грешка",
                 "starting": "Стартиране",
                 "stopped": "Спряно",
-                "offline": "Офлайн"
+                "offline": "Офлайн",
+                "standby": "Неактивно"
             },
             "status": {
                 "starting": "Стартиране...",

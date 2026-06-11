@@ -25,7 +25,9 @@ import { peerDrivesList } from '../utils/aeroShare';
 // 'live' = the replica has converged and is just watching for updates (the
 // backend emits it after a replicate pass completes). Distinct from 'syncing'
 // (a pass is actively pulling) so the friend dot can settle green when idle.
-export type PeerDriveState = 'starting' | 'syncing' | 'live' | 'serving' | 'error' | 'stopped';
+// 'standby' = the tab was closed: replication is cancelled but resumable (the
+// drive is idle, not stopped/forgotten). Distinct dark-blue dot vs gray stopped.
+export type PeerDriveState = 'starting' | 'syncing' | 'live' | 'serving' | 'standby' | 'error' | 'stopped';
 
 export interface PeerDriveBadge {
   /** Most recent state for the drive (event- or list-derived). */
@@ -113,13 +115,19 @@ export const usePeerDriveStates = (enabled: boolean): UsePeerDriveStates => {
           const out = new Map(prev);
           for (const d of drives) {
             const cur = out.get(d.namespace);
+            // Trust the backend's authoritative state (F3): the runtime tracks
+            // live/syncing/standby/..., so a re-pull restores 'live' (green)
+            // instead of re-deriving 'syncing' from the live-task boolean. Fall
+            // back to the booleans only for an older backend with no `state`.
             const lastState = (cur?.state ?? 'stopped') as PeerDriveState;
+            const state = (d.state as PeerDriveState | undefined)
+              ?? derive(d.syncing, d.serving, lastState);
             out.set(d.namespace, {
               syncing: d.syncing,
               serving: d.serving,
               detail: cur?.detail ?? null,
               atMs: cur?.atMs ?? 0,
-              state: derive(d.syncing, d.serving, lastState),
+              state,
             });
           }
           return out;
@@ -141,12 +149,13 @@ export const usePeerDriveStates = (enabled: boolean): UsePeerDriveStates => {
 
     const syncP = listen<PeerSyncEvent>('peer://sync-status', (e) => {
       const p = e.payload;
-      const stopped = p.state === 'stopped' || p.state === 'error';
-      // 'live' means converged-and-idle: NOT syncing, so derive() settles the
-      // badge to 'live' (green) instead of being pinned to 'syncing' (blue).
+      // standby/stopped/error are idle (not actively pulling); 'live' means
+      // converged-and-watching (also not syncing). Everything else is a pass in
+      // flight. derive() then settles the badge to the right dot.
+      const idle = p.state === 'stopped' || p.state === 'error' || p.state === 'standby';
       apply(p.namespace, {
         state: p.state as PeerDriveState,
-        syncing: !stopped && p.state !== 'live',
+        syncing: !idle && p.state !== 'live',
         detail: p.state === 'error' ? p.detail ?? null : null,
         atMs: p.at_ms,
       });

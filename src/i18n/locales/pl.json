@@ -4724,7 +4724,8 @@
                 "error": "Błąd",
                 "starting": "Uruchamianie",
                 "stopped": "Zatrzymano",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Bezczynny"
             },
             "status": {
                 "starting": "Uruchamianie...",

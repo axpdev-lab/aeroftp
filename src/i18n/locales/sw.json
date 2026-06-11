@@ -4724,7 +4724,8 @@
                 "error": "Hitilafu",
                 "starting": "Inaanza",
                 "stopped": "Imesimamishwa",
-                "offline": "Nje ya mtandao"
+                "offline": "Nje ya mtandao",
+                "standby": "Hakitumiki"
             },
             "status": {
                 "starting": "Inaanza...",

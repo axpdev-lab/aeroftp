@@ -4724,7 +4724,8 @@
                 "error": "Kesalahan",
                 "starting": "Memulai",
                 "stopped": "Berhenti",
-                "offline": "Luring"
+                "offline": "Luring",
+                "standby": "Diam"
             },
             "status": {
                 "starting": "Memulai...",

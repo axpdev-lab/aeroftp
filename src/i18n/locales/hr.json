@@ -4724,7 +4724,8 @@
                 "error": "Pogreška",
                 "starting": "Pokretanje",
                 "stopped": "Zaustavljeno",
-                "offline": "Izvan mreže"
+                "offline": "Izvan mreže",
+                "standby": "Neaktivno"
             },
             "status": {
                 "starting": "Pokretanje...",

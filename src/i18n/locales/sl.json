@@ -4724,7 +4724,8 @@
                 "error": "Napaka",
                 "starting": "Zaganjanje",
                 "stopped": "Ustavljeno",
-                "offline": "Brez povezave"
+                "offline": "Brez povezave",
+                "standby": "Nedejavno"
             },
             "status": {
                 "starting": "Zaganjanje...",

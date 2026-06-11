@@ -4743,7 +4743,8 @@
                 "error": "Villa",
                 "starting": "Ræsir",
                 "stopped": "Stöðvað",
-                "offline": "Ótengt"
+                "offline": "Ótengt",
+                "standby": "Óvirkt"
             },
             "status": {
                 "starting": "Ræsir...",

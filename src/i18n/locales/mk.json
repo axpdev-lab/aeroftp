@@ -4743,7 +4743,8 @@
                 "error": "Грешка",
                 "starting": "Стартување",
                 "stopped": "Запрено",
-                "offline": "Офлајн"
+                "offline": "Офлајн",
+                "standby": "Неактивно"
             },
             "status": {
                 "starting": "Стартување...",

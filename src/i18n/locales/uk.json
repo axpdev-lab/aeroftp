@@ -4724,7 +4724,8 @@
                 "error": "Помилка",
                 "starting": "Запуск",
                 "stopped": "Зупинено",
-                "offline": "Не в мережі"
+                "offline": "Не в мережі",
+                "standby": "Неактивно"
             },
             "status": {
                 "starting": "Запуск...",

@@ -4743,7 +4743,8 @@
                 "error": "May error",
                 "starting": "Sinisimulan",
                 "stopped": "Tigil",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Idle"
             },
             "status": {
                 "starting": "Sinisimulan...",

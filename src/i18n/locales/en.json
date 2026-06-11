@@ -4724,7 +4724,8 @@
                 "error": "Error",
                 "starting": "Starting",
                 "stopped": "Stopped",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Idle"
             },
             "status": {
                 "starting": "Starting...",

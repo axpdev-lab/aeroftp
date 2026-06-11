@@ -135,6 +135,12 @@ pub struct PeerDriveInfo {
     pub syncing: bool,
     /// A live publish task is serving this drive right now.
     pub serving: bool,
+    /// The runtime's authoritative state (`starting|syncing|live|serving|
+    /// error|stopped|standby`). The FE trusts THIS on a re-pull so the dot
+    /// stays `live` (green) across a remount instead of reverting to `syncing`
+    /// derived from the boolean (F3). Falls back to the booleans for a drive
+    /// whose task never started this session.
+    pub state: String,
 }
 
 /// The drive inventory of the active user partition, annotated with the
@@ -147,13 +153,28 @@ pub async fn peer_drives_list(
     let drives = crate::user_partitions::gui_peer_drive_list(&app)?;
     let syncing = peer_runtime.live_sub_namespaces().await;
     let serving = peer_runtime.live_share_namespaces().await;
+    let states = peer_runtime.states_snapshot();
     Ok(drives
         .into_iter()
-        .map(|(namespace, role)| PeerDriveInfo {
-            syncing: syncing.contains(&namespace),
-            serving: serving.contains(&namespace),
-            namespace,
-            role,
+        .map(|(namespace, role)| {
+            let is_syncing = syncing.contains(&namespace);
+            let is_serving = serving.contains(&namespace);
+            let state = states.get(&namespace).cloned().unwrap_or_else(|| {
+                if is_serving {
+                    "serving".to_string()
+                } else if is_syncing {
+                    "syncing".to_string()
+                } else {
+                    "stopped".to_string()
+                }
+            });
+            PeerDriveInfo {
+                namespace,
+                role,
+                syncing: is_syncing,
+                serving: is_serving,
+                state,
+            }
         })
         .collect())
 }

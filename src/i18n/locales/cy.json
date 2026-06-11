@@ -4743,7 +4743,8 @@
                 "error": "Gwall",
                 "starting": "Cychwyn",
                 "stopped": "Wedi stopio",
-                "offline": "All-lein"
+                "offline": "All-lein",
+                "standby": "Segur"
             },
             "status": {
                 "starting": "Cychwyn...",

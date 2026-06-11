@@ -4724,7 +4724,8 @@
                 "error": "Fel",
                 "starting": "Startar",
                 "stopped": "Stoppad",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Inaktiv"
             },
             "status": {
                 "starting": "Startar...",

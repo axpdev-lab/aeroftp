@@ -91,6 +91,22 @@ fn emit_sync_status(app: &AppHandle, namespace: &str, state: &str, detail: Optio
     );
 }
 
+/// Record the drive's state in the runtime registry (so `peer_drives_list`
+/// returns the REAL state, the F3 durability fix) AND emit the event. The
+/// std Mutex is locked only for the insert, never across an await.
+fn record_sync(
+    app: &AppHandle,
+    states: &std::sync::Mutex<HashMap<String, String>>,
+    namespace: &str,
+    state: &str,
+    detail: Option<String>,
+) {
+    if let Ok(mut guard) = states.lock() {
+        guard.insert(namespace.to_string(), state.to_string());
+    }
+    emit_sync_status(app, namespace, state, detail);
+}
+
 fn emit_share_status(
     app: &AppHandle,
     dir: &str,
@@ -188,6 +204,13 @@ impl ShareHandle {
 pub struct PeerRuntime {
     subs: tokio::sync::RwLock<HashMap<String, SubHandle>>,
     shares: tokio::sync::RwLock<HashMap<String, ShareHandle>>,
+    /// Authoritative per-namespace state (`starting|syncing|live|error|
+    /// stopped|standby`), recorded at every state emit. `peer_drives_list`
+    /// returns THIS so the FE restores the real dot state on a re-pull instead
+    /// of re-deriving `syncing` from the live-task boolean (the "green dot not
+    /// durable across a remount" bug, F3). A std Mutex (never held across an
+    /// await) so the sync engine reporter closure can record without async.
+    states: std::sync::Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 impl PeerRuntime {
@@ -278,6 +301,7 @@ impl PeerRuntime {
             content_key,
             replica_dir.to_path_buf(),
             store_dir,
+            self.states.clone(),
         ));
         subs.insert(
             namespace.to_string(),
@@ -461,10 +485,52 @@ impl PeerRuntime {
             .map(|(ns, _)| ns.clone())
             .collect()
     }
+
+    /// Snapshot of the authoritative per-namespace state registry (F3). Empty
+    /// for a namespace whose task never started this session; `peer_drives_list`
+    /// falls back to the live-task booleans there.
+    pub fn states_snapshot(&self) -> HashMap<String, String> {
+        self.states
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    /// Stand a received drive DOWN to STANDBY: cancel its replication task
+    /// (freeing CPU + relay) and record the `standby` state. Wired from
+    /// `provider_disconnect`, so closing a peer connection tab pauses the drive
+    /// instead of leaking the task (the orphan-task leak) and the friend dot
+    /// shows idle (dark blue) instead of staying green. Resumable: a later
+    /// `provider_connect` re-runs `ensure_sub` and the drive goes live again.
+    /// No-op when no live sub serves `namespace`.
+    pub async fn standby(&self, app: &AppHandle, namespace: &str) {
+        let removed = {
+            let mut subs = self.subs.write().await;
+            subs.remove(namespace)
+        };
+        let handle = match removed {
+            Some(handle) => handle,
+            None => {
+                // No live task: still mark the drive idle so the dot leaves
+                // green even if the sub had already ended.
+                record_sync(app, &self.states, namespace, "standby", None);
+                return;
+            }
+        };
+        handle.cancel.cancel();
+        // Wait for the task to FULLY stop before recording standby, so a
+        // trailing engine "live"/"syncing" callback (the reporter's
+        // check-then-act gap) cannot overwrite it. The loop's select! breaks
+        // promptly on cancel, so this returns fast; the timeout is a backstop.
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.task).await;
+        record_sync(app, &self.states, namespace, "standby", None);
+        tracing::info!("AeroShare: drive {namespace} moved to standby (tab closed)");
+    }
 }
 
 /// The long-lived replication task for one drive. Loops engine passes until
 /// cancelled; every state change is emitted, never rendered directly.
+#[allow(clippy::too_many_arguments)]
 async fn sync_loop(
     app: AppHandle,
     cancel: CancellationToken,
@@ -473,26 +539,36 @@ async fn sync_loop(
     content_key: zeroize::Zeroizing<Vec<u8>>,
     replica_dir: PathBuf,
     store_dir: PathBuf,
+    states: std::sync::Arc<std::sync::Mutex<HashMap<String, String>>>,
 ) {
-    emit_sync_status(&app, &namespace, "starting", None);
+    record_sync(&app, &states, &namespace, "starting", None);
     let out = replica_dir.to_string_lossy().to_string();
     let store = Some(store_dir.to_string_lossy().to_string());
     // Host-UI status reporter: the replicate worker calls this at phase
     // boundaries ("live" once a pass has converged and is just watching,
     // "syncing" when a delta lands), so the friend-card dot settles to green
-    // instead of being pinned to "syncing" for the whole watch window.
-    let reporter: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>> = {
+    // instead of being pinned to "syncing" for the whole watch window. It
+    // records into the same registry so a re-pull restores the real state (F3).
+    let reporter: Option<crate::peer::StatusReporter> = {
         let app = app.clone();
         let namespace = namespace.clone();
+        let states = states.clone();
+        let cancel = cancel.clone();
         Some(std::sync::Arc::new(move |state: &str| {
-            emit_sync_status(&app, &namespace, state, None);
+            // Once cancelled (standby / replace), suppress late engine
+            // callbacks so a trailing "live"/"syncing" cannot overwrite the
+            // terminal state the canceller recorded (e.g. "standby").
+            if cancel.is_cancelled() {
+                return;
+            }
+            record_sync(&app, &states, &namespace, state, None);
         }))
     };
     loop {
         if cancel.is_cancelled() {
             break;
         }
-        emit_sync_status(&app, &namespace, "syncing", None);
+        record_sync(&app, &states, &namespace, "syncing", None);
         let pass = crate::peer::replicate_drive_cap(
             ticket.clone(),
             out.clone(),
@@ -510,7 +586,7 @@ async fn sync_loop(
                     Ok(()) => {}
                     Err(e) => {
                         tracing::warn!("AeroShare sync pass failed for {namespace}: {e}");
-                        emit_sync_status(&app, &namespace, "error", Some(e.to_string()));
+                        record_sync(&app, &states, &namespace, "error", Some(e.to_string()));
                         tokio::select! {
                             _ = cancel.cancelled() => break,
                             _ = tokio::time::sleep(std::time::Duration::from_secs(ERROR_BACKOFF_SECS)) => {}
@@ -520,7 +596,10 @@ async fn sync_loop(
             }
         }
     }
-    emit_sync_status(&app, &namespace, "stopped", None);
+    // No terminal emit here: the loop only exits on cancellation, and the
+    // CANCELLER owns the terminal state (`standby` from PeerRuntime::standby,
+    // or a fresh `starting` from the replacement task in ensure_sub). Emitting
+    // "stopped" unconditionally would race-overwrite the canceller's state.
 }
 
 /// The long-lived publish/serve task for one shared folder. Publishes the

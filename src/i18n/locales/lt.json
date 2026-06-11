@@ -4724,7 +4724,8 @@
                 "error": "Klaida",
                 "starting": "Paleidžiama",
                 "stopped": "Sustabdyta",
-                "offline": "Neprisijungę"
+                "offline": "Neprisijungę",
+                "standby": "Neaktyvu"
             },
             "status": {
                 "starting": "Paleidžiama...",

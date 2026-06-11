@@ -4724,7 +4724,8 @@
                 "error": "Սխալ",
                 "starting": "Մեկնարկ",
                 "stopped": "Կանգնեցված",
-                "offline": "Անցանց"
+                "offline": "Անցանց",
+                "standby": "Անգործ"
             },
             "status": {
                 "starting": "Մեկնարկ...",

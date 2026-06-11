@@ -4724,7 +4724,8 @@
                 "error": "შეცდომა",
                 "starting": "გაშვება",
                 "stopped": "გაჩერებული",
-                "offline": "ხაზგარეშე"
+                "offline": "ხაზგარეშე",
+                "standby": "უმოქმედო"
             },
             "status": {
                 "starting": "გაშვება...",

@@ -4724,7 +4724,8 @@
                 "error": "错误",
                 "starting": "启动中",
                 "stopped": "已停止",
-                "offline": "离线"
+                "offline": "离线",
+                "standby": "空闲"
             },
             "status": {
                 "starting": "启动中...",

@@ -4743,7 +4743,8 @@
                 "error": "Errorea",
                 "starting": "Abiarazten",
                 "stopped": "Geldituta",
-                "offline": "Lineaz kanpo"
+                "offline": "Lineaz kanpo",
+                "standby": "Inaktibo"
             },
             "status": {
                 "starting": "Abiarazten...",

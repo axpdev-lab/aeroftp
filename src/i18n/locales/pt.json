@@ -4724,7 +4724,8 @@
                 "error": "Erro",
                 "starting": "A iniciar",
                 "stopped": "Parado",
-                "offline": "Offline"
+                "offline": "Offline",
+                "standby": "Inativo"
             },
             "status": {
                 "starting": "A iniciar...",

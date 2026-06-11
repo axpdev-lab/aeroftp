@@ -4743,7 +4743,8 @@
                 "error": "Error",
                 "starting": "Iniciant",
                 "stopped": "Aturat",
-                "offline": "Sense connexió"
+                "offline": "Sense connexió",
+                "standby": "Inactiu"
             },
             "status": {
                 "starting": "Iniciant...",

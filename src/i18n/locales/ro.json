@@ -4724,7 +4724,8 @@
                 "error": "Eroare",
                 "starting": "Se pornește",
                 "stopped": "Oprit",
-                "offline": "Deconectat"
+                "offline": "Deconectat",
+                "standby": "Inactiv"
             },
             "status": {
                 "starting": "Se pornește...",

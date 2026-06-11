@@ -4724,7 +4724,8 @@
                 "error": "エラー",
                 "starting": "起動中",
                 "stopped": "停止",
-                "offline": "オフライン"
+                "offline": "オフライン",
+                "standby": "待機中"
             },
             "status": {
                 "starting": "起動中...",

@@ -4724,7 +4724,8 @@
                 "error": "ত্রুটি",
                 "starting": "শুরু হচ্ছে",
                 "stopped": "বন্ধ",
-                "offline": "অফলাইন"
+                "offline": "অফলাইন",
+                "standby": "নিষ্ক্রিয়"
             },
             "status": {
                 "starting": "শুরু হচ্ছে...",

@@ -4743,7 +4743,8 @@
                 "error": "Feil",
                 "starting": "Starter",
                 "stopped": "Stoppet",
-                "offline": "Frakoblet"
+                "offline": "Frakoblet",
+                "standby": "Inaktiv"
             },
             "status": {
                 "starting": "Starter...",
