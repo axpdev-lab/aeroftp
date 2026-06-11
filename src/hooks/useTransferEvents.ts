@@ -7,6 +7,7 @@ import { guardedUnlisten } from './useTauriListener';
 import { TransferEvent, TransferProgress } from '../types';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
 import { localizeRestrictedCharError } from '../utils/restrictedCharError';
+import { READ_ONLY_ERROR_PREFIX } from '../utils/aeroShare';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -726,8 +727,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         // AeroShare Phase 1 drives are browse/pull only (providers/peer.rs
         // ReadOnly). Map the stable "Read-only endpoint:" marker to a calm,
-        // localized toast instead of a raw backend string.
-        if (typeof data.message === 'string' && data.message.startsWith('Read-only endpoint:')) {
+        // localized toast instead of a raw backend string. Use `includes` (not
+        // `startsWith`): the transfer pipeline wraps the provider error as
+        // "Upload failed: Read-only endpoint: ..." so the marker is mid-string.
+        if (typeof data.message === 'string' && data.message.includes(READ_ONLY_ERROR_PREFIX)) {
           notify.error(t('aeroShare.toast.readOnlyTitle'), t('aeroShare.toast.readOnlyBody'));
         } else {
           notify.error(t('transfer.failed'), data.message);
