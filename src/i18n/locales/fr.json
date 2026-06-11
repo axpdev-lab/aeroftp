@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Saisissez l'AeroFTP-ID de votre ami.",
                 "missingFolder": "Choisissez un dossier.",
                 "missingRecipient": "Saisissez ou choisissez l'AeroFTP-ID du destinataire."
+            },
+            "shared": {
+                "title": "Partagé par moi",
+                "subtitle": "Dossiers que vous partagez avec des amis",
+                "serving": "Diffusion",
+                "idle": "Inactif",
+                "stop": "Arrêter",
+                "resume": "Rediffuser",
+                "remove": "Supprimer",
+                "sharedWith": "Partagé avec",
+                "noRecipients": "Aucun destinataire pour l'instant",
+                "shareFolder": "Partager un dossier",
+                "removeTitle": "Arrêter le partage",
+                "removeMessage": "Arrêter le partage de \"{name}\" et le retirer de cette liste ? Vos fichiers restent sur votre appareil ; les personnes avec qui vous avez partagé conservent ce qu'elles ont déjà reçu mais ne recevront plus de mises à jour."
             }
         }
     }

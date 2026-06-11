@@ -4777,6 +4777,20 @@
                 "missingIssuer": "请输入好友的 AeroFTP-ID。",
                 "missingFolder": "请选择一个文件夹。",
                 "missingRecipient": "请输入或选择接收方的 AeroFTP-ID。"
+            },
+            "shared": {
+                "title": "我的共享",
+                "subtitle": "你正在与好友共享的文件夹",
+                "serving": "提供中",
+                "idle": "空闲",
+                "stop": "停止",
+                "resume": "重新提供",
+                "remove": "移除",
+                "sharedWith": "共享给",
+                "noRecipients": "暂无接收者",
+                "shareFolder": "共享文件夹",
+                "removeTitle": "停止共享",
+                "removeMessage": "停止共享“{name}”并将其从此列表中移除？你的文件仍保留在你的设备上；与你共享的人会保留已经收到的内容，但不会再收到更新。"
             }
         }
     }

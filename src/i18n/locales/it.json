@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Inserisci l'AeroFTP-ID del tuo amico.",
                 "missingFolder": "Scegli una cartella.",
                 "missingRecipient": "Inserisci o scegli l'AeroFTP-ID del destinatario."
+            },
+            "shared": {
+                "title": "Condivise da me",
+                "subtitle": "Cartelle che stai condividendo con gli amici",
+                "serving": "In servizio",
+                "idle": "Inattivo",
+                "stop": "Interrompi",
+                "resume": "Riavvia servizio",
+                "remove": "Rimuovi",
+                "sharedWith": "Condivisa con",
+                "noRecipients": "Ancora nessun destinatario",
+                "shareFolder": "Condividi una cartella",
+                "removeTitle": "Interrompi condivisione",
+                "removeMessage": "Interrompere la condivisione di \"{name}\" e rimuoverla da questo elenco? I tuoi file restano sul tuo dispositivo; le persone con cui hai condiviso conservano ciò che hanno già ricevuto ma non riceveranno più aggiornamenti."
             }
         }
     }

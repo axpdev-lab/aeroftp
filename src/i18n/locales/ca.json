@@ -4796,6 +4796,20 @@
                 "missingIssuer": "Introdueix l'AeroFTP-ID del teu amic.",
                 "missingFolder": "Tria una carpeta.",
                 "missingRecipient": "Introdueix o tria l'AeroFTP-ID del destinatari."
+            },
+            "shared": {
+                "title": "Compartit per mi",
+                "subtitle": "Carpetes que comparteixes amb amics",
+                "serving": "Servint",
+                "idle": "Inactiu",
+                "stop": "Atura",
+                "resume": "Torna a servir",
+                "remove": "Elimina",
+                "sharedWith": "Compartit amb",
+                "noRecipients": "Encara no hi ha destinataris",
+                "shareFolder": "Comparteix una carpeta",
+                "removeTitle": "Atura la compartició",
+                "removeMessage": "Vols aturar la compartició de \"{name}\" i treure-la d'aquesta llista? Els teus fitxers es queden al teu dispositiu; les persones amb qui has compartit conserven el que ja han rebut, però ja no rebran actualitzacions."
             }
         }
     }

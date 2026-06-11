@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Add meg a barátod AeroFTP-ID-ját.",
                 "missingFolder": "Válassz egy mappát.",
                 "missingRecipient": "Add meg vagy válaszd ki a címzett AeroFTP-ID-ját."
+            },
+            "shared": {
+                "title": "Általam megosztott",
+                "subtitle": "Mappák, amelyeket barátaiddal osztasz meg",
+                "serving": "Kiszolgálás",
+                "idle": "Tétlen",
+                "stop": "Leállítás",
+                "resume": "Újraszolgáltatás",
+                "remove": "Eltávolítás",
+                "sharedWith": "Megosztva vele",
+                "noRecipients": "Még nincsenek címzettek",
+                "shareFolder": "Mappa megosztása",
+                "removeTitle": "Megosztás leállítása",
+                "removeMessage": "Leállítod a(z) \"{name}\" megosztását, és eltávolítod ebből a listából? A fájljaid az eszközödön maradnak; akikkel megosztottad, megtartják a már megkapott tartalmat, de nem kapnak több frissítést."
             }
         }
     }

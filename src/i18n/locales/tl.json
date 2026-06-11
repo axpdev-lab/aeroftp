@@ -4796,6 +4796,20 @@
                 "missingIssuer": "Ilagay ang AeroFTP-ID ng iyong kaibigan.",
                 "missingFolder": "Pumili ng folder.",
                 "missingRecipient": "Ilagay o piliin ang AeroFTP-ID ng tatanggap."
+            },
+            "shared": {
+                "title": "Ibinahagi ko",
+                "subtitle": "Mga folder na ibinabahagi mo sa mga kaibigan",
+                "serving": "Naghahatid",
+                "idle": "Idle",
+                "stop": "Itigil",
+                "resume": "Maghatid muli",
+                "remove": "Alisin",
+                "sharedWith": "Ibinahagi kay",
+                "noRecipients": "Wala pang tatanggap",
+                "shareFolder": "Magbahagi ng folder",
+                "removeTitle": "Itigil ang pagbabahagi",
+                "removeMessage": "Itigil ang pagbabahagi ng \"{name}\" at alisin ito sa listahang ito? Mananatili ang iyong mga file sa iyong device; ang mga taong binahagian mo ay pananatilihin ang natanggap na nila ngunit hindi na makakatanggap ng mga update."
             }
         }
     }

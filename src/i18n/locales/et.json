@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Sisestage sõbra AeroFTP-ID.",
                 "missingFolder": "Valige kaust.",
                 "missingRecipient": "Sisestage või valige saaja AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Minu jagatud",
+                "subtitle": "Kaustad, mida jagad sõpradega",
+                "serving": "Pakkumine",
+                "idle": "Jõude",
+                "stop": "Peata",
+                "resume": "Paku uuesti",
+                "remove": "Eemalda",
+                "sharedWith": "Jagatud kasutajaga",
+                "noRecipients": "Veel pole saajaid",
+                "shareFolder": "Jaga kausta",
+                "removeTitle": "Lõpeta jagamine",
+                "removeMessage": "Kas lõpetada \"{name}\" jagamine ja eemaldada see sellest loendist? Sinu failid jäävad sinu seadmesse; inimesed, kellega jagasid, säilitavad juba saadu, kuid ei saa enam uuendusi."
             }
         }
     }

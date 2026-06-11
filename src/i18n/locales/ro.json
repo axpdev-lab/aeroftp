@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Introdu AeroFTP-ID-ul prietenului tău.",
                 "missingFolder": "Alege un folder.",
                 "missingRecipient": "Introdu sau alege AeroFTP-ID-ul destinatarului."
+            },
+            "shared": {
+                "title": "Partajate de mine",
+                "subtitle": "Foldere pe care le partajezi cu prietenii",
+                "serving": "Se servește",
+                "idle": "Inactiv",
+                "stop": "Oprește",
+                "resume": "Servește din nou",
+                "remove": "Elimină",
+                "sharedWith": "Partajat cu",
+                "noRecipients": "Încă niciun destinatar",
+                "shareFolder": "Partajează un folder",
+                "removeTitle": "Oprește partajarea",
+                "removeMessage": "Oprești partajarea \"{name}\" și o elimini din această listă? Fișierele tale rămân pe dispozitivul tău; persoanele cu care ai partajat păstrează ce au primit deja, dar nu vor mai primi actualizări."
             }
         }
     }

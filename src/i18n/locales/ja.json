@@ -4777,6 +4777,20 @@
                 "missingIssuer": "友達の AeroFTP-ID を入力してください。",
                 "missingFolder": "フォルダを選択してください。",
                 "missingRecipient": "受信者の AeroFTP-ID を入力または選択してください。"
+            },
+            "shared": {
+                "title": "自分が共有",
+                "subtitle": "友だちと共有しているフォルダ",
+                "serving": "提供中",
+                "idle": "待機中",
+                "stop": "停止",
+                "resume": "再提供",
+                "remove": "削除",
+                "sharedWith": "共有相手",
+                "noRecipients": "受信者はまだいません",
+                "shareFolder": "フォルダを共有",
+                "removeTitle": "共有を停止",
+                "removeMessage": "「{name}」の共有を停止してこの一覧から削除しますか？ファイルはお使いのデバイスに残ります。共有した相手はすでに受け取った内容を保持しますが、今後の更新は受け取れなくなります。"
             }
         }
     }

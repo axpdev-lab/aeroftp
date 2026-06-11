@@ -22,6 +22,11 @@ use zeroize::Zeroizing;
 /// (Tauri managed state; wired into `provider_connect` for `protocol="peer"`).
 pub mod runtime;
 
+/// AeroShare Phase 1, Share surface slice 2: durable metadata for the folders
+/// the active user is sharing (the "Shared by me" panel), filling the gap the
+/// encrypted drive record leaves (it remembers neither folder nor recipients).
+pub mod share_registry;
+
 /// What a capability-path publish hands back to the CLI once the drive exists (so it can custody the
 /// key in the vault and print the ticket while the publisher keeps serving). Re-exported from peer-l0.
 pub use aeroftp_peer_l0::drive::DrivePublished;

@@ -4796,6 +4796,20 @@
                 "missingIssuer": "Introduce o AeroFTP-ID do teu amigo.",
                 "missingFolder": "Escolle un cartafol.",
                 "missingRecipient": "Introduce ou escolle o AeroFTP-ID do destinatario."
+            },
+            "shared": {
+                "title": "Compartido por min",
+                "subtitle": "Cartafoles que compartes con amigos",
+                "serving": "Servindo",
+                "idle": "Inactivo",
+                "stop": "Deter",
+                "resume": "Volver a servir",
+                "remove": "Eliminar",
+                "sharedWith": "Compartido con",
+                "noRecipients": "Aínda non hai destinatarios",
+                "shareFolder": "Compartir un cartafol",
+                "removeTitle": "Deixar de compartir",
+                "removeMessage": "Queres deixar de compartir \"{name}\" e quitala desta lista? Os teus ficheiros permanecen no teu dispositivo; as persoas coas que compartiches conservan o que xa recibiron, pero non recibirán máis actualizacións."
             }
         }
     }

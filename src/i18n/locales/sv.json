@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Ange din väns AeroFTP-ID.",
                 "missingFolder": "Välj en mapp.",
                 "missingRecipient": "Ange eller välj mottagarens AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Delat av mig",
+                "subtitle": "Mappar du delar med vänner",
+                "serving": "Betjänar",
+                "idle": "Inaktiv",
+                "stop": "Stoppa",
+                "resume": "Betjäna igen",
+                "remove": "Ta bort",
+                "sharedWith": "Delad med",
+                "noRecipients": "Inga mottagare ännu",
+                "shareFolder": "Dela en mapp",
+                "removeTitle": "Sluta dela",
+                "removeMessage": "Sluta dela \"{name}\" och ta bort den från den här listan? Dina filer stannar på din enhet; personerna du delat med behåller det de redan fått men får inga fler uppdateringar."
             }
         }
     }

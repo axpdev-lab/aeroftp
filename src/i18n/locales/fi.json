@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Anna kaverisi AeroFTP-ID.",
                 "missingFolder": "Valitse kansio.",
                 "missingRecipient": "Anna tai valitse vastaanottajan AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Minun jakamani",
+                "subtitle": "Kansiot, joita jaat ystävien kanssa",
+                "serving": "Tarjotaan",
+                "idle": "Vapaana",
+                "stop": "Lopeta",
+                "resume": "Tarjoa uudelleen",
+                "remove": "Poista",
+                "sharedWith": "Jaettu",
+                "noRecipients": "Ei vielä vastaanottajia",
+                "shareFolder": "Jaa kansio",
+                "removeTitle": "Lopeta jakaminen",
+                "removeMessage": "Lopetetaanko kohteen \"{name}\" jakaminen ja poistetaanko se tästä luettelosta? Tiedostosi pysyvät laitteellasi; henkilöt, joiden kanssa jaoit, säilyttävät jo saamansa, mutta eivät enää saa päivityksiä."
             }
         }
     }

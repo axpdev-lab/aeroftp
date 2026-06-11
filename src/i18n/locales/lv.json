@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Ievadiet drauga AeroFTP-ID.",
                 "missingFolder": "Izvēlieties mapi.",
                 "missingRecipient": "Ievadiet vai izvēlieties saņēmēja AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Mana kopīgotā",
+                "subtitle": "Mapes, kuras kopīgojat ar draugiem",
+                "serving": "Apkalpo",
+                "idle": "Dīkstāve",
+                "stop": "Apturēt",
+                "resume": "Apkalpot atkārtoti",
+                "remove": "Noņemt",
+                "sharedWith": "Kopīgots ar",
+                "noRecipients": "Vēl nav saņēmēju",
+                "shareFolder": "Kopīgot mapi",
+                "removeTitle": "Pārtraukt kopīgošanu",
+                "removeMessage": "Vai pārtraukt mapes \"{name}\" kopīgošanu un noņemt to no šī saraksta? Jūsu faili paliek jūsu ierīcē; cilvēki, ar kuriem kopīgojāt, saglabā jau saņemto, taču vairs nesaņems atjauninājumus."
             }
         }
     }

@@ -4777,6 +4777,20 @@
                 "missingIssuer": "친구의 AeroFTP-ID를 입력하세요.",
                 "missingFolder": "폴더를 선택하세요.",
                 "missingRecipient": "받는 사람의 AeroFTP-ID를 입력하거나 선택하세요."
+            },
+            "shared": {
+                "title": "내가 공유함",
+                "subtitle": "친구와 공유 중인 폴더",
+                "serving": "제공 중",
+                "idle": "대기 중",
+                "stop": "중지",
+                "resume": "다시 제공",
+                "remove": "제거",
+                "sharedWith": "공유 대상",
+                "noRecipients": "아직 받는 사람이 없습니다",
+                "shareFolder": "폴더 공유",
+                "removeTitle": "공유 중지",
+                "removeMessage": "\"{name}\" 공유를 중지하고 이 목록에서 제거할까요? 파일은 내 기기에 그대로 남습니다. 공유한 사람들은 이미 받은 내용은 유지하지만 더 이상 업데이트를 받지 못합니다."
             }
         }
     }

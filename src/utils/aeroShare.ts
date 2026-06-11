@@ -64,6 +64,22 @@ export interface PeerDriveAdded {
   version: number;
 }
 
+export interface PeerShareRecipient {
+  afid: string;
+  alias: string;
+}
+
+/** A folder the active user is sharing (the "Shared by me" panel). */
+export interface PeerShareInfo {
+  namespace: string;
+  /** Absolute local folder being shared. */
+  folder: string;
+  drive_name: string;
+  recipients: PeerShareRecipient[];
+  /** A live publish task is serving this drive right now (vs idle/persisted). */
+  serving: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Command wrappers (Tauri v2: JS arg names are camelCase)
 // ---------------------------------------------------------------------------
@@ -104,6 +120,24 @@ export interface PeerDriveAddParams {
  *  flows on `peer://sync-status`. */
 export const peerDriveAdd = (params: PeerDriveAddParams): Promise<PeerDriveAdded> =>
   invoke<PeerDriveAdded>('peer_drive_add', { params });
+
+// --- Share surface slice 2: the "Shared by me" panel ---
+
+/** The folders the active user is sharing, with live serving state. */
+export const peerSharesList = (): Promise<PeerShareInfo[]> =>
+  invoke<PeerShareInfo[]>('peer_shares_list');
+
+/** Stop serving a shared drive (stays in the panel as idle, re-servable). */
+export const peerShareStop = (namespace: string): Promise<void> =>
+  invoke('peer_share_stop', { namespace });
+
+/** Re-serve an idle shared folder (reuses the drive key; no new grant). */
+export const peerShareResume = (namespace: string): Promise<void> =>
+  invoke('peer_share_resume', { namespace });
+
+/** Forget a share from the panel (stops serving + drops the registry entry). */
+export const peerShareRemove = (namespace: string): Promise<void> =>
+  invoke('peer_share_remove', { namespace });
 
 // ---------------------------------------------------------------------------
 // Share-link helpers (LOCKED format: aeroftp-share://v1/<ticket>/<cap>)

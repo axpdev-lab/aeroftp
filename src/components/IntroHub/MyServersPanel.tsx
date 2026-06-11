@@ -33,6 +33,7 @@ import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favorite
 import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
 import { usePeerDriveStates, type PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialog';
+import { SharedByMePanel } from '../AeroShare/SharedByMePanel';
 import { friendCanConnect, AERO_SHARE_OPEN_EVENT, type AeroShareOpenDetail } from '../../utils/aeroShare';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
@@ -315,6 +316,8 @@ export function MyServersPanel({
     // Bumped after a handshake so the friend's freshly-saved profile reloads
     // (the load effect also keys on the parent `lastUpdate`).
     const [localRefresh, setLocalRefresh] = useState(0);
+    // Bumped after a share is created so the "Shared by me" panel re-pulls.
+    const [sharedRefresh, setSharedRefresh] = useState(0);
     const peerStateFor = useCallback((server: ServerProfile): PeerDriveState | undefined => {
         const ns = server.options?.peerNamespace;
         return ns ? peerStates.get(ns)?.state : undefined;
@@ -1243,6 +1246,15 @@ export function MyServersPanel({
                 aeroShareEnabled={aeroShareEnabled}
             />
 
+            {/* Only under the AeroShare filter (not "All"): the shared-folder
+                list is part of the AeroShare world, and showing it on every tab
+                is too invasive. */}
+            <SharedByMePanel
+                enabled={aeroShareEnabled && activeFilter === 'peer'}
+                onShareFolder={() => setAeroShareDialog({ mode: 'share' })}
+                refreshKey={sharedRefresh}
+            />
+
             {filteredServers.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center py-10 px-4">
                     {servers.length === 0 ? (
@@ -1528,7 +1540,7 @@ export function MyServersPanel({
                     prefillAfid={aeroShareDialog.prefillAfid}
                     prefillAlias={aeroShareDialog.prefillAlias}
                     prefillShareFolder={aeroShareDialog.prefillShareFolder}
-                    onFriendSaved={() => { setLocalRefresh(n => n + 1); refreshPeerStates(); }}
+                    onFriendSaved={() => { setLocalRefresh(n => n + 1); refreshPeerStates(); setSharedRefresh(n => n + 1); }}
                     onConnectFriend={(profile) => { void handleConnect(profile); }}
                     onClose={() => setAeroShareDialog(null)}
                 />,

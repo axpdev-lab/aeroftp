@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Zadejte AeroFTP-ID svého přítele.",
                 "missingFolder": "Vyberte složku.",
                 "missingRecipient": "Zadejte nebo vyberte AeroFTP-ID příjemce."
+            },
+            "shared": {
+                "title": "Sdíleno mnou",
+                "subtitle": "Složky, které sdílíte s přáteli",
+                "serving": "Poskytuje se",
+                "idle": "Nečinné",
+                "stop": "Zastavit",
+                "resume": "Znovu poskytnout",
+                "remove": "Odebrat",
+                "sharedWith": "Sdíleno s",
+                "noRecipients": "Zatím žádní příjemci",
+                "shareFolder": "Sdílet složku",
+                "removeTitle": "Zastavit sdílení",
+                "removeMessage": "Zastavit sdílení \"{name}\" a odebrat ji z tohoto seznamu? Vaše soubory zůstanou ve vašem zařízení; lidé, se kterými jste sdíleli, si ponechají to, co již obdrželi, ale nebudou dostávat další aktualizace."
             }
         }
     }

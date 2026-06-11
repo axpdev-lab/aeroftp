@@ -273,6 +273,21 @@ pub async fn peer_share_start(
         .unwrap_or_else(|| short_afid(&recipient));
     crate::user_partitions::gui_peer_contact_add(&app, &recipient, &alias)?;
 
+    // Durable record for the "Shared by me" panel (the drive record itself
+    // remembers neither folder nor recipients). Best-effort beside the publish
+    // store; a failure here must not void an otherwise-successful share link.
+    if let Err(e) = crate::peer::share_registry::record_share(
+        &app,
+        user_id,
+        &namespace,
+        &dir.to_string_lossy(),
+        &drive_name,
+        &recipient,
+        &alias,
+    ) {
+        tracing::warn!("AeroShare: could not record share metadata for {namespace}: {e}");
+    }
+
     Ok(PeerShareStarted {
         namespace,
         ticket,
@@ -366,6 +381,121 @@ pub async fn peer_drive_add(
         drive_name: imported.drive_name.clone(),
         version: imported.version,
     })
+}
+
+// ---------------------------------------------------------------------------
+// peer_shares_list / peer_share_stop / peer_share_resume / peer_share_remove
+// (Share surface slice 2: the "Shared by me" panel)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct PeerShareRecipient {
+    pub afid: String,
+    pub alias: String,
+}
+
+#[derive(Serialize)]
+pub struct PeerShareInfo {
+    pub namespace: String,
+    /// Absolute local folder being shared.
+    pub folder: String,
+    pub drive_name: String,
+    pub recipients: Vec<PeerShareRecipient>,
+    /// A live publish task is serving this drive right now (vs idle: persisted
+    /// but not serving, e.g. after a restart or an explicit Stop).
+    pub serving: bool,
+}
+
+/// The folders the active user is sharing, from the durable share registry,
+/// annotated with the runtime's live serving state. Empty when there is no P2P
+/// identity yet (you cannot share without one).
+#[tauri::command]
+pub async fn peer_shares_list(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+) -> Result<Vec<PeerShareInfo>, String> {
+    let user_id = match crate::user_partitions::gui_peer_identity_get_or_create(&app, false)? {
+        Some((uid, _afid, _created)) => uid,
+        None => return Ok(Vec::new()),
+    };
+    let serving = peer_runtime.live_share_namespaces().await;
+    Ok(crate::peer::share_registry::list_shares(&app, user_id)?
+        .into_iter()
+        .map(|meta| PeerShareInfo {
+            serving: serving.contains(&meta.namespace),
+            recipients: meta
+                .recipients
+                .into_iter()
+                .map(|r| PeerShareRecipient {
+                    afid: r.afid,
+                    alias: r.alias,
+                })
+                .collect(),
+            namespace: meta.namespace,
+            folder: meta.folder,
+            drive_name: meta.drive_name,
+        })
+        .collect())
+}
+
+/// Stop serving a shared drive (it stays in the panel as idle, re-servable).
+#[tauri::command]
+pub async fn peer_share_stop(
+    peer_runtime: State<'_, PeerRuntime>,
+    namespace: String,
+) -> Result<(), String> {
+    peer_runtime.stop_share(&namespace).await;
+    Ok(())
+}
+
+/// Re-serve an idle shared folder (after a restart or an explicit Stop). Reuses
+/// the published drive's key + namespace via the publish-store continuity, so
+/// the recipients' existing share links keep working; no new grant is issued.
+#[tauri::command]
+pub async fn peer_share_resume(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+    namespace: String,
+) -> Result<(), String> {
+    let (user_id, _afid, _created) =
+        crate::user_partitions::gui_peer_identity_get_or_create(&app, true)?
+            .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+        .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    let meta = crate::peer::share_registry::get_share(&app, user_id, &namespace)?
+        .ok_or_else(|| format!("no share metadata for drive {namespace}"))?;
+    let dir = Path::new(meta.folder.trim());
+    if !dir.is_dir() {
+        return Err(format!(
+            "the shared folder {} no longer exists",
+            meta.folder
+        ));
+    }
+    let (served_namespace, _ticket, _key) = peer_runtime
+        .start_share(&app, user_id, dir, &meta.drive_name, &identity_secret)
+        .await?;
+    // Key continuity normally re-serves under the SAME namespace; if the publish
+    // store was lost the engine mints a fresh one, so move the panel entry to it.
+    crate::peer::share_registry::rekey_share(&app, user_id, &namespace, &served_namespace)?;
+    Ok(())
+}
+
+/// Forget a share from the panel (Remove): stop serving and drop its registry
+/// entry. The drive key + publish store stay intact (re-sharing the same folder
+/// later keeps key continuity); this only removes the panel entry.
+#[tauri::command]
+pub async fn peer_share_remove(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+    namespace: String,
+) -> Result<(), String> {
+    peer_runtime.stop_share(&namespace).await;
+    if let Some((user_id, _afid, _created)) =
+        crate::user_partitions::gui_peer_identity_get_or_create(&app, false)?
+    {
+        crate::peer::share_registry::remove_share(&app, user_id, &namespace)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

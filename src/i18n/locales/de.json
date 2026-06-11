@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Geben Sie die AeroFTP-ID Ihres Freundes ein.",
                 "missingFolder": "Wählen Sie einen Ordner aus.",
                 "missingRecipient": "Geben Sie die AeroFTP-ID des Empfängers ein oder wählen Sie sie aus."
+            },
+            "shared": {
+                "title": "Von mir geteilt",
+                "subtitle": "Ordner, die du mit Freunden teilst",
+                "serving": "Wird bereitgestellt",
+                "idle": "Inaktiv",
+                "stop": "Stoppen",
+                "resume": "Erneut bereitstellen",
+                "remove": "Entfernen",
+                "sharedWith": "Geteilt mit",
+                "noRecipients": "Noch keine Empfänger",
+                "shareFolder": "Einen Ordner teilen",
+                "removeTitle": "Teilen beenden",
+                "removeMessage": "Das Teilen von \"{name}\" beenden und aus dieser Liste entfernen? Deine Dateien bleiben auf deinem Gerät; Personen, mit denen du geteilt hast, behalten das bereits Empfangene, erhalten aber keine Aktualisierungen mehr."
             }
         }
     }

@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Vnesite prijateljev AeroFTP-ID.",
                 "missingFolder": "Izberite mapo.",
                 "missingRecipient": "Vnesite ali izberite prejemnikov AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Deljeno z moje strani",
+                "subtitle": "Mape, ki jih delite s prijatelji",
+                "serving": "Streženje",
+                "idle": "V mirovanju",
+                "stop": "Ustavi",
+                "resume": "Ponovno streži",
+                "remove": "Odstrani",
+                "sharedWith": "Deljeno z",
+                "noRecipients": "Še ni prejemnikov",
+                "shareFolder": "Deli mapo",
+                "removeTitle": "Ustavi deljenje",
+                "removeMessage": "Ustavim deljenje mape \"{name}\" in jo odstranim s tega seznama? Vaše datoteke ostanejo v vaši napravi; osebe, s katerimi ste delili, obdržijo, kar so že prejele, vendar ne bodo več prejemale posodobitev."
             }
         }
     }

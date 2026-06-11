@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Nhập AeroFTP-ID của bạn bè.",
                 "missingFolder": "Chọn một thư mục.",
                 "missingRecipient": "Nhập hoặc chọn AeroFTP-ID của người nhận."
+            },
+            "shared": {
+                "title": "Tôi đã chia sẻ",
+                "subtitle": "Thư mục bạn đang chia sẻ với bạn bè",
+                "serving": "Đang phục vụ",
+                "idle": "Rảnh",
+                "stop": "Dừng",
+                "resume": "Phục vụ lại",
+                "remove": "Xóa",
+                "sharedWith": "Chia sẻ với",
+                "noRecipients": "Chưa có người nhận",
+                "shareFolder": "Chia sẻ một thư mục",
+                "removeTitle": "Dừng chia sẻ",
+                "removeMessage": "Dừng chia sẻ \"{name}\" và xóa khỏi danh sách này? Tệp của bạn vẫn ở trên thiết bị của bạn; những người bạn đã chia sẻ vẫn giữ những gì họ đã nhận nhưng sẽ không nhận được cập nhật nữa."
             }
         }
     }

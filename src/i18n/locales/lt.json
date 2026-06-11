@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Įveskite draugo AeroFTP-ID.",
                 "missingFolder": "Pasirinkite aplanką.",
                 "missingRecipient": "Įveskite arba pasirinkite gavėjo AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Mano bendrinama",
+                "subtitle": "Aplankai, kuriais dalijiesi su draugais",
+                "serving": "Teikiama",
+                "idle": "Neaktyvu",
+                "stop": "Stabdyti",
+                "resume": "Teikti iš naujo",
+                "remove": "Pašalinti",
+                "sharedWith": "Bendrinama su",
+                "noRecipients": "Kol kas nėra gavėjų",
+                "shareFolder": "Bendrinti aplanką",
+                "removeTitle": "Stabdyti bendrinimą",
+                "removeMessage": "Stabdyti aplanko \"{name}\" bendrinimą ir pašalinti jį iš šio sąrašo? Jūsų failai lieka jūsų įrenginyje; žmonės, su kuriais dalijotės, išsaugo tai, ką jau gavo, bet daugiau negaus atnaujinimų."
             }
         }
     }

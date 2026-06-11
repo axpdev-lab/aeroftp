@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Enter your friend's AeroFTP-ID.",
                 "missingFolder": "Choose a folder.",
                 "missingRecipient": "Enter or pick the recipient's AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Shared by me",
+                "subtitle": "Folders you are sharing with friends",
+                "serving": "Serving",
+                "idle": "Idle",
+                "stop": "Stop",
+                "resume": "Re-serve",
+                "remove": "Remove",
+                "sharedWith": "Shared with",
+                "noRecipients": "No recipients yet",
+                "shareFolder": "Share a folder",
+                "removeTitle": "Stop sharing",
+                "removeMessage": "Stop sharing \"{name}\" and remove it from this list? Your files stay on your device; people you shared with keep what they already received but will no longer get updates."
             }
         }
     }

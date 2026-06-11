@@ -4796,6 +4796,20 @@
                 "missingIssuer": "Rhowch AeroFTP-ID eich ffrind.",
                 "missingFolder": "Dewiswch ffolder.",
                 "missingRecipient": "Rhowch neu dewiswch AeroFTP-ID y derbynnydd."
+            },
+            "shared": {
+                "title": "Wedi rhannu gennyf",
+                "subtitle": "Ffolderi rydych yn eu rhannu gyda ffrindiau",
+                "serving": "Yn gweini",
+                "idle": "Segur",
+                "stop": "Stopio",
+                "resume": "Ailweini",
+                "remove": "Tynnu",
+                "sharedWith": "Wedi rhannu gyda",
+                "noRecipients": "Dim derbynwyr eto",
+                "shareFolder": "Rhannu ffolder",
+                "removeTitle": "Stopio rhannu",
+                "removeMessage": "Stopio rhannu \"{name}\" a'i dynnu o'r rhestr hon? Mae eich ffeiliau yn aros ar eich dyfais; bydd y bobl y gwnaethoch rannu â hwy yn cadw'r hyn maent eisoes wedi'i dderbyn ond ni fyddant yn cael diweddariadau mwyach."
             }
         }
     }

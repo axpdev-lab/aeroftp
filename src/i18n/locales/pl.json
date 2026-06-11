@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Wprowadź AeroFTP-ID znajomego.",
                 "missingFolder": "Wybierz folder.",
                 "missingRecipient": "Wprowadź lub wybierz AeroFTP-ID odbiorcy."
+            },
+            "shared": {
+                "title": "Udostępnione przeze mnie",
+                "subtitle": "Foldery, które udostępniasz znajomym",
+                "serving": "Udostępnianie",
+                "idle": "Bezczynny",
+                "stop": "Zatrzymaj",
+                "resume": "Udostępnij ponownie",
+                "remove": "Usuń",
+                "sharedWith": "Udostępniono",
+                "noRecipients": "Brak odbiorców",
+                "shareFolder": "Udostępnij folder",
+                "removeTitle": "Zatrzymaj udostępnianie",
+                "removeMessage": "Zatrzymać udostępnianie \"{name}\" i usunąć je z tej listy? Twoje pliki pozostają na Twoim urządzeniu; osoby, którym udostępniono, zachowują to, co już otrzymały, ale nie będą otrzymywać aktualizacji."
             }
         }
     }

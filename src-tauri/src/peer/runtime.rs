@@ -526,6 +526,31 @@ impl PeerRuntime {
         record_sync(app, &self.states, namespace, "standby", None);
         tracing::info!("AeroShare: drive {namespace} moved to standby (tab closed)");
     }
+
+    /// Stop SERVING a published drive (the write-side sibling of [`standby`]):
+    /// cancel its publish/serve task, freeing the iroh endpoint + relay. The
+    /// share metadata is kept by the caller (the "Shared by me" panel shows the
+    /// folder as idle, re-servable), so this only tears the live task down.
+    /// No-op when no live share serves `namespace`. Returns `true` if a live
+    /// share was stopped.
+    pub async fn stop_share(&self, namespace: &str) -> bool {
+        let removed = {
+            let mut shares = self.shares.write().await;
+            shares.remove(namespace)
+        };
+        match removed {
+            Some(handle) => {
+                handle.cancel.cancel();
+                // The share_loop emits "stopped" on its cancel arm; await it so
+                // the task is fully down before the command returns and the FE
+                // re-pulls the serving set.
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.task).await;
+                tracing::info!("AeroShare: share {namespace} stopped serving");
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 /// The long-lived replication task for one drive. Loops engine passes until

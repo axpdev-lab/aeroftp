@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Introduza o AeroFTP-ID do seu amigo.",
                 "missingFolder": "Escolha uma pasta.",
                 "missingRecipient": "Introduza ou escolha o AeroFTP-ID do destinatário."
+            },
+            "shared": {
+                "title": "Partilhado por mim",
+                "subtitle": "Pastas que estás a partilhar com amigos",
+                "serving": "A servir",
+                "idle": "Inativo",
+                "stop": "Parar",
+                "resume": "Servir novamente",
+                "remove": "Remover",
+                "sharedWith": "Partilhado com",
+                "noRecipients": "Ainda sem destinatários",
+                "shareFolder": "Partilhar uma pasta",
+                "removeTitle": "Parar a partilha",
+                "removeMessage": "Parar a partilha de \"{name}\" e removê-la desta lista? Os teus ficheiros permanecem no teu dispositivo; as pessoas com quem partilhaste mantêm o que já receberam, mas deixarão de receber atualizações."
             }
         }
     }

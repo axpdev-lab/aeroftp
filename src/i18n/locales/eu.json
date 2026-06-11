@@ -4796,6 +4796,20 @@
                 "missingIssuer": "Sartu zure lagunaren AeroFTP-ID.",
                 "missingFolder": "Aukeratu karpeta bat.",
                 "missingRecipient": "Sartu edo aukeratu hartzailearen AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Nik partekatua",
+                "subtitle": "Lagunekin partekatzen dituzun karpetak",
+                "serving": "Zerbitzatzen",
+                "idle": "Inaktibo",
+                "stop": "Gelditu",
+                "resume": "Berriz zerbitzatu",
+                "remove": "Kendu",
+                "sharedWith": "Honekin partekatua",
+                "noRecipients": "Oraindik hartzailerik ez",
+                "shareFolder": "Partekatu karpeta bat",
+                "removeTitle": "Utzi partekatzeari",
+                "removeMessage": "\"{name}\" partekatzeari utzi eta zerrenda honetatik kendu nahi duzu? Zure fitxategiak zure gailuan geratzen dira; partekatu duzun jendeak jada jasotakoa gordeko du, baina ez du eguneratze gehiagorik jasoko."
             }
         }
     }

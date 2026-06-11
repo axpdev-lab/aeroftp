@@ -4796,6 +4796,20 @@
                 "missingIssuer": "Sláðu inn AeroFTP-ID vinar þíns.",
                 "missingFolder": "Veldu möppu.",
                 "missingRecipient": "Sláðu inn eða veldu AeroFTP-ID viðtakandans."
+            },
+            "shared": {
+                "title": "Deilt af mér",
+                "subtitle": "Möppur sem þú deilir með vinum",
+                "serving": "Þjónustar",
+                "idle": "Aðgerðalaust",
+                "stop": "Stöðva",
+                "resume": "Þjónusta aftur",
+                "remove": "Fjarlægja",
+                "sharedWith": "Deilt með",
+                "noRecipients": "Engir viðtakendur enn",
+                "shareFolder": "Deila möppu",
+                "removeTitle": "Hætta að deila",
+                "removeMessage": "Hætta að deila \"{name}\" og fjarlægja hana af þessum lista? Skrárnar þínar verða áfram á tækinu þínu; fólkið sem þú deildir með heldur því sem það hefur þegar fengið en fær ekki fleiri uppfærslur."
             }
         }
     }

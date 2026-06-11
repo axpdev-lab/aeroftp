@@ -15166,6 +15166,11 @@ pub fn run() {
             peer_commands::peer_drive_add,
             peer_commands::peer_friends_list,
             peer_commands::peer_drives_list,
+            // AeroShare Share surface slice 2: the "Shared by me" panel
+            peer_commands::peer_shares_list,
+            peer_commands::peer_share_stop,
+            peer_commands::peer_share_resume,
+            peer_commands::peer_share_remove,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,

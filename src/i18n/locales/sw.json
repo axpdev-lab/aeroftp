@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Weka AeroFTP-ID ya rafiki yako.",
                 "missingFolder": "Chagua folda.",
                 "missingRecipient": "Weka au chagua AeroFTP-ID ya mpokeaji."
+            },
+            "shared": {
+                "title": "Nilizoshiriki",
+                "subtitle": "Folda unazoshiriki na marafiki",
+                "serving": "Inahudumia",
+                "idle": "Tuli",
+                "stop": "Simamisha",
+                "resume": "Hudumia tena",
+                "remove": "Ondoa",
+                "sharedWith": "Imeshirikiwa na",
+                "noRecipients": "Bado hakuna wapokeaji",
+                "shareFolder": "Shiriki folda",
+                "removeTitle": "Acha kushiriki",
+                "removeMessage": "Uache kushiriki \"{name}\" na uiondoe kwenye orodha hii? Faili zako zinabaki kwenye kifaa chako; watu uliowashirikisha watabaki na walichokwisha kupokea lakini hawatapata masasisho tena."
             }
         }
     }

@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Masukkan AeroFTP-ID teman Anda.",
                 "missingFolder": "Pilih sebuah folder.",
                 "missingRecipient": "Masukkan atau pilih AeroFTP-ID penerima."
+            },
+            "shared": {
+                "title": "Dibagikan oleh saya",
+                "subtitle": "Folder yang Anda bagikan dengan teman",
+                "serving": "Menyajikan",
+                "idle": "Diam",
+                "stop": "Hentikan",
+                "resume": "Sajikan ulang",
+                "remove": "Hapus",
+                "sharedWith": "Dibagikan dengan",
+                "noRecipients": "Belum ada penerima",
+                "shareFolder": "Bagikan folder",
+                "removeTitle": "Hentikan berbagi",
+                "removeMessage": "Hentikan berbagi \"{name}\" dan hapus dari daftar ini? File Anda tetap di perangkat Anda; orang yang Anda bagikan tetap memiliki apa yang sudah mereka terima tetapi tidak akan mendapatkan pembaruan lagi."
             }
         }
     }

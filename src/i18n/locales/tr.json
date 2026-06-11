@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Arkadaşınızın AeroFTP-ID'sini girin.",
                 "missingFolder": "Bir klasör seçin.",
                 "missingRecipient": "Alıcının AeroFTP-ID'sini girin veya seçin."
+            },
+            "shared": {
+                "title": "Benim paylaştıklarım",
+                "subtitle": "Arkadaşlarınla paylaştığın klasörler",
+                "serving": "Sunuluyor",
+                "idle": "Boşta",
+                "stop": "Durdur",
+                "resume": "Yeniden sun",
+                "remove": "Kaldır",
+                "sharedWith": "Şununla paylaşıldı",
+                "noRecipients": "Henüz alıcı yok",
+                "shareFolder": "Bir klasör paylaş",
+                "removeTitle": "Paylaşımı durdur",
+                "removeMessage": "\"{name}\" paylaşımını durdurup bu listeden kaldırmak istiyor musun? Dosyaların cihazında kalır; paylaştığın kişiler daha önce aldıklarını saklar ama artık güncelleme almaz."
             }
         }
     }

@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Voer de AeroFTP-ID van je vriend in.",
                 "missingFolder": "Kies een map.",
                 "missingRecipient": "Voer de AeroFTP-ID van de ontvanger in of kies deze."
+            },
+            "shared": {
+                "title": "Door mij gedeeld",
+                "subtitle": "Mappen die je deelt met vrienden",
+                "serving": "Bezig met serveren",
+                "idle": "Inactief",
+                "stop": "Stoppen",
+                "resume": "Opnieuw serveren",
+                "remove": "Verwijderen",
+                "sharedWith": "Gedeeld met",
+                "noRecipients": "Nog geen ontvangers",
+                "shareFolder": "Een map delen",
+                "removeTitle": "Delen stoppen",
+                "removeMessage": "\"{name}\" niet meer delen en uit deze lijst verwijderen? Je bestanden blijven op je apparaat; mensen met wie je hebt gedeeld houden wat ze al hebben ontvangen, maar krijgen geen updates meer."
             }
         }
     }

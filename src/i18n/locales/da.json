@@ -4777,6 +4777,20 @@
                 "missingIssuer": "Indtast din vens AeroFTP-ID.",
                 "missingFolder": "Vælg en mappe.",
                 "missingRecipient": "Indtast eller vælg modtagerens AeroFTP-ID."
+            },
+            "shared": {
+                "title": "Delt af mig",
+                "subtitle": "Mapper du deler med venner",
+                "serving": "Serverer",
+                "idle": "Inaktiv",
+                "stop": "Stop",
+                "resume": "Server igen",
+                "remove": "Fjern",
+                "sharedWith": "Delt med",
+                "noRecipients": "Ingen modtagere endnu",
+                "shareFolder": "Del en mappe",
+                "removeTitle": "Stop deling",
+                "removeMessage": "Stop deling af \"{name}\" og fjern den fra denne liste? Dine filer bliver på din enhed; de personer, du har delt med, beholder det, de allerede har modtaget, men får ikke flere opdateringer."
             }
         }
     }
