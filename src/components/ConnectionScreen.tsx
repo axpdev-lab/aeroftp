@@ -26,6 +26,7 @@ import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
+import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { carryFavoriteServer } from '../utils/favoriteServers';
@@ -2266,20 +2267,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     || tryProtocolDesc(pid)
                                     || tryProtocolDesc(protocol || '');
                                 if (!LogoComponent && !providerName) return null;
+                                // Docs link on every Quick Connect page (#270):
+                                // prefer the per-provider AeroFTP docs page, fall
+                                // back to the provider's own help URL, then the
+                                // providers index so a link always renders.
+                                const docsUrl = getProviderDocsUrl(modeHeader?.providerId || selectedProviderId || pid, protocol)
+                                    || headerProv?.helpUrl
+                                    || PROVIDER_DOCS_INDEX;
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                            {headerProv?.helpUrl && (
-                                                <a
-                                                    href={headerProv.helpUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                                                >
-                                                    <ExternalLink size={10} />
-                                                    Docs
-                                                </a>
-                                            )}
+                                            <a
+                                                href={docsUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                                            >
+                                                <ExternalLink size={10} />
+                                                Docs
+                                            </a>
                                             {LogoComponent && <LogoComponent size={20} />}
                                             <span className="font-medium">{providerName}</span>
                                         </div>
