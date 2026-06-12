@@ -273,6 +273,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      # cargo-llvm-cov instruments every target and roughly doubles the already
+      # large target/ tree, which exhausted the runner disk ("No space left on
+      # device" while the runner wrote its own diag log). Reclaim the bulky
+      # preinstalled toolchains we never use before building.
+      - name: Free disk space
+        run: |
+          echo "Before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "After:"; df -h /
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:

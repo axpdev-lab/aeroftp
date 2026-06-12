@@ -90,6 +90,9 @@ use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 use zeroize::Zeroize;
 
+#[path = "../cli_tui/mod.rs"]
+mod cli_tui;
+
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
 /// Canonical list of URL schemes accepted by `connect`, `ls`, `get`, etc.
@@ -2152,6 +2155,8 @@ enum Commands {
         #[arg(long)]
         protocols: bool,
     },
+    /// Open the interactive terminal UI
+    Tui,
     /// List saved server profiles from the encrypted vault
     ///
     /// Mirrors the My Servers Table view in the GUI: the same column visibility
@@ -5599,7 +5604,7 @@ fn print_profile_banner_once(name: &str, details: String, quiet: bool) {
 }
 
 async fn maybe_hydrate_ftp_stat_size(
-    provider: &mut Box<dyn StorageProvider>,
+    provider: &mut dyn StorageProvider,
     path: &str,
     entry: &mut RemoteEntry,
 ) {
@@ -9269,6 +9274,156 @@ fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, 
     Ok(removed)
 }
 
+/// Remove a deleted profile id from every group's member list and from the
+/// favourites set (B4 DiscoveryHub delete). Mirrors `pruneServerFromGroups` in
+/// `serverGroups.ts`: the group rows themselves stay (a group is just a label),
+/// only the membership is dropped. Best-effort; a malformed blob is left alone.
+fn prune_profile_from_groups_and_favorites(store: &CredentialStore, profile_id: &str) {
+    // Favourites: drop the id from `config_favorite_servers`.
+    if let Ok(raw) = store.get("config_favorite_servers") {
+        if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&raw) {
+            let before = ids.len();
+            ids.retain(|i| i != profile_id);
+            if ids.len() != before {
+                if let Ok(payload) = serde_json::to_string(&ids) {
+                    let _ = store.store("config_favorite_servers", &payload);
+                }
+            }
+        }
+    }
+    // Groups: drop the id from every group's `members`.
+    let raw = store.get("config_server_groups").unwrap_or_default();
+    if !raw.is_empty() {
+        if let Ok(mut groups) = serde_json::from_str::<Vec<CliServerGroup>>(&raw) {
+            let mut changed = false;
+            for g in groups.iter_mut() {
+                let before = g.members.len();
+                g.members.retain(|m| m != profile_id);
+                if g.members.len() != before {
+                    changed = true;
+                }
+            }
+            if changed {
+                if let Ok(payload) = serde_json::to_string(&groups) {
+                    let _ = store.store("config_server_groups", &payload);
+                }
+            }
+        }
+    }
+}
+
+/// Delete a saved profile from `user_name`'s partition (B4 DiscoveryHub): drop
+/// the row by id, prune the id from groups/favourites, and best-effort delete
+/// its `server_<id>` credential. Best-effort like the favourite/group flips:
+/// the IntroHub already removed the row optimistically. A locked user partition
+/// or a missing user simply skips the write.
+fn tui_delete_profile(store: &CredentialStore, user_name: &str, profile_id: &str) {
+    use ftp_client_gui_lib::user_partitions;
+    let Ok(user) = user_partitions::cli_find_user_by_name(store, user_name) else {
+        return;
+    };
+    let Ok(mut profiles) = user_partitions::cli_list_server_profiles_for_user(store, user.id)
+    else {
+        return;
+    };
+    let before = profiles.len();
+    profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
+    if profiles.len() == before {
+        return; // nothing to delete
+    }
+    if user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).is_err() {
+        return;
+    }
+    prune_profile_from_groups_and_favorites(store, profile_id);
+    dual_delete_server_cred(store, Some(user.id), &format!("server_{}", profile_id));
+}
+
+/// Create or edit a saved profile in `user_name`'s partition (B4 DiscoveryHub).
+/// An empty `draft.id` would be a bug (the TUI mints before sending); a
+/// non-matching id appends as a create. On edit the existing row's unmanaged
+/// keys (options, lastConnected, color, providerId) are preserved and only the
+/// form-owned fields are overwritten. When `secret` is present the password is
+/// dual-written under `server_<id>`. Best-effort, like the favourite/group flips.
+fn tui_save_profile(
+    store: &CredentialStore,
+    user_name: &str,
+    draft: &cli_tui::worker::TuiProfileDraft,
+    secret: Option<&cli_tui::worker::TuiSecret>,
+) {
+    use ftp_client_gui_lib::user_partitions;
+    if draft.id.is_empty() {
+        return;
+    }
+    let Ok(user) = user_partitions::cli_find_user_by_name(store, user_name) else {
+        return;
+    };
+    let Ok(mut profiles) = user_partitions::cli_list_server_profiles_for_user(store, user.id)
+    else {
+        return;
+    };
+
+    let apply_fields = |entry: &mut serde_json::Map<String, serde_json::Value>| {
+        entry.insert("id".into(), serde_json::Value::String(draft.id.clone()));
+        entry.insert("name".into(), serde_json::Value::String(draft.name.clone()));
+        entry.insert(
+            "protocol".into(),
+            serde_json::Value::String(draft.protocol.clone()),
+        );
+        entry.insert("host".into(), serde_json::Value::String(draft.host.clone()));
+        entry.insert("port".into(), serde_json::json!(draft.port));
+        entry.insert(
+            "username".into(),
+            serde_json::Value::String(draft.username.clone()),
+        );
+        entry.insert(
+            "initialPath".into(),
+            serde_json::Value::String(if draft.initial_path.is_empty() {
+                "/".to_string()
+            } else {
+                draft.initial_path.clone()
+            }),
+        );
+        if draft.local_initial_path.is_empty() {
+            entry.remove("localInitialPath");
+        } else {
+            entry.insert(
+                "localInitialPath".into(),
+                serde_json::Value::String(draft.local_initial_path.clone()),
+            );
+        }
+    };
+
+    let existing = profiles
+        .iter_mut()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(draft.id.as_str()));
+    if let Some(value) = existing {
+        // Edit: preserve unmanaged keys, overwrite the form-owned ones.
+        if let Some(map) = value.as_object_mut() {
+            apply_fields(map);
+        }
+    } else {
+        // Create: prepend like `cmd_profile_create` so it surfaces on top.
+        let mut entry = serde_json::Map::new();
+        apply_fields(&mut entry);
+        profiles.insert(0, serde_json::Value::Object(entry));
+    }
+
+    if user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).is_err() {
+        return;
+    }
+
+    if let Some(secret) = secret {
+        if !secret.is_empty() {
+            dual_store_server_cred(
+                store,
+                Some(user.id),
+                &format!("server_{}", draft.id),
+                secret.expose(),
+            );
+        }
+    }
+}
+
 /// ANSI colour cues used by the interactive shell. Mirrors the colour
 /// language EhudKirsh asked for in issue #180: green for creation /
 /// rename, blue for copy / duplicate, red for delete. Tied to
@@ -9620,6 +9775,1778 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
     }
 
     0
+}
+
+fn build_tui_context(
+    cli: &Cli,
+    store: &CredentialStore,
+    download_base: String,
+) -> Result<cli_tui::TuiContext, String> {
+    let users = user_partitions::cli_list_users(store)?;
+    let stats = user_partitions::cli_storage_stats(store).unwrap_or_default();
+    let stats_by_user: HashMap<i64, usize> = stats
+        .into_iter()
+        .map(|stat| (stat.user_id, stat.profile_count.max(0) as usize))
+        .collect();
+    let favorites = load_favorite_server_ids(store);
+    // Named server groups (#320), the generalisation of the favourites bucket.
+    // Loaded once; per-profile membership names are attached below and the full
+    // list (with global member counts) is threaded onto the context for the
+    // group filter/overlay, mirroring how favourites are surfaced.
+    let groups = load_server_groups(store);
+
+    let users = users
+        .into_iter()
+        .map(|user| {
+            let profiles_result =
+                user_partitions::cli_list_server_profiles_for_user(store, user.id);
+            let (is_locked, profiles) = match profiles_result {
+                Ok(profiles) => (false, profiles),
+                Err(err) if err == "USER_LOCKED" => (true, Vec::new()),
+                Err(err) => return Err(err),
+            };
+            let visible_profiles: Vec<cli_tui::TuiProfile> = profiles
+                .iter()
+                .enumerate()
+                .map(|(idx, profile)| {
+                    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let username = profile
+                        .get("username")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    // Saved profiles persist the default local directory as
+                    // `localInitialPath` (ServerProfile in src/types.ts). The older
+                    // `localPath`/`defaultLocalPath` keys were never written by the GUI.
+                    let default_local_path = profile
+                        .get("localInitialPath")
+                        .or_else(|| profile.get("localPath"))
+                        .or_else(|| profile.get("defaultLocalPath"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    cli_tui::TuiProfile {
+                        selector: (idx + 1).to_string(),
+                        id: id.to_string(),
+                        name: profile
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unnamed")
+                            .to_string(),
+                        protocol: profile
+                            .get("protocol")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("ftp")
+                            .to_string(),
+                        host: host_subtitle(profile),
+                        username,
+                        initial_path: profile
+                            .get("initialPath")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("/")
+                            .to_string(),
+                        default_local_path,
+                        favorite: !id.is_empty() && favorites.contains(id),
+                        groups: if id.is_empty() {
+                            Vec::new()
+                        } else {
+                            group_names_for_profile(&groups, id)
+                        },
+                        // Reuse the same cached-quota / last-connected logic as
+                        // the CLI `profiles` table; the TUI only renders these.
+                        used: profile_effective_used(profile),
+                        total: profile_effective_total(profile),
+                        last_connected_label: profile
+                            .get("lastConnected")
+                            .and_then(|v| v.as_str())
+                            .and_then(format_time_ago),
+                        port: profile
+                            .get("port")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                            .min(u16::MAX as u64) as u16,
+                        endpoint: profile
+                            .get("options")
+                            .and_then(|o| o.get("endpoint"))
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string()),
+                        health: None,
+                    }
+                })
+                .collect();
+            let profile_count = stats_by_user
+                .get(&user.id)
+                .copied()
+                .unwrap_or(visible_profiles.len());
+            Ok(cli_tui::TuiUser {
+                name: user.name,
+                is_active: user.is_active,
+                is_locked,
+                is_admin: user.is_admin,
+                profile_count,
+                profiles: visible_profiles,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let initial_user = if let Some(user_name) = cli.user.as_deref() {
+        users
+            .iter()
+            .position(|user| user.name.eq_ignore_ascii_case(user_name))
+            .unwrap_or_else(|| {
+                users
+                    .iter()
+                    .position(|user| user.is_active)
+                    .unwrap_or_default()
+            })
+    } else {
+        users
+            .iter()
+            .position(|user| user.is_active)
+            .unwrap_or_default()
+    };
+
+    // Surface the full group list (name + global member count) for the filter
+    // chip and the group overlay. Names mirror what every profile carries.
+    let context_groups: Vec<cli_tui::TuiGroup> = groups
+        .iter()
+        .map(|g| cli_tui::TuiGroup {
+            name: g.name.clone(),
+            member_count: g.members.len(),
+        })
+        .collect();
+
+    Ok(cli_tui::TuiContext {
+        users,
+        initial_user,
+        download_base,
+        groups: context_groups,
+    })
+}
+
+async fn create_tui_session_via_cli_factory(
+    cli: &mut Cli,
+    format: OutputFormat,
+    identity: cli_tui::session::TuiSessionIdentity,
+) -> Result<cli_tui::session::TuiSession, String> {
+    let previous_user = cli.user.replace(identity.user_name.clone());
+    let previous_profile = cli.profile.replace(identity.profile_selector.clone());
+    let result = create_and_connect("_", cli, format).await;
+    cli.user = previous_user;
+    cli.profile = previous_profile;
+
+    result
+        .map(|(provider, initial_path)| {
+            cli_tui::session::TuiSession::new(provider, identity, initial_path)
+        })
+        .map_err(|code| format!("connect failed with exit code {}", code))
+}
+
+async fn list_tui_session_via_cli_handler(
+    cli: &Cli,
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(String, cli_tui::worker::TuiListResult), String> {
+    let initial_path = session.initial_path().to_string();
+    let list = collect_cli_list_entries(
+        session.provider_mut(),
+        &initial_path,
+        &CliListOptions {
+            path,
+            sort: "name",
+            reverse: false,
+            all: false,
+            limit: None,
+            files_only: false,
+            dirs_only: false,
+            emit_resolution_note: false,
+        },
+        cli,
+    )
+    .await
+    .map_err(|err| match err {
+        CliListError::RemotePath(err) => err.to_string(),
+        CliListError::Provider(err) => format!("ls failed: {}", err),
+    })?;
+
+    let path = list.effective_path;
+    let result = cli_tui::worker::TuiListResult {
+        entries: list
+            .entries
+            .into_iter()
+            .map(|entry| cli_tui::worker::TuiListEntry {
+                name: sanitize_filename(&entry.name),
+                path: entry.path,
+                is_dir: entry.is_dir,
+                size: entry.size,
+                modified: entry.modified,
+            })
+            .collect(),
+        summary: cli_tui::worker::TuiListSummary {
+            total: list.file_count + list.dir_count,
+            files: list.file_count,
+            dirs: list.dir_count,
+            total_bytes: list.total_bytes,
+            truncated: list.truncated,
+            total_before_limit: list.total_before_limit,
+        },
+    };
+    Ok((path, result))
+}
+
+async fn stat_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(String, cli_tui::worker::TuiStatResult), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved_path = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+
+    match provider.stat(&resolved_path).await {
+        Ok(mut entry) => {
+            maybe_hydrate_ftp_stat_size(provider, &resolved_path, &mut entry).await;
+            let result_path = entry.path.clone();
+            let result = cli_tui::worker::TuiStatResult {
+                name: sanitize_filename(&entry.name),
+                path: entry.path,
+                is_dir: entry.is_dir,
+                size: entry.size,
+                modified: entry.modified,
+                permissions: entry.permissions,
+                owner: entry.owner,
+                group: entry.group,
+                is_symlink: entry.is_symlink,
+                link_target: entry.link_target,
+                mime_type: entry.mime_type,
+            };
+            Ok((result_path, result))
+        }
+        Err(err) => {
+            let exit = provider_error_to_exit_code(&err);
+            if exit == 2 {
+                Err(format!("stat failed: {} not found", resolved_path))
+            } else {
+                Err(format!("stat failed: {}", err))
+            }
+        }
+    }
+}
+
+async fn mkdir_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    match provider.mkdir(&resolved).await {
+        // Idempotent like `cmd_mkdir`: an existing directory is not an error.
+        Ok(()) | Err(ProviderError::AlreadyExists(_)) => Ok(resolved),
+        Err(err) => Err(format!("mkdir failed: {}", err)),
+    }
+}
+
+async fn remove_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+    recursive: bool,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    // Mirror the CLI guard: never recursively wipe the remote root.
+    if recursive && resolved.trim_matches('/').is_empty() {
+        return Err("refusing to recursively delete the remote root".to_string());
+    }
+    let provider = session.provider_mut();
+    let result = if recursive {
+        provider.rmdir_recursive(&resolved).await
+    } else {
+        // Try file delete first, fall back to empty-directory removal.
+        match provider.delete(&resolved).await {
+            Ok(()) => Ok(()),
+            Err(_) => provider.rmdir(&resolved).await,
+        }
+    };
+    result
+        .map(|_| resolved)
+        .map_err(|err| format!("delete failed: {}", err))
+}
+
+async fn rename_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    from: &str,
+    to: &str,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved_from = try_resolve_cli_remote_path_with_note(&initial_path, from, false)
+        .map_err(|err| err.to_string())?;
+    let resolved_to = try_resolve_cli_remote_path_with_note(&initial_path, to, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    provider
+        .rename(&resolved_from, &resolved_to)
+        .await
+        .map(|_| resolved_to)
+        .map_err(|err| format!("rename failed: {}", err))
+}
+
+async fn download_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    remote_path: &str,
+    local_path: &str,
+    id: u64,
+    event_tx: &cli_tui::worker::WorkerEventSender,
+) -> Result<(), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let tx = event_tx.clone();
+    let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
+        Some(Box::new(move |transferred, total| {
+            let _ = tx.send(cli_tui::worker::WorkerEvent::TransferProgress {
+                id,
+                transferred,
+                total,
+            });
+        }));
+    provider
+        .download(&resolved, local_path, on_progress)
+        .await
+        .map_err(|err| format!("download failed: {}", err))
+}
+
+async fn upload_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    local_path: &str,
+    remote_path: &str,
+    id: u64,
+    event_tx: &cli_tui::worker::WorkerEventSender,
+) -> Result<(), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let tx = event_tx.clone();
+    let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
+        Some(Box::new(move |transferred, total| {
+            let _ = tx.send(cli_tui::worker::WorkerEvent::TransferProgress {
+                id,
+                transferred,
+                total,
+            });
+        }));
+    provider
+        .upload(local_path, &resolved, on_progress)
+        .await
+        .map_err(|err| format!("upload failed: {}", err))
+}
+
+/// Phase 3: Local filesystem listing for the dual-pane browser (left/local side).
+/// Format a filesystem mtime as `YYYY-MM-DD HH:MM` in local time, matching the
+/// remote pane's date column. Avoids the raw `SystemTime` Debug output.
+fn format_local_mtime(t: std::time::SystemTime) -> String {
+    chrono::DateTime::<chrono::Local>::from(t)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
+/// Returns (effective_path, TuiListResult) compatible with the remote ListReady path.
+/// Resolve a readable starting directory for the local pane. The requested path
+/// is used as-is when it is an existing directory; otherwise (e.g. a profile's
+/// `default_local_path` imported from another machine where that folder does not
+/// exist) it falls back to the user's home directory, then the filesystem root,
+/// mirroring the GUI - the local pane must never dead-end on a missing folder.
+async fn resolve_local_start_dir(path: &str) -> String {
+    use tokio::fs;
+
+    let is_dir = |p: &str| {
+        let p = p.to_string();
+        async move { fs::metadata(&p).await.map(|m| m.is_dir()).unwrap_or(false) }
+    };
+
+    if !path.is_empty() && is_dir(path).await {
+        return path.to_string();
+    }
+    if let Some(home) = dirs::home_dir() {
+        let home = home.to_string_lossy().into_owned();
+        if is_dir(&home).await {
+            return home;
+        }
+    }
+    "/".to_string()
+}
+
+async fn list_local_dir(path: &str) -> Result<(String, cli_tui::worker::TuiListResult), String> {
+    use std::path::Path;
+    use tokio::fs;
+
+    // Fall back to home/root when the requested directory is missing, and report
+    // the path actually listed so the TUI's local pane adopts it.
+    let effective = resolve_local_start_dir(path).await;
+    let root = Path::new(&effective);
+    let mut dir_entries = match fs::read_dir(root).await {
+        Ok(rd) => rd,
+        Err(e) => return Err(format!("cannot read local dir '{}': {}", effective, e)),
+    };
+
+    let mut entries: Vec<cli_tui::worker::TuiListEntry> = vec![];
+    let mut total_bytes: u64 = 0;
+    let mut file_count: usize = 0;
+    let mut dir_count: usize = 0;
+
+    while let Some(dir_entry) = dir_entries.next_entry().await.map_err(|e| e.to_string())? {
+        let name = dir_entry.file_name().to_string_lossy().to_string();
+        let full_path = dir_entry.path().to_string_lossy().to_string();
+
+        let meta = match dir_entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let is_dir = meta.is_dir();
+        let size = if is_dir { 0 } else { meta.len() };
+
+        // Format the mtime as a human date matching the remote pane (YYYY-MM-DD HH:MM),
+        // not the raw SystemTime Debug ("SystemTime { tv_sec: ... }").
+        let modified = meta.modified().ok().map(format_local_mtime);
+
+        if is_dir {
+            dir_count += 1;
+        } else {
+            file_count += 1;
+            total_bytes += size;
+        }
+
+        entries.push(cli_tui::worker::TuiListEntry {
+            name,
+            path: full_path,
+            is_dir,
+            size,
+            modified,
+        });
+    }
+
+    // Sort: directories first, then by name (simple and predictable).
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    let total = dir_count + file_count;
+    let result = cli_tui::worker::TuiListResult {
+        entries,
+        summary: cli_tui::worker::TuiListSummary {
+            total,
+            files: file_count,
+            dirs: dir_count,
+            total_bytes,
+            truncated: false,
+            total_before_limit: total,
+        },
+    };
+
+    Ok((effective, result))
+}
+
+/// Phase 3: Local stat for the dual-pane (used for preview when selecting a local entry).
+async fn stat_local_path(path: &str) -> Result<(String, cli_tui::worker::TuiStatResult), String> {
+    use std::path::Path;
+    use tokio::fs;
+
+    let p = Path::new(path);
+    let meta = fs::symlink_metadata(p)
+        .await
+        .map_err(|e| format!("stat local '{}': {}", path, e))?;
+
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string());
+
+    let is_dir = meta.is_dir();
+    let size = if is_dir { 0 } else { meta.len() };
+    let modified = meta.modified().ok().map(format_local_mtime);
+    let is_symlink = meta.file_type().is_symlink();
+
+    let result = cli_tui::worker::TuiStatResult {
+        name,
+        path: path.to_string(),
+        is_dir,
+        size,
+        modified,
+        permissions: None, // can be enriched later with unix mode if needed
+        owner: None,
+        group: None,
+        is_symlink,
+        link_target: None, // TODO: read_link if symlink
+        mime_type: None,
+    };
+
+    Ok((path.to_string(), result))
+}
+
+/// Cap on how much of a file the TUI viewer (`v`) reads. A pager preview, not a
+/// full download: enough to read a config/log/source file without pulling a huge
+/// blob into memory over a slow link.
+const TUI_VIEW_MAX_BYTES: u64 = 256 * 1024;
+/// Safety bound on a recursive size walk (`Ctrl+S`) so a pathological tree never
+/// hangs the worker.
+const TUI_SIZE_MAX_ENTRIES: usize = 200_000;
+
+/// Heuristic binary sniff for the viewer: a NUL byte, or a high share of control
+/// bytes (excluding tab/newline/carriage-return) in the sampled prefix, marks the
+/// content as binary so it is shown as a notice rather than garbage.
+fn tui_looks_binary(bytes: &[u8]) -> bool {
+    if bytes.is_empty() {
+        return false;
+    }
+    if bytes.contains(&0) {
+        return true;
+    }
+    let sample = &bytes[..bytes.len().min(8192)];
+    let suspicious = sample
+        .iter()
+        .filter(|&&b| (b < 0x09) || (b > 0x0d && b < 0x20))
+        .count();
+    suspicious * 100 > sample.len() * 30
+}
+
+/// Decode a previewed byte slice into display text plus a binary flag. Binary
+/// content becomes a short notice (never dumped to the terminal).
+fn tui_decode_preview(bytes: &[u8]) -> (String, bool) {
+    if tui_looks_binary(bytes) {
+        (
+            format!("[binary file - {} bytes not shown]", bytes.len()),
+            true,
+        )
+    } else {
+        (String::from_utf8_lossy(bytes).into_owned(), false)
+    }
+}
+
+/// Unique temp file name component for the touch/edit round-trips. Combines the
+/// process id, a monotonic counter, and the nanosecond clock so concurrent or
+/// repeated operations never collide.
+fn tui_temp_token() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{}-{}", std::process::id(), n, nanos)
+}
+
+/// Read a capped prefix of a remote file for the viewer. Prefers a ranged read,
+/// falling back to a full download (then truncating). Returns
+/// `(content, truncated, binary)`.
+async fn view_remote_file(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(String, bool, bool), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let entry = provider
+        .stat(&resolved)
+        .await
+        .map_err(|err| format!("stat failed: {}", err))?;
+    if entry.is_dir {
+        return Err(format!("'{}' is a directory", resolved));
+    }
+    let size = entry.size;
+    if size == 0 {
+        return Ok((String::new(), false, false));
+    }
+    let want = size.min(TUI_VIEW_MAX_BYTES);
+    let truncated = size > TUI_VIEW_MAX_BYTES;
+    let bytes = match provider.read_range(&resolved, 0, want).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            let mut bytes = provider
+                .download_to_bytes(&resolved)
+                .await
+                .map_err(|err| format!("read failed: {}", err))?;
+            if bytes.len() as u64 > TUI_VIEW_MAX_BYTES {
+                bytes.truncate(TUI_VIEW_MAX_BYTES as usize);
+            }
+            bytes
+        }
+    };
+    let (content, binary) = tui_decode_preview(&bytes);
+    Ok((content, truncated, binary))
+}
+
+/// Read a capped prefix of a local file for the viewer.
+async fn view_local_file(path: &str) -> Result<(String, bool, bool), String> {
+    use tokio::io::AsyncReadExt;
+    let meta = tokio::fs::metadata(path)
+        .await
+        .map_err(|err| format!("stat local '{}': {}", path, err))?;
+    if meta.is_dir() {
+        return Err(format!("'{}' is a directory", path));
+    }
+    let size = meta.len();
+    if size == 0 {
+        return Ok((String::new(), false, false));
+    }
+    let want = size.min(TUI_VIEW_MAX_BYTES);
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|err| format!("open '{}': {}", path, err))?;
+    let mut buf = Vec::new();
+    file.take(want)
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|err| format!("read '{}': {}", path, err))?;
+    let truncated = size > TUI_VIEW_MAX_BYTES;
+    let (content, binary) = tui_decode_preview(&buf);
+    Ok((content, truncated, binary))
+}
+
+/// Recursive byte count + file count under a remote directory, bounded by
+/// [`TUI_SIZE_MAX_ENTRIES`]. A depth-first walk reusing the provider listing.
+async fn size_remote_dir(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(u64, u64), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let mut total_bytes: u64 = 0;
+    let mut files: u64 = 0;
+    let mut visited: usize = 0;
+    let mut stack = vec![resolved];
+    while let Some(dir) = stack.pop() {
+        let entries = provider
+            .list(&dir)
+            .await
+            .map_err(|err| format!("list failed: {}", err))?;
+        for entry in entries {
+            visited += 1;
+            if visited > TUI_SIZE_MAX_ENTRIES {
+                return Err("directory too large to size".to_string());
+            }
+            let child = if entry.path.trim().is_empty() {
+                format!("{}/{}", dir.trim_end_matches('/'), entry.name)
+            } else {
+                entry.path.clone()
+            };
+            if entry.is_dir {
+                stack.push(child);
+            } else {
+                total_bytes += entry.size;
+                files += 1;
+            }
+        }
+    }
+    Ok((total_bytes, files))
+}
+
+/// Recursive byte count + file count under a local directory, bounded by
+/// [`TUI_SIZE_MAX_ENTRIES`].
+async fn size_local_dir(path: &str) -> Result<(u64, u64), String> {
+    use tokio::fs;
+    let mut total_bytes: u64 = 0;
+    let mut files: u64 = 0;
+    let mut visited: usize = 0;
+    let mut stack = vec![path.to_string()];
+    while let Some(dir) = stack.pop() {
+        let mut rd = match fs::read_dir(&dir).await {
+            Ok(rd) => rd,
+            Err(err) => return Err(format!("read '{}': {}", dir, err)),
+        };
+        while let Some(entry) = rd.next_entry().await.map_err(|e| e.to_string())? {
+            visited += 1;
+            if visited > TUI_SIZE_MAX_ENTRIES {
+                return Err("directory too large to size".to_string());
+            }
+            // symlink_metadata: do not follow links (avoids cycles / double count).
+            let meta = match entry.metadata().await {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            if meta.is_dir() {
+                stack.push(entry.path().to_string_lossy().into_owned());
+            } else {
+                total_bytes += meta.len();
+                files += 1;
+            }
+        }
+    }
+    Ok((total_bytes, files))
+}
+
+/// Create an empty remote file by uploading a zero-byte temp file (no provider
+/// has a dedicated touch; an empty upload is the portable equivalent).
+async fn touch_remote_file(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    // Never clobber an existing file with an empty one (the local touch uses
+    // create_new for the same guarantee). A successful stat means it exists.
+    if provider.stat(&resolved).await.is_ok() {
+        return Err(format!("'{}' already exists", resolved));
+    }
+    let tmp = std::env::temp_dir().join(format!("aeroftp-touch-{}", tui_temp_token()));
+    tokio::fs::write(&tmp, b"")
+        .await
+        .map_err(|err| format!("touch failed: {}", err))?;
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let result = provider.upload(&tmp_str, &resolved, None).await;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    result
+        .map(|_| resolved)
+        .map_err(|err| format!("touch failed: {}", err))
+}
+
+/// Create an empty local file, refusing to clobber an existing one.
+async fn touch_local_file(path: &str) -> Result<String, String> {
+    use tokio::fs::OpenOptions;
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .await
+        .map(|_| path.to_string())
+        .map_err(|err| format!("touch failed: {}", err))
+}
+
+/// Edit step 1: download a remote file to a temp path so the run loop can open it
+/// in `$EDITOR`. Returns `(resolved_remote_path, temp_path)`; the resolved path
+/// is echoed so the commit step uploads to the same place.
+async fn edit_fetch_remote(
+    session: &mut cli_tui::session::TuiSession,
+    remote_path: &str,
+) -> Result<(String, String), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
+        .map_err(|err| err.to_string())?;
+    let name = resolved
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("file");
+    let tmp = std::env::temp_dir().join(format!("aeroftp-edit-{}-{}", tui_temp_token(), name));
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let provider = session.provider_mut();
+    provider
+        .download(&resolved, &tmp_str, None)
+        .await
+        .map_err(|err| format!("download failed: {}", err))?;
+    Ok((resolved, tmp_str))
+}
+
+/// Edit step 2: re-upload the edited temp file to the (already-resolved) remote
+/// path, then remove the temp regardless of outcome.
+async fn edit_commit_remote(
+    session: &mut cli_tui::session::TuiSession,
+    remote_path: &str,
+    temp_path: &str,
+) -> Result<(), String> {
+    let provider = session.provider_mut();
+    let result = provider.upload(temp_path, remote_path, None).await;
+    let _ = tokio::fs::remove_file(temp_path).await;
+    result
+        .map(|_| ())
+        .map_err(|err| format!("upload failed: {}", err))
+}
+
+/// Re-dials the live TUI session after a user-initiated transfer cancel.
+/// Captures the identity and last known cwd (so browsing location survives),
+/// drops the (potentially half-consumed) old provider connection, creates a
+/// fresh one via the blessed factory, optionally re-lists the last cwd to
+/// "re-cd", then emits Busy+SessionReady so the UI shows a brief honest
+/// reconnect beat. On create failure the session is cleared (falls back to
+/// IntroHub). This closes the known risk that a cancelled stream poisons the
+/// session for the next op on some backends (SFTP channels, HTTP bodies, ...).
+async fn reconnect_session_after_transfer_cancel(
+    cli: &mut Cli,
+    format: OutputFormat,
+    session: &mut Option<cli_tui::session::TuiSession>,
+    event_tx: &cli_tui::worker::WorkerEventSender,
+) {
+    use cli_tui::worker::{TuiWorkerOperation, WorkerEvent};
+
+    let identity = session.as_ref().and_then(|s| s.state().identity.clone());
+    let last_cwd = session.as_ref().map(|s| s.state().cwd.clone());
+    let Some(id) = identity else {
+        return;
+    };
+
+    if let Some(mut old) = session.take() {
+        let _ = old.provider_mut().disconnect().await;
+    }
+
+    let _ = event_tx.send(WorkerEvent::Busy {
+        operation: TuiWorkerOperation::Connect,
+        identity: Some(id.clone()),
+    });
+
+    match create_tui_session_via_cli_factory(cli, format, id.clone()).await {
+        Ok(mut new_s) => {
+            let mut eff_cwd = new_s.state().cwd.clone();
+            // Best-effort re-list the user's last browsing location so the
+            // fresh provider reflects the same cwd the UI expects, and we emit
+            // an updated SessionReady. Non-fatal: if the dir vanished we keep
+            // the create-time (initial) cwd.
+            if let Some(target) = last_cwd {
+                if target != eff_cwd {
+                    if let Ok((listed_path, _res)) =
+                        list_tui_session_via_cli_handler(cli, &mut new_s, &target).await
+                    {
+                        new_s.state_mut().mark_connected(&listed_path);
+                        eff_cwd = listed_path;
+                    }
+                }
+            }
+            *session = Some(new_s);
+            let _ = event_tx.send(WorkerEvent::SessionReady {
+                identity: Some(id),
+                cwd: eff_cwd,
+            });
+        }
+        Err(message) => {
+            let _ = event_tx.send(WorkerEvent::Failed {
+                operation: TuiWorkerOperation::Connect,
+                identity: Some(id),
+                message,
+            });
+            // session remains None; next user action will surface the failure
+            // and the UI falls back to IntroHub.
+        }
+    }
+}
+
+async fn run_cli_tui_worker(
+    cli: &mut Cli,
+    format: OutputFormat,
+    mut command_rx: cli_tui::worker::WorkerCommandReceiver,
+    event_tx: cli_tui::worker::WorkerEventSender,
+) {
+    use cli_tui::worker::{TransferDrive, TuiWorkerOperation, WorkerCommand, WorkerEvent};
+    use std::collections::VecDeque;
+
+    let mut session: Option<cli_tui::session::TuiSession> = None;
+    // Commands that landed while a transfer held the single connection. They are
+    // replayed in arrival order before the worker blocks on the channel again,
+    // so nothing the user did mid-transfer is lost or reordered.
+    let mut pending: VecDeque<WorkerCommand> = VecDeque::new();
+
+    loop {
+        let command = match pending.pop_front() {
+            Some(command) => command,
+            None => match command_rx.recv().await {
+                Some(command) => command,
+                None => break,
+            },
+        };
+        match command {
+            WorkerCommand::OpenSession { identity, .. } => {
+                let already_connected = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.as_ref())
+                    == Some(&identity);
+                if already_connected {
+                    if let Some(session) = session.as_ref() {
+                        let _ = event_tx.send(WorkerEvent::SessionReady {
+                            identity: Some(identity),
+                            cwd: session.state().cwd.clone(),
+                        });
+                    }
+                    continue;
+                }
+
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Connect,
+                    identity: Some(identity.clone()),
+                });
+
+                if let Some(mut old_session) = session.take() {
+                    let _ = old_session.provider_mut().disconnect().await;
+                }
+
+                let requested_identity = identity.clone();
+                match create_tui_session_via_cli_factory(cli, format, identity).await {
+                    Ok(new_session) => {
+                        let cwd = new_session.state().cwd.clone();
+                        let ready_identity = new_session
+                            .state()
+                            .identity
+                            .clone()
+                            .unwrap_or_else(|| requested_identity.clone());
+                        session = Some(new_session);
+                        let _ = event_tx.send(WorkerEvent::SessionReady {
+                            identity: Some(ready_identity),
+                            cwd,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Connect,
+                            identity: Some(requested_identity),
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::List { path } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::List,
+                    identity: active_identity.clone(),
+                });
+
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::List,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let active_identity =
+                    active_identity.or_else(|| active_session.state().identity.clone());
+
+                match list_tui_session_via_cli_handler(cli, active_session, &path).await {
+                    Ok((listed_path, result)) => {
+                        active_session.state_mut().mark_connected(&listed_path);
+                        if let Some(identity) = active_identity {
+                            let _ = event_tx.send(WorkerEvent::ListReady {
+                                identity: Some(identity),
+                                path: listed_path,
+                                result,
+                            });
+                        }
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::List,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Stat { path } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Stat,
+                    identity: active_identity.clone(),
+                });
+
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Stat,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let active_identity =
+                    active_identity.or_else(|| active_session.state().identity.clone());
+
+                match stat_tui_session_via_cli_handler(active_session, &path).await {
+                    Ok((stat_path, result)) => {
+                        if let Some(identity) = active_identity {
+                            let _ = event_tx.send(WorkerEvent::StatReady {
+                                identity: Some(identity),
+                                path: stat_path,
+                                result,
+                            });
+                        }
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Stat,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Mkdir { path } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Mkdir,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Mkdir,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match mkdir_tui_session_via_cli_handler(active_session, &path).await {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Mkdir,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Mkdir,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Remove { path, recursive } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Remove,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Remove,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match remove_tui_session_via_cli_handler(active_session, &path, recursive).await {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Remove,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Remove,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Rename { from, to } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Rename,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Rename,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match rename_tui_session_via_cli_handler(active_session, &from, &to).await {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Rename,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Rename,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Download {
+                id,
+                remote_path,
+                local_path,
+            } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Transfer,
+                    identity: active_identity,
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::TransferFailed {
+                        id,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let transfer = download_tui_session_via_cli_handler(
+                    active_session,
+                    &remote_path,
+                    &local_path,
+                    id,
+                    &event_tx,
+                );
+                match cli_tui::worker::drive_tui_transfer(transfer, &mut command_rx, &mut pending)
+                    .await
+                {
+                    TransferDrive::Completed => {
+                        let _ = event_tx.send(WorkerEvent::TransferDone {
+                            id,
+                            message: format!("Downloaded {} -> {}", remote_path, local_path),
+                        });
+                    }
+                    TransferDrive::Failed(message) => {
+                        let _ = event_tx.send(WorkerEvent::TransferFailed { id, message });
+                    }
+                    TransferDrive::Cancelled => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        reconnect_session_after_transfer_cancel(
+                            cli,
+                            format,
+                            &mut session,
+                            &event_tx,
+                        )
+                        .await;
+                    }
+                    TransferDrive::ChannelClosed => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        break;
+                    }
+                }
+            }
+            WorkerCommand::Upload {
+                id,
+                local_path,
+                remote_path,
+            } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Transfer,
+                    identity: active_identity,
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::TransferFailed {
+                        id,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let transfer = upload_tui_session_via_cli_handler(
+                    active_session,
+                    &local_path,
+                    &remote_path,
+                    id,
+                    &event_tx,
+                );
+                match cli_tui::worker::drive_tui_transfer(transfer, &mut command_rx, &mut pending)
+                    .await
+                {
+                    TransferDrive::Completed => {
+                        let _ = event_tx.send(WorkerEvent::TransferDone {
+                            id,
+                            message: format!("Uploaded {} -> {}", local_path, remote_path),
+                        });
+                    }
+                    TransferDrive::Failed(message) => {
+                        let _ = event_tx.send(WorkerEvent::TransferFailed { id, message });
+                    }
+                    TransferDrive::Cancelled => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        reconnect_session_after_transfer_cancel(
+                            cli,
+                            format,
+                            &mut session,
+                            &event_tx,
+                        )
+                        .await;
+                    }
+                    TransferDrive::ChannelClosed => {
+                        let _ = event_tx.send(WorkerEvent::TransferCancelled { id });
+                        break;
+                    }
+                }
+            }
+            WorkerCommand::Cancel => {
+                // Reaches here only when no transfer was in flight: an active
+                // transfer consumes Cancel inside drive_tui_transfer and aborts
+                // by dropping its future. Nothing to abort here, so leave the
+                // session connected and just acknowledge.
+                let _ = event_tx.send(WorkerEvent::Cancelled {
+                    operation: TuiWorkerOperation::Cancel,
+                });
+            }
+            WorkerCommand::Disconnect => {
+                // Esc -> back to the IntroHub: the TUI already reset its session
+                // state, so just close the provider and drop it (no event back;
+                // the TUI's optimistic status stands).
+                if let Some(mut old_session) = session.take() {
+                    let _ = old_session.provider_mut().disconnect().await;
+                }
+            }
+            WorkerCommand::DiscardPartial { local_path } => {
+                // A transfer was dropped from the queue: remove its resumable
+                // `.aerotmp` leftover so a cleared cancel leaves no orphan. The
+                // final file (if the transfer completed) is never touched. Silent
+                // best-effort: the UI already removed the row.
+                let temp = ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for(
+                    std::path::Path::new(&local_path),
+                );
+                let _ = tokio::fs::remove_file(&temp).await;
+            }
+            // Phase 3: real local filesystem listing/stat for dual-pane.
+            WorkerCommand::LocalList { path } => {
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::List,
+                    identity: None,
+                });
+                match list_local_dir(&path).await {
+                    Ok((listed_path, result)) => {
+                        let _ = event_tx.send(WorkerEvent::ListReady {
+                            identity: None,
+                            path: listed_path,
+                            result,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::List,
+                            identity: None,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::LocalStat { path } => {
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Stat,
+                    identity: None,
+                });
+                match stat_local_path(&path).await {
+                    Ok((stat_path, result)) => {
+                        let _ = event_tx.send(WorkerEvent::StatReady {
+                            identity: None,
+                            path: stat_path,
+                            result,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Stat,
+                            identity: None,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::LocalMkdir { path } => {
+                // Dual-pane mkdir on the Local side: create on the local
+                // filesystem, not the remote provider.
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Mkdir,
+                    identity: None,
+                });
+                let event = match tokio::fs::create_dir(&path).await {
+                    Ok(()) => WorkerEvent::PathReady {
+                        operation: TuiWorkerOperation::Mkdir,
+                        path,
+                    },
+                    Err(err) => WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Mkdir,
+                        identity: None,
+                        message: format!("local mkdir failed: {}", err),
+                    },
+                };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::LocalRename { from, to } => {
+                // Dual-pane rename on the Local side: rename on the local
+                // filesystem (sending it to the remote provider produced the
+                // "[550] No such file or directory" failure on local files).
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Rename,
+                    identity: None,
+                });
+                let event = match tokio::fs::rename(&from, &to).await {
+                    Ok(()) => WorkerEvent::PathReady {
+                        operation: TuiWorkerOperation::Rename,
+                        path: to,
+                    },
+                    Err(err) => WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Rename,
+                        identity: None,
+                        message: format!("local rename failed: {}", err),
+                    },
+                };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::LocalRemove { path, recursive } => {
+                // Dual-pane delete on the Local side: remove from the local
+                // filesystem, never the remote entry at the same path.
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Remove,
+                    identity: None,
+                });
+                let result = if recursive {
+                    tokio::fs::remove_dir_all(&path).await
+                } else {
+                    match tokio::fs::metadata(&path).await {
+                        Ok(meta) if meta.is_dir() => tokio::fs::remove_dir(&path).await,
+                        Ok(_) => tokio::fs::remove_file(&path).await,
+                        Err(err) => Err(err),
+                    }
+                };
+                let event = match result {
+                    Ok(()) => WorkerEvent::PathReady {
+                        operation: TuiWorkerOperation::Remove,
+                        path,
+                    },
+                    Err(err) => WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Remove,
+                        identity: None,
+                        message: format!("local delete failed: {}", err),
+                    },
+                };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::ToggleFavorite { profile_id } => {
+                // Persist the favorite flag the IntroHub already flipped in its
+                // display state. Reuses the same vault helper as the CLI
+                // `profiles` toggle; fire-and-forget (no event back). The vault
+                // is already unlocked in this TUI session, so this is a cheap
+                // write; failures are non-critical for a favorite flag.
+                if let Ok(store) = open_vault(cli) {
+                    let _ = toggle_favorite_in_vault(&store, &profile_id);
+                }
+            }
+            WorkerCommand::ToggleGroupMembership {
+                profile_id,
+                group_name,
+            } => {
+                // Persist the membership change the IntroHub already reflected in
+                // its display state. Reuses the same vault helper as the CLI `g`
+                // toggle (create-if-new), so GUI/CLI/TUI converge on
+                // `config_server_groups`. Fire-and-forget like the favourite flip.
+                if let Ok(store) = open_vault(cli) {
+                    let _ = toggle_group_membership_in_vault(&store, &profile_id, &group_name);
+                }
+            }
+            WorkerCommand::RenameGroup { old_name, new_name } => {
+                if let Ok(store) = open_vault(cli) {
+                    let _ = rename_group_in_vault(&store, &old_name, &new_name);
+                }
+            }
+            WorkerCommand::DeleteGroup { name } => {
+                if let Ok(store) = open_vault(cli) {
+                    let _ = delete_group_in_vault(&store, &name);
+                }
+            }
+            WorkerCommand::DeleteProfile {
+                user_name,
+                profile_id,
+            } => {
+                // Persist the profile delete the IntroHub already applied
+                // optimistically (B4): drop the row, prune groups/favourites,
+                // remove the credential. Fire-and-forget like the group flips.
+                if let Ok(store) = open_vault(cli) {
+                    tui_delete_profile(&store, &user_name, &profile_id);
+                }
+            }
+            WorkerCommand::SaveProfile {
+                user_name,
+                draft,
+                secret,
+            } => {
+                // Persist the profile create/edit the IntroHub already applied
+                // optimistically (B4). The secret (when present) is dual-written
+                // under `server_<id>` and zeroized when it drops at the end of
+                // this arm.
+                if let Ok(store) = open_vault(cli) {
+                    tui_save_profile(&store, &user_name, &draft, secret.as_ref());
+                }
+            }
+            WorkerCommand::HealthCheck {
+                profile_id,
+                host,
+                port,
+                protocol,
+                endpoint,
+            } => {
+                // Reuse the shared reachability probe (DNS/TCP/TLS/HTTP); no
+                // provider session is opened. The result drives the IntroHub dot.
+                let result = ftp_client_gui_lib::server_health::server_health_check(
+                    profile_id.clone(),
+                    host,
+                    port,
+                    protocol,
+                    endpoint,
+                )
+                .await;
+                let event = match result {
+                    Ok(r) => {
+                        let latency_ms = r
+                            .checks
+                            .iter()
+                            .filter_map(|c| c.latency_ms)
+                            .next_back()
+                            .map(|ms| ms.round() as u32);
+                        WorkerEvent::HealthReady {
+                            profile_id,
+                            status: r.status,
+                            score: r.score,
+                            latency_ms,
+                        }
+                    }
+                    Err(message) => WorkerEvent::HealthReady {
+                        profile_id,
+                        status: format!("error: {}", message),
+                        score: 0,
+                        latency_ms: None,
+                    },
+                };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::RefreshQuota {
+                identity,
+                profile_id,
+            } => {
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Quota,
+                    identity: Some(identity.clone()),
+                });
+                // Transient connection just for the quota read (same storage_info
+                // path as `df`), then persist to the bookmark so the GUI/CLI
+                // cached columns also update.
+                let event =
+                    match create_tui_session_via_cli_factory(cli, format, identity.clone()).await {
+                        Ok(mut session) => {
+                            let info = session.provider_mut().storage_info().await;
+                            let _ = session.provider_mut().disconnect().await;
+                            match info {
+                                Ok(info) => {
+                                    let prev_user = cli.user.replace(identity.user_name.clone());
+                                    let prev_profile =
+                                        cli.profile.replace(identity.profile_selector.clone());
+                                    persist_scanned_quota_to_profile(
+                                        cli,
+                                        info.used,
+                                        info.total,
+                                        Some("api"),
+                                    );
+                                    cli.user = prev_user;
+                                    cli.profile = prev_profile;
+                                    WorkerEvent::QuotaReady {
+                                        profile_id,
+                                        used: info.used,
+                                        total: info.total,
+                                    }
+                                }
+                                Err(err) => WorkerEvent::QuotaFailed {
+                                    profile_id,
+                                    message: err.to_string(),
+                                },
+                            }
+                        }
+                        Err(message) => WorkerEvent::QuotaFailed {
+                            profile_id,
+                            message,
+                        },
+                    };
+                let _ = event_tx.send(event);
+            }
+            WorkerCommand::ViewFile { path, local } => {
+                let identity = if local {
+                    None
+                } else {
+                    session.as_ref().and_then(|s| s.state().identity.clone())
+                };
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::View,
+                    identity: identity.clone(),
+                });
+                let result = if local {
+                    view_local_file(&path).await
+                } else {
+                    match session.as_mut() {
+                        Some(active) => view_remote_file(active, &path).await,
+                        None => Err("no active TUI session".to_string()),
+                    }
+                };
+                match result {
+                    Ok((content, truncated, binary)) => {
+                        let _ = event_tx.send(WorkerEvent::FileContent {
+                            path,
+                            content,
+                            truncated,
+                            binary,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::View,
+                            identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::SizeRecursive { path, local } => {
+                let identity = if local {
+                    None
+                } else {
+                    session.as_ref().and_then(|s| s.state().identity.clone())
+                };
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Size,
+                    identity: identity.clone(),
+                });
+                let result = if local {
+                    size_local_dir(&path).await
+                } else {
+                    match session.as_mut() {
+                        Some(active) => size_remote_dir(active, &path).await,
+                        None => Err("no active TUI session".to_string()),
+                    }
+                };
+                match result {
+                    Ok((bytes, files)) => {
+                        let _ = event_tx.send(WorkerEvent::DirSize { path, bytes, files });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Size,
+                            identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Touch { path, local } => {
+                let identity = if local {
+                    None
+                } else {
+                    session.as_ref().and_then(|s| s.state().identity.clone())
+                };
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Touch,
+                    identity: identity.clone(),
+                });
+                let result = if local {
+                    touch_local_file(&path).await
+                } else {
+                    match session.as_mut() {
+                        Some(active) => touch_remote_file(active, &path).await,
+                        None => Err("no active TUI session".to_string()),
+                    }
+                };
+                match result {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Touch,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Touch,
+                            identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::EditFetch { remote_path } => {
+                let identity = session.as_ref().and_then(|s| s.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Edit,
+                    identity: identity.clone(),
+                });
+                match session.as_mut() {
+                    Some(active) => match edit_fetch_remote(active, &remote_path).await {
+                        Ok((resolved, temp_path)) => {
+                            let _ = event_tx.send(WorkerEvent::EditReady {
+                                remote_path: resolved,
+                                temp_path,
+                            });
+                        }
+                        Err(message) => {
+                            let _ = event_tx.send(WorkerEvent::Failed {
+                                operation: TuiWorkerOperation::Edit,
+                                identity,
+                                message,
+                            });
+                        }
+                    },
+                    None => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Edit,
+                            identity,
+                            message: "no active TUI session".to_string(),
+                        });
+                    }
+                }
+            }
+            WorkerCommand::EditCommit {
+                remote_path,
+                temp_path,
+            } => {
+                let identity = session.as_ref().and_then(|s| s.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Edit,
+                    identity: identity.clone(),
+                });
+                match session.as_mut() {
+                    Some(active) => {
+                        match edit_commit_remote(active, &remote_path, &temp_path).await {
+                            Ok(()) => {
+                                let _ = event_tx.send(WorkerEvent::EditDone {
+                                    message: format!("Saved edits to {}", remote_path),
+                                    remote_path,
+                                });
+                            }
+                            Err(message) => {
+                                let _ = event_tx.send(WorkerEvent::Failed {
+                                    operation: TuiWorkerOperation::Edit,
+                                    identity,
+                                    message,
+                                });
+                            }
+                        }
+                    }
+                    None => {
+                        let _ = tokio::fs::remove_file(&temp_path).await;
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Edit,
+                            identity,
+                            message: "no active TUI session".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(mut active_session) = session {
+        let _ = active_session.provider_mut().disconnect().await;
+    }
+}
+
+fn run_tui_with_cli_worker(
+    context: cli_tui::TuiContext,
+    cli: &mut Cli,
+    format: OutputFormat,
+) -> std::io::Result<cli_tui::TuiIntent> {
+    let (worker_client, command_rx, event_tx) = cli_tui::worker::worker_channels();
+    let handle = tokio::runtime::Handle::current();
+
+    std::thread::scope(|scope| {
+        let worker_thread = scope.spawn(move || {
+            handle.block_on(run_cli_tui_worker(cli, format, command_rx, event_tx));
+        });
+
+        let result = cli_tui::run_tui_with_worker(context, worker_client);
+        if worker_thread.join().is_err() && result.is_ok() {
+            return Err(std::io::Error::other("TUI worker thread panicked"));
+        }
+        result
+    })
+}
+
+async fn cmd_tui(cli: &mut Cli, format: OutputFormat) -> i32 {
+    if matches!(format, OutputFormat::Json) {
+        print_error(format, "TUI requires text output; remove --json", 5);
+        return 5;
+    }
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        print_error(format, "TUI requires an interactive terminal", 5);
+        return 5;
+    }
+
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+    // Capture launch CWD at the TUI run boundary (NOT inside pure state or AppState ctors).
+    // Used for absolute-path default in download prompts (see trigger_download + handoff).
+    let download_base = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| ".".to_string());
+    let context = match build_tui_context(cli, &store, download_base) {
+        Ok(context) => context,
+        Err(err) => {
+            print_error(format, &format!("Failed to load TUI context: {}", err), 5);
+            return 5;
+        }
+    };
+
+    match run_tui_with_cli_worker(context, cli, format) {
+        Ok(cli_tui::TuiIntent::Quit) => 0,
+        Ok(cli_tui::TuiIntent::ProfilesInteractive { user_name }) => {
+            cli.user = Some(user_name);
+            cli.profile = None;
+            list_vault_profiles(
+                cli,
+                format,
+                ProfilesViewOverrides {
+                    interactive: true,
+                    ..ProfilesViewOverrides::default()
+                },
+            )
+        }
+        Ok(cli_tui::TuiIntent::ProfileAction {
+            user_name,
+            profile_selector,
+            action,
+        }) => {
+            cli.user = Some(user_name);
+            cli.profile = Some(profile_selector);
+            match action {
+                cli_tui::TuiProfileAction::ListRoot => {
+                    cmd_ls(
+                        "_", "/", true, "name", false, false, None, false, false, cli, format,
+                    )
+                    .await
+                }
+                cli_tui::TuiProfileAction::Tree => cmd_tree("_", "/", 2, cli, format).await,
+                cli_tui::TuiProfileAction::Quota => cmd_df("_", false, false, cli, format).await,
+                cli_tui::TuiProfileAction::DiskUsage => {
+                    cmd_ncdu("_", "/", 50, None, cli, format).await
+                }
+            }
+        }
+        Err(err) => {
+            let code = if err.kind() == std::io::ErrorKind::Unsupported {
+                5
+            } else {
+                99
+            };
+            print_error(format, &format!("TUI error: {}", err), code);
+            code
+        }
+    }
 }
 
 /// Build `ProfileView` borrows from the in-memory profile JSON. The lifetime
@@ -11301,36 +13228,22 @@ enum ProfilesTuiOutcome {
 /// one place. Mirrors the ncdu TUI's crossterm/ratatui setup and always restores
 /// the terminal, even on error.
 fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<ProfilesTuiOutcome> {
-    use crossterm::{
-        event::{self, Event, KeyCode, KeyEventKind},
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-        ExecutableCommand,
-    };
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use ratatui::{
-        backend::CrosstermBackend,
         layout::{Constraint, Layout},
         style::{Color, Modifier, Style},
         text::{Line, Span},
         widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-        Terminal,
     };
 
     if profiles.is_empty() {
         return Ok(ProfilesTuiOutcome::Quit);
     }
 
-    let mut stdout = std::io::stdout();
-    enable_raw_mode()?;
-    stdout.execute(EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
     let mut selected: usize = 0;
     let mut outcome = ProfilesTuiOutcome::Quit;
 
-    // Run the event loop in a closure so the terminal is restored unconditionally
-    // afterwards, even if a draw/read call returns an error.
-    let loop_result: std::io::Result<()> = (|| {
+    cli_tui::with_terminal(|terminal| {
         loop {
             terminal.draw(|frame| {
                 let area = frame.area();
@@ -11449,12 +13362,8 @@ fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<Profiles
             }
         }
         Ok(())
-    })();
+    })?;
 
-    let _ = disable_raw_mode();
-    let _ = terminal.backend_mut().execute(LeaveAlternateScreen);
-    let _ = terminal.show_cursor();
-    loop_result?;
     Ok(outcome)
 }
 
@@ -16497,8 +18406,20 @@ fn try_resolve_cli_remote_path(
     initial_path: &str,
     user_path: &str,
 ) -> Result<String, RemotePathError> {
+    try_resolve_cli_remote_path_with_note(initial_path, user_path, true)
+}
+
+fn try_resolve_cli_remote_path_with_note(
+    initial_path: &str,
+    user_path: &str,
+    emit_resolution_note: bool,
+) -> Result<String, RemotePathError> {
     check_remote_path_safe(user_path)?;
-    Ok(resolve_cli_remote_path_unchecked(initial_path, user_path))
+    Ok(resolve_cli_remote_path_unchecked_with_note(
+        initial_path,
+        user_path,
+        emit_resolution_note,
+    ))
 }
 
 /// Reject a user-supplied remote path that must never be operated on verbatim:
@@ -16539,7 +18460,11 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
     }
 }
 
-fn resolve_cli_remote_path_unchecked(initial_path: &str, user_path: &str) -> String {
+fn resolve_cli_remote_path_unchecked_with_note(
+    initial_path: &str,
+    user_path: &str,
+    emit_resolution_note: bool,
+) -> String {
     let base = initial_path.trim();
     // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
@@ -16578,7 +18503,7 @@ fn resolve_cli_remote_path_unchecked(initial_path: &str, user_path: &str) -> Str
     // without polluting stdout (JSON / piping). F-003: stay silent in JSON mode
     // so a machine-readable run produces no informational chatter on either
     // stream, matching the profile banner and the "Next:" hints.
-    if resolved != user_path && !JSON_MODE.load(Ordering::Relaxed) {
+    if emit_resolution_note && resolved != user_path && !JSON_MODE.load(Ordering::Relaxed) {
         eprintln!(
             "Note: path '{}' resolved to '{}' (profile base: {})",
             user_path, resolved, base_normalized
@@ -18928,6 +20853,156 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
+struct CliListOptions<'a> {
+    path: &'a str,
+    sort: &'a str,
+    reverse: bool,
+    all: bool,
+    limit: Option<usize>,
+    files_only: bool,
+    dirs_only: bool,
+    emit_resolution_note: bool,
+}
+
+struct CliListEntries {
+    effective_path: String,
+    entries: Vec<RemoteEntry>,
+    file_count: usize,
+    dir_count: usize,
+    total_bytes: u64,
+    truncated: bool,
+    total_before_limit: usize,
+}
+
+enum CliListError {
+    RemotePath(RemotePathError),
+    Provider(ProviderError),
+}
+
+impl From<ProviderError> for CliListError {
+    fn from(value: ProviderError) -> Self {
+        Self::Provider(value)
+    }
+}
+
+async fn collect_cli_list_entries(
+    provider: &mut dyn StorageProvider,
+    initial_path: &str,
+    options: &CliListOptions<'_>,
+    cli: &Cli,
+) -> Result<CliListEntries, CliListError> {
+    let resolved_path = try_resolve_cli_remote_path_with_note(
+        initial_path,
+        options.path,
+        options.emit_resolution_note,
+    )
+    .map_err(CliListError::RemotePath)?;
+    let effective_path = resolved_path;
+
+    let entries = match provider.list(&effective_path).await {
+        Ok(entries) => entries,
+        Err(err) => return Err(CliListError::Provider(err)),
+    };
+
+    // FTP/FTPS disambiguation: some servers reply to LIST/MLSD on a missing
+    // directory with an empty listing instead of a 550 error, which collapses
+    // a missing path into an indistinguishable "empty directory" (exit 0).
+    // When the listing is empty and the user supplied an explicit non-root
+    // path, run a follow-up stat to confirm. If the path does not exist,
+    // surface NotFound with the correct exit code.
+    if entries.is_empty()
+        && !options.path.is_empty()
+        && options.path != "/"
+        && options.path != "."
+        && matches!(
+            provider.provider_type(),
+            ProviderType::Ftp | ProviderType::Ftps
+        )
+    {
+        if let Err(ProviderError::NotFound(_)) = provider.stat(&effective_path).await {
+            return Err(CliListError::Provider(ProviderError::NotFound(
+                options.path.to_string(),
+            )));
+        }
+    }
+
+    // Filter hidden files
+    let mut entries: Vec<RemoteEntry> = if options.all {
+        entries
+    } else {
+        entries
+            .into_iter()
+            .filter(|entry| !entry.name.starts_with('.'))
+            .collect()
+    };
+
+    // Apply global filters (--include, --exclude, --min-size, --max-size, --min-age, --max-age)
+    if has_filters(cli) {
+        let filter = build_filter(cli);
+        entries.retain(|entry| {
+            if entry.is_dir {
+                return true;
+            }
+            filter(&entry.name, entry.size, None)
+        });
+    }
+
+    // Sort
+    match options.sort {
+        "size" => entries.sort_by_key(|entry| entry.size),
+        "date" => entries.sort_by(|a, b| a.modified.cmp(&b.modified)),
+        _ => entries.sort_by(|a, b| {
+            // Directories first, then alphabetical
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
+        }),
+    }
+    if options.reverse {
+        entries.reverse();
+    }
+
+    // --files-only / --dirs-only filter (mutually exclusive at clap level).
+    if options.files_only {
+        entries.retain(|entry| !entry.is_dir);
+    } else if options.dirs_only {
+        entries.retain(|entry| entry.is_dir);
+    }
+
+    // --limit N: trim AFTER sort/filter so the cap is meaningful.
+    let total_before_limit = entries.len();
+    let truncated = if let Some(limit) = options.limit {
+        if entries.len() > limit {
+            entries.truncate(limit);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let file_count = entries.iter().filter(|entry| !entry.is_dir).count();
+    let dir_count = entries.iter().filter(|entry| entry.is_dir).count();
+    let total_bytes: u64 = entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .map(|entry| entry.size)
+        .sum();
+
+    Ok(CliListEntries {
+        effective_path,
+        entries,
+        file_count,
+        dir_count,
+        total_bytes,
+        truncated,
+        total_before_limit,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_ls(
     url: &str,
@@ -18947,121 +21022,49 @@ async fn cmd_ls(
         Err(code) => return code,
     };
 
-    let resolved_path = resolve_cli_remote_path(&initial_path, path);
-    let effective_path = &resolved_path;
-
-    let entries = match provider.list(effective_path).await {
-        Ok(e) => e,
-        Err(e) => {
+    let list = match collect_cli_list_entries(
+        provider.as_mut(),
+        &initial_path,
+        &CliListOptions {
+            path,
+            sort,
+            reverse,
+            all,
+            limit,
+            files_only,
+            dirs_only,
+            emit_resolution_note: true,
+        },
+        cli,
+    )
+    .await
+    {
+        Ok(list) => list,
+        Err(CliListError::RemotePath(err)) => {
+            print_error(format, &err.to_string(), 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+        Err(CliListError::Provider(err)) => {
             print_error(
                 format,
-                &format!("ls failed: {}", e),
-                provider_error_to_exit_code(&e),
+                &format!("ls failed: {}", err),
+                provider_error_to_exit_code(&err),
             );
             let _ = provider.disconnect().await;
-            return provider_error_to_exit_code(&e);
+            return provider_error_to_exit_code(&err);
         }
     };
-
-    // FTP/FTPS disambiguation: some servers reply to LIST/MLSD on a missing
-    // directory with an empty listing instead of a 550 error, which collapses
-    // a missing path into an indistinguishable "empty directory" (exit 0).
-    // When the listing is empty and the user supplied an explicit non-root
-    // path, run a follow-up stat to confirm. If the path does not exist,
-    // surface NotFound with the correct exit code.
-    if entries.is_empty()
-        && !path.is_empty()
-        && path != "/"
-        && path != "."
-        && matches!(
-            provider.provider_type(),
-            ProviderType::Ftp | ProviderType::Ftps
-        )
-    {
-        if let Err(ProviderError::NotFound(_)) = provider.stat(effective_path).await {
-            print_error(format, &format!("ls failed: Path not found: {}", path), 2);
-            let _ = provider.disconnect().await;
-            return 2;
-        }
-    }
-
-    // Filter hidden files
-    let mut entries: Vec<RemoteEntry> = if all {
-        entries
-    } else {
-        entries
-            .into_iter()
-            .filter(|e| !e.name.starts_with('.'))
-            .collect()
-    };
-
-    // Apply global filters (--include, --exclude, --min-size, --max-size, --min-age, --max-age)
-    if has_filters(cli) {
-        let filter = build_filter(cli);
-        entries.retain(|e| {
-            if e.is_dir {
-                return true;
-            } // Don't filter directories in ls
-            filter(&e.name, e.size, None)
-        });
-    }
-
-    // Sort
-    match sort {
-        "size" => entries.sort_by_key(|a| a.size),
-        "date" => entries.sort_by(|a, b| a.modified.cmp(&b.modified)),
-        _ => entries.sort_by(|a, b| {
-            // Directories first, then alphabetical
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
-        }),
-    }
-    if reverse {
-        entries.reverse();
-    }
-
-    // --files-only / --dirs-only filter (mutually exclusive at clap
-    // level). Cuts client-side post-processing for agents iterating
-    // by type. Surfaced as a friction point by the agent audit
-    // (P12, Battery A).
-    if files_only {
-        entries.retain(|e| !e.is_dir);
-    } else if dirs_only {
-        entries.retain(|e| e.is_dir);
-    }
-
-    // --limit N: trim AFTER sort/filter so the cap is meaningful.
-    // Tracks pre-trim length so summary can report `truncated: true`
-    // (P11/P13, Battery A+B).
-    let total_before_limit = entries.len();
-    let truncated = if let Some(n) = limit {
-        if entries.len() > n {
-            entries.truncate(n);
-            true
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    // Summary (post-filter, post-limit)
-    let file_count = entries.iter().filter(|e| !e.is_dir).count();
-    let dir_count = entries.iter().filter(|e| e.is_dir).count();
-    let total_bytes: u64 = entries.iter().filter(|e| !e.is_dir).map(|e| e.size).sum();
 
     match format {
         OutputFormat::Text => {
-            if entries.is_empty() {
+            if list.entries.is_empty() {
                 if !cli.quiet {
                     println!("(empty directory)");
                 }
             } else if long {
                 // Long format: permissions  size  date  name
-                for e in &entries {
+                for e in &list.entries {
                     let perms = e.permissions.as_deref().unwrap_or(if e.is_dir {
                         "drwxr-xr-x"
                     } else {
@@ -19089,7 +21092,7 @@ async fn cmd_ls(
                 }
             } else {
                 // Short format: just names
-                for e in &entries {
+                for e in &list.entries {
                     let safe_name = sanitize_filename(&e.name);
                     if e.is_dir {
                         println!("{}/", safe_name);
@@ -19102,10 +21105,10 @@ async fn cmd_ls(
             if !cli.quiet {
                 eprintln!(
                     "\n{} items ({} directories, {} files) - {} total",
-                    entries.len(),
-                    dir_count,
-                    file_count,
-                    format_size(total_bytes)
+                    list.entries.len(),
+                    list.dir_count,
+                    list.file_count,
+                    format_size(list.total_bytes)
                 );
                 // No `Next:` hint after `ls`: a re-ls or generic find is never
                 // actionable for an agent. Hints stay on transformative
@@ -19113,23 +21116,24 @@ async fn cmd_ls(
             }
         }
         OutputFormat::Json => {
-            let entries_json: Vec<serde_json::Value> = entries
+            let entries_json: Vec<serde_json::Value> = list
+                .entries
                 .iter()
                 .map(|entry| remote_entry_to_filtered_json(entry, cli))
                 .collect();
             print_json(&serde_json::json!({
                 "status": "ok",
-                "path": effective_path,
+                "path": list.effective_path,
                 "entries": entries_json,
                 "summary": {
-                    "total": entries.len(),
-                    "files": file_count,
-                    "dirs": dir_count,
-                    "total_bytes": total_bytes,
-                    "truncated": truncated,
-                    "total_before_limit": total_before_limit,
+                    "total": list.entries.len(),
+                    "files": list.file_count,
+                    "dirs": list.dir_count,
+                    "total_bytes": list.total_bytes,
+                    "truncated": list.truncated,
+                    "total_before_limit": list.total_before_limit,
                 },
-                "suggested_next_command": suggest_ls_followup(cli, effective_path),
+                "suggested_next_command": suggest_ls_followup(cli, &list.effective_path),
             }));
         }
     }
@@ -25192,7 +27196,7 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
     let path = &resolve_cli_remote_path(&initial_path, path);
     match provider.stat(path).await {
         Ok(mut entry) => {
-            maybe_hydrate_ftp_stat_size(&mut provider, path, &mut entry).await;
+            maybe_hydrate_ftp_stat_size(provider.as_mut(), path, &mut entry).await;
             match format {
                 OutputFormat::Text => {
                     println!("  Name:        {}", entry.name);
@@ -32021,201 +34025,188 @@ fn ncdu_format_bar(ratio: f64, width: usize) -> String {
 
 /// Run the interactive TUI.
 fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
-    use crossterm::{
-        event::{self, Event, KeyCode, KeyEventKind},
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-        ExecutableCommand,
-    };
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use ratatui::{
-        backend::CrosstermBackend,
         layout::{Constraint, Layout},
         style::{Color, Modifier, Style},
         text::{Line, Span},
         widgets::{Block, Borders, Paragraph},
-        Terminal,
     };
-
-    let mut stdout = std::io::stdout();
-    enable_raw_mode()?;
-    stdout.execute(EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
 
     let mut state = NcduState::new(root);
 
-    loop {
-        terminal.draw(|frame| {
-            let area = frame.area();
+    cli_tui::with_terminal(|terminal| {
+        loop {
+            terminal.draw(|frame| {
+                let area = frame.area();
 
-            // Header (2 lines) + body
-            let chunks = Layout::vertical([
-                Constraint::Length(2),
-                Constraint::Min(1),
-                Constraint::Length(1),
-            ])
-            .split(area);
+                // Header (2 lines) + body
+                let chunks = Layout::vertical([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(area);
 
-            // Header
-            let header_text = format!(
-                " ncdu - {} ({})  [{} items]",
-                state.current.path,
-                format_size(state.current.agg_size),
-                state.current.children.len()
-            );
-            let header = Paragraph::new(Line::from(vec![Span::styled(
-                header_text,
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )]));
-            frame.render_widget(header, chunks[0]);
-
-            // File list
-            let list_area = chunks[1];
-            let visible_count = list_area.height as usize;
-            let children = &state.current.children;
-
-            // Scroll offset
-            let scroll = if state.selected >= visible_count {
-                state.selected - visible_count + 1
-            } else {
-                0
-            };
-
-            let parent_size = state.current.agg_size.max(1) as f64;
-            let bar_width = 20usize;
-            let mut lines: Vec<Line> = Vec::with_capacity(visible_count);
-
-            // ".." entry for going back
-            let back_selected = state.selected == 0 && !state.path_stack.is_empty();
-            if scroll == 0 && !state.path_stack.is_empty() {
-                let style = if back_selected {
+                // Header
+                let header_text = format!(
+                    " ncdu - {} ({})  [{} items]",
+                    state.current.path,
+                    format_size(state.current.agg_size),
+                    state.current.children.len()
+                );
+                let header = Paragraph::new(Line::from(vec![Span::styled(
+                    header_text,
                     Style::default()
-                        .bg(Color::DarkGray)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::Blue)
-                };
-                lines.push(Line::from(vec![Span::styled(
-                    "          /..                          ",
-                    style,
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 )]));
-            }
+                frame.render_widget(header, chunks[0]);
 
-            let offset = if state.path_stack.is_empty() { 0 } else { 1 };
+                // File list
+                let list_area = chunks[1];
+                let visible_count = list_area.height as usize;
+                let children = &state.current.children;
 
-            for (i, child) in children.iter().enumerate() {
-                let display_idx = i + offset;
-                if display_idx < scroll || lines.len() >= visible_count {
-                    continue;
+                // Scroll offset
+                let scroll = if state.selected >= visible_count {
+                    state.selected - visible_count + 1
+                } else {
+                    0
+                };
+
+                let parent_size = state.current.agg_size.max(1) as f64;
+                let bar_width = 20usize;
+                let mut lines: Vec<Line> = Vec::with_capacity(visible_count);
+
+                // ".." entry for going back
+                let back_selected = state.selected == 0 && !state.path_stack.is_empty();
+                if scroll == 0 && !state.path_stack.is_empty() {
+                    let style = if back_selected {
+                        Style::default()
+                            .bg(Color::DarkGray)
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Blue)
+                    };
+                    lines.push(Line::from(vec![Span::styled(
+                        "          /..                          ",
+                        style,
+                    )]));
                 }
-                let is_selected = display_idx == state.selected;
-                let ratio = child.agg_size as f64 / parent_size;
-                let pct = (ratio * 100.0).min(100.0);
-                let bar = ncdu_format_bar(ratio, bar_width);
 
-                let size_str = format!("{:>9}", format_size(child.agg_size));
-                let pct_str = format!("{:5.1}%", pct);
-                let name_str = if child.is_dir {
-                    format!("/{}", child.name)
-                } else {
-                    child.name.clone()
-                };
+                let offset = if state.path_stack.is_empty() { 0 } else { 1 };
 
-                let style = if is_selected {
-                    Style::default()
-                        .bg(Color::DarkGray)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else if child.is_dir {
-                    Style::default().fg(Color::Blue)
-                } else {
-                    Style::default()
-                };
+                for (i, child) in children.iter().enumerate() {
+                    let display_idx = i + offset;
+                    if display_idx < scroll || lines.len() >= visible_count {
+                        continue;
+                    }
+                    let is_selected = display_idx == state.selected;
+                    let ratio = child.agg_size as f64 / parent_size;
+                    let pct = (ratio * 100.0).min(100.0);
+                    let bar = ncdu_format_bar(ratio, bar_width);
 
-                let bar_style = if is_selected {
-                    Style::default().bg(Color::DarkGray).fg(Color::Green)
-                } else {
-                    Style::default().fg(Color::Green)
-                };
+                    let size_str = format!("{:>9}", format_size(child.agg_size));
+                    let pct_str = format!("{:5.1}%", pct);
+                    let name_str = if child.is_dir {
+                        format!("/{}", child.name)
+                    } else {
+                        child.name.clone()
+                    };
 
-                lines.push(Line::from(vec![
-                    Span::styled(size_str, style),
-                    Span::raw(" "),
-                    Span::styled(bar, bar_style),
-                    Span::raw(" "),
-                    Span::styled(pct_str, style),
-                    Span::raw(" "),
-                    Span::styled(name_str, style),
-                ]));
-            }
+                    let style = if is_selected {
+                        Style::default()
+                            .bg(Color::DarkGray)
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
+                    } else if child.is_dir {
+                        Style::default().fg(Color::Blue)
+                    } else {
+                        Style::default()
+                    };
 
-            let list_widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
-            frame.render_widget(list_widget, list_area);
+                    let bar_style = if is_selected {
+                        Style::default().bg(Color::DarkGray).fg(Color::Green)
+                    } else {
+                        Style::default().fg(Color::Green)
+                    };
 
-            // Footer
-            let footer = Paragraph::new(Line::from(vec![Span::styled(
-                " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
-                Style::default().fg(Color::DarkGray),
-            )]));
-            frame.render_widget(footer, chunks[2]);
-        })?;
-
-        // Handle input
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+                    lines.push(Line::from(vec![
+                        Span::styled(size_str, style),
+                        Span::raw(" "),
+                        Span::styled(bar, bar_style),
+                        Span::raw(" "),
+                        Span::styled(pct_str, style),
+                        Span::raw(" "),
+                        Span::styled(name_str, style),
+                    ]));
                 }
-                let max_idx =
-                    state.current.children.len() + if state.path_stack.is_empty() { 0 } else { 1 };
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Down | KeyCode::Char('j') if state.selected + 1 < max_idx => {
-                        state.selected += 1;
+
+                let list_widget =
+                    Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+                frame.render_widget(list_widget, list_area);
+
+                // Footer
+                let footer = Paragraph::new(Line::from(vec![Span::styled(
+                    " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
+                    Style::default().fg(Color::DarkGray),
+                )]));
+                frame.render_widget(footer, chunks[2]);
+            })?;
+
+            // Handle input
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
                     }
-                    KeyCode::Up | KeyCode::Char('k') if state.selected > 0 => {
-                        state.selected -= 1;
-                    }
-                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-                        // If on ".." entry, go back
-                        if !state.path_stack.is_empty() && state.selected == 0 {
-                            state.go_back();
-                        } else {
-                            // Adjust for ".." offset
-                            let adj = if state.path_stack.is_empty() { 0 } else { 1 };
-                            if state.selected >= adj {
-                                state.selected -= adj;
-                                state.enter_selected();
-                                state.selected += if state.path_stack.is_empty() { 0 } else { 1 };
+                    let max_idx = state.current.children.len()
+                        + if state.path_stack.is_empty() { 0 } else { 1 };
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Down | KeyCode::Char('j') if state.selected + 1 < max_idx => {
+                            state.selected += 1;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') if state.selected > 0 => {
+                            state.selected -= 1;
+                        }
+                        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                            // If on ".." entry, go back
+                            if !state.path_stack.is_empty() && state.selected == 0 {
+                                state.go_back();
+                            } else {
+                                // Adjust for ".." offset
+                                let adj = if state.path_stack.is_empty() { 0 } else { 1 };
+                                if state.selected >= adj {
+                                    state.selected -= adj;
+                                    state.enter_selected();
+                                    state.selected +=
+                                        if state.path_stack.is_empty() { 0 } else { 1 };
+                                }
                             }
                         }
+                        KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
+                            state.go_back();
+                        }
+                        KeyCode::Home => state.selected = 0,
+                        KeyCode::End if max_idx > 0 => {
+                            state.selected = max_idx - 1;
+                        }
+                        KeyCode::PageDown => {
+                            state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
+                        }
+                        KeyCode::PageUp => {
+                            state.selected = state.selected.saturating_sub(20);
+                        }
+                        _ => {}
                     }
-                    KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
-                        state.go_back();
-                    }
-                    KeyCode::Home => state.selected = 0,
-                    KeyCode::End if max_idx > 0 => {
-                        state.selected = max_idx - 1;
-                    }
-                    KeyCode::PageDown => {
-                        state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
-                    }
-                    KeyCode::PageUp => {
-                        state.selected = state.selected.saturating_sub(20);
-                    }
-                    _ => {}
                 }
             }
         }
-    }
-
-    // Cleanup
-    disable_raw_mode()?;
-    terminal.backend_mut().execute(LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-    Ok(())
+        Ok(())
+    })
 }
 
 async fn cmd_ncdu(
@@ -42746,7 +44737,7 @@ async fn main() {
         }
     };
 
-    let cli = Cli::parse_from(args);
+    let mut cli = Cli::parse_from(args);
     let format = cli.output_format();
 
     // Stash JSON-mode globally so banner-emitting helpers far down
@@ -42847,6 +44838,11 @@ async fn main() {
     }
 
     maybe_check_for_updates(&cli).await;
+
+    if matches!(&cli.command, Commands::Tui) {
+        let exit_code = cmd_tui(&mut cli, format).await;
+        std::process::exit(exit_code);
+    }
 
     let exit_code = match &cli.command {
         Commands::Connect { url } => cmd_connect(url, &cli, format).await,
@@ -44358,6 +46354,7 @@ async fn main() {
             paid,
             protocols,
         } => cmd_catalog(query, category.as_deref(), *free, *paid, *protocols, format),
+        Commands::Tui => unreachable!("TUI is handled before the regular dispatcher"),
         Commands::Profiles {
             _ignored: _,
             sort,
@@ -45113,6 +47110,28 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
+    }
+
+    #[tokio::test]
+    async fn local_start_dir_falls_back_to_a_real_dir_when_missing() {
+        // An existing directory is used as-is.
+        let tmp = std::env::temp_dir().to_string_lossy().into_owned();
+        assert_eq!(resolve_local_start_dir(&tmp).await, tmp);
+
+        // A profile's default local path that does not exist on this machine
+        // (e.g. imported from another box) must NOT dead-end: it falls back to a
+        // real directory (home or root), like the GUI.
+        let missing = "/nonexistent-aeroftp-local-xyz/does/not/exist";
+        let resolved = resolve_local_start_dir(missing).await;
+        assert_ne!(resolved, missing, "missing path is not returned verbatim");
+        assert!(
+            std::path::Path::new(&resolved).is_dir(),
+            "fallback resolves to a real directory"
+        );
+
+        // An empty path also falls back to a real directory.
+        let resolved_empty = resolve_local_start_dir("").await;
+        assert!(std::path::Path::new(&resolved_empty).is_dir());
     }
 
     #[test]
