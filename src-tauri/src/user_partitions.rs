@@ -3168,7 +3168,7 @@ mod tests {
         let report =
             migrate_legacy_payloads(&mut conn, Some(profiles_json), Some(settings_json), &root)
                 .expect("resume migration");
-        assert_eq!(report.created_default_user, false);
+        assert!(!report.created_default_user);
         assert_eq!(report.migrated_profiles, 1);
         assert_eq!(report.migrated_settings_scopes, 1);
 
