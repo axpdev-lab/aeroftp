@@ -33715,6 +33715,20 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
             file_count = f;
             dir_count = d;
 
+            // Deepest layer with entries (root children are layer 1), mirroring
+            // the text ruler so consumers can report tree span too (#270).
+            fn tree_depth(nodes: &[TreeNode], level: usize) -> usize {
+                if nodes.is_empty() {
+                    return level - 1;
+                }
+                let mut deepest = level;
+                for n in nodes {
+                    deepest = deepest.max(tree_depth(&n.children, level + 1));
+                }
+                deepest
+            }
+            let layers = tree_depth(&root_children, 1);
+
             #[derive(Serialize)]
             struct TreeResult {
                 status: &'static str,
@@ -33726,6 +33740,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
             struct TreeSummary {
                 directories: usize,
                 files: usize,
+                layers: usize,
             }
             print_json(&TreeResult {
                 status: "ok",
@@ -33734,12 +33749,17 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                 summary: TreeSummary {
                     directories: dir_count,
                     files: file_count,
+                    layers,
                 },
             });
         }
         OutputFormat::Text => {
             // Iterative DFS with prefix tracking for tree drawing
             let mut stack: Vec<QueueItem> = Vec::new();
+            // Deepest layer actually reached (root entries are layer 1), so the
+            // summary can report how many layers the tree spans (#270). The
+            // requested `max_depth` is only a cap; a shallow tree reports less.
+            let mut max_depth_reached: usize = 0;
             let mut tree_entry_count: usize = 0;
             let mut tree_visited: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
@@ -33801,6 +33821,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
                     break;
                 }
                 tree_entry_count += 1;
+                max_depth_reached = max_depth_reached.max(item.depth);
                 println!("{}", item.name);
 
                 if item.depth < max_depth {
@@ -33846,7 +33867,24 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
             }
 
             if !cli.quiet {
-                println!("\n{} directories, {} files", dir_count, file_count);
+                if max_depth_reached > 0 {
+                    // Layer ruler (0-based), one line above the summary, so the
+                    // reader does not have to scroll up and count nesting (#270).
+                    let ruler = (0..max_depth_reached)
+                        .map(|i| i.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" | ");
+                    println!("\n{}", ruler);
+                    println!(
+                        "{} directories and {} files in a depth of {} layer{}",
+                        dir_count,
+                        file_count,
+                        max_depth_reached,
+                        if max_depth_reached == 1 { "" } else { "s" }
+                    );
+                } else {
+                    println!("\n{} directories and {} files", dir_count, file_count);
+                }
             }
         }
     }
