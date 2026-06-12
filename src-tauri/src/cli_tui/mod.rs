@@ -4,7 +4,10 @@ use crossterm::{
     event::{
         self as crossterm_event, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind,
     },
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, size as terminal_size, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
     ExecutableCommand,
 };
 use ratatui::{
@@ -82,6 +85,16 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
     let theme = TuiTheme::from_env();
 
     with_terminal(|terminal| {
+        // Some terminals report a stale (often wider) size at `Terminal::new`
+        // time - before the alt-screen switch has settled - so the first frames
+        // draw wider than the real window and wrap into overlapping garbage that
+        // only heals on the first resize. Re-query the real size now and resync
+        // the back buffer before the first draw so a narrow launch renders clean.
+        if let Ok((w, h)) = terminal_size() {
+            let _ = terminal.resize(Rect::new(0, 0, w, h));
+        }
+        let _ = terminal.clear();
+
         loop {
             drain_worker_events(&mut app, &mut worker);
             terminal.draw(|frame| render_dashboard(frame, &mut app, theme))?;
@@ -107,9 +120,12 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
                         let commands = app.handle_mouse(me);
                         dispatch_commands(&mut app, &mut worker, commands);
                     }
-                    Event::Resize(_, _) => {
-                        // Consume so the next draw re-computes layout for narrow
-                        // terminals etc. ratatui handles the actual reflow.
+                    Event::Resize(w, h) => {
+                        // Resync the back buffer to the size carried by the event
+                        // (authoritative), then force a full repaint so a narrow
+                        // reflow leaves no wrapped/overlapping fragments behind.
+                        let _ = terminal.resize(Rect::new(0, 0, w, h));
+                        let _ = terminal.clear();
                     }
                     _ => {}
                 }
@@ -761,9 +777,11 @@ fn render_introhub_detail(
         ))],
     };
 
-    let detail = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title(" Profile "))
-        .wrap(Wrap { trim: true });
+    // No wrap: this box is a fixed height (Length(8)), so wrapping a long host or
+    // path on a narrow terminal would push the lower fields out of the box and
+    // overlap the border. Truncating each field to one line keeps it clean.
+    let detail =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Profile "));
     frame.render_widget(detail, area);
 }
 
