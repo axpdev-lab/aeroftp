@@ -738,21 +738,28 @@ fn repair_vault(
         // The parity lives in the extension payload, which scrub does not cover, so
         // a rotted parity shard (or more erasures than parity in a stripe) silently
         // yields wrong bytes. Verify every reconstructed block against its
-        // authenticated manifest cipher_hash before trusting it, and only persist
-        // when ALL damaged blocks verify: persisting a wrong reconstruction would
-        // recompute parity over the garbage on the next seal, destroying the very
-        // redundancy needed to recover. Conservative all-or-nothing matches the
+        // authenticated manifest cipher_hash before trusting it, including blocks
+        // that scrub considered healthy: a stale/foreign sidecar can mark those
+        // shards as erasures and rewrite them too. Persist only when the entire
+        // reconstructed stream matches the manifest, preserving the all-or-nothing
         // repair safety contract ("never overwrite without hash verification").
-        let all_verified = bad_indices.iter().all(|&i| {
+        let block_verified = |i: usize| {
             let blk = &blocks[i];
             if blk.len() < 8 {
                 return false;
             }
-            let body = u64::from_le_bytes(blk[0..8].try_into().unwrap()) as usize;
-            blk.len() == 8 + body
-                && body as u64 == ordered[i].1.block_len
+            let body_u64 = u64::from_le_bytes(blk[0..8].try_into().unwrap());
+            let Ok(body) = usize::try_from(body_u64) else {
+                return false;
+            };
+            let Some(full_len) = 8usize.checked_add(body) else {
+                return false;
+            };
+            blk.len() == full_len
+                && body_u64 == ordered[i].1.block_len
                 && blake3::hash(&blk[8..8 + body]).to_hex().to_string() == ordered[i].1.cipher_hash
-        });
+        };
+        let all_verified = blocks.iter().enumerate().all(|(i, _)| block_verified(i));
 
         if all_verified {
             repaired_count = bad_indices.len();
@@ -4534,6 +4541,92 @@ mod tests {
         assert_eq!(
             before, after,
             "repair must leave the vault untouched when it cannot fix it"
+        );
+    }
+
+    /// P2-09 safety regression: an explicitly supplied stale sidecar can consider a
+    /// currently healthy block "wrong" relative to its old shard checksums. Repair
+    /// must verify every reconstructed block before persisting, not only the block
+    /// that scrub marked damaged.
+    #[test]
+    fn p2_repair_refuses_stale_sidecar_that_rewrites_healthy_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("stale-sidecar.aerovault");
+        let f1 = dir.path().join("a.txt");
+        let f2 = dir.path().join("b.txt");
+        std::fs::write(&f1, b"first file initial payload").unwrap();
+        std::fs::write(&f2, b"second file stable payload").unwrap();
+
+        create_empty_vault(
+            &vault_path,
+            "stale-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
+        let mut vault = open_vault(&vault_path, "stale-pw-1234").unwrap();
+        append_file_at(&mut vault, &f1, "a.txt").unwrap();
+        append_file_at(&mut vault, &f2, "b.txt").unwrap();
+        save_open_vault(&mut vault).unwrap();
+
+        let stale_sidecar = dir.path().join("old.aerocorrect");
+        export_parity(&vault_path, "stale-pw-1234", Some(&stale_sidecar)).unwrap();
+
+        // Simulate a later legitimate change to the first chunk: the manifest hash
+        // matches the new bytes, so scrub considers it healthy, but the stale sidecar
+        // would reconstruct it back to the old bytes.
+        let mut current = open_vault(&vault_path, "stale-pw-1234").unwrap();
+        let mut recs: Vec<_> = current.manifest.chunks.values().cloned().collect();
+        recs.sort_by_key(|r| r.data_offset);
+        assert!(recs.len() >= 2);
+        let healthy_id = recs[0].id.clone();
+        let damaged_id = recs[1].id.clone();
+        let healthy = current.manifest.chunks.get(&healthy_id).unwrap().clone();
+        let body_start = healthy.data_offset as usize + 8;
+        let body_end = body_start + healthy.block_len as usize;
+        current.data[body_start] ^= 0x5A;
+        let new_hash = blake3::hash(&current.data[body_start..body_end])
+            .to_hex()
+            .to_string();
+        current
+            .manifest
+            .chunks
+            .get_mut(&healthy_id)
+            .unwrap()
+            .cipher_hash = new_hash;
+        assert!(
+            scrub_vault(&current).is_empty(),
+            "the changed block is healthy according to the manifest"
+        );
+        save_open_vault(&mut current).unwrap();
+
+        let before = std::fs::read(&vault_path).unwrap();
+        let mut under_repair = open_vault(&vault_path, "stale-pw-1234").unwrap();
+        let damaged = under_repair
+            .manifest
+            .chunks
+            .get(&damaged_id)
+            .unwrap()
+            .clone();
+        under_repair.data[damaged.data_offset as usize + 8] ^= 0x33;
+        assert_eq!(
+            scrub_vault(&under_repair).len(),
+            1,
+            "only the second block should be marked damaged"
+        );
+
+        let (repaired, source) =
+            repair_vault(&mut under_repair, false, Some(&stale_sidecar)).unwrap();
+        assert_eq!(source, ParitySource::Explicit);
+        assert_eq!(
+            repaired, 0,
+            "stale sidecar must not be allowed to rewrite a healthy block"
+        );
+        assert_eq!(
+            before,
+            std::fs::read(&vault_path).unwrap(),
+            "failed repair must leave the vault byte-for-byte untouched"
         );
     }
 
