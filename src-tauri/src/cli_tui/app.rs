@@ -1007,13 +1007,15 @@ impl AppState {
         self.local.clear();
         self.local.path = local_start_path;
 
+        // Connect atomically: send only OpenSession (plus the session-independent
+        // local listing). The remote List is deferred to the SessionReady handler
+        // so a failed/expired connect does not leave a straggler List running
+        // without a session - which used to mask the real auth error with a
+        // confusing "no active TUI session" and leave the view stuck.
         let commands = vec![
             WorkerCommand::OpenSession {
                 identity: identity.clone(),
                 initial_cwd: profile.initial_path.clone(),
-            },
-            WorkerCommand::List {
-                path: "/".to_string(),
             },
             WorkerCommand::LocalList {
                 path: self.local.path.clone(),
@@ -2172,6 +2174,10 @@ impl AppState {
             WorkerEvent::SessionReady { cwd, .. } => {
                 self.session.mark_connected(cwd);
                 self.status = format!("Session ready at {}.", cwd);
+                // List the remote pane now that the session is live (deferred from
+                // connect_to_profile so a failed connect never lists with no
+                // session). cwd is the post-cd working directory.
+                follow_up.push(WorkerCommand::List { path: cwd.clone() });
             }
             WorkerEvent::PathReady { operation, path } => {
                 self.status = format!("{} ready at {}.", operation.label(), path);
@@ -3351,6 +3357,10 @@ mod tests {
 
         assert!(!app.should_quit);
         assert_eq!(app.take_intent(), None);
+        // Connect is atomic: only OpenSession + the session-independent LocalList.
+        // The remote List is deferred to SessionReady (so a failed connect never
+        // lists with no session). LocalList uses the profile's default_local_path
+        // ("/tmp" in the sample); regression guard: clear() must not blank it.
         assert_eq!(
             commands,
             vec![
@@ -3358,11 +3368,6 @@ mod tests {
                     identity: sample_identity(),
                     initial_cwd: "/".to_string(),
                 },
-                WorkerCommand::List {
-                    path: "/".to_string(),
-                },
-                // Emits LocalList for the profile's default_local_path ("/tmp" in
-                // the sample). Regression guard: clear() must not blank this path.
                 WorkerCommand::LocalList {
                     path: "/tmp".to_string(),
                 },
@@ -3370,6 +3375,54 @@ mod tests {
         );
         assert_eq!(app.session.phase, TuiSessionPhase::Connecting);
         assert_eq!(app.focus, TuiFocus::Browser);
+
+        // A successful SessionReady now drives the remote List.
+        let follow_up = app.apply_worker_event(WorkerEvent::SessionReady {
+            identity: Some(sample_identity()),
+            cwd: "/".to_string(),
+        });
+        assert_eq!(
+            follow_up,
+            vec![WorkerCommand::List {
+                path: "/".to_string(),
+            }]
+        );
+    }
+
+    /// A failed/expired connect (e.g. invalid S3 key) must surface the auth error
+    /// and leave the session in a clean Failed state - not stuck "connecting" with
+    /// a straggler remote List masking the error as "no active TUI session".
+    #[test]
+    fn failed_connect_marks_failed_and_keeps_the_auth_error() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Profiles;
+        app.selected_profile = 0;
+        let cmds = app.apply_action(TuiAction::Activate);
+        // No eager remote List that could run without a session.
+        assert!(
+            !cmds.iter().any(|c| matches!(c, WorkerCommand::List { .. })),
+            "connect must not eagerly request a remote List; got {:?}",
+            cmds
+        );
+        assert_eq!(app.session.phase, TuiSessionPhase::Connecting);
+
+        let follow_up = app.apply_worker_event(WorkerEvent::Failed {
+            operation: TuiWorkerOperation::Connect,
+            identity: Some(sample_identity()),
+            message: "S3 auth error: key not valid".to_string(),
+        });
+        assert!(follow_up.is_empty(), "a failed connect drives no follow-up");
+        assert!(
+            matches!(app.session.phase, TuiSessionPhase::Failed(_)),
+            "phase must be Failed, got {:?}",
+            app.session.phase
+        );
+        assert!(!app.is_live_connected());
+        assert!(
+            app.status.contains("S3 auth error"),
+            "status keeps the auth error; got {:?}",
+            app.status
+        );
     }
 
     #[test]
@@ -5011,16 +5064,26 @@ mod tests {
             "Enter on a profile must connect (OpenSession); got {:?}",
             cmds
         );
+        // The remote List is deferred to SessionReady (atomic connect), so it is
+        // not in the connect batch; the session-independent LocalList is.
         assert!(
-            cmds.iter().any(|c| matches!(c, WorkerCommand::List { .. })),
-            "connect must request a remote List; got {:?}",
+            cmds.iter()
+                .any(|c| matches!(c, WorkerCommand::LocalList { .. })),
+            "connect must request a local List; got {:?}",
             cmds
         );
 
-        app.apply_worker_event(WorkerEvent::SessionReady {
+        let follow_up = app.apply_worker_event(WorkerEvent::SessionReady {
             identity: Some(sample_identity()),
             cwd: "/srv".to_string(),
         });
+        assert!(
+            follow_up
+                .iter()
+                .any(|c| matches!(c, WorkerCommand::List { .. })),
+            "SessionReady must drive the remote List; got {:?}",
+            follow_up
+        );
         app.apply_worker_event(WorkerEvent::ListReady {
             identity: Some(sample_identity()),
             path: "/srv".to_string(),

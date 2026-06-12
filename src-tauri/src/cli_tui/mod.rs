@@ -152,10 +152,12 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
 }
 
 /// A coarse key for the current top-level view layout. A change between frames
-/// (IntroHub `0` <-> connected dual-pane `1`) means the layout switched, so the
-/// previous view's cells must be hard-cleared rather than painted over.
+/// means the layout switched, so the previous view's cells must be hard-cleared
+/// rather than painted over. Bit 0 = connected (IntroHub vs dual-pane), bit 1 =
+/// an overlay is open (a full-screen-ish form/menu whose close must not leave
+/// the view behind it bleeding through).
 fn view_key(app: &AppState) -> u8 {
-    u8::from(app.is_live_connected())
+    u8::from(app.is_live_connected()) | (u8::from(app.overlay_active()) << 1)
 }
 
 /// Resize ratatui's back buffer to the real terminal size and force a full
