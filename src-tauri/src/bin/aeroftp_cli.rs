@@ -33869,12 +33869,17 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
             if !cli.quiet {
                 if max_depth_reached > 0 {
                     // Layer ruler (0-based), one line above the summary, so the
-                    // reader does not have to scroll up and count nesting (#270).
+                    // reader does not have to scroll up and count nesting. A short
+                    // legend states what layer 0 means so the numbers are not
+                    // ambiguous: the top-level entries are layer 0 and the listed
+                    // directory itself is conceptually the parent at -1, like a
+                    // ground floor over a basement (#270).
                     let ruler = (0..max_depth_reached)
                         .map(|i| i.to_string())
                         .collect::<Vec<_>>()
                         .join(" | ");
-                    println!("\n{}", ruler);
+                    println!("\nlayers (0 = top level, parent = -1):");
+                    println!("{}", ruler);
                     println!(
                         "{} directories and {} files in a depth of {} layer{}",
                         dir_count,
