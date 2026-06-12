@@ -1,34 +1,27 @@
-// Some status/regeneration helpers are intentionally kept for the next AeroSync
-// wiring slices; P2 consumes the transfer hooks but not every codec surface yet.
-#![allow(dead_code)]
-
 use sha2::{Digest, Sha256};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::Path;
 
+use super::sidecar::{
+    aerocorrect_sidecar_path, aerocorrect_windows, estimate_windowed_sidecar_len,
+    validate_window_tiling, AeroCorrectSegment, AeroCorrectSidecar, AEROCORRECT_WINDOW_SIZE,
+};
 use super::{
     compute_error_correction_shards_grid, error_correction_grid, reconstruct_from_error_correction,
 };
 
-const AEROSYNC_RECOVERY_FILE_MAGIC: &[u8; 8] = b"AERC1\0\0\0";
-const AEROSYNC_RECOVERY_BINDING_DOMAIN: &[u8] = b"aerosync-recovery-binding-v1";
-const AEROSYNC_RECOVERY_BINDING_LEN: usize = 32;
-const AEROSYNC_RECOVERY_CHECKSUM_LEN: usize = 32;
+/// Default per-file cap for sync error correction. Windowed streaming bounds the
+/// *plaintext* memory of generation/verification/repair to a single window
+/// (`AEROCORRECT_WINDOW_SIZE`), so a large file no longer has to fit in RAM. The
+/// remaining constraint is the sidecar itself, which is held in memory on the repair
+/// path and grows with the file (overhead% of it); this cap keeps that bounded.
+/// Callers may raise `max_file_size` per call when they accept the sidecar-memory cost.
+pub(crate) const AEROSYNC_EC_MAX_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 
-pub(crate) const AEROSYNC_EC_SIDECAR_EXTENSION: &str = ".aerorec";
-pub(crate) const AEROSYNC_EC_PHASE1_MAX_FILE_SIZE: u64 = 256 * 1024 * 1024;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AeroSyncEcSegment {
-    pub(crate) window_offset: u64,
-    pub(crate) window_len: u64,
-    pub(crate) avec_bytes: Vec<u8>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AeroSyncEcSidecar {
-    pub(crate) binding_id: [u8; AEROSYNC_RECOVERY_BINDING_LEN],
-    pub(crate) segments: Vec<AeroSyncEcSegment>,
-}
+/// Read buffer for the streaming hash pass (fast verify). Independent of the parity
+/// window; just bounds the read syscall size.
+const HASH_READ_CHUNK: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SyncEcGeneratedSidecar {
@@ -49,27 +42,21 @@ pub(crate) enum SyncEcGenerateResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SyncEcRegenerateReason {
-    Missing,
-    CorruptSidecar,
-    BindingMismatch,
-    UnsupportedSegmentLayout,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SyncEcSidecarStatus {
-    Current,
-    Regenerate { reason: SyncEcRegenerateReason },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SyncEcRepairResult {
     Verified,
     Repaired { recovered_shards: usize },
 }
 
+#[cfg(test)]
 fn sha256_bytes(data: &[u8]) -> [u8; 32] {
     let digest = Sha256::digest(data);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
+}
+
+fn finalize_sha256(hasher: Sha256) -> [u8; 32] {
+    let digest = hasher.finalize();
     let mut out = [0u8; 32];
     out.copy_from_slice(&digest);
     out
@@ -84,181 +71,99 @@ pub(crate) fn parse_sha256_hex(input: &str) -> Result<[u8; 32], String> {
 }
 
 pub(crate) fn sync_error_correction_sidecar_path(remote_path: &str) -> String {
-    format!("{remote_path}{AEROSYNC_EC_SIDECAR_EXTENSION}")
+    aerocorrect_sidecar_path(remote_path)
 }
 
-pub(crate) fn sync_error_correction_binding_id(
-    rel_path: &str,
-    file_size: u64,
-    content_sha256: &[u8; 32],
-) -> [u8; AEROSYNC_RECOVERY_BINDING_LEN] {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(AEROSYNC_RECOVERY_BINDING_DOMAIN);
-    hasher.update(rel_path.as_bytes());
-    hasher.update(&file_size.to_le_bytes());
-    hasher.update(content_sha256);
-    let digest = hasher.finalize();
-    let mut out = [0u8; AEROSYNC_RECOVERY_BINDING_LEN];
-    out.copy_from_slice(digest.as_bytes());
-    out
+/// Exact serialized size (in bytes) of the `.aerocorrect` sidecar that
+/// `generate_sync_sidecar_for_bytes` produces for a `file_size`-byte file at overhead level
+/// `pct`, derived from the same v2 fixed-grid geometry WITHOUT allocating or hashing.
+///
+/// This is the source of truth for the sync-doctor cost preview. A flat `size * pct / 100`
+/// underestimates the real sidecar by orders of magnitude for small files (the
+/// `ERROR_CORRECTION_MIN_SHARD` floor forces ≥4 KiB parity shards) and under-reports at the
+/// `ERROR_CORRECTION_MAX_SHARD` cliff. It now also accounts for the per-window segment headers
+/// of a windowed (large-file) sidecar.
+///
+/// Invariant (checked by `aerosync_estimate_matches_real_sidecar_len`):
+/// `estimate_aerorec_sidecar_len(n, pct) == generate_sync_sidecar_for_bytes(_, &[_; n], pct).sidecar_len`.
+pub fn estimate_aerorec_sidecar_len(file_size: u64, pct: u32) -> u64 {
+    estimate_windowed_sidecar_len(file_size, pct, AEROCORRECT_WINDOW_SIZE)
 }
 
-impl AeroSyncEcSidecar {
-    pub(crate) fn new(
-        rel_path: &str,
-        file_size: u64,
-        content_sha256: &[u8; 32],
-        segments: Vec<AeroSyncEcSegment>,
-    ) -> Self {
-        Self {
-            binding_id: sync_error_correction_binding_id(rel_path, file_size, content_sha256),
-            segments,
-        }
-    }
-
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let segments_len: usize = self
-            .segments
-            .iter()
-            .map(|s| 8 + 8 + 8 + s.avec_bytes.len())
-            .sum();
-        let mut out = Vec::with_capacity(
-            AEROSYNC_RECOVERY_FILE_MAGIC.len()
-                + AEROSYNC_RECOVERY_BINDING_LEN
-                + 4
-                + segments_len
-                + AEROSYNC_RECOVERY_CHECKSUM_LEN,
-        );
-        out.extend_from_slice(AEROSYNC_RECOVERY_FILE_MAGIC);
-        out.extend_from_slice(&self.binding_id);
-        out.extend_from_slice(&(self.segments.len() as u32).to_le_bytes());
-        for segment in &self.segments {
-            out.extend_from_slice(&segment.window_offset.to_le_bytes());
-            out.extend_from_slice(&segment.window_len.to_le_bytes());
-            out.extend_from_slice(&(segment.avec_bytes.len() as u64).to_le_bytes());
-            out.extend_from_slice(&segment.avec_bytes);
-        }
-        let checksum = blake3::hash(&out);
-        out.extend_from_slice(checksum.as_bytes());
-        out
-    }
-
-    pub(crate) fn from_bytes(data: &[u8]) -> Result<Self, String> {
-        let min_len = AEROSYNC_RECOVERY_FILE_MAGIC.len()
-            + AEROSYNC_RECOVERY_BINDING_LEN
-            + 4
-            + AEROSYNC_RECOVERY_CHECKSUM_LEN;
-        if data.len() < min_len {
-            return Err("AeroSync EC sidecar too short".to_string());
-        }
-        if &data[..AEROSYNC_RECOVERY_FILE_MAGIC.len()] != AEROSYNC_RECOVERY_FILE_MAGIC {
-            return Err("bad AeroSync EC sidecar magic".to_string());
-        }
-        let body_end = data.len() - AEROSYNC_RECOVERY_CHECKSUM_LEN;
-        let actual = blake3::hash(&data[..body_end]);
-        if actual.as_bytes() != &data[body_end..] {
-            return Err("AeroSync EC sidecar integrity check failed".to_string());
-        }
-
-        let mut off = AEROSYNC_RECOVERY_FILE_MAGIC.len();
-        let mut binding_id = [0u8; AEROSYNC_RECOVERY_BINDING_LEN];
-        binding_id.copy_from_slice(&data[off..off + AEROSYNC_RECOVERY_BINDING_LEN]);
-        off += AEROSYNC_RECOVERY_BINDING_LEN;
-
-        if off + 4 > body_end {
-            return Err("AeroSync EC sidecar truncated reading segment count".to_string());
-        }
-        let segment_count = u32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
-        off += 4;
-        if segment_count == 0 {
-            return Err("AeroSync EC sidecar has no segments".to_string());
-        }
-
-        let mut segments = Vec::with_capacity(segment_count);
-        for _ in 0..segment_count {
-            if off + 24 > body_end {
-                return Err("AeroSync EC sidecar truncated reading segment header".to_string());
-            }
-            let window_offset = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
-            off += 8;
-            let window_len = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
-            off += 8;
-            let avec_len = u64::from_le_bytes(data[off..off + 8].try_into().unwrap()) as usize;
-            off += 8;
-            if off.checked_add(avec_len).is_none_or(|end| end > body_end) {
-                return Err("AeroSync EC sidecar segment length mismatch".to_string());
-            }
-            let avec_bytes = data[off..off + avec_len].to_vec();
-            off += avec_len;
-            segments.push(AeroSyncEcSegment {
-                window_offset,
-                window_len,
-                avec_bytes,
-            });
-        }
-
-        if off != body_end {
-            return Err("AeroSync EC sidecar has unexpected trailing bytes".to_string());
-        }
-
-        Ok(Self {
-            binding_id,
-            segments,
-        })
-    }
-
-    pub(crate) fn verify_binding(
-        &self,
-        rel_path: &str,
-        file_size: u64,
-        content_sha256: &[u8; 32],
-    ) -> Result<(), String> {
-        let expected = sync_error_correction_binding_id(rel_path, file_size, content_sha256);
-        if self.binding_id == expected {
-            Ok(())
-        } else {
-            Err(
-                "AeroSync EC sidecar does not belong to this file (binding id mismatch)"
-                    .to_string(),
-            )
-        }
-    }
-}
-
-pub(crate) fn generate_sync_sidecar_for_bytes(
-    rel_path: &str,
-    data: &[u8],
-    pct: u32,
-) -> SyncEcGeneratedSidecar {
+/// Build a windowed sidecar from an in-memory buffer: one segment per window, each
+/// carrying that window's own RS parity. Returns the sidecar plus aggregate telemetry.
+#[cfg(test)]
+fn build_windowed_sidecar(data: &[u8], pct: u32, window: u64) -> (AeroCorrectSidecar, u64, u64) {
     let file_size = data.len() as u64;
-    let file_sha256 = sha256_bytes(data);
     let (k, p) = error_correction_grid(pct);
-    let (avec_bytes, shards, bytes_protected, overhead_pct) =
-        compute_error_correction_shards_grid(&[data], k, p);
-    let avec_payload_len = avec_bytes.len() as u64;
-    let sidecar = AeroSyncEcSidecar::new(
-        rel_path,
-        file_size,
-        &file_sha256,
-        vec![AeroSyncEcSegment {
-            window_offset: 0,
-            window_len: file_size,
+    let mut segments = Vec::new();
+    let mut total_shards = 0u64;
+    let mut total_avec = 0u64;
+    for (off, len) in aerocorrect_windows(file_size, window) {
+        let w = &data[off as usize..(off + len) as usize];
+        let (avec_bytes, shards, _protected, _overhead) =
+            compute_error_correction_shards_grid(&[w], k, p);
+        total_shards += shards;
+        total_avec += avec_bytes.len() as u64;
+        segments.push(AeroCorrectSegment {
+            window_offset: off,
+            window_len: len,
             avec_bytes,
-        }],
-    );
+        });
+    }
+    let sidecar = AeroCorrectSidecar::new(sha256_bytes(data), file_size, segments);
+    (sidecar, total_shards, total_avec)
+}
+
+fn generated_from(
+    sidecar: AeroCorrectSidecar,
+    file_size: u64,
+    file_sha256: [u8; 32],
+    shards: u64,
+    avec_payload_len: u64,
+) -> SyncEcGeneratedSidecar {
     let sidecar_bytes = sidecar.to_bytes();
+    let overhead_pct = if file_size > 0 {
+        (avec_payload_len as f64 / file_size as f64) * 100.0
+    } else {
+        0.0
+    };
     SyncEcGeneratedSidecar {
         sidecar_len: sidecar_bytes.len() as u64,
         sidecar_bytes,
         file_size,
         file_sha256,
         shards,
-        bytes_protected,
+        bytes_protected: file_size,
         overhead_pct,
         avec_payload_len,
     }
 }
 
+#[cfg(test)]
+pub(crate) fn generate_sync_sidecar_for_bytes(
+    _rel_path: &str,
+    data: &[u8],
+    pct: u32,
+) -> SyncEcGeneratedSidecar {
+    generate_sync_sidecar_for_bytes_windowed(_rel_path, data, pct, AEROCORRECT_WINDOW_SIZE)
+}
+
+/// `generate_sync_sidecar_for_bytes` with an explicit window size (tests use a small
+/// window to exercise the multi-window path cheaply).
+#[cfg(test)]
+fn generate_sync_sidecar_for_bytes_windowed(
+    _rel_path: &str,
+    data: &[u8],
+    pct: u32,
+    window: u64,
+) -> SyncEcGeneratedSidecar {
+    let file_sha256 = sha256_bytes(data);
+    let (sidecar, shards, avec) = build_windowed_sidecar(data, pct, window);
+    generated_from(sidecar, data.len() as u64, file_sha256, shards, avec)
+}
+
+#[cfg(test)]
 pub(crate) fn generate_sync_sidecar_for_bytes_capped(
     rel_path: &str,
     data: &[u8],
@@ -281,93 +186,131 @@ pub(crate) fn generate_sync_sidecar_for_file_capped(
     pct: u32,
     max_file_size: u64,
 ) -> Result<SyncEcGenerateResult, String> {
+    generate_sync_sidecar_for_file_capped_windowed(
+        rel_path,
+        path,
+        pct,
+        max_file_size,
+        AEROCORRECT_WINDOW_SIZE,
+    )
+}
+
+/// Stream a file into a windowed sidecar with bounded memory: read at most one
+/// `window`-sized buffer at a time, compute that window's parity, and accumulate a
+/// rolling SHA-256 of the whole file. Never loads the whole file into RAM.
+fn generate_sync_sidecar_for_file_capped_windowed(
+    _rel_path: &str,
+    path: &Path,
+    pct: u32,
+    max_file_size: u64,
+    window: u64,
+) -> Result<SyncEcGenerateResult, String> {
     let metadata = std::fs::metadata(path).map_err(|e| {
         format!(
             "read metadata for AeroSync EC source {}: {e}",
             path.display()
         )
     })?;
-    if metadata.len() > max_file_size {
+    let file_size = metadata.len();
+    if file_size > max_file_size {
         return Ok(SyncEcGenerateResult::SkippedTooLarge {
-            file_size: metadata.len(),
+            file_size,
             max_file_size,
         });
     }
-    let data = std::fs::read(path)
-        .map_err(|e| format!("read AeroSync EC source {}: {e}", path.display()))?;
-    Ok(generate_sync_sidecar_for_bytes_capped(
-        rel_path,
-        &data,
-        pct,
-        max_file_size,
-    ))
+    let mut file =
+        File::open(path).map_err(|e| format!("open AeroSync EC source {}: {e}", path.display()))?;
+    let (k, p) = error_correction_grid(pct);
+    let mut hasher = Sha256::new();
+    let mut segments = Vec::new();
+    let mut total_shards = 0u64;
+    let mut total_avec = 0u64;
+    for (off, len) in aerocorrect_windows(file_size, window) {
+        let mut buf = vec![0u8; len as usize];
+        file.read_exact(&mut buf).map_err(|e| {
+            format!(
+                "read AeroSync EC source window at {off} (+{len}) of {}: {e}",
+                path.display()
+            )
+        })?;
+        hasher.update(&buf);
+        let (avec_bytes, shards, _protected, _overhead) =
+            compute_error_correction_shards_grid(&[&buf], k, p);
+        total_shards += shards;
+        total_avec += avec_bytes.len() as u64;
+        segments.push(AeroCorrectSegment {
+            window_offset: off,
+            window_len: len,
+            avec_bytes,
+        });
+    }
+    let file_sha256 = finalize_sha256(hasher);
+    let sidecar = AeroCorrectSidecar::new(file_sha256, file_size, segments);
+    Ok(SyncEcGenerateResult::Generated(generated_from(
+        sidecar,
+        file_size,
+        file_sha256,
+        total_shards,
+        total_avec,
+    )))
 }
 
-pub(crate) fn sync_sidecar_status_for_bytes(
+/// Shared sidecar validation for the verify/repair paths: parse, content-bind against
+/// the expected (good) hash, confirm the declared length, and confirm the windows tile
+/// the stream cleanly. Returns the parsed sidecar.
+fn validated_sidecar_for(
     rel_path: &str,
-    data: &[u8],
-    sidecar_bytes: Option<&[u8]>,
-) -> SyncEcSidecarStatus {
-    let Some(sidecar_bytes) = sidecar_bytes else {
-        return SyncEcSidecarStatus::Regenerate {
-            reason: SyncEcRegenerateReason::Missing,
-        };
-    };
-    let sidecar = match AeroSyncEcSidecar::from_bytes(sidecar_bytes) {
-        Ok(sidecar) => sidecar,
-        Err(_) => {
-            return SyncEcSidecarStatus::Regenerate {
-                reason: SyncEcRegenerateReason::CorruptSidecar,
-            };
-        }
-    };
-    if sidecar.segments.len() != 1
-        || sidecar.segments[0].window_offset != 0
-        || sidecar.segments[0].window_len != data.len() as u64
-    {
-        return SyncEcSidecarStatus::Regenerate {
-            reason: SyncEcRegenerateReason::UnsupportedSegmentLayout,
-        };
+    expected_sha256: &[u8; 32],
+    stream_len: u64,
+    sidecar_bytes: &[u8],
+) -> Result<AeroCorrectSidecar, String> {
+    let sidecar = AeroCorrectSidecar::from_bytes(sidecar_bytes)?;
+    // Binding is by content: the sidecar must belong to the expected (good) file hash
+    // the sync index recorded for this path, not to the bytes we just downloaded (those
+    // may be corrupt). The rel_path/file_size identity is the sync layer's concern.
+    sidecar.verify_binding(expected_sha256).map_err(|e| {
+        format!("AeroSync EC sidecar for {rel_path} does not match the expected file: {e}")
+    })?;
+    if sidecar.total_len != stream_len {
+        return Err(format!(
+            "AeroSync EC sidecar total length {} != file length {stream_len} for {rel_path}",
+            sidecar.total_len
+        ));
     }
-    let file_sha256 = sha256_bytes(data);
-    match sidecar.verify_binding(rel_path, data.len() as u64, &file_sha256) {
-        Ok(()) => SyncEcSidecarStatus::Current,
-        Err(_) => SyncEcSidecarStatus::Regenerate {
-            reason: SyncEcRegenerateReason::BindingMismatch,
-        },
-    }
+    validate_window_tiling(&sidecar.segments, stream_len)
+        .map_err(|e| format!("AeroSync EC sidecar for {rel_path}: {e}"))?;
+    Ok(sidecar)
 }
 
+#[cfg(test)]
 pub(crate) fn verify_repair_sync_bytes(
     rel_path: &str,
     expected_sha256: &[u8; 32],
     data: &mut Vec<u8>,
     sidecar_bytes: &[u8],
 ) -> Result<SyncEcRepairResult, String> {
-    let sidecar = AeroSyncEcSidecar::from_bytes(sidecar_bytes)?;
-    sidecar.verify_binding(rel_path, data.len() as u64, expected_sha256)?;
-    if sidecar.segments.len() != 1
-        || sidecar.segments[0].window_offset != 0
-        || sidecar.segments[0].window_len != data.len() as u64
-    {
-        return Err("AeroSync EC phase 1 only supports a single full-file segment".to_string());
-    }
+    let sidecar =
+        validated_sidecar_for(rel_path, expected_sha256, data.len() as u64, sidecar_bytes)?;
 
     if sha256_bytes(data) == *expected_sha256 {
         return Ok(SyncEcRepairResult::Verified);
     }
 
-    let segment = &sidecar.segments[0];
-    let mut blocks = vec![data.clone()];
-    let recovered_shards = reconstruct_from_error_correction(&mut blocks, &segment.avec_bytes)?;
-    let repaired = blocks
-        .into_iter()
-        .next()
-        .ok_or_else(|| "AeroSync EC repair produced no output".to_string())?;
-    if sha256_bytes(&repaired) != *expected_sha256 {
+    // Repair on a clone so the buffer is all-or-nothing: only adopt the result once the
+    // whole-file SHA matches. Each window is repaired independently from its own parity.
+    let mut work = data.clone();
+    let mut recovered_shards = 0usize;
+    for seg in &sidecar.segments {
+        let start = seg.window_offset as usize;
+        let end = start + seg.window_len as usize;
+        let mut blocks = vec![work[start..end].to_vec()];
+        recovered_shards += reconstruct_from_error_correction(&mut blocks, &seg.avec_bytes)?;
+        work[start..end].copy_from_slice(&blocks[0]);
+    }
+    if sha256_bytes(&work) != *expected_sha256 {
         return Err("AeroSync EC repair failed post-repair SHA-256 verification".to_string());
     }
-    *data = repaired;
+    *data = work;
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
 }
 
@@ -377,14 +320,76 @@ pub(crate) fn verify_repair_sync_file(
     path: &Path,
     sidecar_bytes: &[u8],
 ) -> Result<SyncEcRepairResult, String> {
-    let mut data = std::fs::read(path)
-        .map_err(|e| format!("read AeroSync EC target {}: {e}", path.display()))?;
-    let result = verify_repair_sync_bytes(rel_path, expected_sha256, &mut data, sidecar_bytes)?;
-    if matches!(result, SyncEcRepairResult::Repaired { .. }) {
-        std::fs::write(path, data)
-            .map_err(|e| format!("write repaired AeroSync EC target {}: {e}", path.display()))?;
+    let file_size = std::fs::metadata(path)
+        .map_err(|e| format!("stat AeroSync EC target {}: {e}", path.display()))?
+        .len();
+    let sidecar = validated_sidecar_for(rel_path, expected_sha256, file_size, sidecar_bytes)?;
+
+    // Fast path: stream the file once and hash it. Bounded memory (one read chunk).
+    {
+        let mut file = File::open(path)
+            .map_err(|e| format!("open AeroSync EC target {}: {e}", path.display()))?;
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; HASH_READ_CHUNK];
+        loop {
+            let n = file
+                .read(&mut buf)
+                .map_err(|e| format!("read AeroSync EC target {}: {e}", path.display()))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        if finalize_sha256(hasher) == *expected_sha256 {
+            return Ok(SyncEcRepairResult::Verified);
+        }
     }
-    Ok(result)
+
+    // Repair path: stream window by window into a temp file in the same directory,
+    // repairing each window from its own parity, then atomically replace the original
+    // ONLY if the whole repaired stream hashes to the expected value. Bounded memory
+    // (one window at a time); all-or-nothing (a failed verify leaves the original intact).
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let tmp = tempfile::NamedTempFile::new_in(parent).map_err(|e| {
+        format!(
+            "create AeroSync EC repair temp in {}: {e}",
+            parent.display()
+        )
+    })?;
+    let mut src =
+        File::open(path).map_err(|e| format!("open AeroSync EC target {}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut recovered_shards = 0usize;
+    {
+        let mut out = std::io::BufWriter::new(tmp.as_file());
+        for seg in &sidecar.segments {
+            let mut buf = vec![0u8; seg.window_len as usize];
+            src.read_exact(&mut buf)
+                .map_err(|e| format!("read AeroSync EC target window {}: {e}", path.display()))?;
+            let mut blocks = vec![buf];
+            recovered_shards += reconstruct_from_error_correction(&mut blocks, &seg.avec_bytes)?;
+            hasher.update(&blocks[0]);
+            out.write_all(&blocks[0])
+                .map_err(|e| format!("write AeroSync EC repair temp {}: {e}", path.display()))?;
+        }
+        out.flush()
+            .map_err(|e| format!("flush AeroSync EC repair temp {}: {e}", path.display()))?;
+    }
+    if finalize_sha256(hasher) != *expected_sha256 {
+        // tmp is dropped (removed) here; the original file is byte-for-byte untouched.
+        return Err("AeroSync EC repair failed post-repair SHA-256 verification".to_string());
+    }
+    // Preserve the original file's permissions across the atomic replace.
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(tmp.path(), meta.permissions());
+    }
+    tmp.persist(path).map_err(|e| {
+        format!(
+            "persist repaired AeroSync EC target {}: {e}",
+            path.display()
+        )
+    })?;
+    Ok(SyncEcRepairResult::Repaired { recovered_shards })
 }
 
 #[cfg(test)]
@@ -403,6 +408,23 @@ mod tests {
     }
 
     #[test]
+    fn aerosync_estimate_matches_real_sidecar_len() {
+        // The sync-doctor cost preview MUST equal the byte size the generator actually writes.
+        for &len in &[0usize, 1, 100, 4096, 4097, 50_000, 1_000_000] {
+            for &pct in &[7u32, 15, 20, 25, 30, 50] {
+                let data = sample_data(len);
+                let real = generate_sync_sidecar_for_bytes("backup/x.bin", &data, pct).sidecar_len;
+                let est = estimate_aerorec_sidecar_len(len as u64, pct);
+                assert_eq!(est, real, "estimate != real for len={len} pct={pct}");
+            }
+        }
+        // MAX_SHARD cliff: a 10 MiB file at 50% spills into multiple full-parity groups.
+        let big = sample_data(10 * 1024 * 1024);
+        let real = generate_sync_sidecar_for_bytes("backup/big.bin", &big, 50).sidecar_len;
+        assert_eq!(estimate_aerorec_sidecar_len(big.len() as u64, 50), real);
+    }
+
+    #[test]
     fn aerosync_sidecar_round_trips_single_segment() {
         let data = sample_data(96 * 1024 + 17);
         let generated = generate_sync_sidecar_for_bytes("backup/photos.raw", &data, 15);
@@ -414,36 +436,37 @@ mod tests {
         assert_eq!(generated.sidecar_len, generated.sidecar_bytes.len() as u64);
         assert_eq!(
             sync_error_correction_sidecar_path("backup/photos.raw"),
-            "backup/photos.raw.aerorec"
+            "backup/photos.raw.aerocorrect"
         );
 
-        let sidecar = AeroSyncEcSidecar::from_bytes(&generated.sidecar_bytes).expect("parse AERC1");
+        let sidecar =
+            AeroCorrectSidecar::from_bytes(&generated.sidecar_bytes).expect("parse aerocorrect");
         assert_eq!(sidecar.to_bytes(), generated.sidecar_bytes);
         sidecar
-            .verify_binding(
-                "backup/photos.raw",
-                generated.file_size,
-                &generated.file_sha256,
-            )
+            .verify_binding(&generated.file_sha256)
             .expect("binding should match");
+        // A small file is a single full-file window.
         assert_eq!(sidecar.segments.len(), 1);
         assert_eq!(sidecar.segments[0].window_offset, 0);
         assert_eq!(sidecar.segments[0].window_len, data.len() as u64);
     }
 
     #[test]
-    fn aerosync_sidecar_rejects_wrong_file_binding() {
+    fn aerosync_sidecar_rejects_wrong_content_binding() {
         let data = sample_data(64 * 1024);
         let generated = generate_sync_sidecar_for_bytes("backup/config.tar", &data, 20);
+        // A different expected hash (different content) must be rejected by the binding,
+        // regardless of which path the sync layer paired the sidecar to.
+        let other = sample_data(64 * 1024 + 1);
         let mut downloaded = data.clone();
         let err = verify_repair_sync_bytes(
-            "backup/other-config.tar",
-            &generated.file_sha256,
+            "backup/config.tar",
+            &sha256_bytes(&other),
             &mut downloaded,
             &generated.sidecar_bytes,
         )
-        .expect_err("wrong file path must reject");
-        assert!(err.contains("binding id mismatch"));
+        .expect_err("wrong expected content must reject");
+        assert!(err.contains("binding mismatch"));
     }
 
     #[test]
@@ -469,25 +492,6 @@ mod tests {
     }
 
     #[test]
-    fn aerosync_stale_binding_requests_regeneration() {
-        let old_data = sample_data(48 * 1024);
-        let mut new_data = old_data.clone();
-        new_data[2048] ^= 0x5A;
-        let generated = generate_sync_sidecar_for_bytes("backup/db.sqlite", &old_data, 20);
-
-        assert_eq!(
-            sync_sidecar_status_for_bytes(
-                "backup/db.sqlite",
-                &new_data,
-                Some(&generated.sidecar_bytes)
-            ),
-            SyncEcSidecarStatus::Regenerate {
-                reason: SyncEcRegenerateReason::BindingMismatch
-            }
-        );
-    }
-
-    #[test]
     fn aerosync_generation_skips_too_large_files() {
         let data = sample_data(4097);
         match generate_sync_sidecar_for_bytes_capped("backup/large.bin", &data, 20, 4096) {
@@ -505,15 +509,145 @@ mod tests {
             "backup/large.bin",
             &data,
             20,
-            AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+            AEROSYNC_EC_MAX_FILE_SIZE,
         ) {
             SyncEcGenerateResult::Generated(generated) => {
                 assert_eq!(generated.file_size, data.len() as u64);
                 assert!(generated.sidecar_len > generated.avec_payload_len);
             }
             SyncEcGenerateResult::SkippedTooLarge { .. } => {
-                panic!("phase 1 default cap should allow this test file")
+                panic!("default cap should allow this test file")
             }
         }
+    }
+
+    // --- Windowed (large-file) streaming ---
+
+    #[test]
+    fn windowed_sidecar_has_multiple_segments_and_round_trips() {
+        let window = 40_000u64;
+        let data = sample_data(135_000); // 4 windows (40k,40k,40k,15k)
+        let generated =
+            generate_sync_sidecar_for_bytes_windowed("backup/big.bin", &data, 20, window);
+        let sidecar =
+            AeroCorrectSidecar::from_bytes(&generated.sidecar_bytes).expect("parse windowed");
+        assert_eq!(sidecar.segments.len(), 4);
+        assert_eq!(sidecar.segments[0].window_len, 40_000);
+        assert_eq!(sidecar.segments[3].window_len, 15_000);
+        assert_eq!(generated.bytes_protected, data.len() as u64);
+        assert!(generated.avec_payload_len > 0);
+    }
+
+    #[test]
+    fn windowed_repair_fixes_damage_in_each_window() {
+        let window = 40_000u64;
+        let data = sample_data(135_000);
+        let generated =
+            generate_sync_sidecar_for_bytes_windowed("backup/big.bin", &data, 20, window);
+        let mut damaged = data.clone();
+        // Corrupt one byte in each of the four windows.
+        for off in [10_000usize, 50_000, 90_000, 130_000] {
+            damaged[off] ^= 0x5A;
+        }
+        let result = verify_repair_sync_bytes(
+            "backup/big.bin",
+            &generated.file_sha256,
+            &mut damaged,
+            &generated.sidecar_bytes,
+        )
+        .expect("multi-window repair should succeed");
+        assert!(matches!(result, SyncEcRepairResult::Repaired { .. }));
+        assert_eq!(damaged, data);
+    }
+
+    #[test]
+    fn windowed_repair_fails_when_a_window_is_beyond_recovery() {
+        let window = 40_000u64;
+        let data = sample_data(135_000);
+        let generated =
+            generate_sync_sidecar_for_bytes_windowed("backup/big.bin", &data, 20, window);
+        let mut damaged = data.clone();
+        // Obliterate a whole window: beyond the per-window parity budget.
+        for b in damaged[0..40_000].iter_mut() {
+            *b ^= 0xFF;
+        }
+        let err = verify_repair_sync_bytes(
+            "backup/big.bin",
+            &generated.file_sha256,
+            &mut damaged,
+            &generated.sidecar_bytes,
+        )
+        .expect_err("unrecoverable window must fail post-verify");
+        assert!(err.contains("post-repair SHA-256"));
+    }
+
+    #[test]
+    fn streaming_file_generation_matches_in_memory_and_repairs() {
+        let window = 40_000u64;
+        let data = sample_data(135_000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload.bin");
+        std::fs::write(&path, &data).unwrap();
+
+        // Streaming file generation must be byte-identical to in-memory generation.
+        let in_mem = generate_sync_sidecar_for_bytes_windowed("rel", &data, 20, window);
+        let streamed = match generate_sync_sidecar_for_file_capped_windowed(
+            "rel",
+            &path,
+            20,
+            AEROSYNC_EC_MAX_FILE_SIZE,
+            window,
+        )
+        .unwrap()
+        {
+            SyncEcGenerateResult::Generated(g) => g,
+            SyncEcGenerateResult::SkippedTooLarge { .. } => panic!("should not skip"),
+        };
+        assert_eq!(streamed.sidecar_bytes, in_mem.sidecar_bytes);
+        assert_eq!(streamed.file_sha256, in_mem.file_sha256);
+
+        // Corrupt the file across two windows, then stream-repair it in place.
+        let mut corrupt = data.clone();
+        corrupt[5_000] ^= 0xAA;
+        corrupt[100_000] ^= 0xBB;
+        std::fs::write(&path, &corrupt).unwrap();
+        let result =
+            verify_repair_sync_file("rel", &streamed.file_sha256, &path, &streamed.sidecar_bytes)
+                .expect("streaming repair should succeed");
+        assert!(matches!(result, SyncEcRepairResult::Repaired { .. }));
+        assert_eq!(std::fs::read(&path).unwrap(), data);
+
+        // A clean file verifies without rewriting.
+        let verified =
+            verify_repair_sync_file("rel", &streamed.file_sha256, &path, &streamed.sidecar_bytes)
+                .expect("verify clean file");
+        assert_eq!(verified, SyncEcRepairResult::Verified);
+    }
+
+    #[test]
+    fn streaming_repair_leaves_original_untouched_when_unrecoverable() {
+        let window = 40_000u64;
+        let data = sample_data(90_000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload.bin");
+        let generated = generate_sync_sidecar_for_bytes_windowed("rel", &data, 20, window);
+
+        // Destroy a whole window beyond recovery and write it to disk.
+        let mut corrupt = data.clone();
+        for b in corrupt[0..40_000].iter_mut() {
+            *b ^= 0xFF;
+        }
+        std::fs::write(&path, &corrupt).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let err = verify_repair_sync_file(
+            "rel",
+            &generated.file_sha256,
+            &path,
+            &generated.sidecar_bytes,
+        )
+        .expect_err("unrecoverable window must fail");
+        assert!(err.contains("post-repair SHA-256"));
+        // Original on disk is byte-for-byte untouched (temp discarded).
+        assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 }

@@ -9309,7 +9309,7 @@ async fn sync_ec_generate(
         enabled: true,
         pct: pct.unwrap_or(crate::error_correction::ERROR_CORRECTION_DEFAULT_PCT),
         max_file_size: max_file_size
-            .unwrap_or(crate::error_correction::aerosync::AEROSYNC_EC_PHASE1_MAX_FILE_SIZE),
+            .unwrap_or(crate::error_correction::aerosync::AEROSYNC_EC_MAX_FILE_SIZE),
     };
     let generated = match crate::error_correction::aerosync::generate_sync_sidecar_for_file_capped(
         &relative_path,

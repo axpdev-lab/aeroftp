@@ -1,6 +1,7 @@
 use reed_solomon_erasure::ReedSolomon;
 
 pub(crate) mod aerosync;
+pub(crate) mod sidecar;
 
 /// P2-09: On-disk payload format (v2) for Reed-Solomon Error Correction.
 ///
@@ -180,10 +181,28 @@ impl ErrorCorrectionPayload {
         let p = header.parity_shards as usize;
         let s = header.shard_size as usize;
 
-        let num_parity = num_groups * p;
-        let cksum_table = (num_data_shards + num_parity) * ERROR_CORRECTION_SHARD_CKSUM_LEN;
-        let parity_len = num_parity * s;
-        let expected = 32 + cksum_table + parity_len;
+        // Geometry is derived from attacker-controllable header fields: an AVEC blob can
+        // arrive inside an untrusted `.aerocorrect` sidecar read from a remote.
+        // Derive the expected buffer size with checked arithmetic so a crafted header can
+        // never (a) overflow into a small `expected` that happens to match `data.len()` and
+        // then drive an unbounded `Vec::with_capacity` in `read_cksums`, nor (b) panic on
+        // multiply-overflow in debug builds. Any overflow is rejected before allocating.
+        let num_parity = num_groups
+            .checked_mul(p)
+            .ok_or("Error Correction payload geometry overflow (parity count)")?;
+        let total_shards = num_data_shards
+            .checked_add(num_parity)
+            .ok_or("Error Correction payload geometry overflow (shard count)")?;
+        let cksum_table = total_shards
+            .checked_mul(ERROR_CORRECTION_SHARD_CKSUM_LEN)
+            .ok_or("Error Correction payload geometry overflow (checksum table)")?;
+        let parity_len = num_parity
+            .checked_mul(s)
+            .ok_or("Error Correction payload geometry overflow (parity data)")?;
+        let expected = 32usize
+            .checked_add(cksum_table)
+            .and_then(|v| v.checked_add(parity_len))
+            .ok_or("Error Correction payload geometry overflow (total length)")?;
         if data.len() != expected {
             return Err(format!(
                 "ErrorCorrectionPayload length mismatch: got {}, expected {}",
@@ -191,6 +210,9 @@ impl ErrorCorrectionPayload {
                 expected
             ));
         }
+        // Past this point `data.len() == expected`, so `num_data_shards` and `num_parity`
+        // are each bounded by `data.len() / ERROR_CORRECTION_SHARD_CKSUM_LEN`: the
+        // `Vec::with_capacity` calls below can no longer be driven huge by the header.
 
         let mut off = 32;
         let read_cksums = |count: usize, off: &mut usize| {
@@ -277,8 +299,12 @@ pub(crate) fn compute_error_correction_shards_grid(
         data_checksums.push(error_correction_shard_checksum(&shard_at(i)));
     }
 
+    // Invariant: (k, p) always originate from `error_correction_grid` (k in [2,20],
+    // p in {1,2}, so k+p < 256 and both >= 1). RS construction therefore cannot fail,
+    // and below every shard is exactly `s` bytes with `k+p` slots, so `encode` cannot
+    // fail either. The expects document those invariants rather than masking real errors.
     let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(k, p)
-        .expect("invalid ReedSolomon parameters");
+        .expect("invalid ReedSolomon parameters (k,p must come from error_correction_grid)");
 
     let mut parity_data = Vec::with_capacity(num_groups * p * s);
     let mut parity_checksums = Vec::with_capacity(num_groups * p);
@@ -460,4 +486,185 @@ pub(crate) fn reconstruct_from_error_correction(
     }
 
     Ok(recovered)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Deterministic pseudo-random bytes (BLAKE3 keystream).
+    fn sample(len: usize) -> Vec<u8> {
+        let mut seed = *blake3::hash(b"ec-mod-test-seed").as_bytes();
+        let mut out = Vec::with_capacity(len);
+        while out.len() < len {
+            seed = *blake3::hash(&seed).as_bytes();
+            out.extend_from_slice(&seed);
+        }
+        out.truncate(len);
+        out
+    }
+
+    #[test]
+    fn grid_table_and_monotonic() {
+        assert_eq!(error_correction_grid(5), (20, 1));
+        assert_eq!(error_correction_grid(7), (14, 1));
+        assert_eq!(error_correction_grid(10), (20, 2)); // 10% overhead == K20/P2
+        assert_eq!(error_correction_grid(15), (13, 2));
+        assert_eq!(error_correction_grid(20), (10, 2));
+        assert_eq!(error_correction_grid(25), (8, 2));
+        assert_eq!(error_correction_grid(30), (7, 2));
+        assert_eq!(error_correction_grid(50), (4, 2));
+        // Out-of-range percentages clamp to the [MIN, MAX] band.
+        assert_eq!(error_correction_grid(1), error_correction_grid(5));
+        assert_eq!(error_correction_grid(99), error_correction_grid(50));
+        // Realized overhead p/k is monotonic non-decreasing and k stays >= 2.
+        let mut prev = 0.0f64;
+        for pct in 5..=50 {
+            let (k, p) = error_correction_grid(pct);
+            assert!(k >= 2, "k must stay >= 2 at pct={pct}");
+            let ratio = p as f64 / k as f64;
+            assert!(
+                ratio + 1e-9 >= prev,
+                "overhead must be non-decreasing at pct={pct}"
+            );
+            prev = ratio;
+        }
+    }
+
+    #[test]
+    fn roundtrip_recovers_single_erasure() {
+        let data = sample(50_000);
+        let (payload, _shards, prot, _ov) = compute_error_correction_shards_grid(&[&data], 10, 2);
+        assert_eq!(prot, data.len() as u64);
+        let mut damaged = data.clone();
+        damaged[12_345] ^= 0xFF;
+        let mut blocks = vec![damaged];
+        let recovered = reconstruct_from_error_correction(&mut blocks, &payload).unwrap();
+        assert!(recovered >= 1);
+        assert_eq!(blocks[0], data);
+    }
+
+    #[test]
+    fn erasure_budget_boundary_recovers_p_and_leaves_p_plus_1() {
+        let data = sample(60_000);
+        let (payload, _s, _p, _o) = compute_error_correction_shards_grid(&[&data], 10, 2);
+        let s = ErrorCorrectionPayload::from_bytes(&payload)
+            .unwrap()
+            .header
+            .shard_size as usize;
+        // Exactly P=2 erased shards: recoverable.
+        let mut d2 = data.clone();
+        d2[0] ^= 0xFF;
+        d2[s] ^= 0xFF;
+        let mut b2 = vec![d2];
+        assert!(reconstruct_from_error_correction(&mut b2, &payload).unwrap() >= 2);
+        assert_eq!(b2[0], data);
+        // P+1=3 erased shards: beyond budget -> group untouched, no partial corruption.
+        let mut d3 = data.clone();
+        d3[0] ^= 0xFF;
+        d3[s] ^= 0xFF;
+        d3[2 * s] ^= 0xFF;
+        let before = d3.clone();
+        let mut b3 = vec![d3];
+        assert_eq!(
+            reconstruct_from_error_correction(&mut b3, &payload).unwrap(),
+            0
+        );
+        assert_eq!(b3[0], before);
+    }
+
+    #[test]
+    fn multigroup_recovers_one_erasure_per_group() {
+        // 10 MiB at (4,2) forces shard size to clamp at MAX_SHARD and >1 group.
+        let data = sample(10 * 1024 * 1024);
+        let (payload, _s, _p, _o) = compute_error_correction_shards_grid(&[&data], 4, 2);
+        let header = ErrorCorrectionPayload::from_bytes(&payload).unwrap().header;
+        let (num_data, num_groups) = error_correction_geometry(&header);
+        assert!(num_groups > 1, "expected multiple groups, got {num_groups}");
+        let s = header.shard_size as usize;
+        // Corrupt the first data shard of every group.
+        let mut damaged = data.clone();
+        for g in 0..num_groups {
+            let gi = g * header.data_shards as usize;
+            if gi < num_data {
+                damaged[gi * s] ^= 0xFF;
+            }
+        }
+        let mut blocks = vec![damaged];
+        assert!(reconstruct_from_error_correction(&mut blocks, &payload).unwrap() >= num_groups);
+        assert_eq!(blocks[0], data);
+    }
+
+    #[test]
+    fn reconstruct_rejects_wrong_total_len() {
+        let data = sample(20_000);
+        let (payload, _s, _p, _o) = compute_error_correction_shards_grid(&[&data], 10, 2);
+        let mut wrong = vec![sample(19_999)];
+        assert!(reconstruct_from_error_correction(&mut wrong, &payload).is_err());
+    }
+
+    #[test]
+    fn metadata_parity_empty_and_single_region() {
+        assert!(compute_metadata_parity(&[], 10, 2).is_empty());
+        let region = sample(8_000);
+        let parity = compute_metadata_parity(&region, 10, 2);
+        assert!(!parity.is_empty());
+        let mut damaged = region.clone();
+        damaged[1234] ^= 0xFF;
+        let mut blocks = vec![damaged];
+        assert!(reconstruct_from_error_correction(&mut blocks, &parity).unwrap() >= 1);
+        assert_eq!(blocks[0], region);
+    }
+
+    #[test]
+    fn payload_header_rejects_malformed() {
+        let mut bad = vec![0u8; 32];
+        assert!(ErrorCorrectionPayloadHeader::from_bytes(&bad).is_err()); // bad magic
+        bad[0..4].copy_from_slice(ERROR_CORRECTION_PAYLOAD_MAGIC);
+        bad[4..6].copy_from_slice(&999u16.to_le_bytes());
+        assert!(ErrorCorrectionPayloadHeader::from_bytes(&bad).is_err()); // bad version
+        let mut z = vec![0u8; 32];
+        z[0..4].copy_from_slice(ERROR_CORRECTION_PAYLOAD_MAGIC);
+        z[4..6].copy_from_slice(&ERROR_CORRECTION_PAYLOAD_VERSION.to_le_bytes());
+        assert!(ErrorCorrectionPayloadHeader::from_bytes(&z).is_err()); // zero geometry
+        assert!(ErrorCorrectionPayloadHeader::from_bytes(&[0u8; 10]).is_err()); // too short
+    }
+
+    #[test]
+    fn from_bytes_rejects_overflow_geometry_without_panic_or_oom() {
+        // SECURITY REGRESSION (CRITICAL-1): an AVEC blob arrives inside an untrusted
+        // sidecar. A header with astronomically large geometry must be rejected by the
+        // checked-arithmetic guard, never overflow (debug panic) nor drive a giant
+        // Vec::with_capacity (release OOM).
+        let h1 = ErrorCorrectionPayloadHeader {
+            data_shards: 1,
+            parity_shards: 1,
+            shard_size: 1,
+            total_data_len: u64::MAX,
+        }
+        .to_bytes();
+        assert!(ErrorCorrectionPayload::from_bytes(&h1).is_err());
+
+        let h2 = ErrorCorrectionPayloadHeader {
+            data_shards: 2,
+            parity_shards: u16::MAX,
+            shard_size: u32::MAX,
+            total_data_len: u64::MAX,
+        }
+        .to_bytes();
+        assert!(ErrorCorrectionPayload::from_bytes(&h2).is_err());
+    }
+
+    #[test]
+    fn empty_input_yields_empty_payload() {
+        let (payload, shards, prot, ov) = compute_error_correction_shards_grid(&[], 10, 2);
+        assert!(payload.is_empty());
+        assert_eq!((shards, prot, ov), (0, 0, 0.0));
+        // Reconstruct with an empty payload is a no-op.
+        let mut blocks: Vec<Vec<u8>> = vec![];
+        assert_eq!(
+            reconstruct_from_error_correction(&mut blocks, &payload).unwrap(),
+            0
+        );
+    }
 }

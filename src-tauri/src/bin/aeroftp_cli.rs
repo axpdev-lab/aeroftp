@@ -1714,7 +1714,7 @@ enum Commands {
         /// Exclude patterns (can repeat: --exclude "*.tmp" --exclude ".git")
         #[arg(long, short)]
         exclude: Vec<String>,
-        /// Generate AeroSync Reed-Solomon .aerorec sidecars after uploads.
+        /// Generate AeroSync Reed-Solomon .aerocorrect sidecars after uploads.
         /// Optional level: low, medium, quartile, high, or a percentage 5-50.
         #[arg(
             long = "error-correction",
@@ -1827,7 +1827,7 @@ enum Commands {
         /// Use checksums instead of size/mtime
         #[arg(long)]
         checksum: bool,
-        /// Estimate AeroSync Reed-Solomon .aerorec sidecar cost for planned uploads.
+        /// Estimate AeroSync Reed-Solomon .aerocorrect sidecar cost for planned uploads.
         /// Optional level: low, medium, quartile, high, or a percentage 5-50.
         #[arg(
             long = "error-correction",
@@ -2719,7 +2719,7 @@ enum VaultCommands {
         error_correction: bool,
         /// Where the parity lives (requires --error-correction): embedded (default,
         /// in-container, auto-refreshed on every seal), detached (a sibling
-        /// `.aerovault.rec` sidecar, container stays byte-identical to a plain vault),
+        /// `.aerocorrect` sidecar, container stays byte-identical to a plain vault),
         /// or both. Detached/both let you add parity later with `export-parity`.
         #[arg(long = "recovery-placement", default_value = "embedded")]
         recovery_placement: String,
@@ -2781,8 +2781,8 @@ enum VaultCommands {
         path: String,
         #[arg(long, short = 'p')]
         password: Option<String>,
-        /// Detached recovery file to check against (`.aerovault.rec`). When omitted,
-        /// the resolver tries `<vault>.aerovault.rec` then the embedded extension.
+        /// Detached recovery file to check against (`.aerocorrect`). When omitted,
+        /// the resolver tries `<vault>.aerocorrect` then the embedded extension.
         /// Scrub reports the resolved parity source so you know what repair would use.
         #[arg(long)]
         parity: Option<String>,
@@ -2801,28 +2801,29 @@ enum VaultCommands {
         /// Preview only, do not write repairs
         #[arg(long)]
         dry_run: bool,
-        /// Detached recovery file to repair from (`.aerovault.rec`). When omitted,
-        /// the resolver tries `<vault>.aerovault.rec` then the embedded extension.
-        /// A named file whose binding id does not match the vault is rejected.
+        /// Detached recovery file to repair from (`.aerocorrect`). When omitted,
+        /// the resolver tries `<vault>.aerocorrect` then the embedded extension.
+        /// A malformed file is rejected; a foreign one only makes repair fail, since
+        /// every reconstructed block is re-verified against its manifest cipher_hash.
         #[arg(long)]
         parity: Option<String>,
     },
-    /// Export a detached Error Correction recovery file (`.aerovault.rec`) for an
+    /// Export a detached Error Correction recovery file (`.aerocorrect`) for an
     /// existing vault. The encrypted container is read but never rewritten, so this
     /// is how you add parity to a vault created without it, or refresh a detached
     /// sidecar after edits (par2 semantics: the recovery file tracks a fixed data set).
-    /// Default output is `<vault>.aerovault.rec`.
+    /// Default output is `<vault>.aerocorrect`.
     ExportParity {
         /// Path to the .aerovault file
         path: String,
         #[arg(long, short = 'p')]
         password: Option<String>,
-        /// Output path for the recovery file (default: `<vault>.aerovault.rec`)
+        /// Output path for the recovery file (default: `<vault>.aerocorrect`)
         #[arg(long, short = 'o')]
         out: Option<String>,
     },
     /// Strip the embedded Error Correction extension from a vault (next seal drops
-    /// the in-container parity). Refuses unless a detached `.aerovault.rec` sidecar
+    /// the in-container parity). Refuses unless a detached `.aerocorrect` sidecar
     /// already exists, so a vault is never left with zero recovery; pass --force to
     /// drop recovery entirely.
     StripParity {
@@ -4095,7 +4096,7 @@ struct CliDoctorResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_skipped_too_large: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    ec_phase1_max_file_size: Option<u64>,
+    ec_max_file_size: Option<u64>,
 }
 
 // ── Community Benchmark report (schema v1) ────────────────────────────
@@ -4902,8 +4903,10 @@ where
             continue;
         }
         estimate.estimated_sidecars = estimate.estimated_sidecars.saturating_add(1);
-        let overhead =
-            ((size as u128 * pct as u128).saturating_add(99) / 100).min(u64::MAX as u128) as u64;
+        // Use the real v2 fixed-grid geometry, not a flat size*pct/100: the latter
+        // under-reports by orders of magnitude for small files (MIN_SHARD floor) and at the
+        // MAX_SHARD cliff. This matches the bytes `generate_sync_sidecar_for_bytes` writes.
+        let overhead = ftp_client_gui_lib::sync::estimate_aerorec_sidecar_len(size, pct);
         estimate.estimated_overhead_bytes =
             estimate.estimated_overhead_bytes.saturating_add(overhead);
     }
@@ -4988,7 +4991,7 @@ async fn record_sync_ec_after_successful_upload(
         }
         ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge if !quiet => {
             eprintln!(
-                "Note: AeroSync EC skipped {} because it exceeds the Phase 1 size cap",
+                "Note: AeroSync EC skipped {} because it exceeds the EC size cap",
                 relative
             );
         }
@@ -35092,7 +35095,7 @@ async fn cmd_sync_doctor(
     let remote_files = remote_entries.len();
     let remote_bytes = remote_entries.values().map(|(size, _)| *size).sum::<u64>();
 
-    let ec_max_file_size = ftp_client_gui_lib::sync::AEROSYNC_EC_PHASE1_MAX_FILE_SIZE_BYTES;
+    let ec_max_file_size = ftp_client_gui_lib::sync::AEROSYNC_EC_MAX_FILE_SIZE_BYTES;
     let default_time_val = resolve_default_time(cli);
     let default_time_ref = default_time_val.as_deref();
     let ec_estimate = error_correction_pct.map(|pct| {
@@ -35141,13 +35144,13 @@ async fn cmd_sync_doctor(
     }
     if let (Some(pct), Some(estimate)) = (error_correction_pct, ec_estimate) {
         risks.push(format!(
-            "error-correction is enabled; sync will create up to {} .aerorec sidecar(s) at about {} overhead",
+            "error-correction is enabled; sync will create up to {} .aerocorrect sidecar(s) at about {} overhead",
             estimate.estimated_sidecars,
             format_size(estimate.estimated_overhead_bytes)
         ));
         if estimate.skipped_too_large > 0 {
             risks.push(format!(
-                "{} planned upload(s) exceed the Phase 1 EC size cap and will not get sidecars",
+                "{} planned upload(s) exceed the EC size cap and will not get sidecars",
                 estimate.skipped_too_large
             ));
         }
@@ -35158,7 +35161,7 @@ async fn cmd_sync_doctor(
             "estimated_sidecars": estimate.estimated_sidecars,
             "estimated_overhead_bytes": estimate.estimated_overhead_bytes,
             "skipped_too_large": estimate.skipped_too_large,
-            "phase1_max_file_size": ec_max_file_size,
+            "max_file_size": ec_max_file_size,
         }));
     }
     if !remote_root_ok {
@@ -35214,7 +35217,7 @@ async fn cmd_sync_doctor(
         ec_estimated_sidecars: ec_estimate.map(|estimate| estimate.estimated_sidecars),
         ec_estimated_overhead_bytes: ec_estimate.map(|estimate| estimate.estimated_overhead_bytes),
         ec_skipped_too_large: ec_estimate.map(|estimate| estimate.skipped_too_large),
-        ec_phase1_max_file_size: error_correction_pct.map(|_| ec_max_file_size),
+        ec_max_file_size: error_correction_pct.map(|_| ec_max_file_size),
     };
 
     match format {
@@ -36492,7 +36495,7 @@ async fn cmd_transfer_doctor(
         ec_estimated_sidecars: None,
         ec_estimated_overhead_bytes: None,
         ec_skipped_too_large: None,
-        ec_phase1_max_file_size: None,
+        ec_max_file_size: None,
     };
 
     match format {
@@ -44667,11 +44670,15 @@ mod tests {
     fn sync_doctor_ec_estimate_counts_sidecars_and_large_skips() {
         let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200);
 
+        // 100 and 101 are under the 200-byte cap; 300 is skipped. Each small file's real
+        // .aerocorrect is the unified frame (141 B: 85-byte header + 24-byte segment
+        // header + 32-byte trailing hash) + AVEC (32 + 3*16 checksums + 2*4096 parity at
+        // the MIN_SHARD floor) = 8413 B. The flat estimate used to report 31 B (~540x under).
         assert_eq!(
             estimate,
             SyncDoctorEcEstimate {
                 estimated_sidecars: 2,
-                estimated_overhead_bytes: 31,
+                estimated_overhead_bytes: 16_826,
                 skipped_too_large: 1,
             }
         );

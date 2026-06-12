@@ -7,8 +7,7 @@
 use crate::delta_transport::DeltaBatch;
 use crate::error_correction::aerosync::{
     generate_sync_sidecar_for_file_capped, parse_sha256_hex, sync_error_correction_sidecar_path,
-    verify_repair_sync_file, SyncEcGenerateResult, SyncEcRepairResult,
-    AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+    verify_repair_sync_file, SyncEcGenerateResult, SyncEcRepairResult, AEROSYNC_EC_MAX_FILE_SIZE,
 };
 use crate::error_correction::{
     ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
@@ -85,7 +84,7 @@ fn default_error_correction_pct() -> u32 {
 }
 
 fn default_error_correction_max_file_size() -> u64 {
-    AEROSYNC_EC_PHASE1_MAX_FILE_SIZE
+    AEROSYNC_EC_MAX_FILE_SIZE
 }
 
 /// Optional AeroSync recovery sidecar settings. Disabled by default so legacy
@@ -105,7 +104,7 @@ impl Default for SyncErrorCorrectionOptions {
         Self {
             enabled: false,
             pct: ERROR_CORRECTION_DEFAULT_PCT,
-            max_file_size: AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+            max_file_size: AEROSYNC_EC_MAX_FILE_SIZE,
         }
     }
 }
@@ -122,7 +121,7 @@ impl SyncErrorCorrectionOptions {
 
     pub(crate) fn max_file_size(&self) -> u64 {
         if self.max_file_size == 0 {
-            AEROSYNC_EC_PHASE1_MAX_FILE_SIZE
+            AEROSYNC_EC_MAX_FILE_SIZE
         } else {
             self.max_file_size
         }
@@ -153,8 +152,8 @@ pub enum SyncEcSidecarDeleteStatus {
     Failed(String),
 }
 
-pub const AEROSYNC_EC_EXCLUDE_PATTERN: &str = "*.aerorec";
-pub const AEROSYNC_EC_PHASE1_MAX_FILE_SIZE_BYTES: u64 = AEROSYNC_EC_PHASE1_MAX_FILE_SIZE;
+pub const AEROSYNC_EC_EXCLUDE_PATTERN: &str = "*.aerocorrect";
+pub const AEROSYNC_EC_MAX_FILE_SIZE_BYTES: u64 = AEROSYNC_EC_MAX_FILE_SIZE;
 
 /// Options for comparison
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,6 +227,13 @@ pub fn ensure_error_correction_exclude_patterns(patterns: &mut Vec<String>) {
     {
         patterns.push(AEROSYNC_EC_EXCLUDE_PATTERN.to_string());
     }
+}
+
+/// Exact `.aerocorrect` sidecar size for a `file_size`-byte upload at overhead level `pct`.
+/// Facade over the codec so the sync-doctor cost preview can never drift from the bytes
+/// the generator actually writes (see `error_correction::aerosync::estimate_aerorec_sidecar_len`).
+pub fn estimate_aerorec_sidecar_len(file_size: u64, pct: u32) -> u64 {
+    crate::error_correction::aerosync::estimate_aerorec_sidecar_len(file_size, pct)
 }
 
 pub(crate) fn apply_error_correction_excludes(options: &mut CompareOptions) {
@@ -516,6 +522,10 @@ pub struct SyncReport {
     pub ec_generated: u32,
     pub ec_verified: u32,
     pub ec_repaired: u32,
+    /// EC had a sidecar + an expected hash but could not bring the file back to the
+    /// expected content (rot beyond the parity budget). Surfaced so an unrepairable
+    /// download is never silently reported as healthy.
+    pub ec_verify_failed: u32,
     pub ec_skipped_too_large: u32,
     pub ec_generate_failed: u32,
     pub ec_sidecar_deleted: u32,
@@ -1675,9 +1685,9 @@ pub(crate) fn apply_sync_tree_outcome(
             SyncEcStatus::Repaired => report.ec_repaired += 1,
             SyncEcStatus::SkippedTooLarge => report.ec_skipped_too_large += 1,
             SyncEcStatus::GenerateFailed => report.ec_generate_failed += 1,
-            SyncEcStatus::MissingSidecar
-            | SyncEcStatus::MissingExpectedHash
-            | SyncEcStatus::VerifyFailed => {}
+            SyncEcStatus::VerifyFailed => report.ec_verify_failed += 1,
+            // EC not applicable to this file (no sidecar / no expected hash): not a failure.
+            SyncEcStatus::MissingSidecar | SyncEcStatus::MissingExpectedHash => {}
         }
     }
 
@@ -1782,9 +1792,25 @@ async fn download_sync_ec_sidecar(
         .download(sidecar_remote_path, &tmp_path, None)
         .await
     {
-        Ok(()) => std::fs::read(tmp.path())
-            .map(Some)
-            .map_err(|e| format!("read AeroSync EC temp download: {e}")),
+        Ok(()) => {
+            // A genuine sidecar is smaller than the file it protects (overhead < 100% at every
+            // level), so it cannot exceed the per-file cap by more than framing. Reject an oversize
+            // sidecar from a malicious/buggy remote BEFORE reading it into memory (defense against a
+            // remote serving a giant .aerocorrect for a tiny file). The 2x headroom covers small-file
+            // floors where the fixed parity-shard minimum makes a tiny file's sidecar exceed it.
+            const MAX_SIDECAR_BYTES: u64 = 2 * AEROSYNC_EC_MAX_FILE_SIZE;
+            let meta = std::fs::metadata(tmp.path())
+                .map_err(|e| format!("stat AeroSync EC temp download: {e}"))?;
+            if meta.len() > MAX_SIDECAR_BYTES {
+                return Err(format!(
+                    "AeroSync EC sidecar too large: {} bytes (max {MAX_SIDECAR_BYTES})",
+                    meta.len()
+                ));
+            }
+            std::fs::read(tmp.path())
+                .map(Some)
+                .map_err(|e| format!("read AeroSync EC temp download: {e}"))
+        }
         Err(ProviderError::NotFound(_)) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
@@ -1834,11 +1860,18 @@ async fn generate_sync_ec_after_upload(
     let sidecar_remote_path = sync_error_correction_sidecar_path(remote_path);
     match upload_sync_ec_sidecar(provider, &sidecar_remote_path, &sidecar.sidecar_bytes).await {
         Ok(()) => {
+            // Structured generation telemetry (the design's "telemetry surfaces"): the
+            // full sidecar geometry, so EC overhead/shape is observable per file.
             tracing::info!(
-                "sync.ec: generated sidecar (rel={}, sidecar={}, protected={}, sidecar_bytes={})",
+                "sync.ec: generated sidecar (rel={}, sidecar={}, file_size={}, sha256={}, shards={}, protected={}, overhead_pct={:.2}, avec_bytes={}, sidecar_bytes={})",
                 rel,
                 sidecar_remote_path,
+                sidecar.file_size,
+                hex::encode(sidecar.file_sha256),
+                sidecar.shards,
                 sidecar.bytes_protected,
+                sidecar.overhead_pct,
+                sidecar.avec_payload_len,
                 sidecar.sidecar_len
             );
             Some(SyncEcStatus::Generated)
@@ -1865,7 +1898,7 @@ pub async fn generate_sync_error_correction_sidecar_after_upload(
     let options = SyncErrorCorrectionOptions {
         enabled: true,
         pct,
-        max_file_size: AEROSYNC_EC_PHASE1_MAX_FILE_SIZE,
+        max_file_size: AEROSYNC_EC_MAX_FILE_SIZE,
     };
     generate_sync_ec_after_upload(provider, rel, local_path, remote_path, &options)
         .await
@@ -4341,10 +4374,10 @@ mod tests {
     }
 
     #[test]
-    fn error_correction_sidecar_remote_path_uses_aerorec_extension() {
+    fn error_correction_sidecar_remote_path_uses_aerocorrect_extension() {
         assert_eq!(
             sync_error_correction_sidecar_remote_path("/remote/file.bin"),
-            "/remote/file.bin.aerorec"
+            "/remote/file.bin.aerocorrect"
         );
     }
 
@@ -4359,6 +4392,7 @@ mod tests {
             SyncEcStatus::SkippedTooLarge,
             SyncEcStatus::GenerateFailed,
             SyncEcStatus::MissingSidecar,
+            SyncEcStatus::VerifyFailed,
         ];
 
         for status in statuses {
@@ -4382,6 +4416,7 @@ mod tests {
         assert_eq!(report.ec_repaired, 1);
         assert_eq!(report.ec_skipped_too_large, 1);
         assert_eq!(report.ec_generate_failed, 1);
+        assert_eq!(report.ec_verify_failed, 1);
     }
 
     #[test]
