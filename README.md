@@ -1,8 +1,8 @@
-# AeroFTP
-
 <p align="center">
-  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP Logo" width="128" height="128">
+  <img src="docs/img/banner.png" alt="AeroFTP" width="100%">
 </p>
+
+# AeroFTP
 
 <p align="center">
   <strong>FTP-First. Multi-Protocol. AI-Powered. Encrypted. Privacy-Enhanced.</strong>
