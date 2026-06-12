@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -575,6 +575,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         port?: number;
         options?: ConnectionParams['options'];
     }>>({});
+
+    // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
+    // `mega-webdav /` (same idempotent call that warms the bridge for the
+    // quota probe) prints the served URL, so the operator no longer has to
+    // copy it from the MEGAcmd terminal.
+    const [megaWebdavFetching, setMegaWebdavFetching] = useState(false);
+    const [megaWebdavError, setMegaWebdavError] = useState<string | null>(null);
 
     // When re-opening dropdown with a protocol already selected, clear the selection.
     // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
@@ -1898,6 +1905,31 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             return url.protocol === 'http:' ? 80 : url.protocol === 'https:' ? 443 : fallback;
         } catch {
             return fallback;
+        }
+    };
+
+    // Issue #215: ask the backend to run `mega-webdav /` and fill the Endpoint
+    // URL from its output, mirroring the mega-df quota probe. Requires an active
+    // MEGAcmd login; the typed error from the backend is surfaced inline.
+    const handleFetchMegaWebdavUrl = async () => {
+        setMegaWebdavError(null);
+        setMegaWebdavFetching(true);
+        try {
+            const url = await invoke<string>('mega_webdav_url');
+            if (url) {
+                onConnectionParamsChange({
+                    ...connectionParams,
+                    server: url,
+                    username: '',
+                    password: '',
+                    port: parseEndpointPort(url, connectionParams.port || 4443),
+                    options: { ...(connectionParams.options || {}), anonymous: true },
+                });
+            }
+        } catch (e) {
+            setMegaWebdavError(typeof e === 'string' ? e : String(e));
+        } finally {
+            setMegaWebdavFetching(false);
         }
     };
 
@@ -4732,7 +4764,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </ol>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">{t('connection.endpointUrl')}</label>
+                                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                    <label className="block text-sm font-medium">{t('connection.endpointUrl')}</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleFetchMegaWebdavUrl}
+                                                        disabled={megaWebdavFetching}
+                                                        className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        title="Run mega-webdav / and fill the URL automatically"
+                                                    >
+                                                        {megaWebdavFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                                        Fetch URL
+                                                    </button>
+                                                </div>
                                                 <input
                                                     type="url"
                                                     value={connectionParams.server}
@@ -4751,8 +4795,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     placeholder="http://127.0.0.1:4443/"
                                                     autoFocus
                                                 />
+                                                {megaWebdavError && (
+                                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">{megaWebdavError}</p>
+                                                )}
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Username and Password are intentionally omitted. Change the port here if MEGAcmd uses a custom one.
+                                                    Username and Password are intentionally omitted. Use Fetch URL to read the address from MEGAcmd, or change the port here if MEGAcmd uses a custom one.
                                                 </p>
                                             </div>
                                         </div>

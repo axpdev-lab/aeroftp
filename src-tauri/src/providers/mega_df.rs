@@ -335,6 +335,60 @@ pub async fn ensure_megacmd_webdav_bridge() -> Result<(), ProviderError> {
     classify_mega_webdav_result(output.status.success(), &combined)
 }
 
+/// Extract the served WebDAV URL from `mega-webdav /` output. Pure, for testing.
+///
+/// MEGAcmd prints the address whether the location is freshly served
+/// ("Serving via webdav: http://127.0.0.1:4443/") or already up
+/// ("/: already being served at http://127.0.0.1:4443/"). We take the first
+/// http(s) token and trim any trailing prose punctuation.
+pub(crate) fn parse_mega_webdav_url(combined: &str) -> Option<String> {
+    let lower = combined.to_ascii_lowercase();
+    let start = match (lower.find("http://"), lower.find("https://")) {
+        (Some(a), Some(b)) => a.min(b),
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => return None,
+    };
+    let rest = &combined[start..];
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    let mut url = rest[..end].to_string();
+    while url.ends_with(['.', ',', ';', ')', ']', '"', '\'']) {
+        url.pop();
+    }
+    // Reject a bare scheme with no host.
+    if url.starts_with("http://") && url.len() > "http://".len()
+        || url.starts_with("https://") && url.len() > "https://".len()
+    {
+        Some(url)
+    } else {
+        None
+    }
+}
+
+/// Resolve the local MEGAcmd WebDAV bridge URL by running `mega-webdav /`.
+///
+/// Mirrors `mega_df_query`: the same idempotent invocation that ensures the
+/// bridge is up also prints its address, so AeroFTP can fill the Endpoint URL
+/// field instead of asking the user to copy it from the MEGAcmd terminal
+/// (#215). Auth/server failures surface as the actionable errors from
+/// `classify_mega_webdav_result`; a clean run with no parseable URL is a
+/// parse error.
+pub async fn mega_webdav_url_query() -> Result<String, ProviderError> {
+    let output = run_mega_cmd_capture("mega-webdav", &["/"]).await?;
+    let combined = format!(
+        "{} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    classify_mega_webdav_result(output.status.success(), &combined)?;
+    parse_mega_webdav_url(&combined).ok_or_else(|| {
+        ProviderError::ParseError(format!(
+            "Could not parse the WebDAV URL from mega-webdav / output: {}",
+            combined.trim()
+        ))
+    })
+}
+
 pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64, Option<u64>), ProviderError> {
     let mut used = None;
     let mut total = None;
@@ -558,6 +612,35 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
     fn mega_webdav_unknown_failure_is_server_error() {
         let err = classify_mega_webdav_result(false, "some other failure").unwrap_err();
         assert!(matches!(err, ProviderError::ServerError(_)));
+    }
+
+    #[test]
+    fn parses_webdav_url_from_already_served() {
+        assert_eq!(
+            parse_mega_webdav_url("/: already being served at http://127.0.0.1:4443/"),
+            Some("http://127.0.0.1:4443/".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_webdav_url_from_fresh_serve() {
+        assert_eq!(
+            parse_mega_webdav_url("Serving via webdav: http://127.0.0.1:4443/."),
+            Some("http://127.0.0.1:4443/".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_https_webdav_url_when_tls_enabled() {
+        assert_eq!(
+            parse_mega_webdav_url("served at https://127.0.0.1:4443/ (TLS)"),
+            Some("https://127.0.0.1:4443/".to_string())
+        );
+    }
+
+    #[test]
+    fn webdav_url_absent_returns_none() {
+        assert_eq!(parse_mega_webdav_url("[err: Not logged in.]"), None);
     }
 
     #[test]
