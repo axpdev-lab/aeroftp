@@ -1064,12 +1064,13 @@ export const PROVIDERS: ProviderConfig[] = [
                 ...COMMON_FIELDS.accessKeyId,
                 label: 'Access key',
                 placeholder: 'admin',
-                helpText: 'Set in Filen Desktop > Network Drive > S3. Not your Filen account email.',
+                helpText: 'Set in Filen Desktop > Network Drive > S3. Not your Filen account email. Leave empty to try "admin".',
             },
             {
                 ...COMMON_FIELDS.secretAccessKey,
                 label: 'Secret key',
-                helpText: 'Set in Filen Desktop > Network Drive > S3. Not your Filen account password.',
+                placeholder: 'admin',
+                helpText: 'Set in Filen Desktop > Network Drive > S3. Not your Filen account password. Leave empty to try "admin".',
             },
         ],
         defaults: {
@@ -1288,12 +1289,13 @@ export const PROVIDERS: ProviderConfig[] = [
                 ...COMMON_FIELDS.username,
                 label: 'WebDAV username',
                 placeholder: 'admin',
-                helpText: 'Set in Filen Desktop > Network Drive > WebDAV. Not your Filen account email.',
+                helpText: 'Set in Filen Desktop > Network Drive > WebDAV. Not your Filen account email. Leave empty to try "admin".',
             },
             {
                 ...COMMON_FIELDS.password,
                 label: 'WebDAV password',
-                helpText: 'Set in Filen Desktop > Network Drive > WebDAV. Not your Filen account password.',
+                placeholder: 'admin',
+                helpText: 'Set in Filen Desktop > Network Drive > WebDAV. Not your Filen account password. Leave empty to try "admin".',
             },
         ],
         defaults: {

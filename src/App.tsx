@@ -4295,6 +4295,20 @@ interface UpdateVerificationInfo {
 
   const normalizeProviderConnectionParams = (params: ConnectionParams): ConnectionParams => {
     const protocol = params.protocol;
+    // Issue #215: the Filen Desktop local bridges keep "admin" only as a
+    // placeholder hint, not a hard default, because the real bridge credentials
+    // are whatever the user set inside Filen Desktop > Network Drive. But many
+    // users connect first just to check the bridge is up before customizing it
+    // in both apps, so when the username/password (S3 maps access/secret key to
+    // username/password too) are left empty we fall back to "admin" rather than
+    // blocking the connect with a missing-fields error. Explicit values win.
+    if (params.providerId === 'filen-desktop-webdav' || params.providerId === 'filen-desktop-s3') {
+      return {
+        ...params,
+        username: params.username || 'admin',
+        password: params.password || 'admin',
+      };
+    }
     if (protocol === 'mega') {
       return {
         ...params,
