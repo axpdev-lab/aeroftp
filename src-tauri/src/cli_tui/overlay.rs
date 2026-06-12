@@ -224,6 +224,7 @@ pub const HELP_LINES: &[&str] = &[
     "",
     "General",
     "  ?  / F1      this help          q  quit",
+    "  Mouse: wheel scrolls lists and this overlay; click selects",
 ];
 
 impl TuiOverlay {

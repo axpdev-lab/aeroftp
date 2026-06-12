@@ -3201,8 +3201,17 @@ impl AppState {
 
         // A modal overlay owns all input while it is open: a click or wheel must
         // not reach the view behind it (it would select rows or switch sides
-        // under the modal). The overlays are keyboard-driven, so swallow mouse.
+        // under the modal). The overlays are keyboard-driven, so swallow mouse,
+        // except the wheel scrolls the scrollable overlays (pager / help) just
+        // like Up/Down do.
         if self.overlay.is_active() {
+            match (ev.kind, &mut self.overlay) {
+                (MouseEventKind::ScrollUp, TuiOverlay::Pager(state)) => state.scroll_up(1),
+                (MouseEventKind::ScrollDown, TuiOverlay::Pager(state)) => state.scroll_down(1),
+                (MouseEventKind::ScrollUp, TuiOverlay::Help(state)) => state.scroll_up(1),
+                (MouseEventKind::ScrollDown, TuiOverlay::Help(state)) => state.scroll_down(1),
+                _ => {}
+            }
             return Vec::new();
         }
 
@@ -6054,6 +6063,45 @@ mod tests {
             "the view behind the overlay is not touched"
         );
         assert!(matches!(app.overlay, TuiOverlay::Palette(_)));
+    }
+
+    #[test]
+    fn mouse_wheel_scrolls_the_pager_overlay() {
+        let mut app = connected_app_with_listing();
+        app.overlay = TuiOverlay::Pager(PagerState::new(
+            "doc".to_string(),
+            (0..6).map(|n| format!("line {n}")).collect(),
+            false,
+            false,
+        ));
+        // Wheel down advances the scroll offset under the modal...
+        let cmds = app.handle_mouse(sample_mouse_event(
+            ::crossterm::event::MouseEventKind::ScrollDown,
+            5,
+            5,
+        ));
+        assert!(cmds.is_empty(), "the wheel never emits a worker command");
+        let scrolled = match &app.overlay {
+            TuiOverlay::Pager(s) => s.scroll,
+            _ => panic!("pager still open"),
+        };
+        assert_eq!(scrolled, 1, "scroll down moves one line");
+        // ...and wheel up brings it back, never below zero.
+        app.handle_mouse(sample_mouse_event(
+            ::crossterm::event::MouseEventKind::ScrollUp,
+            5,
+            5,
+        ));
+        app.handle_mouse(sample_mouse_event(
+            ::crossterm::event::MouseEventKind::ScrollUp,
+            5,
+            5,
+        ));
+        let scrolled = match &app.overlay {
+            TuiOverlay::Pager(s) => s.scroll,
+            _ => panic!("pager still open"),
+        };
+        assert_eq!(scrolled, 0, "scroll up saturates at the top");
     }
 
     #[test]
