@@ -47,7 +47,7 @@ pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 /// AeroFTP release (a sub-version surfaced in the TUI header). Beta 1.0.0 ships
 /// the IntroHub + multi-user dual-pane file manager with the full transfer set;
 /// later versions grow toward GUI parity (Discover/profile editing, etc).
-pub const TUI_VERSION: &str = "1.0.2-alpha";
+pub const TUI_VERSION: &str = "1.0.3-alpha";
 
 #[allow(dead_code)]
 pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
