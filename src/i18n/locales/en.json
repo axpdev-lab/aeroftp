@@ -1186,6 +1186,8 @@
             "manualTotalStorageHint": "Optional. Plan/account cap for backends with no quota API (FTP, S3, WebDAV) or that report only used space (Backblaze B2). The provider's own total always takes precedence.",
             "autoScanUsedOnConnect": "Calculate used storage on connect",
             "autoScanUsedOnConnectHint": "Only for backends with no used-space API (FTP, S3, WebDAV). Off by default: a large tree (e.g. a web project) is walked recursively, which can be slow. Otherwise use the StatusBar action on demand.",
+            "persistModeCredentials": "Remember credentials for every protocol of this account",
+            "persistModeCredentialsHint": "One profile per account: keep each protocol's credentials (API, WebDAV, S3, ...) saved so switching modes never asks again, even after a restart. Stored encrypted in the vault. Off by default.",
             "localPathPlaceholder": "/home/user/projects",
             "logoutOnDisconnect": "Logout on disconnect",
             "logoutOnDisconnectDesc": "Terminate MEGAcmd session when closing connection",

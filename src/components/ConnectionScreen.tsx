@@ -21,6 +21,7 @@ import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
 import { TotpLivePreview } from './TotpLivePreview';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader } from './providerModeGroups';
+import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -577,6 +578,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         options?: ConnectionParams['options'];
     }>>({});
 
+    // Issue #215: opt-in to PERSIST the per-mode snapshots to the encrypted
+    // vault so they survive a restart (one profile per account, switch protocol
+    // freely). Mirrors profile.persistModeCredentials; only meaningful for
+    // profiles whose provider/protocol belongs to a mode group.
+    const [persistModeCredentials, setPersistModeCredentials] = useState(false);
+
     // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
     // `mega-webdav /` (same idempotent call that warms the bridge for the
     // quota probe) prints the served URL, so the operator no longer has to
@@ -787,6 +794,45 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return !!oldGroup && oldGroup === newGroup;
     }, [editingProfileId, originalEditMode, protocol, selectedProviderId, connectionParams.providerId]);
 
+    // Issue #215: the persist-credentials opt-in is only meaningful when the
+    // active provider/protocol is part of a mode group (one account, several
+    // protocols). Outside a group there is a single credential set, already
+    // handled by the standard per-profile vault entry.
+    const inModeGroup = useMemo(
+        () => !!protocol && !!findActiveModeGroup(activeProviderId, protocol),
+        [activeProviderId, protocol],
+    );
+
+    // The stash key of the currently-active mode, matching the oldKey/newKey
+    // convention in handleProtocolChange (providerId, else protocol).
+    const computeActiveModeKey = (): string => {
+        const pid = selectedProviderId || connectionParams.providerId || undefined;
+        return pid || (protocol as string);
+    };
+
+    // The full per-mode map to persist: every stashed mode plus the live one.
+    const buildModeCredentialMap = (): ModeCredentialMap => {
+        const map: ModeCredentialMap = { ...modeCredentialSnapshotsRef.current };
+        map[computeActiveModeKey()] = {
+            username: connectionParams.username,
+            password: connectionParams.password,
+            server: connectionParams.server,
+            port: connectionParams.port,
+            options: connectionParams.options ? { ...connectionParams.options } : undefined,
+        };
+        return map;
+    };
+
+    // Write or clear the persisted per-mode snapshots for a profile depending on
+    // the opt-in. Called from saveToServers for both the edit and new branches.
+    const syncPersistedModeCredentials = async (profileId: string): Promise<void> => {
+        if (persistModeCredentials && inModeGroup) {
+            await storeModeCredentials(profileId, buildModeCredentialMap());
+        } else {
+            await deleteModeCredentials(profileId);
+        }
+    };
+
     // Resolved label of the active target mode (for the "Convert to X"
     // button). Falls back to the protocol string when the active mode
     // cannot be resolved.
@@ -968,6 +1014,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         options: optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
+                        persistModeCredentials: persistModeCredentials && inModeGroup,
                         providerId: selectedProviderId || s.providerId || (protocol === 'swift' ? 'blomp' : protocol === 'mega' ? 'mega' : undefined),
                         customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
                     };
@@ -976,6 +1023,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             });
 
             await storeSavedServerProfiles(updatedServers).catch(() => { });
+            await syncPersistedModeCredentials(editingProfileId);
             setSavedServersUpdate(Date.now());
             const savedServer = updatedServers.find((s) => s.id === editingProfileId);
             if (savedServer) {
@@ -1033,12 +1081,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
                 options: optionsToSave,
+                persistModeCredentials: persistModeCredentials && inModeGroup,
                 providerId: selectedProviderId || (protocol === 'swift' ? 'blomp' : protocol === 'mega' ? 'mega' : undefined),
                 customIconUrl: customIconForSave,
             };
 
             const newServers = [...existingServers, newServer];
             await storeSavedServerProfiles(newServers).catch(() => { });
+            await syncPersistedModeCredentials(newId);
             setSavedServersUpdate(Date.now());
             logActivity(
                 'PROFILE_SAVE',
@@ -1119,6 +1169,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             setOriginalEditMode(null);
             setConnectionName('');
             setSaveConnection(false);
+            setPersistModeCredentials(false);
+            modeCredentialSnapshotsRef.current = {};
             onConnectionParamsChange({ server: '', username: '', password: '' });
             onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
             onFormSaved?.();
@@ -1127,6 +1179,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             await saveToServers();
             setConnectionName('');
             setSaveConnection(false);
+            setPersistModeCredentials(false);
+            modeCredentialSnapshotsRef.current = {};
             onConnectionParamsChange({ server: '', username: '', password: '' });
             onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
             onFormSaved?.();
@@ -1410,6 +1464,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // This prevents stale data from showing when switching between servers
         // Drop any per-mode credential snapshots from a previous edit (#215).
         modeCredentialSnapshotsRef.current = {};
+        setPersistModeCredentials(!!profile.persistModeCredentials);
         setEditingProfileId(profile.id);
         editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
@@ -1520,6 +1575,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // Credential not found, password stays empty
             }
         }
+
+        // Issue #215: when the profile opted into persistent per-mode
+        // credentials, hydrate the in-memory snapshot map from the vault so a
+        // tab switch in handleProtocolChange restores each mode's saved
+        // credentials. Race-guarded like the password load above.
+        if (profile.persistModeCredentials) {
+            try {
+                const persisted = await loadModeCredentials(targetProfileId);
+                if (editingProfileIdRef.current === targetProfileId) {
+                    modeCredentialSnapshotsRef.current = persisted;
+                }
+            } catch {
+                // No persisted modes: in-session snapshots only.
+            }
+        }
     };
 
     const handleCancelEdit = () => {
@@ -1530,6 +1600,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setCustomIconForSave(undefined);
         setFaviconForSave(undefined);
         setSaveConnection(false);
+        setPersistModeCredentials(false);
+        modeCredentialSnapshotsRef.current = {};
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
@@ -2080,6 +2152,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     />
                     {showIcon && renderIconPicker()}
                 </div>
+                {/* Issue #215: persist credentials for every protocol of this
+                    account so switching modes never asks again, even after a
+                    restart. Only offered when the active provider/protocol is
+                    part of a mode group (Filen, MEGA, OpenDrive, Koofr, ...). */}
+                {inModeGroup && (
+                    <div>
+                        <Checkbox
+                            checked={persistModeCredentials}
+                            onChange={setPersistModeCredentials}
+                            label={t('connection.persistModeCredentials')}
+                            labelClassName="text-sm"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            {t('connection.persistModeCredentialsHint')}
+                        </p>
+                    </div>
+                )}
                 {/* Total storage (manual): optional cap for backends with no
                     quota API (raw FTP/FTPS/SFTP, most S3/WebDAV) or that
                     expose USED but not TOTAL (Backblaze B2). The provider API
