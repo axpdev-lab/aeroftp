@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TuiAction {
@@ -55,6 +55,36 @@ pub enum TuiAction {
     EditProfile,
     /// IntroHub: confirm-then-delete the highlighted saved profile (`x`).
     DeleteProfile,
+    /// Connected browser: cycle the active pane's sort (name/size/date/type,
+    /// asc/desc) (`B`). No-op on the IntroHub.
+    CycleSort,
+    /// Connected browser: open the live in-list filter prompt for the active
+    /// pane (`/`). No-op on the IntroHub.
+    OpenFilter,
+    /// Connected browser: reload the active pane's directory, dropping marks and
+    /// any filter (`L`). No-op on the IntroHub.
+    Reload,
+    /// Connected browser: toggle the mark on the selected entry (`Space`/`m`).
+    MarkToggle,
+    /// Connected browser: mark every visible entry in the active pane (`Ctrl+A`).
+    MarkAll,
+    /// Connected browser: clear every mark in the active pane (`Alt+A`).
+    MarkNone,
+    /// Connected browser: view the selected file in a read-only pager (`v`).
+    ViewFile,
+    /// Connected browser: edit the selected file in `$EDITOR` (`o`).
+    EditFile,
+    /// Connected browser: show full metadata for the selected entry (`i`).
+    Info,
+    /// Connected browser: recursive size of the selected directory (`Ctrl+S`).
+    SizeRecursive,
+    /// Connected browser: create an empty file in the active directory (`N`).
+    Touch,
+    /// Connected browser: toggle synced browsing so both panes `cd` together
+    /// (`Y`).
+    SyncedBrowsing,
+    /// Open the full help overlay (`?`/`F1`).
+    Help,
     Noop,
 }
 
@@ -66,6 +96,22 @@ pub enum TuiAction {
 /// translation pure and unit-testable. Overlay (text-entry/confirm) keys are
 /// handled separately by [`key_to_overlay`].
 pub fn key_to_action(key: KeyEvent) -> TuiAction {
+    // Modifier combos first (rev 1.0.3 table stakes). Only the specific Ctrl/Alt
+    // shortcuts are intercepted; every other key falls through to the plain
+    // mapping below, which ignores modifiers (so Ctrl+c still cancels, etc).
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('a') | KeyCode::Char('A') => return TuiAction::MarkAll,
+            KeyCode::Char('s') | KeyCode::Char('S') => return TuiAction::SizeRecursive,
+            KeyCode::Char('r') | KeyCode::Char('R') => return TuiAction::Reload,
+            _ => {}
+        }
+    }
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        if let KeyCode::Char('a') | KeyCode::Char('A') = key.code {
+            return TuiAction::MarkNone;
+        }
+    }
     match key.code {
         KeyCode::Char('q') => TuiAction::Quit,
         // Esc is contextual "back": disconnect to the IntroHub when connected,
@@ -94,6 +140,18 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Char('a') | KeyCode::Char('A') => TuiAction::AddProfile,
         KeyCode::Char('e') | KeyCode::Char('E') => TuiAction::EditProfile,
         KeyCode::Char('x') | KeyCode::Char('X') => TuiAction::DeleteProfile,
+        // Connected-browser table stakes (rev 1.0.3). These keys are free in the
+        // browser; AppState makes them no-ops on the IntroHub.
+        KeyCode::Char('B') | KeyCode::Char('b') => TuiAction::CycleSort,
+        KeyCode::Char('/') => TuiAction::OpenFilter,
+        KeyCode::Char('L') => TuiAction::Reload,
+        KeyCode::Char(' ') | KeyCode::Char('m') | KeyCode::Char('M') => TuiAction::MarkToggle,
+        KeyCode::Char('v') | KeyCode::Char('V') => TuiAction::ViewFile,
+        KeyCode::Char('o') | KeyCode::Char('O') => TuiAction::EditFile,
+        KeyCode::Char('i') | KeyCode::Char('I') => TuiAction::Info,
+        KeyCode::Char('N') => TuiAction::Touch,
+        KeyCode::Char('Y') | KeyCode::Char('y') => TuiAction::SyncedBrowsing,
+        KeyCode::Char('?') | KeyCode::F(1) => TuiAction::Help,
         _ => TuiAction::Noop,
     }
 }
@@ -122,6 +180,14 @@ pub enum OverlayKey {
     /// Advance to the next field (Tab). Used by the profile form (B4); ignored
     /// by text prompts and menus.
     Tab,
+    /// Scroll a screenful up (PageUp). Pager/help overlays only.
+    PageUp,
+    /// Scroll a screenful down (PageDown). Pager/help overlays only.
+    PageDown,
+    /// Jump to the start (Home). Pager/help overlays only.
+    Home,
+    /// Jump to the end (End). Pager/help overlays only.
+    End,
     /// A key with no overlay meaning.
     Noop,
 }
@@ -141,6 +207,10 @@ pub fn key_to_overlay(key: KeyEvent) -> OverlayKey {
         KeyCode::Down => OverlayKey::Down,
         KeyCode::Left => OverlayKey::Left,
         KeyCode::Right => OverlayKey::Right,
+        KeyCode::PageUp => OverlayKey::PageUp,
+        KeyCode::PageDown => OverlayKey::PageDown,
+        KeyCode::Home => OverlayKey::Home,
+        KeyCode::End => OverlayKey::End,
         KeyCode::Char(c) => OverlayKey::Char(c),
         _ => OverlayKey::Noop,
     }

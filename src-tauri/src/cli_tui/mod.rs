@@ -98,7 +98,7 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
         let mut last_view = view_key(&app);
 
         loop {
-            drain_worker_events(&mut app, &mut worker);
+            drain_worker_events(&mut app, &mut worker, terminal);
 
             // A view change leaves the old layout's cells behind (the per-frame
             // Clear widget only covers ratatui's buffer, which may be smaller than
@@ -171,7 +171,11 @@ fn resync_terminal(terminal: &mut CliTuiTerminal) {
     let _ = terminal.clear();
 }
 
-fn drain_worker_events(app: &mut AppState, worker: &mut Option<TuiWorkerClient>) {
+fn drain_worker_events(
+    app: &mut AppState,
+    worker: &mut Option<TuiWorkerClient>,
+    terminal: &mut CliTuiTerminal,
+) {
     let mut follow_up = Vec::new();
     {
         let Some(client) = worker.as_mut() else {
@@ -180,6 +184,33 @@ fn drain_worker_events(app: &mut AppState, worker: &mut Option<TuiWorkerClient>)
 
         loop {
             match client.events.try_recv() {
+                // The editor round-trip (`o`) must run from here because the run
+                // loop owns the terminal: suspend the TUI, open $EDITOR on the
+                // staged temp file, resume, then commit the re-upload. The worker
+                // cannot do this (it has no terminal), so it hands back EditReady.
+                Ok(WorkerEvent::EditReady {
+                    remote_path,
+                    temp_path,
+                }) => {
+                    app.apply_worker_event(WorkerEvent::EditReady {
+                        remote_path: remote_path.clone(),
+                        temp_path: temp_path.clone(),
+                    });
+                    match run_external_editor(terminal, &temp_path) {
+                        Ok(()) => follow_up.push(WorkerCommand::EditCommit {
+                            remote_path,
+                            temp_path,
+                        }),
+                        Err(err) => {
+                            let _ = std::fs::remove_file(&temp_path);
+                            app.apply_worker_event(WorkerEvent::Failed {
+                                operation: TuiWorkerOperation::Edit,
+                                identity: None,
+                                message: format!("editor failed: {}", err),
+                            });
+                        }
+                    }
+                }
                 Ok(event) => follow_up.extend(app.apply_worker_event(event)),
                 Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
                 Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
@@ -195,6 +226,45 @@ fn drain_worker_events(app: &mut AppState, worker: &mut Option<TuiWorkerClient>)
         }
     }
     dispatch_commands(app, worker, follow_up);
+}
+
+/// Suspend the TUI, open `$EDITOR` (then `$VISUAL`, then `vi`) on `path`, and
+/// resume. Leaves raw/alt-screen/mouse-capture for the editor to own the
+/// terminal, then restores all three and forces a repaint. The editor's exit
+/// code is ignored (a non-zero exit still commits whatever was saved).
+fn run_external_editor(terminal: &mut CliTuiTerminal, path: &str) -> io::Result<()> {
+    // If we cannot cleanly hand the terminal to the editor, do not spawn it; get
+    // back to a usable TUI state and surface the error (the caller still cleans up
+    // the staged temp file on this Err path).
+    if let Err(err) = restore_terminal(terminal) {
+        let _ = reenter_terminal(terminal);
+        return Err(err);
+    }
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_string());
+    // Honour an editor command with arguments ("code -w", "emacs -nw").
+    let mut parts = editor.split_whitespace();
+    let program = parts.next().unwrap_or("vi");
+    let spawn_result = std::process::Command::new(program)
+        .args(parts)
+        .arg(path)
+        .status();
+    // Always restore the TUI, even if the editor failed to spawn.
+    let reenter_result = reenter_terminal(terminal);
+    spawn_result?;
+    reenter_result
+}
+
+/// Re-enter raw + alternate-screen + mouse-capture mode after an external
+/// program (the editor) released the terminal, then resync the back buffer.
+fn reenter_terminal(terminal: &mut CliTuiTerminal) -> io::Result<()> {
+    enable_raw_mode()?;
+    terminal.backend_mut().execute(EnterAlternateScreen)?;
+    terminal.backend_mut().execute(EnableMouseCapture)?;
+    let _ = terminal.hide_cursor();
+    resync_terminal(terminal);
+    Ok(())
 }
 
 /// Forward worker commands, degrading gracefully if the worker channel closed.
@@ -304,14 +374,18 @@ fn render_browser_fullscreen(
             Span::raw(" rename   "),
             Span::styled("d", theme.accent_style()),
             Span::raw(" delete   "),
-            Span::styled("c", theme.accent_style()),
-            Span::raw(" cancel   "),
-            Span::styled("D", theme.accent_style()),
-            Span::raw(" clear   "),
+            Span::styled("v", theme.accent_style()),
+            Span::raw(" view   "),
+            Span::styled("Space", theme.accent_style()),
+            Span::raw(" mark   "),
+            Span::styled("B", theme.accent_style()),
+            Span::raw(" sort   "),
+            Span::styled("/", theme.accent_style()),
+            Span::raw(" filter   "),
             Span::styled(":", theme.accent_style()),
             Span::raw(" palette   "),
-            Span::styled("s", theme.accent_style()),
-            Span::raw(" show   "),
+            Span::styled("?", theme.accent_style()),
+            Span::raw(" help   "),
             Span::styled("Esc", theme.accent_style()),
             Span::raw(" disconnect   "),
             Span::styled("q", theme.accent_style()),
@@ -896,6 +970,19 @@ fn render_file_pane_list(
     } else {
         format!("{}{} ", title, state.path)
     };
+    // Compact view-state indicators: sort, live filter, hidden mode, mark count.
+    let mut title = format!("{}[{}]", title, state.sort.indicator());
+    if let Some(filter) = &state.filter {
+        title.push_str(&format!(" /{}", sanitize_display(filter)));
+    }
+    if state.show_hidden {
+        title.push_str(" .hidden");
+    }
+    let mark_count = state.marked.len();
+    if mark_count > 0 {
+        title.push_str(&format!(" *{}", mark_count));
+    }
+    title.push(' ');
 
     let items: Vec<ListItem> = if state.entries.is_empty() {
         let message = if state.summary.is_some() {
@@ -927,12 +1014,24 @@ fn render_file_pane_list(
             .enumerate()
             .map(|(i, entry)| {
                 let (gutter, gutter_style) = if cursor == Some(i) {
-                    ("\u{258f} ", bar_style)
+                    ("\u{258f}", bar_style)
+                } else {
+                    (" ", Style::default())
+                };
+                // A mark column so multi-selected entries stand out independently
+                // of the cursor bar.
+                let marked = state.is_marked(entry);
+                let (mark, mark_style) = if marked {
+                    (
+                        "\u{2713} ",
+                        theme.accent_style().add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     ("  ", Style::default())
                 };
                 ListItem::new(Line::from(vec![
                     Span::styled(gutter, gutter_style),
+                    Span::styled(mark, mark_style),
                     Span::styled(
                         format_browser_entry(entry),
                         if entry.is_dir {
@@ -1038,8 +1137,8 @@ fn progress_bar(ratio: f64, width: usize) -> String {
     format!("[{}{}]", "#".repeat(filled), "-".repeat(width - filled))
 }
 
-fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
-    match &app.overlay {
+fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &mut AppState, theme: TuiTheme) {
+    match &mut app.overlay {
         TuiOverlay::None => {}
         TuiOverlay::Palette(state) => {
             // Bottom-anchored input line (the #311 footer slot): the last result
@@ -1282,6 +1381,68 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             let body = Paragraph::new(lines)
                 .block(Block::default().borders(Borders::ALL).title(title))
                 .wrap(Wrap { trim: false });
+            frame.render_widget(body, popup);
+        }
+        TuiOverlay::Pager(state) => {
+            let popup = centered_rect(86, area.height.saturating_sub(2).max(3), area);
+            frame.render_widget(Clear, popup);
+            let inner_h = popup.height.saturating_sub(2).max(1) as usize;
+            state.viewport = inner_h;
+            let total = state.lines.len();
+            let start = state.scroll.min(total.saturating_sub(1));
+            let end = (start + inner_h).min(total);
+            let visible_lines: Vec<Line> = state.lines[start..end]
+                .iter()
+                .map(|line| {
+                    let style = if state.binary {
+                        theme.muted_style()
+                    } else {
+                        Style::default()
+                    };
+                    Line::from(Span::styled(line.clone(), style))
+                })
+                .collect();
+            let pos = if total == 0 {
+                "empty".to_string()
+            } else {
+                format!("{}-{}/{}", start + 1, end, total)
+            };
+            let mut title = format!("{}[{}]", state.title, pos);
+            if state.truncated {
+                title.push_str(" truncated");
+            }
+            title.push_str("  (Up/Down scroll  PgUp/PgDn page  Esc close)");
+            let body = Paragraph::new(visible_lines)
+                .block(Block::default().borders(Borders::ALL).title(title));
+            frame.render_widget(body, popup);
+        }
+        TuiOverlay::Help(state) => {
+            use crate::cli_tui::overlay::HELP_LINES;
+            let popup = centered_rect(72, area.height.saturating_sub(2).max(3), area);
+            frame.render_widget(Clear, popup);
+            let inner_h = popup.height.saturating_sub(2).max(1) as usize;
+            state.viewport = inner_h;
+            let total = HELP_LINES.len();
+            let start = state.scroll.min(total.saturating_sub(1));
+            let end = (start + inner_h).min(total);
+            let visible_lines: Vec<Line> = HELP_LINES[start..end]
+                .iter()
+                .map(|line| {
+                    // Section headers (no leading spaces, non-empty) get the accent.
+                    let is_header = !line.is_empty() && !line.starts_with(' ');
+                    let style = if is_header {
+                        theme.accent_style().add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+                    Line::from(Span::styled((*line).to_string(), style))
+                })
+                .collect();
+            let body = Paragraph::new(visible_lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Help  (Up/Down scroll  Esc close) "),
+            );
             frame.render_widget(body, popup);
         }
     }

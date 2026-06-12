@@ -240,6 +240,39 @@ pub enum WorkerCommand {
         identity: TuiSessionIdentity,
         profile_id: String,
     },
+    /// Read a file for the read-only viewer (`v`): the worker reads a capped
+    /// prefix, decodes it (or flags it binary), and replies with `FileContent`.
+    /// `local` selects the local filesystem instead of the remote provider.
+    ViewFile {
+        path: String,
+        local: bool,
+    },
+    /// Compute the recursive size of a directory (`Ctrl+S`): total bytes and file
+    /// count under `path`. `local` selects the local filesystem.
+    SizeRecursive {
+        path: String,
+        local: bool,
+    },
+    /// Create an empty file (`N`). `local` selects the local filesystem instead
+    /// of the remote provider. Reports a `PathReady`/`Failed` like the other
+    /// mutations so the listing refreshes.
+    Touch {
+        path: String,
+        local: bool,
+    },
+    /// Edit step 1 (`o`): download a remote file to a temp path so the run loop
+    /// can open it in `$EDITOR`. Replies with `EditReady` (carrying the temp
+    /// path) or `Failed`.
+    EditFetch {
+        remote_path: String,
+    },
+    /// Edit step 2: re-upload the edited temp file to the remote path, then
+    /// delete the temp. Replies with `EditDone` (a listing refresh follows) or
+    /// `Failed`.
+    EditCommit {
+        remote_path: String,
+        temp_path: String,
+    },
 }
 
 impl WorkerCommand {
@@ -273,6 +306,12 @@ impl WorkerCommand {
             }
             WorkerCommand::HealthCheck { .. } => TuiWorkerOperation::Health,
             WorkerCommand::RefreshQuota { .. } => TuiWorkerOperation::Quota,
+            WorkerCommand::ViewFile { .. } => TuiWorkerOperation::View,
+            WorkerCommand::SizeRecursive { .. } => TuiWorkerOperation::Size,
+            WorkerCommand::Touch { .. } => TuiWorkerOperation::Touch,
+            WorkerCommand::EditFetch { .. } | WorkerCommand::EditCommit { .. } => {
+                TuiWorkerOperation::Edit
+            }
         }
     }
 }
@@ -294,6 +333,10 @@ pub enum TuiWorkerOperation {
     Profile,
     Health,
     Quota,
+    View,
+    Size,
+    Touch,
+    Edit,
 }
 
 impl TuiWorkerOperation {
@@ -313,6 +356,10 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Profile => "profile",
             TuiWorkerOperation::Health => "health",
             TuiWorkerOperation::Quota => "quota",
+            TuiWorkerOperation::View => "view",
+            TuiWorkerOperation::Size => "size",
+            TuiWorkerOperation::Touch => "touch",
+            TuiWorkerOperation::Edit => "edit",
         }
     }
 }
@@ -387,6 +434,33 @@ pub enum WorkerEvent {
         profile_id: String,
         message: String,
     },
+    /// Decoded content of a file requested with [`WorkerCommand::ViewFile`].
+    /// `binary` flags a non-text file (then `content` is a short notice);
+    /// `truncated` marks that only a capped prefix was read.
+    FileContent {
+        path: String,
+        content: String,
+        truncated: bool,
+        binary: bool,
+    },
+    /// Recursive size result for [`WorkerCommand::SizeRecursive`].
+    DirSize {
+        path: String,
+        bytes: u64,
+        files: u64,
+    },
+    /// Edit step 1 done ([`WorkerCommand::EditFetch`]): the remote file is staged
+    /// at `temp_path` and the run loop should open `$EDITOR` on it.
+    EditReady {
+        remote_path: String,
+        temp_path: String,
+    },
+    /// Edit step 2 done ([`WorkerCommand::EditCommit`]): the edited file was
+    /// re-uploaded. A remote listing refresh follows.
+    EditDone {
+        remote_path: String,
+        message: String,
+    },
 }
 
 impl WorkerEvent {
@@ -421,6 +495,18 @@ impl WorkerEvent {
                 total,
             } => format!("quota {} {}/{}", profile_id, used, total),
             WorkerEvent::QuotaFailed { profile_id, .. } => format!("quota {} failed", profile_id),
+            WorkerEvent::FileContent { path, binary, .. } => {
+                format!(
+                    "view ready {} ({})",
+                    path,
+                    if *binary { "binary" } else { "text" }
+                )
+            }
+            WorkerEvent::DirSize { path, bytes, files } => {
+                format!("size {} {} bytes {} files", path, bytes, files)
+            }
+            WorkerEvent::EditReady { remote_path, .. } => format!("edit ready {}", remote_path),
+            WorkerEvent::EditDone { remote_path, .. } => format!("edit done {}", remote_path),
         }
     }
 }

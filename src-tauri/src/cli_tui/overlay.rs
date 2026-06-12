@@ -23,6 +23,13 @@ pub enum TuiOverlay {
     /// WorkerCommands (ls/cd/get/stat/mkdir/rm) against the held session only.
     /// Parser + dispatch live in AppState; overlay is pure input state.
     Palette(PaletteState),
+    /// Read-only file viewer (`v`): a scrollable pager over a downloaded/streamed
+    /// file, binary-safe. Pure view state; the bytes are read by the worker and
+    /// handed over as already-decoded lines.
+    Pager(PagerState),
+    /// Full key-reference help overlay (`?`/`F1`): a scrollable list of every
+    /// key binding. Static content; pure scroll state.
+    Help(HelpState),
     /// DiscoveryHub profile form (B4): create or edit a saved profile's
     /// metadata (and, optionally, its credential). A vertical list of labelled
     /// fields with one focused field; Tab/Up/Down move, Left/Right cycle the
@@ -104,6 +111,120 @@ impl PaletteState {
         self.buffer.clear();
     }
 }
+
+/// Read-only pager state for the file viewer (`v`). The worker decodes the file
+/// into display lines (binary files become a short notice); the overlay only
+/// tracks the scroll offset. `viewport` is the last-rendered visible height, kept
+/// so paging keys move by a screenful.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct PagerState {
+    pub title: String,
+    pub lines: Vec<String>,
+    pub scroll: usize,
+    pub truncated: bool,
+    pub binary: bool,
+    pub viewport: usize,
+}
+
+impl PagerState {
+    pub fn new(title: String, lines: Vec<String>, truncated: bool, binary: bool) -> Self {
+        Self {
+            title,
+            lines,
+            scroll: 0,
+            truncated,
+            binary,
+            viewport: 1,
+        }
+    }
+
+    /// Largest valid scroll offset given the current viewport, so the last line
+    /// can reach the bottom without scrolling past the end.
+    fn max_scroll(&self) -> usize {
+        self.lines.len().saturating_sub(self.viewport.max(1))
+    }
+
+    pub fn scroll_down(&mut self, delta: usize) {
+        self.scroll = (self.scroll + delta).min(self.max_scroll());
+    }
+
+    pub fn scroll_up(&mut self, delta: usize) {
+        self.scroll = self.scroll.saturating_sub(delta);
+    }
+
+    pub fn page_down(&mut self) {
+        self.scroll_down(self.viewport.max(1));
+    }
+
+    pub fn page_up(&mut self) {
+        self.scroll_up(self.viewport.max(1));
+    }
+
+    pub fn scroll_to_top(&mut self) {
+        self.scroll = 0;
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll = self.max_scroll();
+    }
+}
+
+/// Help overlay state (`?`/`F1`): a scrollable static key reference. Like the
+/// pager it only carries a scroll offset and the last-rendered viewport height.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct HelpState {
+    pub scroll: usize,
+    pub viewport: usize,
+}
+
+impl HelpState {
+    fn max_scroll(&self) -> usize {
+        HELP_LINES.len().saturating_sub(self.viewport.max(1))
+    }
+
+    pub fn scroll_down(&mut self, delta: usize) {
+        self.scroll = (self.scroll + delta).min(self.max_scroll());
+    }
+
+    pub fn scroll_up(&mut self, delta: usize) {
+        self.scroll = self.scroll.saturating_sub(delta);
+    }
+}
+
+/// The full key reference shown by the help overlay. Single source of truth so
+/// the overlay and any future docs stay in sync. No emojis / em-dashes.
+pub const HELP_LINES: &[&str] = &[
+    "AeroFTP TUI - key reference",
+    "",
+    "IntroHub (pre-connect)",
+    "  Up/Down      move the highlighted profile",
+    "  Left/Right   switch user",
+    "  Enter        connect to the profile",
+    "  f            toggle favorite",
+    "  G            manage groups (filter / membership)",
+    "  a / e / x    add / edit / delete a profile",
+    "  H            health probe        Q  refresh quota",
+    "  s            reveal credentials (session only)",
+    "",
+    "Connected browser",
+    "  Tab          switch active pane (Local / Remote)",
+    "  Up/Down      move selection      Enter  open dir / stat file",
+    "  Bksp         parent directory",
+    "  g / p        download / upload",
+    "  n / N        new folder / new empty file",
+    "  r            rename             d  delete",
+    "  v            view file          o  edit in $EDITOR",
+    "  i            file info          Ctrl+S  recursive size",
+    "  B            cycle sort         /  filter listing",
+    "  a            toggle hidden      L / Ctrl+R  reload",
+    "  Space / m    mark entry         Ctrl+A / Alt+A  mark all / none",
+    "  G            go to path         Y  synced browsing",
+    "  :            command palette    c  cancel   D  clear transfers",
+    "  Esc          disconnect to IntroHub",
+    "",
+    "General",
+    "  ?  / F1      this help          q  quit",
+];
 
 impl TuiOverlay {
     pub fn is_active(&self) -> bool {
@@ -402,7 +523,7 @@ impl PromptState {
         }
         if matches!(
             self.kind,
-            PromptKind::Mkdir { .. } | PromptKind::Rename { .. }
+            PromptKind::Mkdir { .. } | PromptKind::Rename { .. } | PromptKind::Touch { .. }
         ) && matches!(c, '/' | '\\')
         {
             return;
@@ -471,6 +592,16 @@ pub enum PromptKind {
         profile_id: String,
         rename_from: Option<String>,
     },
+    /// Live filter (`/`): the buffer narrows the active pane's listing as a
+    /// case-insensitive substring or `*`/`?` wildcard. `local` records which pane
+    /// the filter was raised on so submit/clear act on the right side.
+    Filter { local: bool },
+    /// Create an empty file (`N`) named by the buffer inside `parent`. `local`
+    /// routes the touch to the local filesystem instead of the remote provider.
+    Touch { parent: String, local: bool },
+    /// Go to a path (`G` in the browser): jump the active pane to the directory
+    /// in the buffer. `local` selects the pane; the path is resolved by AppState.
+    Goto { local: bool },
 }
 
 /// A yes/no confirmation guarding a destructive action.
@@ -498,6 +629,13 @@ pub enum ConfirmKind {
         user_name: String,
         profile_id: String,
         profile_name: String,
+    },
+    /// Delete every marked entry in a pane (multi-select batch). Each item is
+    /// `(path, is_dir)`; `local` routes the whole batch to the local filesystem
+    /// or the remote provider.
+    DeleteBatch {
+        items: Vec<(String, bool)>,
+        local: bool,
     },
 }
 

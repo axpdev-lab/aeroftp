@@ -1,8 +1,8 @@
 use crate::cli_tui::{
     event::{OverlayKey, TuiAction},
     overlay::{
-        ConfirmKind, ConfirmState, GroupsOverlayItem, GroupsOverlayState, PaletteState,
-        ProfileFormMode, ProfileFormState, PromptKind, PromptState, TuiOverlay,
+        ConfirmKind, ConfirmState, GroupsOverlayItem, GroupsOverlayState, HelpState, PagerState,
+        PaletteState, ProfileFormMode, ProfileFormState, PromptKind, PromptState, TuiOverlay,
     },
     panes::{
         browser::BrowserPaneState, profiles::ProfilesPaneState, transfers::TransfersPaneState,
@@ -139,6 +139,10 @@ pub struct AppState {
     pub show_credentials: bool,
     /// When in Browser focus in dual-pane mode (Phase 3), which side is active for navigation/ops.
     pub active_browser_side: BrowserSide,
+    /// Synced browsing (`Y`): when on, opening or leaving a directory on the
+    /// active pane mirrors the same child-name navigation on the other pane, so
+    /// the two sides walk a matching directory tree. Session-only.
+    pub synced_browsing: bool,
     /// IntroHub group filter (#320): when `Some(name)`, the My Servers list is
     /// narrowed to that group's members. The TUI's first list filter; mutually
     /// exclusive with any other narrowing (only one at a time). `None` = all.
@@ -177,6 +181,7 @@ impl AppState {
             intent: None,
             show_credentials: false,
             active_browser_side: BrowserSide::Remote,
+            synced_browsing: false,
             selected_group: None,
             layout: LayoutRects::default(),
             last_mouse_down: None,
@@ -282,12 +287,44 @@ impl AppState {
             TuiAction::ToggleFavorite => Vec::new(),
             TuiAction::HealthCheck => Vec::new(),
             TuiAction::RefreshQuota => Vec::new(),
-            TuiAction::ManageGroups => Vec::new(),
-            // Profile management (DiscoveryHub, B4) is IntroHub-only; in the
-            // connected browser these keys are typed into nothing and ignored.
-            TuiAction::AddProfile => Vec::new(),
+            // `G` manages groups on the IntroHub; in the connected browser it is
+            // the go-to-path prompt (the keyed analogue of palette `cd`).
+            TuiAction::ManageGroups => {
+                if matches!(self.focus, TuiFocus::Browser) {
+                    self.open_goto_prompt()
+                } else {
+                    Vec::new()
+                }
+            }
+            // `a` adds a profile on the IntroHub; in the connected browser it is
+            // the dotfile toggle (the key is free there per the keymap plan).
+            TuiAction::AddProfile => {
+                if matches!(self.focus, TuiFocus::Browser) {
+                    self.toggle_active_hidden()
+                } else {
+                    Vec::new()
+                }
+            }
+            // `e`/`x` manage profiles on the IntroHub only; no browser meaning.
             TuiAction::EditProfile => Vec::new(),
             TuiAction::DeleteProfile => Vec::new(),
+            TuiAction::CycleSort => self.cycle_active_sort(),
+            TuiAction::OpenFilter => self.open_filter_prompt(),
+            TuiAction::Reload => self.reload_active(),
+            TuiAction::MarkToggle => self.toggle_active_mark(),
+            TuiAction::MarkAll => self.mark_all_active(),
+            TuiAction::MarkNone => self.clear_active_marks(),
+            TuiAction::ViewFile => self.view_selected_file(),
+            TuiAction::EditFile => self.edit_selected_file(),
+            TuiAction::Info => self.info_selected(),
+            TuiAction::SizeRecursive => self.size_selected_dir(),
+            TuiAction::Touch => self.trigger_touch(),
+            TuiAction::SyncedBrowsing => self.toggle_synced_browsing(),
+            TuiAction::Help => {
+                self.overlay = TuiOverlay::Help(HelpState::default());
+                self.status = "Help: Up/Down scroll  Esc close".to_string();
+                Vec::new()
+            }
             TuiAction::OpenPalette => {
                 if self.is_live_connected() {
                     self.overlay = TuiOverlay::Palette(PaletteState::new());
@@ -1035,20 +1072,32 @@ impl AppState {
 
     fn open_selected_browser_entry(&mut self) -> Vec<WorkerCommand> {
         // Phase 3: operations on the active side (for now remote uses worker, local will too).
-        let active = self.active_browser_mut();
+        let side = self.active_browser_side;
+        let active = self.active_browser();
         if let Some(path) = active.selected_directory_path() {
-            if self.active_browser_side == BrowserSide::Local {
+            let child = active.selected_entry().map(|entry| entry.name.clone());
+            let mut commands = Vec::new();
+            if side == BrowserSide::Local {
                 // Local list can be handled in worker or directly; for consistency go through worker.
                 self.status = format!("Listing local {}.", path);
-                return vec![WorkerCommand::LocalList { path }];
+                commands.push(WorkerCommand::LocalList { path });
+            } else {
+                self.worker = WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::List,
+                    identity: self.session.identity.clone(),
+                };
+                self.status = format!("Listing {}.", path);
+                commands.push(WorkerCommand::List { path });
             }
-            self.worker = WorkerEvent::Busy {
-                operation: TuiWorkerOperation::List,
-                identity: self.session.identity.clone(),
-            };
-            self.status = format!("Listing {}.", path);
-            return vec![WorkerCommand::List { path }];
+            // Synced browsing (`Y`): mirror the same child onto the other pane.
+            if self.synced_browsing {
+                if let Some(child) = child {
+                    commands.extend(self.synced_open_other(side, &child));
+                }
+            }
+            return commands;
         }
+        let active = self.active_browser_mut();
 
         let Some(path) = active.selected_file_path() else {
             self.status = "No browser entry selected.".to_string();
@@ -1083,17 +1132,24 @@ impl AppState {
             return Vec::new();
         };
 
-        if self.active_browser_side == BrowserSide::Local {
+        let side = self.active_browser_side;
+        let mut commands = Vec::new();
+        if side == BrowserSide::Local {
             self.status = format!("Listing local parent {}.", path);
-            return vec![WorkerCommand::LocalList { path }];
+            commands.push(WorkerCommand::LocalList { path });
+        } else {
+            self.worker = WorkerEvent::Busy {
+                operation: TuiWorkerOperation::List,
+                identity: self.session.identity.clone(),
+            };
+            self.status = format!("Listing parent {}.", path);
+            commands.push(WorkerCommand::List { path });
         }
-
-        self.worker = WorkerEvent::Busy {
-            operation: TuiWorkerOperation::List,
-            identity: self.session.identity.clone(),
-        };
-        self.status = format!("Listing parent {}.", path);
-        vec![WorkerCommand::List { path }]
+        // Synced browsing (`Y`): walk the other pane up too.
+        if self.synced_browsing {
+            commands.extend(self.synced_parent_other(side));
+        }
+        commands
     }
 
     /// Whether a live, connected session exists. Mutating actions and transfers
@@ -1179,6 +1235,35 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
+        let on_local = self.active_browser_side == BrowserSide::Local;
+        // Multi-select batch: when entries are marked, delete the whole set.
+        let marked = self.active_browser().marked_entries();
+        if !marked.is_empty() {
+            let count = marked.len();
+            let items: Vec<(String, bool)> = marked
+                .into_iter()
+                .map(|(path, is_dir, _)| (path, is_dir))
+                .collect();
+            let message = format!(
+                "Delete {} marked entr{} on {:?}? (directories are removed recursively)",
+                count,
+                if count == 1 { "y" } else { "ies" },
+                self.active_browser_side
+            );
+            self.overlay = TuiOverlay::Confirm(ConfirmState {
+                kind: ConfirmKind::DeleteBatch {
+                    items,
+                    local: on_local,
+                },
+                message,
+            });
+            self.status = format!(
+                "Confirm batch delete of {} entr{}.",
+                count,
+                if count == 1 { "y" } else { "ies" }
+            );
+            return Vec::new();
+        }
         // Phase 3: delete on active pane (local or remote selection).
         let active = self.active_browser();
         let Some(entry) = active.selected_entry() else {
@@ -1195,7 +1280,6 @@ impl AppState {
         } else {
             format!("Delete file '{}'?", path)
         };
-        let on_local = self.active_browser_side == BrowserSide::Local;
         self.overlay = TuiOverlay::Confirm(ConfirmState {
             kind: ConfirmKind::Delete {
                 path,
@@ -1244,6 +1328,57 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
+        // Smart cross default destination: the local pane's directory, then the
+        // launch CWD, then the process CWD.
+        let base = if !self.local.path.is_empty() {
+            self.local.path.clone()
+        } else if !self.context.download_base.is_empty() {
+            self.context.download_base.clone()
+        } else {
+            ".".to_string()
+        };
+        let base = base.trim_end_matches('/').to_string();
+        // Multi-select batch: when remote files are marked, download the whole
+        // set into the local directory (directories among the marks are skipped).
+        let remote_marks = self.browser.marked_entries();
+        if !remote_marks.is_empty() {
+            let mut commands = Vec::new();
+            let mut skipped = 0usize;
+            for (remote, is_dir, name) in remote_marks {
+                if is_dir {
+                    skipped += 1;
+                    continue;
+                }
+                let local_path = format!("{}/{}", base, name);
+                let id = self.transfers.enqueue(
+                    TransferDirection::Download,
+                    name,
+                    remote.clone(),
+                    local_path.clone(),
+                );
+                commands.push(WorkerCommand::Download {
+                    id,
+                    remote_path: remote,
+                    local_path,
+                });
+            }
+            self.browser.clear_marks();
+            if commands.is_empty() {
+                self.status = "Marked entries are directories; mark files to download.".to_string();
+                return Vec::new();
+            }
+            self.focus = TuiFocus::Transfers;
+            let note = if skipped > 0 {
+                format!(", {} dir(s) skipped", skipped)
+            } else {
+                String::new()
+            };
+            self.begin_mutation(
+                TuiWorkerOperation::Transfer,
+                format!("Downloading {} marked file(s){}.", commands.len(), note),
+            );
+            return commands;
+        }
         // Phase 3 cross get/put: 'g' always sources from the remote pane's selection,
         // defaults the destination to the local pane's current directory (smart cross default).
         let remote_state = &self.browser;
@@ -1260,17 +1395,9 @@ impl AppState {
             self.status = "No file selected to download.".to_string();
             return Vec::new();
         };
-        // Cross default: download into the LOCAL pane's current directory (what
-        // the user sees on the Local side), so `g` mirrors `u`. Fall back to the
-        // launch CWD, then the process CWD, when the local pane has no path yet.
-        let base = if !self.local.path.is_empty() {
-            self.local.path.clone()
-        } else if !self.context.download_base.is_empty() {
-            self.context.download_base.clone()
-        } else {
-            ".".to_string()
-        };
-        let default_local = format!("{}/{}", base.trim_end_matches('/'), name);
+        // Cross default: download into the LOCAL pane's directory (`base`,
+        // computed above), so `g` mirrors `u`.
+        let default_local = format!("{}/{}", base, name);
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Download { remote },
             format!("Download '{}'", name),
@@ -1289,12 +1416,53 @@ impl AppState {
         if !self.require_live_connection() {
             return Vec::new();
         }
+        let remote_dir = self.browser.path.clone();
+        // Multi-select batch: when local files are marked, upload the whole set
+        // into the remote directory (directories among the marks are skipped).
+        let local_marks = self.local.marked_entries();
+        if !local_marks.is_empty() {
+            let mut commands = Vec::new();
+            let mut skipped = 0usize;
+            for (local_path, is_dir, name) in local_marks {
+                if is_dir {
+                    skipped += 1;
+                    continue;
+                }
+                let remote = join_remote(&remote_dir, &name);
+                let id = self.transfers.enqueue(
+                    TransferDirection::Upload,
+                    name,
+                    remote.clone(),
+                    local_path.clone(),
+                );
+                commands.push(WorkerCommand::Upload {
+                    id,
+                    local_path,
+                    remote_path: remote,
+                });
+            }
+            self.local.clear_marks();
+            if commands.is_empty() {
+                self.status = "Marked entries are directories; mark files to upload.".to_string();
+                return Vec::new();
+            }
+            self.focus = TuiFocus::Transfers;
+            let note = if skipped > 0 {
+                format!(", {} dir(s) skipped", skipped)
+            } else {
+                String::new()
+            };
+            self.begin_mutation(
+                TuiWorkerOperation::Transfer,
+                format!("Uploading {} marked file(s){}.", commands.len(), note),
+            );
+            return commands;
+        }
         // Phase 3 cross: 'u' sources from the LOCAL pane selection, targets the
         // remote pane's current dir. The source is prefilled with the highlighted
         // local file (mirror of `g`, which prefills the local destination), so the
         // common case is just Enter; the field stays editable and a directory or
         // empty selection leaves it blank to type a path.
-        let remote_dir = self.browser.path.clone();
         let default_source = self.local.selected_file_path().unwrap_or_default();
         self.overlay = TuiOverlay::Prompt(PromptState::new(
             PromptKind::Upload {
@@ -1334,6 +1502,334 @@ impl AppState {
             .into_iter()
             .map(|local_path| WorkerCommand::DiscardPartial { local_path })
             .collect()
+    }
+
+    // --- rev 1.0.3 file-manager table stakes -------------------------------
+
+    /// `B`: cycle the active pane's sort (name/size/date/type, asc/desc). Pure
+    /// in-memory view change, no worker round-trip.
+    fn cycle_active_sort(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to change the sort.".to_string();
+            return Vec::new();
+        }
+        let side = self.active_browser_side;
+        self.active_browser_mut().cycle_sort();
+        let indicator = self.active_browser().sort.indicator();
+        self.status = format!("Sort: {} ({:?}).", indicator, side);
+        Vec::new()
+    }
+
+    /// `/`: open the live filter prompt for the active pane, seeded with the
+    /// current filter so it can be extended. Filtering is applied live as the
+    /// user types (see `handle_prompt_key`).
+    fn open_filter_prompt(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to filter the listing.".to_string();
+            return Vec::new();
+        }
+        let local = self.active_browser_side == BrowserSide::Local;
+        let current = self.active_browser().filter.clone().unwrap_or_default();
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Filter { local },
+            "Filter listing",
+            "substring or *?-wildcard (live); Enter keep, Esc clear",
+            current,
+        ));
+        self.status = "Filtering the listing.".to_string();
+        Vec::new()
+    }
+
+    /// `L` / `Ctrl+R`: reload the active pane's directory from scratch, dropping
+    /// marks and any live filter so the listing reflects the server/disk again.
+    fn reload_active(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to reload.".to_string();
+            return Vec::new();
+        }
+        let local = self.active_browser_side == BrowserSide::Local;
+        let pane = self.active_browser_mut();
+        pane.clear_marks();
+        pane.clear_filter();
+        let path = pane.path.clone();
+        if path.is_empty() {
+            self.status = "No directory loaded to reload.".to_string();
+            return Vec::new();
+        }
+        self.status = format!("Reloading {}.", path);
+        if local {
+            vec![WorkerCommand::LocalList { path }]
+        } else {
+            self.worker = WorkerEvent::Busy {
+                operation: TuiWorkerOperation::List,
+                identity: self.session.identity.clone(),
+            };
+            vec![WorkerCommand::List { path }]
+        }
+    }
+
+    /// `Space`/`m`: toggle the mark on the selected entry, then advance the
+    /// cursor so a column of entries can be marked quickly.
+    fn toggle_active_mark(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to mark entries.".to_string();
+            return Vec::new();
+        }
+        let toggled = self.active_browser_mut().toggle_mark();
+        let count = self.active_browser().marked_count();
+        match toggled {
+            Some(true) => self.status = format!("Marked ({} selected).", count),
+            Some(false) => self.status = format!("Unmarked ({} selected).", count),
+            None => {
+                self.status = "Nothing to mark.".to_string();
+                return Vec::new();
+            }
+        }
+        // Auto-advance like a file manager so successive marks are one key each.
+        self.active_browser_mut().move_selection(1);
+        Vec::new()
+    }
+
+    /// `Ctrl+A`: mark every visible entry in the active pane.
+    fn mark_all_active(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            return Vec::new();
+        }
+        self.active_browser_mut().mark_all_visible();
+        let count = self.active_browser().marked_count();
+        self.status = format!("Marked all ({} selected).", count);
+        Vec::new()
+    }
+
+    /// `Alt+A`: clear every mark in the active pane.
+    fn clear_active_marks(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            return Vec::new();
+        }
+        self.active_browser_mut().clear_marks();
+        self.status = "Cleared all marks.".to_string();
+        Vec::new()
+    }
+
+    /// `a` in the browser: toggle dotfile visibility on the active pane.
+    fn toggle_active_hidden(&mut self) -> Vec<WorkerCommand> {
+        let side = self.active_browser_side;
+        let shown = self.active_browser_mut().toggle_hidden();
+        self.status = format!(
+            "Hidden files {} ({:?}).",
+            if shown { "shown" } else { "hidden" },
+            side
+        );
+        Vec::new()
+    }
+
+    /// `v`: view the selected file in a read-only pager. The worker reads a
+    /// capped prefix and replies with `FileContent`, which opens the pager.
+    fn view_selected_file(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to view a file.".to_string();
+            return Vec::new();
+        }
+        let local = self.active_browser_side == BrowserSide::Local;
+        let active = self.active_browser();
+        let Some(entry) = active.selected_entry() else {
+            self.status = "No entry selected to view.".to_string();
+            return Vec::new();
+        };
+        if entry.is_dir {
+            self.status = "That is a directory; press Enter to open it.".to_string();
+            return Vec::new();
+        }
+        let Some(path) = active.selected_file_path() else {
+            self.status = "No file selected to view.".to_string();
+            return Vec::new();
+        };
+        self.status = format!("Loading {} for viewing.", path);
+        if !local {
+            self.begin_mutation(TuiWorkerOperation::View, self.status.clone());
+        }
+        vec![WorkerCommand::ViewFile { path, local }]
+    }
+
+    /// `o`: edit the selected remote file in `$EDITOR`. Remote-only: the worker
+    /// stages the file (`EditFetch`), the run loop opens the editor, then
+    /// `EditCommit` re-uploads it.
+    fn edit_selected_file(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to edit a file.".to_string();
+            return Vec::new();
+        }
+        if self.active_browser_side == BrowserSide::Local {
+            self.status = "Edit applies to remote files; switch to the Remote pane.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let Some(entry) = self.browser.selected_entry() else {
+            self.status = "No entry selected to edit.".to_string();
+            return Vec::new();
+        };
+        if entry.is_dir {
+            self.status = "Select a file to edit.".to_string();
+            return Vec::new();
+        }
+        let Some(remote) = self.browser.selected_file_path() else {
+            self.status = "No file selected to edit.".to_string();
+            return Vec::new();
+        };
+        self.begin_mutation(
+            TuiWorkerOperation::Edit,
+            format!("Fetching {} for $EDITOR...", remote),
+        );
+        vec![WorkerCommand::EditFetch {
+            remote_path: remote,
+        }]
+    }
+
+    /// `i`: load full metadata for the selected entry (file or directory) into
+    /// the status line, reusing the existing stat path.
+    fn info_selected(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane for file info.".to_string();
+            return Vec::new();
+        }
+        let local = self.active_browser_side == BrowserSide::Local;
+        let Some(path) = self.active_browser().selected_entry_path() else {
+            self.status = "No entry selected.".to_string();
+            return Vec::new();
+        };
+        self.status = format!("Loading metadata for {}.", path);
+        if local {
+            vec![WorkerCommand::LocalStat { path }]
+        } else {
+            self.begin_mutation(TuiWorkerOperation::Stat, self.status.clone());
+            vec![WorkerCommand::Stat { path }]
+        }
+    }
+
+    /// `Ctrl+S`: recursive size of the selected directory (a file just reports
+    /// its own size immediately, no worker round-trip).
+    fn size_selected_dir(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to size a directory.".to_string();
+            return Vec::new();
+        }
+        let local = self.active_browser_side == BrowserSide::Local;
+        let active = self.active_browser();
+        let Some(entry) = active.selected_entry() else {
+            self.status = "No entry selected.".to_string();
+            return Vec::new();
+        };
+        let is_dir = entry.is_dir;
+        let size = entry.size;
+        let name = entry.name.clone();
+        let Some(path) = active.selected_entry_path() else {
+            self.status = "No entry selected.".to_string();
+            return Vec::new();
+        };
+        if !is_dir {
+            self.status = format!("{} is {}.", name, format_size_compact(size));
+            return Vec::new();
+        }
+        self.status = format!("Computing size of {}...", path);
+        vec![WorkerCommand::SizeRecursive { path, local }]
+    }
+
+    /// `N`: create an empty file in the active directory (the touch complement
+    /// to `n` mkdir).
+    fn trigger_touch(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to create a file.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let local = self.active_browser_side == BrowserSide::Local;
+        let parent = self.active_browser().path.clone();
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Touch {
+                parent: parent.clone(),
+                local,
+            },
+            format!("New file in {}", display_dir(&parent)),
+            "type a name, Enter to create, Esc to cancel",
+            String::new(),
+        ));
+        self.status = format!("Creating a file in {:?}.", self.active_browser_side);
+        Vec::new()
+    }
+
+    /// `Y`: toggle synced browsing so both panes `cd` together by child name.
+    fn toggle_synced_browsing(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Synced browsing applies in the connected browser.".to_string();
+            return Vec::new();
+        }
+        self.synced_browsing = !self.synced_browsing;
+        self.status = if self.synced_browsing {
+            "Synced browsing on: both panes cd together.".to_string()
+        } else {
+            "Synced browsing off.".to_string()
+        };
+        Vec::new()
+    }
+
+    /// `G` in the browser: open a go-to-path prompt for the active pane, seeded
+    /// with the current directory.
+    fn open_goto_prompt(&mut self) -> Vec<WorkerCommand> {
+        let local = self.active_browser_side == BrowserSide::Local;
+        // Seed empty so the user types a fresh target (an absolute path, or one
+        // relative to the current directory).
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Goto { local },
+            "Go to path",
+            "absolute or relative path, Enter to go, Esc to cancel",
+            String::new(),
+        ));
+        self.status = "Go to a directory.".to_string();
+        Vec::new()
+    }
+
+    /// Mirror an open-directory navigation onto the other pane (synced browsing):
+    /// open the same child name on the opposite side, best-effort.
+    fn synced_open_other(&self, active_side: BrowserSide, child: &str) -> Vec<WorkerCommand> {
+        match active_side {
+            BrowserSide::Remote => {
+                if self.local.path.is_empty() {
+                    return Vec::new();
+                }
+                let target = format!("{}/{}", self.local.path.trim_end_matches('/'), child);
+                vec![WorkerCommand::LocalList { path: target }]
+            }
+            BrowserSide::Local => {
+                if !self.is_live_connected() || self.browser.path.is_empty() {
+                    return Vec::new();
+                }
+                let target = join_remote(&self.browser.path, child);
+                vec![WorkerCommand::List { path: target }]
+            }
+        }
+    }
+
+    /// Mirror a parent navigation onto the other pane (synced browsing).
+    fn synced_parent_other(&self, active_side: BrowserSide) -> Vec<WorkerCommand> {
+        match active_side {
+            BrowserSide::Remote => match self.local.parent_path() {
+                Some(path) => vec![WorkerCommand::LocalList { path }],
+                None => Vec::new(),
+            },
+            BrowserSide::Local => {
+                if !self.is_live_connected() {
+                    return Vec::new();
+                }
+                match self.browser.parent_path() {
+                    Some(path) => vec![WorkerCommand::List { path }],
+                    None => Vec::new(),
+                }
+            }
+        }
     }
 
     /// Esc: contextual "back". Disconnect to the IntroHub when a live session is
@@ -1381,9 +1877,53 @@ impl AppState {
             TuiOverlay::Groups(_) => self.handle_groups_key(key),
             TuiOverlay::Palette(_) => self.handle_palette_key(key),
             TuiOverlay::ProfileForm(_) => self.handle_profile_form_key(key),
+            TuiOverlay::Pager(_) => self.handle_pager_key(key),
+            TuiOverlay::Help(_) => self.handle_help_key(key),
         };
         self.sync_pane_state();
         commands
+    }
+
+    /// Route a key while the read-only file viewer (`v`) is open. Up/Down and
+    /// `j`/`k` scroll a line, PageUp/PageDown a screenful, Home/End jump, Esc/`q`
+    /// close. No mutation: the pager is a view over already-fetched content.
+    fn handle_pager_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        if let TuiOverlay::Pager(state) = &mut self.overlay {
+            match key {
+                OverlayKey::Up | OverlayKey::Char('k') => state.scroll_up(1),
+                OverlayKey::Down | OverlayKey::Char('j') => state.scroll_down(1),
+                OverlayKey::PageUp | OverlayKey::Char('u') => state.page_up(),
+                OverlayKey::PageDown | OverlayKey::Char('d') | OverlayKey::Char(' ') => {
+                    state.page_down()
+                }
+                OverlayKey::Home | OverlayKey::Char('g') => state.scroll_to_top(),
+                OverlayKey::End | OverlayKey::Char('G') => state.scroll_to_bottom(),
+                OverlayKey::Cancel | OverlayKey::Char('q') => {
+                    self.overlay = TuiOverlay::None;
+                    self.status = "Closed the viewer.".to_string();
+                }
+                _ => {}
+            }
+        }
+        Vec::new()
+    }
+
+    /// Route a key while the help overlay (`?`/`F1`) is open: scroll or close.
+    fn handle_help_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        if let TuiOverlay::Help(state) = &mut self.overlay {
+            match key {
+                OverlayKey::Up | OverlayKey::Char('k') => state.scroll_up(1),
+                OverlayKey::Down | OverlayKey::Char('j') => state.scroll_down(1),
+                OverlayKey::PageUp => state.scroll_up(10),
+                OverlayKey::PageDown => state.scroll_down(10),
+                OverlayKey::Cancel | OverlayKey::Char('q') | OverlayKey::Char('?') => {
+                    self.overlay = TuiOverlay::None;
+                    self.status = "Closed help.".to_string();
+                }
+                _ => {}
+            }
+        }
+        Vec::new()
     }
 
     /// Route a key while the group manager overlay (#320) is open. The overlay
@@ -1578,12 +2118,15 @@ impl AppState {
                 if let TuiOverlay::Prompt(prompt) = &mut self.overlay {
                     prompt.push_char(c);
                 }
+                // The filter prompt narrows the listing live as the user types.
+                self.apply_live_filter();
                 Vec::new()
             }
             OverlayKey::Backspace => {
                 if let TuiOverlay::Prompt(prompt) = &mut self.overlay {
                     prompt.backspace();
                 }
+                self.apply_live_filter();
                 Vec::new()
             }
             OverlayKey::Left => {
@@ -1599,9 +2142,50 @@ impl AppState {
                 Vec::new()
             }
             OverlayKey::Submit => self.submit_prompt(),
-            OverlayKey::Cancel => self.cancel_overlay(),
-            OverlayKey::Up | OverlayKey::Down | OverlayKey::Tab | OverlayKey::Noop => Vec::new(),
+            OverlayKey::Cancel => {
+                // Esc on the filter prompt clears any active filter (full listing).
+                if let TuiOverlay::Prompt(prompt) = &self.overlay {
+                    if let PromptKind::Filter { local } = prompt.kind {
+                        let pane = if local {
+                            &mut self.local
+                        } else {
+                            &mut self.browser
+                        };
+                        pane.clear_filter();
+                        self.overlay = TuiOverlay::None;
+                        self.status = "Filter cleared.".to_string();
+                        return Vec::new();
+                    }
+                }
+                self.cancel_overlay()
+            }
+            OverlayKey::Up
+            | OverlayKey::Down
+            | OverlayKey::Tab
+            | OverlayKey::PageUp
+            | OverlayKey::PageDown
+            | OverlayKey::Home
+            | OverlayKey::End
+            | OverlayKey::Noop => Vec::new(),
         }
+    }
+
+    /// Re-apply the live filter from the open filter prompt to its pane. A no-op
+    /// for any other overlay.
+    fn apply_live_filter(&mut self) {
+        let (buffer, local) = match &self.overlay {
+            TuiOverlay::Prompt(prompt) => match prompt.kind {
+                PromptKind::Filter { local } => (prompt.buffer.clone(), local),
+                _ => return,
+            },
+            _ => return,
+        };
+        let pane = if local {
+            &mut self.local
+        } else {
+            &mut self.browser
+        };
+        pane.set_filter(buffer);
     }
 
     /// Route a key while the `:` command palette (B3) is open. The palette is a
@@ -1633,6 +2217,10 @@ impl AppState {
             | OverlayKey::Left
             | OverlayKey::Right
             | OverlayKey::Tab
+            | OverlayKey::PageUp
+            | OverlayKey::PageDown
+            | OverlayKey::Home
+            | OverlayKey::End
             | OverlayKey::Noop => Vec::new(),
         }
     }
@@ -1827,7 +2415,11 @@ impl AppState {
             }
             OverlayKey::Submit => self.submit_profile_form(),
             OverlayKey::Cancel => self.cancel_overlay(),
-            OverlayKey::Noop => Vec::new(),
+            OverlayKey::PageUp
+            | OverlayKey::PageDown
+            | OverlayKey::Home
+            | OverlayKey::End
+            | OverlayKey::Noop => Vec::new(),
         }
     }
 
@@ -2093,6 +2685,55 @@ impl AppState {
                     }
                 }
             }
+            PromptKind::Filter { .. } => {
+                // The filter was applied live while typing; Enter just keeps it
+                // and closes the prompt.
+                self.overlay = TuiOverlay::None;
+                let active = self.active_browser();
+                self.status = match &active.filter {
+                    Some(f) => format!("Filter '{}' ({} shown).", f, active.entries.len()),
+                    None => "Filter cleared.".to_string(),
+                };
+                Vec::new()
+            }
+            PromptKind::Touch { parent, local } => {
+                if !is_valid_segment(&value) {
+                    self.status = "Enter a file name without '/' or '..'.".to_string();
+                    return Vec::new();
+                }
+                let path = join_remote(&parent, &value);
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(TuiWorkerOperation::Touch, format!("Creating {}.", path));
+                vec![WorkerCommand::Touch { path, local }]
+            }
+            PromptKind::Goto { local } => {
+                if value.is_empty() {
+                    self.status = "Enter a path to go to.".to_string();
+                    return Vec::new();
+                }
+                self.overlay = TuiOverlay::None;
+                if local {
+                    let target = if value.starts_with('/') {
+                        value
+                    } else {
+                        format!("{}/{}", self.local.path.trim_end_matches('/'), value)
+                    };
+                    self.status = format!("Going to local {}.", target);
+                    self.active_browser_side = BrowserSide::Local;
+                    vec![WorkerCommand::LocalList { path: target }]
+                } else {
+                    let cwd = if self.browser.path.is_empty() {
+                        "/".to_string()
+                    } else {
+                        self.browser.path.clone()
+                    };
+                    let target = resolve_remote_arg(&cwd, &value);
+                    self.status = format!("Going to {}.", target);
+                    self.active_browser_side = BrowserSide::Remote;
+                    self.begin_mutation(TuiWorkerOperation::List, self.status.clone());
+                    vec![WorkerCommand::List { path: target }]
+                }
+            }
         }
     }
 
@@ -2130,6 +2771,41 @@ impl AppState {
                     user_name,
                     profile_id,
                 }]
+            }
+            ConfirmKind::DeleteBatch { items, local } => {
+                self.overlay = TuiOverlay::None;
+                let count = items.len();
+                self.begin_mutation(
+                    TuiWorkerOperation::Remove,
+                    format!(
+                        "Deleting {} marked entr{}.",
+                        count,
+                        if count == 1 { "y" } else { "ies" }
+                    ),
+                );
+                // The marks have been consumed by this batch; drop them on the
+                // pane the batch targeted so the view does not show stale marks.
+                if local {
+                    self.local.clear_marks();
+                } else {
+                    self.browser.clear_marks();
+                }
+                items
+                    .into_iter()
+                    .map(|(path, is_dir)| {
+                        if local {
+                            WorkerCommand::LocalRemove {
+                                path,
+                                recursive: is_dir,
+                            }
+                        } else {
+                            WorkerCommand::Remove {
+                                path,
+                                recursive: is_dir,
+                            }
+                        }
+                    })
+                    .collect()
             }
         }
     }
@@ -2188,6 +2864,7 @@ impl AppState {
                     TuiWorkerOperation::Mkdir
                         | TuiWorkerOperation::Remove
                         | TuiWorkerOperation::Rename
+                        | TuiWorkerOperation::Touch
                 ) {
                     let dir = self.current_browser_dir();
                     if self.active_browser_side == BrowserSide::Local {
@@ -2350,6 +3027,62 @@ impl AppState {
                 message,
             } => {
                 self.status = format!("Quota refresh failed: {}", message);
+            }
+            WorkerEvent::FileContent {
+                path,
+                content,
+                truncated,
+                binary,
+            } => {
+                // Decode to display lines, neutralising control characters that a
+                // remote name/body could otherwise inject into the terminal.
+                let lines: Vec<String> = if content.is_empty() {
+                    vec!["(empty file)".to_string()]
+                } else {
+                    content
+                        .split('\n')
+                        .map(crate::cli_tui::sanitize_display)
+                        .collect()
+                };
+                let title = format!(
+                    " View: {}{} ",
+                    path,
+                    if *truncated { " (truncated)" } else { "" }
+                );
+                self.overlay =
+                    TuiOverlay::Pager(PagerState::new(title, lines, *truncated, *binary));
+                self.status = format!(
+                    "Viewing {}{}.",
+                    path,
+                    if *binary { " (binary)" } else { "" }
+                );
+            }
+            WorkerEvent::DirSize { path, bytes, files } => {
+                self.status = format!(
+                    "{}: {} in {} file(s).",
+                    path,
+                    format_size_compact(*bytes),
+                    files
+                );
+            }
+            WorkerEvent::EditReady { remote_path, .. } => {
+                // The run loop intercepts this to spawn $EDITOR (it owns the
+                // terminal); reaching here is a fallback that just notes progress.
+                self.status = format!("Opening {} in the editor...", remote_path);
+            }
+            WorkerEvent::EditDone {
+                remote_path,
+                message,
+            } => {
+                self.status = message.clone();
+                // Refresh the remote listing so an edit that changed the size /
+                // mtime is reflected. Best-effort: only when we know the dir.
+                let _ = remote_path;
+                if !self.browser.path.is_empty() {
+                    follow_up.push(WorkerCommand::List {
+                        path: self.browser.path.clone(),
+                    });
+                }
             }
         }
         self.worker = event;
@@ -2650,7 +3383,11 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         | WorkerEvent::Cancelled { .. }
         | WorkerEvent::HealthReady { .. }
         | WorkerEvent::QuotaReady { .. }
-        | WorkerEvent::QuotaFailed { .. } => None,
+        | WorkerEvent::QuotaFailed { .. }
+        | WorkerEvent::FileContent { .. }
+        | WorkerEvent::DirSize { .. }
+        | WorkerEvent::EditReady { .. }
+        | WorkerEvent::EditDone { .. } => None,
     }
 }
 
@@ -4699,7 +5436,9 @@ mod tests {
     #[test]
     fn local_rename_routes_to_the_local_filesystem() {
         let mut app = connected_app_with_local_listing();
-        app.apply_action(TuiAction::Rename); // selects note.txt (index 0)
+        // Dirs sort first: "sub" is index 0, "note.txt" is index 1.
+        app.apply_action(TuiAction::MoveDown); // select note.txt
+        app.apply_action(TuiAction::Rename);
         app.handle_overlay_key(OverlayKey::Char('2'));
         let commands = app.handle_overlay_key(OverlayKey::Submit);
         // Must be a LOCAL rename, not a remote one (the remote Rename caused the
@@ -4732,8 +5471,7 @@ mod tests {
     #[test]
     fn local_delete_routes_to_the_local_filesystem() {
         let mut app = connected_app_with_local_listing();
-        // Select the directory entry (index 1) -> recursive delete.
-        app.apply_action(TuiAction::MoveDown);
+        // Dirs sort first: the directory "sub" is index 0 -> recursive delete.
         app.apply_action(TuiAction::Delete);
         let commands = app.handle_overlay_key(OverlayKey::Submit); // confirm
         assert_eq!(
@@ -4750,6 +5488,8 @@ mod tests {
         // 'u' should not ask for a path when a local file is selected: it
         // prefills the source so Enter uploads it to the remote pane's dir.
         let mut app = connected_app_with_local_listing();
+        // Dirs sort first: select note.txt (index 1) so the prompt prefills it.
+        app.apply_action(TuiAction::MoveDown);
         app.apply_action(TuiAction::Upload);
         match &app.overlay {
             TuiOverlay::Prompt(prompt) => {
@@ -5404,5 +6144,232 @@ mod tests {
         assert!(!cleaned.contains('\n'));
         assert!(cleaned.contains("evil"));
         assert!(cleaned.contains("name"));
+    }
+
+    // --- rev 1.0.3 table stakes: action-level behavior ---------------------
+
+    #[test]
+    fn view_action_emits_a_view_command_for_the_selected_file() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown); // select readme.txt
+        let commands = app.apply_action(TuiAction::ViewFile);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::ViewFile {
+                path: "/srv/readme.txt".to_string(),
+                local: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn view_action_on_a_directory_is_refused() {
+        let mut app = connected_app_with_listing(); // docs (dir) selected at index 0
+        let commands = app.apply_action(TuiAction::ViewFile);
+        assert!(commands.is_empty());
+        assert!(app.status.contains("directory"));
+    }
+
+    #[test]
+    fn file_content_event_opens_a_scrollable_pager() {
+        let mut app = connected_app_with_listing();
+        app.apply_worker_event(WorkerEvent::FileContent {
+            path: "/srv/readme.txt".to_string(),
+            content: "line one\nline two\nline three".to_string(),
+            truncated: false,
+            binary: false,
+        });
+        match &app.overlay {
+            TuiOverlay::Pager(state) => {
+                assert_eq!(state.lines.len(), 3);
+                assert!(!state.binary);
+            }
+            other => panic!("expected a pager overlay, got {:?}", other),
+        }
+        // Scroll then close.
+        app.handle_overlay_key(OverlayKey::Down);
+        app.handle_overlay_key(OverlayKey::Cancel);
+        assert!(!app.overlay_active());
+    }
+
+    #[test]
+    fn info_action_requests_a_stat_for_the_selection() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown); // readme.txt
+        let commands = app.apply_action(TuiAction::Info);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Stat {
+                path: "/srv/readme.txt".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn size_action_on_a_directory_requests_a_recursive_size() {
+        let mut app = connected_app_with_listing(); // docs (dir) selected
+        let commands = app.apply_action(TuiAction::SizeRecursive);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::SizeRecursive {
+                path: "/srv/docs".to_string(),
+                local: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn size_action_on_a_file_reports_inline_without_a_command() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown); // readme.txt (42 bytes)
+        let commands = app.apply_action(TuiAction::SizeRecursive);
+        assert!(commands.is_empty());
+        assert!(app.status.contains("readme.txt"));
+    }
+
+    #[test]
+    fn touch_prompt_emits_a_touch_command() {
+        let mut app = connected_app_with_listing();
+        assert!(app.apply_action(TuiAction::Touch).is_empty());
+        for c in "new.txt".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Touch {
+                path: "/srv/new.txt".to_string(),
+                local: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn goto_prompt_lists_the_typed_remote_path() {
+        let mut app = connected_app_with_listing();
+        // `G` in the browser opens the go-to prompt (ManageGroups action).
+        assert!(app.apply_action(TuiAction::ManageGroups).is_empty());
+        for c in "/var/log".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/var/log".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn help_overlay_opens_and_closes() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::Help);
+        assert!(matches!(app.overlay, TuiOverlay::Help(_)));
+        app.handle_overlay_key(OverlayKey::Cancel);
+        assert!(!app.overlay_active());
+    }
+
+    #[test]
+    fn toggle_hidden_in_the_browser_flips_the_active_pane() {
+        let mut app = connected_app_with_listing();
+        assert!(!app.browser.show_hidden);
+        // `a` in the connected browser is the hidden toggle (AddProfile action).
+        app.apply_action(TuiAction::AddProfile);
+        assert!(app.browser.show_hidden);
+        app.apply_action(TuiAction::AddProfile);
+        assert!(!app.browser.show_hidden);
+    }
+
+    #[test]
+    fn cycle_sort_action_advances_the_active_pane_sort() {
+        let mut app = connected_app_with_listing();
+        let before = app.browser.sort;
+        app.apply_action(TuiAction::CycleSort);
+        assert_ne!(app.browser.sort, before);
+    }
+
+    #[test]
+    fn live_filter_narrows_then_clears_the_active_pane() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::OpenFilter);
+        for c in "readme".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        assert_eq!(app.browser.entries.len(), 1);
+        // Esc clears the filter and restores the full listing.
+        app.handle_overlay_key(OverlayKey::Cancel);
+        assert_eq!(app.browser.entries.len(), 2);
+        assert!(app.browser.filter.is_none());
+    }
+
+    #[test]
+    fn reload_relists_and_drops_marks_and_filter() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MarkToggle); // mark docs
+        app.browser.set_filter("docs".to_string());
+        let commands = app.apply_action(TuiAction::Reload);
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/srv".to_string()
+            }]
+        );
+        assert_eq!(app.browser.marked_count(), 0);
+        assert!(app.browser.filter.is_none());
+    }
+
+    #[test]
+    fn marking_then_delete_batches_a_remove_per_entry() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MarkToggle); // docs, auto-advance to readme
+        app.apply_action(TuiAction::MarkToggle); // readme
+        assert_eq!(app.browser.marked_count(), 2);
+        assert!(app.apply_action(TuiAction::Delete).is_empty());
+        assert!(matches!(app.overlay, TuiOverlay::Confirm(_)));
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(commands.len(), 2);
+        assert!(commands.contains(&WorkerCommand::Remove {
+            path: "/srv/docs".to_string(),
+            recursive: true,
+        }));
+        assert!(commands.contains(&WorkerCommand::Remove {
+            path: "/srv/readme.txt".to_string(),
+            recursive: false,
+        }));
+        assert_eq!(app.browser.marked_count(), 0);
+    }
+
+    #[test]
+    fn marking_then_download_enqueues_only_marked_files() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MarkToggle); // docs (dir)
+        app.apply_action(TuiAction::MarkToggle); // readme (file)
+        let commands = app.apply_action(TuiAction::Download);
+        // The directory is skipped; only the file is enqueued.
+        assert_eq!(commands.len(), 1);
+        assert!(matches!(
+            &commands[0],
+            WorkerCommand::Download { remote_path, .. } if remote_path == "/srv/readme.txt"
+        ));
+        assert_eq!(app.focus, TuiFocus::Transfers);
+        assert_eq!(app.browser.marked_count(), 0);
+    }
+
+    #[test]
+    fn synced_browsing_mirrors_an_open_onto_the_other_pane() {
+        let mut app = connected_app_with_listing();
+        // The Local pane opens at the profile default ("/tmp" in sample_context).
+        assert_eq!(app.local.path, "/tmp");
+        app.apply_action(TuiAction::SyncedBrowsing);
+        assert!(app.synced_browsing);
+        // Enter on the remote "docs" dir lists it AND mirrors the child locally.
+        let commands = app.apply_action(TuiAction::Activate);
+        assert!(commands.contains(&WorkerCommand::List {
+            path: "/srv/docs".to_string()
+        }));
+        assert!(commands.contains(&WorkerCommand::LocalList {
+            path: "/tmp/docs".to_string()
+        }));
     }
 }

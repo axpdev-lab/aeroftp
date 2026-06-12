@@ -10291,6 +10291,281 @@ async fn stat_local_path(path: &str) -> Result<(String, cli_tui::worker::TuiStat
     Ok((path.to_string(), result))
 }
 
+/// Cap on how much of a file the TUI viewer (`v`) reads. A pager preview, not a
+/// full download: enough to read a config/log/source file without pulling a huge
+/// blob into memory over a slow link.
+const TUI_VIEW_MAX_BYTES: u64 = 256 * 1024;
+/// Safety bound on a recursive size walk (`Ctrl+S`) so a pathological tree never
+/// hangs the worker.
+const TUI_SIZE_MAX_ENTRIES: usize = 200_000;
+
+/// Heuristic binary sniff for the viewer: a NUL byte, or a high share of control
+/// bytes (excluding tab/newline/carriage-return) in the sampled prefix, marks the
+/// content as binary so it is shown as a notice rather than garbage.
+fn tui_looks_binary(bytes: &[u8]) -> bool {
+    if bytes.is_empty() {
+        return false;
+    }
+    if bytes.contains(&0) {
+        return true;
+    }
+    let sample = &bytes[..bytes.len().min(8192)];
+    let suspicious = sample
+        .iter()
+        .filter(|&&b| (b < 0x09) || (b > 0x0d && b < 0x20))
+        .count();
+    suspicious * 100 > sample.len() * 30
+}
+
+/// Decode a previewed byte slice into display text plus a binary flag. Binary
+/// content becomes a short notice (never dumped to the terminal).
+fn tui_decode_preview(bytes: &[u8]) -> (String, bool) {
+    if tui_looks_binary(bytes) {
+        (
+            format!("[binary file - {} bytes not shown]", bytes.len()),
+            true,
+        )
+    } else {
+        (String::from_utf8_lossy(bytes).into_owned(), false)
+    }
+}
+
+/// Unique temp file name component for the touch/edit round-trips. Combines the
+/// process id, a monotonic counter, and the nanosecond clock so concurrent or
+/// repeated operations never collide.
+fn tui_temp_token() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{}-{}", std::process::id(), n, nanos)
+}
+
+/// Read a capped prefix of a remote file for the viewer. Prefers a ranged read,
+/// falling back to a full download (then truncating). Returns
+/// `(content, truncated, binary)`.
+async fn view_remote_file(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(String, bool, bool), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let entry = provider
+        .stat(&resolved)
+        .await
+        .map_err(|err| format!("stat failed: {}", err))?;
+    if entry.is_dir {
+        return Err(format!("'{}' is a directory", resolved));
+    }
+    let size = entry.size;
+    if size == 0 {
+        return Ok((String::new(), false, false));
+    }
+    let want = size.min(TUI_VIEW_MAX_BYTES);
+    let truncated = size > TUI_VIEW_MAX_BYTES;
+    let bytes = match provider.read_range(&resolved, 0, want).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            let mut bytes = provider
+                .download_to_bytes(&resolved)
+                .await
+                .map_err(|err| format!("read failed: {}", err))?;
+            if bytes.len() as u64 > TUI_VIEW_MAX_BYTES {
+                bytes.truncate(TUI_VIEW_MAX_BYTES as usize);
+            }
+            bytes
+        }
+    };
+    let (content, binary) = tui_decode_preview(&bytes);
+    Ok((content, truncated, binary))
+}
+
+/// Read a capped prefix of a local file for the viewer.
+async fn view_local_file(path: &str) -> Result<(String, bool, bool), String> {
+    use tokio::io::AsyncReadExt;
+    let meta = tokio::fs::metadata(path)
+        .await
+        .map_err(|err| format!("stat local '{}': {}", path, err))?;
+    if meta.is_dir() {
+        return Err(format!("'{}' is a directory", path));
+    }
+    let size = meta.len();
+    if size == 0 {
+        return Ok((String::new(), false, false));
+    }
+    let want = size.min(TUI_VIEW_MAX_BYTES);
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|err| format!("open '{}': {}", path, err))?;
+    let mut buf = Vec::new();
+    file.take(want)
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|err| format!("read '{}': {}", path, err))?;
+    let truncated = size > TUI_VIEW_MAX_BYTES;
+    let (content, binary) = tui_decode_preview(&buf);
+    Ok((content, truncated, binary))
+}
+
+/// Recursive byte count + file count under a remote directory, bounded by
+/// [`TUI_SIZE_MAX_ENTRIES`]. A depth-first walk reusing the provider listing.
+async fn size_remote_dir(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(u64, u64), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let mut total_bytes: u64 = 0;
+    let mut files: u64 = 0;
+    let mut visited: usize = 0;
+    let mut stack = vec![resolved];
+    while let Some(dir) = stack.pop() {
+        let entries = provider
+            .list(&dir)
+            .await
+            .map_err(|err| format!("list failed: {}", err))?;
+        for entry in entries {
+            visited += 1;
+            if visited > TUI_SIZE_MAX_ENTRIES {
+                return Err("directory too large to size".to_string());
+            }
+            let child = if entry.path.trim().is_empty() {
+                format!("{}/{}", dir.trim_end_matches('/'), entry.name)
+            } else {
+                entry.path.clone()
+            };
+            if entry.is_dir {
+                stack.push(child);
+            } else {
+                total_bytes += entry.size;
+                files += 1;
+            }
+        }
+    }
+    Ok((total_bytes, files))
+}
+
+/// Recursive byte count + file count under a local directory, bounded by
+/// [`TUI_SIZE_MAX_ENTRIES`].
+async fn size_local_dir(path: &str) -> Result<(u64, u64), String> {
+    use tokio::fs;
+    let mut total_bytes: u64 = 0;
+    let mut files: u64 = 0;
+    let mut visited: usize = 0;
+    let mut stack = vec![path.to_string()];
+    while let Some(dir) = stack.pop() {
+        let mut rd = match fs::read_dir(&dir).await {
+            Ok(rd) => rd,
+            Err(err) => return Err(format!("read '{}': {}", dir, err)),
+        };
+        while let Some(entry) = rd.next_entry().await.map_err(|e| e.to_string())? {
+            visited += 1;
+            if visited > TUI_SIZE_MAX_ENTRIES {
+                return Err("directory too large to size".to_string());
+            }
+            // symlink_metadata: do not follow links (avoids cycles / double count).
+            let meta = match entry.metadata().await {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            if meta.is_dir() {
+                stack.push(entry.path().to_string_lossy().into_owned());
+            } else {
+                total_bytes += meta.len();
+                files += 1;
+            }
+        }
+    }
+    Ok((total_bytes, files))
+}
+
+/// Create an empty remote file by uploading a zero-byte temp file (no provider
+/// has a dedicated touch; an empty upload is the portable equivalent).
+async fn touch_remote_file(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    // Never clobber an existing file with an empty one (the local touch uses
+    // create_new for the same guarantee). A successful stat means it exists.
+    if provider.stat(&resolved).await.is_ok() {
+        return Err(format!("'{}' already exists", resolved));
+    }
+    let tmp = std::env::temp_dir().join(format!("aeroftp-touch-{}", tui_temp_token()));
+    tokio::fs::write(&tmp, b"")
+        .await
+        .map_err(|err| format!("touch failed: {}", err))?;
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let result = provider.upload(&tmp_str, &resolved, None).await;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    result
+        .map(|_| resolved)
+        .map_err(|err| format!("touch failed: {}", err))
+}
+
+/// Create an empty local file, refusing to clobber an existing one.
+async fn touch_local_file(path: &str) -> Result<String, String> {
+    use tokio::fs::OpenOptions;
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .await
+        .map(|_| path.to_string())
+        .map_err(|err| format!("touch failed: {}", err))
+}
+
+/// Edit step 1: download a remote file to a temp path so the run loop can open it
+/// in `$EDITOR`. Returns `(resolved_remote_path, temp_path)`; the resolved path
+/// is echoed so the commit step uploads to the same place.
+async fn edit_fetch_remote(
+    session: &mut cli_tui::session::TuiSession,
+    remote_path: &str,
+) -> Result<(String, String), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
+        .map_err(|err| err.to_string())?;
+    let name = resolved
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("file");
+    let tmp = std::env::temp_dir().join(format!("aeroftp-edit-{}-{}", tui_temp_token(), name));
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let provider = session.provider_mut();
+    provider
+        .download(&resolved, &tmp_str, None)
+        .await
+        .map_err(|err| format!("download failed: {}", err))?;
+    Ok((resolved, tmp_str))
+}
+
+/// Edit step 2: re-upload the edited temp file to the (already-resolved) remote
+/// path, then remove the temp regardless of outcome.
+async fn edit_commit_remote(
+    session: &mut cli_tui::session::TuiSession,
+    remote_path: &str,
+    temp_path: &str,
+) -> Result<(), String> {
+    let provider = session.provider_mut();
+    let result = provider.upload(temp_path, remote_path, None).await;
+    let _ = tokio::fs::remove_file(temp_path).await;
+    result
+        .map(|_| ())
+        .map_err(|err| format!("upload failed: {}", err))
+}
+
 /// Re-dials the live TUI session after a user-initiated transfer cancel.
 /// Captures the identity and last known cwd (so browsing location survives),
 /// drops the (potentially half-consumed) old provider connection, creates a
@@ -10998,6 +11273,175 @@ async fn run_cli_tui_worker(
                         },
                     };
                 let _ = event_tx.send(event);
+            }
+            WorkerCommand::ViewFile { path, local } => {
+                let identity = if local {
+                    None
+                } else {
+                    session.as_ref().and_then(|s| s.state().identity.clone())
+                };
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::View,
+                    identity: identity.clone(),
+                });
+                let result = if local {
+                    view_local_file(&path).await
+                } else {
+                    match session.as_mut() {
+                        Some(active) => view_remote_file(active, &path).await,
+                        None => Err("no active TUI session".to_string()),
+                    }
+                };
+                match result {
+                    Ok((content, truncated, binary)) => {
+                        let _ = event_tx.send(WorkerEvent::FileContent {
+                            path,
+                            content,
+                            truncated,
+                            binary,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::View,
+                            identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::SizeRecursive { path, local } => {
+                let identity = if local {
+                    None
+                } else {
+                    session.as_ref().and_then(|s| s.state().identity.clone())
+                };
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Size,
+                    identity: identity.clone(),
+                });
+                let result = if local {
+                    size_local_dir(&path).await
+                } else {
+                    match session.as_mut() {
+                        Some(active) => size_remote_dir(active, &path).await,
+                        None => Err("no active TUI session".to_string()),
+                    }
+                };
+                match result {
+                    Ok((bytes, files)) => {
+                        let _ = event_tx.send(WorkerEvent::DirSize { path, bytes, files });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Size,
+                            identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Touch { path, local } => {
+                let identity = if local {
+                    None
+                } else {
+                    session.as_ref().and_then(|s| s.state().identity.clone())
+                };
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Touch,
+                    identity: identity.clone(),
+                });
+                let result = if local {
+                    touch_local_file(&path).await
+                } else {
+                    match session.as_mut() {
+                        Some(active) => touch_remote_file(active, &path).await,
+                        None => Err("no active TUI session".to_string()),
+                    }
+                };
+                match result {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Touch,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Touch,
+                            identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::EditFetch { remote_path } => {
+                let identity = session.as_ref().and_then(|s| s.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Edit,
+                    identity: identity.clone(),
+                });
+                match session.as_mut() {
+                    Some(active) => match edit_fetch_remote(active, &remote_path).await {
+                        Ok((resolved, temp_path)) => {
+                            let _ = event_tx.send(WorkerEvent::EditReady {
+                                remote_path: resolved,
+                                temp_path,
+                            });
+                        }
+                        Err(message) => {
+                            let _ = event_tx.send(WorkerEvent::Failed {
+                                operation: TuiWorkerOperation::Edit,
+                                identity,
+                                message,
+                            });
+                        }
+                    },
+                    None => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Edit,
+                            identity,
+                            message: "no active TUI session".to_string(),
+                        });
+                    }
+                }
+            }
+            WorkerCommand::EditCommit {
+                remote_path,
+                temp_path,
+            } => {
+                let identity = session.as_ref().and_then(|s| s.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Edit,
+                    identity: identity.clone(),
+                });
+                match session.as_mut() {
+                    Some(active) => {
+                        match edit_commit_remote(active, &remote_path, &temp_path).await {
+                            Ok(()) => {
+                                let _ = event_tx.send(WorkerEvent::EditDone {
+                                    message: format!("Saved edits to {}", remote_path),
+                                    remote_path,
+                                });
+                            }
+                            Err(message) => {
+                                let _ = event_tx.send(WorkerEvent::Failed {
+                                    operation: TuiWorkerOperation::Edit,
+                                    identity,
+                                    message,
+                                });
+                            }
+                        }
+                    }
+                    None => {
+                        let _ = tokio::fs::remove_file(&temp_path).await;
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Edit,
+                            identity,
+                            message: "no active TUI session".to_string(),
+                        });
+                    }
+                }
             }
         }
     }
