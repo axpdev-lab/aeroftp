@@ -2793,12 +2793,12 @@
             "placementDetached": "Separee",
             "placementBoth": "Les deux",
             "placementEmbeddedDesc": "Dans le conteneur, actualisee a chaque enregistrement",
-            "placementDetachedDesc": "Fichier .aerovault.rec associe",
+            "placementDetachedDesc": "Fichier .aerocorrect associe",
             "placementBothDesc": "Dans le conteneur plus un fichier annexe",
             "detachedStableStorageNote": "La parite separee garde le conteneur identique octet pour octet a un coffre standard; reexportez-la apres modification du coffre.",
             "exportParity": "Exporter le fichier de recuperation",
             "exportingParity": "Exportation...",
-            "exportParityHint": "Ecrire un fichier de recuperation .aerovault.rec separe a partir des donnees actuelles",
+            "exportParityHint": "Ecrire un fichier de recuperation .aerocorrect separe a partir des donnees actuelles",
             "stripParity": "Retirer la parite integree",
             "strippingParity": "Retrait...",
             "stripParityHint": "Supprimer la parite du conteneur (conservee seulement si un fichier de recuperation separe existe)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Planificateur",
             "errorCorrection": "Correction d'erreurs",
-            "errorCorrectionHint": "Enregistre un petit fichier de parité .aerorec à côté de chaque fichier sauvegardé, afin qu'une copie distante endommagée par le bit-rot puisse être réparée lors du prochain pull, sans l'original."
+            "errorCorrectionHint": "Enregistre un petit fichier de parité .aerocorrect à côté de chaque fichier sauvegardé, afin qu'une copie distante endommagée par le bit-rot puisse être réparée lors du prochain pull, sans l'original."
         },
         "accountLock": {
             "title": "Choisissez un compte",

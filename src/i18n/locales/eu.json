@@ -2793,12 +2793,12 @@
             "placementDetached": "Bereizia",
             "placementBoth": "Biak",
             "placementEmbeddedDesc": "Edukiontzian, gordetze bakoitzean freskatzen da",
-            "placementDetachedDesc": ".aerovault.rec fitxategi lagungarria",
+            "placementDetachedDesc": ".aerocorrect fitxategi lagungarria",
             "placementBothDesc": "Edukiontzian eta fitxategi bereizi bat",
             "detachedStableStorageNote": "Paritate bereiziak edukiontzia byte-z byte ohiko kutxa baten berdin mantentzen du; esportatu berriz kutxa editatu ondoren.",
             "exportParity": "Esportatu berreskuratze fitxategia",
             "exportingParity": "Esportatzen...",
-            "exportParityHint": "Idatzi .aerovault.rec berreskuratze fitxategi bereizi bat uneko datuetatik",
+            "exportParityHint": "Idatzi .aerocorrect berreskuratze fitxategi bereizi bat uneko datuetatik",
             "stripParity": "Kendu txertatutako paritatea",
             "strippingParity": "Kentzen...",
             "stripParityHint": "Kendu paritatea edukiontzitik (berreskuratze fitxategi bereizi bat badago bakarrik gordetzen da)",
@@ -4709,7 +4709,7 @@
             },
             "launcherScheduler": "Antolatzailea",
             "errorCorrection": "Erroreen zuzenketa",
-            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerorec paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe."
+            "errorCorrectionHint": "Babeskopia fitxategi bakoitzaren ondoan .aerocorrect paritate-fitxategi txiki bat gordetzen du, bit-rot-ek hondatutako urruneko kopia bat hurrengo pull-ean konpondu ahal izateko, jatorrizkoa gabe."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

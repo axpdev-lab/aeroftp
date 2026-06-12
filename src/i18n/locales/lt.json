@@ -2793,12 +2793,12 @@
             "placementDetached": "Atskiras",
             "placementBoth": "Abu",
             "placementEmbeddedDesc": "Konteineryje, atnaujinamas kiekvieno irasymo metu",
-            "placementDetachedDesc": "Lydintis .aerovault.rec failas",
+            "placementDetachedDesc": "Lydintis .aerocorrect failas",
             "placementBothDesc": "Konteineryje ir atskiras failas",
             "detachedStableStorageNote": "Atskiras lyginumas islaiko konteineri baitas po baito identiska iprastam seifui; po seifo redagavimo eksportuokite ji is naujo.",
             "exportParity": "Eksportuoti atkurimo faila",
             "exportingParity": "Eksportuojama...",
-            "exportParityHint": "Irasyti atskira .aerovault.rec atkurimo faila is dabartiniu duomenu",
+            "exportParityHint": "Irasyti atskira .aerocorrect atkurimo faila is dabartiniu duomenu",
             "stripParity": "Pasalinti iterpta lyginuma",
             "strippingParity": "Salinama...",
             "stripParityHint": "Pasalinti lyginuma is konteinerio (issaugoma tik jei yra atskiras atkurimo failas)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Tvarkaraštis",
             "errorCorrection": "Klaidų taisymas",
-            "errorCorrectionHint": "Šalia kiekvieno atsarginio failo išsaugo mažą .aerorec lygiškumo failą, kad bit-rot pažeistą nuotolinę kopiją būtų galima atkurti kito atsisiuntimo metu be originalo."
+            "errorCorrectionHint": "Šalia kiekvieno atsarginio failo išsaugo mažą .aerocorrect lygiškumo failą, kad bit-rot pažeistą nuotolinę kopiją būtų galima atkurti kito atsisiuntimo metu be originalo."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

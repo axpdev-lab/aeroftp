@@ -2793,12 +2793,12 @@
             "placementDetached": "Frittstaende",
             "placementBoth": "Begge",
             "placementEmbeddedDesc": "I beholderen, oppdateres ved hver lagring",
-            "placementDetachedDesc": "Tilhorende .aerovault.rec-fil",
+            "placementDetachedDesc": "Tilhorende .aerocorrect-fil",
             "placementBothDesc": "I beholderen pluss en separat fil",
             "detachedStableStorageNote": "Frittstaende paritet holder beholderen byte for byte identisk med et vanlig hvelv; eksporter den pa nytt etter at du har redigert hvelvet.",
             "exportParity": "Eksporter gjenopprettingsfil",
             "exportingParity": "Eksporterer...",
-            "exportParityHint": "Skriv en frittstaende .aerovault.rec-gjenopprettingsfil fra gjeldende data",
+            "exportParityHint": "Skriv en frittstaende .aerocorrect-gjenopprettingsfil fra gjeldende data",
             "stripParity": "Fjern innebygd paritet",
             "strippingParity": "Fjerner...",
             "stripParityHint": "Fjern pariteten fra beholderen (beholdes bare hvis det finnes en frittstaende gjenopprettingsfil)",
@@ -4709,7 +4709,7 @@
             },
             "launcherScheduler": "Planlegger",
             "errorCorrection": "Feilkorreksjon",
-            "errorCorrectionHint": "Lagrer en liten .aerorec-paritetsfil ved siden av hver sikkerhetskopiert fil, slik at en fjernkopi ødelagt av bit-rot kan repareres ved neste pull, uten originalen."
+            "errorCorrectionHint": "Lagrer en liten .aerocorrect-paritetsfil ved siden av hver sikkerhetskopiert fil, slik at en fjernkopi ødelagt av bit-rot kan repareres ved neste pull, uten originalen."
         },
         "accountLock": {
             "title": "Velg en konto",

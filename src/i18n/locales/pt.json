@@ -2793,12 +2793,12 @@
             "placementDetached": "Separada",
             "placementBoth": "Ambas",
             "placementEmbeddedDesc": "No contentor, atualizada a cada gravacao",
-            "placementDetachedDesc": "Ficheiro .aerovault.rec ao lado",
+            "placementDetachedDesc": "Ficheiro .aerocorrect ao lado",
             "placementBothDesc": "No contentor mais um ficheiro a parte",
             "detachedStableStorageNote": "A paridade separada mantem o contentor identico byte a byte a um cofre normal; reexporte-a apos editar o cofre.",
             "exportParity": "Exportar ficheiro de recuperacao",
             "exportingParity": "A exportar...",
-            "exportParityHint": "Escrever um ficheiro de recuperacao .aerovault.rec separado a partir dos dados atuais",
+            "exportParityHint": "Escrever um ficheiro de recuperacao .aerocorrect separado a partir dos dados atuais",
             "stripParity": "Remover paridade incorporada",
             "strippingParity": "A remover...",
             "stripParityHint": "Eliminar a paridade do contentor (mantida apenas se existir um ficheiro de recuperacao separado)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Agendador",
             "errorCorrection": "Correção de erros",
-            "errorCorrectionHint": "Guarda um pequeno ficheiro de paridade .aerorec ao lado de cada ficheiro de backup, para que uma cópia remota danificada por bit-rot possa ser reparada no próximo pull, sem o original."
+            "errorCorrectionHint": "Guarda um pequeno ficheiro de paridade .aerocorrect ao lado de cada ficheiro de backup, para que uma cópia remota danificada por bit-rot possa ser reparada no próximo pull, sem o original."
         },
         "accountLock": {
             "title": "Escolha uma conta",

@@ -2793,12 +2793,12 @@
             "placementDetached": "Odvojena",
             "placementBoth": "Oboje",
             "placementEmbeddedDesc": "U spremniku, osvjezava se pri svakom spremanju",
-            "placementDetachedDesc": "Prateca datoteka .aerovault.rec",
+            "placementDetachedDesc": "Prateca datoteka .aerocorrect",
             "placementBothDesc": "U spremniku plus zasebna datoteka",
             "detachedStableStorageNote": "Odvojeni paritet zadrzava spremnik bajt po bajt istovjetan obicnom trezoru; ponovno ga izvezite nakon izmjene trezora.",
             "exportParity": "Izvezi datoteku oporavka",
             "exportingParity": "Izvoz...",
-            "exportParityHint": "Zapisi odvojenu datoteku oporavka .aerovault.rec iz trenutnih podataka",
+            "exportParityHint": "Zapisi odvojenu datoteku oporavka .aerocorrect iz trenutnih podataka",
             "stripParity": "Ukloni ugradjeni paritet",
             "strippingParity": "Uklanjanje...",
             "stripParityHint": "Ukloni paritet iz spremnika (zadrzava se samo ako postoji odvojena datoteka oporavka)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Raspoređivač",
             "errorCorrection": "Ispravak pogrešaka",
-            "errorCorrectionHint": "Sprema malu .aerorec datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika."
+            "errorCorrectionHint": "Sprema malu .aerocorrect datoteku pariteta uz svaku sigurnosnu kopiju, tako da se udaljena kopija oštećena bit-rotom može popraviti pri sljedećem povlačenju, bez izvornika."
         },
         "accountLock": {
             "title": "Odaberite račun",

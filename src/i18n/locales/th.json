@@ -2793,12 +2793,12 @@
             "placementDetached": "แยกไฟล์",
             "placementBoth": "ทั้งสอง",
             "placementEmbeddedDesc": "ในคอนเทนเนอร์ รีเฟรชทุกครั้งที่บันทึก",
-            "placementDetachedDesc": "ไฟล์ .aerovault.rec ที่มากับไฟล์",
+            "placementDetachedDesc": "ไฟล์ .aerocorrect ที่มากับไฟล์",
             "placementBothDesc": "ในคอนเทนเนอร์และไฟล์แยกต่างหาก",
             "detachedStableStorageNote": "พาริตีแบบแยกไฟล์ทำให้คอนเทนเนอร์เหมือนกันทุกไบต์กับวอลต์ปกติ ส่งออกอีกครั้งหลังจากแก้ไขวอลต์",
             "exportParity": "ส่งออกไฟล์กู้คืน",
             "exportingParity": "กำลังส่งออก...",
-            "exportParityHint": "เขียนไฟล์กู้คืน .aerovault.rec แบบแยกจากข้อมูลปัจจุบัน",
+            "exportParityHint": "เขียนไฟล์กู้คืน .aerocorrect แบบแยกจากข้อมูลปัจจุบัน",
             "stripParity": "ลบพาริตีที่ฝังไว้",
             "strippingParity": "กำลังลบ...",
             "stripParityHint": "ลบพาริตีออกจากคอนเทนเนอร์ (เก็บไว้เฉพาะเมื่อมีไฟล์กู้คืนแบบแยก)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "ตัวกำหนดเวลา",
             "errorCorrection": "การแก้ไขข้อผิดพลาด",
-            "errorCorrectionHint": "จัดเก็บไฟล์พาริตี .aerorec ขนาดเล็กไว้ข้างไฟล์สำรองข้อมูลแต่ละไฟล์ เพื่อให้สำเนาระยะไกลที่เสียหายจาก bit-rot สามารถซ่อมแซมได้ในการ pull ครั้งถัดไป โดยไม่ต้องมีต้นฉบับ"
+            "errorCorrectionHint": "จัดเก็บไฟล์พาริตี .aerocorrect ขนาดเล็กไว้ข้างไฟล์สำรองข้อมูลแต่ละไฟล์ เพื่อให้สำเนาระยะไกลที่เสียหายจาก bit-rot สามารถซ่อมแซมได้ในการ pull ครั้งถัดไป โดยไม่ต้องมีต้นฉบับ"
         },
         "accountLock": {
             "title": "เลือกบัญชี",

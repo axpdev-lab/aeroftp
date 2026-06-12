@@ -2793,12 +2793,12 @@
             "placementDetached": "Separata",
             "placementBoth": "Ambele",
             "placementEmbeddedDesc": "In container, reimprospatata la fiecare salvare",
-            "placementDetachedDesc": "Fisier .aerovault.rec alaturat",
+            "placementDetachedDesc": "Fisier .aerocorrect alaturat",
             "placementBothDesc": "In container plus un fisier separat",
             "detachedStableStorageNote": "Paritatea separata pastreaza containerul identic octet cu octet cu un seif obisnuit; reexporta-o dupa editarea seifului.",
             "exportParity": "Exporta fisierul de recuperare",
             "exportingParity": "Se exporta...",
-            "exportParityHint": "Scrie un fisier de recuperare .aerovault.rec separat din datele curente",
+            "exportParityHint": "Scrie un fisier de recuperare .aerocorrect separat din datele curente",
             "stripParity": "Elimina paritatea incorporata",
             "strippingParity": "Se elimina...",
             "stripParityHint": "Elimina paritatea din container (pastrata doar daca exista un fisier de recuperare separat)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Planificator",
             "errorCorrection": "Corectarea erorilor",
-            "errorCorrectionHint": "Salvează un mic fișier de paritate .aerorec lângă fiecare fișier de backup, astfel încât o copie la distanță deteriorată de bit-rot să poată fi reparată la următoarea descărcare, fără original."
+            "errorCorrectionHint": "Salvează un mic fișier de paritate .aerocorrect lângă fiecare fișier de backup, astfel încât o copie la distanță deteriorată de bit-rot să poată fi reparată la următoarea descărcare, fără original."
         },
         "accountLock": {
             "title": "Alegeți un cont",

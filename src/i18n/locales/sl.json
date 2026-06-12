@@ -2793,12 +2793,12 @@
             "placementDetached": "Locena",
             "placementBoth": "Oboje",
             "placementEmbeddedDesc": "V vsebniku, osvezi se ob vsakem shranjevanju",
-            "placementDetachedDesc": "Spremljevalna datoteka .aerovault.rec",
+            "placementDetachedDesc": "Spremljevalna datoteka .aerocorrect",
             "placementBothDesc": "V vsebniku in locena datoteka",
             "detachedStableStorageNote": "Locena pariteta ohranja vsebnik bajt za bajtom enak navadnemu trezorju; po urejanju trezorja jo znova izvozite.",
             "exportParity": "Izvozi datoteko obnovitve",
             "exportingParity": "Izvazanje...",
-            "exportParityHint": "Zapisi loceno datoteko obnovitve .aerovault.rec iz trenutnih podatkov",
+            "exportParityHint": "Zapisi loceno datoteko obnovitve .aerocorrect iz trenutnih podatkov",
             "stripParity": "Odstrani vgrajeno pariteto",
             "strippingParity": "Odstranjevanje...",
             "stripParityHint": "Odstrani pariteto iz vsebnika (ohrani se le, ce obstaja locena datoteka obnovitve)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Razporejevalnik",
             "errorCorrection": "Popravljanje napak",
-            "errorCorrectionHint": "Shrani majhno paritetno datoteko .aerorec poleg vsake varnostne kopije, tako da je oddaljeno kopijo, poškodovano zaradi bit-rota, mogoče popraviti ob naslednjem prenosu, brez izvirnika."
+            "errorCorrectionHint": "Shrani majhno paritetno datoteko .aerocorrect poleg vsake varnostne kopije, tako da je oddaljeno kopijo, poškodovano zaradi bit-rota, mogoče popraviti ob naslednjem prenosu, brez izvirnika."
         },
         "accountLock": {
             "title": "Izberite račun",

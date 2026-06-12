@@ -2793,12 +2793,12 @@
             "placementDetached": "分离",
             "placementBoth": "两者",
             "placementEmbeddedDesc": "在容器内，每次保存时刷新",
-            "placementDetachedDesc": "随附的 .aerovault.rec 文件",
+            "placementDetachedDesc": "随附的 .aerocorrect 文件",
             "placementBothDesc": "容器内加上单独文件",
             "detachedStableStorageNote": "分离校验数据使容器与普通保险库逐字节完全一致；编辑保险库后请重新导出。",
             "exportParity": "导出恢复文件",
             "exportingParity": "正在导出...",
-            "exportParityHint": "从当前数据写入分离的 .aerovault.rec 恢复文件",
+            "exportParityHint": "从当前数据写入分离的 .aerocorrect 恢复文件",
             "stripParity": "移除嵌入校验数据",
             "strippingParity": "正在移除...",
             "stripParityHint": "从容器中移除校验数据（仅在存在分离恢复文件时保留）",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "调度器",
             "errorCorrection": "纠错",
-            "errorCorrectionHint": "在每个备份文件旁存储一个小的 .aerorec 校验文件，使因位衰减（bit-rot）损坏的远程副本能在下次拉取时无需原件即可修复。"
+            "errorCorrectionHint": "在每个备份文件旁存储一个小的 .aerocorrect 校验文件，使因位衰减（bit-rot）损坏的远程副本能在下次拉取时无需原件即可修复。"
         },
         "accountLock": {
             "title": "选择一个账户",

@@ -2793,12 +2793,12 @@
             "placementDetached": "ដាច់ដោយឡែក",
             "placementBoth": "ទាំងពីរ",
             "placementEmbeddedDesc": "នៅក្នុងកុងតឺន័រ ផ្ទុកឡើងវិញរាល់ការរក្សាទុក",
-            "placementDetachedDesc": "ឯកសារ .aerovault.rec ភ្ជាប់",
+            "placementDetachedDesc": "ឯកសារ .aerocorrect ភ្ជាប់",
             "placementBothDesc": "នៅក្នុងកុងតឺន័រ និងឯកសារដាច់ដោយឡែក",
             "detachedStableStorageNote": "ប៉ារីតេដាច់ដោយឡែករក្សាកុងតឺន័រឱ្យដូចគ្នាបៃក្នុងបៃនឹងទូដាក់ធម្មតា សូមនាំចេញម្តងទៀតបន្ទាប់ពីកែទូ។",
             "exportParity": "នាំចេញឯកសារសង្គ្រោះ",
             "exportingParity": "កំពុងនាំចេញ...",
-            "exportParityHint": "សរសេរឯកសារសង្គ្រោះ .aerovault.rec ដាច់ដោយឡែកពីទិន្នន័យបច្ចុប្បន្ន",
+            "exportParityHint": "សរសេរឯកសារសង្គ្រោះ .aerocorrect ដាច់ដោយឡែកពីទិន្នន័យបច្ចុប្បន្ន",
             "stripParity": "ដកប៉ារីតេបង្កប់",
             "strippingParity": "កំពុងដក...",
             "stripParityHint": "ដកប៉ារីតេចេញពីកុងតឺន័រ (រក្សាទុកតែពេលមានឯកសារសង្គ្រោះដាច់ដោយឡែក)",
@@ -4709,7 +4709,7 @@
             },
             "launcherScheduler": "កាលវិភាគ",
             "errorCorrection": "ការកែកំហុស",
-            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerorec តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។"
+            "errorCorrectionHint": "រក្សាទុកឯកសារ parity .aerocorrect តូចមួយនៅជាប់នឹងឯកសារបម្រុងទុកនីមួយៗ ដើម្បីឲ្យច្បាប់ចម្លងពីចម្ងាយដែលខូចដោយ bit-rot អាចត្រូវបានជួសជុលនៅ pull បន្ទាប់ ដោយគ្មានច្បាប់ដើម។"
         },
         "accountLock": {
             "title": "ជ្រើសរើសគណនី",

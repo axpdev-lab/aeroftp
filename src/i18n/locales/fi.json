@@ -2793,12 +2793,12 @@
             "placementDetached": "Erillinen",
             "placementBoth": "Molemmat",
             "placementEmbeddedDesc": "Sailiossa, paivittyy joka tallennuksessa",
-            "placementDetachedDesc": "Oheinen .aerovault.rec-tiedosto",
+            "placementDetachedDesc": "Oheinen .aerocorrect-tiedosto",
             "placementBothDesc": "Sailiossa seka erillinen tiedosto",
             "detachedStableStorageNote": "Erillinen pariteetti pitaa sailion tavulleen samanlaisena kuin tavallinen holvi; vie se uudelleen holvin muokkaamisen jalkeen.",
             "exportParity": "Vie palautustiedosto",
             "exportingParity": "Viedaan...",
-            "exportParityHint": "Kirjoita erillinen .aerovault.rec-palautustiedosto nykyisesta datasta",
+            "exportParityHint": "Kirjoita erillinen .aerocorrect-palautustiedosto nykyisesta datasta",
             "stripParity": "Poista upotettu pariteetti",
             "strippingParity": "Poistetaan...",
             "stripParityHint": "Poista pariteetti sailiosta (sailytetaan vain, jos erillinen palautustiedosto on olemassa)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Ajastin",
             "errorCorrection": "Virheenkorjaus",
-            "errorCorrectionHint": "Tallentaa pienen .aerorec-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä."
+            "errorCorrectionHint": "Tallentaa pienen .aerocorrect-pariteettitiedoston jokaisen varmuuskopioidun tiedoston viereen, jotta bit-rotin vaurioittama etäkopio voidaan korjata seuraavalla haulla ilman alkuperäistä."
         },
         "accountLock": {
             "title": "Valitse tili",

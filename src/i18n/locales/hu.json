@@ -2793,12 +2793,12 @@
             "placementDetached": "Kulonallo",
             "placementBoth": "Mindketto",
             "placementEmbeddedDesc": "A tarolon belul, minden menteskor frissul",
-            "placementDetachedDesc": "Tarsitott .aerovault.rec fajl",
+            "placementDetachedDesc": "Tarsitott .aerocorrect fajl",
             "placementBothDesc": "A tarolon belul es egy kulon fajl",
             "detachedStableStorageNote": "A kulonallo paritas a tarolot bajtrol bajtra azonosan tartja egy szokasos trezorral; a trezor szerkesztese utan exportald ujra.",
             "exportParity": "Helyreallitasi fajl exportalasa",
             "exportingParity": "Exportalas...",
-            "exportParityHint": "Kulonallo .aerovault.rec helyreallitasi fajl irasa a jelenlegi adatokbol",
+            "exportParityHint": "Kulonallo .aerocorrect helyreallitasi fajl irasa a jelenlegi adatokbol",
             "stripParity": "Beagyazott paritas eltavolitasa",
             "strippingParity": "Eltavolitas...",
             "stripParityHint": "A paritas eltavolitasa a tarolobol (csak akkor marad meg, ha letezik kulonallo helyreallitasi fajl)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Ütemező",
             "errorCorrection": "Hibajavítás",
-            "errorCorrectionHint": "Egy kis .aerorec paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül."
+            "errorCorrectionHint": "Egy kis .aerocorrect paritásfájlt ment minden mentett fájl mellé, így a bit-rot által károsodott távoli másolat a következő letöltéskor javítható az eredeti nélkül."
         },
         "accountLock": {
             "title": "Válasszon fiókot",

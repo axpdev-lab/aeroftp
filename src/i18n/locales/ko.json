@@ -2793,12 +2793,12 @@
             "placementDetached": "분리",
             "placementBoth": "둘 다",
             "placementEmbeddedDesc": "컨테이너 내부, 저장할 때마다 갱신",
-            "placementDetachedDesc": "함께 있는 .aerovault.rec 파일",
+            "placementDetachedDesc": "함께 있는 .aerocorrect 파일",
             "placementBothDesc": "컨테이너 내부와 별도 파일",
             "detachedStableStorageNote": "분리 패리티는 컨테이너를 일반 보관함과 바이트 단위로 동일하게 유지합니다. 보관함 편집 후 다시 내보내세요.",
             "exportParity": "복구 파일 내보내기",
             "exportingParity": "내보내는 중...",
-            "exportParityHint": "현재 데이터에서 분리된 .aerovault.rec 복구 파일 쓰기",
+            "exportParityHint": "현재 데이터에서 분리된 .aerocorrect 복구 파일 쓰기",
             "stripParity": "내장 패리티 제거",
             "strippingParity": "제거 중...",
             "stripParityHint": "컨테이너에서 패리티 제거(분리 복구 파일이 있을 때만 유지)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "스케줄러",
             "errorCorrection": "오류 정정",
-            "errorCorrectionHint": "백업된 각 파일 옆에 작은 .aerorec 패리티 파일을 저장하여, bit-rot으로 손상된 원격 복사본을 원본 없이 다음 pull 시 복구할 수 있도록 합니다."
+            "errorCorrectionHint": "백업된 각 파일 옆에 작은 .aerocorrect 패리티 파일을 저장하여, bit-rot으로 손상된 원격 복사본을 원본 없이 다음 pull 시 복구할 수 있도록 합니다."
         },
         "accountLock": {
             "title": "계정 선택",

@@ -2793,12 +2793,12 @@
             "placementDetached": "Adskilid",
             "placementBoth": "Baedi",
             "placementEmbeddedDesc": "I ilatinu, uppfaert vid hverja vistun",
-            "placementDetachedDesc": "Fylgiskra .aerovault.rec",
+            "placementDetachedDesc": "Fylgiskra .aerocorrect",
             "placementBothDesc": "I ilatinu auk serstakrar skraar",
             "detachedStableStorageNote": "Adskilid jofnun heldur ilatinu baeti fyrir baeti eins og venjulegt hvelfingu; flyttu hana ut aftur eftir ad hvelfingunni er breytt.",
             "exportParity": "Flytja ut endurheimtarskra",
             "exportingParity": "Flyt ut...",
-            "exportParityHint": "Skrifa adskilda .aerovault.rec endurheimtarskra ur núverandi gognum",
+            "exportParityHint": "Skrifa adskilda .aerocorrect endurheimtarskra ur núverandi gognum",
             "stripParity": "Fjarlaegja innbyggda jofnun",
             "strippingParity": "Fjarlaegi...",
             "stripParityHint": "Fjarlaegja jofnun ur ilatinu (haldid adeins ef adskilin endurheimtarskra er til)",
@@ -4709,7 +4709,7 @@
             },
             "launcherScheduler": "Tímaáætlun",
             "errorCorrection": "Villuleiðrétting",
-            "errorCorrectionHint": "Vistar litla .aerorec jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins."
+            "errorCorrectionHint": "Vistar litla .aerocorrect jöfnunarskrá við hlið hverrar afritsskrár, svo hægt sé að gera við fjarafrit sem skemmst hefur af bit-rot við næsta sækjun, án frumritsins."
         },
         "accountLock": {
             "title": "Veldu reikning",

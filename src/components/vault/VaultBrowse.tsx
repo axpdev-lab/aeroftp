@@ -88,7 +88,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         >
                             <Wrench size={14} /> {t('vault.repairErrorCorrection')}
                         </button>
-                        {/* SIDECAR: export a detached .aerovault.rec (add/refresh parity without rewriting the container). */}
+                        {/* SIDECAR: export a detached .aerocorrect (add/refresh parity without rewriting the container). */}
                         <button
                             onClick={state.exportParity}
                             disabled={state.loading || state.isExportingParity}

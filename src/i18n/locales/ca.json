@@ -2793,12 +2793,12 @@
             "placementDetached": "Separada",
             "placementBoth": "Ambdues",
             "placementEmbeddedDesc": "Al contenidor, s'actualitza a cada desament",
-            "placementDetachedDesc": "Fitxer .aerovault.rec adjunt",
+            "placementDetachedDesc": "Fitxer .aerocorrect adjunt",
             "placementBothDesc": "Al contenidor mes un fitxer a part",
             "detachedStableStorageNote": "La paritat separada mante el contenidor identic byte a byte a una caixa forta normal; torna a exportar-la despres d'editar la caixa.",
             "exportParity": "Exporta el fitxer de recuperacio",
             "exportingParity": "Exportant...",
-            "exportParityHint": "Escriu un fitxer de recuperacio .aerovault.rec separat a partir de les dades actuals",
+            "exportParityHint": "Escriu un fitxer de recuperacio .aerocorrect separat a partir de les dades actuals",
             "stripParity": "Elimina la paritat incrustada",
             "strippingParity": "Eliminant...",
             "stripParityHint": "Elimina la paritat del contenidor (es conserva nomes si existeix un fitxer de recuperacio separat)",
@@ -4709,7 +4709,7 @@
             },
             "launcherScheduler": "Planificador",
             "errorCorrection": "Correcció d'errors",
-            "errorCorrectionHint": "Desa un petit fitxer de paritat .aerorec al costat de cada fitxer de còpia de seguretat, de manera que una còpia remota malmesa per bit-rot es pugui reparar en el següent pull, sense l'original."
+            "errorCorrectionHint": "Desa un petit fitxer de paritat .aerocorrect al costat de cada fitxer de còpia de seguretat, de manera que una còpia remota malmesa per bit-rot es pugui reparar en el següent pull, sense l'original."
         },
         "accountLock": {
             "title": "Trieu un compte",

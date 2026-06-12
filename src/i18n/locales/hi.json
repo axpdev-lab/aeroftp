@@ -2793,12 +2793,12 @@
             "placementDetached": "अलग",
             "placementBoth": "दोनों",
             "placementEmbeddedDesc": "कंटेनर में, हर सहेजने पर ताज़ा होता है",
-            "placementDetachedDesc": "साथ की .aerovault.rec फ़ाइल",
+            "placementDetachedDesc": "साथ की .aerocorrect फ़ाइल",
             "placementBothDesc": "कंटेनर में और एक अलग फ़ाइल",
             "detachedStableStorageNote": "अलग पैरिटी कंटेनर को सामान्य वॉल्ट के समान बाइट-दर-बाइट रखती है; वॉल्ट संपादित करने के बाद इसे फिर से निर्यात करें।",
             "exportParity": "पुनर्प्राप्ति फ़ाइल निर्यात करें",
             "exportingParity": "निर्यात हो रहा है...",
-            "exportParityHint": "वर्तमान डेटा से एक अलग .aerovault.rec पुनर्प्राप्ति फ़ाइल लिखें",
+            "exportParityHint": "वर्तमान डेटा से एक अलग .aerocorrect पुनर्प्राप्ति फ़ाइल लिखें",
             "stripParity": "अंतर्निहित पैरिटी हटाएँ",
             "strippingParity": "हटाया जा रहा है...",
             "stripParityHint": "कंटेनर से पैरिटी हटाएँ (केवल तभी रखी जाती है जब अलग पुनर्प्राप्ति फ़ाइल मौजूद हो)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "अनुसूचक",
             "errorCorrection": "त्रुटि सुधार",
-            "errorCorrectionHint": "प्रत्येक बैकअप फ़ाइल के बगल में एक छोटी .aerorec पैरिटी फ़ाइल संग्रहीत करता है, ताकि bit-rot से क्षतिग्रस्त रिमोट कॉपी को मूल के बिना अगले pull पर ठीक किया जा सके।"
+            "errorCorrectionHint": "प्रत्येक बैकअप फ़ाइल के बगल में एक छोटी .aerocorrect पैरिटी फ़ाइल संग्रहीत करता है, ताकि bit-rot से क्षतिग्रस्त रिमोट कॉपी को मूल के बिना अगले pull पर ठीक किया जा सके।"
         },
         "accountLock": {
             "title": "एक खाता चुनें",

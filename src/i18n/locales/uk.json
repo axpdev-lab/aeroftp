@@ -2793,12 +2793,12 @@
             "placementDetached": "Окреме",
             "placementBoth": "Обидва",
             "placementEmbeddedDesc": "У контейнері, оновлюється при кожному збереженні",
-            "placementDetachedDesc": "Файл .aerovault.rec поруч",
+            "placementDetachedDesc": "Файл .aerocorrect поруч",
             "placementBothDesc": "У контейнері та окремий файл",
             "detachedStableStorageNote": "Окрема парність зберігає контейнер побайтно ідентичним звичайному сховищу; повторно експортуйте її після редагування сховища.",
             "exportParity": "Експортувати файл відновлення",
             "exportingParity": "Експортування...",
-            "exportParityHint": "Записати окремий файл відновлення .aerovault.rec з поточних даних",
+            "exportParityHint": "Записати окремий файл відновлення .aerocorrect з поточних даних",
             "stripParity": "Видалити вбудовану парність",
             "strippingParity": "Видалення...",
             "stripParityHint": "Видалити парність із контейнера (зберігається, лише якщо є окремий файл відновлення)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Планувальник",
             "errorCorrection": "Корекція помилок",
-            "errorCorrectionHint": "Зберігає невеликий файл парності .aerorec поруч із кожним резервним файлом, щоб віддалену копію, пошкоджену bit-rot, можна було відновити під час наступного pull без оригіналу."
+            "errorCorrectionHint": "Зберігає невеликий файл парності .aerocorrect поруч із кожним резервним файлом, щоб віддалену копію, пошкоджену bit-rot, можна було відновити під час наступного pull без оригіналу."
         },
         "accountLock": {
             "title": "Виберіть обліковий запис",

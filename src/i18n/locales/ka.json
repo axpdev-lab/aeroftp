@@ -2793,12 +2793,12 @@
             "placementDetached": "ცალკე",
             "placementBoth": "ორივე",
             "placementEmbeddedDesc": "კონტეინერში, ნახლდება ყოველ შენახვაზე",
-            "placementDetachedDesc": "თანმხლები .aerovault.rec ფაილი",
+            "placementDetachedDesc": "თანმხლები .aerocorrect ფაილი",
             "placementBothDesc": "კონტეინერში და ცალკე ფაილი",
             "detachedStableStorageNote": "ცალკე პარიტეტი ინახავს კონტეინერს ბაიტ-ბაიტ იდენტურად ჩვეულებრივ საცავთან; საცავის რედაქტირების შემდეგ ხელახლა გაიტანეთ.",
             "exportParity": "აღდგენის ფაილის ექსპორტი",
             "exportingParity": "ექსპორტი...",
-            "exportParityHint": "მიმდინარე მონაცემებიდან ცალკე .aerovault.rec აღდგენის ფაილის ჩაწერა",
+            "exportParityHint": "მიმდინარე მონაცემებიდან ცალკე .aerocorrect აღდგენის ფაილის ჩაწერა",
             "stripParity": "ჩაშენებული პარიტეტის წაშლა",
             "strippingParity": "წაშლა...",
             "stripParityHint": "პარიტეტის წაშლა კონტეინერიდან (ინახება მხოლოდ თუ არსებობს ცალკე აღდგენის ფაილი)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "განრიგი",
             "errorCorrection": "შეცდომების გასწორება",
-            "errorCorrectionHint": "ინახავს პატარა .aerorec პარიტეტის ფაილს თითოეული სარეზერვო ფაილის გვერდით, რათა bit-rot-ით დაზიანებული დისტანციური ასლი შესაძლებელი იყოს გასწორდეს შემდეგი pull-ისას, ორიგინალის გარეშე."
+            "errorCorrectionHint": "ინახავს პატარა .aerocorrect პარიტეტის ფაილს თითოეული სარეზერვო ფაილის გვერდით, რათა bit-rot-ით დაზიანებული დისტანციური ასლი შესაძლებელი იყოს გასწორდეს შემდეგი pull-ისას, ორიგინალის გარეშე."
         },
         "accountLock": {
             "title": "აირჩიეთ ანგარიში",

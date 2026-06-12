@@ -2793,12 +2793,12 @@
             "placementDetached": "Separat",
             "placementBoth": "Beide",
             "placementEmbeddedDesc": "Im Container, bei jedem Speichern aktualisiert",
-            "placementDetachedDesc": ".aerovault.rec-Begleitdatei",
+            "placementDetachedDesc": ".aerocorrect-Begleitdatei",
             "placementBothDesc": "Im Container plus separate Datei",
             "detachedStableStorageNote": "Separate Paritaet haelt den Container Byte fuer Byte identisch zu einem normalen Tresor; nach Aenderungen am Tresor erneut exportieren.",
             "exportParity": "Wiederherstellungsdatei exportieren",
             "exportingParity": "Wird exportiert...",
-            "exportParityHint": "Eine separate .aerovault.rec-Wiederherstellungsdatei aus den aktuellen Daten schreiben",
+            "exportParityHint": "Eine separate .aerocorrect-Wiederherstellungsdatei aus den aktuellen Daten schreiben",
             "stripParity": "Eingebettete Paritaet entfernen",
             "strippingParity": "Wird entfernt...",
             "stripParityHint": "Paritaet aus dem Container entfernen (nur erhalten, wenn eine separate Wiederherstellungsdatei existiert)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Planer",
             "errorCorrection": "Fehlerkorrektur",
-            "errorCorrectionHint": "Speichert eine kleine .aerorec-Paritätsdatei neben jeder gesicherten Datei, sodass eine durch Bit-Rot beschädigte Remote-Kopie beim nächsten Pull ohne das Original repariert werden kann."
+            "errorCorrectionHint": "Speichert eine kleine .aerocorrect-Paritätsdatei neben jeder gesicherten Datei, sodass eine durch Bit-Rot beschädigte Remote-Kopie beim nächsten Pull ohne das Original repariert werden kann."
         },
         "accountLock": {
             "title": "Konto auswählen",

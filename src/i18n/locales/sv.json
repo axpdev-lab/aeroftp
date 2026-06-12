@@ -2793,12 +2793,12 @@
             "placementDetached": "Fristaende",
             "placementBoth": "Bada",
             "placementEmbeddedDesc": "I behallaren, uppdateras vid varje sparning",
-            "placementDetachedDesc": "Medfoljande .aerovault.rec-fil",
+            "placementDetachedDesc": "Medfoljande .aerocorrect-fil",
             "placementBothDesc": "I behallaren plus en separat fil",
             "detachedStableStorageNote": "Fristaende paritet haller behallaren byte for byte identisk med ett vanligt valv; exportera den igen efter att du redigerat valvet.",
             "exportParity": "Exportera aterstallningsfil",
             "exportingParity": "Exporterar...",
-            "exportParityHint": "Skriv en fristaende .aerovault.rec-aterstallningsfil fran aktuell data",
+            "exportParityHint": "Skriv en fristaende .aerocorrect-aterstallningsfil fran aktuell data",
             "stripParity": "Ta bort inbaddad paritet",
             "strippingParity": "Tar bort...",
             "stripParityHint": "Ta bort pariteten fran behallaren (behalls bara om en fristaende aterstallningsfil finns)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Schemaläggare",
             "errorCorrection": "Felkorrigering",
-            "errorCorrectionHint": "Sparar en liten .aerorec-paritetsfil bredvid varje säkerhetskopierad fil, så att en fjärrkopia skadad av bit-rot kan repareras vid nästa hämtning, utan originalet."
+            "errorCorrectionHint": "Sparar en liten .aerocorrect-paritetsfil bredvid varje säkerhetskopierad fil, så att en fjärrkopia skadad av bit-rot kan repareras vid nästa hämtning, utan originalet."
         },
         "accountLock": {
             "title": "Välj ett konto",

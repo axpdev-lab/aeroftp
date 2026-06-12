@@ -2793,12 +2793,12 @@
             "placementDetached": "Ayri",
             "placementBoth": "Ikisi de",
             "placementEmbeddedDesc": "Kapsayicida, her kaydetmede yenilenir",
-            "placementDetachedDesc": "Eslik eden .aerovault.rec dosyasi",
+            "placementDetachedDesc": "Eslik eden .aerocorrect dosyasi",
             "placementBothDesc": "Kapsayicida ve ayri bir dosya",
             "detachedStableStorageNote": "Ayri parite, kapsayiciyi normal bir kasayla bayt bayt ayni tutar; kasayi duzenledikten sonra yeniden disa aktarin.",
             "exportParity": "Kurtarma dosyasini disa aktar",
             "exportingParity": "Disa aktariliyor...",
-            "exportParityHint": "Mevcut verilerden ayri bir .aerovault.rec kurtarma dosyasi yaz",
+            "exportParityHint": "Mevcut verilerden ayri bir .aerocorrect kurtarma dosyasi yaz",
             "stripParity": "Gomulu pariteyi kaldir",
             "strippingParity": "Kaldiriliyor...",
             "stripParityHint": "Pariteyi kapsayicidan kaldir (yalnizca ayri bir kurtarma dosyasi varsa korunur)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Zamanlayıcı",
             "errorCorrection": "Hata Düzeltme",
-            "errorCorrectionHint": "Her yedeklenen dosyanın yanına küçük bir .aerorec eşlik dosyası kaydeder, böylece bit-rot nedeniyle bozulmuş uzak bir kopya, orijinali olmadan bir sonraki pull işleminde onarılabilir."
+            "errorCorrectionHint": "Her yedeklenen dosyanın yanına küçük bir .aerocorrect eşlik dosyası kaydeder, böylece bit-rot nedeniyle bozulmuş uzak bir kopya, orijinali olmadan bir sonraki pull işleminde onarılabilir."
         },
         "accountLock": {
             "title": "Bir hesap seçin",

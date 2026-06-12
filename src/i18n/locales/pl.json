@@ -2793,12 +2793,12 @@
             "placementDetached": "Odlaczona",
             "placementBoth": "Obie",
             "placementEmbeddedDesc": "W kontenerze, odswiezana przy kazdym zapisie",
-            "placementDetachedDesc": "Towarzyszacy plik .aerovault.rec",
+            "placementDetachedDesc": "Towarzyszacy plik .aerocorrect",
             "placementBothDesc": "W kontenerze plus osobny plik",
             "detachedStableStorageNote": "Odlaczona parzystosc utrzymuje kontener identyczny bajt po bajcie z normalnym sejfem; wyeksportuj ja ponownie po edycji sejfu.",
             "exportParity": "Eksportuj plik odzyskiwania",
             "exportingParity": "Eksportowanie...",
-            "exportParityHint": "Zapisz odlaczony plik odzyskiwania .aerovault.rec z biezacych danych",
+            "exportParityHint": "Zapisz odlaczony plik odzyskiwania .aerocorrect z biezacych danych",
             "stripParity": "Usun wbudowana parzystosc",
             "strippingParity": "Usuwanie...",
             "stripParityHint": "Usun parzystosc z kontenera (zachowana tylko, gdy istnieje odlaczony plik odzyskiwania)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Harmonogram",
             "errorCorrection": "Korekcja błędów",
-            "errorCorrectionHint": "Zapisuje mały plik parzystości .aerorec obok każdego pliku kopii zapasowej, dzięki czemu zdalną kopię uszkodzoną przez bit-rot można naprawić przy następnym pobraniu, bez oryginału."
+            "errorCorrectionHint": "Zapisuje mały plik parzystości .aerocorrect obok każdego pliku kopii zapasowej, dzięki czemu zdalną kopię uszkodzoną przez bit-rot można naprawić przy następnym pobraniu, bez oryginału."
         },
         "accountLock": {
             "title": "Wybierz konto",

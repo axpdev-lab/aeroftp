@@ -340,7 +340,7 @@ export interface VaultState {
     // QR-style Error Correction overhead level (#276), as a target overhead percentage.
     errorCorrectionPct: number;
     setErrorCorrectionPct: (p: number) => void;
-    // Detected detached `.aerovault.rec` sidecar for the open vault.
+    // Detected detached `.aerocorrect` sidecar for the open vault.
     hasDetachedRecovery: boolean;
     // The detached sidecar also carries header (+ manifest locator) parity, so the
     // detached path can rebuild the 1024-byte header, not just the data blocks.
@@ -463,7 +463,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [hasErrorCorrection, setHasErrorCorrection] = useState(false);  // runtime detection for open vaults (via has_error_correction command)
     const [recoveryPlacement, setRecoveryPlacement] = useState<RecoveryPlacement>('embedded');
     const [errorCorrectionPct, setErrorCorrectionPct] = useState<number>(20);  // QR-style overhead level (#276); 20% == K=10/P=2
-    const [hasDetachedRecovery, setHasDetachedRecovery] = useState(false);  // detached .aerovault.rec sidecar present
+    const [hasDetachedRecovery, setHasDetachedRecovery] = useState(false);  // detached .aerocorrect sidecar present
     const [hasDetachedHeaderRecovery, setHasDetachedHeaderRecovery] = useState(false);  // sidecar carries header (+ manifest) parity
     const [isExportingParity, setIsExportingParity] = useState(false);
     const [isStrippingParity, setIsStrippingParity] = useState(false);
@@ -859,7 +859,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setEntries(mapV3InfoToEntries(info));
                 setMeta(mapV3InfoToMeta(info, meta));
                 // P2: detect Error Correction for badge and enabling scrub/repair actions in this session.
-                // recovery_status reports both the embedded extension and a detached .aerovault.rec sidecar.
+                // recovery_status reports both the embedded extension and a detached .aerocorrect sidecar.
                 try {
                     const status = await invoke<{ embedded: boolean; detached: boolean; header_parity?: boolean }>('vault_v3_recovery_status', { path: vaultPath });
                     setHasErrorCorrection(!!status.embedded);
@@ -1279,7 +1279,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
-    // --- SIDECAR: detached recovery file (.aerovault.rec) ---
+    // --- SIDECAR: detached recovery file (.aerocorrect) ---
     // Export writes/refreshes the sidecar from the current data; strip drops the
     // embedded parity (refused unless a sidecar exists, mirroring the engine).
     const exportParity = async () => {

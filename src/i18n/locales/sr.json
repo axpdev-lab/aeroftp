@@ -2793,12 +2793,12 @@
             "placementDetached": "Odvojena",
             "placementBoth": "Obe",
             "placementEmbeddedDesc": "U kontejneru, osvezava se pri svakom cuvanju",
-            "placementDetachedDesc": "Prateci fajl .aerovault.rec",
+            "placementDetachedDesc": "Prateci fajl .aerocorrect",
             "placementBothDesc": "U kontejneru plus poseban fajl",
             "detachedStableStorageNote": "Odvojeni paritet zadrzava kontejner bajt po bajt identican obicnom sefu; ponovo ga izvezite nakon izmene sefa.",
             "exportParity": "Izvezi fajl oporavka",
             "exportingParity": "Izvoz...",
-            "exportParityHint": "Upisi odvojeni fajl oporavka .aerovault.rec iz trenutnih podataka",
+            "exportParityHint": "Upisi odvojeni fajl oporavka .aerocorrect iz trenutnih podataka",
             "stripParity": "Ukloni ugradjeni paritet",
             "strippingParity": "Uklanjanje...",
             "stripParityHint": "Ukloni paritet iz kontejnera (zadrzava se samo ako postoji odvojeni fajl oporavka)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Распоређивач",
             "errorCorrection": "Исправљање грешака",
-            "errorCorrectionHint": "Чува малу .aerorec датотеку паритета поред сваке резервне датотеке, тако да се удаљена копија оштећена bit-rot-ом може поправити при следећем повлачењу, без оригинала."
+            "errorCorrectionHint": "Чува малу .aerocorrect датотеку паритета поред сваке резервне датотеке, тако да се удаљена копија оштећена bit-rot-ом може поправити при следећем повлачењу, без оригинала."
         },
         "accountLock": {
             "title": "Изаберите налог",

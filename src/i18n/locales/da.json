@@ -2793,12 +2793,12 @@
             "placementDetached": "Adskilt",
             "placementBoth": "Begge",
             "placementEmbeddedDesc": "I beholderen, opdateres ved hver lagring",
-            "placementDetachedDesc": "Tilhorende .aerovault.rec-fil",
+            "placementDetachedDesc": "Tilhorende .aerocorrect-fil",
             "placementBothDesc": "I beholderen plus en separat fil",
             "detachedStableStorageNote": "Adskilt paritet holder beholderen byte for byte identisk med et almindeligt boks; eksporter den igen efter redigering af boksen.",
             "exportParity": "Eksporter gendannelsesfil",
             "exportingParity": "Eksporterer...",
-            "exportParityHint": "Skriv en adskilt .aerovault.rec-gendannelsesfil ud fra de aktuelle data",
+            "exportParityHint": "Skriv en adskilt .aerocorrect-gendannelsesfil ud fra de aktuelle data",
             "stripParity": "Fjern indlejret paritet",
             "strippingParity": "Fjerner...",
             "stripParityHint": "Fjern pariteten fra beholderen (bevares kun, hvis der findes en adskilt gendannelsesfil)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Planlægger",
             "errorCorrection": "Fejlkorrektion",
-            "errorCorrectionHint": "Gemmer en lille .aerorec-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen."
+            "errorCorrectionHint": "Gemmer en lille .aerocorrect-paritetsfil ved siden af hver sikkerhedskopieret fil, så en fjernkopi ødelagt af bit-rot kan repareres ved næste pull, uden originalen."
         },
         "accountLock": {
             "title": "Vælg en konto",

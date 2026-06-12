@@ -500,7 +500,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                 </div>
                             </div>
                             <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                                {t('aerosync.errorCorrectionHint') || 'Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original.'}
+                                {t('aerosync.errorCorrectionHint') || 'Stores a small .aerocorrect parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original.'}
                             </div>
                         </div>
                     )}

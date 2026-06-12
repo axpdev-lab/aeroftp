@@ -839,6 +839,18 @@ export const runRemoteSync = async (
                             : { path: remoteFilePath, isDir: item.isDir === true };
                         await invoke(cmd, args);
                     }
+                    // Best-effort: remove the `.aerocorrect` EC parity sidecar alongside the
+                    // deleted file so a removed backup never orphans its sidecar. The
+                    // sidecar is excluded from comparison, so it is never its own action.
+                    if (!item.isDir) {
+                        const sidecarPath = `${remoteFilePath}.aerocorrect`;
+                        const sidecarInvoke = config.isLocalLocal
+                            ? invoke('delete_local_file', { path: sidecarPath })
+                            : config.isProvider
+                                ? invoke('provider_delete_file', { path: sidecarPath })
+                                : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
+                        await sidecarInvoke.catch(() => undefined);
+                    }
                 } else {
                     // Archive only real files; directories are not versioned.
                     if (!item.isDir) {

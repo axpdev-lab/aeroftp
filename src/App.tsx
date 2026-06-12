@@ -7379,6 +7379,9 @@ interface UpdateVerificationInfo {
                 exclude_patterns: [
                   'node_modules', '.git', '.DS_Store', 'Thumbs.db',
                   '__pycache__', '*.pyc', '.env', 'target',
+                  // Never surface EC parity sidecars as orphan/data in AeroSync compare,
+                  // even when EC is off but sidecars from a prior EC-on run still exist.
+                  '*.aerocorrect',
                 ],
                 direction: 'bidirectional',
               },
@@ -7465,6 +7468,9 @@ interface UpdateVerificationInfo {
                 exclude_patterns: [
                   'node_modules', '.git', '.DS_Store', 'Thumbs.db',
                   '__pycache__', '*.pyc', '.env', 'target',
+                  // Never surface EC parity sidecars as orphan/data in AeroSync compare,
+                  // even when EC is off but sidecars from a prior EC-on run still exist.
+                  '*.aerocorrect',
                 ],
                 direction: 'bidirectional',
               },

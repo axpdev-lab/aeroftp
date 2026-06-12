@@ -2793,12 +2793,12 @@
             "placementDetached": "Atdalits",
             "placementBoth": "Abi",
             "placementEmbeddedDesc": "Konteinera, atjauninas ar katru saglabasanu",
-            "placementDetachedDesc": "Pavadosais .aerovault.rec fails",
+            "placementDetachedDesc": "Pavadosais .aerocorrect fails",
             "placementBothDesc": "Konteinera un atsevisks fails",
             "detachedStableStorageNote": "Atdalita paritate satur konteineru baitu pa baitam identisku parastam seifam; pec seifa rediķesanas eksportejiet to velreiz.",
             "exportParity": "Eksportet atkopsanas failu",
             "exportingParity": "Eksporte...",
-            "exportParityHint": "Ierakstit atdalitu .aerovault.rec atkopsanas failu no pasreizejiem datiem",
+            "exportParityHint": "Ierakstit atdalitu .aerocorrect atkopsanas failu no pasreizejiem datiem",
             "stripParity": "Nonemt iegulto paritati",
             "strippingParity": "Nonem...",
             "stripParityHint": "Nonemt paritati no konteinera (saglabajas tikai tad, ja pastav atdalits atkopsanas fails)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Plānotājs",
             "errorCorrection": "Kļūdu labošana",
-            "errorCorrectionHint": "Saglabā nelielu .aerorec paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla."
+            "errorCorrectionHint": "Saglabā nelielu .aerocorrect paritātes failu blakus katram dublētajam failam, lai ar bit-rot bojātu attālo kopiju varētu salabot nākamajā lejupielādē bez oriģināla."
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

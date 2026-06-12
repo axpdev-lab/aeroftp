@@ -2793,12 +2793,12 @@
             "placementDetached": "Tach roi",
             "placementBoth": "Ca hai",
             "placementEmbeddedDesc": "Trong vung chua, lam moi moi khi luu",
-            "placementDetachedDesc": "Tep .aerovault.rec di kem",
+            "placementDetachedDesc": "Tep .aerocorrect di kem",
             "placementBothDesc": "Trong vung chua va mot tep rieng",
             "detachedStableStorageNote": "Tinh chan le tach roi giu vung chua giong het tung byte voi ket thong thuong; xuat lai sau khi chinh sua ket.",
             "exportParity": "Xuat tep khoi phuc",
             "exportingParity": "Dang xuat...",
-            "exportParityHint": "Ghi mot tep khoi phuc .aerovault.rec tach roi tu du lieu hien tai",
+            "exportParityHint": "Ghi mot tep khoi phuc .aerocorrect tach roi tu du lieu hien tai",
             "stripParity": "Go bo tinh chan le nhung",
             "strippingParity": "Dang go bo...",
             "stripParityHint": "Go bo tinh chan le khoi vung chua (chi giu lai neu co tep khoi phuc tach roi)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Bộ lập lịch",
             "errorCorrection": "Sửa lỗi",
-            "errorCorrectionHint": "Lưu một tệp chẵn lẻ .aerorec nhỏ bên cạnh mỗi tệp sao lưu, để một bản sao từ xa bị hỏng do bit-rot có thể được sửa chữa ở lần pull tiếp theo mà không cần bản gốc."
+            "errorCorrectionHint": "Lưu một tệp chẵn lẻ .aerocorrect nhỏ bên cạnh mỗi tệp sao lưu, để một bản sao từ xa bị hỏng do bit-rot có thể được sửa chữa ở lần pull tiếp theo mà không cần bản gốc."
         },
         "accountLock": {
             "title": "Chọn tài khoản",

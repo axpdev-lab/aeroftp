@@ -2793,12 +2793,12 @@
             "placementDetached": "Los",
             "placementBoth": "Beide",
             "placementEmbeddedDesc": "In de container, bij elke opslag vernieuwd",
-            "placementDetachedDesc": "Bijbehorend .aerovault.rec-bestand",
+            "placementDetachedDesc": "Bijbehorend .aerocorrect-bestand",
             "placementBothDesc": "In de container plus een los bestand",
             "detachedStableStorageNote": "Losse pariteit houdt de container byte voor byte identiek aan een gewone kluis; exporteer opnieuw na het bewerken van de kluis.",
             "exportParity": "Herstelbestand exporteren",
             "exportingParity": "Exporteren...",
-            "exportParityHint": "Een los .aerovault.rec-herstelbestand schrijven op basis van de huidige gegevens",
+            "exportParityHint": "Een los .aerocorrect-herstelbestand schrijven op basis van de huidige gegevens",
             "stripParity": "Ingebedde pariteit verwijderen",
             "strippingParity": "Verwijderen...",
             "stripParityHint": "Pariteit uit de container verwijderen (alleen behouden als er een los herstelbestand bestaat)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Planner",
             "errorCorrection": "Foutcorrectie",
-            "errorCorrectionHint": "Slaat een klein .aerorec-pariteitsbestand op naast elk back-upbestand, zodat een door bit-rot beschadigde externe kopie bij de volgende pull kan worden hersteld, zonder het origineel."
+            "errorCorrectionHint": "Slaat een klein .aerocorrect-pariteitsbestand op naast elk back-upbestand, zodat een door bit-rot beschadigde externe kopie bij de volgende pull kan worden hersteld, zonder het origineel."
         },
         "accountLock": {
             "title": "Kies een account",

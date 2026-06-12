@@ -2793,12 +2793,12 @@
             "placementDetached": "Oddelena",
             "placementBoth": "Obe",
             "placementEmbeddedDesc": "V kontejneru, obnovuje se pri kazdem ulozeni",
-            "placementDetachedDesc": "Doprovodny soubor .aerovault.rec",
+            "placementDetachedDesc": "Doprovodny soubor .aerocorrect",
             "placementBothDesc": "V kontejneru plus samostatny soubor",
             "detachedStableStorageNote": "Oddelena parita udrzuje kontejner byte po byte shodny s beznym trezorem; po uprave trezoru ji znovu exportujte.",
             "exportParity": "Exportovat soubor obnovy",
             "exportingParity": "Exportuji...",
-            "exportParityHint": "Zapsat oddeleny soubor obnovy .aerovault.rec ze soucasnych dat",
+            "exportParityHint": "Zapsat oddeleny soubor obnovy .aerocorrect ze soucasnych dat",
             "stripParity": "Odebrat vlozenou paritu",
             "strippingParity": "Odebiram...",
             "stripParityHint": "Odebrat paritu z kontejneru (zachova se jen pokud existuje oddeleny soubor obnovy)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Plánovač",
             "errorCorrection": "Oprava chyb",
-            "errorCorrectionHint": "Uloží malý paritní soubor .aerorec vedle každého zálohovaného souboru, takže vzdálenou kopii poškozenou bit-rotem lze opravit při příštím stažení, bez originálu."
+            "errorCorrectionHint": "Uloží malý paritní soubor .aerocorrect vedle každého zálohovaného souboru, takže vzdálenou kopii poškozenou bit-rotem lze opravit při příštím stažení, bez originálu."
         },
         "accountLock": {
             "title": "Vyberte účet",

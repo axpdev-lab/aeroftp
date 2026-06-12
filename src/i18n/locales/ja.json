@@ -2758,12 +2758,12 @@
             "placementDetached": "分離",
             "placementBoth": "両方",
             "placementEmbeddedDesc": "コンテナ内、保存のたびに更新",
-            "placementDetachedDesc": "付属の .aerovault.rec ファイル",
+            "placementDetachedDesc": "付属の .aerocorrect ファイル",
             "placementBothDesc": "コンテナ内に加えて別ファイル",
             "detachedStableStorageNote": "分離パリティはコンテナを通常のボールトとバイト単位で同一に保ちます。ボールト編集後は再度エクスポートしてください。",
             "exportParity": "復旧ファイルをエクスポート",
             "exportingParity": "エクスポート中...",
-            "exportParityHint": "現在のデータから分離した .aerovault.rec 復旧ファイルを書き出す",
+            "exportParityHint": "現在のデータから分離した .aerocorrect 復旧ファイルを書き出す",
             "stripParity": "埋め込みパリティを削除",
             "strippingParity": "削除中...",
             "stripParityHint": "コンテナからパリティを削除（分離復旧ファイルがある場合のみ保持）",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "スケジューラ",
             "errorCorrection": "エラー訂正",
-            "errorCorrectionHint": "バックアップされた各ファイルの隣に小さな .aerorec パリティファイルを保存し、bit-rot で破損したリモートコピーを元ファイルなしで次回の pull 時に修復できるようにします。"
+            "errorCorrectionHint": "バックアップされた各ファイルの隣に小さな .aerocorrect パリティファイルを保存し、bit-rot で破損したリモートコピーを元ファイルなしで次回の pull 時に修復できるようにします。"
         },
         "accountLock": {
             "title": "アカウントを選択",

@@ -2793,12 +2793,12 @@
             "placementDetached": "Hiwalay",
             "placementBoth": "Pareho",
             "placementEmbeddedDesc": "Sa container, nire-refresh sa bawat pag-save",
-            "placementDetachedDesc": "Kasamang .aerovault.rec na file",
+            "placementDetachedDesc": "Kasamang .aerocorrect na file",
             "placementBothDesc": "Sa container at hiwalay na file",
             "detachedStableStorageNote": "Pinapanatili ng hiwalay na parity ang container na byte-por-byte na pareho sa karaniwang vault; i-export muli ito pagkatapos i-edit ang vault.",
             "exportParity": "I-export ang recovery file",
             "exportingParity": "Ine-export...",
-            "exportParityHint": "Magsulat ng hiwalay na .aerovault.rec recovery file mula sa kasalukuyang data",
+            "exportParityHint": "Magsulat ng hiwalay na .aerocorrect recovery file mula sa kasalukuyang data",
             "stripParity": "Alisin ang naka-embed na parity",
             "strippingParity": "Inaalis...",
             "stripParityHint": "Alisin ang parity sa container (mananatili lang kung may hiwalay na recovery file)",
@@ -4709,7 +4709,7 @@
             },
             "launcherScheduler": "Tagaplano",
             "errorCorrection": "Pagwawasto ng Error",
-            "errorCorrectionHint": "Nag-iimbak ng maliit na .aerorec parity file sa tabi ng bawat naka-backup na file, upang ang isang remote na kopyang nasira ng bit-rot ay maaayos sa susunod na pull, nang walang orihinal."
+            "errorCorrectionHint": "Nag-iimbak ng maliit na .aerocorrect parity file sa tabi ng bawat naka-backup na file, upang ang isang remote na kopyang nasira ng bit-rot ay maaayos sa susunod na pull, nang walang orihinal."
         },
         "accountLock": {
             "title": "Pumili ng account",

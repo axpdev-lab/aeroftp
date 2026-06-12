@@ -2793,12 +2793,12 @@
             "placementDetached": "Terasing",
             "placementBoth": "Kedua-duanya",
             "placementEmbeddedDesc": "Dalam bekas, disegar semula setiap kali simpan",
-            "placementDetachedDesc": "Fail .aerovault.rec yang mengiringi",
+            "placementDetachedDesc": "Fail .aerocorrect yang mengiringi",
             "placementBothDesc": "Dalam bekas serta fail berasingan",
             "detachedStableStorageNote": "Pariti terasing mengekalkan bekas sama bait demi bait dengan peti besi biasa; eksport semula selepas menyunting peti besi.",
             "exportParity": "Eksport fail pemulihan",
             "exportingParity": "Mengeksport...",
-            "exportParityHint": "Tulis fail pemulihan .aerovault.rec terasing daripada data semasa",
+            "exportParityHint": "Tulis fail pemulihan .aerocorrect terasing daripada data semasa",
             "stripParity": "Buang pariti terbenam",
             "strippingParity": "Membuang...",
             "stripParityHint": "Buang pariti daripada bekas (dikekalkan hanya jika fail pemulihan terasing wujud)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "Penjadual",
             "errorCorrection": "Pembetulan Ralat",
-            "errorCorrectionHint": "Menyimpan fail pariti .aerorec kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal."
+            "errorCorrectionHint": "Menyimpan fail pariti .aerocorrect kecil di sebelah setiap fail sandaran, supaya salinan jauh yang rosak akibat bit-rot boleh dibaiki pada pull seterusnya, tanpa yang asal."
         },
         "accountLock": {
             "title": "Pilih akaun",

@@ -2793,12 +2793,12 @@
             "placementDetached": "পৃথক",
             "placementBoth": "উভয়",
             "placementEmbeddedDesc": "কন্টেইনারে, প্রতিবার সংরক্ষণে রিফ্রেশ হয়",
-            "placementDetachedDesc": "সঙ্গের .aerovault.rec ফাইল",
+            "placementDetachedDesc": "সঙ্গের .aerocorrect ফাইল",
             "placementBothDesc": "কন্টেইনারে এবং একটি পৃথক ফাইল",
             "detachedStableStorageNote": "পৃথক প্যারিটি কন্টেইনারকে সাধারণ ভল্টের মতো বাইট-বাই-বাইট অভিন্ন রাখে; ভল্ট সম্পাদনার পর এটি আবার রপ্তানি করুন।",
             "exportParity": "পুনরুদ্ধার ফাইল রপ্তানি করুন",
             "exportingParity": "রপ্তানি হচ্ছে...",
-            "exportParityHint": "বর্তমান ডেটা থেকে একটি পৃথক .aerovault.rec পুনরুদ্ধার ফাইল লিখুন",
+            "exportParityHint": "বর্তমান ডেটা থেকে একটি পৃথক .aerocorrect পুনরুদ্ধার ফাইল লিখুন",
             "stripParity": "অন্তর্নিহিত প্যারিটি সরান",
             "strippingParity": "সরানো হচ্ছে...",
             "stripParityHint": "কন্টেইনার থেকে প্যারিটি সরান (শুধুমাত্র পৃথক পুনরুদ্ধার ফাইল থাকলে রাখা হয়)",
@@ -4690,7 +4690,7 @@
             },
             "launcherScheduler": "শিডিউলার",
             "errorCorrection": "ত্রুটি সংশোধন",
-            "errorCorrectionHint": "প্রতিটি ব্যাকআপ ফাইলের পাশে একটি ছোট .aerorec প্যারিটি ফাইল সংরক্ষণ করে, যাতে bit-rot দ্বারা ক্ষতিগ্রস্ত একটি দূরবর্তী কপি মূল ছাড়াই পরবর্তী pull-এ মেরামত করা যায়।"
+            "errorCorrectionHint": "প্রতিটি ব্যাকআপ ফাইলের পাশে একটি ছোট .aerocorrect প্যারিটি ফাইল সংরক্ষণ করে, যাতে bit-rot দ্বারা ক্ষতিগ্রস্ত একটি দূরবর্তী কপি মূল ছাড়াই পরবর্তী pull-এ মেরামত করা যায়।"
         },
         "accountLock": {
             "title": "একটি অ্যাকাউন্ট বেছে নিন",
