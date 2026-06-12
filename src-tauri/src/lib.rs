@@ -14287,7 +14287,14 @@ pub async fn compress_tar_core(
     format: String,
     compression_level: Option<i64>,
 ) -> Result<String, String> {
-    compress_tar(paths, output_path, format, compression_level).await
+    // `compress_tar` returns a human-readable message for the GUI toast, but the
+    // CLI layer needs the actual output path (it stats it for `output_bytes`).
+    // The tar writer commits to exactly `output_path`, so return that on success,
+    // matching the zip/7z `_core` wrappers which already return the path.
+    let out = output_path.clone();
+    compress_tar(paths, output_path, format, compression_level)
+        .await
+        .map(|_| out)
 }
 
 pub async fn extract_tar_core(
