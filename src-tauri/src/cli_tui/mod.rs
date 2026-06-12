@@ -85,18 +85,30 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
     let theme = TuiTheme::from_env();
 
     with_terminal(|terminal| {
-        // Some terminals report a stale (often wider) size at `Terminal::new`
-        // time - before the alt-screen switch has settled - so the first frames
-        // draw wider than the real window and wrap into overlapping garbage that
-        // only heals on the first resize. Re-query the real size now and resync
-        // the back buffer before the first draw so a narrow launch renders clean.
-        if let Ok((w, h)) = terminal_size() {
-            let _ = terminal.resize(Rect::new(0, 0, w, h));
-        }
-        let _ = terminal.clear();
+        // Terminals can report a stale size at `Terminal::new` time (before the
+        // alt-screen switch settles), so the first frames draw at the wrong size
+        // and wrap/bleed into overlapping garbage that only healed on a manual
+        // resize. Resync the back buffer to the real size before the first draw.
+        resync_terminal(terminal);
+
+        // Track the current view kind so a transition (IntroHub <-> connected,
+        // overlay open/close) can force the same resync+clear a resize does.
+        // Without it the previous layout's cells bleed through the new view until
+        // the user happens to resize the window.
+        let mut last_view = view_key(&app);
 
         loop {
             drain_worker_events(&mut app, &mut worker);
+
+            // A view change leaves the old layout's cells behind (the per-frame
+            // Clear widget only covers ratatui's buffer, which may be smaller than
+            // the real terminal until a resize syncs it). Hard-clear on transition.
+            let view = view_key(&app);
+            if view != last_view {
+                resync_terminal(terminal);
+                last_view = view;
+            }
+
             terminal.draw(|frame| render_dashboard(frame, &mut app, theme))?;
 
             if app.should_quit {
@@ -126,6 +138,9 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
                         // reflow leaves no wrapped/overlapping fragments behind.
                         let _ = terminal.resize(Rect::new(0, 0, w, h));
                         let _ = terminal.clear();
+                        last_view = view_key(&app);
+                        // (view_key is unchanged by a resize; this keeps the
+                        // transition detector honest if a redraw races the event.)
                     }
                     _ => {}
                 }
@@ -134,6 +149,24 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
 
         Ok(app.take_intent().unwrap_or(TuiIntent::Quit))
     })
+}
+
+/// A coarse key for the current top-level view layout. A change between frames
+/// (IntroHub `0` <-> connected dual-pane `1`) means the layout switched, so the
+/// previous view's cells must be hard-cleared rather than painted over.
+fn view_key(app: &AppState) -> u8 {
+    u8::from(app.is_live_connected())
+}
+
+/// Resize ratatui's back buffer to the real terminal size and force a full
+/// repaint. Used at startup and on every view transition so a layout change
+/// never bleeds the previous view through - the symptom that, before this, only
+/// a manual window resize cleared (the resize event ran the same resync).
+fn resync_terminal(terminal: &mut CliTuiTerminal) {
+    if let Ok((w, h)) = terminal_size() {
+        let _ = terminal.resize(Rect::new(0, 0, w, h));
+    }
+    let _ = terminal.clear();
 }
 
 fn drain_worker_events(app: &mut AppState, worker: &mut Option<TuiWorkerClient>) {
