@@ -523,21 +523,36 @@ pub(crate) enum StandaloneVerifyResult {
     NeedsRepair,
 }
 
-/// Read-only verify of a standalone file against its own `.aerocorrect` sidecar. Unlike
-/// the sync path (which gets the expected hash from the sync index), a standalone file has
-/// no external index: the sidecar's stored `content_sha256` IS the expected good hash. The
-/// structural checks (total_len + window tiling) still apply. Never mutates the file.
-pub(crate) fn verify_standalone_file(
+/// Read-only verify of a standalone file against its on-disk `.aerocorrect`
+/// sidecar. It keeps only the segment directory and checksum buffer in memory,
+/// never the whole sidecar.
+pub(crate) fn verify_standalone_file_streamed(
     rel_path: &str,
     path: &Path,
-    sidecar_bytes: &[u8],
+    sidecar_path: &Path,
 ) -> Result<StandaloneVerifyResult, String> {
-    let sidecar = AeroCorrectSidecar::from_bytes(sidecar_bytes)?;
-    let expected = sidecar.content_sha256;
+    let reader = AeroCorrectSidecarReader::open(sidecar_path)?;
+    let expected = reader.content_sha256;
+    reader.verify_binding(&expected).map_err(|e| {
+        format!("Standalone EC sidecar for {rel_path} is internally inconsistent: {e}")
+    })?;
     let file_size = std::fs::metadata(path)
         .map_err(|e| format!("stat {}: {e}", path.display()))?
         .len();
-    let _ = validated_sidecar_for(rel_path, &expected, file_size, sidecar_bytes)?;
+    if reader.total_len != file_size {
+        return Err(format!(
+            "Standalone EC sidecar total length {} != file length {file_size} for {rel_path}",
+            reader.total_len
+        ));
+    }
+    validate_window_tiling_iter(
+        reader
+            .segments()
+            .iter()
+            .map(|s| (s.window_offset, s.window_len)),
+        file_size,
+    )
+    .map_err(|e| format!("Standalone EC sidecar for {rel_path}: {e}"))?;
     if hash_file_streaming(path)? == expected {
         Ok(StandaloneVerifyResult::Verified)
     } else {
@@ -546,17 +561,17 @@ pub(crate) fn verify_standalone_file(
 }
 
 /// Repair a standalone file from its own `.aerocorrect` sidecar (atomic, all-or-nothing).
-/// The sidecar's stored `content_sha256` is the expected good hash; the existing windowed
-/// streaming verify/repair machinery does the rest. A foreign/stale sidecar can only make
-/// the repair FAIL (post-repair SHA mismatch), never corrupt the original.
-pub(crate) fn verify_repair_standalone_file(
+/// The sidecar's stored `content_sha256` is the expected good hash; parity is
+/// read window-by-window by `verify_repair_sync_file_streamed`.
+pub(crate) fn verify_repair_standalone_file_streamed(
     rel_path: &str,
     path: &Path,
-    sidecar_bytes: &[u8],
+    sidecar_path: &Path,
 ) -> Result<SyncEcRepairResult, String> {
-    let sidecar = AeroCorrectSidecar::from_bytes(sidecar_bytes)?;
-    let expected = sidecar.content_sha256;
-    verify_repair_sync_file(rel_path, &expected, path, sidecar_bytes)
+    let reader = AeroCorrectSidecarReader::open(sidecar_path)?;
+    let expected = reader.content_sha256;
+    drop(reader);
+    verify_repair_sync_file_streamed(rel_path, &expected, path, sidecar_path)
 }
 
 #[cfg(test)]

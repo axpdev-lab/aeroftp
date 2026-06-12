@@ -608,10 +608,8 @@ pub fn correct_verify(file: &str, parity: Option<&str>) -> Result<CorrectVerifyR
     let sidecar_path = parity
         .map(|s| s.to_string())
         .unwrap_or_else(|| sidecar::aerocorrect_sidecar_path(file));
-    let sidecar_bytes =
-        std::fs::read(&sidecar_path).map_err(|e| format!("read sidecar {sidecar_path}: {e}"))?;
     let verified = matches!(
-        aerosync::verify_standalone_file(&rel, path, &sidecar_bytes)?,
+        aerosync::verify_standalone_file_streamed(&rel, path, Path::new(&sidecar_path))?,
         aerosync::StandaloneVerifyResult::Verified
     );
     Ok(CorrectVerifyReport {
@@ -630,10 +628,12 @@ pub fn correct_repair(file: &str, parity: Option<&str>) -> Result<CorrectRepairR
     let sidecar_path = parity
         .map(|s| s.to_string())
         .unwrap_or_else(|| sidecar::aerocorrect_sidecar_path(file));
-    let sidecar_bytes =
-        std::fs::read(&sidecar_path).map_err(|e| format!("read sidecar {sidecar_path}: {e}"))?;
     let (status, repaired, recovered_shards) =
-        match aerosync::verify_repair_standalone_file(&rel, path, &sidecar_bytes)? {
+        match aerosync::verify_repair_standalone_file_streamed(
+            &rel,
+            path,
+            Path::new(&sidecar_path),
+        )? {
             aerosync::SyncEcRepairResult::Verified => ("verified".to_string(), false, 0u64),
             aerosync::SyncEcRepairResult::Repaired { recovered_shards } => {
                 ("repaired".to_string(), true, recovered_shards as u64)
