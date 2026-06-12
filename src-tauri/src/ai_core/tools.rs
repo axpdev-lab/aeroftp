@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, LazyLock};
 
 use crate::ai_core::agent_tools;
+use crate::ai_core::correct_tools;
 use crate::ai_core::local_tools;
 use crate::ai_core::remote_tools;
 use crate::ai_core::system_tools;
@@ -1673,6 +1674,50 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
         },
+        // ─── Error correction: detached .aerocorrect sidecars (MCP) ──────────
+        ToolDef {
+            name: "aeroftp_correct_gen",
+            description: "Generate a detached .aerocorrect Reed-Solomon recovery sidecar for a local file (par2-style). Writes <file>.aerocorrect by default. Use this to protect a file against bit rot before storing or transferring it.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "description": "Path to the local file to protect."},
+                    "level": {"type": "integer", "description": "Storage overhead target percent (5-50). Default 15 (medium). low~7, quartile~25, high~30."},
+                    "out": {"type": "string", "description": "Optional sidecar output path. Default <file>.aerocorrect."}
+                },
+                "required": ["file"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::MCP,
+        },
+        ToolDef {
+            name: "aeroftp_correct_verify",
+            description: "Verify a local file against its .aerocorrect sidecar (read-only, never mutates the file). Returns verified=true if intact or status=needs_repair if corruption is detected.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "description": "Path to the local file to verify."},
+                    "parity": {"type": "string", "description": "Optional sidecar path override. Default <file>.aerocorrect."}
+                },
+                "required": ["file"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::MCP,
+        },
+        ToolDef {
+            name: "aeroftp_correct_repair",
+            description: "Repair a corrupted local file in place from its .aerocorrect sidecar (atomic, all-or-nothing; rebuilt bytes are re-verified against the bound content hash before replacing the original, so a bad sidecar can only fail, never corrupt). An already-intact file is reported verified with no write.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "description": "Path to the local file to repair."},
+                    "parity": {"type": "string", "description": "Optional sidecar path override. Default <file>.aerocorrect."}
+                },
+                "required": ["file"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::MCP,
+        },
     ]
 });
 
@@ -1739,6 +1784,10 @@ pub async fn dispatch_tool(
         "shell_execute" => system_tools::shell_execute(ctx, args).await,
         "archive_compress" => system_tools::archive_compress(ctx, args).await,
         "archive_decompress" => system_tools::archive_decompress(ctx, args).await,
+        // ─── Error correction: aeroftp_correct_* (.aerocorrect sidecars) ─────
+        "aeroftp_correct_gen" => correct_tools::correct_gen(ctx, args).await,
+        "aeroftp_correct_verify" => correct_tools::correct_verify(ctx, args).await,
+        "aeroftp_correct_repair" => correct_tools::correct_repair(ctx, args).await,
         // ─── Area C: remote_* + aeroftp_* aliases ───────────────────────────
         "aeroftp_list_servers"
         | "remote_list_servers"
