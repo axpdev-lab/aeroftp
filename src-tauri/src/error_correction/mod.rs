@@ -488,6 +488,159 @@ pub(crate) fn reconstruct_from_error_correction(
     Ok(recovered)
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Public standalone API: error-correct ANY file with a detached `.aerocorrect`
+// sidecar (the `aeroftp correct` subcommand). The format binds by content
+// SHA-256, so this is format-agnostic (works on vault containers or any file).
+// This is the curated public surface; the codec/format submodules stay crate-private.
+// ───────────────────────────────────────────────────────────────────────────
+
+use serde::Serialize;
+use std::path::Path;
+
+/// Result of generating a standalone `.aerocorrect` sidecar.
+#[derive(Debug, Clone, Serialize)]
+pub struct CorrectGenerateReport {
+    pub file: String,
+    pub sidecar: String,
+    pub file_size: u64,
+    pub sidecar_size: u64,
+    pub overhead_pct: f64,
+    /// Number of windows (parity segments) in the sidecar.
+    pub segments: u64,
+    pub shards: u64,
+    pub level_pct: u32,
+}
+
+/// Result of a read-only standalone verify.
+#[derive(Debug, Clone, Serialize)]
+pub struct CorrectVerifyReport {
+    pub file: String,
+    pub sidecar: String,
+    /// `"verified"` (intact) or `"needs_repair"` (corruption detected).
+    pub status: String,
+    pub verified: bool,
+}
+
+/// Result of a standalone repair attempt.
+#[derive(Debug, Clone, Serialize)]
+pub struct CorrectRepairReport {
+    pub file: String,
+    pub sidecar: String,
+    /// `"verified"` (was already intact) or `"repaired"`.
+    pub status: String,
+    pub repaired: bool,
+    pub recovered_shards: u64,
+}
+
+/// Default sidecar path for `file`: `<file>.aerocorrect`.
+pub fn aerocorrect_sidecar_path_for(file: &str) -> String {
+    sidecar::aerocorrect_sidecar_path(file)
+}
+
+fn rel_name(file: &str) -> String {
+    Path::new(file)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file)
+        .to_string()
+}
+
+/// Generate a detached `.aerocorrect` sidecar for `file` at overhead level `pct`. Streams
+/// the file window by window (bounded memory). Writes the sidecar to `out` or
+/// `<file>.aerocorrect`. Returns a report. Errors if the file exceeds the size cap.
+pub fn correct_generate(
+    file: &str,
+    pct: u32,
+    out: Option<&str>,
+) -> Result<CorrectGenerateReport, String> {
+    let path = Path::new(file);
+    let rel = rel_name(file);
+    let result = aerosync::generate_sync_sidecar_for_file_capped(
+        &rel,
+        path,
+        pct,
+        aerosync::AEROSYNC_EC_MAX_FILE_SIZE,
+    )?;
+    let generated = match result {
+        aerosync::SyncEcGenerateResult::Generated(g) => g,
+        aerosync::SyncEcGenerateResult::SkippedTooLarge {
+            file_size,
+            max_file_size,
+        } => {
+            return Err(format!(
+                "{file} is {file_size} bytes, above the {max_file_size}-byte error-correction cap"
+            ));
+        }
+    };
+    let sidecar_path = out
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| sidecar::aerocorrect_sidecar_path(file));
+    std::fs::write(&sidecar_path, &generated.sidecar_bytes)
+        .map_err(|e| format!("write sidecar {sidecar_path}: {e}"))?;
+    let segments =
+        sidecar::aerocorrect_windows(generated.file_size, sidecar::AEROCORRECT_WINDOW_SIZE).len()
+            as u64;
+    Ok(CorrectGenerateReport {
+        file: file.to_string(),
+        sidecar: sidecar_path,
+        file_size: generated.file_size,
+        sidecar_size: generated.sidecar_len,
+        overhead_pct: generated.overhead_pct,
+        segments,
+        shards: generated.shards,
+        level_pct: pct,
+    })
+}
+
+/// Verify `file` against its `.aerocorrect` sidecar (read-only, never mutates the file).
+/// `parity` overrides the default `<file>.aerocorrect` path.
+pub fn correct_verify(file: &str, parity: Option<&str>) -> Result<CorrectVerifyReport, String> {
+    let path = Path::new(file);
+    let rel = rel_name(file);
+    let sidecar_path = parity
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| sidecar::aerocorrect_sidecar_path(file));
+    let sidecar_bytes =
+        std::fs::read(&sidecar_path).map_err(|e| format!("read sidecar {sidecar_path}: {e}"))?;
+    let verified = matches!(
+        aerosync::verify_standalone_file(&rel, path, &sidecar_bytes)?,
+        aerosync::StandaloneVerifyResult::Verified
+    );
+    Ok(CorrectVerifyReport {
+        file: file.to_string(),
+        sidecar: sidecar_path,
+        status: if verified { "verified" } else { "needs_repair" }.to_string(),
+        verified,
+    })
+}
+
+/// Repair `file` in place from its `.aerocorrect` sidecar (atomic, all-or-nothing). A file
+/// already intact is reported as `verified` (no write). `parity` overrides the default path.
+pub fn correct_repair(file: &str, parity: Option<&str>) -> Result<CorrectRepairReport, String> {
+    let path = Path::new(file);
+    let rel = rel_name(file);
+    let sidecar_path = parity
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| sidecar::aerocorrect_sidecar_path(file));
+    let sidecar_bytes =
+        std::fs::read(&sidecar_path).map_err(|e| format!("read sidecar {sidecar_path}: {e}"))?;
+    let (status, repaired, recovered_shards) =
+        match aerosync::verify_repair_standalone_file(&rel, path, &sidecar_bytes)? {
+            aerosync::SyncEcRepairResult::Verified => ("verified".to_string(), false, 0u64),
+            aerosync::SyncEcRepairResult::Repaired { recovered_shards } => {
+                ("repaired".to_string(), true, recovered_shards as u64)
+            }
+        };
+    Ok(CorrectRepairReport {
+        file: file.to_string(),
+        sidecar: sidecar_path,
+        status,
+        repaired,
+        recovered_shards,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,6 +818,96 @@ mod tests {
         assert_eq!(
             reconstruct_from_error_correction(&mut blocks, &payload).unwrap(),
             0
+        );
+    }
+
+    fn write_file(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn correct_generate_default_sidecar_path_and_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = write_file(dir.path(), "data.bin", &sample(40_000));
+
+        let gen = correct_generate(&file, 15, None).unwrap();
+        assert_eq!(gen.sidecar, format!("{file}.aerocorrect"));
+        assert_eq!(gen.sidecar, aerocorrect_sidecar_path_for(&file));
+        assert!(std::path::Path::new(&gen.sidecar).exists());
+        assert_eq!(gen.segments, 1, "small file is a single window");
+        assert!(gen.shards > 0);
+
+        // Intact file verifies and needs no repair.
+        let v = correct_verify(&file, None).unwrap();
+        assert!(v.verified && v.status == "verified");
+        let r = correct_repair(&file, None).unwrap();
+        assert!(!r.repaired && r.status == "verified");
+    }
+
+    #[test]
+    fn correct_verify_detects_and_repair_fixes_corruption() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = sample(50_000);
+        let file = write_file(dir.path(), "doc.bin", &original);
+        correct_generate(&file, 25, None).unwrap();
+
+        // Corrupt a span within the file (well under the parity budget).
+        let mut bytes = original.clone();
+        for b in bytes.iter_mut().take(1_000).skip(100) {
+            *b ^= 0xFF;
+        }
+        std::fs::write(&file, &bytes).unwrap();
+
+        let v = correct_verify(&file, None).unwrap();
+        assert!(!v.verified && v.status == "needs_repair");
+
+        let r = correct_repair(&file, None).unwrap();
+        assert!(r.repaired && r.status == "repaired" && r.recovered_shards > 0);
+        assert_eq!(
+            std::fs::read(&file).unwrap(),
+            original,
+            "byte-identical repair"
+        );
+
+        // Read-only verify after repair confirms intact.
+        assert!(correct_verify(&file, None).unwrap().verified);
+    }
+
+    #[test]
+    fn correct_custom_out_and_parity_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = write_file(dir.path(), "payload.bin", &sample(30_000));
+        let side = dir.path().join("custom.aerocorrect");
+        let side = side.to_string_lossy().into_owned();
+
+        let gen = correct_generate(&file, 15, Some(&side)).unwrap();
+        assert_eq!(gen.sidecar, side);
+        assert!(!std::path::Path::new(&format!("{file}.aerocorrect")).exists());
+        assert!(correct_verify(&file, Some(&side)).unwrap().verified);
+    }
+
+    #[test]
+    fn correct_repair_against_foreign_sidecar_leaves_file_intact() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two same-size files with different content; sidecar belongs to A.
+        let a = write_file(dir.path(), "a.bin", &sample(20_000));
+        let b_bytes = {
+            let mut v = sample(20_000);
+            v.reverse();
+            v
+        };
+        let b = write_file(dir.path(), "b.bin", &b_bytes);
+        let side = correct_generate(&a, 25, None).unwrap().sidecar;
+
+        // B does not match A's sidecar: verify says needs_repair, repair fails closed.
+        assert!(!correct_verify(&b, Some(&side)).unwrap().verified);
+        assert!(correct_repair(&b, Some(&side)).is_err());
+        assert_eq!(
+            std::fs::read(&b).unwrap(),
+            b_bytes,
+            "B untouched after failed repair"
         );
     }
 }

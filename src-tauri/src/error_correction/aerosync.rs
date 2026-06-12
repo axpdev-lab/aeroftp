@@ -314,6 +314,25 @@ pub(crate) fn verify_repair_sync_bytes(
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
 }
 
+/// Stream a file and return its SHA-256 with bounded memory (one `HASH_READ_CHUNK`
+/// buffer at a time). Shared by the verify fast path and the standalone verify.
+fn hash_file_streaming(path: &Path) -> Result<[u8; 32], String> {
+    let mut file =
+        File::open(path).map_err(|e| format!("open {} for hashing: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; HASH_READ_CHUNK];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("read {} for hashing: {e}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(finalize_sha256(hasher))
+}
+
 pub(crate) fn verify_repair_sync_file(
     rel_path: &str,
     expected_sha256: &[u8; 32],
@@ -326,23 +345,8 @@ pub(crate) fn verify_repair_sync_file(
     let sidecar = validated_sidecar_for(rel_path, expected_sha256, file_size, sidecar_bytes)?;
 
     // Fast path: stream the file once and hash it. Bounded memory (one read chunk).
-    {
-        let mut file = File::open(path)
-            .map_err(|e| format!("open AeroSync EC target {}: {e}", path.display()))?;
-        let mut hasher = Sha256::new();
-        let mut buf = vec![0u8; HASH_READ_CHUNK];
-        loop {
-            let n = file
-                .read(&mut buf)
-                .map_err(|e| format!("read AeroSync EC target {}: {e}", path.display()))?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf[..n]);
-        }
-        if finalize_sha256(hasher) == *expected_sha256 {
-            return Ok(SyncEcRepairResult::Verified);
-        }
+    if hash_file_streaming(path)? == *expected_sha256 {
+        return Ok(SyncEcRepairResult::Verified);
     }
 
     // Repair path: stream window by window into a temp file in the same directory,
@@ -390,6 +394,49 @@ pub(crate) fn verify_repair_sync_file(
         )
     })?;
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
+}
+
+/// Outcome of a read-only standalone verify (the file is never mutated).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StandaloneVerifyResult {
+    Verified,
+    NeedsRepair,
+}
+
+/// Read-only verify of a standalone file against its own `.aerocorrect` sidecar. Unlike
+/// the sync path (which gets the expected hash from the sync index), a standalone file has
+/// no external index: the sidecar's stored `content_sha256` IS the expected good hash. The
+/// structural checks (total_len + window tiling) still apply. Never mutates the file.
+pub(crate) fn verify_standalone_file(
+    rel_path: &str,
+    path: &Path,
+    sidecar_bytes: &[u8],
+) -> Result<StandaloneVerifyResult, String> {
+    let sidecar = AeroCorrectSidecar::from_bytes(sidecar_bytes)?;
+    let expected = sidecar.content_sha256;
+    let file_size = std::fs::metadata(path)
+        .map_err(|e| format!("stat {}: {e}", path.display()))?
+        .len();
+    let _ = validated_sidecar_for(rel_path, &expected, file_size, sidecar_bytes)?;
+    if hash_file_streaming(path)? == expected {
+        Ok(StandaloneVerifyResult::Verified)
+    } else {
+        Ok(StandaloneVerifyResult::NeedsRepair)
+    }
+}
+
+/// Repair a standalone file from its own `.aerocorrect` sidecar (atomic, all-or-nothing).
+/// The sidecar's stored `content_sha256` is the expected good hash; the existing windowed
+/// streaming verify/repair machinery does the rest. A foreign/stale sidecar can only make
+/// the repair FAIL (post-repair SHA mismatch), never corrupt the original.
+pub(crate) fn verify_repair_standalone_file(
+    rel_path: &str,
+    path: &Path,
+    sidecar_bytes: &[u8],
+) -> Result<SyncEcRepairResult, String> {
+    let sidecar = AeroCorrectSidecar::from_bytes(sidecar_bytes)?;
+    let expected = sidecar.content_sha256;
+    verify_repair_sync_file(rel_path, &expected, path, sidecar_bytes)
 }
 
 #[cfg(test)]

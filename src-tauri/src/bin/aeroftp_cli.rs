@@ -2595,6 +2595,14 @@ enum Commands {
         #[command(subcommand)]
         command: VaultCommands,
     },
+    /// Error-correct any standalone file with a detached `.aerocorrect` sidecar
+    /// (par2-style). Generate parity, verify integrity, or repair corruption. The same
+    /// format protects vault containers and synced files; binding is by content SHA-256.
+    /// Windowed streaming keeps memory bounded on large files.
+    Correct {
+        #[command(subcommand)]
+        command: CorrectCommands,
+    },
 }
 
 #[cfg(test)]
@@ -2834,6 +2842,50 @@ enum VaultCommands {
         /// Drop embedded parity even if no detached sidecar exists
         #[arg(long)]
         force: bool,
+    },
+}
+
+/// Standalone error correction for ANY file via a detached `.aerocorrect` sidecar
+/// (par2-style). The same format protects vault containers and synced files; binding is
+/// by content SHA-256, so it works on arbitrary files. Generation/verify/repair stream
+/// the file in 64 MiB windows, so memory is bounded regardless of file size.
+#[derive(Subcommand)]
+enum CorrectCommands {
+    /// Generate a `.aerocorrect` recovery sidecar for a file. Default output is
+    /// `<file>.aerocorrect`. The level sets the storage overhead (low ~7%, medium ~15%,
+    /// quartile ~25%, high ~30%, or a percentage 5-50; default medium).
+    Gen {
+        /// Path to the file to protect
+        path: String,
+        /// Error-correction overhead level: low | medium | quartile | high | <5-50>
+        #[arg(
+            long = "error-correction",
+            visible_alias = "ec",
+            default_value = "medium"
+        )]
+        error_correction: String,
+        /// Output sidecar path (default: `<file>.aerocorrect`)
+        #[arg(long, short = 'o')]
+        out: Option<String>,
+    },
+    /// Verify a file against its `.aerocorrect` sidecar (read-only, never modifies the
+    /// file). Exit 0 = intact, 1 = corruption detected (repairable with `correct repair`).
+    Verify {
+        /// Path to the file to verify
+        path: String,
+        /// Sidecar path (default: `<file>.aerocorrect`)
+        #[arg(long)]
+        parity: Option<String>,
+    },
+    /// Repair a corrupted file in place from its `.aerocorrect` sidecar. Atomic and
+    /// all-or-nothing: the original is replaced only if the repaired stream hashes back
+    /// to the sidecar's recorded content; otherwise it is left byte-for-byte untouched.
+    Repair {
+        /// Path to the file to repair
+        path: String,
+        /// Sidecar path (default: `<file>.aerocorrect`)
+        #[arg(long)]
+        parity: Option<String>,
     },
 }
 
@@ -4840,6 +4892,106 @@ fn parse_sync_error_correction_level_pct(level: Option<&str>) -> Result<Option<u
         SYNC_ERROR_CORRECTION_MIN_PCT,
         SYNC_ERROR_CORRECTION_MAX_PCT,
     )))
+}
+
+/// `aeroftp correct {gen,verify,repair}`: standalone `.aerocorrect` error correction for
+/// any file. Local-only (no connection). Reuses the same windowed codec as sync EC.
+fn cmd_correct(command: &CorrectCommands, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::error_correction;
+    match command {
+        CorrectCommands::Gen {
+            path,
+            error_correction: level,
+            out,
+        } => {
+            let pct = match parse_sync_error_correction_level_pct(Some(level)) {
+                Ok(Some(p)) => p,
+                Ok(None) => SYNC_ERROR_CORRECTION_DEFAULT_PCT,
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            match error_correction::correct_generate(path, pct, out.as_deref()) {
+                Ok(report) => {
+                    match format {
+                        OutputFormat::Json => print_json(&report),
+                        OutputFormat::Text => {
+                            println!(
+                                "Wrote {} ({} bytes, {} segment(s), {} shards, {:.1}% overhead) for {}",
+                                report.sidecar,
+                                report.sidecar_size,
+                                report.segments,
+                                report.shards,
+                                report.overhead_pct,
+                                report.file
+                            );
+                        }
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    1
+                }
+            }
+        }
+        CorrectCommands::Verify { path, parity } => {
+            match error_correction::correct_verify(path, parity.as_deref()) {
+                Ok(report) => {
+                    match format {
+                        OutputFormat::Json => print_json(&report),
+                        OutputFormat::Text => {
+                            if report.verified {
+                                println!("Verified: {} matches {}", report.file, report.sidecar);
+                            } else {
+                                println!(
+                                    "Corruption detected in {}: run `correct repair` to recover from {}",
+                                    report.file, report.sidecar
+                                );
+                            }
+                        }
+                    }
+                    if report.verified {
+                        0
+                    } else {
+                        1
+                    }
+                }
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    1
+                }
+            }
+        }
+        CorrectCommands::Repair { path, parity } => {
+            match error_correction::correct_repair(path, parity.as_deref()) {
+                Ok(report) => {
+                    match format {
+                        OutputFormat::Json => print_json(&report),
+                        OutputFormat::Text => {
+                            if report.repaired {
+                                println!(
+                                    "Repaired {} from {} ({} shard(s) reconstructed)",
+                                    report.file, report.sidecar, report.recovered_shards
+                                );
+                            } else {
+                                println!(
+                                    "No repair needed: {} already matches {}",
+                                    report.file, report.sidecar
+                                );
+                            }
+                        }
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    1
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -43819,6 +43971,7 @@ async fn main() {
                 }
             }
         }
+        Commands::Correct { command } => cmd_correct(command, format),
         Commands::Aerorsync { command } => match command {
             AerorsyncCommands::Mode { command } => match command {
                 AerorsyncModeCommands::Get => cmd_aerorsync_mode_get(format),
