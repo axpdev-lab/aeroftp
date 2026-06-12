@@ -486,7 +486,8 @@ pub(crate) fn verify_repair_sync_file_streamed(
     {
         let mut out = std::io::BufWriter::new(tmp.as_file());
         for idx in 0..reader.segments().len() {
-            let window_len = reader.segments()[idx].window_len as usize;
+            let window_len = usize::try_from(reader.segments()[idx].window_len)
+                .map_err(|_| format!("AeroSync EC sidecar window {idx} length exceeds usize"))?;
             let avec = reader.read_segment_avec(idx)?;
             let mut buf = vec![0u8; window_len];
             src.read_exact(&mut buf)

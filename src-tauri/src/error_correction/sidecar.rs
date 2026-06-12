@@ -23,7 +23,10 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use super::ERROR_CORRECTION_SHARD_CKSUM_LEN;
-use super::{error_correction_grid, ERROR_CORRECTION_MAX_SHARD, ERROR_CORRECTION_MIN_SHARD};
+use super::{
+    error_correction_grid, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MAX_SHARD,
+    ERROR_CORRECTION_MIN_SHARD,
+};
 
 /// Magic for a unified detached recovery file: "AEROCORR".
 pub(crate) const AEROCORRECT_MAGIC: &[u8; 8] = b"AEROCORR";
@@ -164,8 +167,11 @@ impl AeroCorrectSidecar {
             off += 8;
             let window_len = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
             off += 8;
-            let avec_len = u64::from_le_bytes(data[off..off + 8].try_into().unwrap()) as usize;
+            let avec_len_u64 = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
             off += 8;
+            validate_segment_avec_len(window_len, avec_len_u64)?;
+            let avec_len = usize::try_from(avec_len_u64)
+                .map_err(|_| "aerocorrect sidecar segment length exceeds usize".to_string())?;
             if off.checked_add(avec_len).is_none_or(|end| end > body_end) {
                 return Err("aerocorrect sidecar segment length mismatch".to_string());
             }
@@ -221,8 +227,12 @@ pub(crate) fn estimate_single_segment_sidecar_len(content_len: u64, pct: u32) ->
 /// bytes at overhead level `pct`, derived from the same v2 fixed-grid geometry
 /// WITHOUT allocating or hashing. An empty window has an empty AVEC payload.
 pub(crate) fn avec_len_for(content_len: u64, pct: u32) -> u64 {
+    avec_len_for_checked(content_len, pct).unwrap_or(u64::MAX)
+}
+
+fn avec_len_for_checked(content_len: u64, pct: u32) -> Option<u64> {
     if content_len == 0 {
-        return 0;
+        return Some(0);
     }
     let (k, p) = error_correction_grid(pct);
     let (k, p) = (k as u64, p as u64);
@@ -232,8 +242,23 @@ pub(crate) fn avec_len_for(content_len: u64, pct: u32) -> u64 {
     );
     let num_data = content_len.div_ceil(s);
     let num_groups = num_data.div_ceil(k);
-    let num_parity = num_groups * p;
-    32 + (num_data + num_parity) * ERROR_CORRECTION_SHARD_CKSUM_LEN as u64 + num_parity * s
+    let num_parity = num_groups.checked_mul(p)?;
+    let checksum_len = num_data
+        .checked_add(num_parity)?
+        .checked_mul(ERROR_CORRECTION_SHARD_CKSUM_LEN as u64)?;
+    let parity_len = num_parity.checked_mul(s)?;
+    32u64.checked_add(checksum_len)?.checked_add(parity_len)
+}
+
+fn validate_segment_avec_len(window_len: u64, avec_len: u64) -> Result<(), String> {
+    let max_len = avec_len_for_checked(window_len, ERROR_CORRECTION_MAX_PCT)
+        .ok_or("aerocorrect sidecar segment AVEC length geometry overflows")?;
+    if avec_len > max_len {
+        return Err(format!(
+            "aerocorrect sidecar segment AVEC length {avec_len} exceeds maximum {max_len} for window length {window_len}"
+        ));
+    }
+    Ok(())
 }
 
 /// Default protected-window size for windowed (large-file) `.aerocorrect` sidecars.
@@ -406,6 +431,7 @@ impl AeroCorrectSidecarReader {
             let window_len = u64::from_le_bytes(seg_hdr[8..16].try_into().unwrap());
             let avec_len = u64::from_le_bytes(seg_hdr[16..24].try_into().unwrap());
             let avec_file_offset = pos + SEGMENT_HEADER_LEN as u64;
+            validate_segment_avec_len(window_len, avec_len)?;
             if avec_file_offset
                 .checked_add(avec_len)
                 .is_none_or(|end| end > body_end)
@@ -478,7 +504,9 @@ impl AeroCorrectSidecarReader {
             .segments
             .get(index)
             .ok_or_else(|| format!("aerocorrect segment index {index} out of range"))?;
-        let (off, len) = (seg.avec_file_offset, seg.avec_len as usize);
+        let off = seg.avec_file_offset;
+        let len = usize::try_from(seg.avec_len)
+            .map_err(|_| "aerocorrect segment length exceeds usize".to_string())?;
         self.file
             .seek(SeekFrom::Start(off))
             .map_err(|e| format!("seek aerocorrect segment avec: {e}"))?;
@@ -716,5 +744,31 @@ mod tests {
         let p2 = dir.path().join("short.aerocorrect");
         std::fs::write(&p2, &bytes[..HEADER_LEN + 4]).unwrap();
         assert!(AeroCorrectSidecarReader::open(&p2).is_err());
+    }
+
+    #[test]
+    fn rejects_segment_avec_len_above_window_max_before_reading_payload() {
+        let data = sample(1);
+        let bytes = single_segment(&data, 20).to_bytes();
+        let max_avec = avec_len_for(data.len() as u64, ERROR_CORRECTION_MAX_PCT);
+        let mut body = bytes[..bytes.len() - CHECKSUM_LEN].to_vec();
+        let avec_len_off = HEADER_LEN + 8 + 8;
+        body[avec_len_off..avec_len_off + 8].copy_from_slice(&(max_avec + 1).to_le_bytes());
+        body.push(0);
+        let checksum = blake3::hash(&body);
+        let mut forged = body;
+        forged.extend_from_slice(checksum.as_bytes());
+
+        let err = AeroCorrectSidecar::from_bytes(&forged).expect_err("oversize avec rejected");
+        assert!(err.contains("exceeds maximum"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversize.aerocorrect");
+        std::fs::write(&path, &forged).unwrap();
+        let err = match AeroCorrectSidecarReader::open(&path) {
+            Ok(_) => panic!("streaming oversize avec rejected"),
+            Err(err) => err,
+        };
+        assert!(err.contains("exceeds maximum"));
     }
 }

@@ -126,7 +126,7 @@ impl ErrorCorrectionPayloadHeader {
             shard_size: u32::from_le_bytes(data[10..14].try_into().unwrap()),
             total_data_len: u64::from_le_bytes(data[14..22].try_into().unwrap()),
         };
-        if h.data_shards == 0 || h.shard_size == 0 {
+        if h.data_shards == 0 || h.parity_shards == 0 || h.shard_size == 0 {
             return Err(
                 "invalid Error Correction payload header (zero shard geometry)".to_string(),
             );
@@ -787,6 +787,9 @@ mod tests {
         z[0..4].copy_from_slice(ERROR_CORRECTION_PAYLOAD_MAGIC);
         z[4..6].copy_from_slice(&ERROR_CORRECTION_PAYLOAD_VERSION.to_le_bytes());
         assert!(ErrorCorrectionPayloadHeader::from_bytes(&z).is_err()); // zero geometry
+        z[6..8].copy_from_slice(&1u16.to_le_bytes());
+        z[10..14].copy_from_slice(&4096u32.to_le_bytes());
+        assert!(ErrorCorrectionPayloadHeader::from_bytes(&z).is_err()); // zero parity
         assert!(ErrorCorrectionPayloadHeader::from_bytes(&[0u8; 10]).is_err()); // too short
     }
 
