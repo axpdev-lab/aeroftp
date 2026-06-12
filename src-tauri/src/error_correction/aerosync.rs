@@ -5,7 +5,8 @@ use std::path::Path;
 
 use super::sidecar::{
     aerocorrect_sidecar_path, aerocorrect_windows, estimate_windowed_sidecar_len,
-    validate_window_tiling, AeroCorrectSegment, AeroCorrectSidecar, AEROCORRECT_WINDOW_SIZE,
+    validate_window_tiling, validate_window_tiling_iter, AeroCorrectSegment, AeroCorrectSidecar,
+    AeroCorrectSidecarReader, AEROCORRECT_WINDOW_SIZE,
 };
 use super::{
     compute_error_correction_shards_grid, error_correction_grid, reconstruct_from_error_correction,
@@ -427,6 +428,94 @@ pub(crate) fn verify_repair_sync_file(
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
 }
 
+/// Streaming counterpart of `verify_repair_sync_file`: instead of taking the whole
+/// sidecar in memory, read it from `sidecar_path` window by window via
+/// `AeroCorrectSidecarReader`. Memory is bounded to one window of plaintext plus that
+/// window's parity, regardless of file OR sidecar size. Used by the sync download path,
+/// where the sidecar is kept on disk rather than read into RAM (the §1 "streaming
+/// sidecar" follow-up: lifts the last O(sidecar size) RAM constraint).
+pub(crate) fn verify_repair_sync_file_streamed(
+    rel_path: &str,
+    expected_sha256: &[u8; 32],
+    path: &Path,
+    sidecar_path: &Path,
+) -> Result<SyncEcRepairResult, String> {
+    let file_size = std::fs::metadata(path)
+        .map_err(|e| format!("stat AeroSync EC target {}: {e}", path.display()))?
+        .len();
+    let mut reader = AeroCorrectSidecarReader::open(sidecar_path)?;
+    // Same validation as the in-memory path: content binding, declared length, tiling.
+    reader.verify_binding(expected_sha256).map_err(|e| {
+        format!("AeroSync EC sidecar for {rel_path} does not match the expected file: {e}")
+    })?;
+    if reader.total_len != file_size {
+        return Err(format!(
+            "AeroSync EC sidecar total length {} != file length {file_size} for {rel_path}",
+            reader.total_len
+        ));
+    }
+    validate_window_tiling_iter(
+        reader
+            .segments()
+            .iter()
+            .map(|s| (s.window_offset, s.window_len)),
+        file_size,
+    )
+    .map_err(|e| format!("AeroSync EC sidecar for {rel_path}: {e}"))?;
+
+    // Fast path: stream the file once and hash it. Bounded memory.
+    if hash_file_streaming(path)? == *expected_sha256 {
+        return Ok(SyncEcRepairResult::Verified);
+    }
+
+    // Repair path: stream window by window into a temp file in the same directory,
+    // reading each window's parity from the sidecar on demand, then atomically replace
+    // the original ONLY if the whole repaired stream hashes to the expected value.
+    // Bounded memory (one window + its parity); all-or-nothing.
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let tmp = tempfile::NamedTempFile::new_in(parent).map_err(|e| {
+        format!(
+            "create AeroSync EC repair temp in {}: {e}",
+            parent.display()
+        )
+    })?;
+    let mut src =
+        File::open(path).map_err(|e| format!("open AeroSync EC target {}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut recovered_shards = 0usize;
+    {
+        let mut out = std::io::BufWriter::new(tmp.as_file());
+        for idx in 0..reader.segments().len() {
+            let window_len = reader.segments()[idx].window_len as usize;
+            let avec = reader.read_segment_avec(idx)?;
+            let mut buf = vec![0u8; window_len];
+            src.read_exact(&mut buf)
+                .map_err(|e| format!("read AeroSync EC target window {}: {e}", path.display()))?;
+            let mut blocks = vec![buf];
+            recovered_shards += reconstruct_from_error_correction(&mut blocks, &avec)?;
+            hasher.update(&blocks[0]);
+            out.write_all(&blocks[0])
+                .map_err(|e| format!("write AeroSync EC repair temp {}: {e}", path.display()))?;
+        }
+        out.flush()
+            .map_err(|e| format!("flush AeroSync EC repair temp {}: {e}", path.display()))?;
+    }
+    if finalize_sha256(hasher) != *expected_sha256 {
+        // tmp is dropped (removed) here; the original file is byte-for-byte untouched.
+        return Err("AeroSync EC repair failed post-repair SHA-256 verification".to_string());
+    }
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(tmp.path(), meta.permissions());
+    }
+    tmp.persist(path).map_err(|e| {
+        format!(
+            "persist repaired AeroSync EC target {}: {e}",
+            path.display()
+        )
+    })?;
+    Ok(SyncEcRepairResult::Repaired { recovered_shards })
+}
+
 /// Outcome of a read-only standalone verify (the file is never mutated).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StandaloneVerifyResult {
@@ -699,6 +788,63 @@ mod tests {
             verify_repair_sync_file("rel", &streamed.file_sha256, &path, &streamed.sidecar_bytes)
                 .expect("verify clean file");
         assert_eq!(verified, SyncEcRepairResult::Verified);
+    }
+
+    #[test]
+    fn streamed_repair_from_on_disk_sidecar_is_byte_identical() {
+        let window = 40_000u64;
+        let data = sample_data(135_000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload.bin");
+        std::fs::write(&path, &data).unwrap();
+
+        // Generate a multi-window sidecar and persist it next to the file.
+        let generated = match generate_sync_sidecar_for_file_capped_windowed(
+            "rel",
+            &path,
+            20,
+            AEROSYNC_EC_MAX_FILE_SIZE,
+            0,
+            window,
+        )
+        .unwrap()
+        {
+            SyncEcGenerateResult::Generated(g) => g,
+            other => panic!("should generate, got {other:?}"),
+        };
+        let sidecar_path = dir.path().join("payload.bin.aerocorrect");
+        std::fs::write(&sidecar_path, &generated.sidecar_bytes).unwrap();
+
+        // Corrupt two distinct windows, then repair streaming from the on-disk sidecar.
+        let mut corrupt = data.clone();
+        corrupt[5_000] ^= 0xAA;
+        corrupt[100_000] ^= 0xBB;
+        std::fs::write(&path, &corrupt).unwrap();
+        let result =
+            verify_repair_sync_file_streamed("rel", &generated.file_sha256, &path, &sidecar_path)
+                .expect("streamed repair should succeed");
+        assert!(matches!(result, SyncEcRepairResult::Repaired { .. }));
+        assert_eq!(std::fs::read(&path).unwrap(), data, "byte-identical repair");
+
+        // A clean file verifies without rewriting.
+        assert_eq!(
+            verify_repair_sync_file_streamed("rel", &generated.file_sha256, &path, &sidecar_path)
+                .unwrap(),
+            SyncEcRepairResult::Verified
+        );
+
+        // A wrong expected hash (foreign/stale sidecar) fails closed, leaving the file intact.
+        let before = std::fs::read(&path).unwrap();
+        let wrong = [0u8; 32];
+        assert!(
+            verify_repair_sync_file_streamed("rel", &wrong, &path, &sidecar_path).is_err(),
+            "binding mismatch must fail"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "file untouched on failure"
+        );
     }
 
     #[test]

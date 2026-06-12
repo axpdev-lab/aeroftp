@@ -18,6 +18,10 @@
 //! `cipher_hash` before persisting, so a foreign or corrupt sidecar can only make a
 //! repair FAIL, never overwrite good data.
 
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
+
 use super::ERROR_CORRECTION_SHARD_CKSUM_LEN;
 use super::{error_correction_grid, ERROR_CORRECTION_MAX_SHARD, ERROR_CORRECTION_MIN_SHARD};
 
@@ -280,16 +284,28 @@ pub(crate) fn validate_window_tiling(
     segments: &[AeroCorrectSegment],
     total_len: u64,
 ) -> Result<(), String> {
+    validate_window_tiling_iter(
+        segments.iter().map(|s| (s.window_offset, s.window_len)),
+        total_len,
+    )
+}
+
+/// `validate_window_tiling` over any `(window_offset, window_len)` iterator, so the
+/// file-backed streaming reader can validate its segment directory without
+/// materializing `AeroCorrectSegment`s.
+pub(crate) fn validate_window_tiling_iter(
+    windows: impl IntoIterator<Item = (u64, u64)>,
+    total_len: u64,
+) -> Result<(), String> {
     let mut expected = 0u64;
-    for (i, seg) in segments.iter().enumerate() {
-        if seg.window_offset != expected {
+    for (i, (window_offset, window_len)) in windows.into_iter().enumerate() {
+        if window_offset != expected {
             return Err(format!(
-                "aerocorrect window {i} starts at {} but expected {expected} (non-contiguous tiling)",
-                seg.window_offset
+                "aerocorrect window {i} starts at {window_offset} but expected {expected} (non-contiguous tiling)"
             ));
         }
         expected = expected
-            .checked_add(seg.window_len)
+            .checked_add(window_len)
             .ok_or("aerocorrect window tiling overflows")?;
     }
     if expected != total_len {
@@ -298,6 +314,180 @@ pub(crate) fn validate_window_tiling(
         ));
     }
     Ok(())
+}
+
+/// I/O buffer for the streaming integrity hash pass. Bounds the read syscall size; not
+/// the parity window (which is read whole per segment via `read_segment_avec`).
+const SIDECAR_HASH_CHUNK: usize = 1024 * 1024;
+
+/// One segment's location inside the sidecar file: the window it protects plus the byte
+/// range of its parity (AVEC) payload. The parity bytes themselves are NOT loaded.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AeroCorrectSegmentRef {
+    pub(crate) window_offset: u64,
+    pub(crate) window_len: u64,
+    avec_file_offset: u64,
+    avec_len: u64,
+}
+
+/// File-backed streaming reader for a `.aerocorrect` sidecar. `open` parses the fixed
+/// header and the segment directory (offsets/lengths only) and verifies the whole-file
+/// integrity checksum in a single streaming pass, without ever holding a parity payload
+/// in memory. Per-window parity is then read on demand via `read_segment_avec`, so the
+/// repair path's memory is bounded to one window's parity regardless of sidecar size.
+/// This is the streaming counterpart of `AeroCorrectSidecar::from_bytes`.
+pub(crate) struct AeroCorrectSidecarReader {
+    file: File,
+    binding_id: [u8; BINDING_LEN],
+    pub(crate) content_sha256: [u8; 32],
+    pub(crate) total_len: u64,
+    segments: Vec<AeroCorrectSegmentRef>,
+}
+
+impl AeroCorrectSidecarReader {
+    pub(crate) fn open(path: &Path) -> Result<Self, String> {
+        let mut file = File::open(path)
+            .map_err(|e| format!("open aerocorrect sidecar {}: {e}", path.display()))?;
+        let file_len = file
+            .metadata()
+            .map_err(|e| format!("stat aerocorrect sidecar {}: {e}", path.display()))?
+            .len();
+        if file_len < (HEADER_LEN + CHECKSUM_LEN) as u64 {
+            return Err("aerocorrect sidecar too short".to_string());
+        }
+        let body_end = file_len - CHECKSUM_LEN as u64;
+
+        // Fixed header.
+        let mut header = [0u8; HEADER_LEN];
+        file.read_exact(&mut header)
+            .map_err(|e| format!("read aerocorrect header: {e}"))?;
+        if &header[..AEROCORRECT_MAGIC.len()] != AEROCORRECT_MAGIC {
+            return Err("bad aerocorrect sidecar magic".to_string());
+        }
+        let version = header[AEROCORRECT_MAGIC.len()];
+        if version != AEROCORRECT_VERSION {
+            return Err(format!("unsupported aerocorrect sidecar version {version}"));
+        }
+        let mut off = AEROCORRECT_MAGIC.len() + 1;
+        let mut binding_id = [0u8; BINDING_LEN];
+        binding_id.copy_from_slice(&header[off..off + BINDING_LEN]);
+        off += BINDING_LEN;
+        let mut content_sha256 = [0u8; 32];
+        content_sha256.copy_from_slice(&header[off..off + 32]);
+        off += 32;
+        let total_len = u64::from_le_bytes(header[off..off + 8].try_into().unwrap());
+        off += 8;
+        let segment_count = u32::from_le_bytes(header[off..off + 4].try_into().unwrap()) as usize;
+        if segment_count == 0 {
+            return Err("aerocorrect sidecar has no segments".to_string());
+        }
+        // Same anti-forgery bound as `from_bytes`: a claimed count larger than the file
+        // can physically hold is rejected before `with_capacity`.
+        let max_segments = ((body_end - HEADER_LEN as u64) / SEGMENT_HEADER_LEN as u64) as usize;
+        if segment_count > max_segments {
+            return Err(format!(
+                "aerocorrect sidecar segment count {segment_count} exceeds buffer capacity {max_segments}"
+            ));
+        }
+
+        // Walk the segment directory, seeking past each AVEC payload (never reading it).
+        let mut segments = Vec::with_capacity(segment_count);
+        let mut pos = HEADER_LEN as u64;
+        for _ in 0..segment_count {
+            if pos + SEGMENT_HEADER_LEN as u64 > body_end {
+                return Err("aerocorrect sidecar truncated reading segment header".to_string());
+            }
+            file.seek(SeekFrom::Start(pos))
+                .map_err(|e| format!("seek aerocorrect segment header: {e}"))?;
+            let mut seg_hdr = [0u8; SEGMENT_HEADER_LEN];
+            file.read_exact(&mut seg_hdr)
+                .map_err(|e| format!("read aerocorrect segment header: {e}"))?;
+            let window_offset = u64::from_le_bytes(seg_hdr[0..8].try_into().unwrap());
+            let window_len = u64::from_le_bytes(seg_hdr[8..16].try_into().unwrap());
+            let avec_len = u64::from_le_bytes(seg_hdr[16..24].try_into().unwrap());
+            let avec_file_offset = pos + SEGMENT_HEADER_LEN as u64;
+            if avec_file_offset
+                .checked_add(avec_len)
+                .is_none_or(|end| end > body_end)
+            {
+                return Err("aerocorrect sidecar segment length mismatch".to_string());
+            }
+            segments.push(AeroCorrectSegmentRef {
+                window_offset,
+                window_len,
+                avec_file_offset,
+                avec_len,
+            });
+            pos = avec_file_offset + avec_len;
+        }
+        if pos != body_end {
+            return Err("aerocorrect sidecar has unexpected trailing bytes".to_string());
+        }
+
+        // Verify the whole-file integrity checksum in one streaming pass (bounded memory).
+        let mut stored = [0u8; CHECKSUM_LEN];
+        file.seek(SeekFrom::Start(body_end))
+            .map_err(|e| format!("seek aerocorrect checksum: {e}"))?;
+        file.read_exact(&mut stored)
+            .map_err(|e| format!("read aerocorrect checksum: {e}"))?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|e| format!("seek aerocorrect body: {e}"))?;
+        let mut hasher = blake3::Hasher::new();
+        let mut remaining = body_end;
+        let mut buf = vec![0u8; SIDECAR_HASH_CHUNK];
+        while remaining > 0 {
+            let n = remaining.min(buf.len() as u64) as usize;
+            file.read_exact(&mut buf[..n])
+                .map_err(|e| format!("read aerocorrect body for checksum: {e}"))?;
+            hasher.update(&buf[..n]);
+            remaining -= n as u64;
+        }
+        if hasher.finalize().as_bytes() != &stored {
+            return Err("aerocorrect sidecar integrity check failed".to_string());
+        }
+
+        Ok(Self {
+            file,
+            binding_id,
+            content_sha256,
+            total_len,
+            segments,
+        })
+    }
+
+    /// Confirm this sidecar belongs to content with `content_sha256` (same semantics as
+    /// `AeroCorrectSidecar::verify_binding`).
+    pub(crate) fn verify_binding(&self, content_sha256: &[u8; 32]) -> Result<(), String> {
+        if &self.content_sha256 == content_sha256
+            && self.binding_id == aerocorrect_binding_id(content_sha256)
+        {
+            Ok(())
+        } else {
+            Err("aerocorrect sidecar does not match this content (binding mismatch)".to_string())
+        }
+    }
+
+    pub(crate) fn segments(&self) -> &[AeroCorrectSegmentRef] {
+        &self.segments
+    }
+
+    /// Read one segment's parity (AVEC) bytes on demand. Only this window's parity is
+    /// resident; callers process windows one at a time for bounded memory.
+    pub(crate) fn read_segment_avec(&mut self, index: usize) -> Result<Vec<u8>, String> {
+        let seg = self
+            .segments
+            .get(index)
+            .ok_or_else(|| format!("aerocorrect segment index {index} out of range"))?;
+        let (off, len) = (seg.avec_file_offset, seg.avec_len as usize);
+        self.file
+            .seek(SeekFrom::Start(off))
+            .map_err(|e| format!("seek aerocorrect segment avec: {e}"))?;
+        let mut buf = vec![0u8; len];
+        self.file
+            .read_exact(&mut buf)
+            .map_err(|e| format!("read aerocorrect segment avec: {e}"))?;
+        Ok(buf)
+    }
 }
 
 #[cfg(test)]
@@ -469,5 +659,62 @@ mod tests {
         assert!(validate_window_tiling(&holey.segments, data.len() as u64).is_err());
         // Windows that under-cover the declared total are rejected.
         assert!(validate_window_tiling(&parsed.segments, data.len() as u64 + 1).is_err());
+    }
+
+    #[test]
+    fn streaming_reader_matches_in_memory_parse() {
+        let window = 40_000u64;
+        let data = sample(135_000);
+        let sc = windowed(&data, 20, window);
+        assert!(sc.segments.len() >= 3, "expected several windows");
+        let bytes = sc.to_bytes();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.aerocorrect");
+        std::fs::write(&path, &bytes).unwrap();
+
+        let mut reader = AeroCorrectSidecarReader::open(&path).expect("open streaming reader");
+        // Header + directory match the in-memory parse.
+        assert_eq!(reader.content_sha256, sc.content_sha256);
+        assert_eq!(reader.total_len, sc.total_len);
+        assert_eq!(reader.segments().len(), sc.segments.len());
+        for (i, seg) in sc.segments.iter().enumerate() {
+            assert_eq!(reader.segments()[i].window_offset, seg.window_offset);
+            assert_eq!(reader.segments()[i].window_len, seg.window_len);
+            // On-demand parity read is byte-identical to the in-memory segment.
+            assert_eq!(reader.read_segment_avec(i).unwrap(), seg.avec_bytes);
+        }
+        reader
+            .verify_binding(&sc.content_sha256)
+            .expect("binding holds");
+
+        // Tiling validates over the directory iterator the streamed repair uses.
+        validate_window_tiling_iter(
+            reader
+                .segments()
+                .iter()
+                .map(|s| (s.window_offset, s.window_len)),
+            data.len() as u64,
+        )
+        .expect("good tiling");
+    }
+
+    #[test]
+    fn streaming_reader_rejects_corruption() {
+        let data = sample(80_000);
+        let bytes = single_segment(&data, 20).to_bytes();
+        let dir = tempfile::tempdir().unwrap();
+
+        // A flipped byte in the parity body fails the whole-file integrity checksum.
+        let mut corrupt = bytes.clone();
+        corrupt[HEADER_LEN + SEGMENT_HEADER_LEN + 4] ^= 0xFF;
+        let p1 = dir.path().join("corrupt.aerocorrect");
+        std::fs::write(&p1, &corrupt).unwrap();
+        assert!(AeroCorrectSidecarReader::open(&p1).is_err());
+
+        // A truncated file is rejected too.
+        let p2 = dir.path().join("short.aerocorrect");
+        std::fs::write(&p2, &bytes[..HEADER_LEN + 4]).unwrap();
+        assert!(AeroCorrectSidecarReader::open(&p2).is_err());
     }
 }

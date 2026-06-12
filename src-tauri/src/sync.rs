@@ -7,7 +7,8 @@
 use crate::delta_transport::DeltaBatch;
 use crate::error_correction::aerosync::{
     generate_sync_sidecar_for_file_capped, parse_sha256_hex, sync_error_correction_sidecar_path,
-    verify_repair_sync_file, SyncEcGenerateResult, SyncEcRepairResult, AEROSYNC_EC_MAX_FILE_SIZE,
+    verify_repair_sync_file_streamed, SyncEcGenerateResult, SyncEcRepairResult,
+    AEROSYNC_EC_MAX_FILE_SIZE,
 };
 use crate::error_correction::{
     ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
@@ -1796,10 +1797,14 @@ pub async fn delete_sync_error_correction_sidecar_after_remote_delete(
     }
 }
 
+/// Download the sidecar to a temp file and return the handle WITHOUT reading it into
+/// memory. The verify/repair path then streams it window by window
+/// (`verify_repair_sync_file_streamed`), so a large file's sidecar (overhead% of it)
+/// never has to be RAM-resident. The temp file is removed when the returned handle drops.
 async fn download_sync_ec_sidecar(
     provider: &mut dyn StorageProvider,
     sidecar_remote_path: &str,
-) -> Result<Option<Vec<u8>>, String> {
+) -> Result<Option<tempfile::NamedTempFile>, String> {
     let tmp = tempfile::NamedTempFile::new()
         .map_err(|e| format!("create AeroSync EC temp download: {e}"))?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
@@ -1810,9 +1815,10 @@ async fn download_sync_ec_sidecar(
         Ok(()) => {
             // A genuine sidecar is smaller than the file it protects (overhead < 100% at every
             // level), so it cannot exceed the per-file cap by more than framing. Reject an oversize
-            // sidecar from a malicious/buggy remote BEFORE reading it into memory (defense against a
-            // remote serving a giant .aerocorrect for a tiny file). The 2x headroom covers small-file
-            // floors where the fixed parity-shard minimum makes a tiny file's sidecar exceed it.
+            // sidecar from a malicious/buggy remote (defense against a remote serving a giant
+            // .aerocorrect for a tiny file). The 2x headroom covers small-file floors where the
+            // fixed parity-shard minimum makes a tiny file's sidecar exceed it. The check is on the
+            // on-disk size; the file is never read into memory in full.
             const MAX_SIDECAR_BYTES: u64 = 2 * AEROSYNC_EC_MAX_FILE_SIZE;
             let meta = std::fs::metadata(tmp.path())
                 .map_err(|e| format!("stat AeroSync EC temp download: {e}"))?;
@@ -1822,9 +1828,7 @@ async fn download_sync_ec_sidecar(
                     meta.len()
                 ));
             }
-            std::fs::read(tmp.path())
-                .map(Some)
-                .map_err(|e| format!("read AeroSync EC temp download: {e}"))
+            Ok(Some(tmp))
         }
         Err(ProviderError::NotFound(_)) => Ok(None),
         Err(e) => Err(e.to_string()),
@@ -1962,8 +1966,8 @@ async fn verify_repair_sync_ec_after_download(
         }
     };
     let sidecar_remote_path = sync_error_correction_sidecar_path(remote_path);
-    let sidecar_bytes = match download_sync_ec_sidecar(provider, &sidecar_remote_path).await {
-        Ok(Some(bytes)) => bytes,
+    let sidecar_tmp = match download_sync_ec_sidecar(provider, &sidecar_remote_path).await {
+        Ok(Some(tmp)) => tmp,
         Ok(None) => return Some(SyncEcStatus::MissingSidecar),
         Err(e) => {
             tracing::warn!(
@@ -1975,7 +1979,12 @@ async fn verify_repair_sync_ec_after_download(
             return Some(SyncEcStatus::VerifyFailed);
         }
     };
-    match verify_repair_sync_file(rel, &expected_sha256, Path::new(local_path), &sidecar_bytes) {
+    match verify_repair_sync_file_streamed(
+        rel,
+        &expected_sha256,
+        Path::new(local_path),
+        sidecar_tmp.path(),
+    ) {
         Ok(SyncEcRepairResult::Verified) => Some(SyncEcStatus::Verified),
         Ok(SyncEcRepairResult::Repaired { recovered_shards }) => {
             tracing::warn!(
