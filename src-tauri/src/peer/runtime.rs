@@ -304,6 +304,13 @@ pub struct PeerRuntime {
     /// `None`/dead = not receiving. Toggle-driven today; an "always-on" future
     /// just calls `start_receiver` from boot (the loop hardcodes no policy).
     receiver: tokio::sync::Mutex<Option<ReceiverHandle>>,
+    /// The single identity endpoint (`NodeId == AFID.ed`) shared by the receive
+    /// loop AND outbound sends while receiving. `Some` only while the receiver is
+    /// up. Reusing it for sends is the Finding 6b fix: binding a SECOND endpoint
+    /// with the same identity (the old per-send endpoint) evicts the receiver on
+    /// the relay ("Another endpoint connected with the same endpoint id"). Cloned
+    /// out to send (the clone shares the magicsock); dropped on `stop_receiver`.
+    identity_endpoint: tokio::sync::Mutex<Option<std::sync::Arc<aeroftp_peer_l0::PeerEndpoint>>>,
     /// Incoming offers awaiting the user's Accept/Decline, keyed by transfer id.
     /// Shared with the receive task (which inserts) and `peer_incoming_respond`
     /// (which resolves). A std Mutex, never held across an await.
@@ -682,12 +689,20 @@ impl PeerRuntime {
                 return Ok(());
             }
         }
+        // Build the single identity endpoint once and store it so outbound sends
+        // reuse it (Finding 6b) instead of binding a second same-identity one.
+        let endpoint = std::sync::Arc::new(
+            crate::peer::build_identity_endpoint(my_secret, relay_urls_from_env())
+                .await
+                .map_err(|e| format!("could not bind the AeroShare receive endpoint: {e}"))?,
+        );
+        *self.identity_endpoint.lock().await = Some(endpoint.clone());
         let cancel = CancellationToken::new();
         let task = tokio::spawn(receive_loop(
             app.clone(),
             cancel.clone(),
             my_secret.to_vec(),
-            inbox_root.clone(),
+            endpoint,
             self.pending_offers.clone(),
             self.next_transfer_id.clone(),
         ));
@@ -708,6 +723,10 @@ impl PeerRuntime {
             handle.cancel.cancel();
             let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.task).await;
         }
+        // Drop the shared identity endpoint so we are no longer registered on the
+        // relay (presence reflects "not receiving") and the next send rebinds a
+        // clean transient endpoint.
+        *self.identity_endpoint.lock().await = None;
         // Drop any parked offers: their senders get a clean decline.
         let drained: Vec<PendingOffer> = {
             let mut pending = self
@@ -721,6 +740,36 @@ impl PeerRuntime {
         }
         emit_receiver_status(app, "stopped", None);
         tracing::info!("AeroShare: receive loop stopped");
+    }
+
+    /// Send a one-shot file to `recipient_afid`. REUSES the standing receiver's
+    /// identity endpoint when one is up (Finding 6b: a second same-identity
+    /// endpoint would evict the receiver on the relay); otherwise binds a clean
+    /// transient endpoint (safe - there is no receiver to collide with). The
+    /// shared endpoint is cloned out (sharing the magicsock) so the lock is not
+    /// held across the transfer.
+    pub async fn send_file(
+        &self,
+        recipient_afid: &str,
+        my_secret: &[u8],
+        file_path: &str,
+    ) -> Result<(), String> {
+        let shared = self.identity_endpoint.lock().await.clone();
+        let result = match shared {
+            Some(ep) => {
+                crate::peer::send_on_endpoint(&ep, recipient_afid, my_secret, file_path).await
+            }
+            None => {
+                crate::peer::send_file_oneshot(
+                    recipient_afid,
+                    my_secret,
+                    file_path,
+                    relay_urls_from_env(),
+                )
+                .await
+            }
+        };
+        result.map_err(|e| format!("send failed: {e}"))
     }
 
     /// Resolve a pending incoming offer. `accept = true` writes the file into
@@ -799,15 +848,16 @@ fn emit_receiver_status(app: &AppHandle, state: &str, detail: Option<String>) {
     );
 }
 
-/// The standing receive loop. Runs `peer::run_receiver` (which owns the iroh
-/// accept loop) with two callbacks: `decide` surfaces each offer to the FE and
-/// parks until the user answers; `notify` emits the per-transfer outcome. Wrapped
-/// in `select!` so a toggle-OFF cancel tears the endpoint down promptly.
+/// The standing receive loop. Runs `peer::receive_on_endpoint` on the shared
+/// identity endpoint (so outbound sends reuse it - Finding 6b) with two callbacks:
+/// `decide` surfaces each offer to the FE and parks until the user answers;
+/// `notify` emits the per-transfer outcome. Wrapped in `select!` so a toggle-OFF
+/// cancel tears the loop down promptly (and `stop_receiver` drops the endpoint).
 async fn receive_loop(
     app: AppHandle,
     cancel: CancellationToken,
     my_secret: Vec<u8>,
-    _inbox_root: PathBuf,
+    endpoint: std::sync::Arc<aeroftp_peer_l0::PeerEndpoint>,
     pending_offers: std::sync::Arc<std::sync::Mutex<HashMap<String, PendingOffer>>>,
     next_transfer_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
 ) {
@@ -889,7 +939,7 @@ async fn receive_loop(
         }
     };
 
-    let fut = crate::peer::run_receiver(&my_secret, relay_urls_from_env(), decide, notify);
+    let fut = crate::peer::receive_on_endpoint(&endpoint, &my_secret, decide, notify);
     tokio::select! {
         _ = cancel.cancelled() => {
             tracing::info!("AeroShare: receive loop cancelled");

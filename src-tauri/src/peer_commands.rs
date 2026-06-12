@@ -557,7 +557,11 @@ pub struct PeerSendFileParams {
 /// recipient can authenticate them and dial-by-AFID works). Resolves once the
 /// recipient ACKs a verified receipt; a recipient decline is returned as an error.
 #[tauri::command]
-pub async fn peer_send_file(app: AppHandle, params: PeerSendFileParams) -> Result<(), String> {
+pub async fn peer_send_file(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+    params: PeerSendFileParams,
+) -> Result<(), String> {
     let recipient = crate::peer::validate_aeroftp_id(params.recipient_afid.trim())
         .map_err(|e| format!("invalid recipient AeroFTP-ID: {e}"))?;
     let file_path = params.file_path.trim();
@@ -570,14 +574,12 @@ pub async fn peer_send_file(app: AppHandle, params: PeerSendFileParams) -> Resul
     let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
         .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
 
-    crate::peer::send_file_oneshot(
-        &recipient,
-        &identity_secret,
-        file_path,
-        crate::peer::runtime::relay_urls_from_env(),
-    )
-    .await
-    .map_err(|e| format!("send failed: {e}"))
+    // Route through the runtime so the send REUSES the standing receiver's
+    // identity endpoint when one is up (Finding 6b), instead of binding a second
+    // same-identity endpoint that the relay would evict the receiver for.
+    peer_runtime
+        .send_file(&recipient, &identity_secret, file_path)
+        .await
 }
 
 /// Start the standing receive loop (the Ricezione toggle = ON). Mints the

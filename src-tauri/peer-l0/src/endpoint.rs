@@ -64,6 +64,12 @@ fn apply_discovery(
     }
 }
 
+/// Cheap to clone: `iroh::Endpoint` is `Arc`-backed and shares the underlying
+/// magicsock, so a clone is the SAME endpoint (same `NodeId`, one relay
+/// registration). This is what lets the standing receiver and an outbound send
+/// share ONE identity endpoint instead of binding a second one with the same
+/// `NodeId` (which the relay evicts - Finding 6b).
+#[derive(Clone)]
 pub struct PeerEndpoint {
     endpoint: Endpoint,
     node_id: NodeId,

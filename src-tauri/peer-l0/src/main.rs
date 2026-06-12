@@ -430,7 +430,7 @@ fn load_samples_from_inputs(inputs: &[PathBuf]) -> Vec<ConnectivitySample> {
             if let Ok(entries) = std::fs::read_dir(input) {
                 for entry in entries.flatten() {
                     let p = entry.path();
-                    if p.extension().map_or(false, |e| e == "json") {
+                    if p.extension().is_some_and(|e| e == "json") {
                         if let Ok(samples) = load_one_report(&p) {
                             out.extend(samples);
                         }
@@ -605,7 +605,7 @@ async fn run_one_listen(
     let offer = match recv_offer(&conn).await {
         Ok(o) => o,
         Err(e) => {
-            let _ = conn.close(1u32.into(), b"bad-offer");
+            conn.close(1u32.into(), b"bad-offer");
             return ConnectivitySample::failure(e, note.clone());
         }
     };
@@ -639,7 +639,7 @@ async fn run_one_listen(
     io::stdout().flush().ok();
     let mut answer = String::new();
     if io::stdin().read_line(&mut answer).is_err() || !answer.trim().eq_ignore_ascii_case("y") {
-        let _ = conn.close(0u32.into(), b"rejected-by-user");
+        conn.close(0u32.into(), b"rejected-by-user");
         println!("Rejected by user.");
         return ConnectivitySample::failure("user rejected", note.clone());
     }
@@ -651,7 +651,7 @@ async fn run_one_listen(
     let received = match recv_encrypted_blob(&conn, &offer, &key).await {
         Ok(plain) => plain,
         Err(e) => {
-            let _ = conn.close(1u32.into(), b"recv-failed");
+            conn.close(1u32.into(), b"recv-failed");
             return ConnectivitySample::failure(e, note.clone());
         }
     };
@@ -674,7 +674,7 @@ async fn run_one_listen(
 
     // Simple guard (offer.size is the claimed plaintext size).
     if offer.size > 256 * 1024 * 1024 {
-        let _ = conn.close(1u32.into(), b"too-large");
+        conn.close(1u32.into(), b"too-large");
         return ConnectivitySample::failure("file exceeds spike safety cap (256MB)", note.clone());
     }
 
@@ -685,7 +685,7 @@ async fn run_one_listen(
     let final_name = format!("{}_{}", ts, safe_name);
     let file_path = inbox_dir.join(&final_name);
 
-    if let Ok(_) = std::fs::write(&file_path, &received) {
+    if std::fs::write(&file_path, &received).is_ok() {
         let meta = serde_json::json!({
             "sender_node": remote_node_str,
             "sender_fingerprint": remote_node_str2,
@@ -706,7 +706,7 @@ async fn run_one_listen(
 
     println!("L0 receive complete (E2EE + inbox).");
 
-    let _ = conn.close(0u32.into(), b"l0-ok");
+    conn.close(0u32.into(), b"l0-ok");
 
     let total_duration = total_start.elapsed().as_millis() as u64;
 
@@ -759,17 +759,13 @@ async fn conn_type_label(ep: &aeroftp_peer_l0::endpoint::PeerEndpoint, node: Nod
     // (which may legitimately still be None/"unknown" or "none").
     let timeout = Duration::from_millis(2000);
     let fut = async {
-        loop {
-            match w.updated().await {
-                Ok(val) => {
-                    let s = format!("{:?}", val);
-                    if !s.starts_with("None") {
-                        return classify_conn_type_debug(&s);
-                    }
-                    // still None after this update; wait for the next one
-                }
-                Err(_) => break, // watcher disconnected; use whatever we have
+        // Exits when the watcher disconnects (`Err`); then use whatever we have.
+        while let Ok(val) = w.updated().await {
+            let s = format!("{:?}", val);
+            if !s.starts_with("None") {
+                return classify_conn_type_debug(&s);
             }
+            // still None after this update; wait for the next one
         }
         classify_conn_type_debug(&format!("{:?}", w.get()))
     };
@@ -941,7 +937,7 @@ async fn run_dial(
 
     // Send the (still plaintext) offer so the receiver can see size/name/note before deciding.
     if let Err(e) = send_offer(&conn, &offer).await {
-        let _ = conn.close(1u32.into(), b"offer-failed");
+        conn.close(1u32.into(), b"offer-failed");
         return ConnectivitySample::failure(e, note);
     }
 
@@ -954,7 +950,7 @@ async fn run_dial(
     let (nonce, ciphertext) = match aeroftp_peer_l0::encrypt_blob(&key, &data) {
         Ok(v) => v,
         Err(e) => {
-            let _ = conn.close(1u32.into(), b"encrypt-failed");
+            conn.close(1u32.into(), b"encrypt-failed");
             return ConnectivitySample::failure(e, note);
         }
     };
@@ -962,7 +958,7 @@ async fn run_dial(
     // Measure actual transfer time.
     let xfer_start = Instant::now();
     if let Err(e) = send_encrypted_blob(&conn, &nonce, &ciphertext).await {
-        let _ = conn.close(1u32.into(), b"send-failed");
+        conn.close(1u32.into(), b"send-failed");
         return ConnectivitySample::failure(e, note);
     }
     let xfer_duration = xfer_start.elapsed().as_millis() as u64;
@@ -982,7 +978,7 @@ async fn run_dial(
     // decrypt + BLAKE3 verify, so the transfer is genuinely complete. Close cleanly;
     // the old fixed 200ms-then-close truncated the stream over relayed paths and
     // caused the L0 RUN#1 "connection lost" failures.
-    let _ = conn.close(0u32.into(), b"l0-ok");
+    conn.close(0u32.into(), b"l0-ok");
 
     let total_duration = total_start.elapsed().as_millis() as u64;
 

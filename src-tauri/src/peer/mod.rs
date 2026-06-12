@@ -339,6 +339,50 @@ where
     .await
 }
 
+/// Build the standing identity endpoint (`NodeId == AFID.ed`) the `PeerRuntime`
+/// owns and shares between the receive loop and outbound sends, so a send no
+/// longer binds a SECOND endpoint with the same identity (which the relay evicts
+/// - Finding 6b). Seeded from the active user's 64-byte peer identity.
+pub async fn build_identity_endpoint(
+    my_secret: &[u8],
+    custom_relay_urls: Option<Vec<String>>,
+) -> anyhow::Result<aeroftp_peer_l0::PeerEndpoint> {
+    if my_secret.len() != 64 {
+        anyhow::bail!("identity secret must be 64 bytes");
+    }
+    let mut cfg = endpoint_config(custom_relay_urls);
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&my_secret[..32]);
+    cfg.identity_secret_key = Some(seed);
+    aeroftp_peer_l0::PeerEndpoint::new(cfg).await
+}
+
+/// Run the receive loop on an endpoint built by [`build_identity_endpoint`].
+pub async fn receive_on_endpoint<D, DF, N>(
+    ep: &aeroftp_peer_l0::PeerEndpoint,
+    my_secret: &[u8],
+    decide: D,
+    notify: N,
+) -> anyhow::Result<()>
+where
+    D: Fn(aeroftp_peer_l0::IncomingOffer) -> DF,
+    DF: std::future::Future<Output = Option<std::path::PathBuf>>,
+    N: Fn(aeroftp_peer_l0::ReceiveEvent),
+{
+    aeroftp_peer_l0::send::receive_on_endpoint(ep, my_secret, decide, notify).await
+}
+
+/// Send a one-shot file over the shared identity endpoint (reuses the receiver's
+/// endpoint when one is running). See [`build_identity_endpoint`].
+pub async fn send_on_endpoint(
+    ep: &aeroftp_peer_l0::PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
+) -> anyhow::Result<()> {
+    aeroftp_peer_l0::send::send_on_endpoint(ep, recipient_afid, my_secret, file_path).await
+}
+
 /// Probe which of `afids` are online/receiving right now (presence). Reuses one
 /// identity-seeded endpoint; result order matches `afids`.
 pub async fn probe_presence(

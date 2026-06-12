@@ -108,31 +108,35 @@ export function AeroShareHub() {
   }, [autoAcceptFriends]);
 
   // ---- Receive loop lifecycle (the Ricezione toggle) ----
+  // ONE effect owns both start and stop (its cleanup): a separate unmount-only
+  // stop effect used to race a `peerReceiverStop()` against this start and, under
+  // React StrictMode's dev double-invoke (mount->unmount->mount), could leave the
+  // receiver down. When `receiving` is true we start, retrying a few times because
+  // at cold boot the peer identity / vault may not be unlocked yet the first time
+  // `receiving` reads true - without the retry that first failure left the receiver
+  // permanently off until a manual re-toggle (the OFF/Save/ON/Save workaround). The
+  // cleanup stops on toggle-off, on flag-off (Hub unmount), and on app teardown.
   useEffect(() => {
-    let active = true;
-    if (receiving) {
+    if (!receiving) return;
+    let cancelled = false;
+    const start = (attemptsLeft: number) => {
       peerReceiverStart().catch((e) => {
-        if (active) error(t('aeroShare.receive.startError'), String(e));
+        if (cancelled) return;
+        if (attemptsLeft > 0) {
+          window.setTimeout(() => start(attemptsLeft - 1), 800);
+        } else {
+          error(t('aeroShare.receive.startError'), String(e));
+        }
       });
-    } else {
+    };
+    start(4);
+    return () => {
+      cancelled = true;
       peerReceiverStop().catch(() => {
         /* best-effort */
       });
-    }
-    return () => {
-      active = false;
     };
   }, [receiving, error, t]);
-
-  // Stop the receiver when the hub unmounts (flag turned off / app teardown).
-  useEffect(
-    () => () => {
-      peerReceiverStop().catch(() => {
-        /* best-effort */
-      });
-    },
-    [],
-  );
 
   // ---- peer://incoming-offer: prompt or auto-accept ----
   useEffect(() => {

@@ -126,16 +126,36 @@ fn ed_seed_of(secret: &[u8]) -> Result<[u8; 32]> {
     Ok(seed)
 }
 
-/// Send `file_path` to `recipient_afid` over a fresh identity-seeded endpoint.
-/// `my_secret` is the sender's 64-byte identity secret; `cfg` carries the relay /
-/// discovery selection (its `identity_secret_key` is overwritten with the sender
-/// identity here so the recipient authenticates us). Returns once the recipient
-/// has ACKed a verified receipt, or errors (incl. an explicit recipient decline).
+/// Send `file_path` to `recipient_afid` over a FRESH identity-seeded endpoint.
+/// Use this only when there is NO standing receiver to share an endpoint with
+/// (e.g. the CLI one-shot): it binds an endpoint with the sender identity, sends,
+/// and tears it down. When a receiver is running, call [`send_on_endpoint`] with
+/// the receiver's endpoint instead - binding a second endpoint with the same
+/// `NodeId == AFID.ed` evicts the receiver on the relay ("Another endpoint
+/// connected with the same endpoint id" - Finding 6b).
 pub async fn run_send_file(
     recipient_afid: &str,
     my_secret: &[u8],
     file_path: &str,
     mut cfg: PeerEndpointConfig,
+) -> Result<()> {
+    // Bind OUR endpoint with our identity so remote_node_id == our AFID ed.
+    cfg.identity_secret_key = Some(ed_seed_of(my_secret)?);
+    let ep = PeerEndpoint::new(cfg).await?;
+    send_on_endpoint(&ep, recipient_afid, my_secret, file_path).await
+}
+
+/// Send `file_path` to `recipient_afid` over an ALREADY-BOUND identity endpoint.
+/// This is the seam that lets the standing receiver and an outbound send SHARE a
+/// single identity endpoint (Finding 6b): `ep` MUST be seeded with the sender's
+/// identity, since the recipient authenticates the sender AFID against the
+/// connection's node id. Returns once the recipient has ACKed a verified receipt,
+/// or errors (incl. an explicit recipient decline).
+pub async fn send_on_endpoint(
+    ep: &PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
 ) -> Result<()> {
     let me = Identity::from_secret_bytes(&{
         let mut b = [0u8; 64];
@@ -176,9 +196,6 @@ pub async fn run_send_file(
         sender_afid: me.public().to_aeroftp_id(),
     };
 
-    // Bind OUR endpoint with our identity so remote_node_id == our AFID ed.
-    cfg.identity_secret_key = Some(ed_seed_of(my_secret)?);
-    let ep = PeerEndpoint::new(cfg).await?;
     let conn = ep.connect(recipient_node, PEER_SEND_ALPN).await?;
 
     // Offer + decision on one bi-stream (request/response).
@@ -234,14 +251,33 @@ where
     DF: std::future::Future<Output = Option<PathBuf>>,
     N: Fn(ReceiveEvent),
 {
+    cfg.identity_secret_key = Some(ed_seed_of(my_secret)?);
+    let ep = PeerEndpoint::new(cfg).await?;
+    receive_on_endpoint(&ep, my_secret, decide, notify).await
+}
+
+/// Run the standing receive loop on an ALREADY-BOUND identity endpoint. Companion
+/// to [`send_on_endpoint`]: the caller (the app's `PeerRuntime`) owns ONE identity
+/// endpoint and runs both the receive loop and outbound sends on it, so a send no
+/// longer evicts the receiver on the relay (Finding 6b). `my_secret` still opens
+/// sealed content keys. Cancellation is the caller's job: drop this future.
+pub async fn receive_on_endpoint<D, DF, N>(
+    ep: &PeerEndpoint,
+    my_secret: &[u8],
+    decide: D,
+    notify: N,
+) -> Result<()>
+where
+    D: Fn(IncomingOffer) -> DF,
+    DF: std::future::Future<Output = Option<PathBuf>>,
+    N: Fn(ReceiveEvent),
+{
     let mut secret = [0u8; 64];
     if my_secret.len() != 64 {
         bail!("identity secret must be 64 bytes");
     }
     secret.copy_from_slice(my_secret);
 
-    cfg.identity_secret_key = Some(ed_seed_of(my_secret)?);
-    let ep = PeerEndpoint::new(cfg).await?;
     info!(node_id = %ep.node_id(), "AeroShare receive loop listening");
 
     loop {
@@ -402,9 +438,8 @@ where
                     // SENDER to close (it does so right after reading our ACK), so
                     // the ACK is guaranteed delivered. Bounded so a vanished peer
                     // cannot hang the receive loop.
-                    let _ =
-                        tokio::time::timeout(std::time::Duration::from_secs(30), conn.closed())
-                            .await;
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(30), conn.closed())
+                        .await;
                     notify(ReceiveEvent::Completed {
                         sender_afid: offer.sender_afid,
                         name: offer.name,

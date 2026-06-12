@@ -122,12 +122,16 @@ async fn one_shot_decline_is_reported_to_sender() {
         cfg(),
     )
     .await;
-    assert!(sent.is_err(), "a declined send must surface as an error to the sender");
+    assert!(
+        sent.is_err(),
+        "a declined send must surface as an error to the sender"
+    );
 
     tokio::time::sleep(Duration::from_millis(500)).await;
     let evs = events.lock().unwrap().clone();
     assert!(
-        evs.iter().any(|e| matches!(e, ReceiveEvent::Declined { .. })),
+        evs.iter()
+            .any(|e| matches!(e, ReceiveEvent::Declined { .. })),
         "the receiver must report a Declined event"
     );
 
