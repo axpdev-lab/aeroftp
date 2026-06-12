@@ -862,6 +862,58 @@ mod tests {
         );
     }
 
+    /// Self-resilient sidecar (#276 Ehud point 2): a `.aerocorrect` with a stray flip
+    /// in its PARITY region must still recover the target. The flipped parity byte is a
+    /// rotted shard, which `reconstruct_from_error_correction` already routes around via
+    /// the per-shard checksum, so the only thing that could break recovery is a wholesale
+    /// envelope reject at open time. This test pins the SHIPPED behavior: the sidecar
+    /// opens despite the parity rot and repairs the target byte-identically.
+    #[test]
+    fn lightly_corrupt_sidecar_parity_still_recovers() {
+        let window = 40_000u64;
+        let data = sample_data(135_000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload.bin");
+        std::fs::write(&path, &data).unwrap();
+
+        let generated = match generate_sync_sidecar_for_file_capped_windowed(
+            "rel",
+            &path,
+            20,
+            AEROSYNC_EC_MAX_FILE_SIZE,
+            0,
+            window,
+        )
+        .unwrap()
+        {
+            SyncEcGenerateResult::Generated(g) => g,
+            other => panic!("should generate, got {other:?}"),
+        };
+        let sidecar_path = dir.path().join("payload.bin.aerocorrect");
+        let mut sidecar_bytes = generated.sidecar_bytes.clone();
+        // Flip one byte deep in the sidecar's parity region (the tail is parity data:
+        // a rotted parity shard, not part of the locator). Stay clear of any trailing
+        // metadata by landing in the middle of the payload.
+        let flip = sidecar_bytes.len() / 2;
+        sidecar_bytes[flip] ^= 0xFF;
+        std::fs::write(&sidecar_path, &sidecar_bytes).unwrap();
+
+        // Corrupt the target file in a recoverable way (one byte in one window).
+        let mut corrupt = data.clone();
+        corrupt[5_000] ^= 0xAA;
+        std::fs::write(&path, &corrupt).unwrap();
+
+        let result =
+            verify_repair_sync_file_streamed("rel", &generated.file_sha256, &path, &sidecar_path)
+                .expect("a lightly-corrupted sidecar must still recover");
+        assert!(matches!(result, SyncEcRepairResult::Repaired { .. }));
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            data,
+            "byte-identical recovery from a parity-rotted sidecar"
+        );
+    }
+
     #[test]
     fn minimum_benefit_gate_skips_tiny_high_overhead_files() {
         let dir = tempfile::tempdir().unwrap();

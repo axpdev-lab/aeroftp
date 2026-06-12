@@ -44906,14 +44906,15 @@ mod tests {
         let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200, 0);
 
         // 100 and 101 are under the 200-byte cap; 300 is skipped. Each small file's real
-        // .aerocorrect is the unified frame (141 B: 85-byte header + 24-byte segment
-        // header + 32-byte trailing hash) + AVEC (32 + 3*16 checksums + 2*4096 parity at
-        // the MIN_SHARD floor) = 8413 B. The flat estimate used to report 31 B (~540x under).
+        // v2 .aerocorrect is the self-healing frame (501 B: 21-byte prefix + 3 directory
+        // copies of 72 + 56 bytes each + 3 * 32-byte per-copy checksums) + AVEC (32 + 3*16
+        // checksums + 2*4096 parity at the MIN_SHARD floor) = 8773 B. The flat estimate used
+        // to report 31 B (~280x under).
         assert_eq!(
             estimate,
             SyncDoctorEcEstimate {
                 estimated_sidecars: 2,
-                estimated_overhead_bytes: 16_826,
+                estimated_overhead_bytes: 17_546,
                 skipped_too_large: 1,
                 skipped_low_benefit: 0,
             }
