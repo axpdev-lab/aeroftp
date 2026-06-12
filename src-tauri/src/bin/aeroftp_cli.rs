@@ -2749,13 +2749,9 @@ enum Commands {
         /// for zip). 7z uses LZMA2 at a fixed preset and ignores this.
         #[arg(long, short = 'l')]
         level: Option<i64>,
-        /// AES-256 password for zip / 7z. Also read from AEROFTP_ARCHIVE_PASSWORD.
-        #[arg(
-            long,
-            short = 'p',
-            env = "AEROFTP_ARCHIVE_PASSWORD",
-            hide_env_values = true
-        )]
+        /// AES-256 password for zip / 7z (explicit intent to encrypt). For an ambient
+        /// default applied only to encryptable formats, set AEROFTP_ARCHIVE_PASSWORD.
+        #[arg(long, short = 'p')]
         password: Option<String>,
     },
     /// Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, rar).
@@ -5616,17 +5612,30 @@ async fn cmd_compress(
         );
         return 7;
     }
-    if password.is_some() && !fmt.supports_password() {
-        print_error(
-            format,
-            &format!(
-                "the {} format is not encrypted; only zip and 7z accept --password",
-                fmt.label()
-            ),
-            5,
-        );
-        return 5;
-    }
+    // `--password` is an explicit intent to encrypt; AEROFTP_ARCHIVE_PASSWORD is an
+    // ambient default for encryptable formats. An explicit password on a non-encrypted
+    // tar variant is a user error (reject), but an ambient env password must never make
+    // a plain `compress out.tar.gz` fail: it is simply ignored for those formats.
+    let env_pw = std::env::var("AEROFTP_ARCHIVE_PASSWORD")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let effective_pw = if fmt.supports_password() {
+        password.clone().or(env_pw)
+    } else {
+        if password.is_some() {
+            print_error(
+                format,
+                &format!(
+                    "the {} format is not encrypted; only zip and 7z accept --password",
+                    fmt.label()
+                ),
+                5,
+            );
+            return 5;
+        }
+        None
+    };
+    let password: &Option<String> = &effective_pw;
     warn_archive_password_visibility(password, cli.quiet);
 
     // Resolve relative paths against the CWD so a shell user can pass `out.zip file.txt`;
