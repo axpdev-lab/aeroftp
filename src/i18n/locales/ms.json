@@ -4776,7 +4776,8 @@
                 "missingLink": "Tampal pautan kongsi dahulu.",
                 "missingIssuer": "Masukkan AeroFTP-ID rakan anda.",
                 "missingFolder": "Pilih satu folder.",
-                "missingRecipient": "Masukkan atau pilih AeroFTP-ID penerima."
+                "missingRecipient": "Masukkan atau pilih AeroFTP-ID penerima.",
+                "contactsTab": "Kenalan"
             },
             "shared": {
                 "title": "Dikongsi oleh saya",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Terima fail",
             "receiveDesc": "Benarkan rakan menghantar fail terus kepada anda (sekali hantar, disulitkan hujung ke hujung). Menjalankan pendengar semasa hidup.",
             "autoAcceptLabel": "Terima automatik daripada rakan disimpan",
-            "autoAcceptDesc": "Langkau gesaan untuk fail daripada orang dalam senarai rakan anda. Penghantar tidak dikenali sentiasa ditanya."
+            "autoAcceptDesc": "Langkau gesaan untuk fail daripada orang dalam senarai rakan anda. Penghantar tidak dikenali sentiasa ditanya.",
+            "contacts": {
+                "title": "Kenalan",
+                "intro": "Kenalan yang disimpan ialah rakan AeroShare anda: pilih mereka semasa menghantar, dan (dengan terima automatik dihidupkan) terima daripada mereka tanpa gesaan.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nama (pilihan)",
+                "add": "Tambah",
+                "empty": "Belum ada kenalan",
+                "save": "Simpan",
+                "cancel": "Batal",
+                "edit": "Edit",
+                "remove": "Buang",
+                "removeConfirm": "Buang?"
+            }
         }
     }
 }

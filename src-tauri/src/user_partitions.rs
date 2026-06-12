@@ -2722,6 +2722,15 @@ pub fn gui_peer_contact_list(app: &AppHandle) -> Result<Vec<(String, String)>, S
     crate::peer_identity::list_contacts(&conn, user.id)
 }
 
+/// GUI: remove a contact from the active user's partition. Public: no DEK.
+/// No-op if the contact is absent.
+pub fn gui_peer_contact_remove(app: &AppHandle, contact_id: &str) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::remove_contact(&conn, user.id, contact_id)
+}
+
 /// GUI: store (or replace) the per-drive content key for `namespace_id` under
 /// `role` in the active user's partition. Returns the active `user_id`.
 pub fn gui_peer_drive_store(

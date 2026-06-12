@@ -4795,7 +4795,8 @@
                 "missingLink": "Lim inn delingslenken først.",
                 "missingIssuer": "Skriv inn vennens AeroFTP-ID.",
                 "missingFolder": "Velg en mappe.",
-                "missingRecipient": "Skriv inn eller velg mottakerens AeroFTP-ID."
+                "missingRecipient": "Skriv inn eller velg mottakerens AeroFTP-ID.",
+                "contactsTab": "Kontakter"
             },
             "shared": {
                 "title": "Delt av meg",
@@ -4847,7 +4848,20 @@
             "receiveLabel": "Motta filer",
             "receiveDesc": "La venner sende filer rett til deg (engangs, ende-til-ende-kryptert). Kjører en lytter mens den er på.",
             "autoAcceptLabel": "Godta automatisk fra lagrede venner",
-            "autoAcceptDesc": "Hopp over forespørselen for filer fra personer i vennelisten din. Ukjente avsendere blir alltid spurt."
+            "autoAcceptDesc": "Hopp over forespørselen for filer fra personer i vennelisten din. Ukjente avsendere blir alltid spurt.",
+            "contacts": {
+                "title": "Kontakter",
+                "intro": "Lagrede kontakter er AeroShare-vennene dine: velg dem ved sending, og (med automatisk godkjenning på) motta fra dem uten spørsmål.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Navn (valgfritt)",
+                "add": "Legg til",
+                "empty": "Ingen kontakter ennå",
+                "save": "Lagre",
+                "cancel": "Avbryt",
+                "edit": "Rediger",
+                "remove": "Fjern",
+                "removeConfirm": "Fjerne?"
+            }
         }
     }
 }

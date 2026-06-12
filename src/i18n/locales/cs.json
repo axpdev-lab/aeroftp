@@ -4776,7 +4776,8 @@
                 "missingLink": "Nejprve vložte odkaz pro sdílení.",
                 "missingIssuer": "Zadejte AeroFTP-ID svého přítele.",
                 "missingFolder": "Vyberte složku.",
-                "missingRecipient": "Zadejte nebo vyberte AeroFTP-ID příjemce."
+                "missingRecipient": "Zadejte nebo vyberte AeroFTP-ID příjemce.",
+                "contactsTab": "Kontakty"
             },
             "shared": {
                 "title": "Sdíleno mnou",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Přijímat soubory",
             "receiveDesc": "Umožněte přátelům posílat soubory přímo vám (jednorázově, šifrované od konce ke konci). Při zapnutí běží naslouchací proces.",
             "autoAcceptLabel": "Automaticky přijímat od uložených přátel",
-            "autoAcceptDesc": "Přeskočit výzvu u souborů od lidí ve vašem seznamu přátel. Neznámí odesílatelé se vždy zeptají."
+            "autoAcceptDesc": "Přeskočit výzvu u souborů od lidí ve vašem seznamu přátel. Neznámí odesílatelé se vždy zeptají.",
+            "contacts": {
+                "title": "Kontakty",
+                "intro": "Uložené kontakty jsou vaši přátelé v AeroShare: vyberte je při odesílání a (se zapnutým automatickým přijetím) přijímejte od nich bez výzvy.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Jméno (volitelné)",
+                "add": "Přidat",
+                "empty": "Zatím žádné kontakty",
+                "save": "Uložit",
+                "cancel": "Zrušit",
+                "edit": "Upravit",
+                "remove": "Odebrat",
+                "removeConfirm": "Odebrat?"
+            }
         }
     }
 }

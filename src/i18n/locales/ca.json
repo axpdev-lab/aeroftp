@@ -4795,7 +4795,8 @@
                 "missingLink": "Enganxa primer l'enllaç de compartició.",
                 "missingIssuer": "Introdueix l'AeroFTP-ID del teu amic.",
                 "missingFolder": "Tria una carpeta.",
-                "missingRecipient": "Introdueix o tria l'AeroFTP-ID del destinatari."
+                "missingRecipient": "Introdueix o tria l'AeroFTP-ID del destinatari.",
+                "contactsTab": "Contactes"
             },
             "shared": {
                 "title": "Compartit per mi",
@@ -4847,7 +4848,20 @@
             "receiveLabel": "Rep fitxers",
             "receiveDesc": "Permet que els amics t'enviïn fitxers directament (d'un sol cop, xifrat d'extrem a extrem). Manté un receptor actiu mentre està activat.",
             "autoAcceptLabel": "Accepta automàticament dels amics desats",
-            "autoAcceptDesc": "Omet la confirmació per als fitxers de la gent de la teva llista d'amics. Els remitents desconeguts sempre demanen confirmació."
+            "autoAcceptDesc": "Omet la confirmació per als fitxers de la gent de la teva llista d'amics. Els remitents desconeguts sempre demanen confirmació.",
+            "contacts": {
+                "title": "Contactes",
+                "intro": "Els contactes desats són els teus amics d'AeroShare: tria'ls en enviar i (amb l'acceptació automàtica activada) rep-ne sense cap avís.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nom (opcional)",
+                "add": "Afegeix",
+                "empty": "Encara no hi ha contactes",
+                "save": "Desa",
+                "cancel": "Cancel·la",
+                "edit": "Edita",
+                "remove": "Elimina",
+                "removeConfirm": "Eliminar?"
+            }
         }
     }
 }

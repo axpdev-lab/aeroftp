@@ -4776,7 +4776,8 @@
                 "missingLink": "Bandika kiungo cha kushiriki kwanza.",
                 "missingIssuer": "Weka AeroFTP-ID ya rafiki yako.",
                 "missingFolder": "Chagua folda.",
-                "missingRecipient": "Weka au chagua AeroFTP-ID ya mpokeaji."
+                "missingRecipient": "Weka au chagua AeroFTP-ID ya mpokeaji.",
+                "contactsTab": "Anwani"
             },
             "shared": {
                 "title": "Nilizoshiriki",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Pokea faili",
             "receiveDesc": "Ruhusu marafiki kukutumia faili moja kwa moja (mara moja, zilizosimbwa mwanzo hadi mwisho). Inaendesha kisikilizaji ikiwa imewashwa.",
             "autoAcceptLabel": "Kubali kiotomatiki kutoka kwa marafiki waliohifadhiwa",
-            "autoAcceptDesc": "Ruka ombi kwa faili kutoka kwa watu walio katika orodha yako ya marafiki. Watumaji wasiojulikana huulizwa kila wakati."
+            "autoAcceptDesc": "Ruka ombi kwa faili kutoka kwa watu walio katika orodha yako ya marafiki. Watumaji wasiojulikana huulizwa kila wakati.",
+            "contacts": {
+                "title": "Anwani",
+                "intro": "Anwani zilizohifadhiwa ni marafiki wako wa AeroShare: wachague unapotuma, na (ukiwa umewasha kukubali kiotomatiki) pokea kutoka kwao bila kuombwa.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Jina (si lazima)",
+                "add": "Ongeza",
+                "empty": "Bado hakuna anwani",
+                "save": "Hifadhi",
+                "cancel": "Ghairi",
+                "edit": "Hariri",
+                "remove": "Ondoa",
+                "removeConfirm": "Ondoa?"
+            }
         }
     }
 }

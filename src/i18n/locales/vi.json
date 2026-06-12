@@ -4776,7 +4776,8 @@
                 "missingLink": "Hãy dán liên kết chia sẻ trước.",
                 "missingIssuer": "Nhập AeroFTP-ID của bạn bè.",
                 "missingFolder": "Chọn một thư mục.",
-                "missingRecipient": "Nhập hoặc chọn AeroFTP-ID của người nhận."
+                "missingRecipient": "Nhập hoặc chọn AeroFTP-ID của người nhận.",
+                "contactsTab": "Danh bạ"
             },
             "shared": {
                 "title": "Tôi đã chia sẻ",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Nhận tệp",
             "receiveDesc": "Cho phép bạn bè gửi tệp trực tiếp cho bạn (một lần, mã hóa đầu cuối). Chạy một trình lắng nghe khi bật.",
             "autoAcceptLabel": "Tự động chấp nhận từ bạn bè đã lưu",
-            "autoAcceptDesc": "Bỏ qua lời nhắc cho các tệp từ những người trong danh sách bạn bè của bạn. Người gửi không xác định luôn được hỏi."
+            "autoAcceptDesc": "Bỏ qua lời nhắc cho các tệp từ những người trong danh sách bạn bè của bạn. Người gửi không xác định luôn được hỏi.",
+            "contacts": {
+                "title": "Danh bạ",
+                "intro": "Các liên hệ đã lưu là bạn bè AeroShare của bạn: chọn họ khi gửi và (khi bật tự động chấp nhận) nhận từ họ mà không cần nhắc.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Tên (tùy chọn)",
+                "add": "Thêm",
+                "empty": "Chưa có liên hệ nào",
+                "save": "Lưu",
+                "cancel": "Hủy",
+                "edit": "Sửa",
+                "remove": "Xóa",
+                "removeConfirm": "Xóa?"
+            }
         }
     }
 }

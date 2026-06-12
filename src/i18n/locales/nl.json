@@ -4776,7 +4776,8 @@
                 "missingLink": "Plak eerst de deellink.",
                 "missingIssuer": "Voer de AeroFTP-ID van je vriend in.",
                 "missingFolder": "Kies een map.",
-                "missingRecipient": "Voer de AeroFTP-ID van de ontvanger in of kies deze."
+                "missingRecipient": "Voer de AeroFTP-ID van de ontvanger in of kies deze.",
+                "contactsTab": "Contacten"
             },
             "shared": {
                 "title": "Door mij gedeeld",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Bestanden ontvangen",
             "receiveDesc": "Laat vrienden bestanden rechtstreeks naar je sturen (eenmalig, end-to-end versleuteld). Houdt een luisteraar actief zolang dit aanstaat.",
             "autoAcceptLabel": "Automatisch accepteren van opgeslagen vrienden",
-            "autoAcceptDesc": "Sla de vraag over voor bestanden van mensen in je vriendenlijst. Bij onbekende afzenders wordt altijd gevraagd."
+            "autoAcceptDesc": "Sla de vraag over voor bestanden van mensen in je vriendenlijst. Bij onbekende afzenders wordt altijd gevraagd.",
+            "contacts": {
+                "title": "Contacten",
+                "intro": "Opgeslagen contacten zijn je AeroShare-vrienden: kies ze bij het verzenden en ontvang (met automatisch accepteren aan) van hen zonder melding.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Naam (optioneel)",
+                "add": "Toevoegen",
+                "empty": "Nog geen contacten",
+                "save": "Opslaan",
+                "cancel": "Annuleren",
+                "edit": "Bewerken",
+                "remove": "Verwijderen",
+                "removeConfirm": "Verwijderen?"
+            }
         }
     }
 }

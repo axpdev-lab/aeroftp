@@ -4776,7 +4776,8 @@
                 "missingLink": "Lipește mai întâi linkul de partajare.",
                 "missingIssuer": "Introdu AeroFTP-ID-ul prietenului tău.",
                 "missingFolder": "Alege un folder.",
-                "missingRecipient": "Introdu sau alege AeroFTP-ID-ul destinatarului."
+                "missingRecipient": "Introdu sau alege AeroFTP-ID-ul destinatarului.",
+                "contactsTab": "Contacte"
             },
             "shared": {
                 "title": "Partajate de mine",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Primește fișiere",
             "receiveDesc": "Permite prietenilor să îți trimită fișiere direct (o singură dată, criptat de la cap la cap). Rulează un receptor cât timp este pornit.",
             "autoAcceptLabel": "Acceptă automat de la prietenii salvați",
-            "autoAcceptDesc": "Omite confirmarea pentru fișierele de la persoanele din lista ta de prieteni. Expeditorii necunoscuți cer întotdeauna confirmare."
+            "autoAcceptDesc": "Omite confirmarea pentru fișierele de la persoanele din lista ta de prieteni. Expeditorii necunoscuți cer întotdeauna confirmare.",
+            "contacts": {
+                "title": "Contacte",
+                "intro": "Contactele salvate sunt prietenii tăi AeroShare: alege-i la trimitere și (cu acceptarea automată activată) primește de la ei fără solicitare.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nume (opțional)",
+                "add": "Adaugă",
+                "empty": "Încă niciun contact",
+                "save": "Salvează",
+                "cancel": "Anulează",
+                "edit": "Editează",
+                "remove": "Elimină",
+                "removeConfirm": "Elimini?"
+            }
         }
     }
 }

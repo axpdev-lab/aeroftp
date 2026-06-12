@@ -4741,6 +4741,7 @@
                 "title": "AeroShare",
                 "receiveTab": "Receive a folder",
                 "shareTab": "Share a folder",
+                "contactsTab": "Contacts",
                 "myId": "Your AeroFTP-ID",
                 "myIdHint": "Send this to your friend so they can share a folder with you.",
                 "copy": "Copy",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Receive files",
             "receiveDesc": "Let friends send files straight to you (one-shot, end-to-end encrypted). Runs a listener while on.",
             "autoAcceptLabel": "Auto-accept from saved friends",
-            "autoAcceptDesc": "Skip the prompt for files from people in your friends list. Unknown senders always ask."
+            "autoAcceptDesc": "Skip the prompt for files from people in your friends list. Unknown senders always ask.",
+            "contacts": {
+                "title": "Contacts",
+                "intro": "Saved contacts are your AeroShare friends: pick them when sending, and (with auto-accept on) receive from them without a prompt.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Name (optional)",
+                "add": "Add",
+                "empty": "No contacts yet",
+                "save": "Save",
+                "cancel": "Cancel",
+                "edit": "Edit",
+                "remove": "Remove",
+                "removeConfirm": "Remove?"
+            }
         }
     }
 }

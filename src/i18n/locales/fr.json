@@ -4776,7 +4776,8 @@
                 "missingLink": "Collez d'abord le lien de partage.",
                 "missingIssuer": "Saisissez l'AeroFTP-ID de votre ami.",
                 "missingFolder": "Choisissez un dossier.",
-                "missingRecipient": "Saisissez ou choisissez l'AeroFTP-ID du destinataire."
+                "missingRecipient": "Saisissez ou choisissez l'AeroFTP-ID du destinataire.",
+                "contactsTab": "Contacts"
             },
             "shared": {
                 "title": "Partagé par moi",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Recevoir des fichiers",
             "receiveDesc": "Laissez vos amis vous envoyer des fichiers directement (en une fois, chiffré de bout en bout). Exécute un récepteur tant que c'est activé.",
             "autoAcceptLabel": "Accepter automatiquement des amis enregistrés",
-            "autoAcceptDesc": "Ignore la confirmation pour les fichiers provenant des personnes de votre liste d'amis. Les expéditeurs inconnus demandent toujours une confirmation."
+            "autoAcceptDesc": "Ignore la confirmation pour les fichiers provenant des personnes de votre liste d'amis. Les expéditeurs inconnus demandent toujours une confirmation.",
+            "contacts": {
+                "title": "Contacts",
+                "intro": "Les contacts enregistrés sont vos amis AeroShare : choisissez-les lors de l'envoi et (avec l'acceptation automatique activée) recevez d'eux sans invite.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nom (facultatif)",
+                "add": "Ajouter",
+                "empty": "Aucun contact pour l'instant",
+                "save": "Enregistrer",
+                "cancel": "Annuler",
+                "edit": "Modifier",
+                "remove": "Supprimer",
+                "removeConfirm": "Supprimer ?"
+            }
         }
     }
 }

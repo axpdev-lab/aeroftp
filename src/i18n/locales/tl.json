@@ -4795,7 +4795,8 @@
                 "missingLink": "I-paste muna ang share link.",
                 "missingIssuer": "Ilagay ang AeroFTP-ID ng iyong kaibigan.",
                 "missingFolder": "Pumili ng folder.",
-                "missingRecipient": "Ilagay o piliin ang AeroFTP-ID ng tatanggap."
+                "missingRecipient": "Ilagay o piliin ang AeroFTP-ID ng tatanggap.",
+                "contactsTab": "Mga Contact"
             },
             "shared": {
                 "title": "Ibinahagi ko",
@@ -4847,7 +4848,20 @@
             "receiveLabel": "Tumanggap ng mga file",
             "receiveDesc": "Hayaang magpadala ang mga kaibigan ng file nang direkta sa iyo (isang beses, naka-encrypt nang end-to-end). Nagpapatakbo ng listener habang naka-on.",
             "autoAcceptLabel": "Awtomatikong tanggapin mula sa mga naka-save na kaibigan",
-            "autoAcceptDesc": "Laktawan ang prompt para sa mga file mula sa mga tao sa iyong listahan ng kaibigan. Palaging tatanungin ang hindi kilalang nagpadala."
+            "autoAcceptDesc": "Laktawan ang prompt para sa mga file mula sa mga tao sa iyong listahan ng kaibigan. Palaging tatanungin ang hindi kilalang nagpadala.",
+            "contacts": {
+                "title": "Mga Contact",
+                "intro": "Ang mga naka-save na contact ay ang iyong mga kaibigan sa AeroShare: piliin sila kapag nagpapadala, at (kapag naka-on ang auto-accept) tumanggap mula sa kanila nang walang tanong.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Pangalan (opsyonal)",
+                "add": "Idagdag",
+                "empty": "Wala pang contact",
+                "save": "I-save",
+                "cancel": "Kanselahin",
+                "edit": "I-edit",
+                "remove": "Alisin",
+                "removeConfirm": "Alisin?"
+            }
         }
     }
 }

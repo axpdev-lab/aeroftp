@@ -4776,7 +4776,8 @@
                 "missingLink": "请先粘贴共享链接。",
                 "missingIssuer": "请输入好友的 AeroFTP-ID。",
                 "missingFolder": "请选择一个文件夹。",
-                "missingRecipient": "请输入或选择接收方的 AeroFTP-ID。"
+                "missingRecipient": "请输入或选择接收方的 AeroFTP-ID。",
+                "contactsTab": "联系人"
             },
             "shared": {
                 "title": "我的共享",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "接收文件",
             "receiveDesc": "允许好友直接向您发送文件（一次性，端到端加密）。开启时会运行一个监听器。",
             "autoAcceptLabel": "自动接受来自已保存好友的文件",
-            "autoAcceptDesc": "跳过来自好友列表中人员的文件提示。未知发送者始终会询问。"
+            "autoAcceptDesc": "跳过来自好友列表中人员的文件提示。未知发送者始终会询问。",
+            "contacts": {
+                "title": "联系人",
+                "intro": "已保存的联系人是您的 AeroShare 好友：发送时选择他们，并且（开启自动接收后）无需提示即可接收他们的文件。",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "名称（可选）",
+                "add": "添加",
+                "empty": "暂无联系人",
+                "save": "保存",
+                "cancel": "取消",
+                "edit": "编辑",
+                "remove": "移除",
+                "removeConfirm": "移除？"
+            }
         }
     }
 }

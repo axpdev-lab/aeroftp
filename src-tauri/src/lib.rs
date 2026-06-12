@@ -15165,6 +15165,8 @@ pub fn run() {
             peer_commands::peer_share_start,
             peer_commands::peer_drive_add,
             peer_commands::peer_friends_list,
+            peer_commands::peer_contact_add,
+            peer_commands::peer_contact_remove,
             peer_commands::peer_drives_list,
             // AeroShare Share surface slice 2: the "Shared by me" panel
             peer_commands::peer_shares_list,

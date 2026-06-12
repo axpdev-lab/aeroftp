@@ -92,6 +92,17 @@ export const peerIdentityGet = (autoCreate: boolean): Promise<PeerIdentityInfo> 
 export const peerFriendsList = (): Promise<PeerFriend[]> =>
   invoke<PeerFriend[]>('peer_friends_list');
 
+/** Add (or rename) a saved contact in the active partition's address book
+ *  (UPSERT keyed by AFID, so it also edits an existing contact's alias). The
+ *  backend validates the AFID and defaults a blank alias to a short AFID. */
+export const peerContactAdd = (contactId: string, alias: string): Promise<void> =>
+  invoke('peer_contact_add', { contactId, alias });
+
+/** Remove a saved contact from the active partition's address book (no-op if
+ *  absent). */
+export const peerContactRemove = (contactId: string): Promise<void> =>
+  invoke('peer_contact_remove', { contactId });
+
 export const peerDrivesList = (): Promise<PeerDriveInfo[]> =>
   invoke<PeerDriveInfo[]>('peer_drives_list');
 

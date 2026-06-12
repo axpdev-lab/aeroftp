@@ -32,10 +32,11 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   Copy, Check, Loader2, AlertTriangle, FolderOpen, Download, Upload,
-  IdCard, Link2, Plug, Image, X, Save,
+  IdCard, Link2, Plug, Image, X, Save, Users,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { IconPickerDialog } from '../IconPickerDialog';
+import { AeroShareContacts } from './AeroShareContacts';
 import type { ServerProfile } from '../../types';
 import {
   peerIdentityGet, peerFriendsList, peerShareStart, peerDriveAdd,
@@ -43,7 +44,7 @@ import {
   type PeerFriend, type PeerShareStarted, type PeerDriveAdded,
 } from '../../utils/aeroShare';
 
-export type AeroShareMode = 'receive' | 'share';
+export type AeroShareMode = 'receive' | 'share' | 'contacts';
 
 export interface AeroShareHandshakeBodyProps {
   /** Which tab to open on. */
@@ -399,6 +400,7 @@ export function AeroShareHandshakeBody({
       <div className="flex px-4 gap-5 border-b border-gray-200 dark:border-gray-700">
         <ModeTab active={mode === 'receive'} onClick={() => setMode('receive')} icon={<Download size={13} />} label={t('aeroShare.dialog.receiveTab')} />
         <ModeTab active={mode === 'share'} onClick={() => setMode('share')} icon={<Upload size={13} />} label={t('aeroShare.dialog.shareTab')} />
+        <ModeTab active={mode === 'contacts'} onClick={() => setMode('contacts')} icon={<Users size={13} />} label={t('aeroShare.dialog.contactsTab')} />
       </div>
       )}
 
@@ -628,6 +630,7 @@ export function AeroShareHandshakeBody({
             )}
           </div>
         )}
+        {mode === 'contacts' && <AeroShareContacts />}
       </div>
 
       {isPage && showIconPicker && (

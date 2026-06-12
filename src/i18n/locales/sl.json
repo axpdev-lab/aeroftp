@@ -4776,7 +4776,8 @@
                 "missingLink": "Najprej prilepite povezavo za deljenje.",
                 "missingIssuer": "Vnesite prijateljev AeroFTP-ID.",
                 "missingFolder": "Izberite mapo.",
-                "missingRecipient": "Vnesite ali izberite prejemnikov AeroFTP-ID."
+                "missingRecipient": "Vnesite ali izberite prejemnikov AeroFTP-ID.",
+                "contactsTab": "Stiki"
             },
             "shared": {
                 "title": "Deljeno z moje strani",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Prejemaj datoteke",
             "receiveDesc": "Dovolite prijateljem, da vam datoteke pošljejo neposredno (enkratno, šifrirano od konca do konca). Ko je vklopljeno, teče poslušalec.",
             "autoAcceptLabel": "Samodejno sprejmi od shranjenih prijateljev",
-            "autoAcceptDesc": "Preskočite poziv za datoteke od ljudi na vašem seznamu prijateljev. Neznani pošiljatelji vedno vprašajo."
+            "autoAcceptDesc": "Preskočite poziv za datoteke od ljudi na vašem seznamu prijateljev. Neznani pošiljatelji vedno vprašajo.",
+            "contacts": {
+                "title": "Stiki",
+                "intro": "Shranjeni stiki so vaši prijatelji v AeroShare: izberite jih pri pošiljanju in (z vklopljenim samodejnim sprejemanjem) prejemajte od njih brez poziva.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Ime (neobvezno)",
+                "add": "Dodaj",
+                "empty": "Še ni stikov",
+                "save": "Shrani",
+                "cancel": "Prekliči",
+                "edit": "Uredi",
+                "remove": "Odstrani",
+                "removeConfirm": "Odstranim?"
+            }
         }
     }
 }

@@ -4776,7 +4776,8 @@
                 "missingLink": "Fügen Sie zuerst den Freigabelink ein.",
                 "missingIssuer": "Geben Sie die AeroFTP-ID Ihres Freundes ein.",
                 "missingFolder": "Wählen Sie einen Ordner aus.",
-                "missingRecipient": "Geben Sie die AeroFTP-ID des Empfängers ein oder wählen Sie sie aus."
+                "missingRecipient": "Geben Sie die AeroFTP-ID des Empfängers ein oder wählen Sie sie aus.",
+                "contactsTab": "Kontakte"
             },
             "shared": {
                 "title": "Von mir geteilt",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Dateien empfangen",
             "receiveDesc": "Lass Freunde dir Dateien direkt senden (einmalig, Ende-zu-Ende-verschlüsselt). Hält im aktivierten Zustand einen Listener bereit.",
             "autoAcceptLabel": "Von gespeicherten Freunden automatisch annehmen",
-            "autoAcceptDesc": "Überspringe die Abfrage für Dateien von Personen in deiner Freundesliste. Bei unbekannten Absendern wird immer nachgefragt."
+            "autoAcceptDesc": "Überspringe die Abfrage für Dateien von Personen in deiner Freundesliste. Bei unbekannten Absendern wird immer nachgefragt.",
+            "contacts": {
+                "title": "Kontakte",
+                "intro": "Gespeicherte Kontakte sind deine AeroShare-Freunde: wähle sie beim Senden aus und empfange (bei aktiviertem automatischem Annehmen) ohne Nachfrage von ihnen.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Name (optional)",
+                "add": "Hinzufügen",
+                "empty": "Noch keine Kontakte",
+                "save": "Speichern",
+                "cancel": "Abbrechen",
+                "edit": "Bearbeiten",
+                "remove": "Entfernen",
+                "removeConfirm": "Entfernen?"
+            }
         }
     }
 }

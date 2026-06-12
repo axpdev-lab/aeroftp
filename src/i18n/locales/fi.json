@@ -4776,7 +4776,8 @@
                 "missingLink": "Liitä ensin jakolinkki.",
                 "missingIssuer": "Anna kaverisi AeroFTP-ID.",
                 "missingFolder": "Valitse kansio.",
-                "missingRecipient": "Anna tai valitse vastaanottajan AeroFTP-ID."
+                "missingRecipient": "Anna tai valitse vastaanottajan AeroFTP-ID.",
+                "contactsTab": "Yhteystiedot"
             },
             "shared": {
                 "title": "Minun jakamani",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Vastaanota tiedostoja",
             "receiveDesc": "Anna kaverien lähettää tiedostoja suoraan sinulle (kertaluonteinen, päästä päähän salattu). Pitää kuuntelijan käynnissä, kun käytössä.",
             "autoAcceptLabel": "Hyväksy automaattisesti tallennetuilta kavereilta",
-            "autoAcceptDesc": "Ohita kysely tiedostoille henkilöiltä kaverilistallasi. Tuntemattomilta lähettäjiltä kysytään aina."
+            "autoAcceptDesc": "Ohita kysely tiedostoille henkilöiltä kaverilistallasi. Tuntemattomilta lähettäjiltä kysytään aina.",
+            "contacts": {
+                "title": "Yhteystiedot",
+                "intro": "Tallennetut yhteystiedot ovat AeroShare-ystäviäsi: valitse heidät lähettäessäsi ja (automaattisen hyväksynnän ollessa päällä) vastaanota heiltä ilman kehotetta.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nimi (valinnainen)",
+                "add": "Lisää",
+                "empty": "Ei vielä yhteystietoja",
+                "save": "Tallenna",
+                "cancel": "Peruuta",
+                "edit": "Muokkaa",
+                "remove": "Poista",
+                "removeConfirm": "Poistetaanko?"
+            }
         }
     }
 }

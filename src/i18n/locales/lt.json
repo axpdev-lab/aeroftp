@@ -4776,7 +4776,8 @@
                 "missingLink": "Pirmiausia įklijuokite bendrinimo nuorodą.",
                 "missingIssuer": "Įveskite draugo AeroFTP-ID.",
                 "missingFolder": "Pasirinkite aplanką.",
-                "missingRecipient": "Įveskite arba pasirinkite gavėjo AeroFTP-ID."
+                "missingRecipient": "Įveskite arba pasirinkite gavėjo AeroFTP-ID.",
+                "contactsTab": "Kontaktai"
             },
             "shared": {
                 "title": "Mano bendrinama",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Gauti failus",
             "receiveDesc": "Leiskite draugams siųsti failus tiesiai jums (vienkartinis, ištisai šifruotas). Įjungtas paleidžia klausytoją.",
             "autoAcceptLabel": "Automatiškai priimti iš įrašytų draugų",
-            "autoAcceptDesc": "Praleiskite užklausą dėl failų iš žmonių jūsų draugų sąraše. Nežinomų siuntėjų visada klausiama."
+            "autoAcceptDesc": "Praleiskite užklausą dėl failų iš žmonių jūsų draugų sąraše. Nežinomų siuntėjų visada klausiama.",
+            "contacts": {
+                "title": "Kontaktai",
+                "intro": "Išsaugoti kontaktai yra jūsų AeroShare draugai: pasirinkite juos siųsdami ir (kai įjungtas automatinis priėmimas) gaukite iš jų be raginimo.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Vardas (neprivaloma)",
+                "add": "Pridėti",
+                "empty": "Kontaktų dar nėra",
+                "save": "Išsaugoti",
+                "cancel": "Atšaukti",
+                "edit": "Redaguoti",
+                "remove": "Pašalinti",
+                "removeConfirm": "Pašalinti?"
+            }
         }
     }
 }

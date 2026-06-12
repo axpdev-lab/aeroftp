@@ -4795,7 +4795,8 @@
                 "missingLink": "Itsatsi lehenik partekatze-esteka.",
                 "missingIssuer": "Sartu zure lagunaren AeroFTP-ID.",
                 "missingFolder": "Aukeratu karpeta bat.",
-                "missingRecipient": "Sartu edo aukeratu hartzailearen AeroFTP-ID."
+                "missingRecipient": "Sartu edo aukeratu hartzailearen AeroFTP-ID.",
+                "contactsTab": "Kontaktuak"
             },
             "shared": {
                 "title": "Nik partekatua",
@@ -4847,7 +4848,20 @@
             "receiveLabel": "Jaso fitxategiak",
             "receiveDesc": "Utzi lagunei fitxategiak zuzenean bidaltzen (behin batekoa, muturretik muturrera enkriptatua). Piztuta dagoenean entzule bat exekutatzen du.",
             "autoAcceptLabel": "Onartu automatikoki gordetako lagunengandik",
-            "autoAcceptDesc": "Saltatu galdera zure lagun-zerrendako pertsonen fitxategietarako. Bidaltzaile ezezagunek beti galdetzen dute."
+            "autoAcceptDesc": "Saltatu galdera zure lagun-zerrendako pertsonen fitxategietarako. Bidaltzaile ezezagunek beti galdetzen dute.",
+            "contacts": {
+                "title": "Kontaktuak",
+                "intro": "Gordetako kontaktuak zure AeroShare lagunak dira: aukeratu bidaltzean eta (onarpen automatikoa piztuta dagoela) jaso haietatik galderarik gabe.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Izena (aukerakoa)",
+                "add": "Gehitu",
+                "empty": "Oraindik ez dago kontakturik",
+                "save": "Gorde",
+                "cancel": "Utzi",
+                "edit": "Editatu",
+                "remove": "Kendu",
+                "removeConfirm": "Kendu?"
+            }
         }
     }
 }

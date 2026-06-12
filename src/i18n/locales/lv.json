@@ -4776,7 +4776,8 @@
                 "missingLink": "Vispirms ielīmējiet kopīgošanas saiti.",
                 "missingIssuer": "Ievadiet drauga AeroFTP-ID.",
                 "missingFolder": "Izvēlieties mapi.",
-                "missingRecipient": "Ievadiet vai izvēlieties saņēmēja AeroFTP-ID."
+                "missingRecipient": "Ievadiet vai izvēlieties saņēmēja AeroFTP-ID.",
+                "contactsTab": "Kontakti"
             },
             "shared": {
                 "title": "Mana kopīgotā",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Saņemt failus",
             "receiveDesc": "Ļaujiet draugiem sūtīt failus tieši jums (vienreizējs, pilnībā šifrēts). Ieslēgtā stāvoklī darbina klausītāju.",
             "autoAcceptLabel": "Automātiski pieņemt no saglabātajiem draugiem",
-            "autoAcceptDesc": "Izlaidiet uzvedni failiem no cilvēkiem jūsu draugu sarakstā. Nezināmi sūtītāji vienmēr jautā."
+            "autoAcceptDesc": "Izlaidiet uzvedni failiem no cilvēkiem jūsu draugu sarakstā. Nezināmi sūtītāji vienmēr jautā.",
+            "contacts": {
+                "title": "Kontakti",
+                "intro": "Saglabātie kontakti ir jūsu AeroShare draugi: izvēlieties tos, sūtot, un (ar ieslēgtu automātisko pieņemšanu) saņemiet no tiem bez vaicājuma.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Vārds (neobligāts)",
+                "add": "Pievienot",
+                "empty": "Vēl nav kontaktu",
+                "save": "Saglabāt",
+                "cancel": "Atcelt",
+                "edit": "Rediģēt",
+                "remove": "Noņemt",
+                "removeConfirm": "Noņemt?"
+            }
         }
     }
 }

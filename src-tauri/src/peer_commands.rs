@@ -126,6 +126,38 @@ pub async fn peer_friends_list(app: AppHandle) -> Result<Vec<PeerFriend>, String
         .collect())
 }
 
+/// Add (or rename) a contact in the active user's partition (UPSERT keyed by
+/// AFID, so this also edits an existing contact's alias). The AFID is validated
+/// as a well-formed AeroFTP-ID; the alias falls back to a short AFID when blank.
+#[tauri::command]
+pub async fn peer_contact_add(
+    app: AppHandle,
+    contact_id: String,
+    alias: String,
+) -> Result<(), String> {
+    let afid = contact_id.trim();
+    if afid.is_empty() {
+        return Err("an AeroFTP-ID is required".to_string());
+    }
+    aeroftp_peer_l0::IdentityPublic::from_aeroftp_id(afid)
+        .map_err(|_| "that is not a valid AeroFTP-ID".to_string())?;
+    let alias = {
+        let a = alias.trim();
+        if a.is_empty() {
+            short_afid(afid)
+        } else {
+            a.to_string()
+        }
+    };
+    crate::user_partitions::gui_peer_contact_add(&app, afid, &alias)
+}
+
+/// Remove a contact from the active user's partition (no-op if absent).
+#[tauri::command]
+pub async fn peer_contact_remove(app: AppHandle, contact_id: String) -> Result<(), String> {
+    crate::user_partitions::gui_peer_contact_remove(&app, contact_id.trim())
+}
+
 #[derive(Serialize)]
 pub struct PeerDriveInfo {
     pub namespace: String,

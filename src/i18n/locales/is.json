@@ -4795,7 +4795,8 @@
                 "missingLink": "Límdu inn deilingatengilinn fyrst.",
                 "missingIssuer": "Sláðu inn AeroFTP-ID vinar þíns.",
                 "missingFolder": "Veldu möppu.",
-                "missingRecipient": "Sláðu inn eða veldu AeroFTP-ID viðtakandans."
+                "missingRecipient": "Sláðu inn eða veldu AeroFTP-ID viðtakandans.",
+                "contactsTab": "Tengiliðir"
             },
             "shared": {
                 "title": "Deilt af mér",
@@ -4847,7 +4848,20 @@
             "receiveLabel": "Taka á móti skrám",
             "receiveDesc": "Leyfðu vinum að senda þér skrár beint (einnota, dulkóðað enda í enda). Keyrir hlustanda á meðan kveikt er á.",
             "autoAcceptLabel": "Samþykkja sjálfkrafa frá vistuðum vinum",
-            "autoAcceptDesc": "Slepptu spurningunni fyrir skrár frá fólki á vinalistanum þínum. Óþekktir sendendur eru alltaf spurðir."
+            "autoAcceptDesc": "Slepptu spurningunni fyrir skrár frá fólki á vinalistanum þínum. Óþekktir sendendur eru alltaf spurðir.",
+            "contacts": {
+                "title": "Tengiliðir",
+                "intro": "Vistaðir tengiliðir eru AeroShare-vinir þínir: veldu þá við sendingu og (með sjálfvirka samþykkt á) taktu á móti frá þeim án kvaðningar.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nafn (valfrjálst)",
+                "add": "Bæta við",
+                "empty": "Engir tengiliðir enn",
+                "save": "Vista",
+                "cancel": "Hætta við",
+                "edit": "Breyta",
+                "remove": "Fjarlægja",
+                "removeConfirm": "Fjarlægja?"
+            }
         }
     }
 }

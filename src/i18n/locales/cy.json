@@ -4795,7 +4795,8 @@
                 "missingLink": "Gludwch y ddolen rannu yn gyntaf.",
                 "missingIssuer": "Rhowch AeroFTP-ID eich ffrind.",
                 "missingFolder": "Dewiswch ffolder.",
-                "missingRecipient": "Rhowch neu dewiswch AeroFTP-ID y derbynnydd."
+                "missingRecipient": "Rhowch neu dewiswch AeroFTP-ID y derbynnydd.",
+                "contactsTab": "Cysylltiadau"
             },
             "shared": {
                 "title": "Wedi rhannu gennyf",
@@ -4847,7 +4848,20 @@
             "receiveLabel": "Derbyn ffeiliau",
             "receiveDesc": "Caniatewch i ffrindiau anfon ffeiliau'n syth atoch (un-tro, wedi'u hamgryptio o ben i ben). Mae'n rhedeg gwrandawr tra'i fod ymlaen.",
             "autoAcceptLabel": "Derbyn yn awtomatig gan ffrindiau wedi'u cadw",
-            "autoAcceptDesc": "Hepgorwch yr anogwr ar gyfer ffeiliau gan bobl ar eich rhestr ffrindiau. Mae anfonwyr anhysbys bob amser yn gofyn."
+            "autoAcceptDesc": "Hepgorwch yr anogwr ar gyfer ffeiliau gan bobl ar eich rhestr ffrindiau. Mae anfonwyr anhysbys bob amser yn gofyn.",
+            "contacts": {
+                "title": "Cysylltiadau",
+                "intro": "Eich ffrindiau AeroShare yw'r cysylltiadau sydd wedi'u cadw: dewiswch nhw wrth anfon, a (gyda derbyn yn awtomatig ymlaen) derbyniwch ganddyn nhw heb anogiad.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Enw (dewisol)",
+                "add": "Ychwanegu",
+                "empty": "Dim cysylltiadau eto",
+                "save": "Cadw",
+                "cancel": "Canslo",
+                "edit": "Golygu",
+                "remove": "Tynnu",
+                "removeConfirm": "Tynnu?"
+            }
         }
     }
 }

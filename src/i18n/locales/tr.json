@@ -4776,7 +4776,8 @@
                 "missingLink": "Önce paylaşım bağlantısını yapıştırın.",
                 "missingIssuer": "Arkadaşınızın AeroFTP-ID'sini girin.",
                 "missingFolder": "Bir klasör seçin.",
-                "missingRecipient": "Alıcının AeroFTP-ID'sini girin veya seçin."
+                "missingRecipient": "Alıcının AeroFTP-ID'sini girin veya seçin.",
+                "contactsTab": "Kişiler"
             },
             "shared": {
                 "title": "Benim paylaştıklarım",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Dosya al",
             "receiveDesc": "Arkadaşların doğrudan size dosya göndermesine izin verin (tek seferlik, uçtan uca şifreli). Açıkken bir dinleyici çalıştırır.",
             "autoAcceptLabel": "Kayıtlı arkadaşlardan otomatik kabul",
-            "autoAcceptDesc": "Arkadaş listenizdeki kişilerden gelen dosyalar için istemi atlayın. Bilinmeyen gönderenler her zaman sorulur."
+            "autoAcceptDesc": "Arkadaş listenizdeki kişilerden gelen dosyalar için istemi atlayın. Bilinmeyen gönderenler her zaman sorulur.",
+            "contacts": {
+                "title": "Kişiler",
+                "intro": "Kaydedilen kişiler AeroShare arkadaşlarınızdır: gönderirken onları seçin ve (otomatik kabul açıkken) sormadan onlardan alın.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Ad (isteğe bağlı)",
+                "add": "Ekle",
+                "empty": "Henüz kişi yok",
+                "save": "Kaydet",
+                "cancel": "İptal",
+                "edit": "Düzenle",
+                "remove": "Kaldır",
+                "removeConfirm": "Kaldırılsın mı?"
+            }
         }
     }
 }

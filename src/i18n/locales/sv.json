@@ -4776,7 +4776,8 @@
                 "missingLink": "Klistra in delningslänken först.",
                 "missingIssuer": "Ange din väns AeroFTP-ID.",
                 "missingFolder": "Välj en mapp.",
-                "missingRecipient": "Ange eller välj mottagarens AeroFTP-ID."
+                "missingRecipient": "Ange eller välj mottagarens AeroFTP-ID.",
+                "contactsTab": "Kontakter"
             },
             "shared": {
                 "title": "Delat av mig",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Ta emot filer",
             "receiveDesc": "Låt vänner skicka filer direkt till dig (engångs, totalsträckskrypterat). Kör en lyssnare medan den är på.",
             "autoAcceptLabel": "Acceptera automatiskt från sparade vänner",
-            "autoAcceptDesc": "Hoppa över frågan för filer från personer i din vänlista. Okända avsändare tillfrågas alltid."
+            "autoAcceptDesc": "Hoppa över frågan för filer från personer i din vänlista. Okända avsändare tillfrågas alltid.",
+            "contacts": {
+                "title": "Kontakter",
+                "intro": "Sparade kontakter är dina AeroShare-vänner: välj dem vid sändning och (med automatiskt godkännande på) ta emot från dem utan fråga.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Namn (valfritt)",
+                "add": "Lägg till",
+                "empty": "Inga kontakter ännu",
+                "save": "Spara",
+                "cancel": "Avbryt",
+                "edit": "Redigera",
+                "remove": "Ta bort",
+                "removeConfirm": "Ta bort?"
+            }
         }
     }
 }

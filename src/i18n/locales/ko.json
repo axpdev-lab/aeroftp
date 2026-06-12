@@ -4776,7 +4776,8 @@
                 "missingLink": "먼저 공유 링크를 붙여넣으세요.",
                 "missingIssuer": "친구의 AeroFTP-ID를 입력하세요.",
                 "missingFolder": "폴더를 선택하세요.",
-                "missingRecipient": "받는 사람의 AeroFTP-ID를 입력하거나 선택하세요."
+                "missingRecipient": "받는 사람의 AeroFTP-ID를 입력하거나 선택하세요.",
+                "contactsTab": "연락처"
             },
             "shared": {
                 "title": "내가 공유함",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "파일 받기",
             "receiveDesc": "친구가 회원님에게 직접 파일을 보낼 수 있도록 합니다 (일회성, 종단 간 암호화). 켜져 있는 동안 수신기가 실행됩니다.",
             "autoAcceptLabel": "저장된 친구로부터 자동 수락",
-            "autoAcceptDesc": "친구 목록에 있는 사람의 파일에 대한 확인을 건너뜁니다. 알 수 없는 보낸 사람에게는 항상 확인합니다."
+            "autoAcceptDesc": "친구 목록에 있는 사람의 파일에 대한 확인을 건너뜁니다. 알 수 없는 보낸 사람에게는 항상 확인합니다.",
+            "contacts": {
+                "title": "연락처",
+                "intro": "저장된 연락처는 AeroShare 친구입니다. 보낼 때 선택하고 (자동 수락이 켜져 있으면) 확인 없이 받을 수 있습니다.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "이름 (선택 사항)",
+                "add": "추가",
+                "empty": "아직 연락처가 없습니다",
+                "save": "저장",
+                "cancel": "취소",
+                "edit": "편집",
+                "remove": "제거",
+                "removeConfirm": "제거할까요?"
+            }
         }
     }
 }

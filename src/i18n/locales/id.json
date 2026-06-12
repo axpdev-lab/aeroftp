@@ -4776,7 +4776,8 @@
                 "missingLink": "Tempel tautan berbagi terlebih dahulu.",
                 "missingIssuer": "Masukkan AeroFTP-ID teman Anda.",
                 "missingFolder": "Pilih sebuah folder.",
-                "missingRecipient": "Masukkan atau pilih AeroFTP-ID penerima."
+                "missingRecipient": "Masukkan atau pilih AeroFTP-ID penerima.",
+                "contactsTab": "Kontak"
             },
             "shared": {
                 "title": "Dibagikan oleh saya",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Terima file",
             "receiveDesc": "Biarkan teman mengirim file langsung kepada Anda (sekali kirim, terenkripsi ujung ke ujung). Menjalankan pendengar saat aktif.",
             "autoAcceptLabel": "Terima otomatis dari teman tersimpan",
-            "autoAcceptDesc": "Lewati permintaan untuk file dari orang dalam daftar teman Anda. Pengirim tidak dikenal selalu ditanyakan."
+            "autoAcceptDesc": "Lewati permintaan untuk file dari orang dalam daftar teman Anda. Pengirim tidak dikenal selalu ditanyakan.",
+            "contacts": {
+                "title": "Kontak",
+                "intro": "Kontak tersimpan adalah teman AeroShare Anda: pilih mereka saat mengirim, dan (dengan terima otomatis aktif) terima dari mereka tanpa permintaan.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nama (opsional)",
+                "add": "Tambah",
+                "empty": "Belum ada kontak",
+                "save": "Simpan",
+                "cancel": "Batal",
+                "edit": "Edit",
+                "remove": "Hapus",
+                "removeConfirm": "Hapus?"
+            }
         }
     }
 }

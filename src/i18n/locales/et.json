@@ -4776,7 +4776,8 @@
                 "missingLink": "Kleepige esmalt jagamislink.",
                 "missingIssuer": "Sisestage sõbra AeroFTP-ID.",
                 "missingFolder": "Valige kaust.",
-                "missingRecipient": "Sisestage või valige saaja AeroFTP-ID."
+                "missingRecipient": "Sisestage või valige saaja AeroFTP-ID.",
+                "contactsTab": "Kontaktid"
             },
             "shared": {
                 "title": "Minu jagatud",
@@ -4828,7 +4829,20 @@
             "receiveLabel": "Failide vastuvõtmine",
             "receiveDesc": "Luba sõpradel saata faile otse sulle (ühekordne, läbivalt krüpteeritud). Sisselülitatuna töötab kuulaja.",
             "autoAcceptLabel": "Automaatne nõustumine salvestatud sõpradelt",
-            "autoAcceptDesc": "Jäta vahele küsimine failide puhul, mis tulevad su sõbralistis olevatelt inimestelt. Tundmatud saatjad küsivad alati."
+            "autoAcceptDesc": "Jäta vahele küsimine failide puhul, mis tulevad su sõbralistis olevatelt inimestelt. Tundmatud saatjad küsivad alati.",
+            "contacts": {
+                "title": "Kontaktid",
+                "intro": "Salvestatud kontaktid on sinu AeroShare'i sõbrad: vali nad saatmisel ja (kui automaatne vastuvõtmine on sees) võta neilt vastu ilma küsimuseta.",
+                "afidPlaceholder": "AeroFTP-ID (AFID1...)",
+                "namePlaceholder": "Nimi (valikuline)",
+                "add": "Lisa",
+                "empty": "Kontakte veel pole",
+                "save": "Salvesta",
+                "cancel": "Tühista",
+                "edit": "Muuda",
+                "remove": "Eemalda",
+                "removeConfirm": "Eemaldada?"
+            }
         }
     }
 }
