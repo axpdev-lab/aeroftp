@@ -318,3 +318,30 @@ export function resolveModeHeader(
     if (!providerId && !name) return null;
     return { providerId, name, description };
 }
+
+/**
+ * Every registry providerId reachable from the active mode group: the
+ * canonical header preset plus each mode that carries a preset. Deduped,
+ * order-stable (header first, then modes left-to-right).
+ *
+ * The caller resolves group-wide account links (signup / app-password
+ * pages) from these ids so the "Create Account" / "Generate password"
+ * buttons stay visible and identical across every tab of a group. Without
+ * this, a preset-less native mode (Koofr API, OpenDrive API) carries no
+ * provider and the buttons vanished when switching to it (#215). Every
+ * surface in a group hits the same account, so the same signup / password
+ * page is correct for all of them.
+ */
+export function modeGroupProviderIds(
+    activeProviderId: string | null | undefined,
+    activeProtocol: string | null | undefined,
+): string[] {
+    const group = findActiveModeGroup(activeProviderId, activeProtocol);
+    if (!group) return [];
+    const ids: string[] = [];
+    if (group.headerProviderId) ids.push(group.headerProviderId);
+    for (const mode of group.modes) {
+        if (mode.providerId) ids.push(mode.providerId);
+    }
+    return [...new Set(ids)];
+}

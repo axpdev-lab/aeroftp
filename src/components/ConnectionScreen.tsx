@@ -20,7 +20,7 @@ import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSele
 import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
 import { TotpLivePreview } from './TotpLivePreview';
-import { findActiveMode, findActiveModeGroup, resolveModeHeader } from './providerModeGroups';
+import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader } from './providerModeGroups';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -525,6 +525,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         formOnly && connectionParams.providerId ? connectionParams.providerId : null
     );
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
+    // Group-wide account links: when the active config belongs to a provider
+    // mode group (Koofr, OpenDrive, Filen, FileLu), the "Create Account" /
+    // "Generate password" buttons resolve from any preset in the group, not
+    // just the active mode's own preset. Preset-less native modes (Koofr API,
+    // OpenDrive API) otherwise carried no provider and the buttons vanished
+    // when switching to them (#215). Every surface in a group hits the same
+    // account, so the same signup / password page is correct for all tabs.
+    const groupAccountProviders = modeGroupProviderIds(connectionParams.providerId, connectionParams.protocol)
+        .map(getProviderById);
+    const accountSignupUrl =
+        selectedProvider?.signupUrl
+        || groupAccountProviders.find((p) => p?.signupUrl)?.signupUrl;
+    const accountPasswordGenUrl =
+        selectedProvider?.passwordGenUrl
+        || groupAccountProviders.find((p) => p?.passwordGenUrl)?.passwordGenUrl;
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
     const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
@@ -1810,9 +1825,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const renderUsernameLabel = (overrideText?: string) => (
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getUsernameLabel()}</label>
-            {selectedProvider?.signupUrl && (
+            {accountSignupUrl && (
                 <a
-                    href={`${selectedProvider.signupUrl}${selectedProvider.signupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
+                    href={`${accountSignupUrl}${accountSignupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
@@ -1827,9 +1842,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const renderPasswordLabel = (overrideText?: string) => (
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getPasswordLabel()}</label>
-            {selectedProvider?.passwordGenUrl && (
+            {accountPasswordGenUrl && (
                 <a
-                    href={selectedProvider.passwordGenUrl}
+                    href={accountPasswordGenUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
