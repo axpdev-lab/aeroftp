@@ -560,6 +560,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Track previous protocol for switch detection in handleProtocolChange
     const previousProtocolRef = React.useRef<ProviderType | undefined>(undefined);
 
+    // Issue #215: per-mode credential snapshots, in-memory for the lifetime
+    // of one edit session. When a saved profile is switched between modes of
+    // the same provider group (Filen API <-> Local WebDAV <-> Local S3, etc.)
+    // each mode's typed credentials, including options-level secrets like
+    // totp_secret / filen_api_key / S3 keys, are stashed under the mode key
+    // (providerId || protocol) and restored on return, so switching back no
+    // longer wipes the API key and 2FA secret. Cleared when a different
+    // profile starts editing to avoid cross-profile leakage.
+    const modeCredentialSnapshotsRef = React.useRef<Record<string, {
+        username: string;
+        password: string;
+        server: string;
+        port?: number;
+        options?: ConnectionParams['options'];
+    }>>({});
+
     // When re-opening dropdown with a protocol already selected, clear the selection.
     // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
     const handleProtocolSelectorOpenChange = (open: boolean) => {
@@ -1384,6 +1400,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         // Reset form FIRST to clear previous server's data immediately
         // This prevents stale data from showing when switching between servers
+        // Drop any per-mode credential snapshots from a previous edit (#215).
+        modeCredentialSnapshotsRef.current = {};
         setEditingProfileId(profile.id);
         editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
@@ -1572,10 +1590,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             const oldGroup = findActiveModeGroup(oldProviderId, effectiveOldProtocol);
             const newGroup = findActiveModeGroup(providerId, newProtocol);
             if (oldGroup && oldGroup === newGroup) {
-                // Carry over server/username/password; replace
-                // protocol-specific options with the new preset defaults
-                // when a preset is provided, otherwise clear options for
-                // preset-less native modes.
+                // Stash the credentials of the mode we are leaving, then look
+                // up the target mode's stash so a return visit restores exactly
+                // what was typed there (incl. options-level secrets), instead
+                // of wiping the API key / 2FA secret (#215). On a first visit
+                // there is no stash, so the original carry-over behaviour holds.
+                const oldKey = oldProviderId || effectiveOldProtocol;
+                modeCredentialSnapshotsRef.current[oldKey] = {
+                    username: connectionParams.username,
+                    password: connectionParams.password,
+                    server: connectionParams.server,
+                    port: connectionParams.port,
+                    options: connectionParams.options ? { ...connectionParams.options } : undefined,
+                };
+                const newKey = providerId || newProtocol;
+                const restored = modeCredentialSnapshotsRef.current[newKey];
                 if (providerId) {
                     const provider = getProviderById(providerId);
                     if (provider) {
@@ -1583,7 +1612,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         onConnectionParamsChange({
                             ...connectionParams,
                             protocol: newProtocol,
-                            port: provider.defaults?.port || getDefaultPort(newProtocol),
+                            port: restored?.port ?? (provider.defaults?.port || getDefaultPort(newProtocol)),
                             providerId: provider.id,
                             // Adopt the target preset's canonical endpoint. The
                             // modes in a group share an account but have
@@ -1592,9 +1621,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             // the old server connected WebDAV to the API host
                             // and returned 404. Prefer the preset default; fall
                             // back to the current server only when the preset
-                            // has none.
-                            server: provider.defaults?.server || connectionParams.server || '',
-                            options: {
+                            // has none. A restored stash already holds this
+                            // mode's own host, so it wins.
+                            server: restored ? restored.server : (provider.defaults?.server || connectionParams.server || ''),
+                            username: restored ? restored.username : connectionParams.username,
+                            password: restored ? restored.password : connectionParams.password,
+                            options: restored ? (restored.options ?? {}) : {
                                 pathStyle: provider.defaults?.pathStyle,
                                 region: provider.defaults?.region,
                                 endpoint: provider.defaults?.endpoint,
@@ -1614,8 +1646,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     ...connectionParams,
                     protocol: newProtocol,
                     providerId: undefined,
-                    port: getDefaultPort(newProtocol),
-                    options: {},
+                    port: restored?.port ?? getDefaultPort(newProtocol),
+                    server: restored ? restored.server : connectionParams.server,
+                    username: restored ? restored.username : connectionParams.username,
+                    password: restored ? restored.password : connectionParams.password,
+                    options: restored ? (restored.options ?? {}) : {},
                 });
                 return;
             }
