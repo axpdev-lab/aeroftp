@@ -10156,14 +10156,42 @@ fn format_local_mtime(t: std::time::SystemTime) -> String {
 }
 
 /// Returns (effective_path, TuiListResult) compatible with the remote ListReady path.
+/// Resolve a readable starting directory for the local pane. The requested path
+/// is used as-is when it is an existing directory; otherwise (e.g. a profile's
+/// `default_local_path` imported from another machine where that folder does not
+/// exist) it falls back to the user's home directory, then the filesystem root,
+/// mirroring the GUI - the local pane must never dead-end on a missing folder.
+async fn resolve_local_start_dir(path: &str) -> String {
+    use tokio::fs;
+
+    let is_dir = |p: &str| {
+        let p = p.to_string();
+        async move { fs::metadata(&p).await.map(|m| m.is_dir()).unwrap_or(false) }
+    };
+
+    if !path.is_empty() && is_dir(path).await {
+        return path.to_string();
+    }
+    if let Some(home) = dirs::home_dir() {
+        let home = home.to_string_lossy().into_owned();
+        if is_dir(&home).await {
+            return home;
+        }
+    }
+    "/".to_string()
+}
+
 async fn list_local_dir(path: &str) -> Result<(String, cli_tui::worker::TuiListResult), String> {
     use std::path::Path;
     use tokio::fs;
 
-    let root = Path::new(path);
+    // Fall back to home/root when the requested directory is missing, and report
+    // the path actually listed so the TUI's local pane adopts it.
+    let effective = resolve_local_start_dir(path).await;
+    let root = Path::new(&effective);
     let mut dir_entries = match fs::read_dir(root).await {
         Ok(rd) => rd,
-        Err(e) => return Err(format!("cannot read local dir '{}': {}", path, e)),
+        Err(e) => return Err(format!("cannot read local dir '{}': {}", effective, e)),
     };
 
     let mut entries: Vec<cli_tui::worker::TuiListEntry> = vec![];
@@ -10223,7 +10251,7 @@ async fn list_local_dir(path: &str) -> Result<(String, cli_tui::worker::TuiListR
         },
     };
 
-    Ok((path.to_string(), result))
+    Ok((effective, result))
 }
 
 /// Phase 3: Local stat for the dual-pane (used for preview when selecting a local entry).
@@ -46638,6 +46666,28 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
+    }
+
+    #[tokio::test]
+    async fn local_start_dir_falls_back_to_a_real_dir_when_missing() {
+        // An existing directory is used as-is.
+        let tmp = std::env::temp_dir().to_string_lossy().into_owned();
+        assert_eq!(resolve_local_start_dir(&tmp).await, tmp);
+
+        // A profile's default local path that does not exist on this machine
+        // (e.g. imported from another box) must NOT dead-end: it falls back to a
+        // real directory (home or root), like the GUI.
+        let missing = "/nonexistent-aeroftp-local-xyz/does/not/exist";
+        let resolved = resolve_local_start_dir(missing).await;
+        assert_ne!(resolved, missing, "missing path is not returned verbatim");
+        assert!(
+            std::path::Path::new(&resolved).is_dir(),
+            "fallback resolves to a real directory"
+        );
+
+        // An empty path also falls back to a real directory.
+        let resolved_empty = resolve_local_start_dir("").await;
+        assert!(std::path::Path::new(&resolved_empty).is_dir());
     }
 
     #[test]
