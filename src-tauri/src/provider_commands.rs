@@ -4131,6 +4131,16 @@ pub async fn mega_df_query(profile_id: String) -> Result<(u64, u64), String> {
         .map_err(|e| format!("Failed to query mega-df: {}", e))
 }
 
+/// Resolve the local MEGAcmd WebDAV bridge URL via `mega-webdav /` so the
+/// Endpoint URL field can auto-fill instead of the user copying it from the
+/// MEGAcmd terminal (#215).
+#[tauri::command]
+pub async fn mega_webdav_url() -> Result<String, String> {
+    crate::providers::mega_df::mega_webdav_url_query()
+        .await
+        .map_err(|e| format!("{}", e))
+}
+
 /// Get disk usage for a path in bytes
 #[tauri::command]
 pub async fn provider_disk_usage(

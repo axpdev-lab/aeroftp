@@ -362,7 +362,7 @@
             "immichApiKeyPlaceholder": "Incolla la tua chiave API qui",
             "immichApiKeyHelp": "Genera una chiave API in Immich → User Settings → API Keys",
             "immichOps": "Sfoglia, carica, scarica, elimina, album, cerca, link di condivisione. Rinomina e sposta non supportati.",
-            "generatePassword": "Genera password",
+            "generatePassword": "Genera Password",
             "generatePersonalLoginToken": "Genera token di accesso personale",
             "endpointUrl": "URL endpoint",
             "b2NativeAdvantagesTitle": "API native Backblaze B2: funzionalità extra rispetto a S3-compatibile",

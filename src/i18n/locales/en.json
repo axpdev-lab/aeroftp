@@ -1111,7 +1111,7 @@
             "duplicateCredentialMissing": "Credential not copied to the duplicate. Re-enter the password before connecting.",
             "dismiss": "Dismiss",
             "createAccount": "Create Account",
-            "generatePassword": "Generate password",
+            "generatePassword": "Generate Password",
             "generatePersonalLoginToken": "Generate personal login token",
             "docs": "Docs",
             "downloadMegacmd": "Download MEGAcmd",

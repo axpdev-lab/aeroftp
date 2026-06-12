@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -20,7 +20,7 @@ import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSele
 import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
 import { TotpLivePreview } from './TotpLivePreview';
-import { findActiveMode, findActiveModeGroup, resolveModeHeader } from './providerModeGroups';
+import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader } from './providerModeGroups';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -525,6 +525,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         formOnly && connectionParams.providerId ? connectionParams.providerId : null
     );
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
+    // Group-wide account links: when the active config belongs to a provider
+    // mode group (Koofr, OpenDrive, Filen, FileLu), the "Create Account" /
+    // "Generate password" buttons resolve from any preset in the group, not
+    // just the active mode's own preset. Preset-less native modes (Koofr API,
+    // OpenDrive API) otherwise carried no provider and the buttons vanished
+    // when switching to them (#215). Every surface in a group hits the same
+    // account, so the same signup / password page is correct for all tabs.
+    const groupAccountProviders = modeGroupProviderIds(connectionParams.providerId, connectionParams.protocol)
+        .map(getProviderById);
+    const accountSignupUrl =
+        selectedProvider?.signupUrl
+        || groupAccountProviders.find((p) => p?.signupUrl)?.signupUrl;
+    const accountPasswordGenUrl =
+        selectedProvider?.passwordGenUrl
+        || groupAccountProviders.find((p) => p?.passwordGenUrl)?.passwordGenUrl;
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
     const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
@@ -544,6 +559,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Track previous protocol for switch detection in handleProtocolChange
     const previousProtocolRef = React.useRef<ProviderType | undefined>(undefined);
+
+    // Issue #215: per-mode credential snapshots, in-memory for the lifetime
+    // of one edit session. When a saved profile is switched between modes of
+    // the same provider group (Filen API <-> Local WebDAV <-> Local S3, etc.)
+    // each mode's typed credentials, including options-level secrets like
+    // totp_secret / filen_api_key / S3 keys, are stashed under the mode key
+    // (providerId || protocol) and restored on return, so switching back no
+    // longer wipes the API key and 2FA secret. Cleared when a different
+    // profile starts editing to avoid cross-profile leakage.
+    const modeCredentialSnapshotsRef = React.useRef<Record<string, {
+        username: string;
+        password: string;
+        server: string;
+        port?: number;
+        options?: ConnectionParams['options'];
+    }>>({});
+
+    // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
+    // `mega-webdav /` (same idempotent call that warms the bridge for the
+    // quota probe) prints the served URL, so the operator no longer has to
+    // copy it from the MEGAcmd terminal.
+    const [megaWebdavFetching, setMegaWebdavFetching] = useState(false);
+    const [megaWebdavError, setMegaWebdavError] = useState<string | null>(null);
 
     // When re-opening dropdown with a protocol already selected, clear the selection.
     // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
@@ -1369,6 +1407,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         // Reset form FIRST to clear previous server's data immediately
         // This prevents stale data from showing when switching between servers
+        // Drop any per-mode credential snapshots from a previous edit (#215).
+        modeCredentialSnapshotsRef.current = {};
         setEditingProfileId(profile.id);
         editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
@@ -1557,10 +1597,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             const oldGroup = findActiveModeGroup(oldProviderId, effectiveOldProtocol);
             const newGroup = findActiveModeGroup(providerId, newProtocol);
             if (oldGroup && oldGroup === newGroup) {
-                // Carry over server/username/password; replace
-                // protocol-specific options with the new preset defaults
-                // when a preset is provided, otherwise clear options for
-                // preset-less native modes.
+                // Stash the credentials of the mode we are leaving, then look
+                // up the target mode's stash so a return visit restores exactly
+                // what was typed there (incl. options-level secrets), instead
+                // of wiping the API key / 2FA secret (#215). On a first visit
+                // there is no stash, so the original carry-over behaviour holds.
+                const oldKey = oldProviderId || effectiveOldProtocol;
+                modeCredentialSnapshotsRef.current[oldKey] = {
+                    username: connectionParams.username,
+                    password: connectionParams.password,
+                    server: connectionParams.server,
+                    port: connectionParams.port,
+                    options: connectionParams.options ? { ...connectionParams.options } : undefined,
+                };
+                const newKey = providerId || newProtocol;
+                const restored = modeCredentialSnapshotsRef.current[newKey];
                 if (providerId) {
                     const provider = getProviderById(providerId);
                     if (provider) {
@@ -1568,7 +1619,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         onConnectionParamsChange({
                             ...connectionParams,
                             protocol: newProtocol,
-                            port: provider.defaults?.port || getDefaultPort(newProtocol),
+                            port: restored?.port ?? (provider.defaults?.port || getDefaultPort(newProtocol)),
                             providerId: provider.id,
                             // Adopt the target preset's canonical endpoint. The
                             // modes in a group share an account but have
@@ -1577,9 +1628,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             // the old server connected WebDAV to the API host
                             // and returned 404. Prefer the preset default; fall
                             // back to the current server only when the preset
-                            // has none.
-                            server: provider.defaults?.server || connectionParams.server || '',
-                            options: {
+                            // has none. A restored stash already holds this
+                            // mode's own host, so it wins.
+                            server: restored ? restored.server : (provider.defaults?.server || connectionParams.server || ''),
+                            username: restored ? restored.username : connectionParams.username,
+                            password: restored ? restored.password : connectionParams.password,
+                            options: restored ? (restored.options ?? {}) : {
                                 pathStyle: provider.defaults?.pathStyle,
                                 region: provider.defaults?.region,
                                 endpoint: provider.defaults?.endpoint,
@@ -1599,8 +1653,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     ...connectionParams,
                     protocol: newProtocol,
                     providerId: undefined,
-                    port: getDefaultPort(newProtocol),
-                    options: {},
+                    port: restored?.port ?? getDefaultPort(newProtocol),
+                    server: restored ? restored.server : connectionParams.server,
+                    username: restored ? restored.username : connectionParams.username,
+                    password: restored ? restored.password : connectionParams.password,
+                    options: restored ? (restored.options ?? {}) : {},
                 });
                 return;
             }
@@ -1810,9 +1867,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const renderUsernameLabel = (overrideText?: string) => (
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getUsernameLabel()}</label>
-            {selectedProvider?.signupUrl && (
+            {accountSignupUrl && (
                 <a
-                    href={`${selectedProvider.signupUrl}${selectedProvider.signupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
+                    href={`${accountSignupUrl}${accountSignupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
@@ -1827,9 +1884,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const renderPasswordLabel = (overrideText?: string) => (
         <div className="flex items-center justify-between gap-2 mb-1.5">
             <label className="block text-sm font-medium">{overrideText ?? getPasswordLabel()}</label>
-            {selectedProvider?.passwordGenUrl && (
+            {accountPasswordGenUrl && (
                 <a
-                    href={selectedProvider.passwordGenUrl}
+                    href={accountPasswordGenUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
@@ -1848,6 +1905,31 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             return url.protocol === 'http:' ? 80 : url.protocol === 'https:' ? 443 : fallback;
         } catch {
             return fallback;
+        }
+    };
+
+    // Issue #215: ask the backend to run `mega-webdav /` and fill the Endpoint
+    // URL from its output, mirroring the mega-df quota probe. Requires an active
+    // MEGAcmd login; the typed error from the backend is surfaced inline.
+    const handleFetchMegaWebdavUrl = async () => {
+        setMegaWebdavError(null);
+        setMegaWebdavFetching(true);
+        try {
+            const url = await invoke<string>('mega_webdav_url');
+            if (url) {
+                onConnectionParamsChange({
+                    ...connectionParams,
+                    server: url,
+                    username: '',
+                    password: '',
+                    port: parseEndpointPort(url, connectionParams.port || 4443),
+                    options: { ...(connectionParams.options || {}), anonymous: true },
+                });
+            }
+        } catch (e) {
+            setMegaWebdavError(typeof e === 'string' ? e : String(e));
+        } finally {
+            setMegaWebdavFetching(false);
         }
     };
 
@@ -4682,7 +4764,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </ol>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">{t('connection.endpointUrl')}</label>
+                                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                    <label className="block text-sm font-medium">{t('connection.endpointUrl')}</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleFetchMegaWebdavUrl}
+                                                        disabled={megaWebdavFetching}
+                                                        className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        title="Run mega-webdav / and fill the URL automatically"
+                                                    >
+                                                        {megaWebdavFetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                                        Fetch URL
+                                                    </button>
+                                                </div>
                                                 <input
                                                     type="url"
                                                     value={connectionParams.server}
@@ -4701,8 +4795,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     placeholder="http://127.0.0.1:4443/"
                                                     autoFocus
                                                 />
+                                                {megaWebdavError && (
+                                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">{megaWebdavError}</p>
+                                                )}
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Username and Password are intentionally omitted. Change the port here if MEGAcmd uses a custom one.
+                                                    Username and Password are intentionally omitted. Use Fetch URL to read the address from MEGAcmd, or change the port here if MEGAcmd uses a custom one.
                                                 </p>
                                             </div>
                                         </div>
