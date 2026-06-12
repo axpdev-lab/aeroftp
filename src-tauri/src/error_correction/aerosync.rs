@@ -14,10 +14,9 @@ use super::{
 
 /// Default per-file cap for sync error correction. Windowed streaming bounds the
 /// *plaintext* memory of generation/verification/repair to a single window
-/// (`AEROCORRECT_WINDOW_SIZE`), so a large file no longer has to fit in RAM. The
-/// remaining constraint is the sidecar itself, which is held in memory on the repair
-/// path and grows with the file (overhead% of it); this cap keeps that bounded.
-/// Callers may raise `max_file_size` per call when they accept the sidecar-memory cost.
+/// (`AEROCORRECT_WINDOW_SIZE`), so a large file no longer has to fit in RAM. The cap
+/// still prevents accidental huge explicit EC runs in the sync pipeline; callers may
+/// raise `max_file_size` when they intentionally accept the transfer/storage cost.
 pub(crate) const AEROSYNC_EC_MAX_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 
 /// Read buffer for the streaming hash pass (fast verify). Independent of the parity
