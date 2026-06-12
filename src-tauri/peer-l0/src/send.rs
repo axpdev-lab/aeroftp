@@ -264,16 +264,28 @@ where
 }
 
 /// Probe whether each AFID's receive loop is reachable right now (one shared
-/// identity-seeded endpoint, sequential bounded connects on [`PEER_PING_ALPN`]).
+/// EPHEMERAL endpoint, sequential bounded connects on [`PEER_PING_ALPN`]).
 /// `true` = the friend is online and receiving; `false` = unreachable / offline /
 /// not receiving. Best-effort: a malformed AFID maps to `false`, never an error.
 /// Result order matches `afids`.
+///
+/// The probe endpoint is bound WITHOUT our identity (a fresh random node id) ON
+/// PURPOSE: a presence ping is unauthenticated (the peer's receiver just answers
+/// `pong`, see [`run_receiver`]), and binding OUR identity here would register a
+/// SECOND endpoint with our own `NodeId == AFID.ed` while our receiver loop is
+/// already registered under it - the relay then reports "Another endpoint
+/// connected with the same endpoint id. No more messages will be received." and
+/// drops our receiver, which flaps presence and intermittently fails incoming
+/// transfers. `_my_secret` is kept for call-site symmetry but deliberately
+/// unused.
 pub async fn probe_presence_many(
-    my_secret: &[u8],
+    _my_secret: &[u8],
     afids: &[String],
     mut cfg: PeerEndpointConfig,
 ) -> Result<Vec<bool>> {
-    cfg.identity_secret_key = Some(ed_seed_of(my_secret)?);
+    // Ephemeral identity on purpose: clear any seed so iroh mints a fresh random
+    // key and we never collide with our own receiver endpoint on the relay.
+    cfg.identity_secret_key = None;
     let ep = PeerEndpoint::new(cfg).await?;
     let mut out = Vec::with_capacity(afids.len());
     for afid in afids {

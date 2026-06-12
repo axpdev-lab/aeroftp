@@ -55,8 +55,30 @@ interface InboxItem {
   atMs: number;
 }
 
-/** Resolve a sender AFID to a saved-friend alias (or undefined when unknown). */
+/**
+ * Resolve a sender AFID to a saved-friend alias (or undefined when unknown).
+ *
+ * Looks in the authoritative P2P contact store FIRST (`peer_contacts`, via
+ * `peerFriendsList` - the same source the Send dialog lists and where both the
+ * CLI `peer contact add` and the GUI add-friend write), then falls back to
+ * Phase-1 folder-share friends, which are persisted as `protocol: 'peer'`
+ * server profiles (`upsertFriendProfile`) rather than in `peer_contacts`.
+ *
+ * Before this, the lookup checked ONLY the server profiles, so a contact that
+ * lived only in `peer_contacts` (e.g. added via the CLI, or any non-folder-share
+ * friend) was treated as unknown: auto-accept never fired and the inbox
+ * subfolder fell back to the abbreviated AFID instead of the saved alias.
+ */
 async function resolveFriendAlias(afid: string): Promise<string | undefined> {
+  // Primary: the P2P contact store.
+  try {
+    const friends = await peerFriendsList();
+    const alias = friends.find((f) => f.afid === afid)?.alias?.trim();
+    if (alias) return alias;
+  } catch {
+    /* fall through to the profile lookup */
+  }
+  // Fallback: folder-share friends saved as peer server profiles.
   try {
     const profiles = await loadSavedServerProfiles();
     const friend = profiles.find((p) => p.protocol === 'peer' && p.host === afid);
