@@ -7303,14 +7303,16 @@ async fn compress_files(
 
     let mut zip = ZipWriter::new(file);
     let level = compression_level.unwrap_or(6);
-    let method = if level == 0 {
-        zip::CompressionMethod::Stored
+    // Level 0 means "store" (no deflate). The zip crate rejects a numeric
+    // compression_level on the Stored method, so only attach the level when
+    // we are actually deflating.
+    let base_options = if level == 0 {
+        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored)
     } else {
-        zip::CompressionMethod::Deflated
+        SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .compression_level(Some(level))
     };
-    let base_options = SimpleFileOptions::default()
-        .compression_method(method)
-        .compression_level(Some(level));
 
     for path in &paths {
         let path = std::path::Path::new(path);
@@ -7882,9 +7884,11 @@ async fn compress_tar(
                 .map_err(|e| format!("Failed to finish xz: {}", e))?;
         }
         "tar.bz2" => {
+            // bzip2 only accepts block sizes 1-9 (there is no level 0 / store mode);
+            // clamp so a caller passing 0 gets the lightest real level instead of a panic.
             let bz = bzip2::write::BzEncoder::new(
                 file,
-                bzip2::Compression::new(compression_level.unwrap_or(6) as u32),
+                bzip2::Compression::new((compression_level.unwrap_or(6) as u32).clamp(1, 9)),
             );
             let mut archive = tar::Builder::new(bz);
             for (abs_path, rel_path) in &entries {
@@ -7911,23 +7915,56 @@ async fn compress_tar(
     ))
 }
 
-/// Extract TAR-based archives (auto-detects tar, tar.gz, tar.xz, tar.bz2 from extension)
-#[tauri::command]
-async fn extract_tar(
-    archive_path: String,
-    output_dir: String,
+/// Build a tar-stream reader for `archive_path`. An explicit `kind`
+/// ("tar" | "tar.gz" | "tar.xz" | "tar.bz2") forces the decompression filter;
+/// otherwise it is sniffed from the file extension. This lets the CLI honor an
+/// explicit `--archive-format` on extract while the GUI keeps extension sniffing.
+fn tar_reader_for(
+    archive_path: &str,
+    kind: Option<&str>,
+) -> Result<Box<dyn std::io::Read>, String> {
+    let file =
+        std::fs::File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let pick = match kind {
+        Some(k) => k.to_string(),
+        None => {
+            let ext = archive_path.to_lowercase();
+            if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
+                "tar.gz".to_string()
+            } else if ext.ends_with(".tar.xz") || ext.ends_with(".txz") {
+                "tar.xz".to_string()
+            } else if ext.ends_with(".tar.bz2") || ext.ends_with(".tbz2") {
+                "tar.bz2".to_string()
+            } else if ext.ends_with(".tar") {
+                "tar".to_string()
+            } else {
+                return Err(format!("Unrecognized archive format: {}", ext));
+            }
+        }
+    };
+    Ok(match pick.as_str() {
+        "tar.gz" => Box::new(flate2::read::GzDecoder::new(file)),
+        "tar.xz" => Box::new(xz2::read::XzDecoder::new(file)),
+        "tar.bz2" => Box::new(bzip2::read::BzDecoder::new(file)),
+        "tar" => Box::new(file),
+        other => return Err(format!("Unrecognized archive format: {}", other)),
+    })
+}
+
+/// Resolve the destination directory for a tar extraction, creating a per-archive
+/// subfolder (stripping a trailing `.tar` for `.tar.gz` etc.) when requested.
+fn tar_final_output(
+    archive_path: &str,
+    output_dir: &str,
     create_subfolder: bool,
-) -> Result<String, String> {
-    use std::fs::File;
+) -> Result<std::path::PathBuf, String> {
     use std::path::Path;
-
-    let archive = Path::new(&archive_path);
-    let out = Path::new(&output_dir);
-
-    // Determine subfolder name from archive filename
-    let final_output = if create_subfolder {
-        let stem = archive.file_stem().unwrap_or_default().to_string_lossy();
-        // Handle double extensions like .tar.gz -> strip both
+    let out = Path::new(output_dir);
+    if create_subfolder {
+        let stem = Path::new(archive_path)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
         let folder_name = if stem.ends_with(".tar") {
             stem.trim_end_matches(".tar").to_string()
         } else {
@@ -7935,26 +7972,20 @@ async fn extract_tar(
         };
         let subfolder = out.join(&folder_name);
         std::fs::create_dir_all(&subfolder).map_err(|e| format!("Failed to create dir: {}", e))?;
-        subfolder
+        Ok(subfolder)
     } else {
-        out.to_path_buf()
-    };
+        Ok(out.to_path_buf())
+    }
+}
 
-    let file = File::open(archive).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let ext = archive.to_string_lossy().to_lowercase();
-
-    let reader: Box<dyn std::io::Read> = if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
-        Box::new(flate2::read::GzDecoder::new(file))
-    } else if ext.ends_with(".tar.xz") || ext.ends_with(".txz") {
-        Box::new(xz2::read::XzDecoder::new(file))
-    } else if ext.ends_with(".tar.bz2") || ext.ends_with(".tbz2") {
-        Box::new(bzip2::read::BzDecoder::new(file))
-    } else if ext.ends_with(".tar") {
-        Box::new(file)
-    } else {
-        return Err(format!("Unrecognized archive format: {}", ext));
-    };
-
+/// Unpack a tar stream into `final_output`, skipping unsafe (traversal / absolute)
+/// entries. Shared by extension-sniffing and format-forced extraction so both
+/// enforce the identical path-traversal guard.
+fn tar_unpack(
+    reader: Box<dyn std::io::Read>,
+    final_output: &std::path::Path,
+) -> Result<String, String> {
+    use std::fs::File;
     let mut ar = tar::Archive::new(reader);
 
     // C5: Iterate entries manually with path traversal validation
@@ -7997,6 +8028,32 @@ async fn extract_tar(
     }
 
     Ok(final_output.to_string_lossy().to_string())
+}
+
+/// Extract TAR-based archives (auto-detects tar, tar.gz, tar.xz, tar.bz2 from extension)
+#[tauri::command]
+async fn extract_tar(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    let final_output = tar_final_output(&archive_path, &output_dir, create_subfolder)?;
+    let reader = tar_reader_for(&archive_path, None)?;
+    tar_unpack(reader, &final_output)
+}
+
+/// As `extract_tar_core`, but the tar filter is forced by `kind`
+/// ("tar" | "tar.gz" | "tar.xz" | "tar.bz2") instead of sniffed from the
+/// extension, so the CLI's `--archive-format` is authoritative on extract.
+pub async fn extract_tar_as_core(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+    kind: String,
+) -> Result<String, String> {
+    let final_output = tar_final_output(&archive_path, &output_dir, create_subfolder)?;
+    let reader = tar_reader_for(&archive_path, Some(&kind))?;
+    tar_unpack(reader, &final_output)
 }
 
 /// Extract a RAR archive with optional password
@@ -14239,6 +14296,15 @@ pub async fn extract_tar_core(
     create_subfolder: bool,
 ) -> Result<String, String> {
     extract_tar(archive_path, output_dir, create_subfolder).await
+}
+
+pub async fn extract_rar_core(
+    archive_path: String,
+    output_dir: String,
+    password: Option<String>,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    extract_rar(archive_path, output_dir, password, create_subfolder).await
 }
 
 // ============ Mount Manager Commands (T-MOUNT-MANAGER) ============

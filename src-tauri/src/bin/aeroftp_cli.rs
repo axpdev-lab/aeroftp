@@ -738,6 +738,81 @@ enum OutputFormat {
     Json,
 }
 
+/// Archive container formats exposed by `aeroftp compress` / `aeroftp extract`.
+/// These map onto the same encoders the GUI ships: `zip` (deflate, optional
+/// AES-256), `7z` (LZMA2, optional AES-256), and the `tar` family with
+/// gzip/xz/bzip2 filters. `rar` is extract-only (no Rust RAR encoder exists).
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum ArchiveFormat {
+    #[value(name = "zip")]
+    Zip,
+    #[value(name = "7z")]
+    SevenZ,
+    #[value(name = "tar")]
+    Tar,
+    #[value(name = "tar.gz", alias = "tgz")]
+    TarGz,
+    #[value(name = "tar.xz", alias = "txz")]
+    TarXz,
+    #[value(name = "tar.bz2", alias = "tbz2")]
+    TarBz2,
+    #[value(name = "rar")]
+    Rar,
+}
+
+impl ArchiveFormat {
+    /// The `format` string understood by `compress_tar_core` / `extract` cores.
+    fn tar_kind(self) -> &'static str {
+        match self {
+            ArchiveFormat::Tar => "tar",
+            ArchiveFormat::TarGz => "tar.gz",
+            ArchiveFormat::TarXz => "tar.xz",
+            ArchiveFormat::TarBz2 => "tar.bz2",
+            _ => "tar",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ArchiveFormat::Zip => "zip",
+            ArchiveFormat::SevenZ => "7z",
+            ArchiveFormat::Tar => "tar",
+            ArchiveFormat::TarGz => "tar.gz",
+            ArchiveFormat::TarXz => "tar.xz",
+            ArchiveFormat::TarBz2 => "tar.bz2",
+            ArchiveFormat::Rar => "rar",
+        }
+    }
+
+    /// True when the format carries an AES-256 password (zip, 7z).
+    fn supports_password(self) -> bool {
+        matches!(self, ArchiveFormat::Zip | ArchiveFormat::SevenZ)
+    }
+
+    /// Infer the format from a file name's extension (longest match first so
+    /// `.tar.gz` beats `.gz`). Returns None when nothing recognizable matches.
+    fn infer_from_path(path: &str) -> Option<ArchiveFormat> {
+        let lower = path.to_ascii_lowercase();
+        let table = [
+            (".tar.gz", ArchiveFormat::TarGz),
+            (".tgz", ArchiveFormat::TarGz),
+            (".tar.xz", ArchiveFormat::TarXz),
+            (".txz", ArchiveFormat::TarXz),
+            (".tar.bz2", ArchiveFormat::TarBz2),
+            (".tbz2", ArchiveFormat::TarBz2),
+            (".tbz", ArchiveFormat::TarBz2),
+            (".tar", ArchiveFormat::Tar),
+            (".zip", ArchiveFormat::Zip),
+            (".7z", ArchiveFormat::SevenZ),
+            (".rar", ArchiveFormat::Rar),
+        ];
+        table
+            .iter()
+            .find(|(ext, _)| lower.ends_with(ext))
+            .map(|(_, fmt)| *fmt)
+    }
+}
+
 /// KE-A5: Transfer ordering key for batch operations.
 ///
 /// The values follow rclone's `--order-by` shape: a key plus an
@@ -2655,6 +2730,59 @@ enum Commands {
     Correct {
         #[command(subcommand)]
         command: CorrectCommands,
+    },
+    /// Compress files/folders into an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2).
+    ///
+    /// The format is inferred from the output extension unless `--archive-format` is given.
+    /// `zip` and `7z` accept an AES-256 `--password`; the tar family is unencrypted.
+    /// Local-only, no connection. Honors `--json` for scriptable output.
+    Compress {
+        /// Output archive path (format inferred from its extension unless --format)
+        output: String,
+        /// Files and/or folders to add to the archive (one or more)
+        #[arg(required = true)]
+        paths: Vec<String>,
+        /// Archive format override (default: infer from the output extension)
+        #[arg(long = "archive-format", value_enum)]
+        archive_format: Option<ArchiveFormat>,
+        /// Compression level 0-9 (zip, tar.gz, tar.xz, tar.bz2; default 6; 0 = store
+        /// for zip). 7z uses LZMA2 at a fixed preset and ignores this.
+        #[arg(long, short = 'l')]
+        level: Option<i64>,
+        /// AES-256 password for zip / 7z. Also read from AEROFTP_ARCHIVE_PASSWORD.
+        #[arg(
+            long,
+            short = 'p',
+            env = "AEROFTP_ARCHIVE_PASSWORD",
+            hide_env_values = true
+        )]
+        password: Option<String>,
+    },
+    /// Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, rar).
+    ///
+    /// The format is inferred from the archive extension unless `--archive-format` is given.
+    /// `--password` unlocks encrypted zip / 7z (also AEROFTP_ARCHIVE_PASSWORD).
+    /// Local-only, no connection. Honors `--json`.
+    Extract {
+        /// Archive path (format inferred from its extension unless --format)
+        archive: String,
+        /// Output directory (default: current directory)
+        #[arg(default_value = ".")]
+        outdir: String,
+        /// Archive format override (default: infer from the archive extension)
+        #[arg(long = "archive-format", value_enum)]
+        archive_format: Option<ArchiveFormat>,
+        /// Password for encrypted zip / 7z. Also read from AEROFTP_ARCHIVE_PASSWORD.
+        #[arg(
+            long,
+            short = 'p',
+            env = "AEROFTP_ARCHIVE_PASSWORD",
+            hide_env_values = true
+        )]
+        password: Option<String>,
+        /// Extract into a subfolder named after the archive
+        #[arg(long)]
+        subfolder: bool,
     },
 }
 
@@ -5368,6 +5496,315 @@ fn format_size(bytes: u64) -> String {
         format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
+    }
+}
+
+/// Total byte size of the inputs to an archive, recursing into directories.
+/// Best-effort: unreadable entries are skipped so a ratio can still be shown
+/// rather than aborting the whole command.
+/// Make a user-supplied local path absolute (against the current directory) and lexically
+/// fold away `.` / `..`, so a shell-relative path works while still satisfying the archive
+/// core's "absolute, no traversal" guard. Symlinks are not resolved (purely lexical), which
+/// keeps the output path usable even before the file exists.
+fn resolve_local_path(p: &str) -> String {
+    use std::path::{Component, PathBuf};
+    let raw = std::path::Path::new(p);
+    let abs = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(raw)
+    };
+    let mut out = PathBuf::new();
+    for comp in abs.components() {
+        match comp {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out.to_string_lossy().to_string()
+}
+
+fn archive_input_size(paths: &[String]) -> u64 {
+    fn walk(p: &std::path::Path, acc: &mut u64) {
+        match std::fs::symlink_metadata(p) {
+            Ok(m) if m.is_dir() => {
+                if let Ok(rd) = std::fs::read_dir(p) {
+                    for e in rd.flatten() {
+                        walk(&e.path(), acc);
+                    }
+                }
+            }
+            Ok(m) if m.is_file() => *acc += m.len(),
+            _ => {}
+        }
+    }
+    let mut total = 0u64;
+    for p in paths {
+        walk(std::path::Path::new(p), &mut total);
+    }
+    total
+}
+
+#[derive(Serialize)]
+struct CompressReport {
+    status: &'static str,
+    operation: &'static str,
+    format: &'static str,
+    output: String,
+    inputs: usize,
+    input_bytes: u64,
+    output_bytes: u64,
+    ratio_pct: f64,
+    space_saved_pct: f64,
+    encrypted: bool,
+}
+
+#[derive(Serialize)]
+struct ExtractReport {
+    status: &'static str,
+    operation: &'static str,
+    format: &'static str,
+    archive: String,
+    output_dir: String,
+    archive_bytes: u64,
+    extracted_bytes: u64,
+}
+
+fn warn_archive_password_visibility(password: &Option<String>, quiet: bool) {
+    if password.is_some() && std::env::var("AEROFTP_ARCHIVE_PASSWORD").is_err() && !quiet {
+        eprintln!(
+            "Warning: --password on the command line is visible in the process list. \
+             Use the AEROFTP_ARCHIVE_PASSWORD env var instead."
+        );
+    }
+}
+
+/// `aeroftp compress`: build a zip / 7z / tar(.gz/.xz/.bz2) archive from local
+/// inputs. Local-only (no connection). Reuses the same encoders as the GUI.
+async fn cmd_compress(
+    output: &str,
+    paths: &[String],
+    archive_format: Option<ArchiveFormat>,
+    level: Option<i64>,
+    password: &Option<String>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let fmt = match archive_format.or_else(|| ArchiveFormat::infer_from_path(output)) {
+        Some(f) => f,
+        None => {
+            print_error(
+                format,
+                &format!(
+                    "cannot infer archive format from '{output}': pass --archive-format zip|7z|tar|tar.gz|tar.xz|tar.bz2"
+                ),
+                5,
+            );
+            return 5;
+        }
+    };
+    if matches!(fmt, ArchiveFormat::Rar) {
+        print_error(
+            format,
+            "creating RAR archives is not supported (RAR is extract-only); use zip, 7z, or a tar variant",
+            7,
+        );
+        return 7;
+    }
+    if password.is_some() && !fmt.supports_password() {
+        print_error(
+            format,
+            &format!(
+                "the {} format is not encrypted; only zip and 7z accept --password",
+                fmt.label()
+            ),
+            5,
+        );
+        return 5;
+    }
+    warn_archive_password_visibility(password, cli.quiet);
+
+    // Resolve relative paths against the CWD so a shell user can pass `out.zip file.txt`;
+    // the archive core requires absolute, traversal-free paths.
+    let paths_vec: Vec<String> = paths.iter().map(|p| resolve_local_path(p)).collect();
+    let out_string = resolve_local_path(output);
+    let input_bytes = archive_input_size(&paths_vec);
+    let result = match fmt {
+        ArchiveFormat::Zip => {
+            ftp_client_gui_lib::compress_files_core(paths_vec, out_string, password.clone(), level)
+                .await
+        }
+        ArchiveFormat::SevenZ => {
+            ftp_client_gui_lib::compress_7z_core(paths_vec, out_string, password.clone(), level)
+                .await
+        }
+        ArchiveFormat::Tar
+        | ArchiveFormat::TarGz
+        | ArchiveFormat::TarXz
+        | ArchiveFormat::TarBz2 => {
+            ftp_client_gui_lib::compress_tar_core(
+                paths_vec,
+                out_string,
+                fmt.tar_kind().to_string(),
+                level,
+            )
+            .await
+        }
+        ArchiveFormat::Rar => unreachable!("rejected above"),
+    };
+    match result {
+        Ok(out_path) => {
+            let output_bytes = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+            let ratio = if input_bytes > 0 {
+                output_bytes as f64 / input_bytes as f64 * 100.0
+            } else {
+                0.0
+            };
+            let report = CompressReport {
+                status: "ok",
+                operation: "compress",
+                format: fmt.label(),
+                output: out_path.clone(),
+                inputs: paths.len(),
+                input_bytes,
+                output_bytes,
+                ratio_pct: ratio,
+                space_saved_pct: 100.0 - ratio,
+                encrypted: password.is_some(),
+            };
+            match format {
+                OutputFormat::Json => print_json(&report),
+                OutputFormat::Text => {
+                    println!(
+                        "Compressed {} input(s) ({}) -> {} [{}] {} ({:.1}% of original, {:.1}% saved){}",
+                        report.inputs,
+                        format_size(input_bytes),
+                        out_path,
+                        fmt.label(),
+                        format_size(output_bytes),
+                        ratio,
+                        report.space_saved_pct,
+                        if report.encrypted { ", AES-256" } else { "" },
+                    );
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &e, 1);
+            1
+        }
+    }
+}
+
+/// `aeroftp extract`: unpack a zip / 7z / tar(.gz/.xz/.bz2) / rar archive into a
+/// directory. Local-only (no connection). Reuses the same decoders as the GUI.
+async fn cmd_extract(
+    archive: &str,
+    outdir: &str,
+    archive_format: Option<ArchiveFormat>,
+    password: &Option<String>,
+    subfolder: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let fmt = match archive_format.or_else(|| ArchiveFormat::infer_from_path(archive)) {
+        Some(f) => f,
+        None => {
+            print_error(
+                format,
+                &format!(
+                    "cannot infer archive format from '{archive}': pass --archive-format zip|7z|tar|tar.gz|tar.xz|tar.bz2|rar"
+                ),
+                5,
+            );
+            return 5;
+        }
+    };
+    warn_archive_password_visibility(password, cli.quiet);
+
+    // Resolve relative paths against the CWD; the archive core requires absolute paths.
+    let archive_string = resolve_local_path(archive);
+    let outdir_string = resolve_local_path(outdir);
+    let archive_bytes = std::fs::metadata(&archive_string)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let result = match fmt {
+        ArchiveFormat::Zip => {
+            ftp_client_gui_lib::extract_archive_core(
+                archive_string,
+                outdir_string,
+                subfolder,
+                password.clone(),
+            )
+            .await
+        }
+        ArchiveFormat::SevenZ => {
+            ftp_client_gui_lib::extract_7z_core(
+                archive_string,
+                outdir_string,
+                password.clone(),
+                subfolder,
+            )
+            .await
+        }
+        ArchiveFormat::Tar
+        | ArchiveFormat::TarGz
+        | ArchiveFormat::TarXz
+        | ArchiveFormat::TarBz2 => {
+            ftp_client_gui_lib::extract_tar_as_core(
+                archive_string,
+                outdir_string,
+                subfolder,
+                fmt.tar_kind().to_string(),
+            )
+            .await
+        }
+        ArchiveFormat::Rar => {
+            ftp_client_gui_lib::extract_rar_core(
+                archive_string,
+                outdir_string,
+                password.clone(),
+                subfolder,
+            )
+            .await
+        }
+    };
+    match result {
+        Ok(out_dir) => {
+            let extracted_bytes = archive_input_size(std::slice::from_ref(&out_dir));
+            let report = ExtractReport {
+                status: "ok",
+                operation: "extract",
+                format: fmt.label(),
+                archive: archive.to_string(),
+                output_dir: out_dir.clone(),
+                archive_bytes,
+                extracted_bytes,
+            };
+            match format {
+                OutputFormat::Json => print_json(&report),
+                OutputFormat::Text => {
+                    println!(
+                        "Extracted {} [{}] -> {} ({} unpacked)",
+                        archive,
+                        fmt.label(),
+                        out_dir,
+                        format_size(extracted_bytes),
+                    );
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &e, 1);
+            1
+        }
     }
 }
 
@@ -47309,6 +47746,42 @@ async fn main() {
             credential_json.as_deref(),
             credential_json_file.as_deref(),
         ),
+        Commands::Compress {
+            output,
+            paths,
+            archive_format,
+            level,
+            password,
+        } => {
+            cmd_compress(
+                output,
+                paths,
+                *archive_format,
+                *level,
+                password,
+                &cli,
+                format,
+            )
+            .await
+        }
+        Commands::Extract {
+            archive,
+            outdir,
+            archive_format,
+            password,
+            subfolder,
+        } => {
+            cmd_extract(
+                archive,
+                outdir,
+                *archive_format,
+                password,
+                *subfolder,
+                &cli,
+                format,
+            )
+            .await
+        }
         Commands::Vault { command } => {
             use ftp_client_gui_lib::{aerovault, aerovault_v2, aerovault_v3};
             let resolve_pw = |p: &Option<String>| -> String {

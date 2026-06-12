@@ -82,6 +82,8 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "aerorsync",
     "vault",
     "correct",
+    "compress",
+    "extract",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
