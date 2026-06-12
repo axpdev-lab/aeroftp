@@ -218,22 +218,63 @@ pub async fn vault_v2_extract_entry(
 ) -> Result<String, String> {
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
 
-    // If dest_path looks like a file, use the parent as output directory
     let dest = std::path::Path::new(&dest_path);
-    let output_dir = if dest.extension().is_some() {
-        dest.parent().unwrap_or(dest)
-    } else {
-        dest
-    };
 
-    std::fs::create_dir_all(output_dir)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    // Match v1/v3 destination semantics (the previous code derived the output
+    // directory from the dest's parent and let the crate name the file after the
+    // entry, so the requested filename was ignored and an existing name errored
+    // with "File exists"). If `dest_path` is an existing directory, extract into
+    // it (the entry keeps its own basename); otherwise `dest_path` is the literal
+    // output file path and must be honored verbatim.
+    if dest.is_dir() {
+        let extracted = vault
+            .extract(&entry_name, dest)
+            .map_err(|e| e.to_string())?;
+        return Ok(extracted.to_string_lossy().to_string());
+    }
+
+    // Literal-file destination. The `aerovault` crate only writes
+    // `<output_dir>/<basename>` with an exclusive create, so it can neither pick
+    // an arbitrary destination filename nor overwrite an existing file. Extract
+    // into a unique temp dir next to the destination, then move the produced file
+    // onto `dest_path`, overwriting like v3's atomic write.
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create output directory: {}", e))?;
+        }
+    }
+    let parent_dir = dest
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    let tmp_dir = tempfile::Builder::new()
+        .prefix(".aerovault_extract_")
+        .tempdir_in(&parent_dir)
+        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     let extracted = vault
-        .extract(&entry_name, output_dir)
+        .extract(&entry_name, tmp_dir.path())
         .map_err(|e| e.to_string())?;
 
-    Ok(extracted.to_string_lossy().to_string())
+    // Overwrite any existing destination to match v1/v3.
+    if dest.exists() {
+        std::fs::remove_file(dest).map_err(|e| format!("Failed to replace destination: {}", e))?;
+    }
+    if let Err(rename_err) = std::fs::rename(&extracted, dest) {
+        // Cross-device rename is not allowed: fall back to copy + remove.
+        std::fs::copy(&extracted, dest).map_err(|e| {
+            format!(
+                "Failed to write destination: {} (rename: {})",
+                e, rename_err
+            )
+        })?;
+    }
+    // `tmp_dir` is removed on drop.
+
+    Ok(dest_path)
 }
 
 /// Extract all entries from AeroVault v2
@@ -1008,4 +1049,176 @@ pub async fn vault_v2_add_directory(
         "added_dirs": added_dirs,
         "total_entries": added_files + added_dirs
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    /// Regression for F1: `vault extract` must write the entry to the exact
+    /// destination filename the caller asked for, and must overwrite a
+    /// pre-existing destination — matching v1/v3. The legacy v2 wrapper derived
+    /// the output *directory* from the dest's parent and let the crate name the
+    /// file after the entry, so the requested filename was ignored and a second
+    /// extract failed with "File exists (os error 17)". This test exercises all
+    /// three on-disk formats so the bug can't regress in any of them.
+    #[test]
+    fn extract_honors_named_destination_for_all_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let pw = "extract-dest-pw-1234";
+
+        // Source payload whose basename ("av_payload.bin") differs from every
+        // requested destination filename, so honoring the dest is observable.
+        let payload: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
+        let src = base.join("av_payload.bin");
+        fs::write(&src, &payload).unwrap();
+        let entry_name = "av_payload.bin".to_string();
+
+        // (label, vault path, build closure, extract closure)
+        struct Case {
+            label: &'static str,
+            vault: std::path::PathBuf,
+        }
+        let cases = [
+            Case {
+                label: "v1",
+                vault: base.join("v1.aerovault"),
+            },
+            Case {
+                label: "v2",
+                vault: base.join("v2.av"),
+            },
+            Case {
+                label: "v2-cascade",
+                vault: base.join("v2c.av"),
+            },
+            Case {
+                label: "v3",
+                vault: base.join("v3.av3"),
+            },
+        ];
+
+        let rt = rt();
+        for case in &cases {
+            let vault_path = case.vault.to_string_lossy().to_string();
+            let src_path = src.to_string_lossy().to_string();
+
+            // --- create + add, per format ---
+            match case.label {
+                "v1" => {
+                    rt.block_on(crate::aerovault::vault_create(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        None,
+                    ))
+                    .unwrap_or_else(|e| panic!("[{}] create: {e}", case.label));
+                    rt.block_on(crate::aerovault::vault_add_files(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        vec![src_path.clone()],
+                    ))
+                    .unwrap_or_else(|e| panic!("[{}] add: {e}", case.label));
+                }
+                "v2" | "v2-cascade" => {
+                    let cascade = case.label == "v2-cascade";
+                    rt.block_on(super::vault_v2_create(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        None,
+                        cascade,
+                    ))
+                    .unwrap_or_else(|e| panic!("[{}] create: {e}", case.label));
+                    rt.block_on(super::vault_v2_add_files(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        vec![src_path.clone()],
+                    ))
+                    .unwrap_or_else(|e| panic!("[{}] add: {e}", case.label));
+                }
+                "v3" => {
+                    rt.block_on(crate::aerovault_v3::vault_v3_create(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        None,
+                    ))
+                    .unwrap_or_else(|e| panic!("[{}] create: {e}", case.label));
+                    rt.block_on(crate::aerovault_v3::vault_v3_add_files(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        vec![src_path.clone()],
+                    ))
+                    .unwrap_or_else(|e| panic!("[{}] add: {e}", case.label));
+                }
+                _ => unreachable!(),
+            }
+
+            // Destination filename intentionally differs from the entry basename.
+            let dest = base.join(format!("{}_renamed.out", case.label));
+            let dest_str = dest.to_string_lossy().to_string();
+
+            let extract = |dest_str: String| -> Result<String, String> {
+                match case.label {
+                    "v1" => rt.block_on(crate::aerovault::vault_extract_entry(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        entry_name.clone(),
+                        dest_str,
+                    )),
+                    "v2" | "v2-cascade" => rt.block_on(super::vault_v2_extract_entry(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        entry_name.clone(),
+                        dest_str,
+                    )),
+                    "v3" => rt.block_on(crate::aerovault_v3::vault_v3_extract_entry(
+                        vault_path.clone(),
+                        pw.to_string(),
+                        entry_name.clone(),
+                        dest_str,
+                    )),
+                    _ => unreachable!(),
+                }
+            };
+
+            // First extract: must create the file at the EXACT requested path.
+            let out = extract(dest_str.clone())
+                .unwrap_or_else(|e| panic!("[{}] first extract: {e}", case.label));
+            assert!(
+                Path::new(&out).exists(),
+                "[{}] reported path does not exist: {out}",
+                case.label
+            );
+            assert!(
+                dest.exists(),
+                "[{}] requested destination filename was not honored (no {dest_str})",
+                case.label
+            );
+            assert_eq!(
+                fs::read(&dest).unwrap(),
+                payload,
+                "[{}] extracted bytes mismatch",
+                case.label
+            );
+
+            // Second extract to the SAME path: must overwrite, not error with
+            // "File exists" (the core of the F1 regression for v2).
+            extract(dest_str.clone())
+                .unwrap_or_else(|e| panic!("[{}] overwrite extract failed: {e}", case.label));
+            assert_eq!(
+                fs::read(&dest).unwrap(),
+                payload,
+                "[{}] bytes after overwrite mismatch",
+                case.label
+            );
+        }
+    }
 }
