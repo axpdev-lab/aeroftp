@@ -3791,6 +3791,15 @@ mod tests {
             ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
+        let payload = dir.path().join("payload.bin");
+        std::fs::write(
+            &payload,
+            b"host payload so vault sidecar windows are non-empty",
+        )
+        .unwrap();
+        let mut writable = open_vault(&vault_path, "host-pw-12345").unwrap();
+        append_file_at(&mut writable, &payload, "payload.bin").unwrap();
+        save_open_vault(&mut writable).unwrap();
         let v = open_vault(&vault_path, "host-pw-12345").unwrap();
 
         // A malformed explicit file (not a valid `.aerocorrect`) is a hard error: the
