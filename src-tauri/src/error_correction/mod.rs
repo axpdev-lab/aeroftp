@@ -556,11 +556,14 @@ pub fn correct_generate(
 ) -> Result<CorrectGenerateReport, String> {
     let path = Path::new(file);
     let rel = rel_name(file);
+    // No minimum-benefit gate here: `correct gen` is an explicit per-file request, so honor
+    // it even for tiny files (the gate is a sync-pipeline opt-in, not a CLI-of-one concern).
     let result = aerosync::generate_sync_sidecar_for_file_capped(
         &rel,
         path,
         pct,
         aerosync::AEROSYNC_EC_MAX_FILE_SIZE,
+        0,
     )?;
     let generated = match result {
         aerosync::SyncEcGenerateResult::Generated(g) => g,
@@ -571,6 +574,10 @@ pub fn correct_generate(
             return Err(format!(
                 "{file} is {file_size} bytes, above the {max_file_size}-byte error-correction cap"
             ));
+        }
+        aerosync::SyncEcGenerateResult::SkippedLowBenefit { .. } => {
+            // Unreachable: the gate is disabled above (max_overhead_pct = 0).
+            unreachable!("correct gen does not enable the minimum-benefit gate")
         }
     };
     let sidecar_path = out

@@ -38,7 +38,19 @@ pub(crate) struct SyncEcGeneratedSidecar {
 #[derive(Debug, Clone)]
 pub(crate) enum SyncEcGenerateResult {
     Generated(SyncEcGeneratedSidecar),
-    SkippedTooLarge { file_size: u64, max_file_size: u64 },
+    SkippedTooLarge {
+        file_size: u64,
+        max_file_size: u64,
+    },
+    /// The sidecar's storage cost would exceed the caller's minimum-benefit threshold
+    /// (its size as a percentage of the file is above `max_overhead_pct`). Tiny files hit
+    /// this because the fixed parity-shard floor makes even a 100-byte file produce a
+    /// multi-KiB sidecar. `overhead_pct` is the rejected ratio (sidecar bytes * 100 / file
+    /// bytes). Only produced when the caller opts in (`max_overhead_pct > 0`).
+    SkippedLowBenefit {
+        file_size: u64,
+        overhead_pct: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,17 +192,22 @@ pub(crate) fn generate_sync_sidecar_for_bytes_capped(
     SyncEcGenerateResult::Generated(generate_sync_sidecar_for_bytes(rel_path, data, pct))
 }
 
+/// `max_overhead_pct`: minimum-benefit gate. When > 0, skip generation (returning
+/// `SkippedLowBenefit`) if the sidecar's serialized size would exceed this percentage of
+/// the file size, computed WITHOUT generating it. 0 disables the gate (default).
 pub(crate) fn generate_sync_sidecar_for_file_capped(
     rel_path: &str,
     path: &Path,
     pct: u32,
     max_file_size: u64,
+    max_overhead_pct: u32,
 ) -> Result<SyncEcGenerateResult, String> {
     generate_sync_sidecar_for_file_capped_windowed(
         rel_path,
         path,
         pct,
         max_file_size,
+        max_overhead_pct,
         AEROCORRECT_WINDOW_SIZE,
     )
 }
@@ -203,6 +220,7 @@ fn generate_sync_sidecar_for_file_capped_windowed(
     path: &Path,
     pct: u32,
     max_file_size: u64,
+    max_overhead_pct: u32,
     window: u64,
 ) -> Result<SyncEcGenerateResult, String> {
     let metadata = std::fs::metadata(path).map_err(|e| {
@@ -217,6 +235,19 @@ fn generate_sync_sidecar_for_file_capped_windowed(
             file_size,
             max_file_size,
         });
+    }
+    // Minimum-benefit gate (opt-in): reject absurd overhead BEFORE generating, using the
+    // exact serialized cost. A tiny file at any level produces a multi-KiB sidecar (the
+    // parity-shard floor), so its overhead can be many hundreds of percent.
+    if max_overhead_pct > 0 && file_size > 0 {
+        let estimate = estimate_windowed_sidecar_len(file_size, pct, window);
+        let overhead_pct = ((estimate as u128 * 100) / file_size as u128) as u64;
+        if overhead_pct > max_overhead_pct as u64 {
+            return Ok(SyncEcGenerateResult::SkippedLowBenefit {
+                file_size,
+                overhead_pct,
+            });
+        }
     }
     let mut file =
         File::open(path).map_err(|e| format!("open AeroSync EC source {}: {e}", path.display()))?;
@@ -549,7 +580,7 @@ mod tests {
                 assert_eq!(file_size, 4097);
                 assert_eq!(max_file_size, 4096);
             }
-            SyncEcGenerateResult::Generated(_) => panic!("oversize file should be skipped"),
+            other => panic!("oversize file should be skipped, got {other:?}"),
         }
 
         match generate_sync_sidecar_for_bytes_capped(
@@ -562,9 +593,7 @@ mod tests {
                 assert_eq!(generated.file_size, data.len() as u64);
                 assert!(generated.sidecar_len > generated.avec_payload_len);
             }
-            SyncEcGenerateResult::SkippedTooLarge { .. } => {
-                panic!("default cap should allow this test file")
-            }
+            other => panic!("default cap should allow this test file, got {other:?}"),
         }
     }
 
@@ -643,12 +672,13 @@ mod tests {
             &path,
             20,
             AEROSYNC_EC_MAX_FILE_SIZE,
+            0,
             window,
         )
         .unwrap()
         {
             SyncEcGenerateResult::Generated(g) => g,
-            SyncEcGenerateResult::SkippedTooLarge { .. } => panic!("should not skip"),
+            other => panic!("should generate, got {other:?}"),
         };
         assert_eq!(streamed.sidecar_bytes, in_mem.sidecar_bytes);
         assert_eq!(streamed.file_sha256, in_mem.file_sha256);
@@ -669,6 +699,79 @@ mod tests {
             verify_repair_sync_file("rel", &streamed.file_sha256, &path, &streamed.sidecar_bytes)
                 .expect("verify clean file");
         assert_eq!(verified, SyncEcRepairResult::Verified);
+    }
+
+    #[test]
+    fn minimum_benefit_gate_skips_tiny_high_overhead_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tiny.bin");
+        // 100 bytes at 15% still produces a multi-KiB sidecar (parity-shard floor), so the
+        // real overhead is many hundreds of percent.
+        std::fs::write(&path, sample_data(100)).unwrap();
+
+        // Confirm the estimate really is far above the file size (precondition for the gate).
+        let est = estimate_windowed_sidecar_len(100, 15, AEROCORRECT_WINDOW_SIZE);
+        assert!(
+            est > 100 * 3,
+            "tiny-file sidecar should be >300% of the file"
+        );
+
+        // Gate off (0): generates as before.
+        match generate_sync_sidecar_for_file_capped(
+            "tiny.bin",
+            &path,
+            15,
+            AEROSYNC_EC_MAX_FILE_SIZE,
+            0,
+        )
+        .unwrap()
+        {
+            SyncEcGenerateResult::Generated(_) => {}
+            other => panic!("gate disabled should generate, got {other:?}"),
+        }
+
+        // Gate at 300%: the tiny file is skipped with its real overhead reported.
+        match generate_sync_sidecar_for_file_capped(
+            "tiny.bin",
+            &path,
+            15,
+            AEROSYNC_EC_MAX_FILE_SIZE,
+            300,
+        )
+        .unwrap()
+        {
+            SyncEcGenerateResult::SkippedLowBenefit {
+                file_size,
+                overhead_pct,
+            } => {
+                assert_eq!(file_size, 100);
+                assert!(
+                    overhead_pct > 300,
+                    "reported overhead must exceed the threshold"
+                );
+            }
+            other => panic!("tiny file should be skipped as low benefit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn minimum_benefit_gate_keeps_large_low_overhead_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.bin");
+        // A 1 MiB file at 15% has a sidecar far below 50% of the file, so a 300% gate keeps it.
+        std::fs::write(&path, sample_data(1024 * 1024)).unwrap();
+        match generate_sync_sidecar_for_file_capped(
+            "big.bin",
+            &path,
+            15,
+            AEROSYNC_EC_MAX_FILE_SIZE,
+            300,
+        )
+        .unwrap()
+        {
+            SyncEcGenerateResult::Generated(_) => {}
+            other => panic!("large low-overhead file should generate, got {other:?}"),
+        }
     }
 
     #[test]

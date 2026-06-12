@@ -9310,12 +9310,14 @@ async fn sync_ec_generate(
         pct: pct.unwrap_or(crate::error_correction::ERROR_CORRECTION_DEFAULT_PCT),
         max_file_size: max_file_size
             .unwrap_or(crate::error_correction::aerosync::AEROSYNC_EC_MAX_FILE_SIZE),
+        max_overhead_pct: 0,
     };
     let generated = match crate::error_correction::aerosync::generate_sync_sidecar_for_file_capped(
         &relative_path,
         Path::new(&local_path),
         options.pct(),
         options.max_file_size(),
+        options.max_overhead_pct(),
     ) {
         Ok(result) => result,
         Err(e) => return Ok(sync_ec_message(SyncEcStatus::GenerateFailed, e)),
@@ -9325,6 +9327,13 @@ async fn sync_ec_generate(
         crate::error_correction::aerosync::SyncEcGenerateResult::SkippedTooLarge { .. } => {
             return Ok(SyncEcCommandResult {
                 status: SyncEcStatus::SkippedTooLarge,
+                sidecar_path: None,
+                message: None,
+            });
+        }
+        crate::error_correction::aerosync::SyncEcGenerateResult::SkippedLowBenefit { .. } => {
+            return Ok(SyncEcCommandResult {
+                status: SyncEcStatus::SkippedLowBenefit,
                 sidecar_path: None,
                 message: None,
             });

@@ -97,6 +97,11 @@ pub struct SyncErrorCorrectionOptions {
     pub pct: u32,
     #[serde(default = "default_error_correction_max_file_size")]
     pub max_file_size: u64,
+    /// Minimum-benefit gate: skip generating a sidecar whose serialized size would exceed
+    /// this percentage of the file size (tiny files balloon past the parity-shard floor).
+    /// 0 (default) disables the gate, preserving legacy behavior.
+    #[serde(default)]
+    pub max_overhead_pct: u32,
 }
 
 impl Default for SyncErrorCorrectionOptions {
@@ -105,6 +110,7 @@ impl Default for SyncErrorCorrectionOptions {
             enabled: false,
             pct: ERROR_CORRECTION_DEFAULT_PCT,
             max_file_size: AEROSYNC_EC_MAX_FILE_SIZE,
+            max_overhead_pct: 0,
         }
     }
 }
@@ -126,6 +132,10 @@ impl SyncErrorCorrectionOptions {
             self.max_file_size
         }
     }
+
+    pub(crate) fn max_overhead_pct(&self) -> u32 {
+        self.max_overhead_pct
+    }
 }
 
 pub fn sync_error_correction_sidecar_remote_path(remote_path: &str) -> String {
@@ -139,6 +149,7 @@ pub enum SyncEcStatus {
     Verified,
     Repaired,
     SkippedTooLarge,
+    SkippedLowBenefit,
     GenerateFailed,
     MissingSidecar,
     MissingExpectedHash,
@@ -527,6 +538,9 @@ pub struct SyncReport {
     /// download is never silently reported as healthy.
     pub ec_verify_failed: u32,
     pub ec_skipped_too_large: u32,
+    /// Files whose EC sidecar was skipped because its overhead exceeded the
+    /// opt-in minimum-benefit threshold (`max_overhead_pct`). 0 unless opted in.
+    pub ec_skipped_low_benefit: u32,
     pub ec_generate_failed: u32,
     pub ec_sidecar_deleted: u32,
     pub ec_sidecar_delete_failed: u32,
@@ -1684,6 +1698,7 @@ pub(crate) fn apply_sync_tree_outcome(
             SyncEcStatus::Verified => report.ec_verified += 1,
             SyncEcStatus::Repaired => report.ec_repaired += 1,
             SyncEcStatus::SkippedTooLarge => report.ec_skipped_too_large += 1,
+            SyncEcStatus::SkippedLowBenefit => report.ec_skipped_low_benefit += 1,
             SyncEcStatus::GenerateFailed => report.ec_generate_failed += 1,
             SyncEcStatus::VerifyFailed => report.ec_verify_failed += 1,
             // EC not applicable to this file (no sidecar / no expected hash): not a failure.
@@ -1831,6 +1846,7 @@ async fn generate_sync_ec_after_upload(
         Path::new(local_path),
         options.pct(),
         options.max_file_size(),
+        options.max_overhead_pct(),
     ) {
         Ok(result) => result,
         Err(e) => {
@@ -1855,6 +1871,19 @@ async fn generate_sync_ec_after_upload(
                 max_file_size
             );
             return Some(SyncEcStatus::SkippedTooLarge);
+        }
+        SyncEcGenerateResult::SkippedLowBenefit {
+            file_size,
+            overhead_pct,
+        } => {
+            tracing::info!(
+                "sync.ec: skipped sidecar generation, low benefit (rel={}, bytes={}, overhead_pct={}, max_overhead_pct={})",
+                rel,
+                file_size,
+                overhead_pct,
+                options.max_overhead_pct()
+            );
+            return Some(SyncEcStatus::SkippedLowBenefit);
         }
     };
     let sidecar_remote_path = sync_error_correction_sidecar_path(remote_path);
@@ -1894,11 +1923,13 @@ pub async fn generate_sync_error_correction_sidecar_after_upload(
     local_path: &str,
     remote_path: &str,
     pct: u32,
+    max_overhead_pct: u32,
 ) -> SyncEcStatus {
     let options = SyncErrorCorrectionOptions {
         enabled: true,
         pct,
         max_file_size: AEROSYNC_EC_MAX_FILE_SIZE,
+        max_overhead_pct,
     };
     generate_sync_ec_after_upload(provider, rel, local_path, remote_path, &options)
         .await

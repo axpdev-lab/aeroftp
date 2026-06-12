@@ -1725,6 +1725,11 @@ enum Commands {
             default_missing_value = "medium"
         )]
         error_correction: Option<String>,
+        /// Minimum-benefit gate for EC: skip a file's .aerocorrect sidecar when its size
+        /// would exceed this percentage of the file (tiny files balloon past the parity
+        /// floor). 0 (default) disables the gate. Has no effect without --error-correction.
+        #[arg(long = "ec-max-overhead", value_name = "PCT", default_value_t = 0)]
+        ec_max_overhead: u32,
         /// Detect renamed files by hash to avoid re-upload
         #[arg(long)]
         track_renames: bool,
@@ -1838,6 +1843,11 @@ enum Commands {
             default_missing_value = "medium"
         )]
         error_correction: Option<String>,
+        /// Minimum-benefit gate for the EC estimate: count a file as a low-benefit skip
+        /// when its sidecar would exceed this percentage of the file size. 0 (default)
+        /// disables the gate, matching the default upload behavior.
+        #[arg(long = "ec-max-overhead", value_name = "PCT", default_value_t = 0)]
+        ec_max_overhead: u32,
     },
     /// Display remote directory tree
     Tree {
@@ -3965,6 +3975,8 @@ struct CliSyncResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_skipped_too_large: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_low_benefit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_generate_failed: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_sidecar_deleted: Option<u32>,
@@ -4009,6 +4021,7 @@ struct SyncCycleStats {
     skipped: u32,
     ec_generated: u32,
     ec_skipped_too_large: u32,
+    ec_skipped_low_benefit: u32,
     ec_generate_failed: u32,
     ec_sidecar_deleted: u32,
     ec_sidecar_delete_failed: u32,
@@ -4147,6 +4160,8 @@ struct CliDoctorResult {
     ec_estimated_overhead_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_skipped_too_large: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_low_benefit: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_max_file_size: Option<u64>,
 }
@@ -4998,6 +5013,7 @@ fn cmd_correct(command: &CorrectCommands, format: OutputFormat) -> i32 {
 struct CliSyncEcCounters {
     generated: u32,
     skipped_too_large: u32,
+    skipped_low_benefit: u32,
     generate_failed: u32,
     sidecar_deleted: u32,
     sidecar_delete_failed: u32,
@@ -5008,6 +5024,9 @@ impl CliSyncEcCounters {
         match status {
             ftp_client_gui_lib::sync::SyncEcStatus::Generated => self.generated += 1,
             ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge => self.skipped_too_large += 1,
+            ftp_client_gui_lib::sync::SyncEcStatus::SkippedLowBenefit => {
+                self.skipped_low_benefit += 1
+            }
             ftp_client_gui_lib::sync::SyncEcStatus::GenerateFailed => self.generate_failed += 1,
             _ => {}
         }
@@ -5038,12 +5057,18 @@ struct SyncDoctorEcEstimate {
     estimated_sidecars: u64,
     estimated_overhead_bytes: u64,
     skipped_too_large: u64,
+    skipped_low_benefit: u64,
 }
 
+/// `max_overhead_pct`: minimum-benefit gate mirroring the generator. 0 disables it. When
+/// set, a file whose estimated sidecar exceeds that percentage of its size is counted as a
+/// low-benefit skip instead of contributing to the overhead total, so the preview matches
+/// what the upload will actually write.
 fn estimate_sync_doctor_ec_for_uploads<I>(
     upload_sizes: I,
     pct: u32,
     max_file_size: u64,
+    max_overhead_pct: u32,
 ) -> SyncDoctorEcEstimate
 where
     I: IntoIterator<Item = u64>,
@@ -5054,11 +5079,18 @@ where
             estimate.skipped_too_large = estimate.skipped_too_large.saturating_add(1);
             continue;
         }
-        estimate.estimated_sidecars = estimate.estimated_sidecars.saturating_add(1);
         // Use the real v2 fixed-grid geometry, not a flat size*pct/100: the latter
         // under-reports by orders of magnitude for small files (MIN_SHARD floor) and at the
         // MAX_SHARD cliff. This matches the bytes `generate_sync_sidecar_for_bytes` writes.
         let overhead = ftp_client_gui_lib::sync::estimate_aerorec_sidecar_len(size, pct);
+        if max_overhead_pct > 0 && size > 0 {
+            let overhead_pct = (overhead as u128 * 100) / size as u128;
+            if overhead_pct > max_overhead_pct as u128 {
+                estimate.skipped_low_benefit = estimate.skipped_low_benefit.saturating_add(1);
+                continue;
+            }
+        }
+        estimate.estimated_sidecars = estimate.estimated_sidecars.saturating_add(1);
         estimate.estimated_overhead_bytes =
             estimate.estimated_overhead_bytes.saturating_add(overhead);
     }
@@ -5113,12 +5145,14 @@ fn sync_effective_exclude_patterns(
     patterns
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn record_sync_ec_after_successful_upload(
     provider: &mut dyn StorageProvider,
     relative: &str,
     local_path: &str,
     remote_path: &str,
     pct: Option<u32>,
+    max_overhead_pct: u32,
     counters: &mut CliSyncEcCounters,
     quiet: bool,
 ) {
@@ -5131,6 +5165,7 @@ async fn record_sync_ec_after_successful_upload(
         local_path,
         remote_path,
         pct,
+        max_overhead_pct,
     )
     .await;
     counters.record(status);
@@ -5144,6 +5179,12 @@ async fn record_sync_ec_after_successful_upload(
         ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge if !quiet => {
             eprintln!(
                 "Note: AeroSync EC skipped {} because it exceeds the EC size cap",
+                relative
+            );
+        }
+        ftp_client_gui_lib::sync::SyncEcStatus::SkippedLowBenefit if !quiet => {
+            eprintln!(
+                "Note: AeroSync EC skipped {} (sidecar overhead above --ec-max-overhead)",
                 relative
             );
         }
@@ -19819,6 +19860,7 @@ async fn cmd_get_recursive(
                     .saturating_sub(errors.len() as u32),
                 ec_generated: None,
                 ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
                 ec_generate_failed: None,
                 ec_sidecar_deleted: None,
                 ec_sidecar_delete_failed: None,
@@ -20049,6 +20091,7 @@ async fn cmd_get_glob(
                 skipped: 0,
                 ec_generated: None,
                 ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
                 ec_generate_failed: None,
                 ec_sidecar_deleted: None,
                 ec_sidecar_delete_failed: None,
@@ -20676,6 +20719,7 @@ async fn cmd_put_recursive(
                 skipped,
                 ec_generated: None,
                 ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
                 ec_generate_failed: None,
                 ec_sidecar_deleted: None,
                 ec_sidecar_delete_failed: None,
@@ -29208,6 +29252,7 @@ async fn cmd_sync(
     delete: bool,
     exclude: &[String],
     error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
     track_renames: bool,
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
@@ -30157,6 +30202,7 @@ async fn cmd_sync(
                     skipped,
                     ec_generated: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_skipped_too_large: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_skipped_low_benefit: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_generate_failed: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_sidecar_deleted: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_sidecar_delete_failed: sync_ec_json_counter(
@@ -30179,6 +30225,7 @@ async fn cmd_sync(
             skipped,
             ec_generated: 0,
             ec_skipped_too_large: 0,
+            ec_skipped_low_benefit: 0,
             ec_generate_failed: 0,
             ec_sidecar_deleted: 0,
             ec_sidecar_delete_failed: 0,
@@ -30450,6 +30497,7 @@ async fn cmd_sync(
                             &local_path,
                             &remote_path,
                             error_correction_pct,
+                            error_correction_max_overhead_pct,
                             &mut ec_counters,
                             cli.quiet,
                         )
@@ -30502,6 +30550,7 @@ async fn cmd_sync(
                     &local_path_for_ec,
                     &remote_conflict_for_ec,
                     error_correction_pct,
+                    error_correction_max_overhead_pct,
                     &mut ec_counters,
                     cli.quiet,
                 )
@@ -30777,6 +30826,10 @@ async fn cmd_sync(
                     error_correction_pct.is_some(),
                     ec_counters.skipped_too_large,
                 ),
+                ec_skipped_low_benefit: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.skipped_low_benefit,
+                ),
                 ec_generate_failed: sync_ec_json_counter(
                     error_correction_pct.is_some(),
                     ec_counters.generate_failed,
@@ -30817,6 +30870,7 @@ async fn cmd_sync(
         skipped,
         ec_generated: ec_counters.generated,
         ec_skipped_too_large: ec_counters.skipped_too_large,
+        ec_skipped_low_benefit: ec_counters.skipped_low_benefit,
         ec_generate_failed: ec_counters.generate_failed,
         ec_sidecar_deleted: ec_counters.sidecar_deleted,
         ec_sidecar_delete_failed: ec_counters.sidecar_delete_failed,
@@ -34554,6 +34608,7 @@ async fn cmd_put_glob(
                 skipped: 0,
                 ec_generated: None,
                 ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
                 ec_generate_failed: None,
                 ec_sidecar_deleted: None,
                 ec_sidecar_delete_failed: None,
@@ -34757,6 +34812,7 @@ async fn cmd_sync_watch(
     delete: bool,
     exclude: &[String],
     error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
     track_renames: bool,
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
@@ -34877,6 +34933,7 @@ async fn cmd_sync_watch(
                 delete,
                 exclude,
                 error_correction_pct,
+                error_correction_max_overhead_pct,
                 track_renames,
                 max_delete,
                 backup_dir,
@@ -34920,6 +34977,8 @@ async fn cmd_sync_watch(
                     payload["ec_generated"] = serde_json::json!(stats.ec_generated);
                     payload["ec_skipped_too_large"] =
                         serde_json::json!(stats.ec_skipped_too_large);
+                    payload["ec_skipped_low_benefit"] =
+                        serde_json::json!(stats.ec_skipped_low_benefit);
                     payload["ec_generate_failed"] = serde_json::json!(stats.ec_generate_failed);
                     payload["ec_sidecar_deleted"] =
                         serde_json::json!(stats.ec_sidecar_deleted);
@@ -35119,6 +35178,7 @@ async fn cmd_sync_doctor(
     delete: bool,
     exclude: &[String],
     error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
     track_renames: bool,
     conflict_mode: &str,
     resync: bool,
@@ -35258,7 +35318,12 @@ async fn cmd_sync_doctor(
             &remote_entries,
             default_time_ref,
         );
-        estimate_sync_doctor_ec_for_uploads(upload_sizes, pct, ec_max_file_size)
+        estimate_sync_doctor_ec_for_uploads(
+            upload_sizes,
+            pct,
+            ec_max_file_size,
+            error_correction_max_overhead_pct,
+        )
     });
 
     let mut checks = vec![
@@ -35313,6 +35378,8 @@ async fn cmd_sync_doctor(
             "estimated_sidecars": estimate.estimated_sidecars,
             "estimated_overhead_bytes": estimate.estimated_overhead_bytes,
             "skipped_too_large": estimate.skipped_too_large,
+            "skipped_low_benefit": estimate.skipped_low_benefit,
+            "max_overhead_pct": error_correction_max_overhead_pct,
             "max_file_size": ec_max_file_size,
         }));
     }
@@ -35369,6 +35436,7 @@ async fn cmd_sync_doctor(
         ec_estimated_sidecars: ec_estimate.map(|estimate| estimate.estimated_sidecars),
         ec_estimated_overhead_bytes: ec_estimate.map(|estimate| estimate.estimated_overhead_bytes),
         ec_skipped_too_large: ec_estimate.map(|estimate| estimate.skipped_too_large),
+        ec_skipped_low_benefit: ec_estimate.map(|estimate| estimate.skipped_low_benefit),
         ec_max_file_size: error_correction_pct.map(|_| ec_max_file_size),
     };
 
@@ -35400,6 +35468,12 @@ async fn cmd_sync_doctor(
                     estimate.skipped_too_large,
                     format_size(ec_max_file_size)
                 );
+                if error_correction_max_overhead_pct > 0 {
+                    println!(
+                        "    Skipped low benefit: {} (max overhead {}%)",
+                        estimate.skipped_low_benefit, error_correction_max_overhead_pct
+                    );
+                }
             }
             if !result.risks.is_empty() {
                 println!("  Risks:");
@@ -36647,6 +36721,7 @@ async fn cmd_transfer_doctor(
         ec_estimated_sidecars: None,
         ec_estimated_overhead_bytes: None,
         ec_skipped_too_large: None,
+        ec_skipped_low_benefit: None,
         ec_max_file_size: None,
     };
 
@@ -38448,6 +38523,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     &[],
                     None,
+                    0,
                     false,
                     None,
                     None,
@@ -42946,6 +43022,7 @@ async fn main() {
             delete,
             exclude,
             error_correction,
+            ec_max_overhead,
             track_renames,
             max_delete,
             backup_dir,
@@ -43033,6 +43110,7 @@ async fn main() {
                                 *delete,
                                 exclude,
                                 error_correction_pct,
+                                *ec_max_overhead,
                                 *track_renames,
                                 max_delete.as_deref(),
                                 backup_dir.as_deref(),
@@ -43069,6 +43147,7 @@ async fn main() {
                                     *delete,
                                     exclude,
                                     error_correction_pct,
+                                    *ec_max_overhead,
                                     *track_renames,
                                     max_delete.as_deref(),
                                     backup_dir.as_deref(),
@@ -43122,6 +43201,7 @@ async fn main() {
             resync,
             checksum,
             error_correction,
+            ec_max_overhead,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
@@ -43142,6 +43222,7 @@ async fn main() {
                         *delete,
                         exclude,
                         error_correction_pct,
+                        *ec_max_overhead,
                         *track_renames,
                         conflict_mode,
                         *resync,
@@ -44821,7 +44902,8 @@ mod tests {
 
     #[test]
     fn sync_doctor_ec_estimate_counts_sidecars_and_large_skips() {
-        let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200);
+        // Gate disabled (0): the historical behavior, no low-benefit skips.
+        let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200, 0);
 
         // 100 and 101 are under the 200-byte cap; 300 is skipped. Each small file's real
         // .aerocorrect is the unified frame (141 B: 85-byte header + 24-byte segment
@@ -44833,6 +44915,24 @@ mod tests {
                 estimated_sidecars: 2,
                 estimated_overhead_bytes: 16_826,
                 skipped_too_large: 1,
+                skipped_low_benefit: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn sync_doctor_ec_estimate_gates_low_benefit_files() {
+        // Same three files, but with a 300% minimum-benefit gate. The two tiny files have
+        // a sidecar far above 300% of their size, so they become low-benefit skips and no
+        // longer contribute to the overhead estimate; the 300-byte file is still too large.
+        let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200, 300);
+        assert_eq!(
+            estimate,
+            SyncDoctorEcEstimate {
+                estimated_sidecars: 0,
+                estimated_overhead_bytes: 0,
+                skipped_too_large: 1,
+                skipped_low_benefit: 2,
             }
         );
     }
