@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} датотека(и), формат v{fmt}",
         "errorCorrectionShards": "Корекција на грешки фрагменти",
         "errorCorrectionProtected": "Корекција на грешки заштитено",
-        "errorCorrectionOverhead": "Корекција на грешки надмерок"
+        "errorCorrectionOverhead": "Корекција на грешки надмерок",
+        "savedTo": "Зачувано во {path}",
+        "saveFailed": "Не може да се зачува: {error}"
       },
       "scrubErrorCorrection": "Скенирај Корекција на грешки",
       "compressionProfile": "Профил на компресија",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Поправката е завршена: успешно поправени {repaired} дел(ови)",
       "noDamageNothing": "Нема оштетување; нема што да се поправа.",
       "couldNotRepairAny": "Не може да се поправи ниту еден од {damaged} (сефот остана недопрен).",
-      "successfullyRepaired": "Успешно поправени {repaired} дел(ови)."
+      "successfullyRepaired": "Успешно поправени {repaired} дел(ови).",
+      "addFolder": "Додај папка",
+      "addFolderHint": "Додај цела папка, задржувајќи ја нејзината структура",
+      "addFolderUnsupported": "Додавањето папка е поддржано на трезори v2 и v3",
+      "folderAdded": "Папката е додадена",
+      "extractAll": "Извади ги сите",
+      "extractAllHint": "Извади ја секоја датотека од трезорот во папка",
+      "extractedAll": "Извадени {count} датотеки во {path}"
     },
     "cryptomator": {
       "title": "Cryptomator трезор",

@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} tệp, định dạng v{fmt}",
         "errorCorrectionShards": "Phân mảnh Sửa lỗi",
         "errorCorrectionProtected": "Được bảo vệ Sửa lỗi",
-        "errorCorrectionOverhead": "Phụ phí Sửa lỗi"
+        "errorCorrectionOverhead": "Phụ phí Sửa lỗi",
+        "savedTo": "Đã lưu vào {path}",
+        "saveFailed": "Không thể lưu: {error}"
       },
       "scrubErrorCorrection": "Quét Sửa lỗi",
       "compressionProfile": "Hồ sơ nén",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Đã sửa xong: đã sửa thành công {repaired} chunk",
       "noDamageNothing": "Không có hư hỏng; không có gì để sửa.",
       "couldNotRepairAny": "Không thể sửa bất kỳ chunk nào trong số {damaged} (giữ nguyên kho lưu trữ).",
-      "successfullyRepaired": "Đã sửa thành công {repaired} chunk."
+      "successfullyRepaired": "Đã sửa thành công {repaired} chunk.",
+      "addFolder": "Thêm thư mục",
+      "addFolderHint": "Thêm toàn bộ thư mục, giữ nguyên cấu trúc",
+      "addFolderUnsupported": "Thêm thư mục được hỗ trợ trên két v2 và v3",
+      "folderAdded": "Đã thêm thư mục",
+      "extractAll": "Trích xuất tất cả",
+      "extractAllHint": "Trích xuất mọi tệp trong két vào một thư mục",
+      "extractedAll": "Đã trích xuất {count} tệp vào {path}"
     },
     "cryptomator": {
       "title": "Kho Cryptomator",

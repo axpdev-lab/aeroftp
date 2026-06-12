@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} ficheiro(s), formato v{fmt}",
         "errorCorrectionShards": "Fragmentos Corrección de erros",
         "errorCorrectionProtected": "Protexido por Corrección de erros",
-        "errorCorrectionOverhead": "Sobrecarga de Corrección de erros"
+        "errorCorrectionOverhead": "Sobrecarga de Corrección de erros",
+        "savedTo": "Gardado en {path}",
+        "saveFailed": "Non se puido gardar: {error}"
       },
       "scrubErrorCorrection": "Verificar Corrección de erros",
       "compressionProfile": "Perfil de compresión",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparación completada: reparáronse correctamente {repaired} fragmento(s)",
       "noDamageNothing": "Sen danos; nada que reparar.",
       "couldNotRepairAny": "Non se puido reparar ningún de {damaged} (o cofre non foi modificado).",
-      "successfullyRepaired": "Reparáronse correctamente {repaired} fragmento(s)."
+      "successfullyRepaired": "Reparáronse correctamente {repaired} fragmento(s).",
+      "addFolder": "Engadir cartafol",
+      "addFolderHint": "Engade un cartafol completo, conservando a súa estrutura",
+      "addFolderUnsupported": "Engadir un cartafol é compatible cos cofres v2 e v3",
+      "folderAdded": "Cartafol engadido",
+      "extractAll": "Extraer todo",
+      "extractAllHint": "Extraer todos os ficheiros do cofre a un cartafol",
+      "extractedAll": "Extraéronse {count} ficheiro(s) a {path}"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",

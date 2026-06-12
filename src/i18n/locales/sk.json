@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} súbor(ov), formát v{fmt}",
         "errorCorrectionShards": "Fragmenty Oprava chýb",
         "errorCorrectionProtected": "Chránené pomocou Oprava chýb",
-        "errorCorrectionOverhead": "Réžia Oprava chýb"
+        "errorCorrectionOverhead": "Réžia Oprava chýb",
+        "savedTo": "Uložené do {path}",
+        "saveFailed": "Nepodarilo sa uložiť: {error}"
       },
       "scrubErrorCorrection": "Prehľadať Oprava chýb",
       "compressionProfile": "Profil kompresie",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Oprava dokončená: úspešne opravené {repaired} časti",
       "noDamageNothing": "Žiadne poškodenie; nie je čo opravovať.",
       "couldNotRepairAny": "Nepodarilo sa opraviť ani jednu z {damaged} (trezor zostal nedotknutý).",
-      "successfullyRepaired": "Úspešne opravené {repaired} časti."
+      "successfullyRepaired": "Úspešne opravené {repaired} časti.",
+      "addFolder": "Pridať priečinok",
+      "addFolderHint": "Pridať celý priečinok so zachovaním jeho štruktúry",
+      "addFolderUnsupported": "Pridanie priečinka je podporované v trezoroch v2 a v3",
+      "folderAdded": "Priečinok pridaný",
+      "extractAll": "Extrahovať všetko",
+      "extractAllHint": "Extrahovať každý súbor v trezore do priečinka",
+      "extractedAll": "Extrahovaných {count} súborov do {path}"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

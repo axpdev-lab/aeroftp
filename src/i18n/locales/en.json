@@ -4027,7 +4027,9 @@
                 "activity": "AeroVault {op}: {files} file(s), format v{fmt}",
                 "errorCorrectionShards": "Error Correction shards",
                 "errorCorrectionProtected": "Error Correction protected",
-                "errorCorrectionOverhead": "Error Correction overhead"
+                "errorCorrectionOverhead": "Error Correction overhead",
+                "savedTo": "Saved to {path}",
+                "saveFailed": "Could not save: {error}"
             },
             "scrubErrorCorrection": "Scrub Error Correction",
             "compressionProfile": "Compression Profile",
@@ -4080,7 +4082,14 @@
             "repairSuccess": "Repair complete: successfully repaired {repaired} chunk(s)",
             "noDamageNothing": "No damage; nothing to repair.",
             "couldNotRepairAny": "Could not repair any of {damaged} (vault left untouched).",
-            "successfullyRepaired": "Successfully repaired {repaired} chunk(s)."
+            "successfullyRepaired": "Successfully repaired {repaired} chunk(s).",
+            "addFolder": "Add Folder",
+            "addFolderHint": "Add a whole folder, preserving its structure",
+            "addFolderUnsupported": "Adding a folder is supported on v2 and v3 vaults",
+            "folderAdded": "Folder added",
+            "extractAll": "Extract all",
+            "extractAllHint": "Extract every file in the vault to a folder",
+            "extractedAll": "Extracted {count} file(s) to {path}"
         },
         "vaultSync": {
             "title": "Vault Sync",

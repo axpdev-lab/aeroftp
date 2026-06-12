@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} bestand(en), formaat v{fmt}",
         "errorCorrectionShards": "Foutcorrectie-shards",
         "errorCorrectionProtected": "Foutcorrectie-beschermd",
-        "errorCorrectionOverhead": "Foutcorrectie-overhead"
+        "errorCorrectionOverhead": "Foutcorrectie-overhead",
+        "savedTo": "Opgeslagen in {path}",
+        "saveFailed": "Kan niet opslaan: {error}"
       },
       "scrubErrorCorrection": "Foutcorrectie scrubben",
       "compressionProfile": "Compressieprofiel",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparatie voltooid: {repaired} chunk(s) succesvol hersteld",
       "noDamageNothing": "Geen schade; niets te repareren.",
       "couldNotRepairAny": "Kon geen van de {damaged} repareren (kluis ongewijzigd gelaten).",
-      "successfullyRepaired": "{repaired} chunk(s) succesvol hersteld."
+      "successfullyRepaired": "{repaired} chunk(s) succesvol hersteld.",
+      "addFolder": "Map toevoegen",
+      "addFolderHint": "Voeg een hele map toe met behoud van de structuur",
+      "addFolderUnsupported": "Een map toevoegen wordt ondersteund op v2- en v3-kluizen",
+      "folderAdded": "Map toegevoegd",
+      "extractAll": "Alles uitpakken",
+      "extractAllHint": "Alle bestanden in de kluis naar een map uitpakken",
+      "extractedAll": "{count} bestand(en) uitgepakt naar {path}"
     },
     "cryptomator": {
       "title": "Cryptomator-kluis",

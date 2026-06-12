@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} (na) file, format v{fmt}",
         "errorCorrectionShards": "Pagwawasto ng Error shards",
         "errorCorrectionProtected": "Protektado ng Pagwawasto ng Error",
-        "errorCorrectionOverhead": "Pagwawasto ng Error overhead"
+        "errorCorrectionOverhead": "Pagwawasto ng Error overhead",
+        "savedTo": "Naka-save sa {path}",
+        "saveFailed": "Hindi ma-save: {error}"
       },
       "scrubErrorCorrection": "I-scrub ang Pagwawasto ng Error",
       "compressionProfile": "Profile ng compression",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Tapos na ang pag-aayos: matagumpay na naayos ang {repaired} (na) chunk",
       "noDamageNothing": "Walang pinsala; walang aayusin.",
       "couldNotRepairAny": "Hindi naayos ang alinman sa {damaged} (hindi ginalaw ang vault).",
-      "successfullyRepaired": "Matagumpay na naayos ang {repaired} (na) chunk."
+      "successfullyRepaired": "Matagumpay na naayos ang {repaired} (na) chunk.",
+      "addFolder": "Magdagdag ng Folder",
+      "addFolderHint": "Magdagdag ng buong folder, pinapanatili ang istraktura nito",
+      "addFolderUnsupported": "Suportado ang pagdaragdag ng folder sa mga vault na v2 at v3",
+      "folderAdded": "Naidagdag ang folder",
+      "extractAll": "I-extract lahat",
+      "extractAllHint": "I-extract ang bawat file sa vault sa isang folder",
+      "extractedAll": "Na-extract ang {count} (na) file sa {path}"
     },
     "cryptomator": {
       "title": "Cryptomator Vault",

@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fails(-i), formāts v{fmt}",
         "errorCorrectionShards": "Kļūdu labošana fragmenti",
         "errorCorrectionProtected": "Aizsargāts ar Kļūdu labošana",
-        "errorCorrectionOverhead": "Kļūdu labošana papildizmaksa"
+        "errorCorrectionOverhead": "Kļūdu labošana papildizmaksa",
+        "savedTo": "Saglabāts {path}",
+        "saveFailed": "Neizdevās saglabāt: {error}"
       },
       "scrubErrorCorrection": "Pārbaudīt Kļūdu labošana",
       "compressionProfile": "Saspiešanas profils",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Labošana pabeigta: veiksmīgi izlaboti {repaired} fragmenti",
       "noDamageNothing": "Bojājumu nav; nav ko labot.",
       "couldNotRepairAny": "Neizdevās izlabot nevienu no {damaged} (glabātava atstāta nemainīta).",
-      "successfullyRepaired": "Veiksmīgi izlaboti {repaired} fragmenti."
+      "successfullyRepaired": "Veiksmīgi izlaboti {repaired} fragmenti.",
+      "addFolder": "Pievienot mapi",
+      "addFolderHint": "Pievienot visu mapi, saglabājot tās struktūru",
+      "addFolderUnsupported": "Mapes pievienošana tiek atbalstīta v2 un v3 glabātavās",
+      "folderAdded": "Mape pievienota",
+      "extractAll": "Izvilkt visu",
+      "extractAllHint": "Izvilkt visus glabātavas failus mapē",
+      "extractedAll": "Izvilkti {count} fail(i) uz {path}"
     },
     "cryptomator": {
       "title": "Cryptomator glabātuve",

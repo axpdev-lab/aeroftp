@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fil(er), format v{fmt}",
         "errorCorrectionShards": "Feilkorrigering-shards",
         "errorCorrectionProtected": "Feilkorrigering-beskyttet",
-        "errorCorrectionOverhead": "Feilkorrigering-overhead"
+        "errorCorrectionOverhead": "Feilkorrigering-overhead",
+        "savedTo": "Lagret til {path}",
+        "saveFailed": "Kunne ikke lagre: {error}"
       },
       "scrubErrorCorrection": "Skann Feilkorrigering",
       "compressionProfile": "Komprimeringsprofil",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparasjon fullført: reparerte {repaired} del(er)",
       "noDamageNothing": "Ingen skade; ingenting å reparere.",
       "couldNotRepairAny": "Kunne ikke reparere noen av {damaged} (hvelvet er uendret).",
-      "successfullyRepaired": "Reparerte {repaired} del(er)."
+      "successfullyRepaired": "Reparerte {repaired} del(er).",
+      "addFolder": "Legg til mappe",
+      "addFolderHint": "Legg til en hel mappe og behold strukturen",
+      "addFolderUnsupported": "Å legge til en mappe støttes på v2- og v3-hvelv",
+      "folderAdded": "Mappe lagt til",
+      "extractAll": "Pakk ut alt",
+      "extractAllHint": "Pakk ut alle filer i hvelvet til en mappe",
+      "extractedAll": "Pakket ut {count} fil(er) til {path}"
     },
     "cryptomator": {
       "title": "Cryptomator-hvelv",

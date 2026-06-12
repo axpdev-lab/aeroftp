@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} αρχείο(α), μορφή v{fmt}",
         "errorCorrectionShards": "Τμήματα Διόρθωση σφαλμάτων",
         "errorCorrectionProtected": "Προστασία Διόρθωση σφαλμάτων",
-        "errorCorrectionOverhead": "Επιβάρυνση Διόρθωση σφαλμάτων"
+        "errorCorrectionOverhead": "Επιβάρυνση Διόρθωση σφαλμάτων",
+        "savedTo": "Αποθηκεύτηκε στο {path}",
+        "saveFailed": "Δεν ήταν δυνατή η αποθήκευση: {error}"
       },
       "scrubErrorCorrection": "Έλεγχος Διόρθωση σφαλμάτων",
       "compressionProfile": "Προφίλ συμπίεσης",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Η επιδιόρθωση ολοκληρώθηκε: επιδιορθώθηκαν επιτυχώς {repaired} τμήμα(τα)",
       "noDamageNothing": "Καμία ζημιά· δεν υπάρχει τίποτα για επιδιόρθωση.",
       "couldNotRepairAny": "Δεν ήταν δυνατή η επιδιόρθωση κανενός από τα {damaged} (το vault παρέμεινε ανέπαφο).",
-      "successfullyRepaired": "Επιδιορθώθηκαν επιτυχώς {repaired} τμήμα(τα)."
+      "successfullyRepaired": "Επιδιορθώθηκαν επιτυχώς {repaired} τμήμα(τα).",
+      "addFolder": "Προσθήκη φακέλου",
+      "addFolderHint": "Προσθέστε έναν ολόκληρο φάκελο, διατηρώντας τη δομή του",
+      "addFolderUnsupported": "Η προσθήκη φακέλου υποστηρίζεται σε θησαυροφυλάκια v2 και v3",
+      "folderAdded": "Ο φάκελος προστέθηκε",
+      "extractAll": "Εξαγωγή όλων",
+      "extractAllHint": "Εξαγωγή κάθε αρχείου του θησαυροφυλακίου σε φάκελο",
+      "extractedAll": "Εξήχθησαν {count} αρχείο(α) στο {path}"
     },
     "cryptomator": {
       "title": "Θησαυροφυλάκιο Cryptomator",

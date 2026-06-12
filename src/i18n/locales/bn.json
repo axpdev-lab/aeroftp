@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} ফাইল, ফরম্যাট v{fmt}",
         "errorCorrectionShards": "ত্রুটি সংশোধন শার্ড",
         "errorCorrectionProtected": "ত্রুটি সংশোধন সুরক্ষিত",
-        "errorCorrectionOverhead": "ত্রুটি সংশোধন ওভারহেড"
+        "errorCorrectionOverhead": "ত্রুটি সংশোধন ওভারহেড",
+        "savedTo": "{path}-এ সংরক্ষিত হয়েছে",
+        "saveFailed": "সংরক্ষণ করা যায়নি: {error}"
       },
       "scrubErrorCorrection": "ত্রুটি সংশোধন স্ক্রাব করুন",
       "compressionProfile": "কম্প্রেশন প্রোফাইল",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "মেরামত সম্পন্ন: সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে",
       "noDamageNothing": "কোনো ক্ষতি নেই; মেরামত করার কিছু নেই।",
       "couldNotRepairAny": "{damaged}টির কোনোটিই মেরামত করা যায়নি (ভল্ট অপরিবর্তিত রাখা হয়েছে)।",
-      "successfullyRepaired": "সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে।"
+      "successfullyRepaired": "সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে।",
+      "addFolder": "ফোল্ডার যোগ করুন",
+      "addFolderHint": "গঠন বজায় রেখে একটি সম্পূর্ণ ফোল্ডার যোগ করুন",
+      "addFolderUnsupported": "ফোল্ডার যোগ করা v2 ও v3 ভল্টে সমর্থিত",
+      "folderAdded": "ফোল্ডার যোগ করা হয়েছে",
+      "extractAll": "সব নিষ্কাশন করুন",
+      "extractAllHint": "ভল্টের প্রতিটি ফাইল একটি ফোল্ডারে নিষ্কাশন করুন",
+      "extractedAll": "{count}টি ফাইল {path}-এ নিষ্কাশিত হয়েছে"
     },
     "cryptomator": {
       "title": "Cryptomator ভল্ট",

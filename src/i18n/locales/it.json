@@ -3041,7 +3041,9 @@
                 "activity": "AeroVault {op}: {files} file, formato v{fmt}",
                 "errorCorrectionShards": "Frammenti Correzione errori",
                 "errorCorrectionProtected": "Protetto da Correzione errori",
-                "errorCorrectionOverhead": "Overhead Correzione errori"
+                "errorCorrectionOverhead": "Overhead Correzione errori",
+                "savedTo": "Salvato in {path}",
+                "saveFailed": "Impossibile salvare: {error}"
             },
             "scrubErrorCorrection": "Scansiona Correzione errori",
             "compressionProfile": "Profilo di compressione",
@@ -3094,7 +3096,14 @@
             "repairSuccess": "Riparazione completata: riparati con successo {repaired} chunk",
             "noDamageNothing": "Nessun danno; niente da riparare.",
             "couldNotRepairAny": "Impossibile riparare alcuno dei {damaged} (vault lasciato intatto).",
-            "successfullyRepaired": "Riparati con successo {repaired} chunk."
+            "successfullyRepaired": "Riparati con successo {repaired} chunk.",
+            "addFolder": "Aggiungi cartella",
+            "addFolderHint": "Aggiungi un'intera cartella mantenendone la struttura",
+            "addFolderUnsupported": "L'aggiunta di una cartella è supportata sulle casseforti v2 e v3",
+            "folderAdded": "Cartella aggiunta",
+            "extractAll": "Estrai tutto",
+            "extractAllHint": "Estrai ogni file della cassaforte in una cartella",
+            "extractedAll": "Estratti {count} file in {path}"
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

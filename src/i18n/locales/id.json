@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} berkas, format v{fmt}",
         "errorCorrectionShards": "Shard Koreksi Kesalahan",
         "errorCorrectionProtected": "Terlindungi Koreksi Kesalahan",
-        "errorCorrectionOverhead": "Overhead Koreksi Kesalahan"
+        "errorCorrectionOverhead": "Overhead Koreksi Kesalahan",
+        "savedTo": "Disimpan ke {path}",
+        "saveFailed": "Tidak dapat menyimpan: {error}"
       },
       "scrubErrorCorrection": "Pindai Koreksi Kesalahan",
       "compressionProfile": "Profil kompresi",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Perbaikan selesai: berhasil memperbaiki {repaired} chunk",
       "noDamageNothing": "Tidak ada kerusakan; tidak ada yang perlu diperbaiki.",
       "couldNotRepairAny": "Tidak dapat memperbaiki satu pun dari {damaged} (vault dibiarkan tidak diubah).",
-      "successfullyRepaired": "Berhasil memperbaiki {repaired} chunk."
+      "successfullyRepaired": "Berhasil memperbaiki {repaired} chunk.",
+      "addFolder": "Tambah Folder",
+      "addFolderHint": "Tambahkan seluruh folder, mempertahankan strukturnya",
+      "addFolderUnsupported": "Menambahkan folder didukung pada brankas v2 dan v3",
+      "folderAdded": "Folder ditambahkan",
+      "extractAll": "Ekstrak semua",
+      "extractAllHint": "Ekstrak setiap file di brankas ke folder",
+      "extractedAll": "{count} file diekstrak ke {path}"
     },
     "cryptomator": {
       "title": "Vault Cryptomator",

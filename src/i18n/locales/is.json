@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} skrá/skrár, snið v{fmt}",
         "errorCorrectionShards": "Villuleiðrétting-brot",
         "errorCorrectionProtected": "Villuleiðrétting-varið",
-        "errorCorrectionOverhead": "Villuleiðrétting-aukaálag"
+        "errorCorrectionOverhead": "Villuleiðrétting-aukaálag",
+        "savedTo": "Vistað í {path}",
+        "saveFailed": "Ekki tókst að vista: {error}"
       },
       "scrubErrorCorrection": "Skanna Villuleiðrétting",
       "compressionProfile": "Þjöppunarsnið",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Viðgerð lokið: tókst að gera við {repaired} kjarna",
       "noDamageNothing": "Engar skemmdir; ekkert að gera við.",
       "couldNotRepairAny": "Tókst ekki að gera við neinn af {damaged} (hvelfingin skilin eftir óbreytt).",
-      "successfullyRepaired": "Tókst að gera við {repaired} kjarna."
+      "successfullyRepaired": "Tókst að gera við {repaired} kjarna.",
+      "addFolder": "Bæta við möppu",
+      "addFolderHint": "Bæta við heilli möppu og halda uppbyggingu hennar",
+      "addFolderUnsupported": "Að bæta við möppu er stutt á v2 og v3 hólfum",
+      "folderAdded": "Möppu bætt við",
+      "extractAll": "Afþjappa allt",
+      "extractAllHint": "Afþjappa allar skrár í hólfinu í möppu",
+      "extractedAll": "Afþjappaði {count} skrá(r) í {path}"
     },
     "cryptomator": {
       "title": "Cryptomator Hvelfing",

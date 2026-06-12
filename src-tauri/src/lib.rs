@@ -15606,6 +15606,7 @@ pub fn run() {
             aerovault_v3::vault_v3_add_files,
             aerovault_v3::vault_v3_add_files_to_dir,
             aerovault_v3::vault_v3_extract_entry,
+            aerovault_v3::vault_v3_extract_all,
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,

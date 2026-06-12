@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fil(er), format v{fmt}",
         "errorCorrectionShards": "Felkorrigering-shards",
         "errorCorrectionProtected": "Felkorrigering-skyddad",
-        "errorCorrectionOverhead": "Felkorrigering-omkostnad"
+        "errorCorrectionOverhead": "Felkorrigering-omkostnad",
+        "savedTo": "Sparad till {path}",
+        "saveFailed": "Det gick inte att spara: {error}"
       },
       "scrubErrorCorrection": "Skrubba Felkorrigering",
       "compressionProfile": "Komprimeringsprofil",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparation klar: reparerade {repaired} segment",
       "noDamageNothing": "Inga skador; inget att reparera.",
       "couldNotRepairAny": "Kunde inte reparera något av {damaged} (valvet lämnades orört).",
-      "successfullyRepaired": "Reparerade {repaired} segment."
+      "successfullyRepaired": "Reparerade {repaired} segment.",
+      "addFolder": "Lägg till mapp",
+      "addFolderHint": "Lägg till en hel mapp med bibehållen struktur",
+      "addFolderUnsupported": "Att lägga till en mapp stöds på v2- och v3-valv",
+      "folderAdded": "Mapp tillagd",
+      "extractAll": "Extrahera alla",
+      "extractAllHint": "Extrahera alla filer i valvet till en mapp",
+      "extractedAll": "Extraherade {count} fil(er) till {path}"
     },
     "cryptomator": {
       "title": "Cryptomator-valv",

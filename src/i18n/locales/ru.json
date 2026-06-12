@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} файл(ов), формат v{fmt}",
         "errorCorrectionShards": "Сегменты Коррекция ошибок",
         "errorCorrectionProtected": "Защита Коррекция ошибок",
-        "errorCorrectionOverhead": "Накладные расходы Коррекция ошибок"
+        "errorCorrectionOverhead": "Накладные расходы Коррекция ошибок",
+        "savedTo": "Сохранено в {path}",
+        "saveFailed": "Не удалось сохранить: {error}"
       },
       "scrubErrorCorrection": "Проверить Коррекция ошибок",
       "compressionProfile": "Профиль сжатия",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Восстановление завершено: успешно восстановлено фрагментов: {repaired}",
       "noDamageNothing": "Повреждений нет; восстанавливать нечего.",
       "couldNotRepairAny": "Не удалось восстановить ни один из {damaged} (хранилище не изменено).",
-      "successfullyRepaired": "Успешно восстановлено фрагментов: {repaired}."
+      "successfullyRepaired": "Успешно восстановлено фрагментов: {repaired}.",
+      "addFolder": "Добавить папку",
+      "addFolderHint": "Добавьте папку целиком, сохранив её структуру",
+      "addFolderUnsupported": "Добавление папки поддерживается в хранилищах v2 и v3",
+      "folderAdded": "Папка добавлена",
+      "extractAll": "Извлечь всё",
+      "extractAllHint": "Извлечь все файлы из хранилища в папку",
+      "extractedAll": "Извлечено {count} файл(ов) в {path}"
     },
     "cryptomator": {
       "title": "Хранилище Cryptomator",

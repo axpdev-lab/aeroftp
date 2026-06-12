@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} Datei(en), Format v{fmt}",
         "errorCorrectionShards": "Fehlerkorrektur-Shards",
         "errorCorrectionProtected": "Fehlerkorrektur-geschützt",
-        "errorCorrectionOverhead": "Fehlerkorrektur-Overhead"
+        "errorCorrectionOverhead": "Fehlerkorrektur-Overhead",
+        "savedTo": "Gespeichert unter {path}",
+        "saveFailed": "Speichern fehlgeschlagen: {error}"
       },
       "scrubErrorCorrection": "Fehlerkorrektur prüfen",
       "compressionProfile": "Komprimierungsprofil",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparatur abgeschlossen: {repaired} Chunk(s) erfolgreich repariert",
       "noDamageNothing": "Keine Schäden; nichts zu reparieren.",
       "couldNotRepairAny": "Keiner von {damaged} konnte repariert werden (Vault unverändert gelassen).",
-      "successfullyRepaired": "{repaired} Chunk(s) erfolgreich repariert."
+      "successfullyRepaired": "{repaired} Chunk(s) erfolgreich repariert.",
+      "addFolder": "Ordner hinzufügen",
+      "addFolderHint": "Einen ganzen Ordner unter Beibehaltung der Struktur hinzufügen",
+      "addFolderUnsupported": "Das Hinzufügen eines Ordners wird bei v2- und v3-Tresoren unterstützt",
+      "folderAdded": "Ordner hinzugefügt",
+      "extractAll": "Alles extrahieren",
+      "extractAllHint": "Alle Dateien im Tresor in einen Ordner extrahieren",
+      "extractedAll": "{count} Datei(en) nach {path} extrahiert"
     },
     "cryptomator": {
       "title": "Cryptomator-Tresor",

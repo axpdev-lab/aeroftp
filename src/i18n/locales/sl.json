@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} datotek, oblika v{fmt}",
         "errorCorrectionShards": "Drobci Popravljanje napak",
         "errorCorrectionProtected": "Zaščiteno z Popravljanje napak",
-        "errorCorrectionOverhead": "Dodatni prostor Popravljanje napak"
+        "errorCorrectionOverhead": "Dodatni prostor Popravljanje napak",
+        "savedTo": "Shranjeno v {path}",
+        "saveFailed": "Shranjevanje ni uspelo: {error}"
       },
       "scrubErrorCorrection": "Preglej Popravljanje napak",
       "compressionProfile": "Profil stiskanja",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Popravilo končano: uspešno popravljenih {repaired} delov",
       "noDamageNothing": "Ni poškodb; ni kaj popraviti.",
       "couldNotRepairAny": "Ni bilo mogoče popraviti nobenega od {damaged} (trezor ostal nespremenjen).",
-      "successfullyRepaired": "Uspešno popravljenih {repaired} delov."
+      "successfullyRepaired": "Uspešno popravljenih {repaired} delov.",
+      "addFolder": "Dodaj mapo",
+      "addFolderHint": "Dodaj celotno mapo in ohrani njeno strukturo",
+      "addFolderUnsupported": "Dodajanje mape je podprto v trezorjih v2 in v3",
+      "folderAdded": "Mapa dodana",
+      "extractAll": "Izvleci vse",
+      "extractAllHint": "Izvleci vsako datoteko iz trezorja v mapo",
+      "extractedAll": "Izvlečenih {count} datotek v {path}"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fail(i), vorming v{fmt}",
         "errorCorrectionShards": "Vigade parandus-killud",
         "errorCorrectionProtected": "Vigade parandus-kaitstud",
-        "errorCorrectionOverhead": "Vigade parandus lisakoormus"
+        "errorCorrectionOverhead": "Vigade parandus lisakoormus",
+        "savedTo": "Salvestatud asukohta {path}",
+        "saveFailed": "Salvestamine ebaõnnestus: {error}"
       },
       "scrubErrorCorrection": "Kontrolli Vigade parandus-d",
       "compressionProfile": "Tihendusprofiil",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Parandamine lõpetatud: edukalt parandatud {repaired} tükki",
       "noDamageNothing": "Kahjustusi pole; pole midagi parandada.",
       "couldNotRepairAny": "Ühtegi {damaged} tükist ei õnnestunud parandada (hoidlat ei muudetud).",
-      "successfullyRepaired": "Edukalt parandatud {repaired} tükki."
+      "successfullyRepaired": "Edukalt parandatud {repaired} tükki.",
+      "addFolder": "Lisa kaust",
+      "addFolderHint": "Lisa terve kaust, säilitades selle struktuuri",
+      "addFolderUnsupported": "Kausta lisamist toetavad v2 ja v3 hoidlad",
+      "folderAdded": "Kaust lisatud",
+      "extractAll": "Ekstrakti kõik",
+      "extractAllHint": "Ekstrakti kõik hoidla failid kausta",
+      "extractedAll": "Ekstraktiti {count} fail(i) asukohta {path}"
     },
     "cryptomator": {
       "title": "Cryptomator hoidla",

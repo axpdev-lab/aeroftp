@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fájl, formátum v{fmt}",
         "errorCorrectionShards": "Hibajavítás töredékek",
         "errorCorrectionProtected": "Hibajavítás-védett",
-        "errorCorrectionOverhead": "Hibajavítás többletterhelés"
+        "errorCorrectionOverhead": "Hibajavítás többletterhelés",
+        "savedTo": "Mentve ide: {path}",
+        "saveFailed": "Nem sikerült menteni: {error}"
       },
       "scrubErrorCorrection": "Hibajavítás ellenőrzése",
       "compressionProfile": "Tömörítési profil",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Javítás kész: {repaired} darab sikeresen javítva",
       "noDamageNothing": "Nincs sérülés; nincs mit javítani.",
       "couldNotRepairAny": "A(z) {damaged} sérültből egyik sem volt javítható (a széf érintetlen maradt).",
-      "successfullyRepaired": "{repaired} darab sikeresen javítva."
+      "successfullyRepaired": "{repaired} darab sikeresen javítva.",
+      "addFolder": "Mappa hozzáadása",
+      "addFolderHint": "Egy teljes mappa hozzáadása a szerkezet megőrzésével",
+      "addFolderUnsupported": "Mappa hozzáadása v2 és v3 széfeknél támogatott",
+      "folderAdded": "Mappa hozzáadva",
+      "extractAll": "Összes kibontása",
+      "extractAllHint": "A széf minden fájljának kibontása egy mappába",
+      "extractedAll": "{count} fájl kibontva ide: {path}"
     },
     "cryptomator": {
       "title": "Cryptomator tároló",

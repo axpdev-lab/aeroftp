@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} failas (-ai), formatas v{fmt}",
         "errorCorrectionShards": "Klaidų taisymas fragmentai",
         "errorCorrectionProtected": "Apsaugota Klaidų taisymas",
-        "errorCorrectionOverhead": "Klaidų taisymas papildomos sąnaudos"
+        "errorCorrectionOverhead": "Klaidų taisymas papildomos sąnaudos",
+        "savedTo": "Įrašyta į {path}",
+        "saveFailed": "Nepavyko įrašyti: {error}"
       },
       "scrubErrorCorrection": "Tikrinti Klaidų taisymas",
       "compressionProfile": "Glaudinimo profilis",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Taisymas baigtas: sėkmingai pataisyta {repaired} fragmentų",
       "noDamageNothing": "Pažeidimų nėra; nėra ką taisyti.",
       "couldNotRepairAny": "Nepavyko pataisyti nė vieno iš {damaged} (saugykla palikta nepaliesta).",
-      "successfullyRepaired": "Sėkmingai pataisyta {repaired} fragmentų."
+      "successfullyRepaired": "Sėkmingai pataisyta {repaired} fragmentų.",
+      "addFolder": "Pridėti aplanką",
+      "addFolderHint": "Pridėti visą aplanką išsaugant jo struktūrą",
+      "addFolderUnsupported": "Aplanko pridėjimas palaikomas v2 ir v3 saugyklose",
+      "folderAdded": "Aplankas pridėtas",
+      "extractAll": "Išskleisti viską",
+      "extractAllHint": "Išskleisti visus saugyklos failus į aplanką",
+      "extractedAll": "Išskleista {count} failų į {path}"
     },
     "cryptomator": {
       "title": "Cryptomator saugykla",

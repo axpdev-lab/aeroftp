@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} ffeil, fformat v{fmt}",
         "errorCorrectionShards": "Cregynnau Cywiro Gwallau",
         "errorCorrectionProtected": "Gwarchodir gan Cywiro Gwallau",
-        "errorCorrectionOverhead": "Gorbenion Cywiro Gwallau"
+        "errorCorrectionOverhead": "Gorbenion Cywiro Gwallau",
+        "savedTo": "Wedi'i gadw i {path}",
+        "saveFailed": "Methwyd cadw: {error}"
       },
       "scrubErrorCorrection": "Sganio Cywiro Gwallau",
       "compressionProfile": "Proffil cywasgu",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Atgyweirio wedi'i gwblhau: atgyweiriwyd {repaired} talp/talpiau yn llwyddiannus",
       "noDamageNothing": "Dim difrod; dim i'w atgyweirio.",
       "couldNotRepairAny": "Methwyd ag atgyweirio unrhyw un o {damaged} (ni chyffyrddwyd â'r gell).",
-      "successfullyRepaired": "Atgyweiriwyd {repaired} talp/talpiau yn llwyddiannus."
+      "successfullyRepaired": "Atgyweiriwyd {repaired} talp/talpiau yn llwyddiannus.",
+      "addFolder": "Ychwanegu Ffolder",
+      "addFolderHint": "Ychwanegu ffolder cyfan, gan gadw ei strwythur",
+      "addFolderUnsupported": "Mae ychwanegu ffolder yn cael ei gefnogi ar gladdgelloedd v2 a v3",
+      "folderAdded": "Ffolder wedi'i ychwanegu",
+      "extractAll": "Echdynnu popeth",
+      "extractAllHint": "Echdynnu pob ffeil yn y gladdgell i ffolder",
+      "extractedAll": "Echdynnwyd {count} ffeil i {path}"
     },
     "cryptomator": {
       "title": "Coffor Cryptomator",

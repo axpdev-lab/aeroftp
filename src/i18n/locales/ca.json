@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fitxer(s), format v{fmt}",
         "errorCorrectionShards": "Fragments Correcció d'errors",
         "errorCorrectionProtected": "Protegit amb Correcció d'errors",
-        "errorCorrectionOverhead": "Sobrecàrrega Correcció d'errors"
+        "errorCorrectionOverhead": "Sobrecàrrega Correcció d'errors",
+        "savedTo": "Desat a {path}",
+        "saveFailed": "No s'ha pogut desar: {error}"
       },
       "scrubErrorCorrection": "Escombrar Correcció d'errors",
       "compressionProfile": "Perfil de compressió",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparació completa: s'han reparat correctament {repaired} fragment(s)",
       "noDamageNothing": "Sense danys; res a reparar.",
       "couldNotRepairAny": "No s'ha pogut reparar cap de {damaged} (la caixa forta no s'ha modificat).",
-      "successfullyRepaired": "S'han reparat correctament {repaired} fragment(s)."
+      "successfullyRepaired": "S'han reparat correctament {repaired} fragment(s).",
+      "addFolder": "Afegeix una carpeta",
+      "addFolderHint": "Afegeix una carpeta sencera, conservant-ne l'estructura",
+      "addFolderUnsupported": "Afegir una carpeta s'admet a les caixes fortes v2 i v3",
+      "folderAdded": "Carpeta afegida",
+      "extractAll": "Extreu-ho tot",
+      "extractAllHint": "Extreu tots els fitxers de la caixa forta a una carpeta",
+      "extractedAll": "S'han extret {count} fitxer(s) a {path}"
     },
     "cryptomator": {
       "title": "Caixa forta Cryptomator",

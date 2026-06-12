@@ -2658,6 +2658,28 @@ fn extract_entry(
     }
 }
 
+/// Extract the whole vault tree into `dest_root`, recreating every entry's path
+/// under it (Ehud #2: a one-click "extract all" instead of per-entry extraction).
+/// Returns the number of files written. Every entry path is normalized first, so a
+/// crafted manifest cannot escape `dest_root`.
+fn extract_all_entries(vault: &OpenVaultV3, dest_root: &Path) -> Result<u64, String> {
+    std::fs::create_dir_all(dest_root).map_err(|e| format!("Create output dir: {e}"))?;
+    let mut entries: Vec<&ManifestEntryV3> = vault.manifest.entries.iter().collect();
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut files_written = 0u64;
+    for entry in entries {
+        let rel = normalize_vault_relative_path(&entry.path)?;
+        let output = dest_root.join(&rel);
+        if entry.is_dir {
+            std::fs::create_dir_all(&output).map_err(|e| format!("Create output dir: {e}"))?;
+        } else {
+            extract_file_entry(vault, entry, &output)?;
+            files_written += 1;
+        }
+    }
+    Ok(files_written)
+}
+
 fn info_from_manifest(manifest: &VaultManifestV3) -> VaultV3Info {
     let file_count = manifest
         .entries
@@ -2954,6 +2976,85 @@ pub async fn vault_v3_repair(
     }))
 }
 
+/// Peak in-memory multiplier over the projected container size. While sealing,
+/// AeroVault v3 holds the data plus working copies (plaintext, compressed,
+/// encrypted), so the real peak is a few times the stored bytes.
+const VAULT_MEMORY_PEAK_MULTIPLIER: u64 = 3;
+/// Memory budget used when available RAM cannot be read (a conservative floor).
+const VAULT_MEMORY_FIXED_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Human-readable byte size for user-facing guard messages.
+fn human_size(n: u64) -> String {
+    const U: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut v = n as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < U.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{n} B")
+    } else {
+        format!("{v:.1} {}", U[i])
+    }
+}
+
+/// Best-effort available physical memory in bytes. Linux reads
+/// `/proc/meminfo MemAvailable`; other platforms return `None` and the caller
+/// falls back to a fixed budget.
+fn available_memory_bytes() -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+        for line in meminfo.lines() {
+            if let Some(rest) = line.strip_prefix("MemAvailable:") {
+                let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
+                return Some(kb.saturating_mul(1024));
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
+/// Ehud #2: AeroVault v3 buffers the whole container in memory during create/add,
+/// so a multi-GB input OOMs (real streaming I/O is the proper fix, tracked as
+/// debt). Reject up front, with a clear message instead of a crash, when the
+/// projected peak in-memory size would blow the budget. `existing` is taken from
+/// the vault file on disk; `sources` are the files about to be added.
+fn preflight_vault_memory_guard(
+    vault_path: &Path,
+    sources: &[(PathBuf, String)],
+) -> Result<(), String> {
+    let existing = std::fs::metadata(vault_path).map(|m| m.len()).unwrap_or(0);
+    let mut added: u64 = 0;
+    for (path, _) in sources {
+        if let Ok(meta) = std::fs::metadata(path) {
+            added = added.saturating_add(meta.len());
+        }
+    }
+    let projected = existing.saturating_add(added);
+    let peak = projected.saturating_mul(VAULT_MEMORY_PEAK_MULTIPLIER);
+    // 60% of available memory, or the fixed floor when RAM cannot be read.
+    let budget = available_memory_bytes()
+        .map(|avail| avail / 5 * 3)
+        .unwrap_or(VAULT_MEMORY_FIXED_BUDGET);
+    if peak > budget {
+        return Err(format!(
+            "Adding these files needs about {} of memory (vault {} + {} new, peaking near {}x while sealing), above the safe limit of {}. AeroVault v3 buffers the whole container in memory, so add fewer or smaller files, or split them across vaults. Streaming large vaults is planned.",
+            human_size(peak),
+            human_size(existing),
+            human_size(added),
+            VAULT_MEMORY_PEAK_MULTIPLIER,
+            human_size(budget),
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn vault_v3_add_files(
     vault_path: String,
@@ -2970,6 +3071,7 @@ pub async fn vault_v3_add_files(
         let name = safe_entry_name(&path)?;
         sources.push((path, name));
     }
+    preflight_vault_memory_guard(Path::new(&vault_path), &sources)?;
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     vault.report = VaultReport::new("add_files", VERSION);
@@ -3009,15 +3111,16 @@ pub async fn vault_v3_add_files_to_dir(
     target_dir: String,
 ) -> Result<serde_json::Value, String> {
     let target_dir = normalize_vault_relative_path(&target_dir)?;
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    create_directory_in_manifest(&mut vault.manifest, &target_dir)?;
     let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
     for file_path in &file_paths {
         let path = PathBuf::from(file_path);
         let name = safe_entry_name(&path)?;
         sources.push((path, join_vault_path(&target_dir, &name)));
     }
+    preflight_vault_memory_guard(Path::new(&vault_path), &sources)?;
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+    let mut vault = open_vault(&vault_path, &password)?;
+    create_directory_in_manifest(&mut vault.manifest, &target_dir)?;
     let added = sources.len();
     append_sources_batched(&mut vault, &sources)?;
     save_open_vault(&mut vault)?;
@@ -3263,6 +3366,18 @@ pub async fn vault_v3_extract_entry(
     let vault = open_vault(vault_path, &password)?;
     let extracted = extract_entry(&vault, &entry_name, Path::new(&dest_path))?;
     Ok(extracted.to_string_lossy().to_string())
+}
+
+/// Extract every entry in the vault into `dest_path`, preserving the tree
+/// (Ehud #2). Returns the number of files written.
+#[tauri::command]
+pub async fn vault_v3_extract_all(
+    vault_path: String,
+    password: String,
+    dest_path: String,
+) -> Result<u64, String> {
+    let vault = open_vault(vault_path, &password)?;
+    extract_all_entries(&vault, Path::new(&dest_path))
 }
 
 #[tauri::command]
@@ -3759,6 +3874,51 @@ mod tests {
             cursor = end;
         }
         assert_eq!(cursor, data.len());
+    }
+
+    #[test]
+    fn human_size_formats_units() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(1024), "1.0 KiB");
+        assert_eq!(human_size(1024 * 1024), "1.0 MiB");
+        assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 GiB");
+    }
+
+    #[test]
+    fn extract_all_round_trip_preserves_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("test.aerovault");
+        let a = dir.path().join("a.txt");
+        let c = dir.path().join("c.txt");
+        std::fs::write(&a, b"root file\n".repeat(2048)).unwrap();
+        std::fs::write(&c, b"nested file\n".repeat(2048)).unwrap();
+
+        create_empty_vault(
+            &vault_path,
+            "correct horse battery staple",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
+        let mut vault = open_vault(&vault_path, "correct horse battery staple").unwrap();
+        append_file_at(&mut vault, &a, "a.txt").unwrap();
+        append_file_at(&mut vault, &c, "sub/c.txt").unwrap();
+        save_open_vault(&mut vault).unwrap();
+
+        let reopened = open_vault(&vault_path, "correct horse battery staple").unwrap();
+        let out = dir.path().join("out");
+        let written = extract_all_entries(&reopened, &out).unwrap();
+        assert_eq!(written, 2);
+        assert_eq!(
+            std::fs::read(out.join("a.txt")).unwrap(),
+            std::fs::read(&a).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(out.join("sub/c.txt")).unwrap(),
+            std::fs::read(&c).unwrap()
+        );
     }
 
     #[test]

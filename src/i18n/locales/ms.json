@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fail, format v{fmt}",
         "errorCorrectionShards": "Serpihan Pembetulan Ralat",
         "errorCorrectionProtected": "Dilindungi Pembetulan Ralat",
-        "errorCorrectionOverhead": "Overhed Pembetulan Ralat"
+        "errorCorrectionOverhead": "Overhed Pembetulan Ralat",
+        "savedTo": "Disimpan ke {path}",
+        "saveFailed": "Tidak dapat menyimpan: {error}"
       },
       "scrubErrorCorrection": "Imbas Pembetulan Ralat",
       "compressionProfile": "Profil pemampatan",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Pembaikan selesai: berjaya membaiki {repaired} ketulan",
       "noDamageNothing": "Tiada kerosakan; tiada apa-apa untuk dibaiki.",
       "couldNotRepairAny": "Tidak dapat membaiki mana-mana daripada {damaged} (peti kebal dibiarkan tidak diubah).",
-      "successfullyRepaired": "Berjaya membaiki {repaired} ketulan."
+      "successfullyRepaired": "Berjaya membaiki {repaired} ketulan.",
+      "addFolder": "Tambah Folder",
+      "addFolderHint": "Tambah keseluruhan folder sambil mengekalkan strukturnya",
+      "addFolderUnsupported": "Menambah folder disokong pada bilik kebal v2 dan v3",
+      "folderAdded": "Folder ditambah",
+      "extractAll": "Ekstrak semua",
+      "extractAllHint": "Ekstrak setiap fail dalam bilik kebal ke folder",
+      "extractedAll": "{count} fail diekstrak ke {path}"
     },
     "cryptomator": {
       "title": "Peti Besi Cryptomator",

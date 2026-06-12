@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} датотека, формат v{fmt}",
         "errorCorrectionShards": "Исправка грешака fragmenti",
         "errorCorrectionProtected": "Исправка грешака zaštita",
-        "errorCorrectionOverhead": "Исправка грешака dodatak"
+        "errorCorrectionOverhead": "Исправка грешака dodatak",
+        "savedTo": "Сачувано у {path}",
+        "saveFailed": "Чување није успело: {error}"
       },
       "scrubErrorCorrection": "Proveri Исправка грешака",
       "compressionProfile": "Профил компресије",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Popravka završena: uspešno popravljeno {repaired} deo(ova)",
       "noDamageNothing": "Nema oštećenja; nema šta da se popravi.",
       "couldNotRepairAny": "Nije moguće popraviti nijedan od {damaged} (sef ostavljen netaknut).",
-      "successfullyRepaired": "Uspešno popravljeno {repaired} deo(ova)."
+      "successfullyRepaired": "Uspešno popravljeno {repaired} deo(ova).",
+      "addFolder": "Додај фасциклу",
+      "addFolderHint": "Додај целу фасциклу уз очување њене структуре",
+      "addFolderUnsupported": "Додавање фасцикле подржано је на трезорима v2 и v3",
+      "folderAdded": "Фасцикла додата",
+      "extractAll": "Извуци све",
+      "extractAllHint": "Извуци сваку датотеку из трезора у фасциклу",
+      "extractedAll": "Извучено {count} датотека у {path}"
     },
     "cryptomator": {
       "title": "Cryptomator trezor",

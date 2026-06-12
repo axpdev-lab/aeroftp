@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} ficheiro(s), formato v{fmt}",
         "errorCorrectionShards": "Fragmentos Correção de erros",
         "errorCorrectionProtected": "Protegido por Correção de erros",
-        "errorCorrectionOverhead": "Sobrecarga Correção de erros"
+        "errorCorrectionOverhead": "Sobrecarga Correção de erros",
+        "savedTo": "Guardado em {path}",
+        "saveFailed": "Não foi possível guardar: {error}"
       },
       "scrubErrorCorrection": "Verificar Correção de erros",
       "compressionProfile": "Perfil de compressão",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparação concluída: {repaired} bloco(s) reparado(s) com êxito",
       "noDamageNothing": "Sem danos; nada a reparar.",
       "couldNotRepairAny": "Não foi possível reparar nenhum de {damaged} (cofre deixado inalterado).",
-      "successfullyRepaired": "{repaired} bloco(s) reparado(s) com êxito."
+      "successfullyRepaired": "{repaired} bloco(s) reparado(s) com êxito.",
+      "addFolder": "Adicionar pasta",
+      "addFolderHint": "Adicione uma pasta inteira, preservando a sua estrutura",
+      "addFolderUnsupported": "Adicionar uma pasta é suportado em cofres v2 e v3",
+      "folderAdded": "Pasta adicionada",
+      "extractAll": "Extrair tudo",
+      "extractAllHint": "Extrair todos os ficheiros do cofre para uma pasta",
+      "extractedAll": "Extraídos {count} ficheiro(s) para {path}"
     },
     "cryptomator": {
       "title": "Cofre Cryptomator",

@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files}개 파일, 형식 v{fmt}",
         "errorCorrectionShards": "오류 정정 샤드",
         "errorCorrectionProtected": "오류 정정 보호됨",
-        "errorCorrectionOverhead": "오류 정정 오버헤드"
+        "errorCorrectionOverhead": "오류 정정 오버헤드",
+        "savedTo": "{path}에 저장됨",
+        "saveFailed": "저장할 수 없습니다: {error}"
       },
       "scrubErrorCorrection": "오류 정정 검사",
       "compressionProfile": "압축 프로필",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "복구 완료: {repaired}개 청크 복구 성공",
       "noDamageNothing": "손상 없음, 복구할 항목 없음.",
       "couldNotRepairAny": "{damaged}개 중 어느 것도 복구할 수 없습니다(볼트 변경 없음).",
-      "successfullyRepaired": "{repaired}개 청크 복구 성공."
+      "successfullyRepaired": "{repaired}개 청크 복구 성공.",
+      "addFolder": "폴더 추가",
+      "addFolderHint": "구조를 유지하면서 폴더 전체를 추가",
+      "addFolderUnsupported": "폴더 추가는 v2 및 v3 보관소에서 지원됩니다",
+      "folderAdded": "폴더가 추가됨",
+      "extractAll": "모두 추출",
+      "extractAllHint": "보관소의 모든 파일을 폴더로 추출",
+      "extractedAll": "{count}개 파일을 {path}에 추출함"
     },
     "cryptomator": {
       "title": "Cryptomator 저장소",

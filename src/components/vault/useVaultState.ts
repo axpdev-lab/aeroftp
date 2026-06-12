@@ -124,6 +124,8 @@ export interface VaultReport {
     encrypted_bytes: number;
     compression_ratio_pct: number;
     ms_total: number;
+    /** Total elapsed time in seconds, one decimal (Ehud #2). */
+    time_elapsed_secs: number;
     steps: string[];
     attribution: string;
     // P3-03 Error Correction telemetry (populated on seal for Error Correction vaults; optional for compat)
@@ -397,10 +399,12 @@ export interface VaultState {
     handleUnlock: () => Promise<void>;
     refreshVaultEntries: () => Promise<void>;
     handleAddFiles: () => Promise<void>;
+    handleAddFolder: () => Promise<void>;
     handleDropFiles: (paths: string[]) => Promise<void>;
     handleCreateDirectory: () => Promise<void>;
     handleRemove: (entryName: string, isDir: boolean) => Promise<void>;
     handleExtract: (entryName: string) => Promise<void>;
+    handleExtractAll: () => Promise<void>;
     handleChangePassword: () => Promise<void>;
 
     // P2 Error Correction actions (use the registered Tauri commands; engine shared with CLI)
@@ -958,6 +962,42 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
+    // Ehud #2: first-class "add folder" via a native folder picker (previously a
+    // folder could only be added by drag-and-drop). Adds the whole tree under the
+    // current directory, preserving structure.
+    const handleAddFolder = async () => {
+        const selected = await open({ directory: true });
+        if (!selected || typeof selected !== 'string') return;
+
+        setLoading(true);
+        setError(null);
+        try {
+            if (vaultSecurity?.version === 3) {
+                await invoke('vault_v3_add_directory', {
+                    vaultPath,
+                    password,
+                    sourceDir: selected,
+                    targetPrefix: currentDir || null,
+                });
+            } else if (vaultSecurity?.version === 2) {
+                await invoke('vault_v2_add_directory', {
+                    vaultPath,
+                    password,
+                    sourceDir: selected,
+                });
+            } else {
+                setError(t('vault.addFolderUnsupported'));
+                return;
+            }
+            await refreshVaultEntries();
+            setSuccess(t('vault.folderAdded'));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleDropFiles = useCallback(async (paths: string[]) => {
         if (!paths.length || !vaultPath || !password || loading) return;
 
@@ -1126,6 +1166,26 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 await invoke('vault_extract_entry', { vaultPath, password, entryName, outputPath: savePath });
             }
             setSuccess(t('vault.extracted', { name: entryName }));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Ehud #2: one-click "extract all" to a chosen folder (v3 recursive backend).
+    const handleExtractAll = async () => {
+        const destPath = await open({ directory: true });
+        if (!destPath || typeof destPath !== 'string') return;
+
+        setLoading(true);
+        try {
+            const count = await invoke<number>('vault_v3_extract_all', {
+                vaultPath,
+                password,
+                destPath,
+            });
+            setSuccess(t('vault.extractedAll', { count: String(count), path: destPath }));
         } catch (e) {
             setError(mapVaultError(e, t));
         } finally {
@@ -1377,10 +1437,12 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         handleUnlock,
         refreshVaultEntries,
         handleAddFiles,
+        handleAddFolder,
         handleDropFiles,
         handleCreateDirectory,
         handleRemove,
         handleExtract,
+        handleExtractAll,
         handleChangePassword,
         handleScrub,
         handleRepair,

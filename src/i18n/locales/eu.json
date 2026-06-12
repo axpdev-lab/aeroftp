@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fitxategi, v{fmt} formatua",
         "errorCorrectionShards": "Errore-zuzenketa zatiak",
         "errorCorrectionProtected": "Errore-zuzenketa babesa",
-        "errorCorrectionOverhead": "Errore-zuzenketa gainkostua"
+        "errorCorrectionOverhead": "Errore-zuzenketa gainkostua",
+        "savedTo": "{path} helbidean gordeta",
+        "saveFailed": "Ezin izan da gorde: {error}"
       },
       "scrubErrorCorrection": "Eskaneatu Errore-zuzenketa",
       "compressionProfile": "Konpresio-profila",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Konponketa osatuta: {repaired} zati behar bezala konponduta",
       "noDamageNothing": "Kalterik ez; ez dago zer konpondurik.",
       "couldNotRepairAny": "Ezin izan da {damaged}(e)tik bat ere konpondu (kutxa gotorra ukitu gabe utzi da).",
-      "successfullyRepaired": "{repaired} zati behar bezala konponduta."
+      "successfullyRepaired": "{repaired} zati behar bezala konponduta.",
+      "addFolder": "Gehitu karpeta",
+      "addFolderHint": "Gehitu karpeta oso bat, bere egitura mantenduz",
+      "addFolderUnsupported": "Karpeta gehitzea v2 eta v3 gangetan onartzen da",
+      "folderAdded": "Karpeta gehituta",
+      "extractAll": "Erauzi guztiak",
+      "extractAllHint": "Erauzi gangako fitxategi guztiak karpeta batera",
+      "extractedAll": "{count} fitxategi erauzi dira {path} helbidera"
     },
     "cryptomator": {
       "title": "Cryptomator Ganga",

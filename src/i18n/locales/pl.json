@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} plik(ów), format v{fmt}",
         "errorCorrectionShards": "Fragmenty Korekcja błędów",
         "errorCorrectionProtected": "Chronione przez Korekcja błędów",
-        "errorCorrectionOverhead": "Narzut Korekcja błędów"
+        "errorCorrectionOverhead": "Narzut Korekcja błędów",
+        "savedTo": "Zapisano w {path}",
+        "saveFailed": "Nie można zapisać: {error}"
       },
       "scrubErrorCorrection": "Skanuj Korekcja błędów",
       "compressionProfile": "Profil kompresji",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Naprawa zakończona: pomyślnie naprawiono {repaired} fragment(ów)",
       "noDamageNothing": "Brak uszkodzeń; nic do naprawienia.",
       "couldNotRepairAny": "Nie udało się naprawić żadnego z {damaged} (sejf pozostawiono nietknięty).",
-      "successfullyRepaired": "Pomyślnie naprawiono {repaired} fragment(ów)."
+      "successfullyRepaired": "Pomyślnie naprawiono {repaired} fragment(ów).",
+      "addFolder": "Dodaj folder",
+      "addFolderHint": "Dodaj cały folder, zachowując jego strukturę",
+      "addFolderUnsupported": "Dodawanie folderu jest obsługiwane w skarbcach v2 i v3",
+      "folderAdded": "Folder dodany",
+      "extractAll": "Wyodrębnij wszystko",
+      "extractAllHint": "Wyodrębnij wszystkie pliki ze skarbca do folderu",
+      "extractedAll": "Wyodrębniono {count} plik(ów) do {path}"
     },
     "cryptomator": {
       "title": "Magazyn Cryptomator",

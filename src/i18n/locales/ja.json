@@ -2757,7 +2757,9 @@
         "activity": "AeroVault {op}: {files} ファイル、形式 v{fmt}",
         "errorCorrectionShards": "誤り訂正 シャード",
         "errorCorrectionProtected": "誤り訂正 保護済み",
-        "errorCorrectionOverhead": "誤り訂正 オーバーヘッド"
+        "errorCorrectionOverhead": "誤り訂正 オーバーヘッド",
+        "savedTo": "{path} に保存しました",
+        "saveFailed": "保存できませんでした: {error}"
       },
       "scrubErrorCorrection": "誤り訂正 スクラブ",
       "compressionProfile": "圧縮プロファイル",
@@ -2810,7 +2812,14 @@
       "repairSuccess": "修復完了: {repaired} 件のチャンクを正常に修復しました",
       "noDamageNothing": "破損はありません。修復するものはありません。",
       "couldNotRepairAny": "{damaged} 件のいずれも修復できませんでした（ボールトは変更されていません）。",
-      "successfullyRepaired": "{repaired} 件のチャンクを正常に修復しました。"
+      "successfullyRepaired": "{repaired} 件のチャンクを正常に修復しました。",
+      "addFolder": "フォルダーを追加",
+      "addFolderHint": "構造を保持したままフォルダー全体を追加",
+      "addFolderUnsupported": "フォルダーの追加は v2 と v3 のボールトでサポートされています",
+      "folderAdded": "フォルダーを追加しました",
+      "extractAll": "すべて抽出",
+      "extractAllHint": "ボールト内のすべてのファイルをフォルダーに抽出",
+      "extractedAll": "{count} 個のファイルを {path} に抽出しました"
     },
     "cryptomator": {
       "title": "Cryptomator保管庫",

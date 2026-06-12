@@ -55,8 +55,18 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     <Plus size={14} /> {t('vault.addFiles')}
                 </button>
                 {state.vaultSecurity && state.vaultSecurity.version >= 2 && (
+                    <button onClick={state.handleAddFolder} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded" title={t('vault.addFolderHint')}>
+                        <FolderPlus size={14} /> {t('vault.addFolder')}
+                    </button>
+                )}
+                {state.vaultSecurity && state.vaultSecurity.version >= 2 && (
                     <button onClick={() => { state.setShowNewDirDialog(true); state.setNewDirName(''); }} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 rounded">
                         <FolderPlus size={14} /> {t('vault.newFolder')}
+                    </button>
+                )}
+                {state.vaultSecurity?.version === 3 && state.entries.length > 0 && (
+                    <button onClick={state.handleExtractAll} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded" title={t('vault.extractAllHint')}>
+                        <Download size={14} /> {t('vault.extractAll')}
                     </button>
                 )}
                 <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">

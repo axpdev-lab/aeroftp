@@ -2785,7 +2785,9 @@
         "activity": "AeroVault {op}: {files} ֆայլ, ձևաչափ v{fmt}",
         "errorCorrectionShards": "Սխալների ուղղում բեկորներ",
         "errorCorrectionProtected": "Սխալների ուղղում-ով պաշտպանված",
-        "errorCorrectionOverhead": "Սխալների ուղղում ծախս"
+        "errorCorrectionOverhead": "Սխալների ուղղում ծախս",
+        "savedTo": "Պահպանվել է {path}-ում",
+        "saveFailed": "Չհաջողվեց պահպանել՝ {error}"
       },
       "scrubErrorCorrection": "Ստուգել Սխալների ուղղում",
       "compressionProfile": "Սեղմման պրոֆիլ",
@@ -2838,7 +2840,14 @@
       "repairSuccess": "Վերականգնումն ավարտված է՝ հաջողությամբ վերականգնվեց {repaired} կտոր",
       "noDamageNothing": "Վնասներ չկան, վերականգնելու բան չկա։",
       "couldNotRepairAny": "Հնարավոր չեղավ վերականգնել {damaged}-ից ոչ մեկը (պահոցը մնաց անփոփոխ)։",
-      "successfullyRepaired": "Հաջողությամբ վերականգնվեց {repaired} կտոր։"
+      "successfullyRepaired": "Հաջողությամբ վերականգնվեց {repaired} կտոր։",
+      "addFolder": "Ավելացնել թղթապանակ",
+      "addFolderHint": "Ավելացրեք ամբողջ թղթապանակը՝ պահպանելով կառուցվածքը",
+      "addFolderUnsupported": "Թղթապանակի ավելացումն աջակցվում է v2 և v3 պահոցներում",
+      "folderAdded": "Թղթապանակն ավելացվեց",
+      "extractAll": "Հանել բոլորը",
+      "extractAllHint": "Հանել պահոցի բոլոր ֆայլերը թղթապանակ",
+      "extractedAll": "Հանվել է {count} ֆայլ {path}-ում"
     },
     "cryptomator": {
       "title": "Cryptomator Պահոց",

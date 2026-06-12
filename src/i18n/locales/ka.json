@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} ფაილი, ფორმატი v{fmt}",
         "errorCorrectionShards": "შეცდომების შესწორება ფრაგმენტები",
         "errorCorrectionProtected": "შეცდომების შესწორება-ით დაცული",
-        "errorCorrectionOverhead": "შეცდომების შესწორება დანამატი"
+        "errorCorrectionOverhead": "შეცდომების შესწორება დანამატი",
+        "savedTo": "შენახულია {path}-ში",
+        "saveFailed": "შენახვა ვერ მოხერხდა: {error}"
       },
       "scrubErrorCorrection": "შეცდომების შესწორება-ის შემოწმება",
       "compressionProfile": "შეკუმშვის პროფილი",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "აღდგენა დასრულდა: წარმატებით აღდგა {repaired} ფრაგმენტი",
       "noDamageNothing": "დაზიანება არ არის; აღსადგენი არაფერია.",
       "couldNotRepairAny": "{damaged}-დან ვერცერთი აღდგა (საცავი უცვლელი დარჩა).",
-      "successfullyRepaired": "წარმატებით აღდგა {repaired} ფრაგმენტი."
+      "successfullyRepaired": "წარმატებით აღდგა {repaired} ფრაგმენტი.",
+      "addFolder": "საქაღალდის დამატება",
+      "addFolderHint": "დაამატეთ მთელი საქაღალდე მისი სტრუქტურის შენარჩუნებით",
+      "addFolderUnsupported": "საქაღალდის დამატება მხარდაჭერილია v2 და v3 სეიფებში",
+      "folderAdded": "საქაღალდე დაემატა",
+      "extractAll": "ყველას ამოღება",
+      "extractAllHint": "სეიფის ყველა ფაილის ამოღება საქაღალდეში",
+      "extractedAll": "ამოღებულია {count} ფაილი {path}-ში"
     },
     "cryptomator": {
       "title": "Cryptomator საცავი",

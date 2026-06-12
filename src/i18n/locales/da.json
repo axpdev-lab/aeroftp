@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} fil(er), format v{fmt}",
         "errorCorrectionShards": "Fejlkorrektion-shards",
         "errorCorrectionProtected": "Fejlkorrektion-beskyttet",
-        "errorCorrectionOverhead": "Fejlkorrektion-overhead"
+        "errorCorrectionOverhead": "Fejlkorrektion-overhead",
+        "savedTo": "Gemt til {path}",
+        "saveFailed": "Kunne ikke gemme: {error}"
       },
       "scrubErrorCorrection": "Scan Fejlkorrektion",
       "compressionProfile": "Komprimeringsprofil",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparation fuldført: reparerede {repaired} chunk(s) korrekt",
       "noDamageNothing": "Ingen skader; intet at reparere.",
       "couldNotRepairAny": "Kunne ikke reparere nogen af {damaged} (vault forblev uændret).",
-      "successfullyRepaired": "Reparerede {repaired} chunk(s) korrekt."
+      "successfullyRepaired": "Reparerede {repaired} chunk(s) korrekt.",
+      "addFolder": "Tilføj mappe",
+      "addFolderHint": "Tilføj en hel mappe og bevar dens struktur",
+      "addFolderUnsupported": "Tilføjelse af en mappe understøttes på v2- og v3-bokse",
+      "folderAdded": "Mappe tilføjet",
+      "extractAll": "Udpak alt",
+      "extractAllHint": "Udpak alle filer i boksen til en mappe",
+      "extractedAll": "Udpakkede {count} fil(er) til {path}"
     },
     "cryptomator": {
       "title": "Cryptomator-boks",

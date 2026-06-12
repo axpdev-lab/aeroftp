@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} ไฟล์ รูปแบบ v{fmt}",
         "errorCorrectionShards": "ชาร์ด การแก้ไขข้อผิดพลาด",
         "errorCorrectionProtected": "ป้องกันด้วย การแก้ไขข้อผิดพลาด",
-        "errorCorrectionOverhead": "โอเวอร์เฮด การแก้ไขข้อผิดพลาด"
+        "errorCorrectionOverhead": "โอเวอร์เฮด การแก้ไขข้อผิดพลาด",
+        "savedTo": "บันทึกไปยัง {path}",
+        "saveFailed": "ไม่สามารถบันทึก: {error}"
       },
       "scrubErrorCorrection": "สแกน การแก้ไขข้อผิดพลาด",
       "compressionProfile": "โปรไฟล์การบีบอัด",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "ซ่อมเสร็จสมบูรณ์: ซ่อมชังก์สำเร็จ {repaired} ชังก์",
       "noDamageNothing": "ไม่มีความเสียหาย ไม่มีอะไรต้องซ่อม",
       "couldNotRepairAny": "ไม่สามารถซ่อมได้เลยจากทั้งหมด {damaged} (วอลต์ไม่ถูกแก้ไข)",
-      "successfullyRepaired": "ซ่อมชังก์สำเร็จ {repaired} ชังก์"
+      "successfullyRepaired": "ซ่อมชังก์สำเร็จ {repaired} ชังก์",
+      "addFolder": "เพิ่มโฟลเดอร์",
+      "addFolderHint": "เพิ่มทั้งโฟลเดอร์โดยคงโครงสร้างไว้",
+      "addFolderUnsupported": "การเพิ่มโฟลเดอร์รองรับบนตู้นิรภัย v2 และ v3",
+      "folderAdded": "เพิ่มโฟลเดอร์แล้ว",
+      "extractAll": "แยกทั้งหมด",
+      "extractAllHint": "แยกทุกไฟล์ในตู้นิรภัยไปยังโฟลเดอร์",
+      "extractedAll": "แยก {count} ไฟล์ไปยัง {path} แล้ว"
     },
     "cryptomator": {
       "title": "ตู้นิรภัย Cryptomator",

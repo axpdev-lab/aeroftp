@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} archivo(s), formato v{fmt}",
         "errorCorrectionShards": "Fragmentos Corrección de errores",
         "errorCorrectionProtected": "Protegido con Corrección de errores",
-        "errorCorrectionOverhead": "Sobrecarga de Corrección de errores"
+        "errorCorrectionOverhead": "Sobrecarga de Corrección de errores",
+        "savedTo": "Guardado en {path}",
+        "saveFailed": "No se pudo guardar: {error}"
       },
       "scrubErrorCorrection": "Analizar Corrección de errores",
       "compressionProfile": "Perfil de compresión",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Reparación completada: se repararon correctamente {repaired} fragmento(s)",
       "noDamageNothing": "Sin daños; no hay nada que reparar.",
       "couldNotRepairAny": "No se pudo reparar ninguno de los {damaged} (el contenedor se dejó sin cambios).",
-      "successfullyRepaired": "Se repararon correctamente {repaired} fragmento(s)."
+      "successfullyRepaired": "Se repararon correctamente {repaired} fragmento(s).",
+      "addFolder": "Añadir carpeta",
+      "addFolderHint": "Añade una carpeta completa conservando su estructura",
+      "addFolderUnsupported": "Añadir una carpeta es compatible con cajas fuertes v2 y v3",
+      "folderAdded": "Carpeta añadida",
+      "extractAll": "Extraer todo",
+      "extractAllHint": "Extraer todos los archivos de la caja fuerte a una carpeta",
+      "extractedAll": "Se extrajeron {count} archivo(s) a {path}"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",

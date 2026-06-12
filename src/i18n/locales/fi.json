@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} tiedosto(a), muoto v{fmt}",
         "errorCorrectionShards": "Virheenkorjaus-lohkot",
         "errorCorrectionProtected": "Virheenkorjaus-suojattu",
-        "errorCorrectionOverhead": "Virheenkorjaus-lisätila"
+        "errorCorrectionOverhead": "Virheenkorjaus-lisätila",
+        "savedTo": "Tallennettu sijaintiin {path}",
+        "saveFailed": "Tallennus epäonnistui: {error}"
       },
       "scrubErrorCorrection": "Tarkista Virheenkorjaus",
       "compressionProfile": "Pakkausprofiili",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Korjaus valmis: korjattu onnistuneesti {repaired} osaa",
       "noDamageNothing": "Ei vaurioita; ei korjattavaa.",
       "couldNotRepairAny": "Mitään {damaged} osasta ei voitu korjata (holvia ei muutettu).",
-      "successfullyRepaired": "Korjattu onnistuneesti {repaired} osaa."
+      "successfullyRepaired": "Korjattu onnistuneesti {repaired} osaa.",
+      "addFolder": "Lisää kansio",
+      "addFolderHint": "Lisää koko kansio rakenne säilyttäen",
+      "addFolderUnsupported": "Kansion lisäämistä tuetaan v2- ja v3-holveissa",
+      "folderAdded": "Kansio lisätty",
+      "extractAll": "Pura kaikki",
+      "extractAllHint": "Pura kaikki holvin tiedostot kansioon",
+      "extractedAll": "Purettiin {count} tiedosto(a) sijaintiin {path}"
     },
     "cryptomator": {
       "title": "Cryptomator-holvi",

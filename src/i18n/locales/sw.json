@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} faili, umbizo v{fmt}",
         "errorCorrectionShards": "Vipande vya Usahihishaji wa Hitilafu",
         "errorCorrectionProtected": "Imelindwa kwa Usahihishaji wa Hitilafu",
-        "errorCorrectionOverhead": "Gharama ya ziada ya Usahihishaji wa Hitilafu"
+        "errorCorrectionOverhead": "Gharama ya ziada ya Usahihishaji wa Hitilafu",
+        "savedTo": "Imehifadhiwa kwa {path}",
+        "saveFailed": "Imeshindwa kuhifadhi: {error}"
       },
       "scrubErrorCorrection": "Kagua Usahihishaji wa Hitilafu",
       "compressionProfile": "Wasifu wa mgandamizo",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Marekebisho yamekamilika: zimerekebishwa kwa mafanikio vipande {repaired}",
       "noDamageNothing": "Hakuna uharibifu; hakuna cha kurekebisha.",
       "couldNotRepairAny": "Haikuweza kurekebisha hata kimoja kati ya {damaged} (vault imeachwa bila kuguswa).",
-      "successfullyRepaired": "Vipande {repaired} vimerekebishwa kwa mafanikio."
+      "successfullyRepaired": "Vipande {repaired} vimerekebishwa kwa mafanikio.",
+      "addFolder": "Ongeza Folda",
+      "addFolderHint": "Ongeza folda nzima, ukihifadhi muundo wake",
+      "addFolderUnsupported": "Kuongeza folda kunaungwa mkono kwenye kasha za v2 na v3",
+      "folderAdded": "Folda imeongezwa",
+      "extractAll": "Toa zote",
+      "extractAllHint": "Toa kila faili kwenye kasha hadi folda",
+      "extractedAll": "Faili {count} zimetolewa hadi {path}"
     },
     "cryptomator": {
       "title": "Hazina ya Cryptomator",

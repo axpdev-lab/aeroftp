@@ -13,7 +13,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Download, Terminal } from 'lucide-react';
+import { X, Download, Terminal, Check, AlertTriangle } from 'lucide-react';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type { VaultReport } from './useVaultState';
 
 interface VaultReceiptProps {
@@ -38,7 +40,7 @@ function buildReceiptText(r: VaultReport): string {
     }
     lines.push(`files=${r.files} (packed=${r.packed_files}, packs=${r.packs}) chunks: logical=${r.logical_chunks} new=${r.new_physical_chunks} dedup=${r.dedup_hits}`);
     lines.push(`bytes: plaintext=${r.plaintext_bytes} compressed=${r.compressed_bytes} encrypted=${r.encrypted_bytes} ratio=${r.compression_ratio_pct.toFixed(1)}%`);
-    lines.push(`elapsed: ${r.ms_total} ms`);
+    lines.push(`time elapsed: ${r.time_elapsed_secs.toFixed(1)} s (${r.ms_total} ms)`);
     if (r.error_correction_shards_generated != null || r.error_correction_bytes_protected != null || r.error_correction_overhead_pct != null) {
         lines.push(`ecc: shards=${r.error_correction_shards_generated ?? '-'} protected=${r.error_correction_bytes_protected ?? '-'} overhead=${r.error_correction_overhead_pct != null ? r.error_correction_overhead_pct.toFixed(1)+'%' : '-'}`);
     }
@@ -49,21 +51,36 @@ function buildReceiptText(r: VaultReport): string {
     return lines.join('\n');
 }
 
-function download(name: string, content: string, mime: string): void {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+type SaveOutcome = { ok: true; path: string } | { ok: false; error: string } | null;
+
+/**
+ * Save the receipt via a native save dialog (Ehud #2: the browser-download
+ * path gave no location choice and no confirmation). Returns the chosen path on
+ * success, an error on failure, or null when the user cancels the dialog.
+ */
+async function saveReceipt(defaultName: string, ext: string, content: string): Promise<SaveOutcome> {
+    try {
+        const filePath = await save({
+            defaultPath: defaultName,
+            filters: [{ name: `AeroVault receipt (.${ext})`, extensions: [ext] }],
+        });
+        if (!filePath) return null;
+        await writeTextFile(filePath, content);
+        return { ok: true, path: filePath };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
 }
 
 export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.ReactElement {
     const [revealed, setRevealed] = useState(0);
+    const [saveResult, setSaveResult] = useState<SaveOutcome>(null);
     const termRef = useRef<HTMLDivElement>(null);
+
+    const handleSave = async (ext: 'txt' | 'json', content: string) => {
+        const outcome = await saveReceipt(`${base}.${ext}`, ext, content);
+        if (outcome) setSaveResult(outcome);
+    };
 
     useEffect(() => {
         setRevealed(0);
@@ -118,7 +135,7 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
                         <Metric label={t('vault.receipt.operation')} value={`${report.operation} (v${report.vault_format})`} />
                         <Metric label={t('vault.receipt.profile')} value={report.profile ?? '-'} />
                         <Metric label={t('vault.receipt.files')} value={`${report.files} (${report.packed_files} packed)`} />
-                        <Metric label={t('vault.receipt.elapsed')} value={`${report.ms_total} ms`} />
+                        <Metric label={t('vault.receipt.elapsed')} value={`${report.time_elapsed_secs.toFixed(1)} s`} />
                         <Metric label={t('vault.receipt.chunks')} value={`${report.logical_chunks}L / ${report.new_physical_chunks}N / ${report.dedup_hits}D`} />
                         <Metric label={t('vault.receipt.plaintext')} value={fmtBytes(report.plaintext_bytes)} />
                         <Metric label={t('vault.receipt.encrypted')} value={fmtBytes(report.encrypted_bytes)} />
@@ -160,18 +177,31 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
 
                     <div className="flex flex-wrap items-center gap-2">
                         <button
-                            onClick={() => download(`${base}.txt`, buildReceiptText(report), 'text/plain')}
+                            onClick={() => handleSave('txt', buildReceiptText(report))}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100"
                         >
                             <Download size={13} /> {t('vault.receipt.exportTxt')}
                         </button>
                         <button
-                            onClick={() => download(`${base}.json`, JSON.stringify(report, null, 2), 'application/json')}
+                            onClick={() => handleSave('json', JSON.stringify(report, null, 2))}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100"
                         >
                             <Download size={13} /> {t('vault.receipt.exportJson')}
                         </button>
                     </div>
+
+                    {saveResult && saveResult.ok && (
+                        <div className="flex items-start gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 break-all">
+                            <Check size={13} className="mt-0.5 shrink-0" />
+                            <span>{t('vault.receipt.savedTo', { path: saveResult.path })}</span>
+                        </div>
+                    )}
+                    {saveResult && !saveResult.ok && (
+                        <div className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400 break-all">
+                            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                            <span>{t('vault.receipt.saveFailed', { error: saveResult.error })}</span>
+                        </div>
+                    )}
 
                     <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
                         {report.attribution}

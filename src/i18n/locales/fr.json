@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op} : {files} fichier(s), format v{fmt}",
         "errorCorrectionShards": "Fragments Correction d'erreurs",
         "errorCorrectionProtected": "Protégé par Correction d'erreurs",
-        "errorCorrectionOverhead": "Surcoût Correction d'erreurs"
+        "errorCorrectionOverhead": "Surcoût Correction d'erreurs",
+        "savedTo": "Enregistré dans {path}",
+        "saveFailed": "Impossible d'enregistrer : {error}"
       },
       "scrubErrorCorrection": "Vérifier la Correction d'erreurs",
       "compressionProfile": "Profil de compression",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Réparation terminée : {repaired} segment(s) réparé(s) avec succès",
       "noDamageNothing": "Aucun dommage ; rien à réparer.",
       "couldNotRepairAny": "Impossible de réparer le moindre des {damaged} (coffre laissé inchangé).",
-      "successfullyRepaired": "{repaired} segment(s) réparé(s) avec succès."
+      "successfullyRepaired": "{repaired} segment(s) réparé(s) avec succès.",
+      "addFolder": "Ajouter un dossier",
+      "addFolderHint": "Ajouter un dossier entier en conservant sa structure",
+      "addFolderUnsupported": "L'ajout d'un dossier est pris en charge sur les coffres v2 et v3",
+      "folderAdded": "Dossier ajouté",
+      "extractAll": "Tout extraire",
+      "extractAllHint": "Extraire tous les fichiers du coffre vers un dossier",
+      "extractedAll": "{count} fichier(s) extrait(s) vers {path}"
     },
     "cryptomator": {
       "title": "Coffre-fort Cryptomator",

@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} dosya, biçim v{fmt}",
         "errorCorrectionShards": "Hata Düzeltme parçaları",
         "errorCorrectionProtected": "Hata Düzeltme korumalı",
-        "errorCorrectionOverhead": "Hata Düzeltme ek yükü"
+        "errorCorrectionOverhead": "Hata Düzeltme ek yükü",
+        "savedTo": "{path} konumuna kaydedildi",
+        "saveFailed": "Kaydedilemedi: {error}"
       },
       "scrubErrorCorrection": "Hata Düzeltme denetimi",
       "compressionProfile": "Sıkıştırma profili",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "Onarım tamamlandı: {repaired} parça başarıyla onarıldı",
       "noDamageNothing": "Hasar yok; onarılacak bir şey yok.",
       "couldNotRepairAny": "{damaged} hasarlının hiçbiri onarılamadı (kasaya dokunulmadı).",
-      "successfullyRepaired": "{repaired} parça başarıyla onarıldı."
+      "successfullyRepaired": "{repaired} parça başarıyla onarıldı.",
+      "addFolder": "Klasör Ekle",
+      "addFolderHint": "Yapısını koruyarak bir klasörün tamamını ekleyin",
+      "addFolderUnsupported": "Klasör ekleme v2 ve v3 kasalarında desteklenir",
+      "folderAdded": "Klasör eklendi",
+      "extractAll": "Tümünü çıkar",
+      "extractAllHint": "Kasadaki her dosyayı bir klasöre çıkar",
+      "extractedAll": "{count} dosya {path} konumuna çıkarıldı"
     },
     "cryptomator": {
       "title": "Cryptomator Kasası",

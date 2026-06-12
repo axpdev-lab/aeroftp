@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}：{files} 个文件，格式 v{fmt}",
         "errorCorrectionShards": "纠错 分片",
         "errorCorrectionProtected": "受 纠错 保护",
-        "errorCorrectionOverhead": "纠错 开销"
+        "errorCorrectionOverhead": "纠错 开销",
+        "savedTo": "已保存到 {path}",
+        "saveFailed": "无法保存：{error}"
       },
       "scrubErrorCorrection": "纠错 校验扫描",
       "compressionProfile": "压缩配置",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "修复完成：已成功修复 {repaired} 个数据块",
       "noDamageNothing": "无损坏；无需修复。",
       "couldNotRepairAny": "{damaged} 个均无法修复（保管库未改动）。",
-      "successfullyRepaired": "已成功修复 {repaired} 个数据块。"
+      "successfullyRepaired": "已成功修复 {repaired} 个数据块。",
+      "addFolder": "添加文件夹",
+      "addFolderHint": "添加整个文件夹并保留其结构",
+      "addFolderUnsupported": "v2 和 v3 保险库支持添加文件夹",
+      "folderAdded": "已添加文件夹",
+      "extractAll": "全部解压",
+      "extractAllHint": "将保险库中的每个文件解压到文件夹",
+      "extractedAll": "已解压 {count} 个文件到 {path}"
     },
     "cryptomator": {
       "title": "Cryptomator 保险库",

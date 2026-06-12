@@ -2792,7 +2792,9 @@
         "activity": "AeroVault {op}: {files} फ़ाइल, प्रारूप v{fmt}",
         "errorCorrectionShards": "त्रुटि सुधार शार्ड",
         "errorCorrectionProtected": "त्रुटि सुधार संरक्षित",
-        "errorCorrectionOverhead": "त्रुटि सुधार ओवरहेड"
+        "errorCorrectionOverhead": "त्रुटि सुधार ओवरहेड",
+        "savedTo": "{path} में सहेजा गया",
+        "saveFailed": "सहेजा नहीं जा सका: {error}"
       },
       "scrubErrorCorrection": "त्रुटि सुधार स्क्रब करें",
       "compressionProfile": "संपीड़न प्रोफ़ाइल",
@@ -2845,7 +2847,14 @@
       "repairSuccess": "मरम्मत पूर्ण: {repaired} चंक की सफलतापूर्वक मरम्मत की गई",
       "noDamageNothing": "कोई क्षति नहीं; मरम्मत के लिए कुछ नहीं।",
       "couldNotRepairAny": "{damaged} में से किसी की भी मरम्मत नहीं की जा सकी (वॉल्ट अपरिवर्तित रखा गया)।",
-      "successfullyRepaired": "{repaired} चंक की सफलतापूर्वक मरम्मत की गई।"
+      "successfullyRepaired": "{repaired} चंक की सफलतापूर्वक मरम्मत की गई।",
+      "addFolder": "फ़ोल्डर जोड़ें",
+      "addFolderHint": "पूरा फ़ोल्डर उसकी संरचना बनाए रखते हुए जोड़ें",
+      "addFolderUnsupported": "फ़ोल्डर जोड़ना v2 और v3 वॉल्ट पर समर्थित है",
+      "folderAdded": "फ़ोल्डर जोड़ा गया",
+      "extractAll": "सभी निकालें",
+      "extractAllHint": "वॉल्ट की हर फ़ाइल को एक फ़ोल्डर में निकालें",
+      "extractedAll": "{count} फ़ाइल {path} में निकाली गईं"
     },
     "cryptomator": {
       "title": "Cryptomator वॉल्ट",
