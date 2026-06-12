@@ -47,7 +47,7 @@ pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 /// AeroFTP release (a sub-version surfaced in the TUI header). Beta 1.0.0 ships
 /// the IntroHub + multi-user dual-pane file manager with the full transfer set;
 /// later versions grow toward GUI parity (Discover/profile editing, etc).
-pub const TUI_VERSION: &str = "1.0.1-beta";
+pub const TUI_VERSION: &str = "1.0.2-alpha";
 
 #[allow(dead_code)]
 pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
@@ -349,7 +349,7 @@ fn render_fullscreen_header(
             " AeroFTP TUI",
             theme.accent_style().add_modifier(Modifier::BOLD),
         ),
-        Span::styled(format!(" {}", TUI_VERSION), theme.muted_style()),
+        Span::styled(format!(" rev {}", TUI_VERSION), theme.muted_style()),
         Span::styled("  \u{00b7}  ", theme.muted_style()),
         Span::styled(profile_name, Style::default().add_modifier(Modifier::BOLD)),
         Span::styled("  \u{00b7}  ", theme.muted_style()),
@@ -467,7 +467,7 @@ fn render_introhub_header(
                 " AeroFTP TUI",
                 theme.accent_style().add_modifier(Modifier::BOLD),
             ),
-            Span::styled(format!(" {}", TUI_VERSION), theme.muted_style()),
+            Span::styled(format!(" rev {}", TUI_VERSION), theme.muted_style()),
             Span::raw("   "),
             Span::styled(
                 "[ My Servers ]",
@@ -1208,11 +1208,14 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             frame.render_widget(body, popup);
         }
         TuiOverlay::ProfileForm(form) => {
-            use crate::cli_tui::overlay::{ProfileFormMode, PROFILE_FIELD_ORDER};
+            use crate::cli_tui::overlay::{
+                protocol_form_note, ProfileFormMode, PROFILE_FIELD_ORDER,
+            };
             // One row per field plus borders, a footer hint, and an optional
             // error line. Clamped to the available height.
             let rows = PROFILE_FIELD_ORDER.len() as u16;
-            let height = rows.saturating_add(5).min(area.height);
+            // Fields + borders + footer + an optional protocol note + error line.
+            let height = rows.saturating_add(7).min(area.height);
             let popup = centered_rect(70, height, area);
             frame.render_widget(Clear, popup);
 
@@ -1235,13 +1238,19 @@ fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
                         format!(
                             "{}{:>11}: ",
                             if selected { "> " } else { "  " },
-                            kind.label()
+                            kind.label_for(&form.protocol)
                         ),
                         label_style,
                     ),
                     Span::styled(form.field_display(*kind), value_style),
                     Span::styled(cursor.to_string(), theme.accent_style()),
                 ]));
+            }
+            // Honest note (option A) when the protocol has config this simple form
+            // cannot express (S3 advanced fields, OAuth/token protocols).
+            if let Some(note) = protocol_form_note(&form.protocol) {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(note, theme.muted_style())));
             }
             if let Some(err) = &form.error {
                 lines.push(Line::from(""));

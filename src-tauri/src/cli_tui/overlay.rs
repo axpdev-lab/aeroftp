@@ -166,6 +166,37 @@ impl ProfileFieldKind {
             ProfileFieldKind::Password => "Password",
         }
     }
+
+    /// Protocol-aware label: the generic Host/Username/Password fields map onto
+    /// protocol-specific concepts (S3 access keys, WebDAV URL), so the form shows
+    /// the right name instead of a misleading generic one. The stored value is the
+    /// same; only the label changes (option A - the rich per-protocol form with
+    /// bucket/region is the B roadmap).
+    pub fn label_for(self, protocol: &str) -> &'static str {
+        match (self, protocol) {
+            (ProfileFieldKind::Host, "s3") => "Endpoint",
+            (ProfileFieldKind::Username, "s3") => "Access Key",
+            (ProfileFieldKind::Password, "s3") => "Secret Key",
+            (ProfileFieldKind::Host, "webdav") => "URL",
+            _ => self.label(),
+        }
+    }
+}
+
+/// A one-line note for protocols whose full configuration cannot be expressed in
+/// this simple form, shown under the fields so the form is honest about its
+/// scope (option A). The generic fields still edit safely (a rename preserves the
+/// stored advanced options); the GUI remains the place for the rest.
+pub fn protocol_form_note(protocol: &str) -> Option<&'static str> {
+    if protocol == "s3" {
+        return Some("Advanced fields (bucket, region, endpoint) are set in the GUI.");
+    }
+    // Anything outside the basic, form-editable set (FTP/FTPS/SFTP/WebDAV/S3) is
+    // an OAuth/token protocol that cannot be created from a plain form.
+    if !TUI_FORM_PROTOCOLS.contains(&protocol) {
+        return Some("OAuth/token protocol: create or fully edit it in the GUI.");
+    }
+    None
 }
 
 /// State of the DiscoveryHub profile form (B4). Pure input state: navigation,
@@ -473,6 +504,24 @@ pub enum ConfirmKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn s3_form_uses_protocol_aware_labels_and_a_note() {
+        // S3 relabels the generic fields to S3 concepts; the value is unchanged.
+        assert_eq!(ProfileFieldKind::Host.label_for("s3"), "Endpoint");
+        assert_eq!(ProfileFieldKind::Username.label_for("s3"), "Access Key");
+        assert_eq!(ProfileFieldKind::Password.label_for("s3"), "Secret Key");
+        // A basic protocol keeps the generic labels.
+        assert_eq!(ProfileFieldKind::Host.label_for("ftp"), "Host");
+        assert_eq!(ProfileFieldKind::Username.label_for("sftp"), "Username");
+
+        // Notes: S3 points advanced fields to the GUI; OAuth protocols too; basic
+        // protocols have no note.
+        assert!(protocol_form_note("s3").unwrap().contains("bucket"));
+        assert!(protocol_form_note("onedrive").is_some());
+        assert!(protocol_form_note("ftp").is_none());
+        assert!(protocol_form_note("webdav").is_none());
+    }
 
     #[test]
     fn mkdir_prompt_rejects_separators_and_control_chars() {
