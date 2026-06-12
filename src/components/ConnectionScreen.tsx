@@ -4894,13 +4894,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     <p className="text-xs text-red-600 dark:text-red-400 mt-1">{megaWebdavError}</p>
                                                 )}
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    Username and Password are intentionally omitted. Use Fetch URL to read the address from MEGAcmd, or change the port here if MEGAcmd uses a custom one.
+                                                    Username and Password are intentionally omitted. AeroFTP runs "mega-webdav /" itself on connect to start the bridge and read this address: leaving it blank is fine. Fetch URL is an optional manual refresh; change the port here if MEGAcmd uses a custom one.
                                                 </p>
                                             </div>
                                         </div>
 
                                         {renderRightColumn({
-                                            disabled: !connectionParams.server,
+                                            // Endpoint may be left blank: buildProviderParams runs
+                                            // `mega-webdav /` on connect and fills it itself (#215).
+                                            disabled: false,
                                             buttonColorClass: 'bg-red-600 hover:bg-red-700',
                                             showCancelSaveAsNew: true,
                                         })}

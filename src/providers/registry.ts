@@ -1269,9 +1269,8 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://mega.io/cmd',
         setupInstructions: [
             'Install MEGAcmd from https://mega.io/cmd',
-            'Open the MEGAcmd terminal',
-            'Run: login your-email@example.com',
-            'Click Fetch URL above; AeroFTP runs webdav / for you and fills the endpoint',
+            'Open the MEGAcmd terminal and run: login your-email@example.com',
+            'Just connect: AeroFTP runs "mega-webdav /" itself to start the bridge and read its address (no manual step). Fetch URL above is an optional manual refresh.',
             'If you enabled TLS in MEGAcmd (webdav -tls /), switch the Protocol field below to HTTPS',
         ],
     },

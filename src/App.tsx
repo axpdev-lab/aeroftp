@@ -4422,6 +4422,39 @@ interface UpdateVerificationInfo {
   const buildProviderParams = async (params: ConnectionParams, initialPath: string | null) => {
     let effectiveParams = normalizeProviderConnectionParams(params);
 
+    // Issue #215: the MEGAcmd WebDAV bridge is a local daemon AeroFTP can start
+    // itself. Running `mega-webdav /` is idempotent (the same call that warms
+    // the bridge for the mega-df quota probe) and prints the served URL, so on
+    // every connect we run it for the user and adopt the fresh endpoint instead
+    // of asking them to copy it from the MEGAcmd terminal or click Fetch URL,
+    // covering Ehud's "set up for the first time / switched to / connection
+    // issues / in general on connect" cases. If MEGAcmd is not installed or not
+    // logged in the call fails and we keep the saved endpoint so the connect
+    // surfaces a clear error.
+    if (effectiveParams.providerId === 'megacmd-webdav') {
+      try {
+        const url = await invoke<string>('mega_webdav_url');
+        if (url) {
+          let port = effectiveParams.port || 4443;
+          try {
+            const parsed = new URL(url);
+            port = parsed.port ? (parseInt(parsed.port, 10) || port) : (parsed.protocol === 'https:' ? 443 : 80);
+          } catch { /* keep saved port */ }
+          effectiveParams = {
+            ...effectiveParams,
+            server: url,
+            username: '',
+            password: '',
+            port,
+            options: { ...(effectiveParams.options || {}), anonymous: true },
+          };
+        }
+      } catch {
+        // Bridge not reachable (MEGAcmd missing / not logged in): fall back to
+        // the saved endpoint.
+      }
+    }
+
     // GitHub OAuth mode: clear stale saved password, use held token from Device Flow.
     // On app restart (held empty), reload OAuth token from vault (saved under 'github_oauth_token').
     if (effectiveParams.protocol === 'github' &&
@@ -5039,7 +5072,11 @@ interface UpdateVerificationInfo {
     // FTP/FTPS and all provider-backed protocols use provider_connect
     if (isProvider) {
       const infinicloudWithApiKey = effectiveParams.providerId === 'infinicloud' && !!effectiveParams.options?.apiKey;
-      if ((!effectiveParams.server && !infinicloudWithApiKey && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
+      // Anonymous local bridges (MEGAcmd WebDAV) have no username and may have a
+      // blank endpoint: buildProviderParams runs `mega-webdav /` to fill it, so
+      // neither field is required here (#215).
+      const isAnonymousBridge = !!effectiveParams.options?.anonymous;
+      if ((!effectiveParams.server && !infinicloudWithApiKey && !isAnonymousBridge && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github' && !isAnonymousBridge)) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
