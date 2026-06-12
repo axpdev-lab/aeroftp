@@ -209,53 +209,53 @@ v4 = v3 + non-critical "error-correction.reed-solomon" extension (always critica
 - Forward-compat: pure v3 open/extract path ignores the non-critical ext and still works (magic stays AEROVAULT3 / format=3).
 - Pipeline position: Error Correction is the *fourth* first-class wrapper, after crypt (see #276 wrapper-stack discussion).
 
-### 11.1 Recovery placement: embedded vs detached (the `.aerovault.rec` sidecar)
+### 11.1 Recovery placement: embedded vs detached (the `.aerocorrect` sidecar)
 
 Parity can live in three places (`RecoveryPlacement`): `embedded` (the in-container
 extension above, recomputed on every seal), `detached` (a sibling recovery file,
 the container stays byte-identical to a plain vault), or `both`. The reconstruction
 engine is placement-agnostic (`reconstruct_from_error_correction` takes the parity
-bytes), so a detached file simply carries the same AVEC payload plus a framing
-header that binds it to one vault.
+bytes), so a detached file simply carries the same AVEC payloads in a framed sidecar.
 
-`.aerovault.rec` format (magic `AVREC1\0\0`):
+The detached file is the **unified `.aerocorrect` sidecar** shared with AeroSync
+(Ehud's #276 call: one detached parity format for any file, see
+[AEROCORRECT-SPEC](AEROCORRECT-SPEC.md) for the full binary layout). It supersedes
+the earlier vault-only `.aerovault.rec` / `AVREC1` format. The sidecar is content
+addressed: it binds to the SHA-256 of the whole container, not to a vault salt.
+
+A vault writes **exactly three segments** (windows) over its container file, in a
+fixed order, so each region's parity is found by position:
 
 ```
-[ magic              : 8  bytes ] = "AVREC1\0\0"
-[ vault_binding_id   : 32 bytes ] = BLAKE3("aerovault-recovery-binding-v1" || vault.salt)
-[ payload_len        : u64 LE   ]
-[ payload            : payload_len bytes ] = the AVEC data-block ErrorCorrectionPayload, verbatim
-[ manifest_parity_len: u64 LE   ]                                   (GAP-4 metadata bundle)
-[ manifest_parity    : manifest_parity_len bytes ] = AVEC parity over the encrypted manifest
-[ header_parity_len  : u64 LE   ]
-[ header_parity      : header_parity_len bytes ] = AVEC parity over the 1024-byte header
-[ file_checksum      : 32 bytes ] = BLAKE3 over magic..=header_parity
+segment 0 = header window   [0, HEADER_SIZE)        -> header parity
+segment 1 = manifest window [manifest_offset, +len) -> manifest (locator) parity
+segment 2 = data window     [data_offset, +len)     -> data-block parity
 ```
 
-- **Binding** is par2's Recovery Set ID equivalent: derived from the vault's public
-  per-vault salt (stable across edits, regenerated only on a password change), it
-  refuses a recovery file from another vault early. Staleness after an edit is NOT
-  the binding's job; it is caught downstream by the payload's per-shard checksums.
-- **GAP-4 metadata bundle (header + manifest locator)**: the detached container is
-  byte-identical to a plain vault, so it keeps no embedded extension. The sidecar
-  therefore also carries parity over the two metadata regions the container cannot
-  self-locate once damaged: the encrypted manifest (the "locator" scrub reads) and
-  the 1024-byte header (which cannot point at its own embedded recovery once it is
-  itself corrupt). `open_vault` rebuilds a corrupted header / manifest from the
-  sidecar, proving correctness by the header MAC / AEAD decrypt; `repair` persists
-  the healed region on the next seal. Both sections are absent (the file ends right
-  after `payload`) in a pre-bundle sidecar, which still parses as data-only.
-- **Self-integrity**: the trailing BLAKE3 detects corruption of the `.rec` file
-  before its parity is trusted.
-- **Add-later win**: `export-parity` writes/refreshes a sidecar for an existing
-  vault by reading the encrypted container without rewriting it (Kopia can only
-  enable ECC at repo creation). `strip-parity` drops the embedded copy, refusing
-  unless a sidecar exists (or `--force`) so a vault is never silently left with no
-  recovery.
-- **Source resolution** (scrub/repair): explicit `--parity` -> `<vault>.aerovault.rec`
-  -> embedded extension; the binding is verified before use and the chosen source
-  is reported (`parity_source`).
-- Default path: `secret.aerovault` -> `secret.aerovault.rec`.
+An empty `avec_bytes` for a segment means that region is not protected.
+
+- **Why three regions travel outside the container**: the header and manifest cannot
+  self-locate their own recovery once damaged (chicken-and-egg). `open_vault` rebuilds
+  a corrupted header / manifest from the sidecar, proving correctness by the header MAC
+  / AEAD decrypt; `repair` persists the healed region on the next seal.
+- **Binding**: the unified format stores the container's SHA-256 as its content binding.
+  The vault never enforces that binding on the repair path (a vault being repaired is
+  corrupt by definition, so its live bytes cannot match the good hash). The real safety
+  gate is unchanged: every reconstructed region is re-verified against the vault's
+  authenticated values (header MAC / manifest `cipher_hash`) before being persisted, so
+  a foreign or stale sidecar can only make a repair FAIL, never overwrite good data.
+- **Self-healing (sidecar format v2)**: the `.aerocorrect` locator (segment directory,
+  content hash, per-window geometry) is stored in triplicate with per-copy checksums, so
+  a lightly-corrupted sidecar still recovers instead of being rejected wholesale; the bulk
+  parity carries no wholesale checksum because each Reed-Solomon shard self-checks and a
+  rotted shard is routed around as an erasure. v1 sidecars are still read.
+- **Add-later win**: `export-parity` writes/refreshes a sidecar for an existing vault by
+  reading the encrypted container without rewriting it (Kopia can only enable ECC at repo
+  creation). `strip-parity` drops the embedded copy, refusing unless a sidecar exists (or
+  `--force`) so a vault is never silently left with no recovery.
+- **Source resolution** (scrub/repair): explicit `--parity` -> `<vault>.aerocorrect`
+  sidecar -> embedded extension; the chosen source is reported (`parity_source`).
+- Default path: `secret.aerovault` -> `secret.aerovault.aerocorrect`.
 
 ### 11.2 Overhead level (QR-style, #276)
 
@@ -269,8 +269,9 @@ default) and drives both embedded re-seals and detached `export-parity`; the gri
 also stored in the AVEC payload header, so reconstruction reads K/P back regardless of
 the level a vault was created with. Surfaced in AeroVault create (named buttons +
 slider + numeric input) and the CLI (`vault create --recovery-level low|medium|
-quartile|high|<N>`). AeroSync has no Error Correction integration yet, so its % UI
-lands with the AeroSync EC slice.
+quartile|high|<N>`). AeroSync now shares the same `.aerocorrect` sidecar and overhead
+levels via `sync --error-correction` / `--ec-max-overhead`, so a bit-rotted remote
+backup is repaired on the next pull from its sidecar, without the original.
 
 Implementation, tests, live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
 
