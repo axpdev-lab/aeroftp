@@ -204,6 +204,22 @@ impl PeerEndpoint {
         Ok(conn)
     }
 
+    /// Like [`accept`](Self::accept) but separates a CLOSED endpoint (`Ok(None)`,
+    /// terminal - the receive loop stops) from a PER-CONNECTION handshake failure
+    /// (`Err` - a single inbound dial that did not complete, e.g. a presence probe
+    /// racing relay congestion / "queues full"). The receive loop MUST keep
+    /// accepting after the latter: one bad inbound connection must NOT tear the
+    /// whole receiver down. Collapsing both into one fatal error is what let a
+    /// stray inbound handshake kill the receiver mid-session (Finding 6b').
+    pub async fn accept_or_closed(&self) -> Result<Option<Connection>> {
+        let Some(incoming) = self.endpoint.accept().await else {
+            return Ok(None); // endpoint itself is closed
+        };
+        let connecting = incoming.accept().context("incoming failed to accept")?;
+        let conn = connecting.await.context("connecting failed")?;
+        Ok(Some(conn))
+    }
+
     pub fn close(&self) {
         // Endpoint::close returns a future in this iroh version. This is a sync,
         // best-effort fire-and-forget teardown (callers that need a graceful close

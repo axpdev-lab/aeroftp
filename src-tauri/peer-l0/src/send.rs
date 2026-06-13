@@ -281,18 +281,30 @@ where
     info!(node_id = %ep.node_id(), "AeroShare receive loop listening");
 
     loop {
-        let conn = ep
-            .accept()
-            .await
-            .context("receive endpoint accept failed")?;
+        // Only a CLOSED endpoint (`Ok(None)`) stops the receiver. A per-connection
+        // handshake failure (`Err`) - a stray/aborted inbound dial, e.g. a presence
+        // probe racing relay congestion - is logged and SKIPPED, never fatal:
+        // otherwise one bad inbound connection kills the whole receiver mid-session
+        // (the intermittent "a later send crashed the receiver" - Finding 6b').
+        let conn = match ep.accept_or_closed().await {
+            Ok(Some(conn)) => conn,
+            Ok(None) => {
+                info!("AeroShare receive endpoint closed; receive loop stopping");
+                return Ok(());
+            }
+            Err(e) => {
+                warn!("AeroShare inbound connection failed (ignored, receiver stays up): {e:#}");
+                continue;
+            }
+        };
         // A presence ping: answer by closing cleanly, never an offer. Branch
         // BEFORE handle_incoming so a probe is not mistaken for a failed transfer.
         if conn.alpn().as_deref() == Some(PEER_PING_ALPN) {
             conn.close(0u32.into(), b"pong");
             continue;
         }
-        // Per-connection errors must not kill the loop (one bad sender shouldn't
-        // stop the receiver); only an endpoint-level accept failure (above) does.
+        // Per-transfer errors must not kill the loop either (one bad sender
+        // shouldn't stop the receiver).
         if let Err(e) = handle_incoming(&conn, &secret, &decide, &notify).await {
             warn!("AeroShare incoming transfer failed: {e}");
         }

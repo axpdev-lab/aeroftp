@@ -945,9 +945,11 @@ async fn receive_loop(
             tracing::info!("AeroShare: receive loop cancelled");
         }
         result = fut => {
+            // The loop now only returns on a CLOSED endpoint (Ok) or a fatal
+            // setup error (Err); a per-connection accept failure no longer ends it.
             if let Err(e) = result {
-                tracing::warn!("AeroShare receive loop ended with error: {e}");
-                emit_receiver_status(&app, "error", Some(e.to_string()));
+                tracing::warn!("AeroShare receive loop ended with error: {e:#}");
+                emit_receiver_status(&app, "error", Some(format!("{e:#}")));
             }
         }
     }

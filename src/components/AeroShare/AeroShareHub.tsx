@@ -139,8 +139,15 @@ export function AeroShareHub() {
   }, [receiving, error, t]);
 
   // ---- peer://incoming-offer: prompt or auto-accept ----
+  // The `disposed` guard tears the listener down even if `listen()` resolves
+  // AFTER the cleanup ran (React StrictMode's dev mount->unmount->mount races the
+  // async subscribe). Without it the first listener leaked and a second one
+  // registered, so one incoming offer was answered TWICE -> the second
+  // peerIncomingRespond hit "no longer pending" -> a FALSE red error toast on an
+  // otherwise successful receive.
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let disposed = false;
     (async () => {
       unlisten = await listen<PeerIncomingOfferEvent>('peer://incoming-offer', async (e) => {
         const offer = e.payload;
@@ -160,15 +167,23 @@ export function AeroShareHub() {
           setIncoming({ offer, alias });
         }
       });
+      if (disposed) {
+        unlisten();
+        unlisten = undefined;
+      }
     })();
     return () => {
+      disposed = true;
       if (unlisten) unlisten();
     };
   }, [error, info, t]);
 
   // ---- peer://incoming-status: outcome toasts + session inbox ----
+  // Same `disposed` guard as the incoming-offer listener: a leaked duplicate here
+  // would double every completed/failed toast.
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let disposed = false;
     (async () => {
       unlisten = await listen<PeerIncomingStatusEvent>('peer://incoming-status', async (e) => {
         const ev = e.payload;
@@ -191,8 +206,13 @@ export function AeroShareHub() {
         }
         // 'declined' is the user's own choice: no toast.
       });
+      if (disposed) {
+        unlisten();
+        unlisten = undefined;
+      }
     })();
     return () => {
+      disposed = true;
       if (unlisten) unlisten();
     };
   }, [success, error, t]);
