@@ -21,6 +21,9 @@ use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use aes_kw::Kek;
 use rand::RngCore;
 
+pub mod names;
+pub mod overlay;
+
 /// AES-256 key length, in bytes.
 pub const KEY_SIZE: usize = 32;
 /// Argon2id salt length, in bytes.

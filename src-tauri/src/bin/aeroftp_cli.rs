@@ -36472,197 +36472,6 @@ async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
 
 // ── Crypt Overlay - Transparent Encryption Layer ─────────────────
 
-mod crypt_overlay {
-    use aes_gcm::aead::{Aead, KeyInit};
-    use aes_gcm::{Aes256Gcm, Nonce as AesNonce};
-    #[allow(unused_imports)]
-    use aes_siv::Aes256SivAead; // needed for KeyInit trait
-    use argon2::Argon2;
-    use base64::Engine as _;
-    use hkdf::Hkdf;
-    use sha2::Sha256;
-
-    /// Magic bytes for AeroFTP encrypted files.
-    const CRYPT_MAGIC: &[u8; 4] = b"AECR";
-    const CRYPT_VERSION: u8 = 1;
-    /// Block size for streaming encryption (64 KB).
-    const BLOCK_SIZE: usize = 64 * 1024;
-    /// Argon2 parameters (balanced security vs performance).
-    const ARGON2_MEM_COST: u32 = 65536; // 64 MB
-    const ARGON2_TIME_COST: u32 = 3;
-    const ARGON2_PARALLELISM: u32 = 4;
-
-    /// Derive a 32-byte master key from a password and salt.
-    pub fn derive_master_key(password: &str, salt: &[u8; 16]) -> [u8; 32] {
-        let mut key = [0u8; 32];
-        let params = argon2::Params::new(
-            ARGON2_MEM_COST,
-            ARGON2_TIME_COST,
-            ARGON2_PARALLELISM,
-            Some(32),
-        )
-        .expect("valid argon2 params");
-        let argon = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-        argon
-            .hash_password_into(password.as_bytes(), salt, &mut key)
-            .expect("argon2 hash");
-        key
-    }
-
-    /// Derive a per-file encryption key from the master key and a nonce.
-    fn derive_file_key(master_key: &[u8; 32], nonce: &[u8; 12]) -> [u8; 32] {
-        let hk = Hkdf::<Sha256>::new(Some(nonce), master_key);
-        let mut file_key = [0u8; 32];
-        hk.expand(b"aeroftp-crypt-file-key", &mut file_key)
-            .expect("hkdf expand");
-        file_key
-    }
-
-    /// Derive a key for filename encryption (AES-SIV needs 64 bytes = 2 x 256-bit keys).
-    fn derive_name_key(master_key: &[u8; 32]) -> [u8; 64] {
-        let hk = Hkdf::<Sha256>::new(Some(b"aeroftp-name-salt"), master_key);
-        let mut name_key = [0u8; 64];
-        hk.expand(b"aeroftp-crypt-name-key", &mut name_key)
-            .expect("hkdf expand");
-        name_key
-    }
-
-    /// Encrypt a filename using AES-SIV → base64url (no padding).
-    pub fn encrypt_filename(master_key: &[u8; 32], plaintext_name: &str) -> String {
-        let name_key = derive_name_key(master_key);
-        let mut cipher = aes_siv::siv::Aes256Siv::new((&name_key).into());
-        let ciphertext = cipher
-            .encrypt([&[] as &[u8]], plaintext_name.as_bytes())
-            .expect("aes-siv encrypt");
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(ciphertext)
-    }
-
-    /// Decrypt a filename from base64url using AES-SIV.
-    pub fn decrypt_filename(master_key: &[u8; 32], encrypted_name: &str) -> Option<String> {
-        let name_key = derive_name_key(master_key);
-        let mut cipher = aes_siv::siv::Aes256Siv::new((&name_key).into());
-        let ciphertext = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(encrypted_name)
-            .ok()?;
-        let plaintext = cipher.decrypt([&[] as &[u8]], &ciphertext).ok()?;
-        String::from_utf8(plaintext).ok()
-    }
-
-    /// Encrypt file data: plaintext bytes → crypt format bytes.
-    pub fn encrypt_data(master_key: &[u8; 32], plaintext: &[u8]) -> Vec<u8> {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-
-        // Generate random master nonce
-        let mut master_nonce = [0u8; 12];
-        rng.fill(&mut master_nonce);
-
-        // Derive per-file key
-        let file_key = derive_file_key(master_key, &master_nonce);
-        let cipher = Aes256Gcm::new((&file_key).into());
-
-        // Build output: magic + version + nonce + encrypted blocks
-        let mut output = Vec::with_capacity(
-            4 + 1 + 12 + plaintext.len() + (plaintext.len() / BLOCK_SIZE + 1) * 16,
-        );
-        output.extend_from_slice(CRYPT_MAGIC);
-        output.push(CRYPT_VERSION);
-        output.extend_from_slice(&master_nonce);
-
-        // Encrypt in blocks
-        for (block_idx, chunk) in plaintext.chunks(BLOCK_SIZE).enumerate() {
-            // Per-block nonce: master_nonce XOR block_index
-            let mut block_nonce = master_nonce;
-            let idx_bytes = (block_idx as u32).to_le_bytes();
-            for i in 0..4 {
-                block_nonce[i] ^= idx_bytes[i];
-            }
-            let nonce = AesNonce::from_slice(&block_nonce);
-            let ciphertext = cipher.encrypt(nonce, chunk).expect("aes-gcm encrypt");
-            output.extend_from_slice(&ciphertext);
-        }
-
-        output
-    }
-
-    /// Decrypt file data: crypt format bytes → plaintext bytes.
-    pub fn decrypt_data(master_key: &[u8; 32], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-        if ciphertext.len() < 4 + 1 + 12 {
-            return Err("data too short".into());
-        }
-        if &ciphertext[0..4] != CRYPT_MAGIC {
-            return Err("not an AeroFTP encrypted file".into());
-        }
-        if ciphertext[4] != CRYPT_VERSION {
-            return Err(format!("unsupported crypt version {}", ciphertext[4]));
-        }
-
-        let master_nonce: [u8; 12] = ciphertext[5..17].try_into().unwrap();
-        let file_key = derive_file_key(master_key, &master_nonce);
-        let cipher = Aes256Gcm::new((&file_key).into());
-
-        let data = &ciphertext[17..];
-        let block_cipher_size = BLOCK_SIZE + 16; // data + GCM tag
-        let mut plaintext = Vec::with_capacity(data.len());
-
-        let mut block_idx = 0usize;
-        let mut pos = 0usize;
-        while pos < data.len() {
-            let end = (pos + block_cipher_size).min(data.len());
-            let block = &data[pos..end];
-
-            let mut block_nonce = master_nonce;
-            let idx_bytes = (block_idx as u32).to_le_bytes();
-            for i in 0..4 {
-                block_nonce[i] ^= idx_bytes[i];
-            }
-            let nonce = AesNonce::from_slice(&block_nonce);
-            let decrypted = cipher
-                .decrypt(nonce, block)
-                .map_err(|_| format!("decryption failed at block {}", block_idx))?;
-            plaintext.extend_from_slice(&decrypted);
-
-            pos = end;
-            block_idx += 1;
-        }
-
-        Ok(plaintext)
-    }
-
-    /// Initialize a crypt overlay directory on a remote.
-    /// Creates a `.aeroftp-crypt.json` config file with the salt.
-    pub fn crypt_init_config(salt: &[u8; 16]) -> String {
-        serde_json::json!({
-            "version": CRYPT_VERSION,
-            "cipher": "AES-256-GCM",
-            "filename_cipher": "AES-256-SIV",
-            "kdf": "Argon2id",
-            "salt": base64::engine::general_purpose::STANDARD.encode(salt),
-            "block_size": BLOCK_SIZE,
-        })
-        .to_string()
-    }
-
-    /// Parse the crypt config to extract the salt.
-    pub fn crypt_parse_config(config_json: &str) -> Result<[u8; 16], String> {
-        let val: serde_json::Value = serde_json::from_str(config_json)
-            .map_err(|e| format!("invalid crypt config: {}", e))?;
-        let salt_b64 = val
-            .get("salt")
-            .and_then(|v| v.as_str())
-            .ok_or("missing salt in crypt config")?;
-        let salt_bytes = base64::engine::general_purpose::STANDARD
-            .decode(salt_b64)
-            .map_err(|e| format!("invalid salt: {}", e))?;
-        if salt_bytes.len() != 16 {
-            return Err("salt must be 16 bytes".into());
-        }
-        let mut salt = [0u8; 16];
-        salt.copy_from_slice(&salt_bytes);
-        Ok(salt)
-    }
-}
-
 /// CLI commands for crypt overlay operations.
 async fn cmd_crypt_init(
     url: &str,
@@ -36671,9 +36480,15 @@ async fn cmd_crypt_init(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    use rand::Rng;
-    // Validate password is usable (derive key to verify)
-    let _verify_key = crypt_overlay::derive_master_key(password, &[0u8; 16]);
+    use ftp_client_gui_lib::aerocrypt::overlay;
+    // New overlays are created as AECR v2 on the shared engine. Validate the
+    // password by deriving the master key before touching the remote.
+    let salt = overlay::random_salt_v2();
+    let cfg = overlay::OverlayConfig::V2 { salt };
+    if let Err(e) = overlay::derive_master_key(&cfg, password) {
+        print_error(format, &format!("Invalid password: {}", e), 6);
+        return 6;
+    }
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -36681,10 +36496,7 @@ async fn cmd_crypt_init(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
 
-    let mut salt = [0u8; 16];
-    rand::thread_rng().fill(&mut salt);
-
-    let config_json = crypt_overlay::crypt_init_config(&salt);
+    let config_json = overlay::init_config_v2(&salt);
     let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
 
     // Write config to tempfile, upload
@@ -36701,8 +36513,10 @@ async fn cmd_crypt_init(
             } else if !cli.quiet {
                 println!("Crypt overlay initialized at {}", base_path);
                 println!("Config: {}", config_path);
-                println!("Cipher: AES-256-GCM (content) + AES-256-SIV (filenames)");
-                println!("KDF: Argon2id (64 MB, 3 iterations)");
+                println!(
+                    "Cipher: AES-256-GCM-SIV (content) + AES-256-KW (key wrap) + AES-256-SIV (filenames)"
+                );
+                println!("KDF: Argon2id (128 MB, 4 iterations)");
             }
             0
         }
@@ -36720,6 +36534,7 @@ async fn cmd_crypt_ls(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    use ftp_client_gui_lib::aerocrypt::{names, overlay};
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -36737,15 +36552,21 @@ async fn cmd_crypt_ls(
         }
     };
     let config_str = String::from_utf8_lossy(&config_data);
-    let salt = match crypt_overlay::crypt_parse_config(&config_str) {
-        Ok(s) => s,
+    let cfg = match overlay::parse_config(&config_str) {
+        Ok(c) => c,
         Err(e) => {
             print_error(format, &format!("Invalid crypt config: {}", e), 5);
             return 5;
         }
     };
 
-    let master_key = crypt_overlay::derive_master_key(password, &salt);
+    let master_key = match overlay::derive_master_key(&cfg, password) {
+        Ok(k) => k,
+        Err(e) => {
+            print_error(format, &format!("Key derivation failed: {}", e), 6);
+            return 6;
+        }
+    };
 
     // List directory and decrypt filenames
     let entries = match provider.list(&base_path).await {
@@ -36765,7 +36586,7 @@ async fn cmd_crypt_ls(
         if entry.name == ".aeroftp-crypt.json" {
             continue;
         }
-        let decrypted_name = crypt_overlay::decrypt_filename(&master_key, &entry.name)
+        let decrypted_name = names::decrypt_filename(&master_key, &entry.name)
             .unwrap_or_else(|| format!("[encrypted: {}]", entry.name));
         decrypted.push((decrypted_name, entry.name.clone(), entry.is_dir, entry.size));
     }
@@ -36803,6 +36624,7 @@ async fn cmd_crypt_put(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    use ftp_client_gui_lib::aerocrypt::{names, overlay};
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -36819,15 +36641,21 @@ async fn cmd_crypt_put(
             return 5;
         }
     };
-    let salt = match crypt_overlay::crypt_parse_config(&String::from_utf8_lossy(&config_data)) {
-        Ok(s) => s,
+    let cfg = match overlay::parse_config(&String::from_utf8_lossy(&config_data)) {
+        Ok(c) => c,
         Err(e) => {
             print_error(format, &e, 5);
             return 5;
         }
     };
 
-    let master_key = crypt_overlay::derive_master_key(password, &salt);
+    let master_key = match overlay::derive_master_key(&cfg, password) {
+        Ok(k) => k,
+        Err(e) => {
+            print_error(format, &format!("Key derivation failed: {}", e), 6);
+            return 6;
+        }
+    };
     let start = Instant::now();
 
     // Read local file
@@ -36840,14 +36668,26 @@ async fn cmd_crypt_put(
     };
 
     // Encrypt content
-    let ciphertext = crypt_overlay::encrypt_data(&master_key, &plaintext);
+    let ciphertext = match overlay::encrypt_data(&cfg, &master_key, &plaintext) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &format!("Encryption failed: {}", e), 99);
+            return 99;
+        }
+    };
 
     // Encrypt filename
     let filename = Path::new(local_file)
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| local_file.to_string());
-    let encrypted_name = crypt_overlay::encrypt_filename(&master_key, &filename);
+    let encrypted_name = match names::encrypt_filename(&master_key, &filename) {
+        Ok(n) => n,
+        Err(e) => {
+            print_error(format, &format!("Filename encryption failed: {}", e), 99);
+            return 99;
+        }
+    };
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
 
     // Write encrypted data to tempfile, upload
@@ -36888,6 +36728,7 @@ async fn cmd_crypt_get(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    use ftp_client_gui_lib::aerocrypt::{names, overlay};
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -36904,19 +36745,31 @@ async fn cmd_crypt_get(
             return 5;
         }
     };
-    let salt = match crypt_overlay::crypt_parse_config(&String::from_utf8_lossy(&config_data)) {
-        Ok(s) => s,
+    let cfg = match overlay::parse_config(&String::from_utf8_lossy(&config_data)) {
+        Ok(c) => c,
         Err(e) => {
             print_error(format, &e, 5);
             return 5;
         }
     };
 
-    let master_key = crypt_overlay::derive_master_key(password, &salt);
+    let master_key = match overlay::derive_master_key(&cfg, password) {
+        Ok(k) => k,
+        Err(e) => {
+            print_error(format, &format!("Key derivation failed: {}", e), 6);
+            return 6;
+        }
+    };
     let start = Instant::now();
 
     // Encrypt the decrypted name to find the remote file
-    let enc = crypt_overlay::encrypt_filename(&master_key, file_name);
+    let enc = match names::encrypt_filename(&master_key, file_name) {
+        Ok(n) => n,
+        Err(e) => {
+            print_error(format, &format!("Filename encryption failed: {}", e), 99);
+            return 99;
+        }
+    };
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), enc);
 
     // Download
@@ -36933,7 +36786,7 @@ async fn cmd_crypt_get(
     };
 
     // Decrypt
-    let plaintext = match crypt_overlay::decrypt_data(&master_key, &ciphertext) {
+    let plaintext = match overlay::decrypt_data(&master_key, &ciphertext) {
         Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("Decryption failed: {}", e), 99);
@@ -36945,7 +36798,7 @@ async fn cmd_crypt_get(
     let dest = if local_dest.is_empty() || local_dest == "." {
         // Use decrypted original filename
         let enc_basename = remote_file.rsplit('/').next().unwrap_or("decrypted");
-        crypt_overlay::decrypt_filename(&master_key, enc_basename)
+        names::decrypt_filename(&master_key, enc_basename)
             .unwrap_or_else(|| "decrypted".to_string())
     } else {
         local_dest.to_string()
