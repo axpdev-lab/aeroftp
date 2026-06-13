@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Canolig",
             "recoveryLevelQuartile": "Cwartel",
             "recoveryLevelHigh": "Uchel",
-            "recoveryLevelHint": "Mae gorbenion uwch yn adfer mwy o ddifrod ond yn cynyddu'r data adfer. Arddull QR: Isel ~7%, Canolig ~15%, Cwartel ~25%, Uchel ~30%."
+            "recoveryLevelHint": "Mae gorbenion uwch yn adfer mwy o ddifrod ond yn cynyddu'r data adfer. Arddull QR: Isel ~7%, Canolig ~15%, Cwartel ~25%, Uchel ~30%.",
+            "compressionProfile": "Proffil cywasgu",
+            "enableErrorCorrection": "Galluogi Cywiro Gwallau Reed-Solomon",
+            "errorCorrectionDesc": "Yn ychwanegu dianghenraid i adfer rhag pydredd didau ar ddarnau wedi'u hamgryptio. Dewisol (gall darllenwyr v3 ei agor o hyd)."
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",

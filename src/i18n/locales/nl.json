@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Gemiddeld",
             "recoveryLevelQuartile": "Kwartiel",
             "recoveryLevelHigh": "Hoog",
-            "recoveryLevelHint": "Hogere overhead herstelt meer schade maar vergroot de herstelgegevens. QR-stijl: Laag ~7%, Gemiddeld ~15%, Kwartiel ~25%, Hoog ~30%."
+            "recoveryLevelHint": "Hogere overhead herstelt meer schade maar vergroot de herstelgegevens. QR-stijl: Laag ~7%, Gemiddeld ~15%, Kwartiel ~25%, Hoog ~30%.",
+            "compressionProfile": "Compressieprofiel",
+            "enableErrorCorrection": "Reed-Solomon-foutcorrectie inschakelen",
+            "errorCorrectionDesc": "Voegt redundantie toe voor herstel van bitrot op versleutelde delen. Niet-kritiek (v3-lezers kunnen het nog steeds openen)."
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

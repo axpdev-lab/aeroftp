@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Ertaina",
             "recoveryLevelQuartile": "Kuartila",
             "recoveryLevelHigh": "Altua",
-            "recoveryLevelHint": "Gainkostu handiagoak kalte gehiago berreskuratzen du baina berreskuratze datuak handitzen ditu. QR estiloa: Baxua ~7%, Ertaina ~15%, Kuartila ~25%, Altua ~30%."
+            "recoveryLevelHint": "Gainkostu handiagoak kalte gehiago berreskuratzen du baina berreskuratze datuak handitzen ditu. QR estiloa: Baxua ~7%, Ertaina ~15%, Kuartila ~25%, Altua ~30%.",
+            "compressionProfile": "Konpresio-profila",
+            "enableErrorCorrection": "Gaitu Reed-Solomon errore-zuzenketa",
+            "errorCorrectionDesc": "Erredundantzia gehitzen du zatiki zifratuetako bit-hondatzetik berreskuratzeko. Ez kritikoa (v3 irakurleek ireki dezakete oraindik)."
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

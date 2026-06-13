@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "中",
             "recoveryLevelQuartile": "四分位",
             "recoveryLevelHigh": "高",
-            "recoveryLevelHint": "开销越高可恢复的损坏越多，但恢复数据也越大。QR 风格：低 ~7%、中 ~15%、四分位 ~25%、高 ~30%。"
+            "recoveryLevelHint": "开销越高可恢复的损坏越多，但恢复数据也越大。QR 风格：低 ~7%、中 ~15%、四分位 ~25%、高 ~30%。",
+            "compressionProfile": "压缩配置",
+            "enableErrorCorrection": "启用 Reed-Solomon 纠错",
+            "errorCorrectionDesc": "为加密块添加冗余以从位衰减中恢复。非关键（v3 阅读器仍可打开）。"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

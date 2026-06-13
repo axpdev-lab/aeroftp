@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Wastani",
             "recoveryLevelQuartile": "Robo",
             "recoveryLevelHigh": "Juu",
-            "recoveryLevelHint": "Gharama kubwa zaidi hurejesha uharibifu zaidi lakini huongeza data ya urejeshaji. Mtindo wa QR: Chini ~7%, Wastani ~15%, Robo ~25%, Juu ~30%."
+            "recoveryLevelHint": "Gharama kubwa zaidi hurejesha uharibifu zaidi lakini huongeza data ya urejeshaji. Mtindo wa QR: Chini ~7%, Wastani ~15%, Robo ~25%, Juu ~30%.",
+            "compressionProfile": "Wasifu wa mgandamizo",
+            "enableErrorCorrection": "Washa Usahihishaji wa Hitilafu wa Reed-Solomon",
+            "errorCorrectionDesc": "Huongeza uziada kwa urejeshaji kutoka kwa uharibifu wa biti kwenye vipande vilivyosimbwa. Si muhimu sana (visomaji vya v3 bado vinaweza kuifungua)."
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

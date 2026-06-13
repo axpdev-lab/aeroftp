@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Střední",
             "recoveryLevelQuartile": "Kvartil",
             "recoveryLevelHigh": "Vysoká",
-            "recoveryLevelHint": "Vyšší režie obnoví více poškození, ale zvětší data obnovy. Styl QR: Nízká ~7%, Střední ~15%, Kvartil ~25%, Vysoká ~30%."
+            "recoveryLevelHint": "Vyšší režie obnoví více poškození, ale zvětší data obnovy. Styl QR: Nízká ~7%, Střední ~15%, Kvartil ~25%, Vysoká ~30%.",
+            "compressionProfile": "Profil komprese",
+            "enableErrorCorrection": "Povolit opravu chyb Reed-Solomon",
+            "errorCorrectionDesc": "Přidává redundanci pro obnovu při poškození bitů u šifrovaných bloků. Není kritické (čtečky v3 jej stále otevřou)."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "중간",
             "recoveryLevelQuartile": "사분위",
             "recoveryLevelHigh": "높음",
-            "recoveryLevelHint": "오버헤드가 클수록 더 많은 손상을 복구하지만 복구 데이터가 커집니다. QR 스타일: 낮음 ~7%, 중간 ~15%, 사분위 ~25%, 높음 ~30%."
+            "recoveryLevelHint": "오버헤드가 클수록 더 많은 손상을 복구하지만 복구 데이터가 커집니다. QR 스타일: 낮음 ~7%, 중간 ~15%, 사분위 ~25%, 높음 ~30%.",
+            "compressionProfile": "압축 프로필",
+            "enableErrorCorrection": "Reed-Solomon 오류 정정 사용",
+            "errorCorrectionDesc": "암호화된 청크의 비트 부패 복구를 위해 중복성을 추가합니다. 비필수 (v3 리더에서도 열 수 있음)."
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",

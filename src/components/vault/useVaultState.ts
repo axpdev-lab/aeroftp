@@ -237,15 +237,15 @@ export const securityLevels = {
         color: 'text-amber-400',
         bgColor: 'bg-amber-600',
         borderColor: 'border-amber-500',
-        label: 'Beta',
+        label: 'Archive',
         version: 3,
         cascade: false,
         features: ['Gear-CDC chunking', 'Chunk deduplication', 'Zstd per chunk', 'AES-256-GCM-SIV'],
-        description: 'Deduplicated archive · zstd chunks · Draft v3'
+        description: 'Deduplicated archive · zstd chunks · v3'
     }
 };
 
-// Error Correction (Reed-Solomon error correction) is a Phase 1 stub on top of v3 experimental.
+// Error Correction (Reed-Solomon) extends a v3 vault with recoverable parity.
 // When enabled on create, uses vault_v3_create_with_error_correction (non-critical extension).
 // Scrub/repair exposed via dedicated commands.
 

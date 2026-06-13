@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Katamtaman",
             "recoveryLevelQuartile": "Quartile",
             "recoveryLevelHigh": "Mataas",
-            "recoveryLevelHint": "Mas mataas na overhead ay nakakabawi ng mas maraming pinsala ngunit lumalaki ang recovery data. Estilong QR: Mababa ~7%, Katamtaman ~15%, Quartile ~25%, Mataas ~30%."
+            "recoveryLevelHint": "Mas mataas na overhead ay nakakabawi ng mas maraming pinsala ngunit lumalaki ang recovery data. Estilong QR: Mababa ~7%, Katamtaman ~15%, Quartile ~25%, Mataas ~30%.",
+            "compressionProfile": "Profile ng compression",
+            "enableErrorCorrection": "Paganahin ang Reed-Solomon Error Correction",
+            "errorCorrectionDesc": "Nagdaragdag ng redundancy para sa pag-recover mula sa bit-rot sa mga naka-encrypt na chunk. Hindi kritikal (mababuksan pa rin ng mga v3 reader)."
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

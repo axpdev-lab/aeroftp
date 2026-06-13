@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Średni",
             "recoveryLevelQuartile": "Kwartyl",
             "recoveryLevelHigh": "Wysoki",
-            "recoveryLevelHint": "Większy narzut odzyskuje więcej uszkodzeń, ale zwiększa dane odzyskiwania. Styl QR: Niski ~7%, Średni ~15%, Kwartyl ~25%, Wysoki ~30%."
+            "recoveryLevelHint": "Większy narzut odzyskuje więcej uszkodzeń, ale zwiększa dane odzyskiwania. Styl QR: Niski ~7%, Średni ~15%, Kwartyl ~25%, Wysoki ~30%.",
+            "compressionProfile": "Profil kompresji",
+            "enableErrorCorrection": "Włącz korekcję błędów Reed-Solomon",
+            "errorCorrectionDesc": "Dodaje nadmiarowość do odzyskiwania po degradacji bitów w zaszyfrowanych fragmentach. Niekrytyczne (czytniki v3 nadal mogą je otworzyć)."
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

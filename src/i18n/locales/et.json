@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Keskmine",
             "recoveryLevelQuartile": "Kvartiil",
             "recoveryLevelHigh": "Kõrge",
-            "recoveryLevelHint": "Suurem lisakulu taastab rohkem kahjustusi, kuid suurendab taasteandmeid. QR-stiil: Madal ~7%, Keskmine ~15%, Kvartiil ~25%, Kõrge ~30%."
+            "recoveryLevelHint": "Suurem lisakulu taastab rohkem kahjustusi, kuid suurendab taasteandmeid. QR-stiil: Madal ~7%, Keskmine ~15%, Kvartiil ~25%, Kõrge ~30%.",
+            "compressionProfile": "Tihendusprofiil",
+            "enableErrorCorrection": "Luba Reed-Solomoni veaparandus",
+            "errorCorrectionDesc": "Lisab liiasust bitiriknemisest taastumiseks krüptitud plokkidel. Mittekriitiline (v3 lugejad saavad selle ikka avada)."
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

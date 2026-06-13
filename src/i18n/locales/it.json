@@ -2991,6 +2991,9 @@
                 "errorCorrectionOverhead": "Overhead Correzione errori"
             },
             "scrubErrorCorrection": "Scansiona Correzione errori",
+            "compressionProfile": "Profilo di compressione",
+            "enableErrorCorrection": "Abilita Correzione errori Reed-Solomon",
+            "errorCorrectionDesc": "Aggiunge ridondanza per il recupero da bit-rot sui chunk cifrati. Non critico (i lettori v3 possono comunque aprire).",
             "recoveryPlacement": "Posizione del ripristino",
             "recoveryLevel": "Livello di ripristino (overhead di spazio)",
             "recoveryLevelLow": "Basso",

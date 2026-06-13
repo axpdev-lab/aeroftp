@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Sederhana",
             "recoveryLevelQuartile": "Kuartil",
             "recoveryLevelHigh": "Tinggi",
-            "recoveryLevelHint": "Overhed lebih tinggi memulihkan lebih banyak kerosakan tetapi membesarkan data pemulihan. Gaya QR: Rendah ~7%, Sederhana ~15%, Kuartil ~25%, Tinggi ~30%."
+            "recoveryLevelHint": "Overhed lebih tinggi memulihkan lebih banyak kerosakan tetapi membesarkan data pemulihan. Gaya QR: Rendah ~7%, Sederhana ~15%, Kuartil ~25%, Tinggi ~30%.",
+            "compressionProfile": "Profil pemampatan",
+            "enableErrorCorrection": "Dayakan Pembetulan Ralat Reed-Solomon",
+            "errorCorrectionDesc": "Menambah redundansi untuk pemulihan daripada reput bit pada cebisan tersulit. Tidak kritikal (pembaca v3 masih boleh membukanya)."
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

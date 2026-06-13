@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Közepes",
             "recoveryLevelQuartile": "Kvartilis",
             "recoveryLevelHigh": "Magas",
-            "recoveryLevelHint": "A nagyobb többlet több kárt állít helyre, de növeli a helyreállítási adatokat. QR-stílus: Alacsony ~7%, Közepes ~15%, Kvartilis ~25%, Magas ~30%."
+            "recoveryLevelHint": "A nagyobb többlet több kárt állít helyre, de növeli a helyreállítási adatokat. QR-stílus: Alacsony ~7%, Közepes ~15%, Kvartilis ~25%, Magas ~30%.",
+            "compressionProfile": "Tömörítési profil",
+            "enableErrorCorrection": "Reed-Solomon hibajavítás engedélyezése",
+            "errorCorrectionDesc": "Redundanciát ad a bitromlásból való helyreállításhoz a titkosított darabokon. Nem kritikus (a v3 olvasók továbbra is meg tudják nyitni)."
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

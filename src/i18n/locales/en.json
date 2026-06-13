@@ -3940,6 +3940,9 @@
                 "errorCorrectionOverhead": "Error Correction overhead"
             },
             "scrubErrorCorrection": "Scrub Error Correction",
+            "compressionProfile": "Compression Profile",
+            "enableErrorCorrection": "Enable Reed-Solomon Error Correction",
+            "errorCorrectionDesc": "Adds redundancy for bit-rot recovery on encrypted chunks. Non-critical (v3 readers can still open).",
             "recoveryPlacement": "Recovery placement",
             "recoveryLevel": "Recovery level (storage overhead)",
             "recoveryLevelLow": "Low",

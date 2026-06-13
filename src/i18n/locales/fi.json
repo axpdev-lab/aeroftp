@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Keskitaso",
             "recoveryLevelQuartile": "Kvartiili",
             "recoveryLevelHigh": "Korkea",
-            "recoveryLevelHint": "Suurempi lisäkuorma palauttaa enemmän vaurioita mutta kasvattaa palautustietoja. QR-tyyli: Matala ~7%, Keskitaso ~15%, Kvartiili ~25%, Korkea ~30%."
+            "recoveryLevelHint": "Suurempi lisäkuorma palauttaa enemmän vaurioita mutta kasvattaa palautustietoja. QR-tyyli: Matala ~7%, Keskitaso ~15%, Kvartiili ~25%, Korkea ~30%.",
+            "compressionProfile": "Pakkausprofiili",
+            "enableErrorCorrection": "Ota käyttöön Reed-Solomon-virheenkorjaus",
+            "errorCorrectionDesc": "Lisää redundanssia bittien rappeutumisesta palautumiseen salatuissa lohkoissa. Ei kriittinen (v3-lukijat voivat yhä avata sen)."
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

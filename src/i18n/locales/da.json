@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Mellem",
             "recoveryLevelQuartile": "Kvartil",
             "recoveryLevelHigh": "Høj",
-            "recoveryLevelHint": "Højere omkostning genopretter mere skade, men øger gendannelsesdata. QR-stil: Lav ~7%, Mellem ~15%, Kvartil ~25%, Høj ~30%."
+            "recoveryLevelHint": "Højere omkostning genopretter mere skade, men øger gendannelsesdata. QR-stil: Lav ~7%, Mellem ~15%, Kvartil ~25%, Høj ~30%.",
+            "compressionProfile": "Komprimeringsprofil",
+            "enableErrorCorrection": "Aktivér Reed-Solomon-fejlkorrektion",
+            "errorCorrectionDesc": "Tilføjer redundans til gendannelse efter bit-forringelse på krypterede dele. Ikke-kritisk (v3-læsere kan stadig åbne den)."
         },
         "cryptomator": {
             "title": "Cryptomator-boks",

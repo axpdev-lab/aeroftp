@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Sedang",
             "recoveryLevelQuartile": "Kuartil",
             "recoveryLevelHigh": "Tinggi",
-            "recoveryLevelHint": "Overhead lebih tinggi memulihkan lebih banyak kerusakan tetapi memperbesar data pemulihan. Gaya QR: Rendah ~7%, Sedang ~15%, Kuartil ~25%, Tinggi ~30%."
+            "recoveryLevelHint": "Overhead lebih tinggi memulihkan lebih banyak kerusakan tetapi memperbesar data pemulihan. Gaya QR: Rendah ~7%, Sedang ~15%, Kuartil ~25%, Tinggi ~30%.",
+            "compressionProfile": "Profil kompresi",
+            "enableErrorCorrection": "Aktifkan Koreksi Galat Reed-Solomon",
+            "errorCorrectionDesc": "Menambahkan redundansi untuk pemulihan dari pembusukan bit pada bagian terenkripsi. Tidak kritis (pembaca v3 tetap dapat membukanya)."
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

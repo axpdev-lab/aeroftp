@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Mittel",
             "recoveryLevelQuartile": "Quartil",
             "recoveryLevelHigh": "Hoch",
-            "recoveryLevelHint": "Höherer Overhead stellt mehr Schaden wieder her, vergrößert aber die Wiederherstellungsdaten. QR-Stil: Niedrig ~7%, Mittel ~15%, Quartil ~25%, Hoch ~30%."
+            "recoveryLevelHint": "Höherer Overhead stellt mehr Schaden wieder her, vergrößert aber die Wiederherstellungsdaten. QR-Stil: Niedrig ~7%, Mittel ~15%, Quartil ~25%, Hoch ~30%.",
+            "compressionProfile": "Komprimierungsprofil",
+            "enableErrorCorrection": "Reed-Solomon-Fehlerkorrektur aktivieren",
+            "errorCorrectionDesc": "Fügt Redundanz zur Wiederherstellung bei Bit-Verfall auf verschlüsselten Blöcken hinzu. Nicht kritisch (v3-Leser können sie weiterhin öffnen)."
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

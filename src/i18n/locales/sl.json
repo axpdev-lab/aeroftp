@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Srednja",
             "recoveryLevelQuartile": "Kvartil",
             "recoveryLevelHigh": "Visoka",
-            "recoveryLevelHint": "Večji dodatni prostor obnovi več poškodb, a poveča obnovitvene podatke. Slog QR: Nizka ~7%, Srednja ~15%, Kvartil ~25%, Visoka ~30%."
+            "recoveryLevelHint": "Večji dodatni prostor obnovi več poškodb, a poveča obnovitvene podatke. Slog QR: Nizka ~7%, Srednja ~15%, Kvartil ~25%, Visoka ~30%.",
+            "compressionProfile": "Profil stiskanja",
+            "enableErrorCorrection": "Omogoči popravljanje napak Reed-Solomon",
+            "errorCorrectionDesc": "Doda redundanco za obnovitev po razpadu bitov na šifriranih delih. Nekritično (bralniki v3 ga še vedno lahko odprejo)."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

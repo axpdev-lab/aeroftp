@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Medel",
             "recoveryLevelQuartile": "Kvartil",
             "recoveryLevelHigh": "Hög",
-            "recoveryLevelHint": "Högre omkostnad återställer mer skada men ökar återställningsdata. QR-stil: Låg ~7%, Medel ~15%, Kvartil ~25%, Hög ~30%."
+            "recoveryLevelHint": "Högre omkostnad återställer mer skada men ökar återställningsdata. QR-stil: Låg ~7%, Medel ~15%, Kvartil ~25%, Hög ~30%.",
+            "compressionProfile": "Komprimeringsprofil",
+            "enableErrorCorrection": "Aktivera Reed-Solomon-felkorrigering",
+            "errorCorrectionDesc": "Lägger till redundans för återställning från bitröta på krypterade delar. Inte kritiskt (v3-läsare kan fortfarande öppna den)."
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

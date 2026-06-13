@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Medio",
             "recoveryLevelQuartile": "Cuartil",
             "recoveryLevelHigh": "Alto",
-            "recoveryLevelHint": "Unha sobrecarga maior recupera mais danos pero aumenta os datos de recuperación. Estilo QR: Baixo ~7%, Medio ~15%, Cuartil ~25%, Alto ~30%."
+            "recoveryLevelHint": "Unha sobrecarga maior recupera mais danos pero aumenta os datos de recuperación. Estilo QR: Baixo ~7%, Medio ~15%, Cuartil ~25%, Alto ~30%.",
+            "compressionProfile": "Perfil de compresión",
+            "enableErrorCorrection": "Activar a corrección de erros Reed-Solomon",
+            "errorCorrectionDesc": "Engade redundancia para recuperarse da degradación de bits nos fragmentos cifrados. Non crítico (os lectores v3 aínda poden abrilo)."
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

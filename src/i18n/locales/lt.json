@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Vidutinis",
             "recoveryLevelQuartile": "Kvartilis",
             "recoveryLevelHigh": "Aukštas",
-            "recoveryLevelHint": "Didesnės sąnaudos atkuria daugiau pažeidimų, bet padidina atkūrimo duomenis. QR stilius: Žemas ~7%, Vidutinis ~15%, Kvartilis ~25%, Aukštas ~30%."
+            "recoveryLevelHint": "Didesnės sąnaudos atkuria daugiau pažeidimų, bet padidina atkūrimo duomenis. QR stilius: Žemas ~7%, Vidutinis ~15%, Kvartilis ~25%, Aukštas ~30%.",
+            "compressionProfile": "Glaudinimo profilis",
+            "enableErrorCorrection": "Įjungti Reed-Solomon klaidų taisymą",
+            "errorCorrectionDesc": "Prideda perteklių atkūrimui po bitų gedimo šifruotuose blokuose. Nekritiška (v3 skaitytuvai vis tiek gali atidaryti)."
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

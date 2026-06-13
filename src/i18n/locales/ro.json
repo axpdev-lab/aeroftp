@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Mediu",
             "recoveryLevelQuartile": "Cuartilă",
             "recoveryLevelHigh": "Ridicat",
-            "recoveryLevelHint": "O suprasarcină mai mare recuperează mai multe daune, dar mărește datele de recuperare. Stil QR: Scăzut ~7%, Mediu ~15%, Cuartilă ~25%, Ridicat ~30%."
+            "recoveryLevelHint": "O suprasarcină mai mare recuperează mai multe daune, dar mărește datele de recuperare. Stil QR: Scăzut ~7%, Mediu ~15%, Cuartilă ~25%, Ridicat ~30%.",
+            "compressionProfile": "Profil de compresie",
+            "enableErrorCorrection": "Activează corecția erorilor Reed-Solomon",
+            "errorCorrectionDesc": "Adaugă redundanță pentru recuperarea din degradarea biților pe fragmentele criptate. Necritic (cititoarele v3 îl pot deschide în continuare)."
         },
         "cryptomator": {
             "title": "Seif Cryptomator",

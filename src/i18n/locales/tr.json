@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Orta",
             "recoveryLevelQuartile": "Çeyrek",
             "recoveryLevelHigh": "Yüksek",
-            "recoveryLevelHint": "Daha yüksek yük daha fazla hasarı kurtarır ancak kurtarma verisini büyütür. QR tarzı: Düşük ~7%, Orta ~15%, Çeyrek ~25%, Yüksek ~30%."
+            "recoveryLevelHint": "Daha yüksek yük daha fazla hasarı kurtarır ancak kurtarma verisini büyütür. QR tarzı: Düşük ~7%, Orta ~15%, Çeyrek ~25%, Yüksek ~30%.",
+            "compressionProfile": "Sıkıştırma profili",
+            "enableErrorCorrection": "Reed-Solomon Hata Düzeltmeyi Etkinleştir",
+            "errorCorrectionDesc": "Şifreli parçalardaki bit bozulmasından kurtarmak için yedeklilik ekler. Kritik değil (v3 okuyucular yine de açabilir)."
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

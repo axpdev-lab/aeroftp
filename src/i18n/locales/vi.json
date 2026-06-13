@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Trung bình",
             "recoveryLevelQuartile": "Tứ phân vị",
             "recoveryLevelHigh": "Cao",
-            "recoveryLevelHint": "Chi phí cao hơn khôi phục nhiều hư hỏng hơn nhưng làm tăng dữ liệu khôi phục. Kiểu QR: Thấp ~7%, Trung bình ~15%, Tứ phân vị ~25%, Cao ~30%."
+            "recoveryLevelHint": "Chi phí cao hơn khôi phục nhiều hư hỏng hơn nhưng làm tăng dữ liệu khôi phục. Kiểu QR: Thấp ~7%, Trung bình ~15%, Tứ phân vị ~25%, Cao ~30%.",
+            "compressionProfile": "Hồ sơ nén",
+            "enableErrorCorrection": "Bật Sửa lỗi Reed-Solomon",
+            "errorCorrectionDesc": "Thêm dự phòng để khôi phục khỏi hư hỏng bit trên các khối đã mã hóa. Không quan trọng (trình đọc v3 vẫn có thể mở)."
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

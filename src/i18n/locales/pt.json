@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Médio",
             "recoveryLevelQuartile": "Quartil",
             "recoveryLevelHigh": "Alto",
-            "recoveryLevelHint": "Maior sobrecarga recupera mais danos mas aumenta os dados de recuperação. Estilo QR: Baixo ~7%, Médio ~15%, Quartil ~25%, Alto ~30%."
+            "recoveryLevelHint": "Maior sobrecarga recupera mais danos mas aumenta os dados de recuperação. Estilo QR: Baixo ~7%, Médio ~15%, Quartil ~25%, Alto ~30%.",
+            "compressionProfile": "Perfil de compressão",
+            "enableErrorCorrection": "Ativar correção de erros Reed-Solomon",
+            "errorCorrectionDesc": "Adiciona redundância para recuperação da degradação de bits em blocos cifrados. Não crítico (os leitores v3 ainda podem abri-lo)."
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

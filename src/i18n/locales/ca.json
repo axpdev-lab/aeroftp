@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Mitjà",
             "recoveryLevelQuartile": "Quartil",
             "recoveryLevelHigh": "Alt",
-            "recoveryLevelHint": "Un sobrecost més alt recupera més danys pero augmenta les dades de recuperació. Estil QR: Baix ~7%, Mitjà ~15%, Quartil ~25%, Alt ~30%."
+            "recoveryLevelHint": "Un sobrecost més alt recupera més danys pero augmenta les dades de recuperació. Estil QR: Baix ~7%, Mitjà ~15%, Quartil ~25%, Alt ~30%.",
+            "compressionProfile": "Perfil de compressió",
+            "enableErrorCorrection": "Activa la correcció d'errors Reed-Solomon",
+            "errorCorrectionDesc": "Afegeix redundància per recuperar-se de la degradació de bits als fragments xifrats. No crític (els lectors v3 encara poden obrir-lo)."
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

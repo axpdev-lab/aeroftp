@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Moyen",
             "recoveryLevelQuartile": "Quartile",
             "recoveryLevelHigh": "Élevé",
-            "recoveryLevelHint": "Un surcout plus élevé récupère plus de dégats mais augmente les données de récupération. Style QR: Faible ~7%, Moyen ~15%, Quartile ~25%, Élevé ~30%."
+            "recoveryLevelHint": "Un surcout plus élevé récupère plus de dégats mais augmente les données de récupération. Style QR: Faible ~7%, Moyen ~15%, Quartile ~25%, Élevé ~30%.",
+            "compressionProfile": "Profil de compression",
+            "enableErrorCorrection": "Activer la correction d'erreurs Reed-Solomon",
+            "errorCorrectionDesc": "Ajoute de la redondance pour récupérer de la corruption de bits sur les blocs chiffrés. Non critique (les lecteurs v3 peuvent toujours l'ouvrir)."
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

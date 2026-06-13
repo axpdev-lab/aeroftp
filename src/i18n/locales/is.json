@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Miðlungs",
             "recoveryLevelQuartile": "Fjórðungsmark",
             "recoveryLevelHigh": "Hátt",
-            "recoveryLevelHint": "Meira álag endurheimtir meiri skemmdir en stækkar endurheimtargögnin. QR-stíll: Lágt ~7%, Miðlungs ~15%, Fjórðungsmark ~25%, Hátt ~30%."
+            "recoveryLevelHint": "Meira álag endurheimtir meiri skemmdir en stækkar endurheimtargögnin. QR-stíll: Lágt ~7%, Miðlungs ~15%, Fjórðungsmark ~25%, Hátt ~30%.",
+            "compressionProfile": "Þjöppunarsnið",
+            "enableErrorCorrection": "Virkja Reed-Solomon villuleiðréttingu",
+            "errorCorrectionDesc": "Bætir við offramboði til endurheimtar úr bitaröskun á dulkóðuðum bútum. Ekki gagnrýnið (v3 lesarar geta enn opnað það)."
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

@@ -2800,7 +2800,10 @@
             "recoveryLevelMedium": "中",
             "recoveryLevelQuartile": "四分位",
             "recoveryLevelHigh": "高",
-            "recoveryLevelHint": "オーバーヘッドが大きいほど多くの損傷を復旧できますが、復旧データは増えます。QRスタイル: 低 ~7%、中 ~15%、四分位 ~25%、高 ~30%。"
+            "recoveryLevelHint": "オーバーヘッドが大きいほど多くの損傷を復旧できますが、復旧データは増えます。QRスタイル: 低 ~7%、中 ~15%、四分位 ~25%、高 ~30%。",
+            "compressionProfile": "圧縮プロファイル",
+            "enableErrorCorrection": "Reed-Solomon 誤り訂正を有効にする",
+            "errorCorrectionDesc": "暗号化チャンクのビット劣化からの回復のために冗長性を追加します。重要ではありません（v3 リーダーでも開けます）。"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",

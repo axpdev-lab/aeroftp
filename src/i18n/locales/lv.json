@@ -2835,7 +2835,10 @@
             "recoveryLevelMedium": "Vidējs",
             "recoveryLevelQuartile": "Kvartile",
             "recoveryLevelHigh": "Augsts",
-            "recoveryLevelHint": "Lielākas papildizmaksas atjauno vairāk bojājumu, bet palielina atkopšanas datus. QR stils: Zems ~7%, Vidējs ~15%, Kvartile ~25%, Augsts ~30%."
+            "recoveryLevelHint": "Lielākas papildizmaksas atjauno vairāk bojājumu, bet palielina atkopšanas datus. QR stils: Zems ~7%, Vidējs ~15%, Kvartile ~25%, Augsts ~30%.",
+            "compressionProfile": "Saspiešanas profils",
+            "enableErrorCorrection": "Iespējot Reed-Solomon kļūdu labošanu",
+            "errorCorrectionDesc": "Pievieno dublēšanu, lai atgūtu datus pēc bitu bojāšanās šifrētajos blokos. Nav kritiski (v3 lasītāji to joprojām var atvērt)."
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",
