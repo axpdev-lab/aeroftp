@@ -370,11 +370,19 @@ impl FtpProvider {
             return None;
         }
 
+        // In the DOS format parts[2] is always either "<DIR>" or the numeric
+        // size. Requiring that keeps this parser from resurrecting a Unix line
+        // that parse_unix_listing already rejected (e.g. the "." / ".." rows that
+        // `LIST -a` adds, whose parts[2] is the group name): without this guard
+        // those become bogus entries and recursive delete would issue `DELE .`.
         let is_dir = parts[2] == "<DIR>";
         let size: u64 = if is_dir {
             0
         } else {
-            parts[2].parse().unwrap_or(0)
+            match parts[2].parse() {
+                Ok(value) => value,
+                Err(_) => return None,
+            }
         };
         let name = parts[3..].join(" ");
 
@@ -551,6 +559,26 @@ impl FtpProvider {
     }
 
     async fn list_inner(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_inner_opts(path, false).await
+    }
+
+    /// List a directory, optionally including hidden (dotfile) entries.
+    ///
+    /// `include_hidden` is opt-in and currently used only by recursive delete.
+    /// Some servers (notably vsftpd, which does not advertise MLSD) hide
+    /// dotfiles on a bare `LIST`, so `rmdir_recursive` would leave an invisible
+    /// `.aeroftp-crypt.json` / `.env` behind and the final `RMD` would then fail
+    /// with `550` on a "non-empty" directory. When the server speaks MLSD the
+    /// normal path already enumerates dotfiles (it filters only `.`/`..`), so it
+    /// serves both cases; for the `LIST` fallback we `CWD` into the target and
+    /// issue a bare `LIST -a` (no path argument, the portable form across Unix
+    /// FTP servers), then restore the working directory. Public `list()`
+    /// semantics are unchanged (callers pass `include_hidden = false`).
+    async fn list_inner_opts(
+        &mut self,
+        path: &str,
+        include_hidden: bool,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
         let list_path = if path.is_empty() || path == "." {
             None
         } else {
@@ -595,16 +623,46 @@ impl FtpProvider {
             }
         }
 
-        let stream = self.stream_mut()?;
-        let lines = stream
-            .list(list_path.as_deref())
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        let lines = if include_hidden {
+            // vsftpd & friends hide dotfiles on a bare `LIST`. CWD into the
+            // directory and issue a bare `LIST -a`; the combined `LIST -a <path>`
+            // form is server-specific and unreliable, so we avoid it. Restore the
+            // previous working directory best-effort afterwards. The `.`/`..`
+            // entries that `-a` adds are dropped by the listing parsers.
+            let saved_cwd = self.current_path.clone();
+            let stream = self.stream_mut()?;
+            stream
+                .cwd(&base_path)
+                .await
+                .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            let listed = stream.list(Some("-a")).await;
+            let _ = stream.cwd(&saved_cwd).await;
+            listed.map_err(|e| ProviderError::ServerError(e.to_string()))?
+        } else {
+            let stream = self.stream_mut()?;
+            stream
+                .list(list_path.as_deref())
+                .await
+                .map_err(|e| ProviderError::ServerError(e.to_string()))?
+        };
 
         Ok(lines
             .iter()
             .filter_map(|line| self.parse_listing(line, &base_path))
             .collect())
+    }
+
+    /// Enumerate a directory for recursive deletion, including hidden dotfiles.
+    /// Mirrors the stale-connection retry of the public `list()`.
+    async fn list_for_delete(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        match self.list_inner_opts(path, true).await {
+            Ok(entries) => Ok(entries),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("LIST", path, &err).await?;
+                self.list_inner_opts(path, true).await
+            }
+            Err(err) => Err(err),
+        }
     }
 
     async fn stat_inner(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1072,8 +1130,11 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        // Get list of contents
-        let entries = self.list(path).await?;
+        // Include hidden dotfiles so the final RMD does not fail with 550 on a
+        // directory that still holds an invisible `.aeroftp-crypt.json` / `.env`
+        // etc. (see list_inner_opts). SFTP/WebDAV already return dotfiles; FTP is
+        // the outlier that relies on the server to hide them on a bare LIST.
+        let entries = self.list_for_delete(path).await?;
 
         // Delete contents first
         for entry in entries {
@@ -1949,6 +2010,38 @@ mod tests {
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);
         assert_eq!(entry.size, 4096);
+    }
+
+    #[test]
+    fn list_a_output_keeps_dotfiles_and_drops_dot_dirs() {
+        // `LIST -a` (the include_hidden path used by recursive delete) returns
+        // the `.` and `..` directory entries alongside dotfiles. The parser must
+        // KEEP the dotfile (so rmdir_recursive removes it and the final RMD
+        // succeeds) and DROP `.`/`..` (so it never issues `DELE .`, the regression
+        // that 550'd ordinary populated directories in the earlier attempt).
+        let provider = FtpProvider::new(FtpConfig {
+            host: "test".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            password: "pass".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+
+        let listing = [
+            "drwx------    2 ftp      ftp          4096 Jun 13 15:17 .",
+            "drwxr-xr-x    3 ftp      ftp          4096 Jun 13 15:17 ..",
+            "-rw-------    1 ftp      ftp             6 Jun 13 15:17 .aeroftp-crypt.json",
+            "-rw-------    1 ftp      ftp             2 Jun 13 15:17 visible.txt",
+        ];
+        let names: Vec<String> = listing
+            .iter()
+            .filter_map(|line| provider.parse_listing(line, "/scope"))
+            .map(|entry| entry.name)
+            .collect();
+
+        assert_eq!(names, vec![".aeroftp-crypt.json", "visible.txt"]);
     }
 
     #[test]
