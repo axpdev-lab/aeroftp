@@ -103,6 +103,23 @@ export const peerContactAdd = (contactId: string, alias: string): Promise<void> 
 export const peerContactRemove = (contactId: string): Promise<void> =>
   invoke('peer_contact_remove', { contactId });
 
+/** The absolute AeroShare inbox root (`~/AeroShare Inbox`), created if absent.
+ *  Pair with `open_in_file_manager` to open it in the OS file manager. */
+export const aeroShareInboxRoot = (): Promise<string> => invoke<string>('aeroshare_inbox_root');
+
+/** Open a folder (or reveal a file) in the OS file manager. Reuses the app-wide
+ *  `open_in_file_manager` command. Used to open the AeroShare inbox / a received
+ *  file's containing folder. */
+export const openInFileManager = (path: string): Promise<void> =>
+  invoke('open_in_file_manager', { path });
+
+/** Fire a NATIVE OS notification through the Rust notification plugin. Used
+ *  instead of the plugin's JS `sendNotification`, which builds a web
+ *  `window.Notification` that WebKitGTK silently drops (no OS notification on
+ *  Linux). The caller owns the opt-in gating and passes localized text. */
+export const aeroShareNotify = (title: string, body: string): Promise<void> =>
+  invoke('aeroshare_notify', { title, body });
+
 export const peerDrivesList = (): Promise<PeerDriveInfo[]> =>
   invoke<PeerDriveInfo[]>('peer_drives_list');
 

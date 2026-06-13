@@ -4824,7 +4824,9 @@
                 "title": "Kikasha cha AeroShare",
                 "empty": "Hakuna faili zilizopokelewa kikao hiki.",
                 "from": "kutoka kwa {sender}",
-                "receiverOff": "Upokeaji umezimwa. Iwashe katika Mipangilio ili kupokea faili."
+                "receiverOff": "Upokeaji umezimwa. Iwashe katika Mipangilio ili kupokea faili.",
+                "openFolder": "Fungua folda",
+                "revealFile": "Onyesha kwenye folda"
             },
             "receiveLabel": "Pokea faili",
             "receiveDesc": "Ruhusu marafiki kukutumia faili moja kwa moja (mara moja, zilizosimbwa mwanzo hadi mwisho). Inaendesha kisikilizaji ikiwa imewashwa.",
@@ -4842,7 +4844,19 @@
                 "edit": "Hariri",
                 "remove": "Ondoa",
                 "removeConfirm": "Ondoa?"
-            }
+            },
+            "notifyOnReceiveLabel": "Nijulishe faili linapowasili",
+            "notifyOnReceiveDesc": "Onyesha arifa ya mfumo kwa kila faili lililopokelewa, ikiwa ni pamoja na yaliyokubaliwa kiotomatiki, ili ujue hata wakati AeroFTP haijalenga."
+        },
+        "notifications": {
+            "title": "Arifa",
+            "empty": "Bado hakuna arifa.",
+            "clearAll": "Futa zote",
+            "dismiss": "Ondoa",
+            "justNow": "sasa hivi",
+            "minutesAgo": "dakika {n} zilizopita",
+            "hoursAgo": "saa {n} zilizopita",
+            "daysAgo": "siku {n} zilizopita"
         }
     }
 }

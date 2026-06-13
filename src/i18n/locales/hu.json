@@ -4824,7 +4824,9 @@
                 "title": "AeroShare bejövő mappa",
                 "empty": "Ebben a munkamenetben nem érkezett fájl.",
                 "from": "tőle: {sender}",
-                "receiverOff": "A fogadás ki van kapcsolva. Kapcsolja be a Beállításokban a fájlok fogadásához."
+                "receiverOff": "A fogadás ki van kapcsolva. Kapcsolja be a Beállításokban a fájlok fogadásához.",
+                "openFolder": "Mappa megnyitása",
+                "revealFile": "Megjelenítés a mappában"
             },
             "receiveLabel": "Fájlok fogadása",
             "receiveDesc": "Engedje, hogy barátai közvetlenül küldjenek Önnek fájlokat (egyszeri, végpontok közötti titkosítással). Bekapcsolt állapotban figyelőt futtat.",
@@ -4842,7 +4844,19 @@
                 "edit": "Szerkesztés",
                 "remove": "Eltávolítás",
                 "removeConfirm": "Eltávolítja?"
-            }
+            },
+            "notifyOnReceiveLabel": "Értesíts, amikor egy fájl érkezik",
+            "notifyOnReceiveDesc": "Rendszerértesítés megjelenítése minden fogadott fájlhoz, beleértve az automatikusan elfogadottakat is, hogy akkor is tudj róla, amikor az AeroFTP nincs előtérben."
+        },
+        "notifications": {
+            "title": "Értesítések",
+            "empty": "Még nincsenek értesítések.",
+            "clearAll": "Összes törlése",
+            "dismiss": "Elvetés",
+            "justNow": "épp most",
+            "minutesAgo": "{n} perce",
+            "hoursAgo": "{n} órája",
+            "daysAgo": "{n} napja"
         }
     }
 }

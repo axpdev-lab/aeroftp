@@ -4824,7 +4824,9 @@
                 "title": "Prejeto AeroShare",
                 "empty": "V tej seji ni bila prejeta nobena datoteka.",
                 "from": "od {sender}",
-                "receiverOff": "Prejemanje je izklopljeno. Vklopite ga v Nastavitvah za prejemanje datotek."
+                "receiverOff": "Prejemanje je izklopljeno. Vklopite ga v Nastavitvah za prejemanje datotek.",
+                "openFolder": "Odpri mapo",
+                "revealFile": "Pokaži v mapi"
             },
             "receiveLabel": "Prejemaj datoteke",
             "receiveDesc": "Dovolite prijateljem, da vam datoteke pošljejo neposredno (enkratno, šifrirano od konca do konca). Ko je vklopljeno, teče poslušalec.",
@@ -4842,7 +4844,19 @@
                 "edit": "Uredi",
                 "remove": "Odstrani",
                 "removeConfirm": "Odstranim?"
-            }
+            },
+            "notifyOnReceiveLabel": "Obvesti me, ko prispe datoteka",
+            "notifyOnReceiveDesc": "Prikaži sistemsko obvestilo za vsako prejeto datoteko, vključno s samodejno sprejetimi, da boš obveščen tudi takrat, ko AeroFTP ni v ospredju."
+        },
+        "notifications": {
+            "title": "Obvestila",
+            "empty": "Še ni obvestil.",
+            "clearAll": "Počisti vse",
+            "dismiss": "Opusti",
+            "justNow": "pravkar",
+            "minutesAgo": "pred {n} min",
+            "hoursAgo": "pred {n} h",
+            "daysAgo": "pred {n} d"
         }
     }
 }

@@ -4843,7 +4843,9 @@
                 "title": "AeroShare-innhólf",
                 "empty": "Engar skrár mótteknar í þessari lotu.",
                 "from": "frá {sender}",
-                "receiverOff": "Móttaka er slökkt. Kveiktu á henni í Stillingum til að taka á móti skrám."
+                "receiverOff": "Móttaka er slökkt. Kveiktu á henni í Stillingum til að taka á móti skrám.",
+                "openFolder": "Opna möppu",
+                "revealFile": "Sýna í möppu"
             },
             "receiveLabel": "Taka á móti skrám",
             "receiveDesc": "Leyfðu vinum að senda þér skrár beint (einnota, dulkóðað enda í enda). Keyrir hlustanda á meðan kveikt er á.",
@@ -4861,7 +4863,19 @@
                 "edit": "Breyta",
                 "remove": "Fjarlægja",
                 "removeConfirm": "Fjarlægja?"
-            }
+            },
+            "notifyOnReceiveLabel": "Láta mig vita þegar skrá berst",
+            "notifyOnReceiveDesc": "Sýna kerfistilkynningu fyrir hverja móttekna skrá, þar á meðal þær sem eru sjálfkrafa samþykktar, svo þú vitir það jafnvel þegar AeroFTP er ekki í forgrunni."
+        },
+        "notifications": {
+            "title": "Tilkynningar",
+            "empty": "Engar tilkynningar enn.",
+            "clearAll": "Hreinsa allt",
+            "dismiss": "Hunsa",
+            "justNow": "rétt í þessu",
+            "minutesAgo": "fyrir {n} mín",
+            "hoursAgo": "fyrir {n} klst",
+            "daysAgo": "fyrir {n} d"
         }
     }
 }

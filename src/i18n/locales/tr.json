@@ -4824,7 +4824,9 @@
                 "title": "AeroShare Gelen Kutusu",
                 "empty": "Bu oturumda alınan dosya yok.",
                 "from": "{sender} kişisinden",
-                "receiverOff": "Alma kapalı. Dosya almak için Ayarlar bölümünden açın."
+                "receiverOff": "Alma kapalı. Dosya almak için Ayarlar bölümünden açın.",
+                "openFolder": "Klasörü aç",
+                "revealFile": "Klasörde göster"
             },
             "receiveLabel": "Dosya al",
             "receiveDesc": "Arkadaşların doğrudan size dosya göndermesine izin verin (tek seferlik, uçtan uca şifreli). Açıkken bir dinleyici çalıştırır.",
@@ -4842,7 +4844,19 @@
                 "edit": "Düzenle",
                 "remove": "Kaldır",
                 "removeConfirm": "Kaldırılsın mı?"
-            }
+            },
+            "notifyOnReceiveLabel": "Bir dosya geldiğinde beni bilgilendir",
+            "notifyOnReceiveDesc": "Otomatik olarak kabul edilenler dahil, alınan her dosya için bir sistem bildirimi göster; böylece AeroFTP odakta olmadığında bile haberdar olursun."
+        },
+        "notifications": {
+            "title": "Bildirimler",
+            "empty": "Henüz bildirim yok.",
+            "clearAll": "Tümünü temizle",
+            "dismiss": "Kapat",
+            "justNow": "az önce",
+            "minutesAgo": "{n} dk önce",
+            "hoursAgo": "{n} sa önce",
+            "daysAgo": "{n} g önce"
         }
     }
 }

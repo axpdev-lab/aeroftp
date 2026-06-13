@@ -4824,7 +4824,9 @@
                 "title": "Hộp thư đến AeroShare",
                 "empty": "Không có tệp nào được nhận trong phiên này.",
                 "from": "từ {sender}",
-                "receiverOff": "Tính năng nhận đang tắt. Bật trong Cài đặt để nhận tệp."
+                "receiverOff": "Tính năng nhận đang tắt. Bật trong Cài đặt để nhận tệp.",
+                "openFolder": "Mở thư mục",
+                "revealFile": "Hiển thị trong thư mục"
             },
             "receiveLabel": "Nhận tệp",
             "receiveDesc": "Cho phép bạn bè gửi tệp trực tiếp cho bạn (một lần, mã hóa đầu cuối). Chạy một trình lắng nghe khi bật.",
@@ -4842,7 +4844,19 @@
                 "edit": "Sửa",
                 "remove": "Xóa",
                 "removeConfirm": "Xóa?"
-            }
+            },
+            "notifyOnReceiveLabel": "Thông báo cho tôi khi có tệp đến",
+            "notifyOnReceiveDesc": "Hiển thị thông báo hệ thống cho mọi tệp nhận được, bao gồm cả tệp được chấp nhận tự động, để bạn biết ngay cả khi AeroFTP không được lấy nét."
+        },
+        "notifications": {
+            "title": "Thông báo",
+            "empty": "Chưa có thông báo nào.",
+            "clearAll": "Xóa tất cả",
+            "dismiss": "Bỏ qua",
+            "justNow": "vừa xong",
+            "minutesAgo": "{n} phút trước",
+            "hoursAgo": "{n} giờ trước",
+            "daysAgo": "{n} ngày trước"
         }
     }
 }

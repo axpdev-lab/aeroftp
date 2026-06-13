@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes, Share2, Users } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell } from 'lucide-react';
 import { AeroShareContacts } from './AeroShare/AeroShareContacts';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
@@ -159,6 +159,10 @@ interface AppSettings {
     /** OPT-IN: auto-accept incoming sends from SAVED friends (skip the prompt).
      *  Unknown senders always prompt. Default OFF (prompt everyone). */
     aeroShareAutoAcceptFriends: boolean;
+    /** OPT-IN: fire an OS system notification for every received file (incl.
+     *  auto-accepted ones), so the user knows even when AeroFTP is not focused.
+     *  Default OFF. Read app-wide via {@link useAeroShareReceiveSettings}. */
+    aeroShareNotifyOnReceive: boolean;
     // Transfers
     maxConcurrentTransfers: number;
     retryCount: number;
@@ -215,6 +219,7 @@ const defaultSettings: AppSettings = {
     aeroShareEnabled: false,
     aeroShareReceiving: false,
     aeroShareAutoAcceptFriends: false,
+    aeroShareNotifyOnReceive: false,
     maxConcurrentTransfers: 5,
     retryCount: 3,
     downloadSegments: 0,
@@ -1280,7 +1285,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     }
                                                 />
                                                 {settings.aeroShareReceiving && (
-                                                    <div className="ml-6">
+                                                    <div className="ml-6 space-y-3">
                                                         <Checkbox
                                                             checked={settings.aeroShareAutoAcceptFriends}
                                                             onChange={(v) => updateSetting('aeroShareAutoAcceptFriends', v)}
@@ -1288,6 +1293,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <div>
                                                                     <p className="font-medium">{t('aeroShare.autoAcceptLabel')}</p>
                                                                     <p className="text-sm text-gray-500">{t('aeroShare.autoAcceptDesc')}</p>
+                                                                </div>
+                                                            }
+                                                        />
+                                                        {/* OS notification on receive: the production-critical
+                                                            awareness gap - with auto-accept on the receive is
+                                                            SILENT, so without this the user does not know a file
+                                                            arrived when the window is unfocused. Opt-in, default OFF. */}
+                                                        <Checkbox
+                                                            checked={settings.aeroShareNotifyOnReceive}
+                                                            onChange={(v) => updateSetting('aeroShareNotifyOnReceive', v)}
+                                                            label={
+                                                                <div>
+                                                                    <p className="font-medium flex items-center gap-2">
+                                                                        <Bell size={15} className="text-violet-500" />
+                                                                        {t('aeroShare.notifyOnReceiveLabel')}
+                                                                    </p>
+                                                                    <p className="text-sm text-gray-500">{t('aeroShare.notifyOnReceiveDesc')}</p>
                                                                 </div>
                                                             }
                                                         />

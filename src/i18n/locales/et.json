@@ -4824,7 +4824,9 @@
                 "title": "AeroShare'i postkast",
                 "empty": "Selles seansis pole faile vastu võetud.",
                 "from": "kasutajalt {sender}",
-                "receiverOff": "Vastuvõtmine on väljas. Lülita see sätetes sisse, et faile vastu võtta."
+                "receiverOff": "Vastuvõtmine on väljas. Lülita see sätetes sisse, et faile vastu võtta.",
+                "openFolder": "Ava kaust",
+                "revealFile": "Näita kaustas"
             },
             "receiveLabel": "Failide vastuvõtmine",
             "receiveDesc": "Luba sõpradel saata faile otse sulle (ühekordne, läbivalt krüpteeritud). Sisselülitatuna töötab kuulaja.",
@@ -4842,7 +4844,19 @@
                 "edit": "Muuda",
                 "remove": "Eemalda",
                 "removeConfirm": "Eemaldada?"
-            }
+            },
+            "notifyOnReceiveLabel": "Teavita mind, kui faili saabub",
+            "notifyOnReceiveDesc": "Kuva süsteemiteade iga vastuvõetud faili kohta, sealhulgas automaatselt vastuvõetud failide kohta, et oleksid teadlik isegi siis, kui AeroFTP pole fookuses."
+        },
+        "notifications": {
+            "title": "Teatised",
+            "empty": "Teatisi veel pole.",
+            "clearAll": "Tühjenda kõik",
+            "dismiss": "Sulge",
+            "justNow": "just nüüd",
+            "minutesAgo": "{n} min tagasi",
+            "hoursAgo": "{n} t tagasi",
+            "daysAgo": "{n} p tagasi"
         }
     }
 }

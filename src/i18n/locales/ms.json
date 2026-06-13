@@ -4824,7 +4824,9 @@
                 "title": "Peti Masuk AeroShare",
                 "empty": "Tiada fail diterima sesi ini.",
                 "from": "daripada {sender}",
-                "receiverOff": "Penerimaan dimatikan. Hidupkannya dalam Tetapan untuk menerima fail."
+                "receiverOff": "Penerimaan dimatikan. Hidupkannya dalam Tetapan untuk menerima fail.",
+                "openFolder": "Buka folder",
+                "revealFile": "Tunjuk dalam folder"
             },
             "receiveLabel": "Terima fail",
             "receiveDesc": "Benarkan rakan menghantar fail terus kepada anda (sekali hantar, disulitkan hujung ke hujung). Menjalankan pendengar semasa hidup.",
@@ -4842,7 +4844,19 @@
                 "edit": "Edit",
                 "remove": "Buang",
                 "removeConfirm": "Buang?"
-            }
+            },
+            "notifyOnReceiveLabel": "Beritahu saya apabila fail tiba",
+            "notifyOnReceiveDesc": "Tunjukkan pemberitahuan sistem untuk setiap fail yang diterima, termasuk yang diterima secara automatik, supaya anda tahu walaupun AeroFTP tidak difokuskan."
+        },
+        "notifications": {
+            "title": "Pemberitahuan",
+            "empty": "Tiada pemberitahuan lagi.",
+            "clearAll": "Kosongkan semua",
+            "dismiss": "Tolak",
+            "justNow": "sebentar tadi",
+            "minutesAgo": "{n} min lalu",
+            "hoursAgo": "{n} j lalu",
+            "daysAgo": "{n} h lalu"
         }
     }
 }

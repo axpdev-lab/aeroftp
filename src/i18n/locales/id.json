@@ -4824,7 +4824,9 @@
                 "title": "Kotak Masuk AeroShare",
                 "empty": "Tidak ada file yang diterima pada sesi ini.",
                 "from": "dari {sender}",
-                "receiverOff": "Penerimaan dimatikan. Aktifkan di Pengaturan untuk menerima file."
+                "receiverOff": "Penerimaan dimatikan. Aktifkan di Pengaturan untuk menerima file.",
+                "openFolder": "Buka folder",
+                "revealFile": "Tampilkan di folder"
             },
             "receiveLabel": "Terima file",
             "receiveDesc": "Biarkan teman mengirim file langsung kepada Anda (sekali kirim, terenkripsi ujung ke ujung). Menjalankan pendengar saat aktif.",
@@ -4842,7 +4844,19 @@
                 "edit": "Edit",
                 "remove": "Hapus",
                 "removeConfirm": "Hapus?"
-            }
+            },
+            "notifyOnReceiveLabel": "Beri tahu saya saat file tiba",
+            "notifyOnReceiveDesc": "Tampilkan notifikasi sistem untuk setiap file yang diterima, termasuk yang diterima secara otomatis, sehingga Anda tahu bahkan saat AeroFTP tidak sedang aktif."
+        },
+        "notifications": {
+            "title": "Notifikasi",
+            "empty": "Belum ada notifikasi.",
+            "clearAll": "Hapus semua",
+            "dismiss": "Tutup",
+            "justNow": "baru saja",
+            "minutesAgo": "{n} mnt lalu",
+            "hoursAgo": "{n} jam lalu",
+            "daysAgo": "{n} hr lalu"
         }
     }
 }

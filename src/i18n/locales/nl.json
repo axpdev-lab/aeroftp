@@ -4824,7 +4824,9 @@
                 "title": "AeroShare-postvak IN",
                 "empty": "Deze sessie zijn er geen bestanden ontvangen.",
                 "from": "van {sender}",
-                "receiverOff": "Ontvangen staat uit. Schakel het in bij Instellingen om bestanden te ontvangen."
+                "receiverOff": "Ontvangen staat uit. Schakel het in bij Instellingen om bestanden te ontvangen.",
+                "openFolder": "Map openen",
+                "revealFile": "Tonen in map"
             },
             "receiveLabel": "Bestanden ontvangen",
             "receiveDesc": "Laat vrienden bestanden rechtstreeks naar je sturen (eenmalig, end-to-end versleuteld). Houdt een luisteraar actief zolang dit aanstaat.",
@@ -4842,7 +4844,19 @@
                 "edit": "Bewerken",
                 "remove": "Verwijderen",
                 "removeConfirm": "Verwijderen?"
-            }
+            },
+            "notifyOnReceiveLabel": "Waarschuw mij wanneer er een bestand binnenkomt",
+            "notifyOnReceiveDesc": "Toon een systeemmelding voor elk ontvangen bestand, inclusief automatisch geaccepteerde, zodat je het weet, zelfs wanneer AeroFTP niet op de voorgrond staat."
+        },
+        "notifications": {
+            "title": "Meldingen",
+            "empty": "Nog geen meldingen.",
+            "clearAll": "Alles wissen",
+            "dismiss": "Sluiten",
+            "justNow": "zojuist",
+            "minutesAgo": "{n} min geleden",
+            "hoursAgo": "{n} u geleden",
+            "daysAgo": "{n} d geleden"
         }
     }
 }

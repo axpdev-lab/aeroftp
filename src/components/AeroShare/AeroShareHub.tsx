@@ -18,9 +18,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Send, Download, X, Check, Inbox, Users, Loader2 } from 'lucide-react';
+import { Send, Download, X, Check, Inbox, Users, Loader2, FolderOpen } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { ToastContainer, useToast } from '../Toast';
+import { useActivityLog } from '../../hooks/useActivityLog';
+import { useNotificationCenter } from '../../hooks/useNotificationCenter';
 import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { useAeroShareReceiveSettings } from '../../hooks/useAeroShareReceiveSettings';
 import {
@@ -30,6 +32,9 @@ import {
   peerFriendsList,
   peerFriendsPresence,
   peerIncomingRespond,
+  aeroShareNotify,
+  aeroShareInboxRoot,
+  openInFileManager,
   shortAfid,
   formatBytes,
   basenameOf,
@@ -91,10 +96,17 @@ async function resolveFriendAlias(afid: string): Promise<string | undefined> {
 
 export function AeroShareHub() {
   const t = useTranslation();
-  const { receiving, autoAcceptFriends } = useAeroShareReceiveSettings();
+  const { receiving, autoAcceptFriends, notifyOnReceive } = useAeroShareReceiveSettings();
 
   // Component-local toasts (useToast is not a shared context).
   const { toasts, removeToast, success, error, info } = useToast();
+
+  // Durable surfaces behind the ephemeral toast: the Activity log (Finding 7)
+  // and the titlebar notification center (Finding 8). Both are fed from the
+  // same receive/send outcomes so a silent auto-accepted receive still leaves a
+  // readable, persistent trace.
+  const { log } = useActivityLog();
+  const { notify } = useNotificationCenter();
 
   const [incoming, setIncoming] = useState<IncomingPrompt | null>(null);
   const [sendTarget, setSendTarget] = useState<AeroShareSendDetail | null>(null);
@@ -106,6 +118,13 @@ export function AeroShareHub() {
   useEffect(() => {
     autoAcceptRef.current = autoAcceptFriends;
   }, [autoAcceptFriends]);
+
+  // OS-notify-on-receive opt-in, read at event time (same pattern as autoAccept):
+  // the incoming-status listener stays subscribed across toggles.
+  const notifyOnReceiveRef = useRef(notifyOnReceive);
+  useEffect(() => {
+    notifyOnReceiveRef.current = notifyOnReceive;
+  }, [notifyOnReceive]);
 
   // ---- Receive loop lifecycle (the Ricezione toggle) ----
   // ONE effect owns both start and stop (its cleanup): a separate unmount-only
@@ -194,15 +213,39 @@ export function AeroShareHub() {
             { name: ev.name, senderAfid: ev.sender_afid, senderAlias: alias, path: ev.path, atMs: ev.at_ms },
             ...prev,
           ]);
-          success(
-            t('aeroShare.receive.completedTitle'),
-            t('aeroShare.receive.completedDesc', { name: ev.name, sender: senderLabel }),
-          );
+          const completedTitle = t('aeroShare.receive.completedTitle');
+          const completedDesc = t('aeroShare.receive.completedDesc', {
+            name: ev.name,
+            sender: senderLabel,
+          });
+          success(completedTitle, completedDesc);
+          // Durable trace (Finding 7 + 8): the toast is ephemeral, so record the
+          // receive in the Activity log AND push it to the titlebar notification
+          // center, which keeps the file path for an "open folder" action.
+          log('DOWNLOAD', completedDesc, 'success', ev.path ?? undefined);
+          notify({
+            kind: 'receive',
+            title: completedTitle,
+            body: completedDesc,
+            filePath: ev.path,
+            ts: ev.at_ms,
+          });
+          // OS system notification (opt-in): the in-app toast is missed when the
+          // window is unfocused, and auto-accepted receives are otherwise SILENT.
+          // Routed through the NATIVE plugin (aeroShareNotify) because the JS
+          // sendNotification is a silent no-op under WebKitGTK. Best-effort: a
+          // failed notification must never break the receive flow.
+          if (notifyOnReceiveRef.current) {
+            aeroShareNotify(completedTitle, completedDesc).catch(() => {
+              /* notification plugin unavailable */
+            });
+          }
         } else if (ev.state === 'failed') {
-          error(
-            t('aeroShare.receive.failedTitle'),
-            `${ev.name}${ev.error ? ` · ${ev.error}` : ''}`,
-          );
+          const failedTitle = t('aeroShare.receive.failedTitle');
+          const failedBody = `${ev.name}${ev.error ? ` · ${ev.error}` : ''}`;
+          error(failedTitle, failedBody);
+          log('DOWNLOAD', failedBody, 'error', ev.error ?? undefined);
+          notify({ kind: 'error', title: failedTitle, body: failedBody, ts: ev.at_ms });
         }
         // 'declined' is the user's own choice: no toast.
       });
@@ -215,7 +258,7 @@ export function AeroShareHub() {
       disposed = true;
       if (unlisten) unlisten();
     };
-  }, [success, error, t]);
+  }, [success, error, t, log, notify]);
 
   // ---- global open events (send dialog / inbox) ----
   useEffect(() => {
@@ -264,10 +307,20 @@ export function AeroShareHub() {
       {sendTarget && (
         <SendFileDialog
           filePath={sendTarget.filePath}
-          onSent={(name, friend) =>
-            success(t('aeroShare.send.sent'), t('aeroShare.send.sentDesc', { name, friend }))
-          }
-          onError={(msg) => error(t('aeroShare.send.failed'), msg)}
+          onSent={(name, friend) => {
+            const sentTitle = t('aeroShare.send.sent');
+            const sentDesc = t('aeroShare.send.sentDesc', { name, friend });
+            success(sentTitle, sentDesc);
+            // Delivery confirmation in the durable surfaces (Finding 7 + 8).
+            log('UPLOAD', sentDesc, 'success');
+            notify({ kind: 'send', title: sentTitle, body: sentDesc });
+          }}
+          onError={(msg) => {
+            const failedTitle = t('aeroShare.send.failed');
+            error(failedTitle, msg);
+            log('UPLOAD', msg, 'error');
+            notify({ kind: 'error', title: failedTitle, body: msg });
+          }}
           onClose={() => setSendTarget(null)}
         />
       )}
@@ -545,6 +598,23 @@ function InboxModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Open the on-disk inbox root (~/AeroShare Inbox) in the OS file manager.
+  const openInboxFolder = useCallback(() => {
+    aeroShareInboxRoot()
+      .then(openInFileManager)
+      .catch(() => {
+        /* best-effort: nothing actionable if the file manager refuses */
+      });
+  }, []);
+
+  // Reveal a specific received file in the OS file manager (selects it on
+  // Windows/macOS, opens its folder on Linux).
+  const revealFile = useCallback((path: string) => {
+    openInFileManager(path).catch(() => {
+      /* best-effort */
+    });
+  }, []);
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
@@ -560,12 +630,22 @@ function InboxModal({
               {t('aeroShare.inbox.title')}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-          >
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={openInboxFolder}
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+              title={t('aeroShare.inbox.openFolder')}
+            >
+              <FolderOpen size={14} />
+              {t('aeroShare.inbox.openFolder')}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
         <div className="px-4 py-3 overflow-y-auto">
           {!receiving && (
@@ -580,7 +660,7 @@ function InboxModal({
               {items.map((it, i) => (
                 <div
                   key={`${it.name}-${it.atMs}-${i}`}
-                  className="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                  className="group flex items-center gap-2 px-2 py-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700/40"
                 >
                   <Download size={15} className="text-violet-500 shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -592,6 +672,15 @@ function InboxModal({
                       {it.path ? ` · ${it.path}` : ''}
                     </p>
                   </div>
+                  {it.path && (
+                    <button
+                      onClick={() => revealFile(it.path as string)}
+                      className="shrink-0 p-1.5 rounded text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title={t('aeroShare.inbox.revealFile')}
+                    >
+                      <FolderOpen size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

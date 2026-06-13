@@ -4843,7 +4843,9 @@
                 "title": "Safata d'entrada d'AeroShare",
                 "empty": "No s'ha rebut cap fitxer en aquesta sessió.",
                 "from": "de {sender}",
-                "receiverOff": "La recepció està desactivada. Activa-la a la configuració per rebre fitxers."
+                "receiverOff": "La recepció està desactivada. Activa-la a la configuració per rebre fitxers.",
+                "openFolder": "Obre la carpeta",
+                "revealFile": "Mostra a la carpeta"
             },
             "receiveLabel": "Rep fitxers",
             "receiveDesc": "Permet que els amics t'enviïn fitxers directament (d'un sol cop, xifrat d'extrem a extrem). Manté un receptor actiu mentre està activat.",
@@ -4861,7 +4863,19 @@
                 "edit": "Edita",
                 "remove": "Elimina",
                 "removeConfirm": "Eliminar?"
-            }
+            },
+            "notifyOnReceiveLabel": "Avisa'm quan arribi un fitxer",
+            "notifyOnReceiveDesc": "Mostra una notificació del sistema per a cada fitxer rebut, inclosos els acceptats automàticament, perquè ho sàpigues fins i tot quan AeroFTP no està en primer pla."
+        },
+        "notifications": {
+            "title": "Notificacions",
+            "empty": "Encara no hi ha notificacions.",
+            "clearAll": "Esborra-ho tot",
+            "dismiss": "Descarta",
+            "justNow": "ara mateix",
+            "minutesAgo": "fa {n} min",
+            "hoursAgo": "fa {n} h",
+            "daysAgo": "fa {n} d"
         }
     }
 }

@@ -920,22 +920,36 @@ async fn receive_loop(
                 sender_afid,
                 name,
                 path,
-            } => emit_incoming_status(
-                &app,
-                "completed",
-                &sender_afid,
-                &name,
-                Some(path.to_string_lossy().to_string()),
-                None,
-            ),
+            } => {
+                tracing::info!(
+                    "AeroShare received file name={name} from afid={sender_afid} -> {}",
+                    path.display()
+                );
+                emit_incoming_status(
+                    &app,
+                    "completed",
+                    &sender_afid,
+                    &name,
+                    Some(path.to_string_lossy().to_string()),
+                    None,
+                )
+            }
             aeroftp_peer_l0::ReceiveEvent::Declined { sender_afid, name } => {
                 emit_incoming_status(&app, "declined", &sender_afid, &name, None, None)
             }
+            // Log the cause on the receive side too: before this the failure was
+            // emitted only as the FE event, so the run log had no record of WHY an
+            // incoming transfer failed (Finding 7).
             aeroftp_peer_l0::ReceiveEvent::Failed {
                 sender_afid,
                 name,
                 error,
-            } => emit_incoming_status(&app, "failed", &sender_afid, &name, None, Some(error)),
+            } => {
+                tracing::warn!(
+                    "AeroShare receive FAILED name={name} from afid={sender_afid}: {error}"
+                );
+                emit_incoming_status(&app, "failed", &sender_afid, &name, None, Some(error))
+            }
         }
     };
 

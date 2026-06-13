@@ -4824,7 +4824,9 @@
                 "title": "Skrzynka odbiorcza AeroShare",
                 "empty": "W tej sesji nie odebrano żadnych plików.",
                 "from": "od {sender}",
-                "receiverOff": "Odbieranie jest wyłączone. Włącz je w Ustawieniach, aby odbierać pliki."
+                "receiverOff": "Odbieranie jest wyłączone. Włącz je w Ustawieniach, aby odbierać pliki.",
+                "openFolder": "Otwórz folder",
+                "revealFile": "Pokaż w folderze"
             },
             "receiveLabel": "Odbieraj pliki",
             "receiveDesc": "Pozwól znajomym wysyłać pliki bezpośrednio do ciebie (jednorazowo, szyfrowane od końca do końca). Gdy włączone, działa nasłuch.",
@@ -4842,7 +4844,19 @@
                 "edit": "Edytuj",
                 "remove": "Usuń",
                 "removeConfirm": "Usunąć?"
-            }
+            },
+            "notifyOnReceiveLabel": "Powiadom mnie, gdy nadejdzie plik",
+            "notifyOnReceiveDesc": "Wyświetl powiadomienie systemowe dla każdego odebranego pliku, w tym dla automatycznie zaakceptowanych, abyś wiedział o tym nawet wtedy, gdy AeroFTP nie jest aktywne."
+        },
+        "notifications": {
+            "title": "Powiadomienia",
+            "empty": "Brak powiadomień.",
+            "clearAll": "Wyczyść wszystko",
+            "dismiss": "Odrzuć",
+            "justNow": "przed chwilą",
+            "minutesAgo": "{n} min temu",
+            "hoursAgo": "{n} godz. temu",
+            "daysAgo": "{n} dni temu"
         }
     }
 }

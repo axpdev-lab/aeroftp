@@ -4843,7 +4843,9 @@
                 "title": "Mewnflwch AeroShare",
                 "empty": "Dim ffeiliau wedi'u derbyn yn y sesiwn hon.",
                 "from": "gan {sender}",
-                "receiverOff": "Mae derbyn wedi'i ddiffodd. Trowch ef ymlaen yn y Gosodiadau i dderbyn ffeiliau."
+                "receiverOff": "Mae derbyn wedi'i ddiffodd. Trowch ef ymlaen yn y Gosodiadau i dderbyn ffeiliau.",
+                "openFolder": "Agor y ffolder",
+                "revealFile": "Dangos yn y ffolder"
             },
             "receiveLabel": "Derbyn ffeiliau",
             "receiveDesc": "Caniatewch i ffrindiau anfon ffeiliau'n syth atoch (un-tro, wedi'u hamgryptio o ben i ben). Mae'n rhedeg gwrandawr tra'i fod ymlaen.",
@@ -4861,7 +4863,19 @@
                 "edit": "Golygu",
                 "remove": "Tynnu",
                 "removeConfirm": "Tynnu?"
-            }
+            },
+            "notifyOnReceiveLabel": "Rhowch wybod i mi pan fydd ffeil yn cyrraedd",
+            "notifyOnReceiveDesc": "Dangos hysbysiad system ar gyfer pob ffeil a dderbynnir, gan gynnwys rhai a dderbynnir yn awtomatig, fel eich bod yn gwybod hyd yn oed pan nad yw AeroFTP yn ffocws."
+        },
+        "notifications": {
+            "title": "Hysbysiadau",
+            "empty": "Dim hysbysiadau eto.",
+            "clearAll": "Clirio'r cyfan",
+            "dismiss": "Diystyru",
+            "justNow": "nawr",
+            "minutesAgo": "{n} mun yn ôl",
+            "hoursAgo": "{n} awr yn ôl",
+            "daysAgo": "{n} diwrnod yn ôl"
         }
     }
 }

@@ -4824,7 +4824,9 @@
                 "title": "AeroShare 받은 편지함",
                 "empty": "이 세션에서 받은 파일이 없습니다.",
                 "from": "{sender}님으로부터",
-                "receiverOff": "수신이 꺼져 있습니다. 파일을 받으려면 설정에서 켜세요."
+                "receiverOff": "수신이 꺼져 있습니다. 파일을 받으려면 설정에서 켜세요.",
+                "openFolder": "폴더 열기",
+                "revealFile": "폴더에서 보기"
             },
             "receiveLabel": "파일 받기",
             "receiveDesc": "친구가 회원님에게 직접 파일을 보낼 수 있도록 합니다 (일회성, 종단 간 암호화). 켜져 있는 동안 수신기가 실행됩니다.",
@@ -4842,7 +4844,19 @@
                 "edit": "편집",
                 "remove": "제거",
                 "removeConfirm": "제거할까요?"
-            }
+            },
+            "notifyOnReceiveLabel": "파일이 도착하면 알림",
+            "notifyOnReceiveDesc": "자동으로 수락된 파일을 포함하여 수신된 모든 파일에 대해 시스템 알림을 표시하므로, AeroFTP가 활성화되어 있지 않을 때도 알 수 있습니다."
+        },
+        "notifications": {
+            "title": "알림",
+            "empty": "아직 알림이 없습니다.",
+            "clearAll": "모두 지우기",
+            "dismiss": "닫기",
+            "justNow": "방금",
+            "minutesAgo": "{n}분 전",
+            "hoursAgo": "{n}시간 전",
+            "daysAgo": "{n}일 전"
         }
     }
 }

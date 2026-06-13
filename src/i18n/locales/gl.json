@@ -4843,7 +4843,9 @@
                 "title": "Caixa de entrada de AeroShare",
                 "empty": "Non se recibiu ningún ficheiro nesta sesión.",
                 "from": "de {sender}",
-                "receiverOff": "A recepción está desactivada. Actívaa nos Axustes para recibir ficheiros."
+                "receiverOff": "A recepción está desactivada. Actívaa nos Axustes para recibir ficheiros.",
+                "openFolder": "Abrir cartafol",
+                "revealFile": "Mostrar no cartafol"
             },
             "receiveLabel": "Recibir ficheiros",
             "receiveDesc": "Permite que os amigos che envíen ficheiros directamente (dunha soa vez, cifrado de extremo a extremo). Mantén un receptor activo mentres está acendido.",
@@ -4861,7 +4863,19 @@
                 "edit": "Editar",
                 "remove": "Quitar",
                 "removeConfirm": "Quitar?"
-            }
+            },
+            "notifyOnReceiveLabel": "Avisarme cando chegue un ficheiro",
+            "notifyOnReceiveDesc": "Mostra unha notificación do sistema para cada ficheiro recibido, incluídos os aceptados automaticamente, para que o saibas mesmo cando AeroFTP non está en primeiro plano."
+        },
+        "notifications": {
+            "title": "Notificacións",
+            "empty": "Aínda non hai notificacións.",
+            "clearAll": "Borrar todo",
+            "dismiss": "Descartar",
+            "justNow": "agora mesmo",
+            "minutesAgo": "hai {n} min",
+            "hoursAgo": "hai {n} h",
+            "daysAgo": "hai {n} d"
         }
     }
 }

@@ -4824,7 +4824,9 @@
                 "title": "Mesaje primite AeroShare",
                 "empty": "Niciun fișier primit în această sesiune.",
                 "from": "de la {sender}",
-                "receiverOff": "Recepția este oprită. Activeaz-o în Setări pentru a primi fișiere."
+                "receiverOff": "Recepția este oprită. Activeaz-o în Setări pentru a primi fișiere.",
+                "openFolder": "Deschide folderul",
+                "revealFile": "Arată în folder"
             },
             "receiveLabel": "Primește fișiere",
             "receiveDesc": "Permite prietenilor să îți trimită fișiere direct (o singură dată, criptat de la cap la cap). Rulează un receptor cât timp este pornit.",
@@ -4842,7 +4844,19 @@
                 "edit": "Editează",
                 "remove": "Elimină",
                 "removeConfirm": "Elimini?"
-            }
+            },
+            "notifyOnReceiveLabel": "Anunță-mă când sosește un fișier",
+            "notifyOnReceiveDesc": "Afișează o notificare de sistem pentru fiecare fișier primit, inclusiv cele acceptate automat, ca să știi chiar și atunci când AeroFTP nu este în prim-plan."
+        },
+        "notifications": {
+            "title": "Notificări",
+            "empty": "Încă nu există notificări.",
+            "clearAll": "Șterge tot",
+            "dismiss": "Închide",
+            "justNow": "chiar acum",
+            "minutesAgo": "acum {n} min",
+            "hoursAgo": "acum {n} h",
+            "daysAgo": "acum {n} z"
         }
     }
 }

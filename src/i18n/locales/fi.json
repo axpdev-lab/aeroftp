@@ -4824,7 +4824,9 @@
                 "title": "AeroShare-saapuneet",
                 "empty": "Tässä istunnossa ei vastaanotettu tiedostoja.",
                 "from": "lähettäjältä {sender}",
-                "receiverOff": "Vastaanotto on pois päältä. Ota se käyttöön Asetuksista vastaanottaaksesi tiedostoja."
+                "receiverOff": "Vastaanotto on pois päältä. Ota se käyttöön Asetuksista vastaanottaaksesi tiedostoja.",
+                "openFolder": "Avaa kansio",
+                "revealFile": "Näytä kansiossa"
             },
             "receiveLabel": "Vastaanota tiedostoja",
             "receiveDesc": "Anna kaverien lähettää tiedostoja suoraan sinulle (kertaluonteinen, päästä päähän salattu). Pitää kuuntelijan käynnissä, kun käytössä.",
@@ -4842,7 +4844,19 @@
                 "edit": "Muokkaa",
                 "remove": "Poista",
                 "removeConfirm": "Poistetaanko?"
-            }
+            },
+            "notifyOnReceiveLabel": "Ilmoita minulle, kun tiedosto saapuu",
+            "notifyOnReceiveDesc": "Näytä järjestelmäilmoitus jokaisesta vastaanotetusta tiedostosta, mukaan lukien automaattisesti hyväksytyt, jotta tiedät siitä, vaikka AeroFTP ei olisi aktiivisena."
+        },
+        "notifications": {
+            "title": "Ilmoitukset",
+            "empty": "Ei vielä ilmoituksia.",
+            "clearAll": "Tyhjennä kaikki",
+            "dismiss": "Hylkää",
+            "justNow": "juuri nyt",
+            "minutesAgo": "{n} min sitten",
+            "hoursAgo": "{n} t sitten",
+            "daysAgo": "{n} pv sitten"
         }
     }
 }

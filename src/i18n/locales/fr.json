@@ -4824,7 +4824,9 @@
                 "title": "Boîte de réception AeroShare",
                 "empty": "Aucun fichier reçu durant cette session.",
                 "from": "de {sender}",
-                "receiverOff": "La réception est désactivée. Activez-la dans les Paramètres pour recevoir des fichiers."
+                "receiverOff": "La réception est désactivée. Activez-la dans les Paramètres pour recevoir des fichiers.",
+                "openFolder": "Ouvrir le dossier",
+                "revealFile": "Afficher dans le dossier"
             },
             "receiveLabel": "Recevoir des fichiers",
             "receiveDesc": "Laissez vos amis vous envoyer des fichiers directement (en une fois, chiffré de bout en bout). Exécute un récepteur tant que c'est activé.",
@@ -4842,7 +4844,19 @@
                 "edit": "Modifier",
                 "remove": "Supprimer",
                 "removeConfirm": "Supprimer ?"
-            }
+            },
+            "notifyOnReceiveLabel": "Me prévenir quand un fichier arrive",
+            "notifyOnReceiveDesc": "Affiche une notification système pour chaque fichier reçu, y compris ceux acceptés automatiquement, afin que vous soyez informé même lorsque AeroFTP n'est pas au premier plan."
+        },
+        "notifications": {
+            "title": "Notifications",
+            "empty": "Aucune notification pour le moment.",
+            "clearAll": "Tout effacer",
+            "dismiss": "Ignorer",
+            "justNow": "à l'instant",
+            "minutesAgo": "il y a {n} min",
+            "hoursAgo": "il y a {n} h",
+            "daysAgo": "il y a {n} j"
         }
     }
 }

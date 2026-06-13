@@ -4824,7 +4824,9 @@
                 "title": "AeroShare ulazni pretinac",
                 "empty": "U ovoj sesiji nije primljena nijedna datoteka.",
                 "from": "od {sender}",
-                "receiverOff": "Primanje je isključeno. Uključite ga u Postavkama za primanje datoteka."
+                "receiverOff": "Primanje je isključeno. Uključite ga u Postavkama za primanje datoteka.",
+                "openFolder": "Otvori mapu",
+                "revealFile": "Prikaži u mapi"
             },
             "receiveLabel": "Primaj datoteke",
             "receiveDesc": "Dopustite prijateljima da vam šalju datoteke izravno (jednokratno, šifrirano s kraja na kraj). Dok je uključeno, radi slušatelj.",
@@ -4842,7 +4844,19 @@
                 "edit": "Uredi",
                 "remove": "Ukloni",
                 "removeConfirm": "Ukloniti?"
-            }
+            },
+            "notifyOnReceiveLabel": "Obavijesti me kada stigne datoteka",
+            "notifyOnReceiveDesc": "Prikaži obavijest sustava za svaku primljenu datoteku, uključujući automatski prihvaćene, kako biste znali čak i kada AeroFTP nije u fokusu."
+        },
+        "notifications": {
+            "title": "Obavijesti",
+            "empty": "Još nema obavijesti.",
+            "clearAll": "Očisti sve",
+            "dismiss": "Odbaci",
+            "justNow": "upravo sada",
+            "minutesAgo": "prije {n} min",
+            "hoursAgo": "prije {n} h",
+            "daysAgo": "prije {n} d"
         }
     }
 }

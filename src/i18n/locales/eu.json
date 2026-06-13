@@ -4843,7 +4843,9 @@
                 "title": "AeroShare sarrera-ontzia",
                 "empty": "Saio honetan ez da fitxategirik jaso.",
                 "from": "{sender} erabiltzailearena",
-                "receiverOff": "Jasotzea itzalita dago. Piztu ezazu Ezarpenetan fitxategiak jasotzeko."
+                "receiverOff": "Jasotzea itzalita dago. Piztu ezazu Ezarpenetan fitxategiak jasotzeko.",
+                "openFolder": "Ireki karpeta",
+                "revealFile": "Erakutsi karpetan"
             },
             "receiveLabel": "Jaso fitxategiak",
             "receiveDesc": "Utzi lagunei fitxategiak zuzenean bidaltzen (behin batekoa, muturretik muturrera enkriptatua). Piztuta dagoenean entzule bat exekutatzen du.",
@@ -4861,7 +4863,19 @@
                 "edit": "Editatu",
                 "remove": "Kendu",
                 "removeConfirm": "Kendu?"
-            }
+            },
+            "notifyOnReceiveLabel": "Jakinarazi fitxategi bat iristen denean",
+            "notifyOnReceiveDesc": "Erakutsi sistemaren jakinarazpen bat jasotako fitxategi bakoitzeko, automatikoki onartutakoak barne, AeroFTP fokuan ez dagoenean ere jakin dezazun."
+        },
+        "notifications": {
+            "title": "Jakinarazpenak",
+            "empty": "Oraindik ez dago jakinarazpenik.",
+            "clearAll": "Garbitu dena",
+            "dismiss": "Baztertu",
+            "justNow": "oraintxe",
+            "minutesAgo": "duela {n} min",
+            "hoursAgo": "duela {n} h",
+            "daysAgo": "duela {n} egun"
         }
     }
 }

@@ -4824,7 +4824,9 @@
                 "title": "AeroShare 收件箱",
                 "empty": "本次会话未收到任何文件。",
                 "from": "来自 {sender}",
-                "receiverOff": "接收功能已关闭。在设置中开启以接收文件。"
+                "receiverOff": "接收功能已关闭。在设置中开启以接收文件。",
+                "openFolder": "打开文件夹",
+                "revealFile": "在文件夹中显示"
             },
             "receiveLabel": "接收文件",
             "receiveDesc": "允许好友直接向您发送文件（一次性，端到端加密）。开启时会运行一个监听器。",
@@ -4842,7 +4844,19 @@
                 "edit": "编辑",
                 "remove": "移除",
                 "removeConfirm": "移除？"
-            }
+            },
+            "notifyOnReceiveLabel": "有文件到达时通知我",
+            "notifyOnReceiveDesc": "为每个接收到的文件显示系统通知，包括自动接受的文件，这样即使 AeroFTP 未处于焦点状态，你也能知道。"
+        },
+        "notifications": {
+            "title": "通知",
+            "empty": "暂无通知。",
+            "clearAll": "全部清除",
+            "dismiss": "关闭",
+            "justNow": "刚刚",
+            "minutesAgo": "{n} 分钟前",
+            "hoursAgo": "{n} 小时前",
+            "daysAgo": "{n} 天前"
         }
     }
 }

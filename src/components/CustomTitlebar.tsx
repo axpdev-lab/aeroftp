@@ -11,6 +11,7 @@ import { ThemeToggle } from '../hooks/useTheme';
 import type { Theme, EffectiveTheme } from '../hooks/useTheme';
 import { guardedUnlisten } from '../hooks/useTauriListener';
 import { UserDropdown } from './UserDropdown';
+import { NotificationBell } from './NotificationBell';
 import { useAeroShareEnabled } from '../hooks/useAeroShareEnabled';
 import { openAeroShareDialog } from '../utils/aeroShare';
 
@@ -489,8 +490,12 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     ) : null}
                 </div>
 
-                {/* Cluster 2: Utility (Cyber Toolkit if cyber theme, AeroVault, Users, Lock, Settings) */}
+                {/* Cluster 2: Utility (Notifications bell, Cyber Toolkit if cyber theme, AeroVault, Users, Lock, Settings) */}
                 <div className="flex items-center gap-0.5">
+                    {/* AeroShare notification center: durable surface for received/
+                        sent/failed transfers (Finding 8). Flag-gated like the
+                        +friend icon - notifications only originate from AeroShare. */}
+                    {aeroShareEnabled && <NotificationBell />}
                     {appTheme === 'cyber' && (
                         <button
                             onClick={onShowCyberTools}

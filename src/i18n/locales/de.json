@@ -4824,7 +4824,9 @@
                 "title": "AeroShare-Posteingang",
                 "empty": "In dieser Sitzung wurden keine Dateien empfangen.",
                 "from": "von {sender}",
-                "receiverOff": "Der Empfang ist deaktiviert. Aktiviere ihn in den Einstellungen, um Dateien zu empfangen."
+                "receiverOff": "Der Empfang ist deaktiviert. Aktiviere ihn in den Einstellungen, um Dateien zu empfangen.",
+                "openFolder": "Ordner öffnen",
+                "revealFile": "Im Ordner anzeigen"
             },
             "receiveLabel": "Dateien empfangen",
             "receiveDesc": "Lass Freunde dir Dateien direkt senden (einmalig, Ende-zu-Ende-verschlüsselt). Hält im aktivierten Zustand einen Listener bereit.",
@@ -4842,7 +4844,19 @@
                 "edit": "Bearbeiten",
                 "remove": "Entfernen",
                 "removeConfirm": "Entfernen?"
-            }
+            },
+            "notifyOnReceiveLabel": "Benachrichtige mich, wenn eine Datei eintrifft",
+            "notifyOnReceiveDesc": "Zeige eine Systembenachrichtigung für jede empfangene Datei an, einschließlich automatisch akzeptierter, damit du es auch dann mitbekommst, wenn AeroFTP nicht im Fokus ist."
+        },
+        "notifications": {
+            "title": "Benachrichtigungen",
+            "empty": "Noch keine Benachrichtigungen.",
+            "clearAll": "Alle löschen",
+            "dismiss": "Schließen",
+            "justNow": "gerade eben",
+            "minutesAgo": "vor {n} Min.",
+            "hoursAgo": "vor {n} Std.",
+            "daysAgo": "vor {n} T"
         }
     }
 }

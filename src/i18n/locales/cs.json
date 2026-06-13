@@ -4824,7 +4824,9 @@
                 "title": "Doručená pošta AeroShare",
                 "empty": "V této relaci nebyly přijaty žádné soubory.",
                 "from": "od {sender}",
-                "receiverOff": "Přijímání je vypnuté. Zapněte ho v Nastavení pro příjem souborů."
+                "receiverOff": "Přijímání je vypnuté. Zapněte ho v Nastavení pro příjem souborů.",
+                "openFolder": "Otevřít složku",
+                "revealFile": "Zobrazit ve složce"
             },
             "receiveLabel": "Přijímat soubory",
             "receiveDesc": "Umožněte přátelům posílat soubory přímo vám (jednorázově, šifrované od konce ke konci). Při zapnutí běží naslouchací proces.",
@@ -4842,7 +4844,19 @@
                 "edit": "Upravit",
                 "remove": "Odebrat",
                 "removeConfirm": "Odebrat?"
-            }
+            },
+            "notifyOnReceiveLabel": "Upozornit mě, když dorazí soubor",
+            "notifyOnReceiveDesc": "Zobrazí systémové oznámení pro každý přijatý soubor, včetně automaticky přijatých, abyste byli informováni, i když AeroFTP není aktivní."
+        },
+        "notifications": {
+            "title": "Oznámení",
+            "empty": "Zatím žádná oznámení.",
+            "clearAll": "Vymazat vše",
+            "dismiss": "Zavřít",
+            "justNow": "právě teď",
+            "minutesAgo": "před {n} min",
+            "hoursAgo": "před {n} h",
+            "daysAgo": "před {n} dny"
         }
     }
 }

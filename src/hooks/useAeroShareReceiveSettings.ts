@@ -26,12 +26,15 @@ const asBool = (raw: unknown): boolean => raw === true;
 export interface AeroShareReceiveSettings {
   receiving: boolean;
   autoAcceptFriends: boolean;
+  /** OPT-IN: fire an OS notification for every received file. Default OFF. */
+  notifyOnReceive: boolean;
 }
 
 export const useAeroShareReceiveSettings = (): AeroShareReceiveSettings => {
   const [settings, setSettings] = useState<AeroShareReceiveSettings>({
     receiving: false,
     autoAcceptFriends: false,
+    notifyOnReceive: false,
   });
 
   useEffect(() => {
@@ -46,6 +49,7 @@ export const useAeroShareReceiveSettings = (): AeroShareReceiveSettings => {
           setSettings({
             receiving: asBool(parsed.aeroShareReceiving),
             autoAcceptFriends: asBool(parsed.aeroShareAutoAcceptFriends),
+            notifyOnReceive: asBool(parsed.aeroShareNotifyOnReceive),
           });
         }
       } catch {
@@ -63,6 +67,10 @@ export const useAeroShareReceiveSettings = (): AeroShareReceiveSettings => {
           'aeroShareAutoAcceptFriends' in detail
             ? asBool(detail.aeroShareAutoAcceptFriends)
             : prev.autoAcceptFriends,
+        notifyOnReceive:
+          'aeroShareNotifyOnReceive' in detail
+            ? asBool(detail.aeroShareNotifyOnReceive)
+            : prev.notifyOnReceive,
       }));
     };
     window.addEventListener('aeroftp-settings-changed', onChange);

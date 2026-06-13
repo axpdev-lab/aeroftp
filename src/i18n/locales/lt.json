@@ -4824,7 +4824,9 @@
                 "title": "AeroShare gauti laiškai",
                 "empty": "Šioje sesijoje failų negauta.",
                 "from": "nuo {sender}",
-                "receiverOff": "Gavimas išjungtas. Įjunkite jį Nustatymuose, kad galėtumėte gauti failus."
+                "receiverOff": "Gavimas išjungtas. Įjunkite jį Nustatymuose, kad galėtumėte gauti failus.",
+                "openFolder": "Atidaryti aplanką",
+                "revealFile": "Rodyti aplanke"
             },
             "receiveLabel": "Gauti failus",
             "receiveDesc": "Leiskite draugams siųsti failus tiesiai jums (vienkartinis, ištisai šifruotas). Įjungtas paleidžia klausytoją.",
@@ -4842,7 +4844,19 @@
                 "edit": "Redaguoti",
                 "remove": "Pašalinti",
                 "removeConfirm": "Pašalinti?"
-            }
+            },
+            "notifyOnReceiveLabel": "Pranešti man, kai gaunamas failas",
+            "notifyOnReceiveDesc": "Rodyti sistemos pranešimą apie kiekvieną gautą failą, įskaitant automatiškai priimtus, kad žinotumėte net tada, kai AeroFTP nėra aktyvus."
+        },
+        "notifications": {
+            "title": "Pranešimai",
+            "empty": "Pranešimų dar nėra.",
+            "clearAll": "Išvalyti viską",
+            "dismiss": "Atmesti",
+            "justNow": "ką tik",
+            "minutesAgo": "prieš {n} min",
+            "hoursAgo": "prieš {n} val",
+            "daysAgo": "prieš {n} d"
         }
     }
 }

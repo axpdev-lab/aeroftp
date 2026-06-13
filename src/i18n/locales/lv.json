@@ -4824,7 +4824,9 @@
                 "title": "AeroShare iesūtne",
                 "empty": "Šajā sesijā nav saņemts neviens fails.",
                 "from": "no {sender}",
-                "receiverOff": "Saņemšana ir izslēgta. Ieslēdziet to Iestatījumos, lai saņemtu failus."
+                "receiverOff": "Saņemšana ir izslēgta. Ieslēdziet to Iestatījumos, lai saņemtu failus.",
+                "openFolder": "Atvērt mapi",
+                "revealFile": "Rādīt mapē"
             },
             "receiveLabel": "Saņemt failus",
             "receiveDesc": "Ļaujiet draugiem sūtīt failus tieši jums (vienreizējs, pilnībā šifrēts). Ieslēgtā stāvoklī darbina klausītāju.",
@@ -4842,7 +4844,19 @@
                 "edit": "Rediģēt",
                 "remove": "Noņemt",
                 "removeConfirm": "Noņemt?"
-            }
+            },
+            "notifyOnReceiveLabel": "Paziņot man, kad pienāk fails",
+            "notifyOnReceiveDesc": "Rādīt sistēmas paziņojumu par katru saņemto failu, tostarp automātiski pieņemtajiem, lai jūs zinātu pat tad, kad AeroFTP nav fokusā."
+        },
+        "notifications": {
+            "title": "Paziņojumi",
+            "empty": "Paziņojumu vēl nav.",
+            "clearAll": "Notīrīt visu",
+            "dismiss": "Noraidīt",
+            "justNow": "tikko",
+            "minutesAgo": "pirms {n} min",
+            "hoursAgo": "pirms {n} st",
+            "daysAgo": "pirms {n} d"
         }
     }
 }

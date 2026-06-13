@@ -4710,6 +4710,16 @@
             "verifyPolicy_full_checksum": "Full checksum",
             "verifyPolicyHint": "Post-transfer integrity check applied to each file."
         },
+        "notifications": {
+            "title": "Notifications",
+            "empty": "No notifications yet.",
+            "clearAll": "Clear all",
+            "dismiss": "Dismiss",
+            "justNow": "just now",
+            "minutesAgo": "{n} min ago",
+            "hoursAgo": "{n} h ago",
+            "daysAgo": "{n} d ago"
+        },
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Add friend",
@@ -4824,12 +4834,16 @@
                 "title": "AeroShare Inbox",
                 "empty": "No files received this session.",
                 "from": "from {sender}",
-                "receiverOff": "Receiving is off. Turn it on in Settings to receive files."
+                "receiverOff": "Receiving is off. Turn it on in Settings to receive files.",
+                "openFolder": "Open folder",
+                "revealFile": "Show in folder"
             },
             "receiveLabel": "Receive files",
             "receiveDesc": "Let friends send files straight to you (one-shot, end-to-end encrypted). Runs a listener while on.",
             "autoAcceptLabel": "Auto-accept from saved friends",
             "autoAcceptDesc": "Skip the prompt for files from people in your friends list. Unknown senders always ask.",
+            "notifyOnReceiveLabel": "Notify me when a file arrives",
+            "notifyOnReceiveDesc": "Show a system notification for every received file, including auto-accepted ones, so you know even when AeroFTP is not focused.",
             "contacts": {
                 "title": "Contacts",
                 "intro": "Saved contacts are your AeroShare friends: pick them when sending, and (with auto-accept on) receive from them without a prompt.",

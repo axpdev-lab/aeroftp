@@ -4824,7 +4824,9 @@
                 "title": "AeroShare-inkorg",
                 "empty": "Inga filer har tagits emot under den här sessionen.",
                 "from": "från {sender}",
-                "receiverOff": "Mottagning är av. Slå på den i Inställningar för att ta emot filer."
+                "receiverOff": "Mottagning är av. Slå på den i Inställningar för att ta emot filer.",
+                "openFolder": "Öppna mapp",
+                "revealFile": "Visa i mapp"
             },
             "receiveLabel": "Ta emot filer",
             "receiveDesc": "Låt vänner skicka filer direkt till dig (engångs, totalsträckskrypterat). Kör en lyssnare medan den är på.",
@@ -4842,7 +4844,19 @@
                 "edit": "Redigera",
                 "remove": "Ta bort",
                 "removeConfirm": "Ta bort?"
-            }
+            },
+            "notifyOnReceiveLabel": "Meddela mig när en fil anländer",
+            "notifyOnReceiveDesc": "Visa en systemavisering för varje mottagen fil, inklusive automatiskt accepterade, så att du vet även när AeroFTP inte är i fokus."
+        },
+        "notifications": {
+            "title": "Aviseringar",
+            "empty": "Inga aviseringar än.",
+            "clearAll": "Rensa alla",
+            "dismiss": "Avfärda",
+            "justNow": "just nu",
+            "minutesAgo": "{n} min sedan",
+            "hoursAgo": "{n} tim sedan",
+            "daysAgo": "{n} d sedan"
         }
     }
 }

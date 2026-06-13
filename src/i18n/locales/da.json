@@ -4824,7 +4824,9 @@
                 "title": "AeroShare-indbakke",
                 "empty": "Der er ikke modtaget filer i denne session.",
                 "from": "fra {sender}",
-                "receiverOff": "Modtagelse er slået fra. Slå den til i Indstillinger for at modtage filer."
+                "receiverOff": "Modtagelse er slået fra. Slå den til i Indstillinger for at modtage filer.",
+                "openFolder": "Åbn mappe",
+                "revealFile": "Vis i mappe"
             },
             "receiveLabel": "Modtag filer",
             "receiveDesc": "Lad venner sende filer direkte til dig (engangs, end-til-end-krypteret). Kører en lytter, mens den er slået til.",
@@ -4842,7 +4844,19 @@
                 "edit": "Rediger",
                 "remove": "Fjern",
                 "removeConfirm": "Fjern?"
-            }
+            },
+            "notifyOnReceiveLabel": "Giv mig besked, når en fil ankommer",
+            "notifyOnReceiveDesc": "Vis en systemnotifikation for hver modtaget fil, inklusive automatisk accepterede, så du ved det, selv når AeroFTP ikke er i fokus."
+        },
+        "notifications": {
+            "title": "Notifikationer",
+            "empty": "Ingen notifikationer endnu.",
+            "clearAll": "Ryd alle",
+            "dismiss": "Afvis",
+            "justNow": "lige nu",
+            "minutesAgo": "for {n} min siden",
+            "hoursAgo": "for {n} t siden",
+            "daysAgo": "for {n} d siden"
         }
     }
 }

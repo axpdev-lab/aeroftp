@@ -158,6 +158,32 @@ pub async fn peer_contact_remove(app: AppHandle, contact_id: String) -> Result<(
     crate::user_partitions::gui_peer_contact_remove(&app, contact_id.trim())
 }
 
+/// Fire a NATIVE OS notification via the Rust notification plugin.
+///
+/// The JS `sendNotification` from `@tauri-apps/plugin-notification` builds a web
+/// `window.Notification`, which WebKitGTK does NOT surface as an OS notification
+/// (it is a silent no-op on Linux), so the AeroShare receive path routes its
+/// "file received" notification through this native command instead. notify-rust
+/// (Linux/D-Bus), the macOS UNUserNotificationCenter, and the Windows toast all
+/// work from the Rust side. The FE owns the opt-in gating and the localized text.
+#[tauri::command]
+pub fn aeroshare_notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    tracing::info!("aeroshare_notify ENTER title={title:?} body={body:?}");
+    let r = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string());
+    match &r {
+        Ok(()) => tracing::info!("aeroshare_notify show() OK"),
+        Err(e) => tracing::warn!("aeroshare_notify show() FAILED: {e}"),
+    }
+    r
+}
+
 #[derive(Serialize)]
 pub struct PeerDriveInfo {
     pub namespace: String,
@@ -541,6 +567,18 @@ fn default_inbox_root() -> Result<std::path::PathBuf, String> {
     dirs::home_dir()
         .map(|h| h.join("AeroShare Inbox"))
         .ok_or_else(|| "could not resolve the home directory for the AeroShare inbox".to_string())
+}
+
+/// The absolute AeroShare inbox root (`~/AeroShare Inbox`) as a string, so the FE
+/// can open it in the OS file manager (via `open_in_file_manager`) without
+/// guessing the path. Creates the directory if absent so "Open inbox folder"
+/// never fails on a fresh install that has not received anything yet.
+#[tauri::command]
+pub fn aeroshare_inbox_root() -> Result<String, String> {
+    let root = default_inbox_root()?;
+    std::fs::create_dir_all(&root)
+        .map_err(|e| format!("could not create the AeroShare inbox folder: {e}"))?;
+    Ok(root.to_string_lossy().to_string())
 }
 
 #[derive(Deserialize)]

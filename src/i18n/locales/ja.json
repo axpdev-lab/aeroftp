@@ -4824,7 +4824,9 @@
                 "title": "AeroShare 受信トレイ",
                 "empty": "このセッションで受信したファイルはありません。",
                 "from": "{sender} から",
-                "receiverOff": "受信がオフになっています。ファイルを受信するには設定でオンにしてください。"
+                "receiverOff": "受信がオフになっています。ファイルを受信するには設定でオンにしてください。",
+                "openFolder": "フォルダーを開く",
+                "revealFile": "フォルダー内に表示"
             },
             "receiveLabel": "ファイルを受信",
             "receiveDesc": "友達があなたに直接ファイルを送信できるようにします（一回限り、エンドツーエンド暗号化）。オンの間はリスナーが動作します。",
@@ -4842,7 +4844,19 @@
                 "edit": "編集",
                 "remove": "削除",
                 "removeConfirm": "削除しますか?"
-            }
+            },
+            "notifyOnReceiveLabel": "ファイルが届いたら通知する",
+            "notifyOnReceiveDesc": "受信したすべてのファイルについて、自動的に受け入れたものも含めてシステム通知を表示します。AeroFTP がフォーカスされていないときでも分かります。"
+        },
+        "notifications": {
+            "title": "通知",
+            "empty": "通知はまだありません。",
+            "clearAll": "すべてクリア",
+            "dismiss": "閉じる",
+            "justNow": "たった今",
+            "minutesAgo": "{n}分前",
+            "hoursAgo": "{n}時間前",
+            "daysAgo": "{n}日前"
         }
     }
 }

@@ -4843,7 +4843,9 @@
                 "title": "Inbox ng AeroShare",
                 "empty": "Walang natanggap na file sa session na ito.",
                 "from": "mula kay {sender}",
-                "receiverOff": "Naka-off ang pagtanggap. I-on ito sa Settings para makatanggap ng mga file."
+                "receiverOff": "Naka-off ang pagtanggap. I-on ito sa Settings para makatanggap ng mga file.",
+                "openFolder": "Buksan ang folder",
+                "revealFile": "Ipakita sa folder"
             },
             "receiveLabel": "Tumanggap ng mga file",
             "receiveDesc": "Hayaang magpadala ang mga kaibigan ng file nang direkta sa iyo (isang beses, naka-encrypt nang end-to-end). Nagpapatakbo ng listener habang naka-on.",
@@ -4861,7 +4863,19 @@
                 "edit": "I-edit",
                 "remove": "Alisin",
                 "removeConfirm": "Alisin?"
-            }
+            },
+            "notifyOnReceiveLabel": "Abisuhan ako kapag dumating ang isang file",
+            "notifyOnReceiveDesc": "Magpakita ng abiso ng sistema para sa bawat natanggap na file, kabilang ang mga awtomatikong tinanggap, upang malaman mo kahit hindi naka-focus ang AeroFTP."
+        },
+        "notifications": {
+            "title": "Mga Abiso",
+            "empty": "Wala pang mga abiso.",
+            "clearAll": "I-clear lahat",
+            "dismiss": "I-dismiss",
+            "justNow": "ngayon lang",
+            "minutesAgo": "{n} min ang nakaraan",
+            "hoursAgo": "{n} oras ang nakaraan",
+            "daysAgo": "{n} araw ang nakaraan"
         }
     }
 }
