@@ -24,6 +24,7 @@ use tracing::{debug, error, info, warn};
 use url::Url;
 use zeroize::Zeroize;
 
+pub mod aerocrypt;
 pub mod aerovault;
 pub mod aerovault_v2;
 pub mod aerovault_v3;

@@ -7,12 +7,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::aerocrypt::{
+    decrypt_with_aad, derive_base_kek, encrypt_with_aad, hkdf_expand, random_array, unwrap_key,
+    wrap_key, KEY_SIZE, SALT_SIZE, WRAPPED_KEY_SIZE,
+};
 use crate::vault_telemetry::VaultReport;
-use aes_gcm_siv::aead::{Aead, Payload};
-use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
-use aes_kw::Kek;
 use hmac::{Hmac, Mac};
-use rand::RngCore;
 use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
@@ -28,10 +28,6 @@ const VERSION: u8 = 3;
 const HEADER_SIZE: usize = 1024;
 const HEADER_MAC_OFFSET: usize = 960;
 const MAC_SIZE: usize = 64;
-const SALT_SIZE: usize = 32;
-const KEY_SIZE: usize = 32;
-const WRAPPED_KEY_SIZE: usize = 40;
-const NONCE_SIZE: usize = 12;
 const MIN_PASSWORD_LEN: usize = 8;
 const MAX_MANIFEST_SIZE: u64 = 128 * 1024 * 1024;
 const MAX_EXTENSION_DIR_SIZE: u64 = 16 * 1024 * 1024;
@@ -364,55 +360,11 @@ impl VaultHeaderV3 {
     }
 }
 
-fn random_array<const N: usize>() -> [u8; N] {
-    let mut out = [0u8; N];
-    rand::rngs::OsRng.fill_bytes(&mut out);
-    out
-}
-
-fn derive_base_kek(password: &str, salt: &[u8; SALT_SIZE]) -> Result<[u8; KEY_SIZE], String> {
-    let params = argon2::Params::new(128 * 1024, 4, 4, Some(KEY_SIZE))
-        .map_err(|e| format!("Argon2 params: {e}"))?;
-    let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-    let mut key = [0u8; KEY_SIZE];
-    argon2
-        .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| format!("Argon2 derive: {e}"))?;
-    Ok(key)
-}
-
-fn hkdf_expand<const N: usize>(ikm: &[u8], label: &[u8]) -> Result<[u8; N], String> {
-    let hk = hkdf::Hkdf::<sha2::Sha256>::new(None, ikm);
-    let mut out = [0u8; N];
-    hk.expand(label, &mut out)
-        .map_err(|_| "HKDF expand failed".to_string())?;
-    Ok(out)
-}
-
 fn derive_keks(base_kek: &[u8; KEY_SIZE]) -> Result<([u8; KEY_SIZE], [u8; KEY_SIZE]), String> {
     Ok((
         hkdf_expand::<KEY_SIZE>(base_kek, HKDF_MASTER)?,
         hkdf_expand::<KEY_SIZE>(base_kek, HKDF_MAC)?,
     ))
-}
-
-fn wrap_key(kek: &[u8; KEY_SIZE], key: &[u8; KEY_SIZE]) -> Result<[u8; WRAPPED_KEY_SIZE], String> {
-    let kek = Kek::from(*kek);
-    let mut out = [0u8; WRAPPED_KEY_SIZE];
-    kek.wrap(key, &mut out)
-        .map_err(|_| "AES-KW wrap failed".to_string())?;
-    Ok(out)
-}
-
-fn unwrap_key(
-    kek: &[u8; KEY_SIZE],
-    wrapped: &[u8; WRAPPED_KEY_SIZE],
-) -> Result<[u8; KEY_SIZE], String> {
-    let kek = Kek::from(*kek);
-    let mut out = [0u8; KEY_SIZE];
-    kek.unwrap(wrapped, &mut out)
-        .map_err(|_| "AES-KW unwrap failed".to_string())?;
-    Ok(out)
 }
 
 fn default_wrappers(level: i32) -> WrapperManifest {
@@ -486,42 +438,6 @@ fn manifest_zstd_level(manifest: &VaultManifestV3) -> i32 {
         .compression
         .level
         .unwrap_or(DEFAULT_ZSTD_LEVEL)
-}
-
-fn encrypt_with_aad(key: &[u8; KEY_SIZE], plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>, String> {
-    let cipher = Aes256GcmSiv::new_from_slice(key).map_err(|e| format!("AES-GCM-SIV init: {e}"))?;
-    let nonce_bytes = random_array::<NONCE_SIZE>();
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher
-        .encrypt(
-            nonce,
-            Payload {
-                msg: plaintext,
-                aad,
-            },
-        )
-        .map_err(|_| "AES-GCM-SIV encrypt failed".to_string())?;
-    let mut out = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
-    out.extend_from_slice(&nonce_bytes);
-    out.extend_from_slice(&ciphertext);
-    Ok(out)
-}
-
-fn decrypt_with_aad(key: &[u8; KEY_SIZE], encrypted: &[u8], aad: &[u8]) -> Result<Vec<u8>, String> {
-    if encrypted.len() < NONCE_SIZE + 16 {
-        return Err("AES-GCM-SIV payload is too short".to_string());
-    }
-    let cipher = Aes256GcmSiv::new_from_slice(key).map_err(|e| format!("AES-GCM-SIV init: {e}"))?;
-    let nonce = Nonce::from_slice(&encrypted[..NONCE_SIZE]);
-    cipher
-        .decrypt(
-            nonce,
-            Payload {
-                msg: &encrypted[NONCE_SIZE..],
-                aad,
-            },
-        )
-        .map_err(|_| "AES-GCM-SIV decrypt failed".to_string())
 }
 
 fn block_aad(block_index: u64, chunk_id: &str) -> Vec<u8> {
