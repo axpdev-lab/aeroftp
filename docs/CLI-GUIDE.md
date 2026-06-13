@@ -993,20 +993,26 @@ Jobs are persisted in SQLite (`~/.config/aeroftp/jobs.db`).
 # Initialize encrypted overlay on a remote directory
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt init _ /encrypted
 
-# Upload with encryption (content + filename encrypted)
+# Upload a file with encryption (content + filename encrypted)
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt put ./secret.pdf _ /encrypted
 
-# List (shows decrypted names)
+# Upload a whole directory tree (-r): every level gets an encrypted name
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt put ./photos _ /encrypted -r
+
+# List one level (shows decrypted names)
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
 
-# Download with decryption
+# List the whole tree (-R): decrypted relative paths
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted -R
+
+# Download and decrypt a single file
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get secret.pdf _ /encrypted ./decrypted.pdf
 
-# Password via environment variable
-AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
+# Download and decrypt a directory tree (-r) into ./photos
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get photos _ /encrypted . -r
 ```
 
-Encryption: AES-256-GCM (content, 64KB blocks) + AES-256-SIV (filenames) + Argon2id (key derivation). The cloud provider never sees file names or content.
+Encryption: new overlays use AES-256-GCM-SIV (content, 64KB blocks) with a per-file key wrapped by AES-256-KW, AES-256-SIV (filenames), and Argon2id (key derivation); legacy overlays (plain AES-256-GCM) stay readable. The cloud provider never sees file names or content.
 
 ### vault - AeroVault Encrypted Container
 

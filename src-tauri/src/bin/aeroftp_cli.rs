@@ -3541,13 +3541,16 @@ enum CryptCommands {
         /// Remote encrypted directory
         #[arg(default_value = "/")]
         path: String,
+        /// Recurse into encrypted subdirectories (show the whole tree)
+        #[arg(short = 'R', long)]
+        recursive: bool,
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
     },
-    /// Upload a file with encryption (content + filename encrypted)
+    /// Upload a file or directory with encryption (content + names encrypted)
     Put {
-        /// Local file to encrypt and upload
+        /// Local file or directory to encrypt and upload
         local: String,
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -3555,13 +3558,16 @@ enum CryptCommands {
         /// Remote encrypted directory
         #[arg(default_value = "/")]
         remote: String,
+        /// Recurse into the local directory tree (required to upload a folder)
+        #[arg(short = 'r', long)]
+        recursive: bool,
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
     },
-    /// Download and decrypt a file from an encrypted overlay
+    /// Download and decrypt a file or directory from an encrypted overlay
     Get {
-        /// Remote file name (decrypted name, e.g., "secret.txt")
+        /// Remote name (decrypted, e.g. "secret.txt" or "photos/2026")
         remote: String,
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -3572,6 +3578,9 @@ enum CryptCommands {
         /// Local destination
         #[arg(default_value = ".")]
         local: String,
+        /// Recurse into the encrypted subdirectory tree (download a folder)
+        #[arg(short = 'r', long)]
+        recursive: bool,
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
@@ -36472,6 +36481,55 @@ async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
 
 // ── Crypt Overlay - Transparent Encryption Layer ─────────────────
 
+/// Maximum directory recursion depth for native AeroCrypt folder-tree
+/// traversal. Matches the rclone-crypt overlay bound
+/// (`RCLONE_OVERLAY_MAX_DEPTH` in `lib.rs`) so both overlays refuse
+/// pathologically deep trees identically (rclone-crypt BFS-64 parity).
+const CRYPT_OVERLAY_MAX_DEPTH: usize = 64;
+
+/// Reduce a decrypted name to a single safe local path component, so a tampered
+/// or malformed obfuscated name can never escape the destination directory via
+/// embedded separators or `.`/`..` (defense in depth: a name is attacker
+/// influenced only by someone who already holds the overlay password). Mirrors
+/// `sanitize_local_name` in `lib.rs`.
+fn crypt_sanitize_component(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c == '/' || c == '\\' || c == '\0' {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        "_".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Encrypt a plaintext relative path to its obfuscated remote form by
+/// encrypting each component independently with AES-256-SIV. Deterministic, so
+/// the same tree always maps to the same remote layout (what keeps an encrypted
+/// scope listable and syncable object by object). Empty and `.` segments are
+/// dropped; `..` is rejected to forbid traversal in crypt paths.
+fn crypt_encrypt_rel_path(master_key: &[u8; 32], rel: &str) -> Result<String, String> {
+    use ftp_client_gui_lib::aerocrypt::names;
+    let mut parts: Vec<String> = Vec::new();
+    for comp in rel.split('/') {
+        if comp.is_empty() || comp == "." {
+            continue;
+        }
+        if comp == ".." {
+            return Err("path traversal ('..') is not allowed in crypt paths".to_string());
+        }
+        parts.push(names::encrypt_filename(master_key, comp)?);
+    }
+    Ok(parts.join("/"))
+}
+
 /// CLI commands for crypt overlay operations.
 async fn cmd_crypt_init(
     url: &str,
@@ -36531,6 +36589,7 @@ async fn cmd_crypt_ls(
     url: &str,
     path: &str,
     password: &str,
+    recursive: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -36567,6 +36626,94 @@ async fn cmd_crypt_ls(
             return 6;
         }
     };
+
+    if recursive {
+        // Walk the encrypted tree (depth-bounded like the rclone-crypt overlay),
+        // decrypting each path component, and print the decrypted relative paths.
+        let mut stack: Vec<(String, String, usize)> = vec![(base_path.clone(), String::new(), 0)];
+        let mut rows: Vec<(String, bool, u64)> = Vec::new(); // (rel_path, is_dir, size)
+        let mut entries_seen = 0usize;
+        let mut truncated = false;
+        while let Some((abs_dir, rel_prefix, depth)) = stack.pop() {
+            if depth >= CRYPT_OVERLAY_MAX_DEPTH {
+                truncated = true;
+                continue;
+            }
+            let entries = match provider.list(&abs_dir).await {
+                Ok(e) => e,
+                Err(e) => {
+                    let code = provider_error_to_exit_code(&e);
+                    print_error(format, &format!("List failed for {}: {}", abs_dir, e), code);
+                    let _ = provider.disconnect().await;
+                    return code;
+                }
+            };
+            for entry in entries {
+                if entry.name == ".aeroftp-crypt.json" {
+                    continue;
+                }
+                // Skip foreign / undecryptable names rather than aborting the walk.
+                let plain = match names::decrypt_filename(&master_key, &entry.name) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if entries_seen >= MAX_SCAN_ENTRIES {
+                    truncated = true;
+                    break;
+                }
+                entries_seen += 1;
+                let rel = if rel_prefix.is_empty() {
+                    plain
+                } else {
+                    format!("{}/{}", rel_prefix, plain)
+                };
+                if entry.is_dir {
+                    rows.push((rel.clone(), true, 0));
+                    stack.push((entry.path.clone(), rel, depth + 1));
+                } else {
+                    rows.push((rel, false, entry.size));
+                }
+            }
+            if truncated {
+                break;
+            }
+        }
+        // Sort so a directory sorts immediately before its children.
+        rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+        match format {
+            OutputFormat::Text => {
+                for (rel, is_dir, size) in &rows {
+                    if *is_dir {
+                        println!("{}/", rel);
+                    } else {
+                        println!("{:<48} {}", rel, format_size(*size));
+                    }
+                }
+                if !cli.quiet {
+                    eprintln!(
+                        "\n{} entries (encrypted on remote){}",
+                        rows.len(),
+                        if truncated { ", listing truncated" } else { "" }
+                    );
+                }
+            }
+            OutputFormat::Json => {
+                let items: Vec<serde_json::Value> = rows
+                    .iter()
+                    .map(|(rel, is_dir, size)| {
+                        serde_json::json!({"path": rel, "is_dir": is_dir, "size": size})
+                    })
+                    .collect();
+                print_json(&serde_json::json!({
+                    "items": items,
+                    "summary": {"count": rows.len(), "truncated": truncated}
+                }));
+            }
+        }
+        let _ = provider.disconnect().await;
+        return 0;
+    }
 
     // List directory and decrypt filenames
     let entries = match provider.list(&base_path).await {
@@ -36621,6 +36768,7 @@ async fn cmd_crypt_put(
     local_file: &str,
     remote_path: &str,
     password: &str,
+    recursive: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -36657,6 +36805,189 @@ async fn cmd_crypt_put(
         }
     };
     let start = Instant::now();
+
+    // Directory upload: encrypt and mirror the whole local tree under the
+    // overlay, creating encrypted-named subdirectories as we descend (the
+    // folder is recreated as a named subdirectory of the overlay, like the
+    // rclone-crypt overlay's upload_folder).
+    let local_meta = match std::fs::symlink_metadata(local_file) {
+        Ok(m) => m,
+        Err(e) => {
+            print_error(format, &format!("Cannot read '{}': {}", local_file, e), 2);
+            let _ = provider.disconnect().await;
+            return 2;
+        }
+    };
+    if local_meta.is_dir() {
+        if !recursive {
+            print_error(
+                format,
+                &format!("'{}' is a directory; pass --recursive/-r", local_file),
+                2,
+            );
+            let _ = provider.disconnect().await;
+            return 2;
+        }
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+        let root_name = match Path::new(local_file)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            Some(n) => n,
+            None => {
+                print_error(format, "Cannot determine folder name to encrypt", 2);
+                let _ = provider.disconnect().await;
+                return 2;
+            }
+        };
+        let root_enc = match names::encrypt_filename(&master_key, &root_name) {
+            Ok(n) => n,
+            Err(e) => {
+                print_error(format, &format!("Filename encryption failed: {}", e), 99);
+                let _ = provider.disconnect().await;
+                return 99;
+            }
+        };
+        let root_remote = format!("{}/{}", base_path.trim_end_matches('/'), root_enc);
+        let _ = provider.mkdir(&root_remote).await; // best-effort: may already exist
+
+        // (local dir, remote encrypted dir, decrypted rel path for display, depth)
+        let mut stack: Vec<(std::path::PathBuf, String, String, usize)> = vec![(
+            Path::new(local_file).to_path_buf(),
+            root_remote,
+            root_name,
+            0,
+        )];
+        let mut files_uploaded = 0u64;
+        let mut bytes_plain = 0u64;
+        let mut entries_seen = 0usize;
+        let mut errors: Vec<String> = Vec::new();
+
+        while let Some((ldir, rdir, rel, depth)) = stack.pop() {
+            if depth >= CRYPT_OVERLAY_MAX_DEPTH {
+                print_error(
+                    format,
+                    &format!(
+                        "directory depth exceeds {} at '{}'",
+                        CRYPT_OVERLAY_MAX_DEPTH, rel
+                    ),
+                    4,
+                );
+                let _ = provider.disconnect().await;
+                return 4;
+            }
+            let rd = match std::fs::read_dir(&ldir) {
+                Ok(r) => r,
+                Err(e) => {
+                    errors.push(format!("read {}: {}", ldir.display(), e));
+                    continue;
+                }
+            };
+            for ent in rd.flatten() {
+                let meta = match ent.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if meta.file_type().is_symlink() {
+                    continue;
+                }
+                let name = ent.file_name().to_string_lossy().to_string();
+                if name.is_empty() {
+                    continue;
+                }
+                if entries_seen >= MAX_SCAN_ENTRIES {
+                    print_error(
+                        format,
+                        &format!("tree exceeds the {} entry cap", MAX_SCAN_ENTRIES),
+                        4,
+                    );
+                    let _ = provider.disconnect().await;
+                    return 4;
+                }
+                entries_seen += 1;
+                let enc = match names::encrypt_filename(&master_key, &name) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        errors.push(format!("encrypt name {}: {}", name, e));
+                        continue;
+                    }
+                };
+                let child_remote = format!("{}/{}", rdir, enc);
+                let child_rel = format!("{}/{}", rel, name);
+                if meta.is_dir() {
+                    let _ = provider.mkdir(&child_remote).await; // best-effort
+                    stack.push((ent.path(), child_remote, child_rel, depth + 1));
+                } else if meta.is_file() {
+                    let plaintext = match std::fs::read(ent.path()) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            errors.push(format!("read {}: {}", child_rel, e));
+                            continue;
+                        }
+                    };
+                    let ciphertext = match overlay::encrypt_data(&cfg, &master_key, &plaintext) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            errors.push(format!("encrypt {}: {}", child_rel, e));
+                            continue;
+                        }
+                    };
+                    let tmp = match tempfile::NamedTempFile::new() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            errors.push(format!("stage {}: {}", child_rel, e));
+                            continue;
+                        }
+                    };
+                    if let Err(e) = std::fs::write(tmp.path(), &ciphertext) {
+                        errors.push(format!("stage {}: {}", child_rel, e));
+                        continue;
+                    }
+                    match provider
+                        .upload(&tmp.path().to_string_lossy(), &child_remote, None)
+                        .await
+                    {
+                        Ok(()) => {
+                            files_uploaded += 1;
+                            bytes_plain += plaintext.len() as u64;
+                            if !quiet {
+                                println!("  {} -> {}", child_rel, enc);
+                            }
+                        }
+                        Err(e) => errors.push(format!("upload {}: {}", child_rel, e)),
+                    }
+                }
+            }
+        }
+
+        let elapsed = start.elapsed();
+        let _ = provider.disconnect().await;
+        match format {
+            OutputFormat::Json => {
+                print_json(&serde_json::json!({
+                    "status": if errors.is_empty() { "ok" } else { "partial" },
+                    "files": files_uploaded,
+                    "bytes": bytes_plain,
+                    "errors": errors,
+                }));
+            }
+            OutputFormat::Text => {
+                if !cli.quiet {
+                    println!(
+                        "\nEncrypted and uploaded {} files ({}) in {:.1}s",
+                        files_uploaded,
+                        format_size(bytes_plain),
+                        elapsed.as_secs_f64()
+                    );
+                    for err in &errors {
+                        eprintln!("  Error: {}", err);
+                    }
+                }
+            }
+        }
+        return if errors.is_empty() { 0 } else { 4 };
+    }
 
     // Read local file
     let plaintext = match std::fs::read(local_file) {
@@ -36719,12 +37050,14 @@ async fn cmd_crypt_put(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_get(
     url: &str,
     file_name: &str,
     path: &str,
     local_dest: &str,
     password: &str,
+    recursive: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -36762,8 +37095,155 @@ async fn cmd_crypt_get(
     };
     let start = Instant::now();
 
-    // Encrypt the decrypted name to find the remote file
-    let enc = match names::encrypt_filename(&master_key, file_name) {
+    if recursive {
+        // Download an encrypted subdirectory tree, decrypting names and content
+        // and rebuilding the plaintext tree locally (rclone-crypt overlay
+        // download_folder parity, depth-bounded). The named folder is recreated
+        // under the local destination directory.
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+        let trimmed = file_name.trim_matches('/');
+        let enc_rel = match crypt_encrypt_rel_path(&master_key, trimmed) {
+            Ok(r) => r,
+            Err(e) => {
+                print_error(format, &e, 99);
+                let _ = provider.disconnect().await;
+                return 99;
+            }
+        };
+        let remote_root = if enc_rel.is_empty() {
+            base_path.clone()
+        } else {
+            format!("{}/{}", base_path.trim_end_matches('/'), enc_rel)
+        };
+        let basename = trimmed
+            .rsplit('/')
+            .find(|s| !s.is_empty())
+            .map(crypt_sanitize_component);
+        let local_root: std::path::PathBuf = match (&basename, local_dest) {
+            (Some(b), d) if d.is_empty() || d == "." => std::path::PathBuf::from(b),
+            (Some(b), d) => Path::new(d).join(b),
+            (None, d) if d.is_empty() || d == "." => std::path::PathBuf::from("."),
+            (None, d) => std::path::PathBuf::from(d),
+        };
+
+        let mut stack: Vec<(String, std::path::PathBuf, usize)> =
+            vec![(remote_root, local_root.clone(), 0)];
+        let mut files_done = 0u64;
+        let mut bytes_plain = 0u64;
+        let mut entries_seen = 0usize;
+        let mut errors: Vec<String> = Vec::new();
+        let mut first = true;
+
+        while let Some((rdir, ldir, depth)) = stack.pop() {
+            if depth >= CRYPT_OVERLAY_MAX_DEPTH {
+                errors.push(format!(
+                    "directory depth exceeds {}",
+                    CRYPT_OVERLAY_MAX_DEPTH
+                ));
+                continue;
+            }
+            if let Err(e) = std::fs::create_dir_all(&ldir) {
+                errors.push(format!("create {}: {}", ldir.display(), e));
+                continue;
+            }
+            let entries = match provider.list(&rdir).await {
+                Ok(e) => e,
+                Err(e) => {
+                    // A failure on the root path is fatal (wrong name / not a
+                    // directory); deeper failures are collected and the walk
+                    // continues over the rest of the tree.
+                    if first {
+                        let code = provider_error_to_exit_code(&e);
+                        print_error(format, &format!("List failed for {}: {}", rdir, e), code);
+                        let _ = provider.disconnect().await;
+                        return code;
+                    }
+                    errors.push(format!("list {}: {}", rdir, e));
+                    continue;
+                }
+            };
+            first = false;
+            for entry in entries {
+                if entry.name == ".aeroftp-crypt.json" {
+                    continue;
+                }
+                let plain = match names::decrypt_filename(&master_key, &entry.name) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if entries_seen >= MAX_SCAN_ENTRIES {
+                    errors.push(format!("tree exceeds the {} entry cap", MAX_SCAN_ENTRIES));
+                    break;
+                }
+                entries_seen += 1;
+                let ltarget = ldir.join(crypt_sanitize_component(&plain));
+                if entry.is_dir {
+                    stack.push((entry.path.clone(), ltarget, depth + 1));
+                    continue;
+                }
+                let ciphertext = match provider.download_to_bytes(&entry.path).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        errors.push(format!("download {}: {}", plain, e));
+                        continue;
+                    }
+                };
+                let plaintext = match overlay::decrypt_data(&master_key, &ciphertext) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        errors.push(format!("decrypt {}: {}", plain, e));
+                        continue;
+                    }
+                };
+                if let Err(e) = std::fs::write(&ltarget, &plaintext) {
+                    errors.push(format!("write {}: {}", ltarget.display(), e));
+                    continue;
+                }
+                files_done += 1;
+                bytes_plain += plaintext.len() as u64;
+                if !quiet {
+                    println!(
+                        "  {} ({})",
+                        ltarget.display(),
+                        format_size(plaintext.len() as u64)
+                    );
+                }
+            }
+        }
+
+        let elapsed = start.elapsed();
+        let _ = provider.disconnect().await;
+        match format {
+            OutputFormat::Json => {
+                print_json(&serde_json::json!({
+                    "status": if errors.is_empty() { "ok" } else { "partial" },
+                    "files": files_done,
+                    "bytes": bytes_plain,
+                    "dest": local_root.to_string_lossy(),
+                    "errors": errors,
+                }));
+            }
+            OutputFormat::Text => {
+                if !cli.quiet {
+                    println!(
+                        "\nDecrypted and downloaded {} files ({}) into {} in {:.1}s",
+                        files_done,
+                        format_size(bytes_plain),
+                        local_root.display(),
+                        elapsed.as_secs_f64()
+                    );
+                    for err in &errors {
+                        eprintln!("  Error: {}", err);
+                    }
+                }
+            }
+        }
+        return if errors.is_empty() { 0 } else { 4 };
+    }
+
+    // Encrypt the decrypted name (component by component, so nested names from a
+    // folder tree resolve too) to find the remote file.
+    let enc = match crypt_encrypt_rel_path(&master_key, file_name) {
         Ok(n) => n,
         Err(e) => {
             print_error(format, &format!("Filename encryption failed: {}", e), 99);
@@ -46504,6 +46984,7 @@ async fn main() {
                 CryptCommands::Ls {
                     url,
                     path,
+                    recursive,
                     password,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
@@ -46512,12 +46993,13 @@ async fn main() {
                     } else {
                         url.as_str()
                     };
-                    cmd_crypt_ls(u, path, &pw, &cli, format).await
+                    cmd_crypt_ls(u, path, &pw, *recursive, &cli, format).await
                 }
                 CryptCommands::Put {
                     local,
                     url,
                     remote,
+                    recursive,
                     password,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
@@ -46526,13 +47008,14 @@ async fn main() {
                     } else {
                         url.as_str()
                     };
-                    cmd_crypt_put(u, local, remote, &pw, &cli, format).await
+                    cmd_crypt_put(u, local, remote, &pw, *recursive, &cli, format).await
                 }
                 CryptCommands::Get {
                     remote,
                     url,
                     path,
                     local,
+                    recursive,
                     password,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
@@ -46541,7 +47024,7 @@ async fn main() {
                     } else {
                         url.as_str()
                     };
-                    cmd_crypt_get(u, remote, path, local, &pw, &cli, format).await
+                    cmd_crypt_get(u, remote, path, local, &pw, *recursive, &cli, format).await
                 }
             }
         }
@@ -47041,6 +47524,58 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn crypt_rel_path_round_trips_each_component() {
+        use ftp_client_gui_lib::aerocrypt::names;
+        let master = [5u8; 32];
+        let plain = "photos/2026 trip/img 01.jpg";
+        let enc = crypt_encrypt_rel_path(&master, plain).unwrap();
+        // One obfuscated token per real component, no plaintext leak.
+        assert_eq!(enc.split('/').count(), 3);
+        assert!(!enc.contains("photos"));
+        // Decrypting each component rebuilds the original tree path.
+        let decoded: Vec<String> = enc
+            .split('/')
+            .map(|c| names::decrypt_filename(&master, c).expect("component decrypts"))
+            .collect();
+        assert_eq!(decoded.join("/"), plain);
+        // Deterministic: the same tree always maps to the same remote layout.
+        assert_eq!(crypt_encrypt_rel_path(&master, plain).unwrap(), enc);
+    }
+
+    #[test]
+    fn crypt_rel_path_drops_empty_and_rejects_traversal() {
+        let master = [7u8; 32];
+        // Leading slash and doubled separators collapse to clean components.
+        assert_eq!(
+            crypt_encrypt_rel_path(&master, "/a//b/")
+                .unwrap()
+                .split('/')
+                .count(),
+            2
+        );
+        // "." segments are ignored.
+        assert_eq!(
+            crypt_encrypt_rel_path(&master, "a/./b")
+                .unwrap()
+                .split('/')
+                .count(),
+            2
+        );
+        // ".." is refused outright (no traversal in crypt paths).
+        assert!(crypt_encrypt_rel_path(&master, "a/../b").is_err());
+    }
+
+    #[test]
+    fn crypt_sanitize_component_blocks_separators_and_dot_dirs() {
+        assert_eq!(crypt_sanitize_component("clean.txt"), "clean.txt");
+        assert_eq!(crypt_sanitize_component("a/b"), "a_b");
+        assert_eq!(crypt_sanitize_component("a\\b"), "a_b");
+        assert_eq!(crypt_sanitize_component(".."), "_");
+        assert_eq!(crypt_sanitize_component("."), "_");
+        assert_eq!(crypt_sanitize_component(""), "_");
     }
 
     #[tokio::test]
