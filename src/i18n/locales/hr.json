@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Ukloniti?"
             },
             "notifyOnReceiveLabel": "Obavijesti me kada stigne datoteka",
-            "notifyOnReceiveDesc": "Prikaži obavijest sustava za svaku primljenu datoteku, uključujući automatski prihvaćene, kako biste znali čak i kada AeroFTP nije u fokusu."
+            "notifyOnReceiveDesc": "Prikaži obavijest sustava za svaku primljenu datoteku, uključujući automatski prihvaćene, kako biste znali čak i kada AeroFTP nije u fokusu.",
+            "knock": {
+                "send": "Pošalji podsjetnik",
+                "dismiss": "Odbaci",
+                "msg": {
+                    "knock": "Kuc kuc",
+                    "online_q": "Jesi li na mreži?",
+                    "online_yes": "Da, ovdje sam",
+                    "online_no": "Ne sada",
+                    "ready_q": "Spreman za primanje?",
+                    "ready_yes": "Da, pošalji",
+                    "ready_no": "Ne sada",
+                    "check_inbox": "Poslao sam ti datoteku, provjeri pristiglu poštu",
+                    "please_accept": "Molim te, prihvati datoteku",
+                    "one_moment": "Trenutak, molim",
+                    "resend": "Pošalji ponovno, nije stiglo",
+                    "thanks": "Primljeno, hvala"
+                }
+            }
         },
         "notifications": {
             "title": "Obavijesti",

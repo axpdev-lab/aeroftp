@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Eltávolítja?"
             },
             "notifyOnReceiveLabel": "Értesíts, amikor egy fájl érkezik",
-            "notifyOnReceiveDesc": "Rendszerértesítés megjelenítése minden fogadott fájlhoz, beleértve az automatikusan elfogadottakat is, hogy akkor is tudj róla, amikor az AeroFTP nincs előtérben."
+            "notifyOnReceiveDesc": "Rendszerértesítés megjelenítése minden fogadott fájlhoz, beleértve az automatikusan elfogadottakat is, hogy akkor is tudj róla, amikor az AeroFTP nincs előtérben.",
+            "knock": {
+                "send": "Bökés küldése",
+                "dismiss": "Elvetés",
+                "msg": {
+                    "knock": "Kopp kopp",
+                    "online_q": "Online vagy?",
+                    "online_yes": "Igen, itt vagyok",
+                    "online_no": "Most nem",
+                    "ready_q": "Készen állsz a fogadásra?",
+                    "ready_yes": "Igen, küldd",
+                    "ready_no": "Most nem",
+                    "check_inbox": "Küldtem neked egy fájlt, nézd meg a bejövő mappádat",
+                    "please_accept": "Kérlek, fogadd el a fájlt",
+                    "one_moment": "Egy pillanat, kérlek",
+                    "resend": "Küldd újra, nem érkezett meg",
+                    "thanks": "Megkaptam, köszönöm"
+                }
+            }
         },
         "notifications": {
             "title": "Értesítések",

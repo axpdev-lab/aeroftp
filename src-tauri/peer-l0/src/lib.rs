@@ -20,8 +20,9 @@ pub use protocol::{
     send_encrypted_blob, send_offer,
 };
 pub use send::{
-    probe_presence_many, receive_on_endpoint, run_receiver, run_send_file, send_on_endpoint,
-    IncomingOffer, ReceiveEvent, SendOffer, MAX_SEND_BYTES, PEER_PING_ALPN, PEER_SEND_ALPN,
+    probe_presence_many, receive_on_endpoint, run_receiver, run_send_file, send_knock_on_endpoint,
+    send_on_endpoint, IncomingOffer, Knock, ReceiveEvent, SendOffer, MAX_SEND_BYTES,
+    PEER_KNOCK_ALPN, PEER_PING_ALPN, PEER_SEND_ALPN,
 };
 
 pub use crate::endpoint::ConnectivitySample;

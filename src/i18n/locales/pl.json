@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Usunąć?"
             },
             "notifyOnReceiveLabel": "Powiadom mnie, gdy nadejdzie plik",
-            "notifyOnReceiveDesc": "Wyświetl powiadomienie systemowe dla każdego odebranego pliku, w tym dla automatycznie zaakceptowanych, abyś wiedział o tym nawet wtedy, gdy AeroFTP nie jest aktywne."
+            "notifyOnReceiveDesc": "Wyświetl powiadomienie systemowe dla każdego odebranego pliku, w tym dla automatycznie zaakceptowanych, abyś wiedział o tym nawet wtedy, gdy AeroFTP nie jest aktywne.",
+            "knock": {
+                "send": "Wyślij szturchnięcie",
+                "dismiss": "Odrzuć",
+                "msg": {
+                    "knock": "Puk puk",
+                    "online_q": "Jesteś online?",
+                    "online_yes": "Tak, jestem tu",
+                    "online_no": "Nie teraz",
+                    "ready_q": "Gotowy na odbiór?",
+                    "ready_yes": "Tak, wyślij",
+                    "ready_no": "Nie teraz",
+                    "check_inbox": "Wysłałem ci plik, sprawdź skrzynkę odbiorczą",
+                    "please_accept": "Proszę, przyjmij plik",
+                    "one_moment": "Chwileczkę",
+                    "resend": "Wyślij ponownie, nie dotarł",
+                    "thanks": "Odebrano, dzięki"
+                }
+            }
         },
         "notifications": {
             "title": "Powiadomienia",

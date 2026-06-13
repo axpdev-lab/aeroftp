@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Noņemt?"
             },
             "notifyOnReceiveLabel": "Paziņot man, kad pienāk fails",
-            "notifyOnReceiveDesc": "Rādīt sistēmas paziņojumu par katru saņemto failu, tostarp automātiski pieņemtajiem, lai jūs zinātu pat tad, kad AeroFTP nav fokusā."
+            "notifyOnReceiveDesc": "Rādīt sistēmas paziņojumu par katru saņemto failu, tostarp automātiski pieņemtajiem, lai jūs zinātu pat tad, kad AeroFTP nav fokusā.",
+            "knock": {
+                "send": "Sūtīt pīkstienu",
+                "dismiss": "Noraidīt",
+                "msg": {
+                    "knock": "Klau klau",
+                    "online_q": "Vai esi tiešsaistē?",
+                    "online_yes": "Jā, esmu šeit",
+                    "online_no": "Ne tagad",
+                    "ready_q": "Gatavs saņemt?",
+                    "ready_yes": "Jā, sūti",
+                    "ready_no": "Ne tagad",
+                    "check_inbox": "Es tev nosūtīju failu, pārbaudi iesūtni",
+                    "please_accept": "Lūdzu, pieņem failu",
+                    "one_moment": "Mirklīti, lūdzu",
+                    "resend": "Lūdzu, sūti vēlreiz, tas nepienāca",
+                    "thanks": "Saņemts, paldies"
+                }
+            }
         },
         "notifications": {
             "title": "Paziņojumi",

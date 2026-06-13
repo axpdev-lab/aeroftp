@@ -10,7 +10,17 @@
  */
 
 import * as React from 'react';
-import { Bell, FolderOpen, Trash2, Inbox, Check, Download, Upload, AlertCircle } from 'lucide-react';
+import {
+  Bell,
+  FolderOpen,
+  Trash2,
+  Inbox,
+  Check,
+  Download,
+  Upload,
+  AlertCircle,
+  Hand,
+} from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useNotificationCenter, type NotificationKind } from '../hooks/useNotificationCenter';
 import { aeroShareInboxRoot, openInFileManager } from '../utils/aeroShare';
@@ -30,6 +40,7 @@ const kindIcon: Record<NotificationKind, React.ReactNode> = {
   receive: <Download size={14} className="text-violet-500 shrink-0" />,
   send: <Upload size={14} className="text-blue-500 shrink-0" />,
   error: <AlertCircle size={14} className="text-red-500 shrink-0" />,
+  knock: <Hand size={14} className="text-amber-500 shrink-0" />,
 };
 
 export const NotificationBell: React.FC = () => {

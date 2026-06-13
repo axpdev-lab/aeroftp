@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Hapus?"
             },
             "notifyOnReceiveLabel": "Beri tahu saya saat file tiba",
-            "notifyOnReceiveDesc": "Tampilkan notifikasi sistem untuk setiap file yang diterima, termasuk yang diterima secara otomatis, sehingga Anda tahu bahkan saat AeroFTP tidak sedang aktif."
+            "notifyOnReceiveDesc": "Tampilkan notifikasi sistem untuk setiap file yang diterima, termasuk yang diterima secara otomatis, sehingga Anda tahu bahkan saat AeroFTP tidak sedang aktif.",
+            "knock": {
+                "send": "Kirim colekan",
+                "dismiss": "Abaikan",
+                "msg": {
+                    "knock": "Tok tok",
+                    "online_q": "Apakah kamu online?",
+                    "online_yes": "Ya, aku di sini",
+                    "online_no": "Tidak sekarang",
+                    "ready_q": "Siap menerima?",
+                    "ready_yes": "Ya, kirim",
+                    "ready_no": "Tidak sekarang",
+                    "check_inbox": "Aku mengirimimu sebuah berkas, cek kotak masukmu",
+                    "please_accept": "Tolong terima berkasnya",
+                    "one_moment": "Sebentar, ya",
+                    "resend": "Tolong kirim ulang, belum sampai",
+                    "thanks": "Diterima, terima kasih"
+                }
+            }
         },
         "notifications": {
             "title": "Notifikasi",

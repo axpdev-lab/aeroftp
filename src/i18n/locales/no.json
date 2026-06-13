@@ -4865,7 +4865,25 @@
                 "removeConfirm": "Fjerne?"
             },
             "notifyOnReceiveLabel": "Varsle meg når en fil kommer",
-            "notifyOnReceiveDesc": "Vis et systemvarsel for hver mottatt fil, inkludert automatisk aksepterte, slik at du vet det selv når AeroFTP ikke er i fokus."
+            "notifyOnReceiveDesc": "Vis et systemvarsel for hver mottatt fil, inkludert automatisk aksepterte, slik at du vet det selv når AeroFTP ikke er i fokus.",
+            "knock": {
+                "send": "Send et dytt",
+                "dismiss": "Avvis",
+                "msg": {
+                    "knock": "Bank bank",
+                    "online_q": "Er du pålogget?",
+                    "online_yes": "Ja, jeg er her",
+                    "online_no": "Ikke nå",
+                    "ready_q": "Klar til å motta?",
+                    "ready_yes": "Ja, send det",
+                    "ready_no": "Ikke nå",
+                    "check_inbox": "Jeg sendte deg en fil, sjekk innboksen din",
+                    "please_accept": "Vennligst godta filen",
+                    "one_moment": "Et øyeblikk",
+                    "resend": "Send på nytt, den kom ikke frem",
+                    "thanks": "Mottatt, takk"
+                }
+            }
         },
         "notifications": {
             "title": "Varsler",

@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Buang?"
             },
             "notifyOnReceiveLabel": "Beritahu saya apabila fail tiba",
-            "notifyOnReceiveDesc": "Tunjukkan pemberitahuan sistem untuk setiap fail yang diterima, termasuk yang diterima secara automatik, supaya anda tahu walaupun AeroFTP tidak difokuskan."
+            "notifyOnReceiveDesc": "Tunjukkan pemberitahuan sistem untuk setiap fail yang diterima, termasuk yang diterima secara automatik, supaya anda tahu walaupun AeroFTP tidak difokuskan.",
+            "knock": {
+                "send": "Hantar ketukan",
+                "dismiss": "Ketepikan",
+                "msg": {
+                    "knock": "Tok tok",
+                    "online_q": "Adakah anda dalam talian?",
+                    "online_yes": "Ya, saya di sini",
+                    "online_no": "Bukan sekarang",
+                    "ready_q": "Sedia untuk menerima?",
+                    "ready_yes": "Ya, hantar",
+                    "ready_no": "Bukan sekarang",
+                    "check_inbox": "Saya hantar fail kepada anda, semak peti masuk anda",
+                    "please_accept": "Sila terima fail itu",
+                    "one_moment": "Sekejap, ya",
+                    "resend": "Sila hantar semula, ia tidak sampai",
+                    "thanks": "Diterima, terima kasih"
+                }
+            }
         },
         "notifications": {
             "title": "Pemberitahuan",

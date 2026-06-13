@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Remover?"
             },
             "notifyOnReceiveLabel": "Avisar-me quando chegar um ficheiro",
-            "notifyOnReceiveDesc": "Mostra uma notificação do sistema para cada ficheiro recebido, incluindo os aceites automaticamente, para que saibas mesmo quando o AeroFTP não está em primeiro plano."
+            "notifyOnReceiveDesc": "Mostra uma notificação do sistema para cada ficheiro recebido, incluindo os aceites automaticamente, para que saibas mesmo quando o AeroFTP não está em primeiro plano.",
+            "knock": {
+                "send": "Enviar um toque",
+                "dismiss": "Dispensar",
+                "msg": {
+                    "knock": "Toc toc",
+                    "online_q": "Está online?",
+                    "online_yes": "Sim, estou aqui",
+                    "online_no": "Agora não",
+                    "ready_q": "Pronto para receber?",
+                    "ready_yes": "Sim, envia",
+                    "ready_no": "Agora não",
+                    "check_inbox": "Enviei-te um ficheiro, vê a tua caixa de entrada",
+                    "please_accept": "Por favor, aceita o ficheiro",
+                    "one_moment": "Um momento, por favor",
+                    "resend": "Reenvia, por favor, não chegou",
+                    "thanks": "Recebido, obrigado"
+                }
+            }
         },
         "notifications": {
             "title": "Notificações",

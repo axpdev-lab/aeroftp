@@ -103,6 +103,23 @@ export const peerContactAdd = (contactId: string, alias: string): Promise<void> 
 export const peerContactRemove = (contactId: string): Promise<void> =>
   invoke('peer_contact_remove', { contactId });
 
+/** Payload of the `peer://knock` event (an incoming predefined-code ping). */
+export interface PeerKnockEvent {
+  senderAfid: string;
+  code: string;
+  inReplyTo: string | null;
+  atMs: number;
+}
+
+/** Send a knock (predefined-code ping, no file) to a friend. `inReplyTo`, when
+ *  set, is the code of the knock being answered (bounded predefined Q/A). */
+export const peerSendKnock = (
+  recipientAfid: string,
+  code: string,
+  inReplyTo?: string,
+): Promise<void> =>
+  invoke('peer_send_knock', { params: { recipientAfid, code, inReplyTo: inReplyTo ?? null } });
+
 /** The absolute AeroShare inbox root (`~/AeroShare Inbox`), created if absent.
  *  Pair with `open_in_file_manager` to open it in the OS file manager. */
 export const aeroShareInboxRoot = (): Promise<string> => invoke<string>('aeroshare_inbox_root');

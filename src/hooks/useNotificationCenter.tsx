@@ -15,7 +15,7 @@
 
 import * as React from 'react';
 
-export type NotificationKind = 'receive' | 'send' | 'error';
+export type NotificationKind = 'receive' | 'send' | 'error' | 'knock';
 
 export interface AppNotification {
   id: string;

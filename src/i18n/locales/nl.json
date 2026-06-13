@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Verwijderen?"
             },
             "notifyOnReceiveLabel": "Waarschuw mij wanneer er een bestand binnenkomt",
-            "notifyOnReceiveDesc": "Toon een systeemmelding voor elk ontvangen bestand, inclusief automatisch geaccepteerde, zodat je het weet, zelfs wanneer AeroFTP niet op de voorgrond staat."
+            "notifyOnReceiveDesc": "Toon een systeemmelding voor elk ontvangen bestand, inclusief automatisch geaccepteerde, zodat je het weet, zelfs wanneer AeroFTP niet op de voorgrond staat.",
+            "knock": {
+                "send": "Stuur een por",
+                "dismiss": "Negeren",
+                "msg": {
+                    "knock": "Klop klop",
+                    "online_q": "Ben je online?",
+                    "online_yes": "Ja, ik ben er",
+                    "online_no": "Nu niet",
+                    "ready_q": "Klaar om te ontvangen?",
+                    "ready_yes": "Ja, stuur maar",
+                    "ready_no": "Nu niet",
+                    "check_inbox": "Ik heb je een bestand gestuurd, kijk in je inbox",
+                    "please_accept": "Accepteer het bestand alsjeblieft",
+                    "one_moment": "Een moment, alsjeblieft",
+                    "resend": "Stuur het opnieuw, het is niet aangekomen",
+                    "thanks": "Ontvangen, bedankt"
+                }
+            }
         },
         "notifications": {
             "title": "Meldingen",

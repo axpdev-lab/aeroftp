@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Kaldırılsın mı?"
             },
             "notifyOnReceiveLabel": "Bir dosya geldiğinde beni bilgilendir",
-            "notifyOnReceiveDesc": "Otomatik olarak kabul edilenler dahil, alınan her dosya için bir sistem bildirimi göster; böylece AeroFTP odakta olmadığında bile haberdar olursun."
+            "notifyOnReceiveDesc": "Otomatik olarak kabul edilenler dahil, alınan her dosya için bir sistem bildirimi göster; böylece AeroFTP odakta olmadığında bile haberdar olursun.",
+            "knock": {
+                "send": "Dürtme gönder",
+                "dismiss": "Kapat",
+                "msg": {
+                    "knock": "Tık tık",
+                    "online_q": "Çevrimiçi misin?",
+                    "online_yes": "Evet, buradayım",
+                    "online_no": "Şimdi değil",
+                    "ready_q": "Almaya hazır mısın?",
+                    "ready_yes": "Evet, gönder",
+                    "ready_no": "Şimdi değil",
+                    "check_inbox": "Sana bir dosya gönderdim, gelen kutunu kontrol et",
+                    "please_accept": "Lütfen dosyayı kabul et",
+                    "one_moment": "Bir dakika, lütfen",
+                    "resend": "Lütfen tekrar gönder, ulaşmadı",
+                    "thanks": "Alındı, teşekkürler"
+                }
+            }
         },
         "notifications": {
             "title": "Bildirimler",

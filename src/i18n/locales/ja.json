@@ -4846,7 +4846,25 @@
                 "removeConfirm": "削除しますか?"
             },
             "notifyOnReceiveLabel": "ファイルが届いたら通知する",
-            "notifyOnReceiveDesc": "受信したすべてのファイルについて、自動的に受け入れたものも含めてシステム通知を表示します。AeroFTP がフォーカスされていないときでも分かります。"
+            "notifyOnReceiveDesc": "受信したすべてのファイルについて、自動的に受け入れたものも含めてシステム通知を表示します。AeroFTP がフォーカスされていないときでも分かります。",
+            "knock": {
+                "send": "合図を送る",
+                "dismiss": "閉じる",
+                "msg": {
+                    "knock": "ノック",
+                    "online_q": "オンラインですか?",
+                    "online_yes": "はい、います",
+                    "online_no": "今はやめておく",
+                    "ready_q": "受け取る準備はいい?",
+                    "ready_yes": "はい、送って",
+                    "ready_no": "今はやめておく",
+                    "check_inbox": "ファイルを送りました、受信箱を確認してください",
+                    "please_accept": "ファイルを承認してください",
+                    "one_moment": "少々お待ちください",
+                    "resend": "届かなかったので、もう一度送ってください",
+                    "thanks": "受け取りました、ありがとう"
+                }
+            }
         },
         "notifications": {
             "title": "通知",

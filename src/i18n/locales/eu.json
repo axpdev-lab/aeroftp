@@ -4865,7 +4865,25 @@
                 "removeConfirm": "Kendu?"
             },
             "notifyOnReceiveLabel": "Jakinarazi fitxategi bat iristen denean",
-            "notifyOnReceiveDesc": "Erakutsi sistemaren jakinarazpen bat jasotako fitxategi bakoitzeko, automatikoki onartutakoak barne, AeroFTP fokuan ez dagoenean ere jakin dezazun."
+            "notifyOnReceiveDesc": "Erakutsi sistemaren jakinarazpen bat jasotako fitxategi bakoitzeko, automatikoki onartutakoak barne, AeroFTP fokuan ez dagoenean ere jakin dezazun.",
+            "knock": {
+                "send": "Bidali kili-kili bat",
+                "dismiss": "Baztertu",
+                "msg": {
+                    "knock": "Tok tok",
+                    "online_q": "Linean zaude?",
+                    "online_yes": "Bai, hemen nago",
+                    "online_no": "Orain ez",
+                    "ready_q": "Jasotzeko prest?",
+                    "ready_yes": "Bai, bidali",
+                    "ready_no": "Orain ez",
+                    "check_inbox": "Fitxategi bat bidali dizut, begiratu sarrera-ontzia",
+                    "please_accept": "Mesedez, onartu fitxategia",
+                    "one_moment": "Une bat, mesedez",
+                    "resend": "Bidali berriro, ez da iritsi",
+                    "thanks": "Jasota, eskerrik asko"
+                }
+            }
         },
         "notifications": {
             "title": "Jakinarazpenak",

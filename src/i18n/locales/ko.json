@@ -4846,7 +4846,25 @@
                 "removeConfirm": "제거할까요?"
             },
             "notifyOnReceiveLabel": "파일이 도착하면 알림",
-            "notifyOnReceiveDesc": "자동으로 수락된 파일을 포함하여 수신된 모든 파일에 대해 시스템 알림을 표시하므로, AeroFTP가 활성화되어 있지 않을 때도 알 수 있습니다."
+            "notifyOnReceiveDesc": "자동으로 수락된 파일을 포함하여 수신된 모든 파일에 대해 시스템 알림을 표시하므로, AeroFTP가 활성화되어 있지 않을 때도 알 수 있습니다.",
+            "knock": {
+                "send": "콕 찌르기",
+                "dismiss": "닫기",
+                "msg": {
+                    "knock": "노크",
+                    "online_q": "온라인이세요?",
+                    "online_yes": "네, 여기 있어요",
+                    "online_no": "지금은 안 돼요",
+                    "ready_q": "받을 준비 됐나요?",
+                    "ready_yes": "네, 보내세요",
+                    "ready_no": "지금은 안 돼요",
+                    "check_inbox": "파일을 보냈어요, 받은 편지함을 확인하세요",
+                    "please_accept": "파일을 수락해 주세요",
+                    "one_moment": "잠시만 기다려 주세요",
+                    "resend": "도착하지 않았어요, 다시 보내 주세요",
+                    "thanks": "받았어요, 고마워요"
+                }
+            }
         },
         "notifications": {
             "title": "알림",

@@ -4846,7 +4846,25 @@
                 "removeConfirm": "移除？"
             },
             "notifyOnReceiveLabel": "有文件到达时通知我",
-            "notifyOnReceiveDesc": "为每个接收到的文件显示系统通知，包括自动接受的文件，这样即使 AeroFTP 未处于焦点状态，你也能知道。"
+            "notifyOnReceiveDesc": "为每个接收到的文件显示系统通知，包括自动接受的文件，这样即使 AeroFTP 未处于焦点状态，你也能知道。",
+            "knock": {
+                "send": "发送一个提醒",
+                "dismiss": "忽略",
+                "msg": {
+                    "knock": "敲门",
+                    "online_q": "你在线吗?",
+                    "online_yes": "在，我在这里",
+                    "online_no": "现在不行",
+                    "ready_q": "准备好接收了吗?",
+                    "ready_yes": "好，发吧",
+                    "ready_no": "现在不行",
+                    "check_inbox": "我给你发了一个文件，看看你的收件箱",
+                    "please_accept": "请接收文件",
+                    "one_moment": "稍等一下",
+                    "resend": "没收到，请重发一下",
+                    "thanks": "已收到，谢谢"
+                }
+            }
         },
         "notifications": {
             "title": "通知",

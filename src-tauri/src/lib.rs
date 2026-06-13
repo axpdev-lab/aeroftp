@@ -15180,6 +15180,7 @@ pub fn run() {
             peer_commands::peer_receiver_status,
             peer_commands::peer_incoming_respond,
             peer_commands::peer_friends_presence,
+            peer_commands::peer_send_knock,
             peer_commands::aeroshare_notify,
             peer_commands::aeroshare_inbox_root,
             settings::native_rsync_feature_compiled,

@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Fjern?"
             },
             "notifyOnReceiveLabel": "Giv mig besked, når en fil ankommer",
-            "notifyOnReceiveDesc": "Vis en systemnotifikation for hver modtaget fil, inklusive automatisk accepterede, så du ved det, selv når AeroFTP ikke er i fokus."
+            "notifyOnReceiveDesc": "Vis en systemnotifikation for hver modtaget fil, inklusive automatisk accepterede, så du ved det, selv når AeroFTP ikke er i fokus.",
+            "knock": {
+                "send": "Send et prik",
+                "dismiss": "Afvis",
+                "msg": {
+                    "knock": "Bank bank",
+                    "online_q": "Er du online?",
+                    "online_yes": "Ja, jeg er her",
+                    "online_no": "Ikke nu",
+                    "ready_q": "Klar til at modtage?",
+                    "ready_yes": "Ja, send det",
+                    "ready_no": "Ikke nu",
+                    "check_inbox": "Jeg sendte dig en fil, tjek din indbakke",
+                    "please_accept": "Accepter filen, tak",
+                    "one_moment": "Et øjeblik, tak",
+                    "resend": "Send venligst igen, den kom ikke frem",
+                    "thanks": "Modtaget, tak"
+                }
+            }
         },
         "notifications": {
             "title": "Notifikationer",

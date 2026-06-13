@@ -14,15 +14,17 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { UserPlus, Pencil, Trash2, Check, X, Loader2, Users } from 'lucide-react';
+import { UserPlus, Pencil, Trash2, Check, X, Loader2, Users, Hand } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import {
   peerFriendsList,
   peerContactAdd,
   peerContactRemove,
+  peerSendKnock,
   shortAfid,
   type PeerFriend,
 } from '../../utils/aeroShare';
+import { SENDABLE_KNOCK_CODES, knockLabelKey } from '../../utils/aeroShareKnock';
 
 interface AeroShareContactsProps {
   /** Denser layout when embedded in the Settings page (vs the dialog). */
@@ -45,6 +47,22 @@ export function AeroShareContacts({ compact = false }: AeroShareContactsProps) {
   const [editAfid, setEditAfid] = useState<string | null>(null);
   const [editAlias, setEditAlias] = useState('');
   const [confirmAfid, setConfirmAfid] = useState<string | null>(null);
+
+  // "Send a ping" predefined-message menu, keyed by AFID; `knockSent` flashes a
+  // transient confirmation on the row after a ping goes out.
+  const [knockAfid, setKnockAfid] = useState<string | null>(null);
+  const [knockSent, setKnockSent] = useState<string | null>(null);
+
+  const sendKnock = useCallback(async (afid: string, code: string) => {
+    setKnockAfid(null);
+    try {
+      await peerSendKnock(afid, code);
+      setKnockSent(afid);
+      window.setTimeout(() => setKnockSent((cur) => (cur === afid ? null : cur)), 2500);
+    } catch {
+      /* fire-and-forget ping: a failure (offline peer) is non-fatal */
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -238,6 +256,35 @@ export function AeroShareContacts({ compact = false }: AeroShareContactsProps) {
                   </>
                 ) : (
                   <>
+                    <div className="relative">
+                      <button
+                        className={iconBtn}
+                        title={t('aeroShare.knock.send')}
+                        onClick={() => setKnockAfid(knockAfid === c.afid ? null : c.afid)}
+                      >
+                        {knockSent === c.afid ? (
+                          <Check size={14} className="text-green-600 dark:text-green-400" />
+                        ) : (
+                          <Hand size={14} className="text-amber-500" />
+                        )}
+                      </button>
+                      {knockAfid === c.afid && (
+                        <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl">
+                          <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">
+                            {t('aeroShare.knock.send')}
+                          </p>
+                          {SENDABLE_KNOCK_CODES.map((code) => (
+                            <button
+                              key={code}
+                              onClick={() => sendKnock(c.afid, code)}
+                              className="block w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+                            >
+                              {t(knockLabelKey(code))}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
                       className={iconBtn}
                       title={t('aeroShare.contacts.edit')}

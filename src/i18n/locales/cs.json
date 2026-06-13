@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Odebrat?"
             },
             "notifyOnReceiveLabel": "Upozornit mě, když dorazí soubor",
-            "notifyOnReceiveDesc": "Zobrazí systémové oznámení pro každý přijatý soubor, včetně automaticky přijatých, abyste byli informováni, i když AeroFTP není aktivní."
+            "notifyOnReceiveDesc": "Zobrazí systémové oznámení pro každý přijatý soubor, včetně automaticky přijatých, abyste byli informováni, i když AeroFTP není aktivní.",
+            "knock": {
+                "send": "Poslat šťouchnutí",
+                "dismiss": "Zavřít",
+                "msg": {
+                    "knock": "Ťuk ťuk",
+                    "online_q": "Jsi online?",
+                    "online_yes": "Ano, jsem tady",
+                    "online_no": "Teď ne",
+                    "ready_q": "Připraven přijmout?",
+                    "ready_yes": "Ano, pošli to",
+                    "ready_no": "Teď ne",
+                    "check_inbox": "Poslal jsem ti soubor, podívej se do schránky",
+                    "please_accept": "Přijmi prosím soubor",
+                    "one_moment": "Moment, prosím",
+                    "resend": "Pošli to prosím znovu, nedorazilo to",
+                    "thanks": "Přijato, díky"
+                }
+            }
         },
         "notifications": {
             "title": "Oznámení",

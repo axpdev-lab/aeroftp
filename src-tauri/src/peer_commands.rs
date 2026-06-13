@@ -620,6 +620,44 @@ pub async fn peer_send_file(
         .await
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerSendKnockParams {
+    /// The recipient's AeroFTP-ID.
+    pub recipient_afid: String,
+    /// A predefined message code (the FE owns the code<->text catalog; the
+    /// backend just relays the opaque short code - no free text, this is a ping).
+    pub code: String,
+    /// When set, the code of the knock this one answers (bounded Q/A exchange).
+    pub in_reply_to: Option<String>,
+}
+
+/// Send a knock (predefined-code signal, no file) to a friend. Mints the active
+/// identity on first use (so the recipient can authenticate the sender) and
+/// routes through the runtime to REUSE the standing receiver endpoint (Finding 6b).
+#[tauri::command]
+pub async fn peer_send_knock(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+    params: PeerSendKnockParams,
+) -> Result<(), String> {
+    let recipient = crate::peer::validate_aeroftp_id(params.recipient_afid.trim())
+        .map_err(|e| format!("invalid recipient AeroFTP-ID: {e}"))?;
+    let code = params.code.trim();
+    if code.is_empty() || code.len() > 64 {
+        return Err("invalid knock code".to_string());
+    }
+
+    crate::user_partitions::gui_peer_identity_get_or_create(&app, true)?
+        .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+        .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+
+    peer_runtime
+        .send_knock(&recipient, &identity_secret, code, params.in_reply_to)
+        .await
+}
+
 /// Start the standing receive loop (the Ricezione toggle = ON). Mints the
 /// identity if needed (the receive endpoint is seeded from it so friends can dial
 /// by AFID) and listens until [`peer_receiver_stop`]. Idempotent.

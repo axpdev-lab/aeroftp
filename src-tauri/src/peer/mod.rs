@@ -383,6 +383,33 @@ pub async fn send_on_endpoint(
     aeroftp_peer_l0::send::send_on_endpoint(ep, recipient_afid, my_secret, file_path).await
 }
 
+/// Send a knock (predefined-code signal, no file) over the shared identity
+/// endpoint. Companion to [`send_on_endpoint`].
+pub async fn send_knock_on_endpoint(
+    ep: &aeroftp_peer_l0::PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    code: &str,
+    in_reply_to: Option<String>,
+) -> anyhow::Result<()> {
+    aeroftp_peer_l0::send::send_knock_on_endpoint(ep, recipient_afid, my_secret, code, in_reply_to)
+        .await
+}
+
+/// Send a knock over a FRESH identity endpoint (no standing receiver to share
+/// with). Companion to [`send_file_oneshot`].
+pub async fn send_knock_oneshot(
+    recipient_afid: &str,
+    my_secret: &[u8],
+    code: &str,
+    in_reply_to: Option<String>,
+    custom_relay_urls: Option<Vec<String>>,
+) -> anyhow::Result<()> {
+    let ep = build_identity_endpoint(my_secret, custom_relay_urls).await?;
+    aeroftp_peer_l0::send::send_knock_on_endpoint(&ep, recipient_afid, my_secret, code, in_reply_to)
+        .await
+}
+
 /// Probe which of `afids` are online/receiving right now (presence). Reuses one
 /// identity-seeded endpoint; result order matches `afids`.
 pub async fn probe_presence(

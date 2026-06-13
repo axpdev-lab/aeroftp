@@ -55,6 +55,16 @@ pub const PEER_SEND_ALPN: &[u8] = b"/aeroftp/peer/send/v1";
 /// up as a failed transfer.
 pub const PEER_PING_ALPN: &[u8] = b"/aeroftp/peer/ping/v1";
 
+/// ALPN for a "knock" - a tiny PREDEFINED-CODE signal (no file), surfaced on the
+/// recipient as a notification. Distinct ALPN so the receive loop dispatches it
+/// without ever confusing it for a file offer. Carries a `Knock` (a code + an
+/// optional `in_reply_to` for a bounded predefined question/answer exchange);
+/// there is deliberately NO free text (this is a ping, not a chat).
+pub const PEER_KNOCK_ALPN: &[u8] = b"/aeroftp/peer/knock/v1";
+
+/// Cap on the knock JSON (a short code + optional reply code + AFID).
+const MAX_KNOCK_BYTES: usize = 4 * 1024;
+
 /// How long a presence probe waits for the connection before declaring the
 /// friend offline. Short: a reachable receiver answers in well under this.
 const PRESENCE_PROBE_SECS: u64 = 8;
@@ -97,6 +107,19 @@ pub struct IncomingOffer {
     pub size: u64,
 }
 
+/// A knock: a tiny predefined-code signal, no file. `code` is one of the app's
+/// predefined message codes (the app maps it to localized text); `in_reply_to`,
+/// when set, is the code of the knock this one answers, enabling a bounded
+/// predefined question/answer exchange. `sender_afid` is cross-checked against
+/// the iroh-authenticated `remote_node_id` on the receiving side.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Knock {
+    pub code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_reply_to: Option<String>,
+    pub sender_afid: String,
+}
+
 /// Outcome of one incoming transfer, reported to the app's `notify` callback so
 /// it can emit a UI event. Owned data (no borrows) for an easy `Fn` boundary.
 #[derive(Debug, Clone)]
@@ -114,6 +137,12 @@ pub enum ReceiveEvent {
         sender_afid: String,
         name: String,
         error: String,
+    },
+    /// An incoming knock (predefined-code signal, no file).
+    Knock {
+        sender_afid: String,
+        code: String,
+        in_reply_to: Option<String>,
     },
 }
 
@@ -303,6 +332,14 @@ where
             conn.close(0u32.into(), b"pong");
             continue;
         }
+        // A knock: a predefined-code signal (no file), on its own ALPN so it is
+        // never mistaken for a transfer. One bad knock must not kill the loop.
+        if conn.alpn().as_deref() == Some(PEER_KNOCK_ALPN) {
+            if let Err(e) = handle_incoming_knock(&conn, &notify).await {
+                warn!("AeroShare incoming knock failed: {e}");
+            }
+            continue;
+        }
         // Per-transfer errors must not kill the loop either (one bad sender
         // shouldn't stop the receiver).
         if let Err(e) = handle_incoming(&conn, &secret, &decide, &notify).await {
@@ -361,6 +398,89 @@ pub async fn probe_presence_many(
         out.push(online);
     }
     Ok(out)
+}
+
+/// Send a KNOCK (predefined-code signal, no file) over an ALREADY-BOUND identity
+/// endpoint, sharing the receiver's endpoint exactly like [`send_on_endpoint`]
+/// (so a knock never evicts the receiver - Finding 6b). Fire-and-forget: there is
+/// no accept/decline and no ACK (a knock is a notification, not a transfer). `ep`
+/// MUST be seeded with the sender identity so the recipient can authenticate the
+/// sender AFID against the connection's node id.
+pub async fn send_knock_on_endpoint(
+    ep: &PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    code: &str,
+    in_reply_to: Option<String>,
+) -> Result<()> {
+    let me = Identity::from_secret_bytes(&{
+        let mut b = [0u8; 64];
+        if my_secret.len() != 64 {
+            bail!("identity secret must be 64 bytes");
+        }
+        b.copy_from_slice(my_secret);
+        b
+    });
+    let recipient = IdentityPublic::from_aeroftp_id(recipient_afid)
+        .map_err(|e| anyhow::anyhow!("invalid recipient AeroFTP-ID: {e}"))?;
+    let recipient_node = NodeId::from_bytes(&recipient.ed_bytes())
+        .context("recipient AFID does not yield a valid node id")?;
+
+    let knock = Knock {
+        code: code.to_string(),
+        in_reply_to,
+        sender_afid: me.public().to_aeroftp_id(),
+    };
+    let json = serde_json::to_vec(&knock)?;
+    if json.len() > MAX_KNOCK_BYTES {
+        bail!("knock payload too large");
+    }
+
+    let conn = ep.connect(recipient_node, PEER_KNOCK_ALPN).await?;
+    let (mut s, _r) = conn.open_bi().await.context("open_bi for knock")?;
+    s.write_u32(json.len() as u32).await?;
+    s.write_all(&json).await?;
+    s.finish().context("finish knock stream")?;
+    // Wait for the receiver to read + close, so the bytes are not truncated by an
+    // early local close (same close-race care as the file path).
+    conn.closed().await;
+    Ok(())
+}
+
+/// Receive one incoming knock: read it, authenticate the sender (claimed AFID ed
+/// == iroh remote node id, the same rule as offers), and emit
+/// [`ReceiveEvent::Knock`]. No decision/ACK - a knock just notifies.
+async fn handle_incoming_knock<N>(conn: &Connection, notify: &N) -> Result<()>
+where
+    N: Fn(ReceiveEvent),
+{
+    let (mut _s, mut r) = conn.accept_bi().await.context("accept_bi for knock")?;
+    let len = r.read_u32().await.context("read knock length")? as usize;
+    if len > MAX_KNOCK_BYTES {
+        conn.close(1u32.into(), b"knock-too-large");
+        bail!("incoming knock too large");
+    }
+    let mut buf = vec![0u8; len];
+    r.read_exact(&mut buf).await.context("read knock body")?;
+    let knock: Knock = serde_json::from_slice(&buf).context("parse knock")?;
+
+    let claimed = IdentityPublic::from_aeroftp_id(&knock.sender_afid)
+        .context("knock carries an invalid sender AeroFTP-ID")?;
+    let remote = conn
+        .remote_node_id()
+        .context("could not read the authenticated remote node id")?;
+    if remote.as_bytes() != &claimed.ed_bytes() {
+        conn.close(1u32.into(), b"sender-mismatch");
+        bail!("knock sender AFID does not match the authenticated connection identity");
+    }
+
+    notify(ReceiveEvent::Knock {
+        sender_afid: knock.sender_afid,
+        code: knock.code,
+        in_reply_to: knock.in_reply_to,
+    });
+    conn.close(0u32.into(), b"knock-received");
+    Ok(())
 }
 
 async fn handle_incoming<D, DF, N>(

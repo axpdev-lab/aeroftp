@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Send, Download, X, Check, Inbox, Users, Loader2, FolderOpen } from 'lucide-react';
+import { Send, Download, X, Check, Inbox, Users, Loader2, FolderOpen, Hand } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { ToastContainer, useToast } from '../Toast';
 import { useActivityLog } from '../../hooks/useActivityLog';
@@ -32,6 +32,7 @@ import {
   peerFriendsList,
   peerFriendsPresence,
   peerIncomingRespond,
+  peerSendKnock,
   aeroShareNotify,
   aeroShareInboxRoot,
   openInFileManager,
@@ -44,7 +45,9 @@ import {
   type PeerFriend,
   type PeerIncomingOfferEvent,
   type PeerIncomingStatusEvent,
+  type PeerKnockEvent,
 } from '../../utils/aeroShare';
+import { knockLabelKey, knockReplies } from '../../utils/aeroShareKnock';
 
 interface IncomingPrompt {
   offer: PeerIncomingOfferEvent;
@@ -112,6 +115,13 @@ export function AeroShareHub() {
   const [sendTarget, setSendTarget] = useState<AeroShareSendDetail | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
+  // A received QUESTION knock awaiting a one-tap predefined reply.
+  const [incomingKnock, setIncomingKnock] = useState<{
+    senderAfid: string;
+    senderLabel: string;
+    code: string;
+    replies: string[];
+  } | null>(null);
 
   // autoAccept read at event time without re-subscribing the listener.
   const autoAcceptRef = useRef(autoAcceptFriends);
@@ -260,6 +270,37 @@ export function AeroShareHub() {
     };
   }, [success, error, t, log, notify]);
 
+  // ---- peer://knock: predefined-code ping (no file) ----
+  // Surfaced as a toast + a notification-center entry; a QUESTION knock also
+  // opens a small prompt offering the predefined one-tap replies (bounded Q/A).
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let disposed = false;
+    (async () => {
+      unlisten = await listen<PeerKnockEvent>('peer://knock', async (e) => {
+        const ev = e.payload;
+        const alias = await resolveFriendAlias(ev.senderAfid);
+        const senderLabel = alias || shortAfid(ev.senderAfid);
+        const msg = t(knockLabelKey(ev.code));
+        info(senderLabel, msg);
+        notify({ kind: 'knock', title: senderLabel, body: msg, ts: ev.atMs });
+        const replies = knockReplies(ev.code);
+        // Only a fresh (non-reply) question opens the prompt; a reply just notifies.
+        if (replies.length && !ev.inReplyTo) {
+          setIncomingKnock({ senderAfid: ev.senderAfid, senderLabel, code: ev.code, replies });
+        }
+      });
+      if (disposed) {
+        unlisten();
+        unlisten = undefined;
+      }
+    })();
+    return () => {
+      disposed = true;
+      if (unlisten) unlisten();
+    };
+  }, [info, notify, t]);
+
   // ---- global open events (send dialog / inbox) ----
   useEffect(() => {
     const onSend = (e: Event) => {
@@ -292,6 +333,19 @@ export function AeroShareHub() {
     setIncoming(null);
   }, [incoming]);
 
+  // Answer a question knock with a predefined reply code (in_reply_to = the
+  // original code), then dismiss the prompt.
+  const replyToKnock = useCallback(
+    (replyCode: string) => {
+      if (!incomingKnock) return;
+      peerSendKnock(incomingKnock.senderAfid, replyCode, incomingKnock.code).catch(() => {
+        /* fire-and-forget */
+      });
+      setIncomingKnock(null);
+    },
+    [incomingKnock],
+  );
+
   return (
     <>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
@@ -301,6 +355,16 @@ export function AeroShareHub() {
           prompt={incoming}
           onAccept={acceptIncoming}
           onDecline={declineIncoming}
+        />
+      )}
+
+      {incomingKnock && (
+        <KnockPrompt
+          senderLabel={incomingKnock.senderLabel}
+          code={incomingKnock.code}
+          replies={incomingKnock.replies}
+          onReply={replyToKnock}
+          onClose={() => setIncomingKnock(null)}
         />
       )}
 
@@ -398,6 +462,70 @@ function IncomingOfferModal({
             <Check size={14} />
             {t('aeroShare.receive.accept')}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Knock prompt: a received QUESTION knock with predefined one-tap replies
+// (bounded Q/A; no free text). Plain "X: <message>" + a button per reply code.
+// ---------------------------------------------------------------------------
+
+function KnockPrompt({
+  senderLabel,
+  code,
+  replies,
+  onReply,
+  onClose,
+}: {
+  senderLabel: string;
+  code: string;
+  replies: string[];
+  onReply: (replyCode: string) => void;
+  onClose: () => void;
+}) {
+  const t = useTranslation();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50">
+      <div
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[400px] animate-scale-in"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <Hand size={18} className="text-amber-500" />
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{senderLabel}</h2>
+        </div>
+        <div className="px-4 py-4 text-sm text-gray-700 dark:text-gray-300">
+          {t(knockLabelKey(code))}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            {t('aeroShare.knock.dismiss')}
+          </button>
+          {replies.map((rc) => (
+            <button
+              key={rc}
+              onClick={() => onReply(rc)}
+              className="px-3 py-1.5 text-sm rounded-md bg-violet-600 text-white hover:bg-violet-500"
+            >
+              {t(knockLabelKey(rc))}
+            </button>
+          ))}
         </div>
       </div>
     </div>

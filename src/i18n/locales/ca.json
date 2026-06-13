@@ -4865,7 +4865,25 @@
                 "removeConfirm": "Eliminar?"
             },
             "notifyOnReceiveLabel": "Avisa'm quan arribi un fitxer",
-            "notifyOnReceiveDesc": "Mostra una notificació del sistema per a cada fitxer rebut, inclosos els acceptats automàticament, perquè ho sàpigues fins i tot quan AeroFTP no està en primer pla."
+            "notifyOnReceiveDesc": "Mostra una notificació del sistema per a cada fitxer rebut, inclosos els acceptats automàticament, perquè ho sàpigues fins i tot quan AeroFTP no està en primer pla.",
+            "knock": {
+                "send": "Envia un toc",
+                "dismiss": "Descarta",
+                "msg": {
+                    "knock": "Toc",
+                    "online_q": "Estàs en línia?",
+                    "online_yes": "Sí, soc aquí",
+                    "online_no": "Ara no",
+                    "ready_q": "A punt per rebre?",
+                    "ready_yes": "Sí, envia'l",
+                    "ready_no": "Ara no",
+                    "check_inbox": "T'he enviat un fitxer, mira la safata d'entrada",
+                    "please_accept": "Si us plau, accepta el fitxer",
+                    "one_moment": "Un moment, si us plau",
+                    "resend": "Torna'l a enviar, no ha arribat",
+                    "thanks": "Rebut, gràcies"
+                }
+            }
         },
         "notifications": {
             "title": "Notificacions",

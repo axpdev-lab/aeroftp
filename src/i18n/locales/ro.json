@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Elimini?"
             },
             "notifyOnReceiveLabel": "Anunță-mă când sosește un fișier",
-            "notifyOnReceiveDesc": "Afișează o notificare de sistem pentru fiecare fișier primit, inclusiv cele acceptate automat, ca să știi chiar și atunci când AeroFTP nu este în prim-plan."
+            "notifyOnReceiveDesc": "Afișează o notificare de sistem pentru fiecare fișier primit, inclusiv cele acceptate automat, ca să știi chiar și atunci când AeroFTP nu este în prim-plan.",
+            "knock": {
+                "send": "Trimite un ghiont",
+                "dismiss": "Închide",
+                "msg": {
+                    "knock": "Cioc cioc",
+                    "online_q": "Ești online?",
+                    "online_yes": "Da, sunt aici",
+                    "online_no": "Nu acum",
+                    "ready_q": "Gata să primești?",
+                    "ready_yes": "Da, trimite-l",
+                    "ready_no": "Nu acum",
+                    "check_inbox": "Ți-am trimis un fișier, verifică-ți căsuța de primire",
+                    "please_accept": "Te rog, acceptă fișierul",
+                    "one_moment": "O clipă, te rog",
+                    "resend": "Te rog retrimite, nu a ajuns",
+                    "thanks": "Primit, mulțumesc"
+                }
+            }
         },
         "notifications": {
             "title": "Notificări",

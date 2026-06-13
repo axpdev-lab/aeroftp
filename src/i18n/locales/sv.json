@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Ta bort?"
             },
             "notifyOnReceiveLabel": "Meddela mig när en fil anländer",
-            "notifyOnReceiveDesc": "Visa en systemavisering för varje mottagen fil, inklusive automatiskt accepterade, så att du vet även när AeroFTP inte är i fokus."
+            "notifyOnReceiveDesc": "Visa en systemavisering för varje mottagen fil, inklusive automatiskt accepterade, så att du vet även när AeroFTP inte är i fokus.",
+            "knock": {
+                "send": "Skicka en knuff",
+                "dismiss": "Avfärda",
+                "msg": {
+                    "knock": "Knack knack",
+                    "online_q": "Är du online?",
+                    "online_yes": "Ja, jag är här",
+                    "online_no": "Inte nu",
+                    "ready_q": "Redo att ta emot?",
+                    "ready_yes": "Ja, skicka det",
+                    "ready_no": "Inte nu",
+                    "check_inbox": "Jag skickade en fil till dig, kolla din inkorg",
+                    "please_accept": "Acceptera filen, tack",
+                    "one_moment": "Ett ögonblick",
+                    "resend": "Skicka igen, den kom inte fram",
+                    "thanks": "Mottagen, tack"
+                }
+            }
         },
         "notifications": {
             "title": "Aviseringar",

@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Poistetaanko?"
             },
             "notifyOnReceiveLabel": "Ilmoita minulle, kun tiedosto saapuu",
-            "notifyOnReceiveDesc": "Näytä järjestelmäilmoitus jokaisesta vastaanotetusta tiedostosta, mukaan lukien automaattisesti hyväksytyt, jotta tiedät siitä, vaikka AeroFTP ei olisi aktiivisena."
+            "notifyOnReceiveDesc": "Näytä järjestelmäilmoitus jokaisesta vastaanotetusta tiedostosta, mukaan lukien automaattisesti hyväksytyt, jotta tiedät siitä, vaikka AeroFTP ei olisi aktiivisena.",
+            "knock": {
+                "send": "Lähetä tönäisy",
+                "dismiss": "Hylkää",
+                "msg": {
+                    "knock": "Kop kop",
+                    "online_q": "Oletko paikalla?",
+                    "online_yes": "Kyllä, olen täällä",
+                    "online_no": "Ei nyt",
+                    "ready_q": "Valmis vastaanottamaan?",
+                    "ready_yes": "Kyllä, lähetä se",
+                    "ready_no": "Ei nyt",
+                    "check_inbox": "Lähetin sinulle tiedoston, tarkista postilaatikkosi",
+                    "please_accept": "Hyväksy tiedosto",
+                    "one_moment": "Hetki, kiitos",
+                    "resend": "Lähetä uudelleen, se ei tullut perille",
+                    "thanks": "Vastaanotettu, kiitos"
+                }
+            }
         },
         "notifications": {
             "title": "Ilmoitukset",

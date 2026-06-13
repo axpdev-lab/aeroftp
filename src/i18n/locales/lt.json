@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Pašalinti?"
             },
             "notifyOnReceiveLabel": "Pranešti man, kai gaunamas failas",
-            "notifyOnReceiveDesc": "Rodyti sistemos pranešimą apie kiekvieną gautą failą, įskaitant automatiškai priimtus, kad žinotumėte net tada, kai AeroFTP nėra aktyvus."
+            "notifyOnReceiveDesc": "Rodyti sistemos pranešimą apie kiekvieną gautą failą, įskaitant automatiškai priimtus, kad žinotumėte net tada, kai AeroFTP nėra aktyvus.",
+            "knock": {
+                "send": "Siųsti bakstelėjimą",
+                "dismiss": "Atmesti",
+                "msg": {
+                    "knock": "Tuk tuk",
+                    "online_q": "Ar esi prisijungęs?",
+                    "online_yes": "Taip, esu čia",
+                    "online_no": "Ne dabar",
+                    "ready_q": "Pasiruošęs priimti?",
+                    "ready_yes": "Taip, siųsk",
+                    "ready_no": "Ne dabar",
+                    "check_inbox": "Atsiunčiau tau failą, patikrink gautuosius",
+                    "please_accept": "Prašau priimk failą",
+                    "one_moment": "Akimirką, prašau",
+                    "resend": "Atsiųsk dar kartą, neatėjo",
+                    "thanks": "Gavau, ačiū"
+                }
+            }
         },
         "notifications": {
             "title": "Pranešimai",

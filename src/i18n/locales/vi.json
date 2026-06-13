@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Xóa?"
             },
             "notifyOnReceiveLabel": "Thông báo cho tôi khi có tệp đến",
-            "notifyOnReceiveDesc": "Hiển thị thông báo hệ thống cho mọi tệp nhận được, bao gồm cả tệp được chấp nhận tự động, để bạn biết ngay cả khi AeroFTP không được lấy nét."
+            "notifyOnReceiveDesc": "Hiển thị thông báo hệ thống cho mọi tệp nhận được, bao gồm cả tệp được chấp nhận tự động, để bạn biết ngay cả khi AeroFTP không được lấy nét.",
+            "knock": {
+                "send": "Gửi một tiếng gọi",
+                "dismiss": "Bỏ qua",
+                "msg": {
+                    "knock": "Cốc cốc",
+                    "online_q": "Bạn có trực tuyến không?",
+                    "online_yes": "Có, tôi đây",
+                    "online_no": "Không phải bây giờ",
+                    "ready_q": "Sẵn sàng nhận chưa?",
+                    "ready_yes": "Có, gửi đi",
+                    "ready_no": "Không phải bây giờ",
+                    "check_inbox": "Tôi đã gửi cho bạn một tệp, kiểm tra hộp thư đến nhé",
+                    "please_accept": "Vui lòng chấp nhận tệp",
+                    "one_moment": "Chờ một chút nhé",
+                    "resend": "Vui lòng gửi lại, tệp chưa đến",
+                    "thanks": "Đã nhận, cảm ơn"
+                }
+            }
         },
         "notifications": {
             "title": "Thông báo",

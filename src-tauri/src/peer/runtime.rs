@@ -118,6 +118,18 @@ pub struct PeerReceiverStatusEvent {
     pub at_ms: u64,
 }
 
+/// Payload for `peer://knock` (an incoming predefined-code signal, no file).
+/// `code` is one of the app's predefined message codes (the FE maps it to
+/// localized text); `in_reply_to`, when set, is the code this knock answers.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerKnockEvent {
+    pub sender_afid: String,
+    pub code: String,
+    pub in_reply_to: Option<String>,
+    pub at_ms: u64,
+}
+
 /// Short display form of an AeroFTP-ID, the default per-sender inbox subfolder
 /// when the FE does not supply a friendly alias.
 fn short_afid(afid: &str) -> String {
@@ -772,6 +784,43 @@ impl PeerRuntime {
         result.map_err(|e| format!("send failed: {e}"))
     }
 
+    /// Send a knock (predefined-code signal, no file) to a recipient. Reuses the
+    /// shared identity endpoint when the receiver is up (Finding 6b), else binds a
+    /// fresh one. `in_reply_to` carries the code of the knock being answered, for a
+    /// bounded predefined question/answer exchange.
+    pub async fn send_knock(
+        &self,
+        recipient_afid: &str,
+        my_secret: &[u8],
+        code: &str,
+        in_reply_to: Option<String>,
+    ) -> Result<(), String> {
+        let shared = self.identity_endpoint.lock().await.clone();
+        let result = match shared {
+            Some(ep) => {
+                crate::peer::send_knock_on_endpoint(
+                    &ep,
+                    recipient_afid,
+                    my_secret,
+                    code,
+                    in_reply_to,
+                )
+                .await
+            }
+            None => {
+                crate::peer::send_knock_oneshot(
+                    recipient_afid,
+                    my_secret,
+                    code,
+                    in_reply_to,
+                    relay_urls_from_env(),
+                )
+                .await
+            }
+        };
+        result.map_err(|e| format!("knock failed: {e}"))
+    }
+
     /// Resolve a pending incoming offer. `accept = true` writes the file into
     /// `inbox_root/<label or short-AFID>/`; `accept = false` declines. `label`
     /// is the FE's friendly per-sender folder name (the friend alias). Errors if
@@ -843,6 +892,18 @@ fn emit_receiver_status(app: &AppHandle, state: &str, detail: Option<String>) {
         PeerReceiverStatusEvent {
             state: state.to_string(),
             detail,
+            at_ms: now_ms(),
+        },
+    );
+}
+
+fn emit_knock(app: &AppHandle, sender_afid: &str, code: &str, in_reply_to: Option<&str>) {
+    let _ = app.emit(
+        "peer://knock",
+        PeerKnockEvent {
+            sender_afid: sender_afid.to_string(),
+            code: code.to_string(),
+            in_reply_to: in_reply_to.map(|s| s.to_string()),
             at_ms: now_ms(),
         },
     );
@@ -949,6 +1010,18 @@ async fn receive_loop(
                     "AeroShare receive FAILED name={name} from afid={sender_afid}: {error}"
                 );
                 emit_incoming_status(&app, "failed", &sender_afid, &name, None, Some(error))
+            }
+            // A knock: a predefined-code signal (no file). The FE maps the code to
+            // localized text and surfaces it as a notification (+ optional quick reply).
+            aeroftp_peer_l0::ReceiveEvent::Knock {
+                sender_afid,
+                code,
+                in_reply_to,
+            } => {
+                tracing::info!(
+                    "AeroShare knock code={code} from afid={sender_afid} in_reply_to={in_reply_to:?}"
+                );
+                emit_knock(&app, &sender_afid, &code, in_reply_to.as_deref())
             }
         }
     };

@@ -4838,6 +4838,24 @@
                 "openFolder": "Open folder",
                 "revealFile": "Show in folder"
             },
+            "knock": {
+                "send": "Send a ping",
+                "dismiss": "Dismiss",
+                "msg": {
+                    "knock": "Knock",
+                    "online_q": "Are you online?",
+                    "online_yes": "Yes, I am here",
+                    "online_no": "Not now",
+                    "ready_q": "Ready to receive?",
+                    "ready_yes": "Yes, send it",
+                    "ready_no": "Not now",
+                    "check_inbox": "I sent you a file, check your inbox",
+                    "please_accept": "Please accept the file",
+                    "one_moment": "One moment, please",
+                    "resend": "Please resend, it did not arrive",
+                    "thanks": "Received, thanks"
+                }
+            },
             "receiveLabel": "Receive files",
             "receiveDesc": "Let friends send files straight to you (one-shot, end-to-end encrypted). Runs a listener while on.",
             "autoAcceptLabel": "Auto-accept from saved friends",

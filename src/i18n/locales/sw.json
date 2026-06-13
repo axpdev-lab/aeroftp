@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Ondoa?"
             },
             "notifyOnReceiveLabel": "Nijulishe faili linapowasili",
-            "notifyOnReceiveDesc": "Onyesha arifa ya mfumo kwa kila faili lililopokelewa, ikiwa ni pamoja na yaliyokubaliwa kiotomatiki, ili ujue hata wakati AeroFTP haijalenga."
+            "notifyOnReceiveDesc": "Onyesha arifa ya mfumo kwa kila faili lililopokelewa, ikiwa ni pamoja na yaliyokubaliwa kiotomatiki, ili ujue hata wakati AeroFTP haijalenga.",
+            "knock": {
+                "send": "Tuma mguso",
+                "dismiss": "Puuza",
+                "msg": {
+                    "knock": "Hodi hodi",
+                    "online_q": "Uko mtandaoni?",
+                    "online_yes": "Ndiyo, niko hapa",
+                    "online_no": "Si sasa",
+                    "ready_q": "Uko tayari kupokea?",
+                    "ready_yes": "Ndiyo, tuma",
+                    "ready_no": "Si sasa",
+                    "check_inbox": "Nimekutumia faili, angalia kikasha chako",
+                    "please_accept": "Tafadhali kubali faili",
+                    "one_moment": "Subiri kidogo",
+                    "resend": "Tafadhali tuma tena, haikufika",
+                    "thanks": "Imepokelewa, asante"
+                }
+            }
         },
         "notifications": {
             "title": "Arifa",

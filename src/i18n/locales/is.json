@@ -4865,7 +4865,25 @@
                 "removeConfirm": "Fjarlægja?"
             },
             "notifyOnReceiveLabel": "Láta mig vita þegar skrá berst",
-            "notifyOnReceiveDesc": "Sýna kerfistilkynningu fyrir hverja móttekna skrá, þar á meðal þær sem eru sjálfkrafa samþykktar, svo þú vitir það jafnvel þegar AeroFTP er ekki í forgrunni."
+            "notifyOnReceiveDesc": "Sýna kerfistilkynningu fyrir hverja móttekna skrá, þar á meðal þær sem eru sjálfkrafa samþykktar, svo þú vitir það jafnvel þegar AeroFTP er ekki í forgrunni.",
+            "knock": {
+                "send": "Senda ýtu",
+                "dismiss": "Hunsa",
+                "msg": {
+                    "knock": "Bank bank",
+                    "online_q": "Ertu á netinu?",
+                    "online_yes": "Já, ég er hér",
+                    "online_no": "Ekki núna",
+                    "ready_q": "Tilbúinn að taka á móti?",
+                    "ready_yes": "Já, sendu það",
+                    "ready_no": "Ekki núna",
+                    "check_inbox": "Ég sendi þér skrá, athugaðu pósthólfið þitt",
+                    "please_accept": "Vinsamlegast samþykktu skrána",
+                    "one_moment": "Augnablik, takk",
+                    "resend": "Sendu aftur, hún barst ekki",
+                    "thanks": "Móttekið, takk"
+                }
+            }
         },
         "notifications": {
             "title": "Tilkynningar",

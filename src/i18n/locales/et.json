@@ -4846,7 +4846,25 @@
                 "removeConfirm": "Eemaldada?"
             },
             "notifyOnReceiveLabel": "Teavita mind, kui faili saabub",
-            "notifyOnReceiveDesc": "Kuva süsteemiteade iga vastuvõetud faili kohta, sealhulgas automaatselt vastuvõetud failide kohta, et oleksid teadlik isegi siis, kui AeroFTP pole fookuses."
+            "notifyOnReceiveDesc": "Kuva süsteemiteade iga vastuvõetud faili kohta, sealhulgas automaatselt vastuvõetud failide kohta, et oleksid teadlik isegi siis, kui AeroFTP pole fookuses.",
+            "knock": {
+                "send": "Saada müksamine",
+                "dismiss": "Sulge",
+                "msg": {
+                    "knock": "Kop-kop",
+                    "online_q": "Kas oled võrgus?",
+                    "online_yes": "Jah, olen siin",
+                    "online_no": "Mitte praegu",
+                    "ready_q": "Valmis vastu võtma?",
+                    "ready_yes": "Jah, saada see",
+                    "ready_no": "Mitte praegu",
+                    "check_inbox": "Saatsin sulle faili, vaata oma postkasti",
+                    "please_accept": "Palun võta fail vastu",
+                    "one_moment": "Üks hetk, palun",
+                    "resend": "Palun saada uuesti, see ei jõudnud kohale",
+                    "thanks": "Sain kätte, aitäh"
+                }
+            }
         },
         "notifications": {
             "title": "Teatised",

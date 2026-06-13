@@ -4865,7 +4865,25 @@
                 "removeConfirm": "Tynnu?"
             },
             "notifyOnReceiveLabel": "Rhowch wybod i mi pan fydd ffeil yn cyrraedd",
-            "notifyOnReceiveDesc": "Dangos hysbysiad system ar gyfer pob ffeil a dderbynnir, gan gynnwys rhai a dderbynnir yn awtomatig, fel eich bod yn gwybod hyd yn oed pan nad yw AeroFTP yn ffocws."
+            "notifyOnReceiveDesc": "Dangos hysbysiad system ar gyfer pob ffeil a dderbynnir, gan gynnwys rhai a dderbynnir yn awtomatig, fel eich bod yn gwybod hyd yn oed pan nad yw AeroFTP yn ffocws.",
+            "knock": {
+                "send": "Anfon ping",
+                "dismiss": "Diystyru",
+                "msg": {
+                    "knock": "Cnoc",
+                    "online_q": "Wyt ti ar-lein?",
+                    "online_yes": "Ydw, dw i yma",
+                    "online_no": "Ddim nawr",
+                    "ready_q": "Yn barod i dderbyn?",
+                    "ready_yes": "Ydw, anfona fe",
+                    "ready_no": "Ddim nawr",
+                    "check_inbox": "Anfonais ffeil atat, edrycha yn dy fewnflwch",
+                    "please_accept": "Derbynia'r ffeil os gweli'n dda",
+                    "one_moment": "Un eiliad, os gweli'n dda",
+                    "resend": "Anfona eto, ni chyrhaeddodd",
+                    "thanks": "Wedi'i dderbyn, diolch"
+                }
+            }
         },
         "notifications": {
             "title": "Hysbysiadau",

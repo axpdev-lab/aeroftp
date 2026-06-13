@@ -4865,7 +4865,25 @@
                 "removeConfirm": "Alisin?"
             },
             "notifyOnReceiveLabel": "Abisuhan ako kapag dumating ang isang file",
-            "notifyOnReceiveDesc": "Magpakita ng abiso ng sistema para sa bawat natanggap na file, kabilang ang mga awtomatikong tinanggap, upang malaman mo kahit hindi naka-focus ang AeroFTP."
+            "notifyOnReceiveDesc": "Magpakita ng abiso ng sistema para sa bawat natanggap na file, kabilang ang mga awtomatikong tinanggap, upang malaman mo kahit hindi naka-focus ang AeroFTP.",
+            "knock": {
+                "send": "Magpadala ng tukso",
+                "dismiss": "I-dismiss",
+                "msg": {
+                    "knock": "Tok tok",
+                    "online_q": "Online ka ba?",
+                    "online_yes": "Oo, nandito ako",
+                    "online_no": "Hindi ngayon",
+                    "ready_q": "Handa nang tumanggap?",
+                    "ready_yes": "Oo, ipadala mo na",
+                    "ready_no": "Hindi ngayon",
+                    "check_inbox": "Pinadalhan kita ng file, tingnan mo ang inbox mo",
+                    "please_accept": "Pakitanggap ang file",
+                    "one_moment": "Sandali lang",
+                    "resend": "Paki-resend, hindi dumating",
+                    "thanks": "Natanggap, salamat"
+                }
+            }
         },
         "notifications": {
             "title": "Mga Abiso",
