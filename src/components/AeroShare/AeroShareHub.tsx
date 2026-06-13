@@ -282,13 +282,19 @@ export function AeroShareHub() {
         const alias = await resolveFriendAlias(ev.senderAfid);
         const senderLabel = alias || shortAfid(ev.senderAfid);
         const msg = t(knockLabelKey(ev.code));
-        info(senderLabel, msg);
+        // The modal is the most visible surface, so EVERY knock opens it (owner
+        // call): a statement shows just the message + Dismiss; a fresh question
+        // also shows the one-tap replies. The bell keeps the durable history; no
+        // separate toast (the modal already fronts it). A reply (in_reply_to set)
+        // carries no replies of its own, so its modal is informational only -
+        // which also bounds the exchange (no infinite ping-pong).
         notify({ kind: 'knock', title: senderLabel, body: msg, ts: ev.atMs });
-        const replies = knockReplies(ev.code);
-        // Only a fresh (non-reply) question opens the prompt; a reply just notifies.
-        if (replies.length && !ev.inReplyTo) {
-          setIncomingKnock({ senderAfid: ev.senderAfid, senderLabel, code: ev.code, replies });
-        }
+        setIncomingKnock({
+          senderAfid: ev.senderAfid,
+          senderLabel,
+          code: ev.code,
+          replies: ev.inReplyTo ? [] : knockReplies(ev.code),
+        });
       });
       if (disposed) {
         unlisten();

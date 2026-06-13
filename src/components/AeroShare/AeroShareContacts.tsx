@@ -13,7 +13,7 @@
  * it needs no surrounding context and renders the same in both hosts.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { UserPlus, Pencil, Trash2, Check, X, Loader2, Users, Hand } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import {
@@ -52,6 +52,13 @@ export function AeroShareContacts({ compact = false }: AeroShareContactsProps) {
   // transient confirmation on the row after a ping goes out.
   const [knockAfid, setKnockAfid] = useState<string | null>(null);
   const [knockSent, setKnockSent] = useState<string | null>(null);
+  // The "send a ping" menu opens `absolute` inside the scrollable AeroShare
+  // modal, so for a contact near the bottom it spills below the fold. Scroll it
+  // fully into view on open instead of leaving the user to scroll by hand.
+  const knockMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (knockAfid) knockMenuRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [knockAfid]);
 
   const sendKnock = useCallback(async (afid: string, code: string) => {
     setKnockAfid(null);
@@ -59,8 +66,11 @@ export function AeroShareContacts({ compact = false }: AeroShareContactsProps) {
       await peerSendKnock(afid, code);
       setKnockSent(afid);
       window.setTimeout(() => setKnockSent((cur) => (cur === afid ? null : cur)), 2500);
-    } catch {
-      /* fire-and-forget ping: a failure (offline peer) is non-fatal */
+    } catch (e) {
+      // Fire-and-forget ping: a failure (offline peer) is non-fatal and must not
+      // throw, but it should never be swallowed in silence either - log it so a
+      // broken send path is visible instead of looking like a dead button.
+      console.warn(`AeroShare knock "${code}" failed:`, e);
     }
   }, []);
 
@@ -269,7 +279,10 @@ export function AeroShareContacts({ compact = false }: AeroShareContactsProps) {
                         )}
                       </button>
                       {knockAfid === c.afid && (
-                        <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl">
+                        <div
+                          ref={knockMenuRef}
+                          className="absolute right-0 top-full mt-1 z-50 min-w-[200px] max-h-[40vh] overflow-y-auto py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
+                        >
                           <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">
                             {t('aeroShare.knock.send')}
                           </p>
