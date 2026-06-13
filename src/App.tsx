@@ -900,7 +900,7 @@ const App: React.FC = () => {
   const aeroSyncCompareSeqRef = useRef(0);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
-  const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
+  const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
   const [rcloneCryptVaultId, setRcloneCryptVaultId] = useState<string | null>(null);
   const [rcloneCryptImportBanner, setRcloneCryptImportBanner] = useState<null | {
@@ -11372,7 +11372,15 @@ interface UpdateVerificationInfo {
       items.push({
         label: t('contextMenu.openAsCryptomator') || 'Open as Cryptomator Vault',
         icon: <Lock size={14} className="text-emerald-500" />,
-        action: () => setShowCryptomatorBrowser(true),
+        // The vault root is the directory containing the right-clicked marker
+        // file (masterkey.cryptomator / vault.cryptomator). Pre-fill it so the
+        // user doesn't have to re-pick the folder and risk selecting the wrong
+        // one, which produced "Failed to read masterkey.cryptomator" (#322).
+        action: () => {
+          const cut = Math.max(file.path.lastIndexOf('\\'), file.path.lastIndexOf('/'));
+          const parent = cut > 0 ? file.path.slice(0, cut) : undefined;
+          setShowCryptomatorBrowser({ initialVaultPath: parent });
+        },
       });
       items.push({
         label: 'Cross-Profile Transfer',
@@ -12608,7 +12616,7 @@ interface UpdateVerificationInfo {
           onClose={() => setShowCloudPanel(false)}
         />
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
-        {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
+        {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock
             onClose={() => setShowRcloneCryptUnlock(false)}
