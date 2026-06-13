@@ -8468,6 +8468,45 @@ enum PeerCommands {
         #[arg(long)]
         relay: Option<String>,
     },
+    /// Send a single file to a contact (one-shot, E2EE, no persistent drive)
+    Send {
+        /// Recipient AeroFTP-ID, or a saved contact alias
+        to: String,
+        /// Path of the local file to send
+        file: String,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
+    /// Send a knock: a predefined-code ping (no file), shown as a notification on the recipient
+    Knock {
+        /// Recipient AeroFTP-ID, or a saved contact alias
+        to: String,
+        /// Predefined code: knock | online_q | ready_q | check_inbox | please_accept | one_moment |
+        /// resend | online_yes | online_no | ready_yes | ready_no | thanks
+        #[arg(default_value = "knock")]
+        code: String,
+        /// Code of the knock this one answers (a one-tap reply in the bounded Q/A)
+        #[arg(long)]
+        reply_to: Option<String>,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
+    /// Run the standing receive loop: accept incoming files into the inbox and print knocks
+    /// (Ctrl-C to stop). The headless counterpart of the GUI "Receive files" toggle.
+    Receive {
+        /// Inbox root for received files (default: ~/AeroShare Inbox)
+        #[arg(long)]
+        inbox: Option<String>,
+        /// Accept every incoming file without prompting (recommended for headless testing);
+        /// otherwise only saved contacts are auto-accepted and unknown senders are declined
+        #[arg(long)]
+        yes: bool,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -9123,6 +9162,231 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
                     print_error(format, &format!("replicate failed: {e}"), 1);
                     1
                 }
+            }
+        }
+        PeerCommands::Send { to, file, relay } => {
+            let recipient = match resolve_peer_recipient(&store, user_id, to) {
+                Ok(r) => r,
+                Err(e) => {
+                    print_error(format, &e, 4);
+                    return 4;
+                }
+            };
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY: run `aeroftp peer identity init`", 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            if !std::path::Path::new(file).is_file() {
+                print_error(format, &format!("{file} is not a file"), 4);
+                return 4;
+            }
+            let relay_urls = relay
+                .as_ref()
+                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+            match peer::send_file_oneshot(&recipient, &id_secret, file, relay_urls).await {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({ "sent": file, "recipient": recipient }));
+                    } else {
+                        println!("Sent {file} to {recipient}");
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &format!("send failed: {e}"), 1);
+                    1
+                }
+            }
+        }
+        PeerCommands::Knock {
+            to,
+            code,
+            reply_to,
+            relay,
+        } => {
+            let recipient = match resolve_peer_recipient(&store, user_id, to) {
+                Ok(r) => r,
+                Err(e) => {
+                    print_error(format, &e, 4);
+                    return 4;
+                }
+            };
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY: run `aeroftp peer identity init`", 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let relay_urls = relay
+                .as_ref()
+                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+            match peer::send_knock_oneshot(
+                &recipient,
+                &id_secret,
+                code,
+                reply_to.clone(),
+                relay_urls,
+            )
+            .await
+            {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "knock": code, "recipient": recipient, "replyTo": reply_to,
+                        }));
+                    } else {
+                        println!("Knock '{code}' sent to {recipient}");
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &format!("knock failed: {e}"), 1);
+                    1
+                }
+            }
+        }
+        PeerCommands::Receive { inbox, yes, relay } => {
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY: run `aeroftp peer identity init`", 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let my_afid = user_partitions::cli_peer_identity_show(&store, user_id)
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            let contacts: std::collections::HashMap<String, String> =
+                user_partitions::cli_peer_contact_list(&store, user_id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect();
+            let inbox_root = inbox
+                .clone()
+                .map(std::path::PathBuf::from)
+                .or_else(|| dirs::home_dir().map(|h| h.join("AeroShare Inbox")))
+                .unwrap_or_else(|| std::path::PathBuf::from("AeroShare Inbox"));
+            if let Err(e) = std::fs::create_dir_all(&inbox_root) {
+                print_error(
+                    format,
+                    &format!("cannot create inbox {}: {e}", inbox_root.display()),
+                    1,
+                );
+                return 1;
+            }
+            let relay_urls = relay
+                .as_ref()
+                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+            let accept_all = *yes;
+
+            // Accept policy: --yes accepts everyone; otherwise only saved contacts
+            // are accepted (into an alias subfolder) and unknown senders declined.
+            let decide = {
+                let contacts = contacts.clone();
+                let inbox_root = inbox_root.clone();
+                move |offer: aeroftp_peer_l0::IncomingOffer| {
+                    let contacts = contacts.clone();
+                    let inbox_root = inbox_root.clone();
+                    async move {
+                        let alias = contacts.get(&offer.sender_afid).cloned();
+                        if accept_all || alias.is_some() {
+                            let sub = alias.clone().unwrap_or_else(|| {
+                                let a = &offer.sender_afid;
+                                if a.len() > 12 {
+                                    format!("{}_{}", &a[..8], &a[a.len() - 4..])
+                                } else {
+                                    a.clone()
+                                }
+                            });
+                            let safe: String = sub
+                                .chars()
+                                .map(|c| {
+                                    if matches!(
+                                        c,
+                                        '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0'
+                                    ) || c.is_control()
+                                    {
+                                        '_'
+                                    } else {
+                                        c
+                                    }
+                                })
+                                .collect();
+                            let safe = safe.trim_matches(['.', ' ', '/']).to_string();
+                            let safe = if safe.is_empty() {
+                                "unknown".to_string()
+                            } else {
+                                safe
+                            };
+                            println!(
+                                "[accept] {} ({} bytes) from {}",
+                                offer.name,
+                                offer.size,
+                                alias.as_deref().unwrap_or(&offer.sender_afid)
+                            );
+                            Some(inbox_root.join(safe))
+                        } else {
+                            println!(
+                                "[decline] unknown sender {} (use --yes to accept all)",
+                                offer.sender_afid
+                            );
+                            None
+                        }
+                    }
+                }
+            };
+            let notify = move |ev: aeroftp_peer_l0::ReceiveEvent| match ev {
+                aeroftp_peer_l0::ReceiveEvent::Completed {
+                    sender_afid,
+                    name,
+                    path,
+                } => println!("[received] {name} from {sender_afid} -> {}", path.display()),
+                aeroftp_peer_l0::ReceiveEvent::Declined { sender_afid, name } => {
+                    println!("[declined] {name} from {sender_afid}")
+                }
+                aeroftp_peer_l0::ReceiveEvent::Failed {
+                    sender_afid,
+                    name,
+                    error,
+                } => eprintln!("[failed] {name} from {sender_afid}: {error}"),
+                aeroftp_peer_l0::ReceiveEvent::Knock {
+                    sender_afid,
+                    code,
+                    in_reply_to,
+                } => match in_reply_to {
+                    Some(r) => println!("[knock] {code} from {sender_afid} (reply to {r})"),
+                    None => println!("[knock] {code} from {sender_afid}"),
+                },
+            };
+
+            println!(
+                "Receiving as {my_afid} into {} (Ctrl-C to stop)...",
+                inbox_root.display()
+            );
+            let recv = peer::run_receiver(&id_secret, relay_urls, decide, notify);
+            tokio::select! {
+                r = recv => match r {
+                    Ok(()) => { println!("receive loop ended"); 0 }
+                    Err(e) => { print_error(format, &format!("receive failed: {e}"), 1); 1 }
+                },
+                _ = tokio::signal::ctrl_c() => { println!("\nstopped"); 0 }
             }
         }
     }
