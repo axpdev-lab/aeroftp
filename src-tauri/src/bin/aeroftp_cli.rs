@@ -8493,6 +8493,23 @@ enum PeerCommands {
         #[arg(long)]
         relay: Option<String>,
     },
+    /// Send an action: a structured agent-to-agent message (a verb + optional JSON payload), the
+    /// extensible generalization of a knock. Authenticated by AFID, fire-and-forget.
+    Action {
+        /// Recipient AeroFTP-ID, or a saved contact alias
+        to: String,
+        /// Action verb (the knock codes are the v1 verbs; the catalog is extensible)
+        verb: String,
+        /// Optional JSON payload carrying the action's structured args
+        #[arg(long)]
+        payload: Option<String>,
+        /// When set, ties this action back to an earlier request (reply correlation)
+        #[arg(long)]
+        correlation_id: Option<String>,
+        /// Comma-separated custom relay URLs
+        #[arg(long)]
+        relay: Option<String>,
+    },
     /// Run the standing receive loop: accept incoming files into the inbox and print knocks
     /// (Ctrl-C to stop). The headless counterpart of the GUI "Receive files" toggle.
     Receive {
@@ -8503,6 +8520,14 @@ enum PeerCommands {
         /// otherwise only saved contacts are auto-accepted and unknown senders are declined
         #[arg(long)]
         yes: bool,
+        /// Exit after the FIRST inbound event (a received file or a knock) instead of
+        /// looping until Ctrl-C. This is how a headless agent gets "notified": a
+        /// backgrounded `peer receive --once` that EXITS on arrival is an event the
+        /// agent's harness can react to, unlike a silent standing loop it must poll.
+        /// Re-launch it to wait for the next event (an autonomous receive loop).
+        /// `[declined]`/`[failed]` events do NOT trigger the exit.
+        #[arg(long)]
+        once: bool,
         /// Comma-separated custom relay URLs
         #[arg(long)]
         relay: Option<String>,
@@ -9257,7 +9282,76 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
                 }
             }
         }
-        PeerCommands::Receive { inbox, yes, relay } => {
+        PeerCommands::Action {
+            to,
+            verb,
+            payload,
+            correlation_id,
+            relay,
+        } => {
+            let recipient = match resolve_peer_recipient(&store, user_id, to) {
+                Ok(r) => r,
+                Err(e) => {
+                    print_error(format, &e, 4);
+                    return 4;
+                }
+            };
+            let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    print_error(format, "NO_IDENTITY: run `aeroftp peer identity init`", 4);
+                    return 4;
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            let payload_json = match payload {
+                Some(p) => match serde_json::from_str::<serde_json::Value>(p) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        print_error(format, &format!("invalid --payload JSON: {e}"), 4);
+                        return 4;
+                    }
+                },
+                None => None,
+            };
+            let relay_urls = relay
+                .as_ref()
+                .map(|r| r.split(',').map(|s| s.trim().to_string()).collect());
+            match peer::send_action_oneshot(
+                &recipient,
+                &id_secret,
+                verb,
+                payload_json,
+                correlation_id.clone(),
+                relay_urls,
+            )
+            .await
+            {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "action": verb, "recipient": recipient, "correlationId": correlation_id,
+                        }));
+                    } else {
+                        println!("Action '{verb}' sent to {recipient}");
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &format!("action failed: {e}"), 1);
+                    1
+                }
+            }
+        }
+        PeerCommands::Receive {
+            inbox,
+            yes,
+            once,
+            relay,
+        } => {
             let id_secret = match user_partitions::cli_peer_identity_load(&store, user_id) {
                 Ok(Some(s)) => s,
                 Ok(None) => {
@@ -9352,40 +9446,86 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
                     }
                 }
             };
-            let notify = move |ev: aeroftp_peer_l0::ReceiveEvent| match ev {
-                aeroftp_peer_l0::ReceiveEvent::Completed {
-                    sender_afid,
-                    name,
-                    path,
-                } => println!("[received] {name} from {sender_afid} -> {}", path.display()),
-                aeroftp_peer_l0::ReceiveEvent::Declined { sender_afid, name } => {
-                    println!("[declined] {name} from {sender_afid}")
+            // `--once` exits on the first file/knock. The notify closure runs
+            // synchronously inside the receive loop, so it signals through a
+            // `Notify` permit that the select arm below consumes. (Notify stores
+            // one permit, so the signal is not lost even if the arm is polled
+            // after the event fires.)
+            let exit_once = *once;
+            let first_event = std::sync::Arc::new(tokio::sync::Notify::new());
+            let notify = {
+                let first_event = first_event.clone();
+                move |ev: aeroftp_peer_l0::ReceiveEvent| match ev {
+                    aeroftp_peer_l0::ReceiveEvent::Completed {
+                        sender_afid,
+                        name,
+                        path,
+                    } => {
+                        println!("[received] {name} from {sender_afid} -> {}", path.display());
+                        first_event.notify_one();
+                    }
+                    aeroftp_peer_l0::ReceiveEvent::Declined { sender_afid, name } => {
+                        println!("[declined] {name} from {sender_afid}")
+                    }
+                    aeroftp_peer_l0::ReceiveEvent::Failed {
+                        sender_afid,
+                        name,
+                        error,
+                    } => eprintln!("[failed] {name} from {sender_afid}: {error}"),
+                    aeroftp_peer_l0::ReceiveEvent::Knock {
+                        sender_afid,
+                        code,
+                        in_reply_to,
+                    } => {
+                        match in_reply_to {
+                            Some(r) => println!("[knock] {code} from {sender_afid} (reply to {r})"),
+                            None => println!("[knock] {code} from {sender_afid}"),
+                        }
+                        first_event.notify_one();
+                    }
+                    aeroftp_peer_l0::ReceiveEvent::Action {
+                        sender_afid,
+                        verb,
+                        payload,
+                        correlation_id,
+                    } => {
+                        match (correlation_id, payload) {
+                            (Some(c), Some(p)) => {
+                                println!(
+                                    "[action] {verb} from {sender_afid} (reply to {c}) payload={p}"
+                                )
+                            }
+                            (Some(c), None) => {
+                                println!("[action] {verb} from {sender_afid} (reply to {c})")
+                            }
+                            (None, Some(p)) => {
+                                println!("[action] {verb} from {sender_afid} payload={p}")
+                            }
+                            (None, None) => println!("[action] {verb} from {sender_afid}"),
+                        }
+                        first_event.notify_one();
+                    }
                 }
-                aeroftp_peer_l0::ReceiveEvent::Failed {
-                    sender_afid,
-                    name,
-                    error,
-                } => eprintln!("[failed] {name} from {sender_afid}: {error}"),
-                aeroftp_peer_l0::ReceiveEvent::Knock {
-                    sender_afid,
-                    code,
-                    in_reply_to,
-                } => match in_reply_to {
-                    Some(r) => println!("[knock] {code} from {sender_afid} (reply to {r})"),
-                    None => println!("[knock] {code} from {sender_afid}"),
-                },
             };
 
-            println!(
-                "Receiving as {my_afid} into {} (Ctrl-C to stop)...",
-                inbox_root.display()
-            );
+            if exit_once {
+                println!(
+                    "Receiving as {my_afid} into {} (exits after the first event, --once)...",
+                    inbox_root.display()
+                );
+            } else {
+                println!(
+                    "Receiving as {my_afid} into {} (Ctrl-C to stop)...",
+                    inbox_root.display()
+                );
+            }
             let recv = peer::run_receiver(&id_secret, relay_urls, decide, notify);
             tokio::select! {
                 r = recv => match r {
                     Ok(()) => { println!("receive loop ended"); 0 }
                     Err(e) => { print_error(format, &format!("receive failed: {e}"), 1); 1 }
                 },
+                _ = first_event.notified(), if exit_once => { println!("[once] first event received, exiting"); 0 }
                 _ = tokio::signal::ctrl_c() => { println!("\nstopped"); 0 }
             }
         }

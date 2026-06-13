@@ -658,6 +658,52 @@ pub async fn peer_send_knock(
         .await
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerSendActionParams {
+    /// The recipient's AeroFTP-ID.
+    pub recipient_afid: String,
+    /// A catalog action verb (the knock codes are the v1 verbs; the catalog is
+    /// extensible). Opaque to the backend, like a knock code.
+    pub verb: String,
+    /// Optional small structured payload (JSON) carrying the action's args.
+    pub payload: Option<serde_json::Value>,
+    /// When set, ties this action back to an earlier request (reply correlation).
+    pub correlation_id: Option<String>,
+}
+
+/// Send an action (structured agent-to-agent message, no file) to a friend. Mints
+/// the active identity on first use (so the recipient can authenticate the sender)
+/// and routes through the runtime to REUSE the standing receiver endpoint (Finding 6b).
+#[tauri::command]
+pub async fn peer_send_action(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+    params: PeerSendActionParams,
+) -> Result<(), String> {
+    let recipient = crate::peer::validate_aeroftp_id(params.recipient_afid.trim())
+        .map_err(|e| format!("invalid recipient AeroFTP-ID: {e}"))?;
+    let verb = params.verb.trim();
+    if verb.is_empty() || verb.len() > 64 {
+        return Err("invalid action verb".to_string());
+    }
+
+    crate::user_partitions::gui_peer_identity_get_or_create(&app, true)?
+        .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+        .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+
+    peer_runtime
+        .send_action(
+            &recipient,
+            &identity_secret,
+            verb,
+            params.payload,
+            params.correlation_id,
+        )
+        .await
+}
+
 /// Start the standing receive loop (the Ricezione toggle = ON). Mints the
 /// identity if needed (the receive endpoint is seeded from it so friends can dial
 /// by AFID) and listens until [`peer_receiver_stop`]. Idempotent.

@@ -65,6 +65,19 @@ pub const PEER_KNOCK_ALPN: &[u8] = b"/aeroftp/peer/knock/v1";
 /// Cap on the knock JSON (a short code + optional reply code + AFID).
 const MAX_KNOCK_BYTES: usize = 4 * 1024;
 
+/// ALPN for an "action" - a structured agent-to-agent message (a verb + an
+/// optional small JSON payload + an optional correlation id). Distinct ALPN so
+/// the receive loop dispatches it without ever confusing it for a file offer or a
+/// knock. Like a knock it is authenticated by AFID and fire-and-forget; unlike a
+/// knock it carries a payload, so two agents can exchange a small EXTENSIBLE
+/// vocabulary of actions (the knock catalog is the v1 verb set).
+pub const PEER_ACTION_ALPN: &[u8] = b"/aeroftp/peer/action/v1";
+
+/// Cap on the action JSON (verb + a small structured payload + correlation id +
+/// AFID). Larger than a knock (which is code-only) but still bounded - an action
+/// is a signal, not a bulk transfer.
+const MAX_ACTION_BYTES: usize = 64 * 1024;
+
 /// How long a presence probe waits for the connection before declaring the
 /// friend offline. Short: a reachable receiver answers in well under this.
 const PRESENCE_PROBE_SECS: u64 = 8;
@@ -120,6 +133,21 @@ pub struct Knock {
     pub sender_afid: String,
 }
 
+/// An action: a structured agent-to-agent message. `verb` is a catalog action
+/// (the knock codes are the v1 verbs); `payload` is an optional small JSON value
+/// carrying structured args; `correlation_id`, when set, ties a reply back to a
+/// request (generalizing the knock `in_reply_to`). `sender_afid` is cross-checked
+/// against the iroh-authenticated `remote_node_id` on the receiving side.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Action {
+    pub verb: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+    pub sender_afid: String,
+}
+
 /// Outcome of one incoming transfer, reported to the app's `notify` callback so
 /// it can emit a UI event. Owned data (no borrows) for an easy `Fn` boundary.
 #[derive(Debug, Clone)]
@@ -143,6 +171,14 @@ pub enum ReceiveEvent {
         sender_afid: String,
         code: String,
         in_reply_to: Option<String>,
+    },
+    /// An incoming action (a structured agent-to-agent message: a verb + an
+    /// optional JSON payload + an optional correlation id).
+    Action {
+        sender_afid: String,
+        verb: String,
+        payload: Option<serde_json::Value>,
+        correlation_id: Option<String>,
     },
 }
 
@@ -340,6 +376,14 @@ where
             }
             continue;
         }
+        // An action: a structured agent-to-agent message (no file), on its own
+        // ALPN. Like a knock, one bad action must never kill the receive loop.
+        if conn.alpn().as_deref() == Some(PEER_ACTION_ALPN) {
+            if let Err(e) = handle_incoming_action(&conn, &notify).await {
+                warn!("AeroShare incoming action failed: {e}");
+            }
+            continue;
+        }
         // Per-transfer errors must not kill the loop either (one bad sender
         // shouldn't stop the receiver).
         if let Err(e) = handle_incoming(&conn, &secret, &decide, &notify).await {
@@ -480,6 +524,93 @@ where
         in_reply_to: knock.in_reply_to,
     });
     conn.close(0u32.into(), b"knock-received");
+    Ok(())
+}
+
+/// Send an ACTION (a structured agent-to-agent message: verb + optional payload +
+/// optional correlation id, no file) over an ALREADY-BOUND identity endpoint,
+/// sharing the receiver's endpoint exactly like [`send_knock_on_endpoint`] (so an
+/// action never evicts the receiver - Finding 6b). Fire-and-forget: there is no
+/// accept/decline and no ACK (an action is a signal, not a transfer). `ep` MUST be
+/// seeded with the sender identity so the recipient can authenticate the sender
+/// AFID against the connection's node id.
+pub async fn send_action_on_endpoint(
+    ep: &PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    verb: &str,
+    payload: Option<serde_json::Value>,
+    correlation_id: Option<String>,
+) -> Result<()> {
+    let me = Identity::from_secret_bytes(&{
+        let mut b = [0u8; 64];
+        if my_secret.len() != 64 {
+            bail!("identity secret must be 64 bytes");
+        }
+        b.copy_from_slice(my_secret);
+        b
+    });
+    let recipient = IdentityPublic::from_aeroftp_id(recipient_afid)
+        .map_err(|e| anyhow::anyhow!("invalid recipient AeroFTP-ID: {e}"))?;
+    let recipient_node = NodeId::from_bytes(&recipient.ed_bytes())
+        .context("recipient AFID does not yield a valid node id")?;
+
+    let action = Action {
+        verb: verb.to_string(),
+        payload,
+        correlation_id,
+        sender_afid: me.public().to_aeroftp_id(),
+    };
+    let json = serde_json::to_vec(&action)?;
+    if json.len() > MAX_ACTION_BYTES {
+        bail!("action payload too large");
+    }
+
+    let conn = ep.connect(recipient_node, PEER_ACTION_ALPN).await?;
+    let (mut s, _r) = conn.open_bi().await.context("open_bi for action")?;
+    s.write_u32(json.len() as u32).await?;
+    s.write_all(&json).await?;
+    s.finish().context("finish action stream")?;
+    // Wait for the receiver to read + close, so the bytes are not truncated by an
+    // early local close (same close-race care as the knock/file paths).
+    conn.closed().await;
+    Ok(())
+}
+
+/// Receive one incoming action: read it, authenticate the sender (claimed AFID ed
+/// == iroh remote node id, the same rule as offers and knocks), and emit
+/// [`ReceiveEvent::Action`]. No decision/ACK - an action just notifies.
+async fn handle_incoming_action<N>(conn: &Connection, notify: &N) -> Result<()>
+where
+    N: Fn(ReceiveEvent),
+{
+    let (mut _s, mut r) = conn.accept_bi().await.context("accept_bi for action")?;
+    let len = r.read_u32().await.context("read action length")? as usize;
+    if len > MAX_ACTION_BYTES {
+        conn.close(1u32.into(), b"action-too-large");
+        bail!("incoming action too large");
+    }
+    let mut buf = vec![0u8; len];
+    r.read_exact(&mut buf).await.context("read action body")?;
+    let action: Action = serde_json::from_slice(&buf).context("parse action")?;
+
+    let claimed = IdentityPublic::from_aeroftp_id(&action.sender_afid)
+        .context("action carries an invalid sender AeroFTP-ID")?;
+    let remote = conn
+        .remote_node_id()
+        .context("could not read the authenticated remote node id")?;
+    if remote.as_bytes() != &claimed.ed_bytes() {
+        conn.close(1u32.into(), b"sender-mismatch");
+        bail!("action sender AFID does not match the authenticated connection identity");
+    }
+
+    notify(ReceiveEvent::Action {
+        sender_afid: action.sender_afid,
+        verb: action.verb,
+        payload: action.payload,
+        correlation_id: action.correlation_id,
+    });
+    conn.close(0u32.into(), b"action-received");
     Ok(())
 }
 

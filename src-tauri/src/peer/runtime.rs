@@ -130,6 +130,19 @@ pub struct PeerKnockEvent {
     pub at_ms: u64,
 }
 
+/// Payload for `peer://action` (an incoming structured agent-to-agent message).
+/// `verb` is a catalog action; `payload` is an optional small JSON value;
+/// `correlation_id`, when set, ties a reply back to a request.
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerActionEvent {
+    pub sender_afid: String,
+    pub verb: String,
+    pub payload: Option<serde_json::Value>,
+    pub correlation_id: Option<String>,
+    pub at_ms: u64,
+}
+
 /// Short display form of an AeroFTP-ID, the default per-sender inbox subfolder
 /// when the FE does not supply a friendly alias.
 fn short_afid(afid: &str) -> String {
@@ -821,6 +834,47 @@ impl PeerRuntime {
         result.map_err(|e| format!("knock failed: {e}"))
     }
 
+    /// Send a one-shot action (structured agent-to-agent message, no file) to a
+    /// recipient. REUSES the standing receiver's identity endpoint when one is up
+    /// (Finding 6b), otherwise binds a clean transient endpoint - exactly like
+    /// [`Self::send_knock`]. `payload` carries optional structured args;
+    /// `correlation_id` ties a reply back to a request.
+    pub async fn send_action(
+        &self,
+        recipient_afid: &str,
+        my_secret: &[u8],
+        verb: &str,
+        payload: Option<serde_json::Value>,
+        correlation_id: Option<String>,
+    ) -> Result<(), String> {
+        let shared = self.identity_endpoint.lock().await.clone();
+        let result = match shared {
+            Some(ep) => {
+                crate::peer::send_action_on_endpoint(
+                    &ep,
+                    recipient_afid,
+                    my_secret,
+                    verb,
+                    payload,
+                    correlation_id,
+                )
+                .await
+            }
+            None => {
+                crate::peer::send_action_oneshot(
+                    recipient_afid,
+                    my_secret,
+                    verb,
+                    payload,
+                    correlation_id,
+                    relay_urls_from_env(),
+                )
+                .await
+            }
+        };
+        result.map_err(|e| format!("action failed: {e}"))
+    }
+
     /// Resolve a pending incoming offer. `accept = true` writes the file into
     /// `inbox_root/<label or short-AFID>/`; `accept = false` declines. `label`
     /// is the FE's friendly per-sender folder name (the friend alias). Errors if
@@ -909,6 +963,25 @@ fn emit_knock(app: &AppHandle, sender_afid: &str, code: &str, in_reply_to: Optio
     );
 }
 
+fn emit_action(
+    app: &AppHandle,
+    sender_afid: &str,
+    verb: &str,
+    payload: Option<serde_json::Value>,
+    correlation_id: Option<&str>,
+) {
+    let _ = app.emit(
+        "peer://action",
+        PeerActionEvent {
+            sender_afid: sender_afid.to_string(),
+            verb: verb.to_string(),
+            payload,
+            correlation_id: correlation_id.map(|s| s.to_string()),
+            at_ms: now_ms(),
+        },
+    );
+}
+
 /// The standing receive loop. Runs `peer::receive_on_endpoint` on the shared
 /// identity endpoint (so outbound sends reuse it - Finding 6b) with two callbacks:
 /// `decide` surfaces each offer to the FE and parks until the user answers;
@@ -946,6 +1019,12 @@ async fn receive_loop(
                         },
                     );
                 }
+                tracing::info!(
+                    "AeroShare receive: offer name={} size={} from afid={}",
+                    offer.name,
+                    offer.size,
+                    offer.sender_afid
+                );
                 let _ = app.emit(
                     "peer://incoming-offer",
                     PeerIncomingOfferEvent {
@@ -977,13 +1056,17 @@ async fn receive_loop(
     let notify = {
         let app = app.clone();
         move |ev: aeroftp_peer_l0::ReceiveEvent| match ev {
+            // Every receive event is logged at INFO/WARN under one stable
+            // `AeroShare receive:` prefix so a headless agent can be woken by a
+            // single greppable marker on the run log while the GUI stays open and
+            // shows the human a toast/bell (Finding 7 + unified receive logging).
             aeroftp_peer_l0::ReceiveEvent::Completed {
                 sender_afid,
                 name,
                 path,
             } => {
                 tracing::info!(
-                    "AeroShare received file name={name} from afid={sender_afid} -> {}",
+                    "AeroShare receive: completed file name={name} from afid={sender_afid} -> {}",
                     path.display()
                 );
                 emit_incoming_status(
@@ -996,18 +1079,18 @@ async fn receive_loop(
                 )
             }
             aeroftp_peer_l0::ReceiveEvent::Declined { sender_afid, name } => {
+                tracing::info!(
+                    "AeroShare receive: declined file name={name} from afid={sender_afid}"
+                );
                 emit_incoming_status(&app, "declined", &sender_afid, &name, None, None)
             }
-            // Log the cause on the receive side too: before this the failure was
-            // emitted only as the FE event, so the run log had no record of WHY an
-            // incoming transfer failed (Finding 7).
             aeroftp_peer_l0::ReceiveEvent::Failed {
                 sender_afid,
                 name,
                 error,
             } => {
                 tracing::warn!(
-                    "AeroShare receive FAILED name={name} from afid={sender_afid}: {error}"
+                    "AeroShare receive: FAILED file name={name} from afid={sender_afid}: {error}"
                 );
                 emit_incoming_status(&app, "failed", &sender_afid, &name, None, Some(error))
             }
@@ -1019,9 +1102,28 @@ async fn receive_loop(
                 in_reply_to,
             } => {
                 tracing::info!(
-                    "AeroShare knock code={code} from afid={sender_afid} in_reply_to={in_reply_to:?}"
+                    "AeroShare receive: knock code={code} from afid={sender_afid} in_reply_to={in_reply_to:?}"
                 );
                 emit_knock(&app, &sender_afid, &code, in_reply_to.as_deref())
+            }
+            // An action: a structured agent-to-agent message. Logged under the
+            // same `AeroShare receive:` prefix and surfaced on `peer://action`.
+            aeroftp_peer_l0::ReceiveEvent::Action {
+                sender_afid,
+                verb,
+                payload,
+                correlation_id,
+            } => {
+                tracing::info!(
+                    "AeroShare receive: action verb={verb} from afid={sender_afid} correlation_id={correlation_id:?}"
+                );
+                emit_action(
+                    &app,
+                    &sender_afid,
+                    &verb,
+                    payload,
+                    correlation_id.as_deref(),
+                )
             }
         }
     };
