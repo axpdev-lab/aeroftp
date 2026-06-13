@@ -132,18 +132,20 @@ impl PeerEndpoint {
         };
         // Register every ALPN the receive loop must accept: the L0 gate binary
         // dials with `PEER_L0_ALPN`, the app's "Send file" receive loop accepts
-        // `PEER_SEND_ALPN`, presence probes use `PEER_PING_ALPN`, and a knock
-        // (predefined-code ping) uses `PEER_KNOCK_ALPN`. The dialer selects which
-        // one per connection, so coexisting is harmless and keeps a single
-        // endpoint constructor. Omitting an ALPN here makes the dialer's
-        // `connect(node, ALPN)` fail negotiation, which is exactly how a knock
-        // silently no-op'd before `PEER_KNOCK_ALPN` was added.
+        // `PEER_SEND_ALPN`, presence probes use `PEER_PING_ALPN`, a knock
+        // (predefined-code ping) uses `PEER_KNOCK_ALPN`, and an agent action uses
+        // `PEER_ACTION_ALPN`. The dialer selects which one per connection, so
+        // coexisting is harmless and keeps a single endpoint constructor. Omitting
+        // an ALPN here makes the dialer's `connect(node, ALPN)` fail negotiation,
+        // which is exactly how a knock silently no-op'd before `PEER_KNOCK_ALPN`
+        // was added (and how an action failed to connect before `PEER_ACTION_ALPN`).
         let mut base = Endpoint::builder()
             .alpns(vec![
                 crate::PEER_L0_ALPN.to_vec(),
                 crate::send::PEER_SEND_ALPN.to_vec(),
                 crate::send::PEER_PING_ALPN.to_vec(),
                 crate::send::PEER_KNOCK_ALPN.to_vec(),
+                crate::send::PEER_ACTION_ALPN.to_vec(),
             ])
             .relay_mode(relay_mode);
         // Identity-seeded endpoint (the dial-by-AFID seam): bind with the user's
