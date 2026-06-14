@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Khi bạn nhấn nút đóng cửa sổ, AeroFTP sẽ được ẩn vào khay hệ thống thay vì thoát hẳn. Các tác vụ nền như đồng bộ AeroCloud vẫn tiếp tục chạy. Dùng menu trên khay hệ thống để thoát ứng dụng.",
       "detailedCards": "Thẻ máy chủ chi tiết",
       "detailedCardsDesc": "Hiển thị thanh sử dụng bộ nhớ đã lưu trên các thẻ Máy chủ của tôi.",
+      "favoriteHeart": "Dấu trái tim cho mục yêu thích",
+      "favoriteHeartDesc": "Dùng trái tim đỏ thay vì ngôi sao để đánh dấu máy chủ yêu thích, trong My Servers và CLI.",
       "storageThresholds": "Màu sử dụng lưu trữ",
       "storageThresholdsDesc": "Khi cột % trong My Servers chuyển sang hổ phách và đỏ. Mặc định 80% / 95% - vượt hạn ngạch (>100%) luôn đỏ, dưới 5% xám.",
       "storageWarn": "Ngưỡng cảnh báo (hổ phách)",

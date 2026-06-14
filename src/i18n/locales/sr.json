@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Kada kliknete na dugme za zatvaranje prozora, AeroFTP će se sakriti u sistemski trej umesto da se zatvori. Pozadinski zadaci kao što je sinhronizacija AeroCloud-a nastavljaju da rade. Za izlaz iz aplikacije koristite meni u treju.",
       "detailedCards": "Детаљне картице сервера",
       "detailedCardsDesc": "Прикажи траку коришћења кеширане меморије на картицама Моји сервери.",
+      "favoriteHeart": "Срце за омиљене",
+      "favoriteHeartDesc": "Користите црвено срце уместо звездице за означавање омиљених сервера, у My Servers и CLI-ју.",
       "storageThresholds": "Боје коришћења складишта",
       "storageThresholdsDesc": "Када колона % у Моји сервери постане ћилибарна и црвена. Подразумевано 80% / 95% - преко квоте (>100%) увек црвено, испод 5% сиво.",
       "storageWarn": "Праг упозорења (ћилибар)",

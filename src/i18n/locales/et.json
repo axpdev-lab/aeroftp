@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Kui klõpsate akna sulgemise nuppu, peidab AeroFTP end väljumise asemel süsteemisalve. Taustatööd nagu AeroCloud sünkroonimine jätkavad töötamist. Väljumiseks kasutage süsteemisalve menüüd.",
       "detailedCards": "Üksikasjalikud serverikaardid",
       "detailedCardsDesc": "Kuvab vahemällu salvestatud salvestusruumi kasutuse riba kaartidel Minu serverid.",
+      "favoriteHeart": "Südamemärk lemmikutele",
+      "favoriteHeartDesc": "Kasuta lemmikserverite märkimiseks tähe asemel punast südant, nii My Servers vaates kui ka CLI-s.",
       "storageThresholds": "Salvestusruumi kasutuse värvid",
       "storageThresholdsDesc": "Millal Minu serverite %-veerg muutub merevaiguks ja punaseks. Vaikeväärtus 80% / 95% - kvoodi ületamine (>100%) alati punane, alla 5% hall.",
       "storageWarn": "Hoiatuslävi (merevaik)",

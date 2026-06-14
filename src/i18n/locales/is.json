@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Þegar þú smellir á lokunarhnapp gluggans er AeroFTP falið í kerfisbakkanum í stað þess að hætta. Bakgrunnsverkefni eins og AeroCloud samstilling halda áfram að keyra. Notaðu valmynd kerfisbakkans til að hætta.",
       "detailedCards": "Ítarleg þjónakort",
       "detailedCardsDesc": "Birta nýtingarstiku skyndiminnisgeymslu á Mínir þjónar kortunum.",
+      "favoriteHeart": "Hjarta fyrir eftirlæti",
+      "favoriteHeartDesc": "Notaðu rautt hjarta í stað stjörnu til að merkja eftirlætisþjóna, í My Servers og CLI.",
       "storageThresholds": "Litir á notkun geymslu",
       "storageThresholdsDesc": "Hvenær %-dálkur í Mínir þjónar verður gulbrúnn og rauður. Sjálfgefið 80% / 95% - yfir kvóta (>100%) alltaf rautt, undir 5% grátt.",
       "storageWarn": "Viðvörunarmörk (gulbrúnt)",

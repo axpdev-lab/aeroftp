@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Kun napsautat ikkunan sulkemispainiketta, AeroFTP piilotetaan ilmoitusalueelle sulkemisen sijaan. Taustatehtävät, kuten AeroCloud-synkronointi, jatkavat toimintaansa. Sulje sovellus ilmoitusalueen valikosta.",
       "detailedCards": "Yksityiskohtaiset palvelinkortit",
       "detailedCardsDesc": "Näytä välimuistissa olevan tallennustilan käyttöpalkki Omat palvelimet -korteissa.",
+      "favoriteHeart": "Sydänmerkki suosikeille",
+      "favoriteHeartDesc": "Merkitse suosikkipalvelimet punaisella sydämellä tähden sijaan, My Servers -näkymässä ja CLI:ssä.",
       "storageThresholds": "Tallennustilan käytön värit",
       "storageThresholdsDesc": "Milloin %-sarake Omat palvelimet -näkymässä muuttuu meripihkaksi ja punaiseksi. Oletus 80% / 95% - yli kiintiön (>100%) aina punainen, alle 5% harmaa.",
       "storageWarn": "Varoitusraja (meripihka)",

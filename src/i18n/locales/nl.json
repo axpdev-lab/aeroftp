@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Wanneer je op de sluitknop van het venster klikt, wordt AeroFTP verborgen in het systeemvak in plaats van afgesloten. Achtergrondtaken zoals AeroCloud-synchronisatie blijven actief. Gebruik het menu van het systeemvak om af te sluiten.",
       "detailedCards": "Gedetailleerde serverkaarten",
       "detailedCardsDesc": "Toont de balk voor gebufferd opslaggebruik op de kaarten Mijn servers.",
+      "favoriteHeart": "Hartmarkering voor favorieten",
+      "favoriteHeartDesc": "Gebruik een rood hart in plaats van een ster om favoriete servers te markeren, in My Servers en de CLI.",
       "storageThresholds": "Kleuren voor opslaggebruik",
       "storageThresholdsDesc": "Wanneer de %-kolom in Mijn servers oranje en rood wordt. Standaard 80% / 95% - boven quotum (>100%) altijd rood, onder 5% grijs.",
       "storageWarn": "Waarschuwingsdrempel (oranje)",

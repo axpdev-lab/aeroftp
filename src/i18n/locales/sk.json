@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Po kliknutí na tlačidlo zatvorenia okna sa AeroFTP skryje do systémovej lišty namiesto úplného ukončenia. Úlohy na pozadí, ako napríklad synchronizácia AeroCloud, budú pokračovať. Na ukončenie aplikácie použite ponuku v systémovej lište.",
       "detailedCards": "Podrobné karty serverov",
       "detailedCardsDesc": "Zobraziť panel využitia vyrovnávacej pamäte úložiska na kartách Moje servery.",
+      "favoriteHeart": "Srdce pre obľúbené",
+      "favoriteHeartDesc": "Na označenie obľúbených serverov použite červené srdce namiesto hviezdy, v My Servers a CLI.",
       "storageThresholds": "Farby využitia úložiska",
       "storageThresholdsDesc": "Kedy sa stĺpec % v Moje servery zmení na jantárovú a červenú. Predvolené 80% / 95% - prekročenie kvóty (>100%) vždy červené, pod 5% sivé.",
       "storageWarn": "Prah upozornenia (jantár)",

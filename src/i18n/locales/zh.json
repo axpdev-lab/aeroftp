@@ -895,6 +895,8 @@
       "closeToTrayDesc": "当您点击窗口关闭按钮时，AeroFTP 将隐藏到系统托盘而不是退出。AeroCloud 同步等后台任务会继续运行。如需退出，请使用托盘菜单。",
       "detailedCards": "详细的服务器卡片",
       "detailedCardsDesc": "在\"我的服务器\"卡片上显示缓存的存储使用条。",
+      "favoriteHeart": "用爱心标记收藏",
+      "favoriteHeartDesc": "在 My Servers 和 CLI 中，使用红色爱心而非星星来标记收藏的服务器。",
       "storageThresholds": "存储使用颜色",
       "storageThresholdsDesc": "My Servers 中 % 列何时变为琥珀色和红色。默认 80% / 95% - 超过配额 (>100%) 始终为红色，低于 5% 为灰色。",
       "storageWarn": "警告阈值（琥珀）",

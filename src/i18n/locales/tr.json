@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Pencere kapatma düğmesine tıkladığınızda AeroFTP kapanmak yerine sistem tepsisine gizlenir. AeroCloud senkronizasyonu gibi arka plan görevleri çalışmaya devam eder. Uygulamadan tamamen çıkmak için tepsi menüsünü kullanın.",
       "detailedCards": "Ayrıntılı sunucu kartları",
       "detailedCardsDesc": "Sunucularım kartlarında önbelleğe alınmış depolama kullanım çubuğunu göster.",
+      "favoriteHeart": "Favoriler için kalp işareti",
+      "favoriteHeartDesc": "Favori sunucuları işaretlemek için yıldız yerine kırmızı kalp kullanın; My Servers ve CLI'de.",
       "storageThresholds": "Depolama kullanım renkleri",
       "storageThresholdsDesc": "My Servers'daki % sütununun ne zaman amber ve kırmızıya döneceği. Varsayılan 80% / 95% - kotanın üstünde (>100%) her zaman kırmızı, %5'in altında gri.",
       "storageWarn": "Uyarı eşiği (amber)",

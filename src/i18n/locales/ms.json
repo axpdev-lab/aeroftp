@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Apabila anda klik butang tutup tetingkap, AeroFTP disembunyikan ke dulang sistem dan bukannya ditutup. Tugas latar belakang seperti penyegerakan AeroCloud terus berjalan. Gunakan menu dulang untuk keluar.",
       "detailedCards": "Kad pelayan terperinci",
       "detailedCardsDesc": "Tunjukkan bar penggunaan storan cache pada kad Pelayan Saya.",
+      "favoriteHeart": "Penanda hati untuk kegemaran",
+      "favoriteHeartDesc": "Gunakan hati merah dan bukannya bintang untuk menanda pelayan kegemaran, dalam My Servers dan CLI.",
       "storageThresholds": "Warna penggunaan storan",
       "storageThresholdsDesc": "Bila lajur % dalam My Servers menjadi kuning ambar dan merah. Lalai 80% / 95% - melebihi kuota (>100%) sentiasa merah, kurang 5% kelabu.",
       "storageWarn": "Ambang amaran (ambar)",

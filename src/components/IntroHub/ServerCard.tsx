@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -8,6 +8,7 @@ import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { useTranslation } from '../../i18n';
 import { useCardLayout } from '../../hooks/useCardLayout';
+import { useFavoriteMarker } from '../../hooks/useFavoriteMarker';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { formatBytes } from '../../utils/formatters';
 import {
@@ -442,6 +443,7 @@ export const ServerCard = React.memo(function ServerCard({
 }: ServerCardProps) {
     const t = useTranslation();
     const cardLayout = useCardLayout();
+    const favoriteMarker = useFavoriteMarker();
     const introHubIconSize = useIntroHubIconSize();
     const connectButtonSize = Math.max(40, Math.min(48, introHubIconSize + 16));
     const connectIconSize = Math.min(introHubIconSize, connectButtonSize - 10);
@@ -672,13 +674,19 @@ export const ServerCard = React.memo(function ServerCard({
                 <button
                     onClick={(e) => { e.stopPropagation(); onToggleFavorite(server); }}
                     className={`p-1 rounded-lg transition-colors ${
-                        isFavorite
-                            ? 'text-yellow-400 hover:text-yellow-500'
-                            : 'text-gray-400 hover:text-yellow-400 opacity-0 group-hover:opacity-100'
+                        favoriteMarker === 'heart'
+                            ? (isFavorite
+                                ? 'text-red-500 hover:text-red-600'
+                                : 'text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100')
+                            : (isFavorite
+                                ? 'text-yellow-400 hover:text-yellow-500'
+                                : 'text-gray-400 hover:text-yellow-400 opacity-0 group-hover:opacity-100')
                     }`}
                     title={isFavorite ? t('introHub.removeFavorite') : t('introHub.addFavorite')}
                 >
-                    <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
+                    {favoriteMarker === 'heart'
+                        ? <Heart size={12} fill={isFavorite ? 'currentColor' : 'none'} />
+                        : <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />}
                 </button>
             </div>
         </div>

@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Når du klikker på knappen for at lukke vinduet, skjules AeroFTP i systembakken i stedet for at afslutte. Baggrundsopgaver som AeroCloud-synkronisering fortsætter. Brug menuen i systembakken for at afslutte.",
       "detailedCards": "Detaljerede serverkort",
       "detailedCardsDesc": "Vis den cachelagrede lagerforbrugslinje på kortene Mine servere.",
+      "favoriteHeart": "Hjertemarkør til favoritter",
+      "favoriteHeartDesc": "Brug et rødt hjerte i stedet for en stjerne til at markere favoritservere i My Servers og CLI.",
       "storageThresholds": "Farver til lageranvendelse",
       "storageThresholdsDesc": "Hvornår %-kolonnen i Mine servere bliver rav og rød. Standard 80% / 95% - over kvote (>100%) altid rød, under 5% grå.",
       "storageWarn": "Advarselsgrænse (rav)",

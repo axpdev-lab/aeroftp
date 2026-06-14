@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Leihoa ixteko botoian klik egitean, AeroFTP sistemaren erretiluan ezkutatzen da, itxi beharrean. Bigarren mailako atazek, hala nola AeroCloud sinkronizazioak, lanean jarraitzen dute. Erabili erretiluaren menua aplikaziotik irteteko.",
       "detailedCards": "Zerbitzari-txartel zehatzak",
       "detailedCardsDesc": "Erakutsi cache biltegiratze-erabileraren barra Nire zerbitzariak txarteletan.",
+      "favoriteHeart": "Bihotz-marka gogokoentzat",
+      "favoriteHeartDesc": "Erabili izar baten ordez bihotz gorri bat gogoko zerbitzariak markatzeko, My Servers atalean eta CLI-n.",
       "storageThresholds": "Biltegiratzearen erabileraren koloreak",
       "storageThresholdsDesc": "Noiz Nire zerbitzariak orriko % zutabea anbar eta gorri bihurtzen den. Lehenetsia 80% / 95% - kuotaren gainetik (>100%) beti gorri, %5etik behera grisa.",
       "storageWarn": "Abisu-atalasea (anbar)",

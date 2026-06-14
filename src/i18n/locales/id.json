@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Saat kamu menekan tombol tutup jendela, AeroFTP disembunyikan ke tray sistem alih-alih ditutup. Tugas latar belakang seperti sinkronisasi AeroCloud tetap berjalan. Gunakan menu tray untuk keluar.",
       "detailedCards": "Kartu server terperinci",
       "detailedCardsDesc": "Tampilkan bilah penggunaan penyimpanan tersimpan di kartu Server Saya.",
+      "favoriteHeart": "Penanda hati untuk favorit",
+      "favoriteHeartDesc": "Gunakan hati merah alih-alih bintang untuk menandai server favorit, di My Servers dan CLI.",
       "storageThresholds": "Warna penggunaan penyimpanan",
       "storageThresholdsDesc": "Kapan kolom % di Server Saya menjadi amber dan merah. Default 80% / 95% - melebihi kuota (>100%) selalu merah, kurang dari 5% abu-abu.",
       "storageWarn": "Ambang peringatan (amber)",

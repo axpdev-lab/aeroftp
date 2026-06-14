@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Unapobonyeza kitufe cha kufunga dirisha, ficha AeroFTP kwenye treya ya mfumo badala ya kutoka kabisa. Kazi za chinichini kama vile usawazishaji wa AeroCloud zinaendelea kufanya kazi. Tumia menyu ya treya kutoka kabisa.",
       "detailedCards": "Kadi za seva za kina",
       "detailedCardsDesc": "Onyesha upau wa matumizi ya hifadhi iliyohifadhiwa kwenye kadi za Seva Zangu.",
+      "favoriteHeart": "Alama ya moyo kwa vipendwa",
+      "favoriteHeartDesc": "Tumia moyo mwekundu badala ya nyota kuweka alama kwenye seva pendwa, katika My Servers na CLI.",
       "storageThresholds": "Rangi za matumizi ya hifadhi",
       "storageThresholdsDesc": "Wakati safu wima ya % katika Seva Zangu inakuwa amba na nyekundu. Chaguo-msingi 80% / 95% - zaidi ya kiwango (>100%) daima nyekundu, chini ya 5% kijivu.",
       "storageWarn": "Kizingiti cha onyo (amba)",

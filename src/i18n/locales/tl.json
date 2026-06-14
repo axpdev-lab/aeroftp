@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Kapag pinindot mo ang close button ng window, itatago ang AeroFTP sa system tray sa halip na isara. Patuloy na tatakbo ang mga gawain sa background tulad ng AeroCloud sync. Gamitin ang tray menu para isara nang lubusan.",
       "detailedCards": "Detalyadong mga server card",
       "detailedCardsDesc": "Ipakita ang naka-cache na storage usage bar sa mga My Servers card.",
+      "favoriteHeart": "Markang puso para sa mga paborito",
+      "favoriteHeartDesc": "Gumamit ng pulang puso sa halip na bituin para markahan ang mga paboritong server, sa My Servers at sa CLI.",
       "storageThresholds": "Mga kulay ng paggamit ng storage",
       "storageThresholdsDesc": "Kailan magiging amber at pula ang column na % sa My Servers. Default na 80% / 95% - lampas sa quota (>100%) palaging pula, mas mababa sa 5% kulay-abo.",
       "storageWarn": "Threshold ng babala (amber)",

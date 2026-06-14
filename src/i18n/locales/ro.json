@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Când apeși butonul de închidere a ferestrei, ascunde AeroFTP în bara de sistem în loc să închizi aplicația. Sarcinile din fundal, precum sincronizarea AeroCloud, continuă să ruleze. Folosește meniul din bara de sistem pentru a închide complet.",
       "detailedCards": "Carduri detaliate de server",
       "detailedCardsDesc": "Afișează bara de utilizare a spațiului de stocare în cache pe cardurile Serverele mele.",
+      "favoriteHeart": "Inimă pentru favorite",
+      "favoriteHeartDesc": "Folosește o inimă roșie în loc de o stea pentru a marca serverele favorite, în My Servers și CLI.",
       "storageThresholds": "Culori utilizare stocare",
       "storageThresholdsDesc": "Când coloana % din Serverele mele devine chihlimbar și roșie. Implicit 80% / 95% - peste cotă (>100%) întotdeauna roșu, sub 5% gri.",
       "storageWarn": "Prag de avertizare (chihlimbar)",

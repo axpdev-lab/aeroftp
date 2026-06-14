@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Amikor az ablak bezárása gombra kattintasz, az AeroFTP a rendszertálcára kerül kilépés helyett. A háttérfeladatok, mint az AeroCloud szinkronizáció, tovább futnak. A kilépéshez használd a tálca menüjét.",
       "detailedCards": "Részletes szerverkártyák",
       "detailedCardsDesc": "A gyorsítótárazott tárolóhasználat sávjának megjelenítése a Saját szerverek kártyákon.",
+      "favoriteHeart": "Szív jelölő a kedvencekhez",
+      "favoriteHeartDesc": "Csillag helyett piros szívvel jelölheti a kedvenc kiszolgálókat a My Servers nézetben és a CLI-ben.",
       "storageThresholds": "Tárhely használati színek",
       "storageThresholdsDesc": "Amikor a Szervereim % oszlopa borostyán és piros lesz. Alapértelmezett 80% / 95% - kvótán felül (>100%) mindig piros, 5% alatt szürke.",
       "storageWarn": "Figyelmeztetési küszöb (borostyán)",

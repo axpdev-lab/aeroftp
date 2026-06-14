@@ -9091,6 +9091,26 @@ fn load_favorite_server_ids(store: &CredentialStore) -> std::collections::HashSe
         .unwrap_or_default()
 }
 
+/// Read the favourite marker glyph from the shared `app_settings` vault key
+/// (`favoriteMarker`, written by the GUI Appearance toggle) so the CLI renders
+/// the same symbol as My Servers. Returns ★ by default, ♥ when the user picked
+/// the heart marker (#270).
+fn load_favorite_marker(store: &CredentialStore) -> &'static str {
+    let raw = match store.get("config_app_settings") {
+        Ok(v) => v,
+        Err(_) => return "\u{2605}",
+    };
+    match serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("favoriteMarker"))
+        .and_then(|m| m.as_str())
+    {
+        Some("heart") => "\u{2665}",
+        _ => "\u{2605}",
+    }
+}
+
 /// Toggle the favourite flag for a profile id. Reads the current set,
 /// flips membership, writes back. Returns the new state (`true` = now
 /// favoured). Errors if the vault write fails. Mirrors
@@ -11579,6 +11599,7 @@ fn render_profiles_text(
     let color_on = use_color();
     let mut settings = read_ui_table_settings(store);
     let favorites = load_favorite_server_ids(store);
+    let fav_marker = load_favorite_marker(store);
     let groups = load_server_groups(store);
     // Per-profile group label ("GroupA, GroupB" or "-"), keyed by profile id (#320).
     let group_label = |id: &str| -> String {
@@ -11916,7 +11937,7 @@ fn render_profiles_text(
                     // `f` action in interactive mode (issue #195).
                     let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
                     let marker = if !id.is_empty() && favorites.contains(id) {
-                        "\u{2605}"
+                        fav_marker
                     } else {
                         "-"
                     };
@@ -12210,6 +12231,8 @@ fn interactive_profiles_loop(
 ) -> i32 {
     use std::io::{self, BufRead, Write};
 
+    // Favourite marker glyph shared with the GUI (★ default, ♥ if chosen) (#270).
+    let fav_marker = load_favorite_marker(store);
     let mut current = profiles;
     let mut tombstones: Vec<(usize, serde_json::Value)> = Vec::new();
     // Command queued by the raw-mode `tui` navigator: when set, it is consumed
@@ -12261,7 +12284,10 @@ fn interactive_profiles_loop(
             eprintln!("  l <selectors>   list root of each profile");
             eprintln!("  t <selectors> [:N]  tree of each profile (default depth 2; :N sets depth, :0 = full)");
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
-            eprintln!("  f <selectors>   toggle favourite \u{2605} (green/yellow rendering)");
+            eprintln!(
+                "  f <selectors>   toggle favourite {} (green/yellow rendering)",
+                fav_marker
+            );
             eprintln!("  c <selectors>   copy / duplicate (blue rendering)");
             eprintln!(
                 "  r <selector>    rename (single target, prompts for new name, green rendering)"
@@ -12307,7 +12333,7 @@ fn interactive_profiles_loop(
                 eprintln!("The arrow-key navigator needs an interactive terminal.");
                 continue;
             }
-            match profiles_tui_pick(&current) {
+            match profiles_tui_pick(&current, fav_marker) {
                 Ok(ProfilesTuiOutcome::Quit) => {}
                 Ok(ProfilesTuiOutcome::Command(cmd)) => pending_command = Some(cmd),
                 Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
@@ -12831,7 +12857,8 @@ fn interactive_profiles_loop(
                         Ok(true) => eprintln!(
                             "{}",
                             paint_yellow(&format!(
-                                "\u{2605} #{} '{}' marked as favourite.",
+                                "{} #{} '{}' marked as favourite.",
+                                fav_marker,
                                 zero + 1,
                                 name
                             ))
@@ -13227,7 +13254,10 @@ enum ProfilesTuiOutcome {
 /// tested action handlers after raw mode is left, so all vault mutation stays in
 /// one place. Mirrors the ncdu TUI's crossterm/ratatui setup and always restores
 /// the terminal, even on error.
-fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<ProfilesTuiOutcome> {
+fn profiles_tui_pick(
+    profiles: &[serde_json::Value],
+    fav_marker: &str,
+) -> std::io::Result<ProfilesTuiOutcome> {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use ratatui::{
         layout::{Constraint, Layout},
@@ -13283,13 +13313,18 @@ fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<Profiles
                             .and_then(|v| v.as_bool())
                             .or_else(|| p.get("isFavorite").and_then(|v| v.as_bool()))
                             .unwrap_or(false);
-                        let star = if fav { "\u{2605} " } else { "  " };
+                        let (star, star_color) = if fav {
+                            let color = if fav_marker == "\u{2665}" { Color::Red } else { Color::Yellow };
+                            (format!("{} ", fav_marker), color)
+                        } else {
+                            ("  ".to_string(), Color::Yellow)
+                        };
                         ListItem::new(Line::from(vec![
                             Span::styled(
                                 format!("{:>2}. ", i + 1),
                                 Style::default().fg(Color::DarkGray),
                             ),
-                            Span::styled(star, Style::default().fg(Color::Yellow)),
+                            Span::styled(star, Style::default().fg(star_color)),
                             Span::raw(name.to_string()),
                             Span::styled(
                                 format!("  {}", proto),

@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Kada kliknete gumb za zatvaranje prozora, AeroFTP se sakriva u traku sustava umjesto da se zatvori. Pozadinski zadaci poput AeroCloud sinkronizacije nastavljaju s radom. Za izlaz koristite izbornik trake sustava.",
       "detailedCards": "Detaljne kartice poslužitelja",
       "detailedCardsDesc": "Prikaži traku korištenja predmemorirane pohrane na karticama Moji poslužitelji.",
+      "favoriteHeart": "Srce za favorite",
+      "favoriteHeartDesc": "Za označavanje omiljenih poslužitelja upotrijebite crveno srce umjesto zvjezdice, u My Servers i CLI-ju.",
       "storageThresholds": "Boje korištenja pohrane",
       "storageThresholdsDesc": "Kada stupac % u Moji poslužitelji postane jantarni i crveni. Zadano 80% / 95% - preko kvote (>100%) uvijek crveno, ispod 5% sivo.",
       "storageWarn": "Prag upozorenja (jantar)",

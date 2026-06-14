@@ -895,6 +895,8 @@
       "closeToTrayDesc": "Wenn Sie auf die Schließen-Schaltfläche klicken, wird AeroFTP in den Infobereich minimiert, anstatt beendet zu werden. Hintergrundaufgaben wie die AeroCloud-Synchronisierung laufen weiter. Verwenden Sie das Menü im Infobereich, um die App zu beenden.",
       "detailedCards": "Detaillierte Serverkarten",
       "detailedCardsDesc": "Zeigt den zwischengespeicherten Speichernutzungsbalken auf den Karten \"Meine Server\" an.",
+      "favoriteHeart": "Herz-Markierung für Favoriten",
+      "favoriteHeartDesc": "Verwenden Sie ein rotes Herz statt eines Sterns, um Lieblingsserver zu markieren, in My Servers und der CLI.",
       "storageThresholds": "Farben für Speichernutzung",
       "storageThresholdsDesc": "Wann die %-Spalte in Meine Server amber und rot wird. Standard 80% / 95% - über Kontingent (>100%) immer rot, unter 5% grau.",
       "storageWarn": "Warnschwelle (amber)",

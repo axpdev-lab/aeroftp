@@ -895,6 +895,8 @@
       "closeToTrayDesc": "ウィンドウの閉じるボタンを押すと、AeroFTPは終了せずにシステムトレイに格納されます。AeroCloudの同期などのバックグラウンドタスクは引き続き実行されます。終了するにはトレイメニューを使用してください。",
       "detailedCards": "詳細なサーバーカード",
       "detailedCardsDesc": "「マイサーバー」カードにキャッシュされたストレージ使用量バーを表示します。",
+      "favoriteHeart": "お気に入りにハートマーク",
+      "favoriteHeartDesc": "My Servers と CLI で、お気に入りのサーバーに星の代わりに赤いハートを使って印を付けます。",
       "storageThresholds": "ストレージ使用量の色",
       "storageThresholdsDesc": "My Servers の % 列がアンバーと赤になるしきい値。デフォルトは 80% / 95% - クォータ超過 (>100%) は常に赤、5% 未満は灰色。",
       "storageWarn": "警告しきい値 (アンバー)",
