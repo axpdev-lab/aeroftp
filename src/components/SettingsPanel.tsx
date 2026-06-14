@@ -1548,7 +1548,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <p className="text-xs text-gray-500">{t('settings.foursharedDesc')}</p>
                                                 </div>
                                             </div>
-                                            <button onClick={() => openUrl('https://www.4shared.com/developer/')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
+                                            <button onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>

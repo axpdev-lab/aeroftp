@@ -22,6 +22,7 @@ import { ProviderModeTabs } from './ProviderModeTabs';
 import { TotpLivePreview } from './TotpLivePreview';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
+import { openUrl } from '../utils/openUrl';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -388,7 +389,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                     <div className="flex items-center justify-between">
                         <h4 className="font-medium text-sm">{t('connection.fourshared.oauth1Credentials')}</h4>
                         <button
-                            onClick={() => { try { invoke('open_url', { url: 'https://www.4shared.com/developer/docs/app/' }); } catch { window.open('https://www.4shared.com/developer/docs/app/', '_blank'); } }}
+                            onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')}
                             className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
                         >
                             {t('settings.getCredentials')} <ExternalLink size={12} />
