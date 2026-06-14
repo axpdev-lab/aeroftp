@@ -4115,9 +4115,12 @@ interface UpdateVerificationInfo {
         return !prev;
       });
     } else {
-      toggleSidebar();
+      // Not connected: AeroFile is the full-screen local view. A second click on
+      // the AeroFile button closes it and returns to the connection picker, so the
+      // button is a true open/close toggle rather than acting like the Places button.
+      setShowConnectionScreen(true);
     }
-  }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles, toggleSidebar]);
+  }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles]);
   handleToggleAeroFileRef.current = handleToggleAeroFile;
 
   // Listen for View > AeroFile menu event
