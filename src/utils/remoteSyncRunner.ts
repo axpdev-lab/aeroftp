@@ -386,10 +386,13 @@ export const runRemoteSync = async (
     ): Promise<TransferOutcome> => {
         const maxAttempts = Math.max(1, config.retryPolicy.max_retries);
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            // Issue #332: a user Cancel stops the run; never (re)attempt a
-            // transfer once cancellation has been requested.
-            if (isCancelled()) {
-                return { success: false, attempts: attempt };
+            // Issue #332: a user Cancel must not trigger further RETRIES of a
+            // file. The first attempt is already admitted by the caller's cancel
+            // gate (the main loop checks isCancelled before calling), so guard
+            // only re-attempts (attempt > 1). The short-circuit also avoids
+            // polling isCancelled an extra time on the first attempt.
+            if (attempt > 1 && isCancelled()) {
+                return { success: false, attempts: attempt - 1 };
             }
             try {
                 if (config.retryPolicy.timeout_ms > 0) {
