@@ -18,6 +18,11 @@
 # Reviewed: 2026-06-08 (added RUSTSEC-2024-0384 `instant`, pulled transitively by
 #           the new AeroVault v4 ECC dep reed-solomon-erasure; and RUSTSEC-2026-0173
 #           `proc-macro-error2`, freshly published on the existing sigstore build path)
+# Reviewed: 2026-06-15 (v4.0.5: bumped russh 0.60.3 -> 0.61.2 once the upstream
+#           0.61.0/0.61.1 RC-crypto packaging conflict cleared at 0.61.2; REMOVED
+#           the two deferred russh ignores GHSA-wwx6-x28x-8259 + GHSA-hpv4-5h6f-wqr3,
+#           now fixed. RUSTSEC-2023-0071 Path B kept: russh 0.61.2 still reaches `rsa`
+#           via its forked ssh-key for SSH key parsing, sign-only (no decrypt oracle).)
 
 [advisories]
 ignore = [
@@ -192,37 +197,15 @@ ignore = [
     "GHSA-7gmj-67g7-phm9",  # Tauri Origin Confusion (not reachable, intentional pin)
 
     # ----------------------------------------------------------------
-    # russh 0.60.3 - two advisories fixed only in russh 0.61.x (deferred)
+    # russh advisories CLEARED by the 0.61.2 bump (no longer ignored)
     # ----------------------------------------------------------------
-    # Both are fixed upstream solely by bumping to russh 0.61.1, which is
-    # currently DEFERRED: the 0.61 line migrates the SSH key stack to the
-    # upstream `ssh-key 0.3.0-rc.9` and pulls `rsa 0.10.0-rc.18`, i.e. it
-    # would introduce release-candidate crates into the SSH/SFTP path. The
-    # bump is tracked under dependabot #251 and APPENDIX-RUSSH; it needs a
-    # rebase + SFTP bench + an explicit accept-RC decision before landing.
-    # The `russh = "0.60.3"` pin (src-tauri/Cargo.toml:142) and the
-    # `rand_010` alias (:114) stay until then. Exposure analysis below.
-    #
-    #   GHSA-wwx6-x28x-8259 / CVE-2026-46702 (HIGH) - post-decompression SSH
-    #     packet size unbounded, allowing an oversized compressed packet
-    #     ("ZIP bomb") to drive memory exhaustion.
-    #     Reachability: the vector requires SSH compression to be NEGOTIATED.
-    #     AeroFTP's SFTP client offers zlib only when the user explicitly sets
-    #     `compression_enabled` (providers/sftp.rs:926); the default is `false`
-    #     -> `Preferred::default()` (compression NONE), which never negotiates
-    #     compression. So the default configuration is NOT exposed. The only
-    #     residual is opt-in: a user who enables compression AND connects to a
-    #     hostile/compromised SSH server. Narrow and user-initiated.
-    #
-    #   GHSA-hpv4-5h6f-wqr3 / CVE-2026-46705 (MEDIUM) - server userauth state
-    #     not reset when the authentication principal changes mid-handshake.
-    #     Reachability: SERVER-side only. It touches exclusively the
-    #     experimental `aeroftp serve sftp` bridge (bin/aeroftp_cli.rs:15780),
-    #     and only matters when that server is exposed to untrusted clients
-    #     that switch principals. Not reachable through the client surface that
-    #     the vast majority of AeroFTP usage exercises.
-    "GHSA-wwx6-x28x-8259",  # russh ZIP-bomb (compression off by default)
-    "GHSA-hpv4-5h6f-wqr3",  # russh server userauth reset (serve sftp only)
+    # GHSA-wwx6-x28x-8259 (HIGH, post-decompression packet size) and
+    # GHSA-hpv4-5h6f-wqr3 (MEDIUM, server userauth reset), plus the message
+    # field / banner / keyboard-interactive parsing advisories, are all fixed
+    # in russh 0.61.x. We bumped `russh = "0.61.2"` (Cargo.toml:142) once the
+    # 0.61.0/0.61.1 upstream RC-crypto packaging conflict was resolved at
+    # 0.61.2 (see reference-russh-061-unbuildable in memory). No russh advisory
+    # is ignored anymore; the entries were removed in the v4.0.5 cycle.
 
     # ----------------------------------------------------------------
     # instant 0.1.13 unmaintained (transitive via the AeroVault v4 ECC wrapper)
