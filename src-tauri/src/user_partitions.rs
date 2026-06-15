@@ -767,16 +767,6 @@ pub fn migrate_legacy_payloads(
     })
 }
 
-fn already_migrated_report() -> MigrationReport {
-    MigrationReport {
-        schema_version: SCHEMA_VERSION.to_string(),
-        created_default_user: false,
-        migrated_profiles: 0,
-        migrated_settings_scopes: 0,
-        already_migrated: true,
-    }
-}
-
 fn get_optional_store_entry(
     store: &CredentialStore,
     account: &str,
