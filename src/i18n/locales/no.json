@@ -4822,7 +4822,8 @@
             "immutableWarn": "Krypteringstype og passord angis én gang og kan ikke endres senere: de allerede krypterte filene ville blitt uleselige.",
             "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data.",
             "addToExistingWarn": "Når du aktiverer et overlegg på en eksisterende profil: alle klartekstfiler som allerede finnes på denne eksterne plasseringen forblir ukryptert og vises som en blanding som ikke kan dekrypteres. Bruk en tom ekstern plassering.",
-            "chooseKind": "Velg en krypteringstype for å fortsette: det finnes ingen standard, valget er bevisst."
+            "chooseKind": "Velg en krypteringstype for å fortsette: det finnes ingen standard, valget er bevisst.",
+            "remotePathLockedNote": "Ekstern sti er låst: den er roten til det krypterte overlegget og kan ikke endres når overlegget inneholder data."
         }
     }
 }

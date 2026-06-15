@@ -4803,7 +4803,8 @@
             "immutableWarn": "Tipo di cifratura e password si impostano una sola volta e non sono modificabili in seguito: i file gia cifrati diventerebbero illeggibili.",
             "lockedNote": "Tipo di cifratura e credenziali bloccati: questo overlay contiene gia dati cifrati.",
             "addToExistingWarn": "Stai attivando un overlay su un profilo esistente: gli eventuali file in chiaro gia presenti su questo remoto restano non cifrati e appariranno come un insieme indecifrabile. Usa un remoto vuoto.",
-            "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root)."
+            "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root).",
+            "remotePathLockedNote": "Il percorso Remoto è bloccato: è la radice dell'overlay cifrato e non può cambiare una volta che l'overlay contiene dati."
         }
     }
 }

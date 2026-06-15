@@ -2210,10 +2210,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         <input
                             type="text"
                             value={quickConnectDirs.remoteDir}
+                            disabled={overlayFieldsLocked}
                             onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                             placeholder={remotePathPlaceholder}
                         />
+                    )}
+                    {overlayFieldsLocked && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('aerocryptProfile.remotePathLockedNote')}</p>
                     )}
                 </div>
                 {/* Local Path */}

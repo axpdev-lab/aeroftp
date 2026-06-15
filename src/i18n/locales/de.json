@@ -4803,7 +4803,8 @@
             "immutableWarn": "Verschlüsselungstyp und Passwort werden einmalig festgelegt und können später nicht geändert werden: die bereits verschlüsselten Dateien würden unlesbar.",
             "lockedNote": "Verschlüsselungstyp und Zugangsdaten sind gesperrt: dieses Overlay enthält bereits verschlüsselte Daten.",
             "addToExistingWarn": "Beim Aktivieren eines Overlays für ein vorhandenes Profil: bereits auf diesem Remote vorhandene Klartextdateien bleiben unverschlüsselt und erscheinen als nicht entschlüsselbare Mischung. Verwenden Sie ein leeres Remote.",
-            "chooseKind": "Wählen Sie zum Fortfahren einen Verschlüsselungstyp: es gibt keine Vorgabe, die Wahl ist bewusst."
+            "chooseKind": "Wählen Sie zum Fortfahren einen Verschlüsselungstyp: es gibt keine Vorgabe, die Wahl ist bewusst.",
+            "remotePathLockedNote": "Der Remote-Pfad ist gesperrt: er ist die Wurzel des verschlüsselten Overlays und kann nicht geändert werden, sobald das Overlay Daten enthält."
         }
     }
 }

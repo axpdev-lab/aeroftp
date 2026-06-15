@@ -4803,7 +4803,8 @@
             "immutableWarn": "Şifreleme türü ve parola bir kez ayarlanır ve sonradan değiştirilemez: zaten şifrelenmiş dosyalar okunamaz hale gelir.",
             "lockedNote": "Şifreleme türü ve kimlik bilgileri kilitli: bu katman zaten şifrelenmiş veri içeriyor.",
             "addToExistingWarn": "Mevcut bir profilde yerpaçma etkinleştirildiğinde: bu uzak konumda zaten bulunan düz metin dosyaları şifrelenmemiş kalır ve şifresi çözülemeyen bir karışım olarak görünür. Boş bir uzak konum kullanın.",
-            "chooseKind": "Devam etmek için bir şifreleme türü seçin: varsayılan yoktur, seçim bilinçlidir."
+            "chooseKind": "Devam etmek için bir şifreleme türü seçin: varsayılan yoktur, seçim bilinçlidir.",
+            "remotePathLockedNote": "Uzak yol kilitli: şifreli yer paçmanın köküdür ve yer paçma veri içerdiğinde değiştirilemez."
         }
     }
 }

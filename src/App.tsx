@@ -4243,8 +4243,22 @@ interface UpdateVerificationInfo {
       // T3: live activity-log entry, settled to green by the phase-2 reload.
       overlayLogIdRef.current = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
 
+      // Anchor the overlay at the profile's configured remote folder (the
+      // "AeroCrypt bucket"), NOT the live provider pwd. Path-based providers like
+      // Filen reset pwd to "/" on connect and never cd when they merely list a
+      // folder, so without an explicit anchor the overlay roots at "/" and the
+      // decrypted reload shows the account root. initialPath is the configured
+      // folder and is always populated; remoteScope is a secondary hint. The
+      // backend cd's into base_path and STAYS, so read_config, the create
+      // fallback, and the listing that follows all operate at the overlay root.
+      const overlayScope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
+      const overlayBase = overlayScope && overlayScope !== '/' ? overlayScope : null;
+
       try {
         if (binding.kind === 'rclone-crypt') {
+          if (overlayBase) {
+            await invoke('change_directory', { path: overlayBase }).catch(() => {});
+          }
           const salt = await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${savedServerId}` }).catch(() => '');
           const info = await invoke<{ vault_id: string }>('rclone_crypt_unlock', {
             password,
@@ -4259,10 +4273,10 @@ interface UpdateVerificationInfo {
             return { vaultId: info.vault_id, prefix: 'rclone_crypt_provider' };
           }
         } else {
-          const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {}).catch(() => null);
+          const configJson = await invoke<string | null>('aerocrypt_provider_read_config', { basePath: overlayBase }).catch(() => null);
           const info = configJson
             ? await invoke<{ vault_id: string }>('aerocrypt_unlock', { password, configJson })
-            : await invoke<{ vault_id: string }>('aerocrypt_provider_create_remote', { password, targetSubpath: null });
+            : await invoke<{ vault_id: string }>('aerocrypt_provider_create_remote', { password, targetSubpath: overlayBase });
           if (info?.vault_id) {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(info.vault_id);

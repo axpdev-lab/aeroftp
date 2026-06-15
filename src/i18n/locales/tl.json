@@ -4822,7 +4822,8 @@
             "immutableWarn": "Ang uri ng pag-encrypt at password ay itinatakda nang isang beses at hindi na mababago: ang mga naka-encrypt nang file ay magiging hindi nababasa.",
             "lockedNote": "Naka-lock ang uri ng pag-encrypt at mga kredensyal: naglalaman na ng naka-encrypt na data ang overlay na ito.",
             "addToExistingWarn": "Kapag nag-enable ng overlay sa isang umiiral na profile: anumang plaintext na file na nasa remote na ito ay mananatiling hindi naka-encrypt at lalabas bilang halong hindi ma-decrypt. Gumamit ng walang lamang remote.",
-            "chooseKind": "Pumili ng uri ng pag-encrypt para magpatuloy: walang default, sinasadya ang pagpili."
+            "chooseKind": "Pumili ng uri ng pag-encrypt para magpatuloy: walang default, sinasadya ang pagpili.",
+            "remotePathLockedNote": "Naka-lock ang Remote path: ito ang ugat ng naka-encrypt na overlay at hindi mababago kapag may laman nang data ang overlay."
         }
     }
 }

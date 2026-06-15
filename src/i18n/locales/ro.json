@@ -4803,7 +4803,8 @@
             "immutableWarn": "Tipul de criptare și parola se setează o singură dată și nu pot fi schimbate ulterior: fișierele deja criptate ar deveni ilizibile.",
             "lockedNote": "Tipul de criptare și credențialele sunt blocate: acest strat conține deja date criptate.",
             "addToExistingWarn": "La activarea unei suprapuneri pe un profil existent: orice fișiere în text simplu deja prezente pe această locație la distanță rămân necriptate și vor apărea ca un amestec indescifrabil. Folosiți o locație la distanță goală.",
-            "chooseKind": "Alegeți un tip de criptare pentru a continua: nu există o valoare implicită, alegerea este deliberată."
+            "chooseKind": "Alegeți un tip de criptare pentru a continua: nu există o valoare implicită, alegerea este deliberată.",
+            "remotePathLockedNote": "Calea la distanță este blocată: este rădăcina suprapunerii criptate și nu poate fi modificată odată ce suprapunerea conține date."
         }
     }
 }

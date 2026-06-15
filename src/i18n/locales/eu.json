@@ -4822,7 +4822,8 @@
             "immutableWarn": "Zifratze mota eta pasahitza behin ezartzen dira eta ezin dira gero aldatu: dagoeneko zifratutako fitxategiak irakurtezin bihurtuko lirateke.",
             "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu.",
             "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu lауneko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
-            "chooseKind": "Aukeratu zifratze mota bat jarraitzeko: ez dago lehenetsirik, aukera nahita egiten da."
+            "chooseKind": "Aukeratu zifratze mota bat jarraitzeko: ez dago lehenetsirik, aukera nahita egiten da.",
+            "remotePathLockedNote": "Urruneko bidea blokeatuta dago: zifratutako gainjartzearen erroa da eta ezin da aldatu gainjartzeak datuak dituenean."
         }
     }
 }

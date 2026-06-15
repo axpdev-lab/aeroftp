@@ -4803,7 +4803,8 @@
             "immutableWarn": "Šifravimo tipas ir slaptažodis nustatomi vieną kartą ir vėliau jų pakeisti negalima: jau užšifruoti failai taptų neįskaitomi.",
             "lockedNote": "Šifravimo tipas ir prisijungimo duomenys užrakinti: šis sluoksnis jau turi užšifruotų duomenų.",
             "addToExistingWarn": "Įjungus perdangą esamame profilyje: visi paprastojo teksto failai, jau esantys šioje nuotolinėje vietoje, lieka nešifruoti ir bus rodomi kaip neiššifruojamas mišinys. Naudokite tuščią nuotolinę vietą.",
-            "chooseKind": "Norėdami tęsti, pasirinkite šifravimo tipą: numatytosios reikšmės nėra, pasirinkimas sąmoningas."
+            "chooseKind": "Norėdami tęsti, pasirinkite šifravimo tipą: numatytosios reikšmės nėra, pasirinkimas sąmoningas.",
+            "remotePathLockedNote": "Nuotolinis kelias užrakintas: tai užšifruoto sluoksnio šaknis ir jo negalima keisti, kai sluoksnyje yra duomenų."
         }
     }
 }

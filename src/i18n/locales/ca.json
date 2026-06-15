@@ -4822,7 +4822,8 @@
             "immutableWarn": "El tipus de xifratge i la contrasenya es defineixen una sola vegada i no es poden canviar després: els fitxers ja xifrats es tornarien illegibles.",
             "lockedNote": "El tipus de xifratge i les credencials estan bloquejats: aquesta capa ja conté dades xifrades.",
             "addToExistingWarn": "En activar una superposició en un perfil existent: els fitxers en text pla que ja hi hagi en aquest remot resten sense xifrar i es mostraran com una barreja inddesxifrable. Fes servir un remot buit.",
-            "chooseKind": "Tria un tipus de xifratge per continuar: no hi ha cap valor per defecte, l'elecció és deliberada."
+            "chooseKind": "Tria un tipus de xifratge per continuar: no hi ha cap valor per defecte, l'elecció és deliberada.",
+            "remotePathLockedNote": "La ruta remota està bloquejada: és l'arrel de la superposició xifrada i no es pot canviar un cop la superposició conté dades."
         }
     }
 }

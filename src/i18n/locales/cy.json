@@ -4822,7 +4822,8 @@
             "immutableWarn": "Mae'r math o amgryptio a'r cyfrinair yn cael eu gosod unwaith ac ni ellir eu newid yn ddiweddarach: byddai'r ffeiliau sydd eisoes wedi'u hamgryptio yn dod yn annarllenadwy.",
             "lockedNote": "Mae'r math o amgryptio a'r manylion wedi'u cloi: mae'r troshaen hon eisoes yn dal data wedi'i amgryptio.",
             "addToExistingWarn": "Wrth alluogi troshaen ar broffil presennol: bydd unrhyw ffeiliau testun plaen sydd eisoes ar y pell hwn yn aros heb eu hamgryptio ac yn ymddangos fel cymysgedd na ellir ei ddatgryptio. Defnyddiwch bell gwag.",
-            "chooseKind": "Dewiswch fath o amgryptio i barhau: nid oes rhagosodiad, mae'r dewis yn fwriadol."
+            "chooseKind": "Dewiswch fath o amgryptio i barhau: nid oes rhagosodiad, mae'r dewis yn fwriadol.",
+            "remotePathLockedNote": "Mae'r llwybr pell wedi'i gloi: dyma wraidd y troshaen wedi'i amgryptio ac ni ellir ei newid unwaith y bydd data yn y troshaen."
         }
     }
 }

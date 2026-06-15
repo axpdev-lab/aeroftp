@@ -255,17 +255,49 @@ pub async fn aerocrypt_lock(
 #[tauri::command]
 pub async fn aerocrypt_provider_read_config(
     provider_state: State<'_, ProviderState>,
+    base_path: Option<String>,
 ) -> Result<Option<String>, String> {
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
+    // Anchor the overlay at its configured absolute root, independent of the live
+    // pwd. Path-based providers (Filen, etc.) reset current_path to "/" on connect
+    // and never cd when they merely *list* a folder, so the overlay would always
+    // root at "/". cd into base_path and STAY there, so read_config, the create
+    // fallback, and the listing that follows all operate at the overlay root.
+    if let Some(bp) = base_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "/")
+    {
+        match provider.cd(bp).await {
+            Ok(()) => log::debug!("[aerocrypt][read_config] anchored at base_path={:?}", bp),
+            Err(e) => log::debug!(
+                "[aerocrypt][read_config] base_path cd to {:?} failed ({}), staying at pwd",
+                bp,
+                e
+            ),
+        }
+    }
+
     let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
     let config_path = join_remote_path(&cwd, CONFIG_NAME);
+    log::debug!(
+        "[aerocrypt][read_config] provider pwd={:?} -> reading config at {:?}",
+        cwd,
+        config_path
+    );
     match provider.download_to_bytes(&config_path).await {
-        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).to_string())),
-        Err(_) => Ok(None),
+        Ok(bytes) => {
+            log::debug!("[aerocrypt][read_config] FOUND config at {:?}", config_path);
+            Ok(Some(String::from_utf8_lossy(&bytes).to_string()))
+        }
+        Err(_) => {
+            log::debug!("[aerocrypt][read_config] NO config at {:?}", config_path);
+            Ok(None)
+        }
     }
 }
 
@@ -758,6 +790,11 @@ pub async fn aerocrypt_provider_create_remote(
             .as_deref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty());
+        log::debug!(
+            "[aerocrypt][create_remote] saved_pwd={:?} target_subpath={:?}",
+            saved_pwd,
+            target
+        );
 
         let init_result: Result<(), String> = async {
             if let Some(sub) = target {
@@ -770,6 +807,11 @@ pub async fn aerocrypt_provider_create_remote(
 
             let base = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
             let config_path = join_remote_path(&base, CONFIG_NAME);
+            log::debug!(
+                "[aerocrypt][create_remote] after cd: base(pwd)={:?} writing config to {:?}",
+                base,
+                config_path
+            );
             let temp = std::env::temp_dir().join(format!(
                 "aeroftp_aerocrypt_config_{}_{}.json",
                 chrono::Utc::now().timestamp_millis(),

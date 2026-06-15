@@ -4803,7 +4803,8 @@
             "immutableWarn": "El tipo de cifrado y la contraseña se establecen una sola vez y no se pueden cambiar después: los archivos ya cifrados quedarían ilegibles.",
             "lockedNote": "El tipo de cifrado y las credenciales están bloqueados: esta superposición ya contiene datos cifrados.",
             "addToExistingWarn": "Al activar una superposición en un perfil existente: los archivos en texto plano que ya haya en este remoto permanecen sin cifrar y se mostrarán como una mezcla indescifrable. Usa un remoto vacío.",
-            "chooseKind": "Elige un tipo de cifrado para continuar: no hay valor predeterminado, la elección es deliberada."
+            "chooseKind": "Elige un tipo de cifrado para continuar: no hay valor predeterminado, la elección es deliberada.",
+            "remotePathLockedNote": "La ruta remota está bloqueada: es la raíz de la superposición cifrada y no se puede cambiar una vez que la superposición contiene datos."
         }
     }
 }

@@ -4803,7 +4803,8 @@
             "immutableWarn": "Typ szyfrowania i hasło ustawia się raz i nie można ich później zmienić: już zaszyfrowane pliki stałyby się nieczytelne.",
             "lockedNote": "Typ szyfrowania i poświadczenia są zablokowane: ta nakładka zawiera już zaszyfrowane dane.",
             "addToExistingWarn": "Włączenie nakładki w istniejącym profilu: wszelkie pliki tekstem jawnym już obecne w tym zdalnym miejscu pozostają niezaszyfrowane i pojawią się jako nieodszyfrowalna mieszanka. Użyj pustego zdalnego miejsca.",
-            "chooseKind": "Wybierz typ szyfrowania, aby kontynuować: nie ma wartości domyślnej, wybór jest świadomy."
+            "chooseKind": "Wybierz typ szyfrowania, aby kontynuować: nie ma wartości domyślnej, wybór jest świadomy.",
+            "remotePathLockedNote": "Ścieżka zdalna jest zablokowana: to katalog główny zaszyfrowanej nakładki i nie można jej zmienić, gdy nakładka zawiera dane."
         }
     }
 }

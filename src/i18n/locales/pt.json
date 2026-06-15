@@ -4803,7 +4803,8 @@
             "immutableWarn": "O tipo de cifragem e a palavra-passe definem-se uma única vez e não podem ser alterados depois: os ficheiros já cifrados ficariam ilegíveis.",
             "lockedNote": "O tipo de cifragem e as credenciais estão bloqueados: esta sobreposição já contém dados cifrados.",
             "addToExistingWarn": "Ao ativar uma sobreposição num perfil existente: quaisquer ficheiros em texto simples já presentes neste remoto permanecem sem cifragem e aparecerão como uma mistura indecifrável. Use um remoto vazio.",
-            "chooseKind": "Escolha um tipo de cifragem para continuar: não há predefinição, a escolha é deliberada."
+            "chooseKind": "Escolha um tipo de cifragem para continuar: não há predefinição, a escolha é deliberada.",
+            "remotePathLockedNote": "O caminho remoto está bloqueado: é a raiz da sobreposição cifrada e não pode mudar quando a sobreposição contém dados."
         }
     }
 }

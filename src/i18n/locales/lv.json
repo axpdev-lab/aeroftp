@@ -4803,7 +4803,8 @@
             "immutableWarn": "Šifrēšanas veids un parole tiek iestatīti vienreiz, un tos vēlāk nevar mainīt: jau šifrētie faili kļūtu nelasāmi.",
             "lockedNote": "Šifrēšanas veids un akreditācijas dati ir bloķēti: šis slānis jau satur šifrētus datus.",
             "addToExistingWarn": "Iespējojot pārklājumu esošā profilā: visi vienkārša teksta faili, kas jau ir šajā attālinātajā vietā, paliek nešifrēti un tiks rādīti kā neatšifrējams sajaukums. Izmantojiet tukšu attālināto vietu.",
-            "chooseKind": "Lai turpinātu, izvēlieties šifrēšanas veidu: noklusējuma nav, izvēle ir apzināta."
+            "chooseKind": "Lai turpinātu, izvēlieties šifrēšanas veidu: noklusējuma nav, izvēle ir apzināta.",
+            "remotePathLockedNote": "Attālais ceļš ir bloķēts: tas ir šifrētā pārklājuma sakne un to nevar mainīt, kad pārklājumā ir dati."
         }
     }
 }

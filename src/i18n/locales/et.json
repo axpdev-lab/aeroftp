@@ -4803,7 +4803,8 @@
             "immutableWarn": "Krüptimise tüüp ja parool määratakse üks kord ega ole hiljem muudetavad: juba krüpteeritud failid muutuksid loetamatuks.",
             "lockedNote": "Krüptimise tüüp ja mandaadid on lukus: see kiht sisaldab juba krüpteeritud andmeid.",
             "addToExistingWarn": "Ülekatte lubamine olemasoleval profiilil: kõik selles kaugkohas juba olevad lihttekstifailid jäävad krüptimata ja kuvatakse dekrüptimatu seguna. Kasuta tühja kaugkohta.",
-            "chooseKind": "Jätkamiseks vali krüpteerimise tüüp: vaikeväärtust pole, valik on teadlik."
+            "chooseKind": "Jätkamiseks vali krüpteerimise tüüp: vaikeväärtust pole, valik on teadlik.",
+            "remotePathLockedNote": "Kaugtee on lukus: see on krüpteeritud ülekatte juur ja seda ei saa muuta, kui ülekate sisaldab andmeid."
         }
     }
 }
