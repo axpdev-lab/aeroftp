@@ -4801,7 +4801,8 @@
             "passwordStored": "Tersimpan (biarkan kosong untuk mempertahankan)",
             "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root).",
             "immutableWarn": "Jenis enkripsi dan kata sandi diatur sekali dan tidak dapat diubah nanti: berkas yang sudah dienkripsi akan menjadi tidak terbaca.",
-            "lockedNote": "Jenis enkripsi dan kredensial terkunci: lapisan ini sudah berisi data terenkripsi."
+            "lockedNote": "Jenis enkripsi dan kredensial terkunci: lapisan ini sudah berisi data terenkripsi.",
+            "addToExistingWarn": "Mengaktifkan overlay pada profil yang sudah ada: berkas teks biasa yang sudah ada di remote ini tetap tidak terenkripsi dan akan tampil sebagai campuran yang tidak dapat didekripsi. Gunakan remote kosong."
         }
     }
 }

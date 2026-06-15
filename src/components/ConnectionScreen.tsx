@@ -859,6 +859,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // C-EDIT-GUARD: kind + credential fields are read-only when editing a profile
     // that already carries an overlay binding (its remote holds keyed blobs).
     const overlayFieldsLocked = overlayBindingLocked && !!editingProfileId;
+    // Node 2: enabling an overlay on an EXISTING profile that had none means its
+    // remote may already hold plaintext files; those stay unencrypted and render
+    // as an undecryptable mix under the overlay. Warn (do not block: a brand-new
+    // empty remote is a legitimate case).
+    const overlayNewlyBound = !!editingProfileId && aeroCryptEnabled && !overlayBindingLocked;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -2328,6 +2333,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <p className={`text-xs ${overlayFieldsLocked ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
                                     {overlayFieldsLocked ? t('aerocryptProfile.lockedNote') : t('aerocryptProfile.immutableWarn')}
                                 </p>
+                                {overlayNewlyBound && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.addToExistingWarn')}</p>
+                                )}
                                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.scopeHint')}</p>
                             </div>
                         )}

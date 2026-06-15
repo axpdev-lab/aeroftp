@@ -4820,7 +4820,8 @@
             "passwordStored": "Gardado (deixa en branco para mantelo)",
             "scopeHint": "As rutas Remota e Local indicadas arriba definen o ámbito cifrado (deixa Remota baleira para cifrar toda a raíz).",
             "immutableWarn": "O tipo de cifrado e o contrasinal defínense unha soa vez e non se poden cambiar despois: os ficheiros xa cifrados quedarían ilexibles.",
-            "lockedNote": "O tipo de cifrado e as credenciais están bloqueados: esta capa xa contén datos cifrados."
+            "lockedNote": "O tipo de cifrado e as credenciais están bloqueados: esta capa xa contén datos cifrados.",
+            "addToExistingWarn": "Ao activar unha superposición nun perfil existente: os ficheiros en texto plano que xa haxa neste remoto quedan sen cifrar e amosaranse como unha mestura indescifrable. Usa un remoto baleiro."
         }
     }
 }

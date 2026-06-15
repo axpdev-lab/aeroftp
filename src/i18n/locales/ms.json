@@ -4801,7 +4801,8 @@
             "passwordStored": "Disimpan (biarkan kosong untuk mengekalkan)",
             "scopeHint": "Laluan Jauh dan Tempatan di atas menentukan skop tersulit (biarkan Jauh kosong untuk menyulitkan seluruh root).",
             "immutableWarn": "Jenis penyulitan dan kata laluan ditetapkan sekali dan tidak boleh diubah kemudian: fail yang telah disulitkan akan menjadi tidak boleh dibaca.",
-            "lockedNote": "Jenis penyulitan dan kelayakan dikunci: lapisan ini sudah mengandungi data tersulit."
+            "lockedNote": "Jenis penyulitan dan kelayakan dikunci: lapisan ini sudah mengandungi data tersulit.",
+            "addToExistingWarn": "Mengaktifkan tindihan pada profil sedia ada: sebarang fail teks biasa yang sudah ada pada jauh ini kekal tidak disulitkan dan akan dipaparkan sebagai campuran yang tidak boleh dinyahsulit. Gunakan jauh yang kosong."
         }
     }
 }

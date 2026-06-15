@@ -4801,7 +4801,8 @@
             "passwordStored": "Spremljeno (ostavite prazno za zadržavanje)",
             "scopeHint": "Gore navedene udaljena i lokalna putanja definiraju šifrirani opseg (ostavite Udaljenu praznom za šifriranje cijelog korijena).",
             "immutableWarn": "Vrsta enkripcije i lozinka postavljaju se jednom i ne mogu se kasnije mijenjati: već šifrirane datoteke postale bi nečitljive.",
-            "lockedNote": "Vrsta enkripcije i vjerodajnice su zaključane: ovaj sloj već sadrži šifrirane podatke."
+            "lockedNote": "Vrsta enkripcije i vjerodajnice su zaključane: ovaj sloj već sadrži šifrirane podatke.",
+            "addToExistingWarn": "Omogućavanjem sloja na postojećem profilu: sve datoteke u običnom tekstu koje već postoje na ovom udaljenom mjestu ostaju nešifrirane i prikazat će se kao nedešifrabilna mješavina. Upotrijebite prazno udaljeno mjesto."
         }
     }
 }

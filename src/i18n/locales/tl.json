@@ -4820,7 +4820,8 @@
             "passwordStored": "Naka-store na (iwanang blangko para panatilihin)",
             "scopeHint": "Tinutukoy ng mga Remote at Local na path sa itaas ang naka-encrypt na saklaw (iwanang walang laman ang Remote para i-encrypt ang buong root).",
             "immutableWarn": "Ang uri ng pag-encrypt at password ay itinatakda nang isang beses at hindi na mababago: ang mga naka-encrypt nang file ay magiging hindi nababasa.",
-            "lockedNote": "Naka-lock ang uri ng pag-encrypt at mga kredensyal: naglalaman na ng naka-encrypt na data ang overlay na ito."
+            "lockedNote": "Naka-lock ang uri ng pag-encrypt at mga kredensyal: naglalaman na ng naka-encrypt na data ang overlay na ito.",
+            "addToExistingWarn": "Kapag nag-enable ng overlay sa isang umiiral na profile: anumang plaintext na file na nasa remote na ito ay mananatiling hindi naka-encrypt at lalabas bilang halong hindi ma-decrypt. Gumamit ng walang lamang remote."
         }
     }
 }

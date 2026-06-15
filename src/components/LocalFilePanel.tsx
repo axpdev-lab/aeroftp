@@ -824,7 +824,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                       />
                     ) : (
                       <span
-                        className="cursor-text"
+                        className="cursor-text truncate min-w-0"
+                        title={displayName(file.name, file.is_dir)}
                         onClick={(e) => {
                           if (selectedFiles.size === 1 && selectedFiles.has(file.name) && file.name !== '..') {
                             e.stopPropagation();

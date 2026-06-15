@@ -4801,7 +4801,8 @@
             "passwordStored": "Įrašytas (palikite tuščią, kad išliktų)",
             "scopeHint": "Aukščiau nurodyti nuotolinis ir vietinis keliai apibrėžia šifruotą sritį (palikite Nuotolinį tuščią, kad būtų užšifruota visa šaknis).",
             "immutableWarn": "Šifravimo tipas ir slaptažodis nustatomi vieną kartą ir vėliau jų pakeisti negalima: jau užšifruoti failai taptų neįskaitomi.",
-            "lockedNote": "Šifravimo tipas ir prisijungimo duomenys užrakinti: šis sluoksnis jau turi užšifruotų duomenų."
+            "lockedNote": "Šifravimo tipas ir prisijungimo duomenys užrakinti: šis sluoksnis jau turi užšifruotų duomenų.",
+            "addToExistingWarn": "Įjungus perdangą esamame profilyje: visi paprastojo teksto failai, jau esantys šioje nuotolinėje vietoje, lieka nešifruoti ir bus rodomi kaip neiššifruojamas mišinys. Naudokite tuščią nuotolinę vietą."
         }
     }
 }

@@ -4820,7 +4820,8 @@
             "passwordStored": "Lagret (la stå tomt for å beholde)",
             "scopeHint": "De eksterne og lokale stiene ovenfor definerer det krypterte omfanget (la Ekstern stå tom for å kryptere hele roten).",
             "immutableWarn": "Krypteringstype og passord angis én gang og kan ikke endres senere: de allerede krypterte filene ville blitt uleselige.",
-            "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data."
+            "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data.",
+            "addToExistingWarn": "Når du aktiverer et overlegg på en eksisterende profil: alle klartekstfiler som allerede finnes på denne eksterne plasseringen forblir ukryptert og vises som en blanding som ikke kan dekrypteres. Bruk en tom ekstern plassering."
         }
     }
 }

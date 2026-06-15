@@ -4801,7 +4801,8 @@
             "passwordStored": "Enregistré (laisser vide pour conserver)",
             "scopeHint": "Les chemins distant et local indiqués ci-dessus définissent la portée chiffrée (laissez le chemin distant vide pour chiffrer toute la racine).",
             "immutableWarn": "Le type de chiffrement et le mot de passe se définissent une seule fois et ne peuvent pas être modifiés ensuite : les fichiers déjà chiffrés deviendraient illisibles.",
-            "lockedNote": "Le type de chiffrement et les identifiants sont verrouillés : cette surcouche contient déjà des données chiffrées."
+            "lockedNote": "Le type de chiffrement et les identifiants sont verrouillés : cette surcouche contient déjà des données chiffrées.",
+            "addToExistingWarn": "En activant une surcouche sur un profil existant : les fichiers en clair déjà présents sur ce distant restent non chiffrés et apparaîtront comme un mélange indéchiffrable. Utilisez un distant vide."
         }
     }
 }

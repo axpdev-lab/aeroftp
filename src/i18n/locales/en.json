@@ -4801,6 +4801,7 @@
             "passwordStored": "Stored (leave blank to keep)",
             "immutableWarn": "Encryption type and password are set once and cannot be changed later: the already-encrypted files would become unreadable.",
             "lockedNote": "Encryption type and credentials are locked: this overlay already holds encrypted data.",
+            "addToExistingWarn": "Enabling an overlay on an existing profile: any plaintext files already on this remote stay unencrypted and will show as an undecryptable mix. Use an empty remote.",
             "scopeHint": "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root)."
         }
     }

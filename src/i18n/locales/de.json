@@ -4801,7 +4801,8 @@
             "passwordStored": "Gespeichert (leer lassen zum Beibehalten)",
             "scopeHint": "Die oben angegebenen Remote- und lokalen Pfade legen den verschlüsselten Bereich fest (Remote leer lassen, um das gesamte Stammverzeichnis zu verschlüsseln).",
             "immutableWarn": "Verschlüsselungstyp und Passwort werden einmalig festgelegt und können später nicht geändert werden: die bereits verschlüsselten Dateien würden unlesbar.",
-            "lockedNote": "Verschlüsselungstyp und Zugangsdaten sind gesperrt: dieses Overlay enthält bereits verschlüsselte Daten."
+            "lockedNote": "Verschlüsselungstyp und Zugangsdaten sind gesperrt: dieses Overlay enthält bereits verschlüsselte Daten.",
+            "addToExistingWarn": "Beim Aktivieren eines Overlays für ein vorhandenes Profil: bereits auf diesem Remote vorhandene Klartextdateien bleiben unverschlüsselt und erscheinen als nicht entschlüsselbare Mischung. Verwenden Sie ein leeres Remote."
         }
     }
 }
