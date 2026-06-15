@@ -964,6 +964,10 @@ const App: React.FC = () => {
   // exclusive (a panel has at most one active); transfer-flow picks via activeCryptOverlay().
   const [showAeroCryptUnlock, setShowAeroCryptUnlock] = useState(false);
   const [aeroCryptVaultId, setAeroCryptVaultId] = useState<string | null>(null);
+  // P3.3: deferred overlay auto-unlock (runs in a post-connect effect at settled
+  // state) + flag that drives the name-decryption animation while unlocking.
+  const [pendingOverlayUnlock, setPendingOverlayUnlock] = useState<string | null>(null);
+  const [overlayDecrypting, setOverlayDecrypting] = useState(false);
   useEffect(() => {
     if (isConnected || !aeroCryptVaultId) return;
     const vaultId = aeroCryptVaultId;
@@ -4079,6 +4083,52 @@ interface UpdateVerificationInfo {
     }
     return false;
   };
+
+  // P3.3 (phase 1): once a profile with an overlay binding has connected (state
+  // settled), unlock it. maybeAutoUnlockProfileOverlay() calls setAeroCryptVaultId,
+  // which re-renders and triggers phase 2. Doing the reload here too would read a
+  // stale aeroCryptVaultId (null) and load the still-encrypted blobs, which is the
+  // exact bug we hit. If there is no binding / unlock fails, stop waiting.
+  useEffect(() => {
+    if (!isConnected || !pendingOverlayUnlock || aeroCryptVaultId) return;
+    const savedId = pendingOverlayUnlock;
+    let cancelled = false;
+    void (async () => {
+      setOverlayDecrypting(true);
+      const activated = await maybeAutoUnlockProfileOverlay(savedId);
+      if (!cancelled && !activated) {
+        setOverlayDecrypting(false);
+        setPendingOverlayUnlock(null);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, activeSessionId, pendingOverlayUnlock, aeroCryptVaultId]);
+
+  // P3.3 (phase 2): the overlay vault is now active in state, so activeCryptOverlay()
+  // sees the fresh vaultId. Reload like the manual Refresh (no `silent`, so the
+  // reconnect path runs) so the dual-panel renders decrypted names; one retry covers
+  // the window where the SFTP link is still coming back after the Argon2id idle.
+  useEffect(() => {
+    if (!pendingOverlayUnlock || !aeroCryptVaultId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        let reloaded = await loadRemoteFiles();
+        if (!reloaded && !cancelled) {
+          await new Promise((res) => setTimeout(res, 1500));
+          reloaded = await loadRemoteFiles();
+        }
+      } finally {
+        if (!cancelled) {
+          setOverlayDecrypting(false);
+          setPendingOverlayUnlock(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOverlayUnlock, aeroCryptVaultId]);
 
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean): Promise<FileListResponse | null> => {
     try {
@@ -13348,21 +13398,21 @@ interface UpdateVerificationInfo {
                       resolvedLocalPath2,
                       files
                     );
+                    // P3.3: defer the AeroCrypt overlay auto-unlock to a post-connect
+                    // effect. Running it inline here sees stale React state (the new
+                    // session/activeSessionId are not committed yet), so the overlay
+                    // reload hit "Not connected"; the effect runs once the connection
+                    // state has settled, exactly like the manual Refresh that works.
+                    {
+                      const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                      if (overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
+                    }
                     fetchStorageQuota(connectedParams.protocol, connectedParams);
                     // Clear the standalone connect-failure marker (#180 /
                     // 4486730822). Separate signal from health.
                     {
                       const savedId = connectedParams.savedServerId || normalizedParams.savedServerId;
                       if (savedId) void clearProfileConnectFailure(savedId);
-                    }
-                    // P3.3: auto-unlock the AeroCrypt overlay when this saved
-                    // profile is bound, then reload the listing so the dual-panel
-                    // renders decrypted names (Filen/MEGA-style, no modal).
-                    {
-                      const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                      if (await maybeAutoUnlockProfileOverlay(overlaySavedId)) {
-                        await loadRemoteFiles(undefined, true, false);
-                      }
                     }
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
