@@ -113,7 +113,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
 
             {state.securityLevel === 'experimental' && (
                 <>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">Compression Profile</label>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.compressionProfile')}</label>
                     <div className="grid grid-cols-3 gap-2">
                         {compressionProfiles.map((profile) => {
                             const selected = state.compressionProfile === profile.id;
@@ -131,6 +131,108 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                             );
                         })}
                     </div>
+
+                    {/* Error Correction (Reed-Solomon) toggle for v3 vaults.
+                        Uses dedicated backend create_with_error_correction (non-critical extension).
+                        Enables scrub/repair actions and badge in the vault UI. */}
+                    <div className="mt-2 flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="ecc-enabled"
+                            checked={state.errorCorrectionEnabled}
+                            onChange={e => state.setErrorCorrectionEnabled(e.target.checked)}
+                            className="accent-amber-600"
+                        />
+                        <label htmlFor="ecc-enabled" className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer">
+                            {t('vault.enableErrorCorrection')}
+                        </label>
+                    </div>
+                    {state.errorCorrectionEnabled && (
+                        <div className="pl-6 flex flex-col gap-2">
+                            <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                                {t('vault.errorCorrectionDesc')}
+                            </div>
+                            <label className="text-[11px] text-gray-500 dark:text-gray-400">{t('vault.recoveryPlacement')}</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {([
+                                    { id: 'embedded', label: t('vault.placementEmbedded'), detail: t('vault.placementEmbeddedDesc') },
+                                    { id: 'detached', label: t('vault.placementDetached'), detail: t('vault.placementDetachedDesc') },
+                                    { id: 'both', label: t('vault.placementBoth'), detail: t('vault.placementBothDesc') },
+                                ] as const).map(p => {
+                                    const selected = state.recoveryPlacement === p.id;
+                                    return (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => state.setRecoveryPlacement(p.id)}
+                                            className={`rounded border px-2 py-1.5 text-left ${selected
+                                                ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        >
+                                            <div className="text-[12px] font-medium">{p.label}</div>
+                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.detail}</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {state.recoveryPlacement !== 'embedded' && (
+                                <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                                    {t('vault.detachedStableStorageNote')}
+                                </div>
+                            )}
+                            {/* QR-style overhead level (#276): named presets + slider + numeric input. */}
+                            <label className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                                {t('vault.recoveryLevel')}
+                            </label>
+                            <div className="grid grid-cols-4 gap-1.5">
+                                {([
+                                    { id: 7, label: t('vault.recoveryLevelLow') },
+                                    { id: 15, label: t('vault.recoveryLevelMedium') },
+                                    { id: 25, label: t('vault.recoveryLevelQuartile') },
+                                    { id: 30, label: t('vault.recoveryLevelHigh') },
+                                ] as const).map(lvl => {
+                                    const selected = state.errorCorrectionPct === lvl.id;
+                                    return (
+                                        <button
+                                            key={lvl.id}
+                                            onClick={() => state.setErrorCorrectionPct(lvl.id)}
+                                            className={`rounded border px-1.5 py-1 text-center ${selected
+                                                ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        >
+                                            <div className="text-[11px] font-medium">{lvl.label}</div>
+                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="range"
+                                    min={5}
+                                    max={50}
+                                    step={1}
+                                    value={state.errorCorrectionPct}
+                                    onChange={e => state.setErrorCorrectionPct(Number(e.target.value))}
+                                    className="flex-1 accent-amber-600"
+                                    aria-label={t('vault.recoveryLevel')}
+                                />
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="number"
+                                        min={5}
+                                        max={50}
+                                        value={state.errorCorrectionPct}
+                                        onChange={e => state.setErrorCorrectionPct(Math.min(50, Math.max(5, Math.round(Number(e.target.value) || 5))))}
+                                        className="w-14 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-[12px] text-right"
+                                    />
+                                    <span className="text-[11px] text-gray-500 dark:text-gray-400">%</span>
+                                </div>
+                            </div>
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                                {t('vault.recoveryLevelHint')}
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
 

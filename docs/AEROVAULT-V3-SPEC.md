@@ -13,7 +13,7 @@
 
 AeroVault v3 is the first wrapper-stack vault format. It keeps the single-file `.aerovault` portability of v2 while adding compressed, content-addressed chunks and a forward-compatible extension directory for future recovery data.
 
-The v3 design is intentionally shaped so that AeroVault v4 can be "v3 plus ECC", not a second incompatible archive format.
+The v3 design is intentionally shaped so that AeroVault v4 can be "v3 plus Error Correction", not a second incompatible archive format.
 
 ## 2. Wrapper Pipeline
 
@@ -27,7 +27,7 @@ plaintext files
   -> zstd compress each chunk/frame
   -> AES-256-GCM-SIV encrypt each compressed chunk
   -> manifest + block table
-  -> optional extension blocks (ECC in v4)
+  -> optional extension blocks (Error Correction in v4)
 ```
 
 The ordering is deliberate:
@@ -36,7 +36,7 @@ The ordering is deliberate:
 - chunking precedes compression so deduplication, resume, and future AeroSync range semantics stay chunk-aligned;
 - compression is per chunk/frame so a reader can decompress one logical block without inflating the whole archive;
 - encryption is last among v3 data-transforming wrappers;
-- ECC is not part of v3, but the container has the extension slot v4 will use.
+- Error Correction is not part of v3, but the container has the extension slot v4 will use.
 
 ## 3. Wrapper And Algorithm IDs
 
@@ -139,7 +139,7 @@ The extension directory is a UTF-8 JSON array. v3 writers emit `[]`.
 ```json
 [
   {
-    "extension_id": "ecc.reed-solomon",
+    "extension_id": "error-correction.reed-solomon",
     "algorithm_id": "reed-solomon",
     "algorithm_version": 1,
     "critical": false,
@@ -149,7 +149,7 @@ The extension directory is a UTF-8 JSON array. v3 writers emit `[]`.
 ]
 ```
 
-Unknown non-critical extensions are skipped. Unknown critical extensions make the vault unsupported. This is the v3/v4 compatibility contract: v4 ECC is expected to be a non-critical extension for data extraction and a critical extension only for workflows that promise repair guarantees.
+Unknown non-critical extensions are skipped. Unknown critical extensions make the vault unsupported. This is the v3/v4 compatibility contract: v4 Error Correction is expected to be a non-critical extension for data extraction and a critical extension only for workflows that promise repair guarantees.
 
 ## 7. Manifest
 
@@ -180,7 +180,7 @@ The manifest is AES-256-GCM-SIV encrypted. Its plaintext is JSON:
 v3 deliberately separates two hashes:
 
 - `chunk_id`: keyed BLAKE3, truncated to 128 bits, over plaintext chunk bytes. It is used for content addressing and deduplication and is stored only inside the encrypted manifest.
-- `cipher_hash`: full BLAKE3-256 over the encrypted block. It is used by scrub/ECC workflows to identify damaged stored bytes before decryption.
+- `cipher_hash`: full BLAKE3-256 over the encrypted block. It is used by scrub/Error Correction workflows to identify damaged stored bytes before decryption.
 
 The chunk-id key is derived from the vault master key by HKDF. Chunk IDs are not raw public hashes of user content.
 
@@ -196,3 +196,83 @@ Compatibility rules:
 ## 10. AeroVault v2 Spec Correction
 
 The v2 wire format stores the HMAC-SHA512 at bytes `448..512` and computes it over all 512 header bytes with that MAC field zeroed. Earlier prose in the v2 spec described the MAC as if it lived at `128..192`; that was documentation drift, not the implementation contract.
+
+## 11. v4 Evolution Note (T-AEROVAULT-ECC, shipped)
+
+v4 = v3 + non-critical "error-correction.reed-solomon" extension (always critical=false). The extension carries a v2 Reed-Solomon payload (AVEC magic, version=2, K=10/P=2 fixed grid over the concatenated live-block stream, per-shard 16-byte truncated BLAKE3 for erasure localization, parity data). 
+
+- Overhead target: ~P/K = 20% (clamped shard size; proven on real incompressible data).
+- Damage model: per-shard cksums (not just per-block cipher_hash) so rot inside a large CDC chunk only erases the affected shards; a bad parity shard is detected and routed around.
+- Repair contract (all-or-nothing): reconstruct, re-verify *every* repaired block against its manifest cipher_hash; persist the re-sealed vault only if *all* verify, else leave the file byte-for-byte untouched.
+- scrub/repair exposed in GUI (draggable modals, template-faithful) and CLI (`vault scrub`, `vault repair [--dry-run]`).
+- Receipt/VaultReport carries error_correction_* fields (shards_generated, bytes_protected, overhead_pct, repair_events) for ops on Error Correction vaults.
+- Forward-compat: pure v3 open/extract path ignores the non-critical ext and still works (magic stays AEROVAULT3 / format=3).
+- Pipeline position: Error Correction is the *fourth* first-class wrapper, after crypt (see #276 wrapper-stack discussion).
+
+### 11.1 Recovery placement: embedded vs detached (the `.aerocorrect` sidecar)
+
+Parity can live in three places (`RecoveryPlacement`): `embedded` (the in-container
+extension above, recomputed on every seal), `detached` (a sibling recovery file,
+the container stays byte-identical to a plain vault), or `both`. The reconstruction
+engine is placement-agnostic (`reconstruct_from_error_correction` takes the parity
+bytes), so a detached file simply carries the same AVEC payloads in a framed sidecar.
+
+The detached file is the **unified `.aerocorrect` sidecar** shared with AeroSync
+(Ehud's #276 call: one detached parity format for any file, see
+[AEROCORRECT-SPEC](AEROCORRECT-SPEC.md) for the full binary layout). It supersedes
+the earlier vault-only `.aerovault.rec` / `AVREC1` format. The sidecar is content
+addressed: it binds to the SHA-256 of the whole container, not to a vault salt.
+
+A vault writes **exactly three segments** (windows) over its container file, in a
+fixed order, so each region's parity is found by position:
+
+```
+segment 0 = header window   [0, HEADER_SIZE)        -> header parity
+segment 1 = manifest window [manifest_offset, +len) -> manifest (locator) parity
+segment 2 = data window     [data_offset, +len)     -> data-block parity
+```
+
+An empty `avec_bytes` for a segment means that region is not protected.
+
+- **Why three regions travel outside the container**: the header and manifest cannot
+  self-locate their own recovery once damaged (chicken-and-egg). `open_vault` rebuilds
+  a corrupted header / manifest from the sidecar, proving correctness by the header MAC
+  / AEAD decrypt; `repair` persists the healed region on the next seal.
+- **Binding**: the unified format stores the container's SHA-256 as its content binding.
+  The vault never enforces that binding on the repair path (a vault being repaired is
+  corrupt by definition, so its live bytes cannot match the good hash). The real safety
+  gate is unchanged: every reconstructed region is re-verified against the vault's
+  authenticated values (header MAC / manifest `cipher_hash`) before being persisted, so
+  a foreign or stale sidecar can only make a repair FAIL, never overwrite good data.
+- **Self-healing (sidecar format v2)**: the `.aerocorrect` locator (segment directory,
+  content hash, per-window geometry) is stored in triplicate with per-copy checksums, so
+  a lightly-corrupted sidecar still recovers instead of being rejected wholesale; the bulk
+  parity carries no wholesale checksum because each Reed-Solomon shard self-checks and a
+  rotted shard is routed around as an erasure. v1 sidecars are still read.
+- **Add-later win**: `export-parity` writes/refreshes a sidecar for an existing vault by
+  reading the encrypted container without rewriting it (Kopia can only enable ECC at repo
+  creation). `strip-parity` drops the embedded copy, refusing unless a sidecar exists (or
+  `--force`) so a vault is never silently left with no recovery.
+- **Source resolution** (scrub/repair): explicit `--parity` -> `<vault>.aerocorrect`
+  sidecar -> embedded extension; the chosen source is reported (`parity_source`).
+- Default path: `secret.aerovault` -> `secret.aerovault.aerocorrect`.
+
+### 11.2 Overhead level (QR-style, #276)
+
+The overhead is user-selectable as a target storage-overhead percentage, mapped to a
+Reed-Solomon (K data, P parity) group by `error_correction_grid(pct)` (overhead is
+P/K). Named QR-style levels: Low ~7% (K=14, P=1), Medium ~15% (K=13, P=2), Quartile
+~25% (K=8, P=2), High ~30% (K=7, P=2). The default 20% (K=10, P=2) reproduces the
+original fixed grid, so vaults created before this knob keep their exact geometry.
+The chosen percentage is recorded on the manifest (`error_correction_pct`, absent =
+default) and drives both embedded re-seals and detached `export-parity`; the grid is
+also stored in the AVEC payload header, so reconstruction reads K/P back regardless of
+the level a vault was created with. Surfaced in AeroVault create (named buttons +
+slider + numeric input) and the CLI (`vault create --recovery-level low|medium|
+quartile|high|<N>`). AeroSync now shares the same `.aerocorrect` sidecar and overhead
+levels via `sync --error-correction` / `--ec-max-overhead`, so a bit-rotted remote
+backup is repaired on the next pull from its sidecar, without the original.
+
+Implementation, tests, live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
+
+See also: CHANGELOG (Unreleased), SECURITY.md (formats table), CLI-GUIDE (vault subcommand), ROADMAP.

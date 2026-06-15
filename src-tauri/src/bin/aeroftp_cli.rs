@@ -1748,6 +1748,22 @@ enum Commands {
         /// Exclude patterns (can repeat: --exclude "*.tmp" --exclude ".git")
         #[arg(long, short)]
         exclude: Vec<String>,
+        /// Generate AeroSync Reed-Solomon .aerocorrect sidecars after uploads.
+        /// Optional level: low, medium, quartile, high, or a percentage 5-50.
+        #[arg(
+            long = "error-correction",
+            visible_alias = "ec",
+            value_name = "LEVEL",
+            num_args = 0..=1,
+            require_equals = true,
+            default_missing_value = "medium"
+        )]
+        error_correction: Option<String>,
+        /// Minimum-benefit gate for EC: skip a file's .aerocorrect sidecar when its size
+        /// would exceed this percentage of the file (tiny files balloon past the parity
+        /// floor). 0 (default) disables the gate. Has no effect without --error-correction.
+        #[arg(long = "ec-max-overhead", value_name = "PCT", default_value_t = 0)]
+        ec_max_overhead: u32,
         /// Detect renamed files by hash to avoid re-upload
         #[arg(long)]
         track_renames: bool,
@@ -1850,6 +1866,22 @@ enum Commands {
         /// Use checksums instead of size/mtime
         #[arg(long)]
         checksum: bool,
+        /// Estimate AeroSync Reed-Solomon .aerocorrect sidecar cost for planned uploads.
+        /// Optional level: low, medium, quartile, high, or a percentage 5-50.
+        #[arg(
+            long = "error-correction",
+            visible_alias = "ec",
+            value_name = "LEVEL",
+            num_args = 0..=1,
+            require_equals = true,
+            default_missing_value = "medium"
+        )]
+        error_correction: Option<String>,
+        /// Minimum-benefit gate for the EC estimate: count a file as a low-benefit skip
+        /// when its sidecar would exceed this percentage of the file size. 0 (default)
+        /// disables the gate, matching the default upload behavior.
+        #[arg(long = "ec-max-overhead", value_name = "PCT", default_value_t = 0)]
+        ec_max_overhead: u32,
     },
     /// Display remote directory tree
     Tree {
@@ -2059,7 +2091,8 @@ enum Commands {
         /// Alias name to toggle (default: aero)
         #[arg(default_value = "aero")]
         name: String,
-        /// Override the target directory (default: ~/.local/bin on Unix)
+        /// Override the target directory (default: ~/.local/bin on Unix,
+        /// %LOCALAPPDATA%\AeroFTP\bin on Windows)
         #[arg(long)]
         bin_dir: Option<PathBuf>,
     },
@@ -2599,16 +2632,29 @@ enum Commands {
     },
     /// AeroVault encrypted container operations (.aerovault), all formats
     ///
-    /// Calls the exact backend the GUI invokes through Tauri commands.
-    /// v3 (default) is the wrapper-stack format; v2 is the
-    /// AES-256-GCM-SIV format; v1 is the legacy WinZip-AES container.
-    /// For an existing file the version is auto-detected from its
-    /// header, so `info`/`add`/`extract` work without `--vault-version`.
-    /// A working CLI round-trip proves the format and packing paths are
-    /// sound and only frontend wiring remains for the GUI.
+    /// Calls the exact backend the GUI invokes through Tauri commands (shared lib).
+    /// v3 (default) is the wrapper-stack format (compression→chunk→crypt→Error Correction last);
+    /// v2 is the AES-256-GCM-SIV format; v1 is the legacy WinZip-AES container.
+    /// For an existing file the version is auto-detected from its header, so
+    /// `info`/`add`/`extract` work without `--vault-version`.
+    /// Error Correction (Reed-Solomon 10+2, v2 fixed-grid payload) is opt-in via `create --error-correction`
+    /// (non-critical extension: pure v3 readers still open+extract). Real  ~20%
+    /// overhead (proven on incompressible data), per-shard BLAKE3 cksums for
+    /// localized damage, all-or-nothing repair gate (re-verify every cipher_hash;
+    /// untouched on failure).
+    /// Scrub/repair are read-mostly / safe-by-default; use --json for agents.
+    /// See docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/ and T-AEROVAULT-ECC (#272, Ehud Kirsh).
     Vault {
         #[command(subcommand)]
         command: VaultCommands,
+    },
+    /// Error-correct any standalone file with a detached `.aerocorrect` sidecar
+    /// (par2-style). Generate parity, verify integrity, or repair corruption. The same
+    /// format protects vault containers and synced files; binding is by content SHA-256.
+    /// Windowed streaming keeps memory bounded on large files.
+    Correct {
+        #[command(subcommand)]
+        command: CorrectCommands,
     },
 }
 
@@ -2706,7 +2752,11 @@ enum UsersCommands {
 
 #[derive(Subcommand)]
 enum VaultCommands {
-    /// Create a new empty AeroVault container (v3 default; v1/v2 selectable)
+    /// Create a new empty AeroVault container (v3 default; v1/v2 selectable).
+    /// Use --error-correction for Reed-Solomon Error Correction (error-correction wrapper, last in 4-wrappers
+    /// pipeline per #276). Non-critical extension: v3 readers still work.
+    /// v2 payload (P2-09): fixed grid, ~20% real overhead independent of chunking,
+    /// per-shard cksums + all-or-nothing repair gate.
     Create {
         /// Path to the .aerovault file to create
         path: String,
@@ -2722,6 +2772,24 @@ enum VaultCommands {
         /// v2 only: enable the ChaCha20-Poly1305 cascade (paranoid) mode
         #[arg(long)]
         cascade: bool,
+        /// Enable Error Correction (Reed-Solomon 10+2). v3+ only. Emits non-critical
+        /// "error-correction.reed-solomon" extension; real shards + scrub/repair on seal.
+        /// See AEROVAULT-V4-ECC appendix for format, overhead proof, safety.
+        /// Confirmed flag spelling with Ehud Kirsh (#276): --error-correction + --ec.
+        #[arg(long, visible_alias = "ec")]
+        error_correction: bool,
+        /// Where the parity lives (requires --error-correction): embedded (default,
+        /// in-container, auto-refreshed on every seal), detached (a sibling
+        /// `.aerocorrect` sidecar, container stays byte-identical to a plain vault),
+        /// or both. Detached/both let you add parity later with `export-parity`.
+        #[arg(long = "recovery-placement", default_value = "embedded")]
+        recovery_placement: String,
+        /// QR-style Error Correction overhead level (requires --error-correction), as a
+        /// target storage-overhead percentage (#276). Named levels: low (~7%), medium
+        /// (~15%), quartile (~25%), high (~30%); or a number 5-50. Default 20% keeps the
+        /// original K=10/P=2 grid.
+        #[arg(long = "recovery-level", default_value = "20")]
+        recovery_level: String,
     },
     /// Add files to a vault. v3 batches sub-threshold files into shared
     /// packs before chunking; v2/v1 add each file as its own entry.
@@ -2764,6 +2832,113 @@ enum VaultCommands {
         /// Vault format: auto (detect from file) | v1 | v2 | v3
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
+    },
+    /// Scrub an Error Correction enabled vault for damage (verifies every live block's cipher_hash).
+    /// Returns {damaged: [...], count: N, checked: M} (M = total chunks walked).
+    /// Text mode prints "No damage detected (K chunks checked)" or the list.
+    /// Safe, read-only. Use --json for agents. See also `repair`.
+    Scrub {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Detached recovery file to check against (`.aerocorrect`). When omitted,
+        /// the resolver tries `<vault>.aerocorrect` then the embedded extension.
+        /// Scrub reports the resolved parity source so you know what repair would use.
+        #[arg(long)]
+        parity: Option<String>,
+    },
+    /// Repair a damaged Error Correction enabled vault using stored Reed-Solomon parity (v2 grid).
+    /// Per-shard cksums localize erasures (incl. bad parity shards); RS reconstructs;
+    /// every reconstructed block is re-verified against its manifest cipher_hash.
+    /// Persist ONLY if ALL verify (all-or-nothing); else vault byte-for-byte untouched.
+    /// Returns {repaired, damaged, dry_run}. Honest text: "repaired X of Y", "vault left untouched", etc.
+    /// --dry-run: preview only. Requires Error Correction (create --error-correction).
+    Repair {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Preview only, do not write repairs
+        #[arg(long)]
+        dry_run: bool,
+        /// Detached recovery file to repair from (`.aerocorrect`). When omitted,
+        /// the resolver tries `<vault>.aerocorrect` then the embedded extension.
+        /// A malformed file is rejected; a foreign one only makes repair fail, since
+        /// every reconstructed block is re-verified against its manifest cipher_hash.
+        #[arg(long)]
+        parity: Option<String>,
+    },
+    /// Export a detached Error Correction recovery file (`.aerocorrect`) for an
+    /// existing vault. The encrypted container is read but never rewritten, so this
+    /// is how you add parity to a vault created without it, or refresh a detached
+    /// sidecar after edits (par2 semantics: the recovery file tracks a fixed data set).
+    /// Default output is `<vault>.aerocorrect`.
+    ExportParity {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Output path for the recovery file (default: `<vault>.aerocorrect`)
+        #[arg(long, short = 'o')]
+        out: Option<String>,
+    },
+    /// Strip the embedded Error Correction extension from a vault (next seal drops
+    /// the in-container parity). Refuses unless a detached `.aerocorrect` sidecar
+    /// already exists, so a vault is never left with zero recovery; pass --force to
+    /// drop recovery entirely.
+    StripParity {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Drop embedded parity even if no detached sidecar exists
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+/// Standalone error correction for ANY file via a detached `.aerocorrect` sidecar
+/// (par2-style). The same format protects vault containers and synced files; binding is
+/// by content SHA-256, so it works on arbitrary files. Generation/verify/repair stream
+/// the file in 64 MiB windows, so memory is bounded regardless of file size.
+#[derive(Subcommand)]
+enum CorrectCommands {
+    /// Generate a `.aerocorrect` recovery sidecar for a file. Default output is
+    /// `<file>.aerocorrect`. The level sets the storage overhead (low ~7%, medium ~15%,
+    /// quartile ~25%, high ~30%, or a percentage 5-50; default medium).
+    Gen {
+        /// Path to the file to protect
+        path: String,
+        /// Error-correction overhead level: low | medium | quartile | high | <5-50>
+        #[arg(
+            long = "error-correction",
+            visible_alias = "ec",
+            default_value = "medium"
+        )]
+        error_correction: String,
+        /// Output sidecar path (default: `<file>.aerocorrect`)
+        #[arg(long, short = 'o')]
+        out: Option<String>,
+    },
+    /// Verify a file against its `.aerocorrect` sidecar (read-only, never modifies the
+    /// file). Exit 0 = intact, 1 = corruption detected (repairable with `correct repair`).
+    Verify {
+        /// Path to the file to verify
+        path: String,
+        /// Sidecar path (default: `<file>.aerocorrect`)
+        #[arg(long)]
+        parity: Option<String>,
+    },
+    /// Repair a corrupted file in place from its `.aerocorrect` sidecar. Atomic and
+    /// all-or-nothing: the original is replaced only if the repaired stream hashes back
+    /// to the sidecar's recorded content; otherwise it is left byte-for-byte untouched.
+    Repair {
+        /// Path to the file to repair
+        path: String,
+        /// Sidecar path (default: `<file>.aerocorrect`)
+        #[arg(long)]
+        parity: Option<String>,
     },
 }
 
@@ -3880,6 +4055,18 @@ struct CliSyncResult {
     downloaded: u32,
     deleted: u32,
     skipped: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_generated: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_too_large: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_low_benefit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_generate_failed: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_sidecar_deleted: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_sidecar_delete_failed: Option<u32>,
     errors: Vec<String>,
     elapsed_secs: f64,
     /// Per-file execution plan. Populated in `--dry-run` so agents can pilot
@@ -3917,6 +4104,12 @@ struct SyncCycleStats {
     downloaded: u32,
     deleted: u32,
     skipped: u32,
+    ec_generated: u32,
+    ec_skipped_too_large: u32,
+    ec_skipped_low_benefit: u32,
+    ec_generate_failed: u32,
+    ec_sidecar_deleted: u32,
+    ec_sidecar_delete_failed: u32,
     error_count: u32,
 }
 
@@ -4042,6 +4235,20 @@ struct CliDoctorResult {
     checks: Vec<serde_json::Value>,
     risks: Vec<String>,
     suggested_next_command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_level_pct: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_estimated_sidecars: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_estimated_overhead_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_too_large: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_skipped_low_benefit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ec_max_file_size: Option<u64>,
 }
 
 // ── Community Benchmark report (schema v1) ────────────────────────────
@@ -4833,6 +5040,316 @@ async fn reject_restricted_target(
 
 fn is_valid_sync_direction(direction: &str) -> bool {
     matches!(direction, "upload" | "download" | "both")
+}
+
+const SYNC_ERROR_CORRECTION_DEFAULT_PCT: u32 = 15;
+const SYNC_ERROR_CORRECTION_MIN_PCT: u32 = 5;
+const SYNC_ERROR_CORRECTION_MAX_PCT: u32 = 50;
+
+fn parse_sync_error_correction_level_pct(level: Option<&str>) -> Result<Option<u32>, String> {
+    let Some(raw) = level else {
+        return Ok(None);
+    };
+    let normalized = raw.trim().trim_end_matches('%').to_ascii_lowercase();
+    let pct = match normalized.as_str() {
+        "" | "medium" | "med" => SYNC_ERROR_CORRECTION_DEFAULT_PCT,
+        "low" => 7,
+        "quartile" => 25,
+        "high" => 30,
+        other => other.parse::<u32>().map_err(|_| {
+            format!(
+                "Invalid --error-correction level '{}'. Expected low, medium, quartile, high, or a percentage from {} to {}.",
+                raw, SYNC_ERROR_CORRECTION_MIN_PCT, SYNC_ERROR_CORRECTION_MAX_PCT
+            )
+        })?,
+    };
+    Ok(Some(pct.clamp(
+        SYNC_ERROR_CORRECTION_MIN_PCT,
+        SYNC_ERROR_CORRECTION_MAX_PCT,
+    )))
+}
+
+/// `aeroftp correct {gen,verify,repair}`: standalone `.aerocorrect` error correction for
+/// any file. Local-only (no connection). Reuses the same windowed codec as sync EC.
+fn cmd_correct(command: &CorrectCommands, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::error_correction;
+    match command {
+        CorrectCommands::Gen {
+            path,
+            error_correction: level,
+            out,
+        } => {
+            let pct = match parse_sync_error_correction_level_pct(Some(level)) {
+                Ok(Some(p)) => p,
+                Ok(None) => SYNC_ERROR_CORRECTION_DEFAULT_PCT,
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            match error_correction::correct_generate(path, pct, out.as_deref()) {
+                Ok(report) => {
+                    match format {
+                        OutputFormat::Json => print_json(&report),
+                        OutputFormat::Text => {
+                            println!(
+                                "Wrote {} ({} bytes, {} segment(s), {} shards, {:.1}% overhead) for {}",
+                                report.sidecar,
+                                report.sidecar_size,
+                                report.segments,
+                                report.shards,
+                                report.overhead_pct,
+                                report.file
+                            );
+                        }
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    1
+                }
+            }
+        }
+        CorrectCommands::Verify { path, parity } => {
+            match error_correction::correct_verify(path, parity.as_deref()) {
+                Ok(report) => {
+                    match format {
+                        OutputFormat::Json => print_json(&report),
+                        OutputFormat::Text => {
+                            if report.verified {
+                                println!("Verified: {} matches {}", report.file, report.sidecar);
+                            } else {
+                                println!(
+                                    "Corruption detected in {}: run `correct repair` to recover from {}",
+                                    report.file, report.sidecar
+                                );
+                            }
+                        }
+                    }
+                    if report.verified {
+                        0
+                    } else {
+                        1
+                    }
+                }
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    1
+                }
+            }
+        }
+        CorrectCommands::Repair { path, parity } => {
+            match error_correction::correct_repair(path, parity.as_deref()) {
+                Ok(report) => {
+                    match format {
+                        OutputFormat::Json => print_json(&report),
+                        OutputFormat::Text => {
+                            if report.repaired {
+                                println!(
+                                    "Repaired {} from {} ({} shard(s) reconstructed)",
+                                    report.file, report.sidecar, report.recovered_shards
+                                );
+                            } else {
+                                println!(
+                                    "No repair needed: {} already matches {}",
+                                    report.file, report.sidecar
+                                );
+                            }
+                        }
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &e, 1);
+                    1
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+struct CliSyncEcCounters {
+    generated: u32,
+    skipped_too_large: u32,
+    skipped_low_benefit: u32,
+    generate_failed: u32,
+    sidecar_deleted: u32,
+    sidecar_delete_failed: u32,
+}
+
+impl CliSyncEcCounters {
+    fn record(&mut self, status: ftp_client_gui_lib::sync::SyncEcStatus) {
+        match status {
+            ftp_client_gui_lib::sync::SyncEcStatus::Generated => self.generated += 1,
+            ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge => self.skipped_too_large += 1,
+            ftp_client_gui_lib::sync::SyncEcStatus::SkippedLowBenefit => {
+                self.skipped_low_benefit += 1
+            }
+            ftp_client_gui_lib::sync::SyncEcStatus::GenerateFailed => self.generate_failed += 1,
+            _ => {}
+        }
+    }
+
+    fn record_sidecar_delete(
+        &mut self,
+        status: &ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus,
+    ) {
+        match status {
+            ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Deleted => {
+                self.sidecar_deleted += 1
+            }
+            ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Failed(_) => {
+                self.sidecar_delete_failed += 1
+            }
+            ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Missing => {}
+        }
+    }
+}
+
+fn sync_ec_json_counter(enabled: bool, value: u32) -> Option<u32> {
+    enabled.then_some(value)
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct SyncDoctorEcEstimate {
+    estimated_sidecars: u64,
+    estimated_overhead_bytes: u64,
+    skipped_too_large: u64,
+    skipped_low_benefit: u64,
+}
+
+/// `max_overhead_pct`: minimum-benefit gate mirroring the generator. 0 disables it. When
+/// set, a file whose estimated sidecar exceeds that percentage of its size is counted as a
+/// low-benefit skip instead of contributing to the overhead total, so the preview matches
+/// what the upload will actually write.
+fn estimate_sync_doctor_ec_for_uploads<I>(
+    upload_sizes: I,
+    pct: u32,
+    max_file_size: u64,
+    max_overhead_pct: u32,
+) -> SyncDoctorEcEstimate
+where
+    I: IntoIterator<Item = u64>,
+{
+    let mut estimate = SyncDoctorEcEstimate::default();
+    for size in upload_sizes {
+        if size > max_file_size {
+            estimate.skipped_too_large = estimate.skipped_too_large.saturating_add(1);
+            continue;
+        }
+        // Use the real v2 fixed-grid geometry, not a flat size*pct/100: the latter
+        // under-reports by orders of magnitude for small files (MIN_SHARD floor) and at the
+        // MAX_SHARD cliff. This matches the bytes `generate_sync_sidecar_for_bytes` writes.
+        let overhead = ftp_client_gui_lib::sync::estimate_aerorec_sidecar_len(size, pct);
+        if max_overhead_pct > 0 && size > 0 {
+            let overhead_pct = (overhead as u128 * 100) / size as u128;
+            if overhead_pct > max_overhead_pct as u128 {
+                estimate.skipped_low_benefit = estimate.skipped_low_benefit.saturating_add(1);
+                continue;
+            }
+        }
+        estimate.estimated_sidecars = estimate.estimated_sidecars.saturating_add(1);
+        estimate.estimated_overhead_bytes =
+            estimate.estimated_overhead_bytes.saturating_add(overhead);
+    }
+    estimate
+}
+
+fn sync_doctor_planned_upload_sizes(
+    direction: &str,
+    conflict_mode: &str,
+    local_entries: &HashMap<String, (u64, Option<String>)>,
+    remote_entries: &HashMap<String, (u64, Option<String>)>,
+    default_time: Option<&str>,
+) -> Vec<u64> {
+    if !matches!(direction, "upload" | "both") {
+        return Vec::new();
+    }
+    local_entries
+        .iter()
+        .filter_map(
+            |(path, (local_size, local_mtime))| match remote_entries.get(path) {
+                None => Some(*local_size),
+                Some((remote_size, remote_mtime)) => {
+                    let lm = apply_default_time(local_mtime.as_deref(), default_time);
+                    let rm = apply_default_time(remote_mtime.as_deref(), default_time);
+                    if local_size == remote_size
+                        && compare_mtime(lm, rm) == std::cmp::Ordering::Equal
+                    {
+                        return None;
+                    }
+                    if direction == "both" {
+                        match resolve_conflict(conflict_mode, *local_size, lm, *remote_size, rm) {
+                            "upload" | "rename" => Some(*local_size),
+                            _ => None,
+                        }
+                    } else {
+                        Some(*local_size)
+                    }
+                }
+            },
+        )
+        .collect()
+}
+
+fn sync_effective_exclude_patterns(
+    exclude: &[String],
+    error_correction_enabled: bool,
+) -> Vec<String> {
+    let mut patterns = exclude.to_vec();
+    if error_correction_enabled {
+        ftp_client_gui_lib::sync::ensure_error_correction_exclude_patterns(&mut patterns);
+    }
+    patterns
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_sync_ec_after_successful_upload(
+    provider: &mut dyn StorageProvider,
+    relative: &str,
+    local_path: &str,
+    remote_path: &str,
+    pct: Option<u32>,
+    max_overhead_pct: u32,
+    counters: &mut CliSyncEcCounters,
+    quiet: bool,
+) {
+    let Some(pct) = pct else {
+        return;
+    };
+    let status = ftp_client_gui_lib::sync::generate_sync_error_correction_sidecar_after_upload(
+        provider,
+        relative,
+        local_path,
+        remote_path,
+        pct,
+        max_overhead_pct,
+    )
+    .await;
+    counters.record(status);
+    match status {
+        ftp_client_gui_lib::sync::SyncEcStatus::GenerateFailed if !quiet => {
+            eprintln!(
+                "Warning: AeroSync EC sidecar generation failed for {} (file uploaded)",
+                relative
+            );
+        }
+        ftp_client_gui_lib::sync::SyncEcStatus::SkippedTooLarge if !quiet => {
+            eprintln!(
+                "Note: AeroSync EC skipped {} because it exceeds the EC size cap",
+                relative
+            );
+        }
+        ftp_client_gui_lib::sync::SyncEcStatus::SkippedLowBenefit if !quiet => {
+            eprintln!(
+                "Note: AeroSync EC skipped {} (sidecar overhead above --ec-max-overhead)",
+                relative
+            );
+        }
+        _ => {}
+    }
 }
 
 fn format_size(bytes: u64) -> String {
@@ -22139,6 +22656,12 @@ async fn cmd_get_recursive(
                 skipped: (total_files as u32)
                     .saturating_sub(downloaded)
                     .saturating_sub(errors.len() as u32),
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
+                ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -22364,6 +22887,12 @@ async fn cmd_get_glob(
                 downloaded,
                 deleted: 0,
                 skipped: 0,
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
+                ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -22986,6 +23515,12 @@ async fn cmd_put_recursive(
                 downloaded: 0,
                 deleted: 0,
                 skipped,
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
+                ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -27051,11 +27586,21 @@ fn is_valid_opt_in_alias_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+#[cfg(unix)]
 fn default_opt_in_bin_dir() -> Result<PathBuf, String> {
     if let Some(home) = std::env::var_os("HOME") {
         Ok(PathBuf::from(home).join(".local").join("bin"))
     } else {
         Err("cannot resolve $HOME; pass --bin-dir explicitly".to_string())
+    }
+}
+
+#[cfg(windows)]
+fn default_opt_in_bin_dir() -> Result<PathBuf, String> {
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        Ok(PathBuf::from(local).join("AeroFTP").join("bin"))
+    } else {
+        Err("cannot resolve %LOCALAPPDATA%; pass --bin-dir explicitly".to_string())
     }
 }
 
@@ -27079,12 +27624,142 @@ fn cmd_alias_toggle(name: &str, bin_dir: Option<&Path>, format: OutputFormat) ->
         return 5;
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // Windows has no user-writable symlink equivalent of ~/.local/bin, so
+        // the opt-in alias is a tiny `<name>.cmd` batch shim instead. `.cmd`
+        // resolves under both cmd.exe and PowerShell via PATHEXT, and forwards
+        // every argument to the current CLI exe. Same toggle semantics as the
+        // Unix symlink path: present-and-ours -> remove (Off), absent -> create
+        // (On), present-but-not-ours -> refuse (exit 5).
+        const ALIAS_SHIM_MARKER: &str = "AeroFTP managed alias shim";
+
+        let exe = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("cannot resolve current executable: {}", e),
+                    2,
+                );
+                return 2;
+            }
+        };
+        let bin_dir = match bin_dir
+            .map(|p| p.to_path_buf())
+            .map_or_else(default_opt_in_bin_dir, Ok)
+        {
+            Ok(path) => path,
+            Err(e) => {
+                print_error(format, &e, 5);
+                return 5;
+            }
+        };
+        let shim_path = bin_dir.join(format!("{}.cmd", name));
+
+        match std::fs::symlink_metadata(&shim_path) {
+            Ok(_) => {
+                // Something already exists at the shim path. Only remove it if it
+                // carries our managed marker; never clobber a batch file the user
+                // wrote themselves (or one we cannot read).
+                let is_ours = std::fs::read_to_string(&shim_path)
+                    .map(|c| c.contains(ALIAS_SHIM_MARKER))
+                    .unwrap_or(false);
+                if !is_ours {
+                    print_error(
+                        format,
+                        &format!(
+                            "'{}' exists and was not created by AeroFTP; refusing to overwrite.",
+                            shim_path.display()
+                        ),
+                        5,
+                    );
+                    return 5;
+                }
+                if let Err(e) = std::fs::remove_file(&shim_path) {
+                    print_error(
+                        format,
+                        &format!("cannot remove '{}': {}", shim_path.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("The '{}' alias is now Off", name);
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "state": "off",
+                            "path": shim_path.display().to_string(),
+                        }));
+                    }
+                }
+                0
+            }
+            Err(_) => {
+                if let Err(e) = std::fs::create_dir_all(&bin_dir) {
+                    print_error(
+                        format,
+                        &format!("cannot create '{}': {}", bin_dir.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                // CRLF endings + a leading marker comment so a later toggle can
+                // recognise the file as ours. `%*` forwards every argument; the
+                // exe path is quoted to survive spaces.
+                let shim_body = format!(
+                    "@echo off\r\n:: {} (alias-toggle) -- safe to delete.\r\n\"{}\" %*\r\n",
+                    ALIAS_SHIM_MARKER,
+                    exe.display()
+                );
+                if let Err(e) = std::fs::write(&shim_path, shim_body) {
+                    print_error(
+                        format,
+                        &format!("cannot create shim '{}': {}", shim_path.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("The '{}' alias is now On", name);
+                        if !path_dir_is_in_env(&bin_dir) {
+                            eprintln!(
+                                "note: {dir} is not in PATH. Add it (PowerShell): \
+                                 [Environment]::SetEnvironmentVariable('Path', \
+                                 [Environment]::GetEnvironmentVariable('Path','User') + ';{dir}', 'User') \
+                                 -- then open a new terminal to use '{name}' directly.",
+                                dir = bin_dir.display(),
+                                name = name
+                            );
+                        }
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "state": "on",
+                            "path": shim_path.display().to_string(),
+                            "target": exe.display().to_string(),
+                            "path_in_env": path_dir_is_in_env(&bin_dir),
+                        }));
+                    }
+                }
+                0
+            }
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = bin_dir;
         print_error(
             format,
-            "alias-toggle is not yet supported on this platform; see CLI-GUIDE.md for the PowerShell profile recipe.",
+            "alias-toggle is not supported on this platform; see CLI-GUIDE.md for the manual alias recipe.",
             7,
         );
         return 7;
@@ -32125,6 +32800,8 @@ async fn cmd_sync(
     dry_run: bool,
     delete: bool,
     exclude: &[String],
+    error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
     track_renames: bool,
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
@@ -32164,6 +32841,8 @@ async fn cmd_sync(
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let error_correction_enabled = error_correction_pct.is_some();
+    let mut ec_counters = CliSyncEcCounters::default();
     let start = Instant::now();
 
     if !quiet {
@@ -32180,7 +32859,8 @@ async fn cmd_sync(
     }
 
     // Pre-compile exclude matchers (avoids O(n*m) recompilation)
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
+    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
         .iter()
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
@@ -33069,6 +33749,15 @@ async fn cmd_sync(
                     downloaded: to_download.len() as u32,
                     deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
                     skipped,
+                    ec_generated: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_skipped_too_large: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_skipped_low_benefit: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_generate_failed: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_sidecar_deleted: sync_ec_json_counter(error_correction_pct.is_some(), 0),
+                    ec_sidecar_delete_failed: sync_ec_json_counter(
+                        error_correction_pct.is_some(),
+                        0,
+                    ),
                     errors: vec![],
                     elapsed_secs: start.elapsed().as_secs_f64(),
                     plan,
@@ -33083,6 +33772,12 @@ async fn cmd_sync(
             downloaded: to_download.len() as u32,
             deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
             skipped,
+            ec_generated: 0,
+            ec_skipped_too_large: 0,
+            ec_skipped_low_benefit: 0,
+            ec_generate_failed: 0,
+            ec_sidecar_deleted: 0,
+            ec_sidecar_delete_failed: 0,
             error_count: 0,
         };
     }
@@ -33177,7 +33872,7 @@ async fn cmd_sync(
     #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut leftover_upload_jobs: Vec<(String, String, String, u64)> = upload_jobs.clone();
     #[cfg(feature = "aerorsync")]
-    if use_aerorsync_batch && !leftover_upload_jobs.is_empty() {
+    if use_aerorsync_batch && !error_correction_enabled && !leftover_upload_jobs.is_empty() {
         use ftp_client_gui_lib::delta_sync_rsync::{
             open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
         };
@@ -33269,36 +33964,43 @@ async fn cmd_sync(
         // non-pool-backed providers (FTP, single-conn APIs) fall back to
         // the legacy independent-connection batch: honest fallback, no
         // overclaim.
-        let upload_files: Vec<(String, String, u64)> = leftover_upload_jobs
-            .iter()
-            .map(|(_, local_path, remote_path, size)| {
-                (local_path.clone(), remote_path.clone(), *size)
-            })
-            .collect();
+        let use_legacy_upload = if error_correction_enabled {
+            // EC sidecars must be generated only for uploads that are known
+            // to have succeeded. The shared batch reports aggregate counters,
+            // so keep the per-file result path while EC is enabled.
+            true
+        } else {
+            let upload_files: Vec<(String, String, u64)> = leftover_upload_jobs
+                .iter()
+                .map(|(_, local_path, remote_path, size)| {
+                    (local_path.clone(), remote_path.clone(), *size)
+                })
+                .collect();
 
-        let use_legacy_upload = match create_and_connect(url, cli, format).await {
-            Ok((base, _)) => match run_shared_provider_upload_batch(
-                base,
-                &upload_files,
-                cli,
-                overall_pb.clone(),
-                cancelled.clone(),
-            )
-            .await
-            {
-                Ok(outcome) => {
-                    uploaded += outcome.uploaded;
-                    errors.extend(outcome.errors);
-                    false
-                }
-                Err(mut base) => {
-                    let _ = base.disconnect().await;
-                    true
-                }
-            },
-            // Could not open the shared base (transient): degrade to the
-            // legacy per-file path rather than dropping the uploads.
-            Err(_) => true,
+            match create_and_connect(url, cli, format).await {
+                Ok((base, _)) => match run_shared_provider_upload_batch(
+                    base,
+                    &upload_files,
+                    cli,
+                    overall_pb.clone(),
+                    cancelled.clone(),
+                )
+                .await
+                {
+                    Ok(outcome) => {
+                        uploaded += outcome.uploaded;
+                        errors.extend(outcome.errors);
+                        false
+                    }
+                    Err(mut base) => {
+                        let _ = base.disconnect().await;
+                        true
+                    }
+                },
+                // Could not open the shared base (transient): degrade to the
+                // legacy per-file path rather than dropping the uploads.
+                Err(_) => true,
+            }
         };
 
         if use_legacy_upload {
@@ -33311,10 +34013,11 @@ async fn cmd_sync(
                         if cancelled.load(Ordering::Relaxed) {
                             return Err(format!("upload {}: cancelled", path));
                         }
+                        let display_path = path.clone();
                         match upload_transfer_task(
                             url,
-                            local_path,
-                            remote_path,
+                            local_path.clone(),
+                            remote_path.clone(),
                             cli,
                             format,
                             Some(aggregate),
@@ -33323,8 +34026,8 @@ async fn cmd_sync(
                         )
                         .await
                         {
-                            Ok(()) => Ok(path),
-                            Err(err) => Err(format!("upload {}: {}", path, err)),
+                            Ok(()) => Ok((path, local_path, remote_path)),
+                            Err(err) => Err(format!("upload {}: {}", display_path, err)),
                         }
                     }
                 },
@@ -33335,7 +34038,20 @@ async fn cmd_sync(
 
             for result in upload_results {
                 match result {
-                    Ok(_) => uploaded += 1,
+                    Ok((path, local_path, remote_path)) => {
+                        uploaded += 1;
+                        record_sync_ec_after_successful_upload(
+                            provider.as_mut(),
+                            &path,
+                            &local_path,
+                            &remote_path,
+                            error_correction_pct,
+                            error_correction_max_overhead_pct,
+                            &mut ec_counters,
+                            cli.quiet,
+                        )
+                        .await;
+                    }
                     Err(err) => errors.push(err),
                 }
             }
@@ -33360,6 +34076,8 @@ async fn cmd_sync(
             .to_string_lossy()
             .to_string();
         let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
+        let local_path_for_ec = local_path.clone();
+        let remote_conflict_for_ec = remote_conflict.clone();
         match upload_transfer_task(
             url,
             local_path,
@@ -33375,6 +34093,17 @@ async fn cmd_sync(
             Ok(()) => {
                 conflict_uploaded += 1;
                 preserved_conflict_downloads.insert(orig_path.clone());
+                record_sync_ec_after_successful_upload(
+                    provider.as_mut(),
+                    conflict_path,
+                    &local_path_for_ec,
+                    &remote_conflict_for_ec,
+                    error_correction_pct,
+                    error_correction_max_overhead_pct,
+                    &mut ec_counters,
+                    cli.quiet,
+                )
+                .await;
                 if !quiet {
                     eprintln!("  CONFLICT-RENAME  {} -> {}", orig_path, conflict_path);
                 }
@@ -33533,7 +34262,28 @@ async fn cmd_sync(
         }
         let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
         match provider.delete(&remote_path).await {
-            Ok(()) => deleted += 1,
+            Ok(()) => {
+                deleted += 1;
+                if error_correction_enabled {
+                    let status =
+                        ftp_client_gui_lib::sync::delete_sync_error_correction_sidecar_after_remote_delete(
+                            provider.as_mut(),
+                            &remote_path,
+                        )
+                        .await;
+                    ec_counters.record_sidecar_delete(&status);
+                    if let ftp_client_gui_lib::sync::SyncEcSidecarDeleteStatus::Failed(message) =
+                        status
+                    {
+                        if !quiet {
+                            eprintln!(
+                                "Warning: AeroSync EC sidecar delete failed for {} (file deleted): {}",
+                                path, message
+                            );
+                        }
+                    }
+                }
+            }
             Err(e) => errors.push(format!("delete remote {}: {}", path, e)),
         }
     }
@@ -33591,6 +34341,16 @@ async fn cmd_sync(
                     conflict_uploaded,
                     elapsed.as_secs_f64()
                 );
+                if error_correction_enabled {
+                    println!(
+                        "AeroSync EC: {} generated, {} skipped too large, {} failed, {} sidecars deleted, {} sidecar delete failed",
+                        ec_counters.generated,
+                        ec_counters.skipped_too_large,
+                        ec_counters.generate_failed,
+                        ec_counters.sidecar_deleted,
+                        ec_counters.sidecar_delete_failed
+                    );
+                }
                 for err in &errors {
                     eprintln!("  Error: {}", err);
                 }
@@ -33607,6 +34367,30 @@ async fn cmd_sync(
                 downloaded,
                 deleted,
                 skipped,
+                ec_generated: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.generated,
+                ),
+                ec_skipped_too_large: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.skipped_too_large,
+                ),
+                ec_skipped_low_benefit: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.skipped_low_benefit,
+                ),
+                ec_generate_failed: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.generate_failed,
+                ),
+                ec_sidecar_deleted: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.sidecar_deleted,
+                ),
+                ec_sidecar_delete_failed: sync_ec_json_counter(
+                    error_correction_pct.is_some(),
+                    ec_counters.sidecar_delete_failed,
+                ),
                 errors: errors.clone(),
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -33633,6 +34417,12 @@ async fn cmd_sync(
         downloaded,
         deleted,
         skipped,
+        ec_generated: ec_counters.generated,
+        ec_skipped_too_large: ec_counters.skipped_too_large,
+        ec_skipped_low_benefit: ec_counters.skipped_low_benefit,
+        ec_generate_failed: ec_counters.generate_failed,
+        ec_sidecar_deleted: ec_counters.sidecar_deleted,
+        ec_sidecar_delete_failed: ec_counters.sidecar_delete_failed,
         error_count: errors.len() as u32,
     }
 }
@@ -37719,6 +38509,12 @@ async fn cmd_put_glob(
                 downloaded: 0,
                 deleted: 0,
                 skipped: 0,
+                ec_generated: None,
+                ec_skipped_too_large: None,
+                ec_skipped_low_benefit: None,
+                ec_generate_failed: None,
+                ec_sidecar_deleted: None,
+                ec_sidecar_delete_failed: None,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
@@ -37918,6 +38714,8 @@ async fn cmd_sync_watch(
     dry_run: bool,
     delete: bool,
     exclude: &[String],
+    error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
     track_renames: bool,
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
@@ -38037,6 +38835,8 @@ async fn cmd_sync_watch(
                 dry_run,
                 delete,
                 exclude,
+                error_correction_pct,
+                error_correction_max_overhead_pct,
                 track_renames,
                 max_delete,
                 backup_dir,
@@ -38064,7 +38864,7 @@ async fn cmd_sync_watch(
             // Emit cycle status with detailed stats
             if matches!(format, OutputFormat::Json) {
                 let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                print_json(&serde_json::json!({
+                let mut payload = serde_json::json!({
                     "cycle": cycle,
                     "trigger": trigger_label,
                     "exit_code": stats.exit_code,
@@ -38075,7 +38875,20 @@ async fn cmd_sync_watch(
                     "errors": stats.error_count,
                     "elapsed_secs": (elapsed.as_millis() as f64) / 1000.0,
                     "timestamp": ts,
-                }));
+                });
+                if error_correction_pct.is_some() {
+                    payload["ec_generated"] = serde_json::json!(stats.ec_generated);
+                    payload["ec_skipped_too_large"] =
+                        serde_json::json!(stats.ec_skipped_too_large);
+                    payload["ec_skipped_low_benefit"] =
+                        serde_json::json!(stats.ec_skipped_low_benefit);
+                    payload["ec_generate_failed"] = serde_json::json!(stats.ec_generate_failed);
+                    payload["ec_sidecar_deleted"] =
+                        serde_json::json!(stats.ec_sidecar_deleted);
+                    payload["ec_sidecar_delete_failed"] =
+                        serde_json::json!(stats.ec_sidecar_delete_failed);
+                }
+                print_json(&payload);
             } else if !quiet {
                 let ts = chrono::Local::now().format("%H:%M:%S");
                 if total_changes == 0 && stats.error_count == 0 {
@@ -38107,7 +38920,9 @@ async fn cmd_sync_watch(
     }
 
     // Pre-compile exclude matchers for incremental scan
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+    let effective_exclude =
+        sync_effective_exclude_patterns(exclude, error_correction_pct.is_some());
+    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
         .iter()
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
@@ -38265,6 +39080,8 @@ async fn cmd_sync_doctor(
     direction: &str,
     delete: bool,
     exclude: &[String],
+    error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
     track_renames: bool,
     conflict_mode: &str,
     resync: bool,
@@ -38310,13 +39127,14 @@ async fn cmd_sync_doctor(
         return 5;
     }
 
-    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+    let error_correction_enabled = error_correction_pct.is_some();
+    let effective_exclude = sync_effective_exclude_patterns(exclude, error_correction_enabled);
+    let exclude_matchers: Vec<globset::GlobMatcher> = effective_exclude
         .iter()
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
 
-    let mut local_files = 0usize;
-    let mut local_bytes = 0u64;
+    let mut local_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
     for entry in walkdir::WalkDir::new(local)
         .follow_links(false)
         .max_depth(100)
@@ -38342,17 +39160,25 @@ async fn cmd_sync_doctor(
         {
             continue;
         }
-        local_files += 1;
-        local_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let meta = entry.metadata().ok();
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime = meta.and_then(|m| {
+            m.modified().ok().map(|t| {
+                let dt: chrono::DateTime<chrono::Utc> = t.into();
+                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+            })
+        });
+        local_entries.insert(relative, (size, mtime));
     }
+    let local_files = local_entries.len();
+    let local_bytes = local_entries.values().map(|(size, _)| *size).sum::<u64>();
 
     let remote_root_ok = provider.list(&remote).await.is_ok();
-    let mut remote_files = 0usize;
-    let mut remote_bytes = 0u64;
+    let mut remote_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
     if remote_root_ok {
         let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
         while let Some((dir, depth)) = queue.pop() {
-            if depth >= MAX_SCAN_DEPTH || remote_files >= MAX_SCAN_ENTRIES {
+            if depth >= MAX_SCAN_DEPTH || remote_entries.len() >= MAX_SCAN_ENTRIES {
                 break;
             }
             if let Ok(entries) = provider.list(&dir).await {
@@ -38375,21 +39201,41 @@ async fn cmd_sync_doctor(
                         {
                             continue;
                         }
-                        remote_files += 1;
-                        remote_bytes += e.size;
+                        remote_entries.insert(relative, (e.size, e.modified));
                     }
                 }
             }
         }
     }
+    let remote_files = remote_entries.len();
+    let remote_bytes = remote_entries.values().map(|(size, _)| *size).sum::<u64>();
+
+    let ec_max_file_size = ftp_client_gui_lib::sync::AEROSYNC_EC_MAX_FILE_SIZE_BYTES;
+    let default_time_val = resolve_default_time(cli);
+    let default_time_ref = default_time_val.as_deref();
+    let ec_estimate = error_correction_pct.map(|pct| {
+        let upload_sizes = sync_doctor_planned_upload_sizes(
+            direction,
+            conflict_mode,
+            &local_entries,
+            &remote_entries,
+            default_time_ref,
+        );
+        estimate_sync_doctor_ec_for_uploads(
+            upload_sizes,
+            pct,
+            ec_max_file_size,
+            error_correction_max_overhead_pct,
+        )
+    });
 
     let mut checks = vec![
         serde_json::json!({"name": "local_path_exists", "ok": true, "path": local}),
         serde_json::json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote}),
     ];
-    if !exclude.is_empty() {
+    if !effective_exclude.is_empty() {
         checks.push(
-            serde_json::json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}),
+            serde_json::json!({"name": "exclude_patterns", "ok": true, "count": effective_exclude.len()}),
         );
     }
 
@@ -38416,13 +39262,37 @@ async fn cmd_sync_doctor(
         risks
             .push("checksum is enabled; later verification may be slower but stricter".to_string());
     }
+    if let (Some(pct), Some(estimate)) = (error_correction_pct, ec_estimate) {
+        risks.push(format!(
+            "error-correction is enabled; sync will create up to {} .aerocorrect sidecar(s) at about {} overhead",
+            estimate.estimated_sidecars,
+            format_size(estimate.estimated_overhead_bytes)
+        ));
+        if estimate.skipped_too_large > 0 {
+            risks.push(format!(
+                "{} planned upload(s) exceed the EC size cap and will not get sidecars",
+                estimate.skipped_too_large
+            ));
+        }
+        checks.push(serde_json::json!({
+            "name": "error_correction_estimate",
+            "ok": true,
+            "level_pct": pct,
+            "estimated_sidecars": estimate.estimated_sidecars,
+            "estimated_overhead_bytes": estimate.estimated_overhead_bytes,
+            "skipped_too_large": estimate.skipped_too_large,
+            "skipped_low_benefit": estimate.skipped_low_benefit,
+            "max_overhead_pct": error_correction_max_overhead_pct,
+            "max_file_size": ec_max_file_size,
+        }));
+    }
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
     }
 
     let suggested_next_command =
         format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}",
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}",
         profile_or_placeholder(cli),
         shell_double_quote(local),
         shell_double_quote(&remote),
@@ -38430,6 +39300,9 @@ async fn cmd_sync_doctor(
         if delete { " --delete" } else { "" },
         if track_renames { " --track-renames" } else { "" },
         if resync { " --resync" } else { "" },
+        error_correction_pct
+            .map(|pct| format!(" --error-correction={pct}"))
+            .unwrap_or_default(),
         if exclude.is_empty() {
             String::new()
         } else {
@@ -38461,6 +39334,13 @@ async fn cmd_sync_doctor(
         checks,
         risks,
         suggested_next_command,
+        ec_enabled: error_correction_pct.map(|_| true),
+        ec_level_pct: error_correction_pct,
+        ec_estimated_sidecars: ec_estimate.map(|estimate| estimate.estimated_sidecars),
+        ec_estimated_overhead_bytes: ec_estimate.map(|estimate| estimate.estimated_overhead_bytes),
+        ec_skipped_too_large: ec_estimate.map(|estimate| estimate.skipped_too_large),
+        ec_skipped_low_benefit: ec_estimate.map(|estimate| estimate.skipped_low_benefit),
+        ec_max_file_size: error_correction_pct.map(|_| ec_max_file_size),
     };
 
     match format {
@@ -38478,6 +39358,26 @@ async fn cmd_sync_doctor(
                 format_size(remote_bytes)
             );
             println!("  Direction: {}", direction);
+            if let (Some(pct), Some(estimate)) = (error_correction_pct, ec_estimate) {
+                println!("  AeroSync EC:");
+                println!("    Level: {}%", pct);
+                println!("    Estimated sidecars: {}", estimate.estimated_sidecars);
+                println!(
+                    "    Estimated overhead: {}",
+                    format_size(estimate.estimated_overhead_bytes)
+                );
+                println!(
+                    "    Skipped too large: {} (cap {})",
+                    estimate.skipped_too_large,
+                    format_size(ec_max_file_size)
+                );
+                if error_correction_max_overhead_pct > 0 {
+                    println!(
+                        "    Skipped low benefit: {} (max overhead {}%)",
+                        estimate.skipped_low_benefit, error_correction_max_overhead_pct
+                    );
+                }
+            }
             if !result.risks.is_empty() {
                 println!("  Risks:");
                 for risk in &result.risks {
@@ -39719,6 +40619,13 @@ async fn cmd_transfer_doctor(
             source_path,
             dest_path,
         ),
+        ec_enabled: None,
+        ec_level_pct: None,
+        ec_estimated_sidecars: None,
+        ec_estimated_overhead_bytes: None,
+        ec_skipped_too_large: None,
+        ec_skipped_low_benefit: None,
+        ec_max_file_size: None,
     };
 
     match format {
@@ -41518,6 +42425,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     false,
                     &[],
+                    None,
+                    0,
                     false,
                     None,
                     None,
@@ -46041,6 +46950,8 @@ async fn main() {
             dry_run,
             delete,
             exclude,
+            error_correction,
+            ec_max_overhead,
             track_renames,
             max_delete,
             backup_dir,
@@ -46089,6 +47000,9 @@ async fn main() {
             }
 
             if local_to_local_match {
+                if error_correction.is_some() && !cli.quiet {
+                    eprintln!("Warning: --error-correction is ignored for local-to-local sync");
+                }
                 let stats = cmd_sync_local_to_local(
                     local_to_local_src,
                     local_to_local_dst,
@@ -46102,92 +47016,105 @@ async fn main() {
                 .await;
                 stats.exit_code
             } else {
-                let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str(), local.as_str())
-                } else {
-                    (url.as_str(), local.as_str(), remote.as_str())
-                };
+                match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
+                    Err(err) => {
+                        print_error(format, &err, 5);
+                        5
+                    }
+                    Ok(error_correction_pct) => {
+                        let (u, l, r) =
+                            if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                                ("_", url.as_str(), local.as_str())
+                            } else {
+                                (url.as_str(), local.as_str(), remote.as_str())
+                            };
 
-                if *watch {
-                    cmd_sync_watch(
-                        u,
-                        l,
-                        r,
-                        direction,
-                        *dry_run,
-                        *delete,
-                        exclude,
-                        *track_renames,
-                        max_delete.as_deref(),
-                        backup_dir.as_deref(),
-                        backup_suffix,
-                        *suffix_keep_extension,
-                        compare_dest.as_deref(),
-                        copy_dest.as_deref(),
-                        from_reconcile.as_deref(),
-                        conflict_mode,
-                        *skip_matching,
-                        *resync,
-                        watch_mode,
-                        *watch_debounce_ms,
-                        *watch_cooldown,
-                        *watch_rescan,
-                        *watch_no_initial,
-                        &cli,
-                        format,
-                        cancelled.clone(),
-                    )
-                    .await
-                } else {
-                    let max_attempts = cli.retries.max(1);
-                    let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-                    let max_transfer_limit = resolve_max_transfer(&cli);
-                    let mut last_code = 0i32;
-                    for attempt in 1..=max_attempts {
-                        last_code = cmd_sync(
-                            u,
-                            l,
-                            r,
-                            direction,
-                            *dry_run,
-                            *delete,
-                            exclude,
-                            *track_renames,
-                            max_delete.as_deref(),
-                            backup_dir.as_deref(),
-                            backup_suffix,
-                            *suffix_keep_extension,
-                            compare_dest.as_deref(),
-                            copy_dest.as_deref(),
-                            from_reconcile.as_deref(),
-                            conflict_mode,
-                            *skip_matching,
-                            *resync,
-                            &cli,
-                            format,
-                            cancelled.clone(),
-                            None,
-                            *delta,
-                        )
-                        .await
-                        .exit_code;
-                        if !is_retryable_exit(last_code)
-                            || session_transfer_exceeded(max_transfer_limit)
-                            || attempt == max_attempts
-                        {
-                            break;
-                        }
-                        if !cli.quiet {
-                            eprintln!(
-                                "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                                attempt, max_attempts, last_code, sleep_dur
-                            );
-                        }
-                        if !sleep_dur.is_zero() {
-                            tokio::time::sleep(sleep_dur).await;
+                        if *watch {
+                            cmd_sync_watch(
+                                u,
+                                l,
+                                r,
+                                direction,
+                                *dry_run,
+                                *delete,
+                                exclude,
+                                error_correction_pct,
+                                *ec_max_overhead,
+                                *track_renames,
+                                max_delete.as_deref(),
+                                backup_dir.as_deref(),
+                                backup_suffix,
+                                *suffix_keep_extension,
+                                compare_dest.as_deref(),
+                                copy_dest.as_deref(),
+                                from_reconcile.as_deref(),
+                                conflict_mode,
+                                *skip_matching,
+                                *resync,
+                                watch_mode,
+                                *watch_debounce_ms,
+                                *watch_cooldown,
+                                *watch_rescan,
+                                *watch_no_initial,
+                                &cli,
+                                format,
+                                cancelled.clone(),
+                            )
+                            .await
+                        } else {
+                            let max_attempts = cli.retries.max(1);
+                            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+                            let max_transfer_limit = resolve_max_transfer(&cli);
+                            let mut last_code = 0i32;
+                            for attempt in 1..=max_attempts {
+                                last_code = cmd_sync(
+                                    u,
+                                    l,
+                                    r,
+                                    direction,
+                                    *dry_run,
+                                    *delete,
+                                    exclude,
+                                    error_correction_pct,
+                                    *ec_max_overhead,
+                                    *track_renames,
+                                    max_delete.as_deref(),
+                                    backup_dir.as_deref(),
+                                    backup_suffix,
+                                    *suffix_keep_extension,
+                                    compare_dest.as_deref(),
+                                    copy_dest.as_deref(),
+                                    from_reconcile.as_deref(),
+                                    conflict_mode,
+                                    *skip_matching,
+                                    *resync,
+                                    &cli,
+                                    format,
+                                    cancelled.clone(),
+                                    None,
+                                    *delta,
+                                )
+                                .await
+                                .exit_code;
+                                if !is_retryable_exit(last_code)
+                                    || session_transfer_exceeded(max_transfer_limit)
+                                    || attempt == max_attempts
+                                {
+                                    break;
+                                }
+                                if !cli.quiet {
+                                    eprintln!(
+                                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                                        attempt, max_attempts, last_code, sleep_dur
+                                    );
+                                }
+                                if !sleep_dur.is_zero() {
+                                    tokio::time::sleep(sleep_dur).await;
+                                }
+                            }
+                            last_code
                         }
                     }
-                    last_code
                 }
             }
         }
@@ -46202,27 +47129,39 @@ async fn main() {
             conflict_mode,
             resync,
             checksum,
+            error_correction,
+            ec_max_overhead,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
             } else {
                 (url.as_str(), local.as_str(), remote.as_str())
             };
-            cmd_sync_doctor(
-                u,
-                l,
-                r,
-                direction,
-                *delete,
-                exclude,
-                *track_renames,
-                conflict_mode,
-                *resync,
-                *checksum,
-                &cli,
-                format,
-            )
-            .await
+            match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    5
+                }
+                Ok(error_correction_pct) => {
+                    cmd_sync_doctor(
+                        u,
+                        l,
+                        r,
+                        direction,
+                        *delete,
+                        exclude,
+                        error_correction_pct,
+                        *ec_max_overhead,
+                        *track_renames,
+                        conflict_mode,
+                        *resync,
+                        *checksum,
+                        &cli,
+                        format,
+                    )
+                    .await
+                }
+            }
         }
         Commands::About { url } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -46428,8 +47367,20 @@ async fn main() {
                     profile,
                     vault_version,
                     cascade,
+                    error_correction,
+                    recovery_placement,
+                    recovery_level,
                 } => 'create: {
                     let pw = resolve_pw(password);
+                    // Map the QR-style overhead level (named or numeric) to a percentage.
+                    let recovery_pct: u32 =
+                        match recovery_level.trim().to_ascii_lowercase().as_str() {
+                            "low" => 7,
+                            "medium" | "med" => 15,
+                            "quartile" => 25,
+                            "high" => 30,
+                            other => other.trim_end_matches('%').parse::<u32>().unwrap_or(20),
+                        };
                     // v3 rejects < 8 internally; v1/v2 had no minimum, so a
                     // non-interactive run with no password silently created
                     // an effectively unprotected container. Enforce the same
@@ -46444,25 +47395,63 @@ async fn main() {
                     }
                     // "auto" has no file to inspect on create: default v3.
                     let ver = resolve_ver(vault_version);
+                    if *error_correction && ver != "v3" {
+                        // P1-07 stretch: --error-correction only makes sense for v3+ (stub in Phase 1).
+                        // Warn for now; could be hard error with --strict later.
+                        eprintln!(
+                            "Warning: --error-correction is only supported for v3 vaults (ignored for --vault-version {})",
+                            ver
+                        );
+                    }
                     let res: Result<String, String> = match ver.as_str() {
                         "v1" => aerovault::vault_create(path.clone(), pw, None).await,
                         "v2" => {
                             aerovault_v2::vault_v2_create(path.clone(), pw, None, *cascade).await
                         }
                         _ => {
-                            aerovault_v3::vault_v3_create(path.clone(), pw, Some(profile.clone()))
+                            if *error_correction {
+                                // P1-07: --error-correction flag wired through to create_with_error_correction.
+                                // --recovery-placement selects embedded/detached/both (#276 SIDECAR slice).
+                                aerovault_v3::vault_v3_create_with_error_correction(
+                                    path.clone(),
+                                    pw,
+                                    Some(profile.clone()),
+                                    Some(recovery_placement.clone()),
+                                    Some(recovery_pct),
+                                )
                                 .await
+                            } else {
+                                aerovault_v3::vault_v3_create(
+                                    path.clone(),
+                                    pw,
+                                    Some(profile.clone()),
+                                )
+                                .await
+                            }
                         }
+                    };
+                    let placement_label = if *error_correction && ver == "v3" {
+                        Some(recovery_placement.as_str())
+                    } else {
+                        None
                     };
                     match res {
                         Ok(p) => {
                             match format {
                                 OutputFormat::Json => print_json(&serde_json::json!({
-                                    "status": "ok", "created": p, "version": ver
+                                    "status": "ok", "created": p, "version": ver,
+                                    "error_correction": *error_correction && ver == "v3",
+                                    "recovery_placement": placement_label,
+                                    "recovery_overhead_pct": if *error_correction && ver == "v3" { Some(recovery_pct) } else { None },
                                 })),
-                                OutputFormat::Text => {
-                                    println!("Created {ver} vault: {p}")
-                                }
+                                OutputFormat::Text => match placement_label {
+                                    Some(pl) => {
+                                        println!(
+                                            "Created {ver} vault: {p} (Error Correction: {pl})"
+                                        )
+                                    }
+                                    None => println!("Created {ver} vault: {p}"),
+                                },
                             }
                             0
                         }
@@ -46598,9 +47587,34 @@ async fn main() {
                             Err(e) => Err(e),
                         },
                         "v2" => aerovault_v2::vault_v2_open(path.clone(), pw).await,
-                        _ => aerovault_v3::vault_v3_open(path.clone(), pw)
-                            .await
-                            .and_then(|i| serde_json::to_value(&i).map_err(|e| e.to_string())),
+                        _ => {
+                            let open_res = aerovault_v3::vault_v3_open(path.clone(), pw).await;
+                            match open_res {
+                                Ok(info) => {
+                                    // Micro-step: surface Error Correction status using the new lightweight helper.
+                                    // This is P1-05 integration: has_error_correction is password-less (header + ext dir only).
+                                    let has_error_correction =
+                                        aerovault_v3::vault_v3_has_error_correction(path.clone())
+                                            .await
+                                            .unwrap_or(false);
+                                    let base_val =
+                                        serde_json::to_value(&info).map_err(|e| e.to_string());
+                                    match base_val {
+                                        Ok(mut v) => {
+                                            if let Some(obj) = v.as_object_mut() {
+                                                obj.insert(
+                                                    "has_error_correction".to_string(),
+                                                    serde_json::json!(has_error_correction),
+                                                );
+                                            }
+                                            Ok(v)
+                                        }
+                                        Err(e) => Err(e),
+                                    }
+                                }
+                                Err(e) => Err(e),
+                            }
+                        }
                     };
                     match res {
                         Ok(info) => {
@@ -46708,8 +47722,270 @@ async fn main() {
                         }
                     }
                 }
+                VaultCommands::Scrub {
+                    path,
+                    password,
+                    parity,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(path).await
+                    };
+                    if ver != "v3" {
+                        print_error(
+                            format,
+                            "Scrub is only supported for v3+ Error Correction vaults",
+                            7,
+                        );
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_scrub(path.clone(), pw, parity.clone()).await {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let parity_source = report
+                                            .get("parity_source")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("none");
+                                        if let Some(damaged) =
+                                            report.get("damaged").and_then(|v| v.as_array())
+                                        {
+                                            if damaged.is_empty() {
+                                                println!(
+                                                    "No damage detected ({} chunks checked). Parity source: {}",
+                                                    report
+                                                        .get("checked")
+                                                        .and_then(|v| v.as_u64())
+                                                        .unwrap_or(0),
+                                                    parity_source
+                                                );
+                                            } else {
+                                                println!(
+                                                    "Damage detected in {} chunks:",
+                                                    damaged.len()
+                                                );
+                                                for d in damaged {
+                                                    if let (Some(id), Some(start), Some(len)) = (
+                                                        d.get("id").and_then(|x| x.as_str()),
+                                                        d.get("on_disk_start")
+                                                            .and_then(|x| x.as_u64()),
+                                                        d.get("on_disk_len")
+                                                            .and_then(|x| x.as_u64()),
+                                                    ) {
+                                                        println!(
+                                                            "  - {} at offset {} ({} bytes)",
+                                                            id, start, len
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::Repair {
+                    path,
+                    password,
+                    dry_run,
+                    parity,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(path).await
+                    };
+                    if ver != "v3" {
+                        print_error(
+                            format,
+                            "Repair is only supported for v3+ Error Correction vaults",
+                            7,
+                        );
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_repair(
+                            path.clone(),
+                            pw,
+                            *dry_run,
+                            parity.clone(),
+                        )
+                        .await
+                        {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let repaired = report
+                                            .get("repaired")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let damaged = report
+                                            .get("damaged")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let is_dry = report
+                                            .get("dry_run")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
+                                        let parity_source = report
+                                            .get("parity_source")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("none");
+                                        if is_dry {
+                                            println!(
+                                                "Dry-run: would repair {} of {} damaged chunk(s) (parity source: {})",
+                                                repaired, damaged, parity_source
+                                            );
+                                        } else if damaged == 0 {
+                                            println!("No damage detected; nothing to repair");
+                                        } else if repaired == 0 {
+                                            println!("Could not repair {} damaged chunk(s): insufficient or invalid Error Correction (vault left untouched)", damaged);
+                                        } else if repaired < damaged {
+                                            println!("Repaired {} of {} damaged chunk(s) from {} parity; {} still unrecoverable", repaired, damaged, parity_source, damaged - repaired);
+                                        } else {
+                                            println!(
+                                                "Successfully repaired {} chunk(s) from {} parity",
+                                                repaired, parity_source
+                                            );
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::ExportParity {
+                    path,
+                    password,
+                    out,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(path).await
+                    };
+                    if ver != "v3" {
+                        print_error(format, "export-parity is only supported for v3+ vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_export_parity(path.clone(), pw, out.clone())
+                            .await
+                        {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let out_path = report
+                                            .get("path")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        let shards = report
+                                            .get("shards")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let protected = report
+                                            .get("bytes_protected")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let overhead = report
+                                            .get("overhead_pct")
+                                            .and_then(|v| v.as_f64())
+                                            .unwrap_or(0.0);
+                                        let header_parity = report
+                                            .get("header_parity_len")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let manifest_parity = report
+                                            .get("manifest_parity_len")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        if protected == 0 {
+                                            println!(
+                                                "Wrote recovery file {} (vault is empty; re-run export-parity after adding files)",
+                                                out_path
+                                            );
+                                        } else {
+                                            println!(
+                                                "Wrote recovery file {} ({} shards, {} bytes protected, {:.1}% overhead)",
+                                                out_path, shards, protected, overhead
+                                            );
+                                            if header_parity > 0 || manifest_parity > 0 {
+                                                println!(
+                                                    "  also protects the header and manifest locator (detached metadata recovery)"
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::StripParity {
+                    path,
+                    password,
+                    force,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(path).await
+                    };
+                    if ver != "v3" {
+                        print_error(format, "strip-parity is only supported for v3+ vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_strip_parity(path.clone(), pw, *force).await {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let sidecar_present = report
+                                            .get("sidecar_present")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
+                                        if sidecar_present {
+                                            println!("Stripped embedded parity; detached recovery file remains in place");
+                                        } else {
+                                            println!("Stripped embedded parity (--force): vault now has NO recovery data");
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
             }
         }
+        Commands::Correct { command } => cmd_correct(command, format),
         Commands::Aerorsync { command } => match command {
             AerorsyncCommands::Mode { command } => match command {
                 AerorsyncModeCommands::Get => cmd_aerorsync_mode_get(format),
@@ -47614,6 +48890,143 @@ mod tests {
         assert!(should_skip_cli_config(&argv(&["catalog", "--json"])));
         assert!(should_skip_cli_config(&argv(&["profiles", "--json"])));
         assert!(!should_skip_cli_config(&argv(&["ls", "/"])));
+    }
+
+    #[test]
+    fn sync_error_correction_level_maps_named_values() {
+        assert_eq!(parse_sync_error_correction_level_pct(None), Ok(None));
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("low")),
+            Ok(Some(7))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("medium")),
+            Ok(Some(15))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("med")),
+            Ok(Some(15))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("quartile")),
+            Ok(Some(25))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("high")),
+            Ok(Some(30))
+        );
+    }
+
+    #[test]
+    fn sync_error_correction_level_clamps_numeric_values() {
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("4")),
+            Ok(Some(5))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("17%")),
+            Ok(Some(17))
+        );
+        assert_eq!(
+            parse_sync_error_correction_level_pct(Some("99")),
+            Ok(Some(50))
+        );
+        assert!(parse_sync_error_correction_level_pct(Some("banana")).is_err());
+    }
+
+    #[test]
+    fn sync_doctor_ec_estimate_counts_sidecars_and_large_skips() {
+        // Gate disabled (0): the historical behavior, no low-benefit skips.
+        let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200, 0);
+
+        // 100 and 101 are under the 200-byte cap; 300 is skipped. Each small file's real
+        // v2 .aerocorrect is the self-healing frame (501 B: 21-byte prefix + 3 directory
+        // copies of 72 + 56 bytes each + 3 * 32-byte per-copy checksums) + AVEC (32 + 3*16
+        // checksums + 2*4096 parity at the MIN_SHARD floor) = 8773 B. The flat estimate used
+        // to report 31 B (~280x under).
+        assert_eq!(
+            estimate,
+            SyncDoctorEcEstimate {
+                estimated_sidecars: 2,
+                estimated_overhead_bytes: 17_546,
+                skipped_too_large: 1,
+                skipped_low_benefit: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn sync_doctor_ec_estimate_gates_low_benefit_files() {
+        // Same three files, but with a 300% minimum-benefit gate. The two tiny files have
+        // a sidecar far above 300% of their size, so they become low-benefit skips and no
+        // longer contribute to the overhead estimate; the 300-byte file is still too large.
+        let estimate = estimate_sync_doctor_ec_for_uploads([100_u64, 101, 300], 15, 200, 300);
+        assert_eq!(
+            estimate,
+            SyncDoctorEcEstimate {
+                estimated_sidecars: 0,
+                estimated_overhead_bytes: 0,
+                skipped_too_large: 1,
+                skipped_low_benefit: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn sync_doctor_upload_estimate_uses_upload_and_both_directions() {
+        let local_entries = HashMap::from([
+            (
+                "same.txt".to_string(),
+                (10, Some("2026-06-11T10:00:00".to_string())),
+            ),
+            (
+                "changed.txt".to_string(),
+                (20, Some("2026-06-11T11:00:00".to_string())),
+            ),
+            (
+                "new.txt".to_string(),
+                (30, Some("2026-06-11T12:00:00".to_string())),
+            ),
+        ]);
+        let remote_entries = HashMap::from([
+            (
+                "same.txt".to_string(),
+                (10, Some("2026-06-11T10:00:00".to_string())),
+            ),
+            (
+                "changed.txt".to_string(),
+                (25, Some("2026-06-11T10:30:00".to_string())),
+            ),
+        ]);
+
+        let mut upload_sizes = sync_doctor_planned_upload_sizes(
+            "upload",
+            "newer",
+            &local_entries,
+            &remote_entries,
+            None,
+        );
+        upload_sizes.sort_unstable();
+        assert_eq!(upload_sizes, vec![20, 30]);
+
+        let mut both_sizes = sync_doctor_planned_upload_sizes(
+            "both",
+            "newer",
+            &local_entries,
+            &remote_entries,
+            None,
+        );
+        both_sizes.sort_unstable();
+        assert_eq!(both_sizes, vec![20, 30]);
+
+        assert!(sync_doctor_planned_upload_sizes(
+            "download",
+            "newer",
+            &local_entries,
+            &remote_entries,
+            None
+        )
+        .is_empty());
     }
 
     #[test]

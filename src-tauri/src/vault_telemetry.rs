@@ -56,6 +56,19 @@ pub struct VaultReport {
     /// Academic attribution of the wrapper-stack model (see
     /// [`WRAPPER_MODEL_ATTRIBUTION`]). Always present in the receipt/export.
     pub attribution: String,
+
+    // P3-03: Error Correction (error-correction wrapper, last in 4-wrappers pipeline) telemetry.
+    // Populated for v3+ Error Correction enabled vaults on seal (create/add paths that trigger
+    // compute_error_correction_shards in save_open_vault). Optional so v1/v2 and non-ECC v3
+    // remain unchanged. "shards generated" = total data+parity shards in the v2 grid;
+    // "bytes protected" = concatenated live block stream length (incl u64 prefixes);
+    // overhead % measured on the actual serialized Error Correction payload bytes (header+cksums+parity).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_correction_shards_generated: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_correction_bytes_protected: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_correction_overhead_pct: Option<f64>,
 }
 
 impl VaultReport {
@@ -81,6 +94,9 @@ impl VaultReport {
             ms_total: 0,
             steps: Vec::new(),
             attribution: WRAPPER_MODEL_ATTRIBUTION.to_string(),
+            error_correction_shards_generated: None,
+            error_correction_bytes_protected: None,
+            error_correction_overhead_pct: None,
         }
     }
 
@@ -145,6 +161,20 @@ impl VaultReport {
         };
     }
 
+    /// P3-03: record Error Correction protection stats (called from v3 seal path when Error Correction ext present).
+    /// shards: total data+parity shards in the v2 fixed grid; protected: L (live block stream bytes);
+    /// overhead: actual serialized Error Correction payload / protected * 100 (includes headers/cksums, ~20% nominal).
+    pub fn set_error_correction_protection(
+        &mut self,
+        shards_generated: u64,
+        bytes_protected: u64,
+        overhead_pct: f64,
+    ) {
+        self.error_correction_shards_generated = Some(shards_generated);
+        self.error_correction_bytes_protected = Some(bytes_protected);
+        self.error_correction_overhead_pct = Some(overhead_pct);
+    }
+
     /// Plain-text rendering for CLI stderr / a downloadable `.txt` receipt.
     pub fn render_text(&self) -> String {
         let mut out = String::new();
@@ -182,6 +212,16 @@ impl VaultReport {
         out.push_str("steps:\n");
         for s in &self.steps {
             out.push_str(&format!("  {s}\n"));
+        }
+        if let (Some(sh), Some(bp), Some(ov)) = (
+            self.error_correction_shards_generated,
+            self.error_correction_bytes_protected,
+            self.error_correction_overhead_pct,
+        ) {
+            out.push_str(&format!(
+                "error_correction: shards_generated={} bytes_protected={} overhead_pct={:.1}\n",
+                sh, bp, ov
+            ));
         }
         out.push_str(&format!("\n{}\n", self.attribution));
         out

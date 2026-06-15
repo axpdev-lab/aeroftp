@@ -55,6 +55,7 @@ mod debug_tests;
 mod delta_sync;
 pub mod dreamweaver_import;
 pub mod duplicacy_import;
+pub mod error_correction;
 pub mod kopia_import;
 pub mod lftp_import;
 pub mod mobaxterm_import;
@@ -9233,8 +9234,243 @@ use sync::{
     journal_sig_filename, load_sync_index, load_sync_journal, save_sync_index, save_sync_journal,
     select_canary_sample, should_exclude, sign_journal, verify_local_file, CanaryResult,
     CanarySampleResult, CanarySummary, CompareOptions, FileComparison, FileInfo, RetryPolicy,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
 };
+
+#[derive(Debug, Clone, Serialize)]
+struct SyncEcCommandResult {
+    status: SyncEcStatus,
+    sidecar_path: Option<String>,
+    message: Option<String>,
+}
+
+fn sync_ec_message(status: SyncEcStatus, message: impl Into<String>) -> SyncEcCommandResult {
+    SyncEcCommandResult {
+        status,
+        sidecar_path: None,
+        message: Some(message.into()),
+    }
+}
+
+fn remote_missing_error_text(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("not found")
+        || lower.contains("no such file")
+        || lower.contains("does not exist")
+        || lower.contains("550")
+}
+
+async fn sync_ec_use_provider(
+    provider_state: &provider_commands::ProviderState,
+    is_provider: Option<bool>,
+) -> bool {
+    if let Some(is_provider) = is_provider {
+        return is_provider;
+    }
+    provider_state.provider.lock().await.is_some()
+}
+
+async fn sync_ec_upload_remote_file(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    is_provider: Option<bool>,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<(), String> {
+    if sync_ec_use_provider(provider_state, is_provider).await {
+        let mut provider_lock = provider_state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        provider
+            .upload(local_path, remote_path, None)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        ftp_manager
+            .upload_file(local_path, remote_path)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+async fn sync_ec_download_remote_bytes(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    is_provider: Option<bool>,
+    remote_path: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    if sync_ec_use_provider(provider_state, is_provider).await {
+        let tmp = tempfile::NamedTempFile::new()
+            .map_err(|e| format!("create AeroSync EC temp download: {e}"))?;
+        let tmp_path = tmp.path().to_string_lossy().to_string();
+        let mut provider_lock = provider_state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        match provider.download(remote_path, &tmp_path, None).await {
+            Ok(()) => std::fs::read(tmp.path())
+                .map(Some)
+                .map_err(|e| format!("read AeroSync EC temp download: {e}")),
+            Err(crate::providers::ProviderError::NotFound(_)) => Ok(None),
+            Err(e) if remote_missing_error_text(&e.to_string()) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    } else {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        match ftp_manager.download_to_bytes(remote_path).await {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if remote_missing_error_text(&e.to_string()) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn sync_ec_generate(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    local_path: String,
+    remote_path: String,
+    relative_path: String,
+    pct: Option<u32>,
+    max_file_size: Option<u64>,
+    is_provider: Option<bool>,
+) -> Result<SyncEcCommandResult, String> {
+    let options = sync::SyncErrorCorrectionOptions {
+        enabled: true,
+        pct: pct.unwrap_or(crate::error_correction::ERROR_CORRECTION_DEFAULT_PCT),
+        max_file_size: max_file_size
+            .unwrap_or(crate::error_correction::aerosync::AEROSYNC_EC_MAX_FILE_SIZE),
+        max_overhead_pct: 0,
+    };
+    let generated = match crate::error_correction::aerosync::generate_sync_sidecar_for_file_capped(
+        &relative_path,
+        Path::new(&local_path),
+        options.pct(),
+        options.max_file_size(),
+        options.max_overhead_pct(),
+    ) {
+        Ok(result) => result,
+        Err(e) => return Ok(sync_ec_message(SyncEcStatus::GenerateFailed, e)),
+    };
+    let sidecar = match generated {
+        crate::error_correction::aerosync::SyncEcGenerateResult::Generated(sidecar) => sidecar,
+        crate::error_correction::aerosync::SyncEcGenerateResult::SkippedTooLarge { .. } => {
+            return Ok(SyncEcCommandResult {
+                status: SyncEcStatus::SkippedTooLarge,
+                sidecar_path: None,
+                message: None,
+            });
+        }
+        crate::error_correction::aerosync::SyncEcGenerateResult::SkippedLowBenefit { .. } => {
+            return Ok(SyncEcCommandResult {
+                status: SyncEcStatus::SkippedLowBenefit,
+                sidecar_path: None,
+                message: None,
+            });
+        }
+    };
+
+    use std::io::Write as _;
+    let mut tmp = tempfile::NamedTempFile::new()
+        .map_err(|e| format!("create AeroSync EC temp sidecar: {e}"))?;
+    tmp.write_all(&sidecar.sidecar_bytes)
+        .map_err(|e| format!("write AeroSync EC temp sidecar: {e}"))?;
+    tmp.flush()
+        .map_err(|e| format!("flush AeroSync EC temp sidecar: {e}"))?;
+    let tmp_path = tmp.path().to_string_lossy().to_string();
+    let sidecar_path =
+        crate::error_correction::aerosync::sync_error_correction_sidecar_path(&remote_path);
+
+    match sync_ec_upload_remote_file(
+        &state,
+        &provider_state,
+        is_provider,
+        &tmp_path,
+        &sidecar_path,
+    )
+    .await
+    {
+        Ok(()) => Ok(SyncEcCommandResult {
+            status: SyncEcStatus::Generated,
+            sidecar_path: Some(sidecar_path),
+            message: None,
+        }),
+        Err(e) => Ok(SyncEcCommandResult {
+            status: SyncEcStatus::GenerateFailed,
+            sidecar_path: Some(sidecar_path),
+            message: Some(e),
+        }),
+    }
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn sync_ec_verify_repair(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    local_path: String,
+    remote_path: String,
+    relative_path: String,
+    expected_sha256: Option<String>,
+    expected_mtime: Option<String>,
+    is_provider: Option<bool>,
+) -> Result<SyncEcCommandResult, String> {
+    let Some(expected_sha256) = expected_sha256.filter(|s| !s.trim().is_empty()) else {
+        return Ok(SyncEcCommandResult {
+            status: SyncEcStatus::MissingExpectedHash,
+            sidecar_path: None,
+            message: None,
+        });
+    };
+    let expected_sha256 =
+        match crate::error_correction::aerosync::parse_sha256_hex(&expected_sha256) {
+            Ok(hash) => hash,
+            Err(e) => return Ok(sync_ec_message(SyncEcStatus::VerifyFailed, e)),
+        };
+    let sidecar_path =
+        crate::error_correction::aerosync::sync_error_correction_sidecar_path(&remote_path);
+    let Some(sidecar_bytes) =
+        sync_ec_download_remote_bytes(&state, &provider_state, is_provider, &sidecar_path).await?
+    else {
+        return Ok(SyncEcCommandResult {
+            status: SyncEcStatus::MissingSidecar,
+            sidecar_path: Some(sidecar_path),
+            message: None,
+        });
+    };
+
+    match crate::error_correction::aerosync::verify_repair_sync_file(
+        &relative_path,
+        &expected_sha256,
+        Path::new(&local_path),
+        &sidecar_bytes,
+    ) {
+        Ok(crate::error_correction::aerosync::SyncEcRepairResult::Verified) => {
+            Ok(SyncEcCommandResult {
+                status: SyncEcStatus::Verified,
+                sidecar_path: Some(sidecar_path),
+                message: None,
+            })
+        }
+        Ok(crate::error_correction::aerosync::SyncEcRepairResult::Repaired { .. }) => {
+            preserve_remote_mtime(&local_path, expected_mtime.as_deref());
+            Ok(SyncEcCommandResult {
+                status: SyncEcStatus::Repaired,
+                sidecar_path: Some(sidecar_path),
+                message: None,
+            })
+        }
+        Err(e) => Ok(SyncEcCommandResult {
+            status: SyncEcStatus::VerifyFailed,
+            sidecar_path: Some(sidecar_path),
+            message: Some(e),
+        }),
+    }
+}
 
 #[tauri::command]
 async fn compare_directories(
@@ -9244,7 +9480,8 @@ async fn compare_directories(
     remote_path: String,
     options: Option<CompareOptions>,
 ) -> Result<Vec<FileComparison>, String> {
-    let options = options.unwrap_or_default();
+    let mut options = options.unwrap_or_default();
+    sync::apply_error_correction_excludes(&mut options);
 
     validate_path(&local_path)?;
     if remote_path.contains('\0') {
@@ -9343,7 +9580,8 @@ async fn compare_local_directories(
     right_path: String,
     options: Option<CompareOptions>,
 ) -> Result<Vec<FileComparison>, String> {
-    let options = options.unwrap_or_default();
+    let mut options = options.unwrap_or_default();
+    sync::apply_error_correction_excludes(&mut options);
 
     validate_path(&left_path)?;
     validate_path(&right_path)?;
@@ -9558,6 +9796,7 @@ pub async fn get_local_files_recursive_with_progress(
                 size,
                 modified,
                 is_dir,
+                checksum_alg: checksum.as_ref().map(|_| "sha256".to_string()),
                 checksum,
             };
 
@@ -9695,6 +9934,7 @@ pub async fn get_local_files_recursive_parallel(
                         size,
                         modified,
                         is_dir: true,
+                        checksum_alg: None,
                         checksum: None,
                     },
                 );
@@ -9726,6 +9966,7 @@ pub async fn get_local_files_recursive_parallel(
                         size,
                         modified,
                         is_dir: false,
+                        checksum_alg: checksum.as_ref().map(|_| "sha256".to_string()),
                         checksum,
                     },
                 );
@@ -9746,6 +9987,7 @@ pub async fn get_local_files_recursive_parallel(
                     size,
                     modified,
                     is_dir,
+                    checksum_alg: None,
                     checksum: None,
                 },
             );
@@ -9842,6 +10084,7 @@ async fn get_remote_files_recursive_with_progress(
                         })
                 }),
                 is_dir: entry.is_dir,
+                checksum_alg: None,
                 checksum: None,
             };
 
@@ -15161,6 +15404,8 @@ pub fn run() {
             get_default_retry_policy,
             verify_local_transfer,
             classify_transfer_error,
+            sync_ec_generate,
+            sync_ec_verify_repair,
             // AeroCloud commands
             get_cloud_config,
             save_cloud_config_cmd,
@@ -15355,6 +15600,7 @@ pub fn run() {
             aerovault_v2::vault_v2_add_directory,
             // AeroVault v3 draft wrapper-stack backend
             aerovault_v3::vault_v3_create,
+            aerovault_v3::vault_v3_create_with_error_correction,
             aerovault_v3::vault_v3_open,
             aerovault_v3::is_vault_v3,
             aerovault_v3::vault_v3_add_files,
@@ -15369,6 +15615,12 @@ pub fn run() {
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
+            aerovault_v3::vault_v3_has_error_correction,
+            aerovault_v3::vault_v3_recovery_status,
+            aerovault_v3::vault_v3_scrub,
+            aerovault_v3::vault_v3_repair,
+            aerovault_v3::vault_v3_export_parity,
+            aerovault_v3::vault_v3_strip_parity,
             // Remote Vault: open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,

@@ -81,6 +81,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "keystore",
     "aerorsync",
     "vault",
+    "correct",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

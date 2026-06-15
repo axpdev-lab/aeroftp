@@ -1359,6 +1359,7 @@ pub async fn execute_tool(
                     compute_remote_checksum: delta_policy.wants_checksums(),
                     ..Default::default()
                 },
+                error_correction: Default::default(),
                 download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
             };
 
@@ -1812,7 +1813,7 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
                 crate::sync_core::FileOutcome::Downloaded { bytes, .. } => {
                     format!("downloaded {} ({} bytes)", rel, bytes)
                 }
-                crate::sync_core::FileOutcome::Deleted => format!("deleted {}", rel),
+                crate::sync_core::FileOutcome::Deleted { .. } => format!("deleted {}", rel),
                 crate::sync_core::FileOutcome::Skipped { reason } => {
                     format!("skipped {}: {}", rel, reason)
                 }

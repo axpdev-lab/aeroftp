@@ -174,6 +174,12 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const [compressionMode, setCompressionMode] = React.useState<CompressionMode>(
         SPEED_PRESETS.normal.compressionMode,
     );
+    // P3: Error Correction (AeroSync EC slice). Reuses the exact preset+slider+input
+    // trio + clamp from VaultCreate.tsx:183-227 (vault.recoveryLevel* i18n).
+    // Default: only 'backup' preset (Backup-class) gets enabled=true + pct=15 (Medium);
+    // Mirror/Two-way/Pull/update default to OFF. Always rendered (per handoff minima).
+    const [ecEnabled, setEcEnabled] = React.useState(true);
+    const [ecPct, setEcPct] = React.useState(15);
     const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
     const showManiac = isCyberTheme();
     const speedModes: AeroSyncSpeedMode[] = showManiac
@@ -207,6 +213,19 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         setParallelStreams(preset.parallelStreams);
         setCompressionMode(preset.compressionMode);
     }, [speedMode]);
+
+    // P3 EC profile defaults (handoff §2c): Backup preset → ON/Medium(15%).
+    // Other presets (mirror, update, bisync) → OFF. Effect resets on preset
+    // change so the recommended default for the chosen "profile" wins; manual
+    // toggle on a non-backup preset is a per-run override until next preset pick.
+    React.useEffect(() => {
+        if (preset === 'backup') {
+            setEcEnabled(true);
+            setEcPct(15);
+        } else {
+            setEcEnabled(false);
+        }
+    }, [preset]);
 
     if (!result) {
         if (loading) {
@@ -410,6 +429,81 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                 : (t('aerosync.verifyPolicyHint') || 'Post-transfer integrity check applied to each file.')}
                         </p>
                     </div>
+                </div>
+
+                {/* P3: Error Correction in Plan tab. Toggle + the reusable
+                    preset+slider+input (copied from VaultCreate:183-227, same
+                    4 levels, same Math.min/max(5,50) clamp, same vault.* i18n
+                    labels for levels). Visible for all; defaults driven by
+                    preset (Backup ON 15%, others OFF). Does not touch codec. */}
+                <div className="mt-3">
+                    <div className="mb-1 flex items-center gap-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <ShieldCheck size={11} className="mr-1 inline align-text-bottom" />
+                            {t('aerosync.errorCorrection') || 'Error Correction'}
+                        </label>
+                        <label className="inline-flex cursor-pointer items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                            <input
+                                type="checkbox"
+                                checked={ecEnabled}
+                                onChange={(event) => setEcEnabled(event.target.checked)}
+                                className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            {t('aerosync.enable') || 'Enable'}
+                        </label>
+                    </div>
+                    {ecEnabled && (
+                        <div className="pl-1 flex flex-col gap-2">
+                            <div className="grid grid-cols-4 gap-1.5">
+                                {([
+                                    { id: 7, label: t('vault.recoveryLevelLow') },
+                                    { id: 15, label: t('vault.recoveryLevelMedium') },
+                                    { id: 25, label: t('vault.recoveryLevelQuartile') },
+                                    { id: 30, label: t('vault.recoveryLevelHigh') },
+                                ] as const).map(lvl => {
+                                    const selected = ecPct === lvl.id;
+                                    return (
+                                        <button
+                                            key={lvl.id}
+                                            onClick={() => setEcPct(lvl.id)}
+                                            className={`rounded border px-1.5 py-1 text-center ${selected
+                                                ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        >
+                                            <div className="text-[11px] font-medium">{lvl.label}</div>
+                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="range"
+                                    min={5}
+                                    max={50}
+                                    step={1}
+                                    value={ecPct}
+                                    onChange={e => setEcPct(Number(e.target.value))}
+                                    className="flex-1 accent-amber-600"
+                                    aria-label={t('vault.recoveryLevel') || 'Recovery level'}
+                                />
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="number"
+                                        min={5}
+                                        max={50}
+                                        value={ecPct}
+                                        onChange={e => setEcPct(Math.min(50, Math.max(5, Math.round(Number(e.target.value) || 5))))}
+                                        className="w-14 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-[12px] text-right"
+                                    />
+                                    <span className="text-[11px] text-gray-500 dark:text-gray-400">%</span>
+                                </div>
+                            </div>
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                                {t('aerosync.errorCorrectionHint') || 'Stores a small .aerocorrect parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original.'}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* GAP-9a: Maniac confirmation gate. Selecting the Cyber-only
@@ -711,6 +805,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             versioningStrategy: versionedBackup.enabled ? 'trash_can' : null,
                             parallelStreams: effectiveParallelStreams,
                             compressionMode,
+                            // P3: pass EC control (typed in AeroSyncRuntime, reaches
+                            // RemoteSyncConfig.errorCorrection; runner already handles).
+                            errorCorrection: ecEnabled ? { enabled: true, pct: ecPct } : undefined,
                         })}
                         disabled={!canFireExecute}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:opacity-40 ${

@@ -130,7 +130,7 @@ A format that lives for years across many releases must be able to swap an
 algorithm without breaking older artifacts. Every wrapper layer carries an
 explicit `algorithm_id` and `algorithm_version` in the frame header. A reader
 dispatches on those fields instead of hard-coding primitives, so a future build
-can introduce a better compressor or a new ECC scheme and still read every old
+can introduce a better compressor or a new Error Correction scheme and still read every old
 vault.
 
 The AeroVault v3 defaults are:
@@ -233,7 +233,7 @@ sweet spot).
 
 Error correction is the fourth wrapper. It is structurally different from the
 other three: compression, chunking and encryption transform the data;
-error correction adds parity *alongside* it, so `v3 + ECC = v4` and a v3
+error correction adds parity *alongside* it, so `v3 + Error Correction = v4` and a v3
 reader simply skips the parity it does not understand.
 
 It sits as the outermost layer, over the cipher blocks. It repairs damage
@@ -241,21 +241,24 @@ It sits as the outermost layer, over the cipher blocks. It repairs damage
 Redundancy is for recovery, not for trust. On cloud backends durability is
 already redundant, so the value is marginal there; on USB sticks, consumer NAS
 disks, optical media and cold-storage archives it is the difference between
-"an encrypted backup survives a bad sector" and "it is gone". Candidate
-schemes (Reed-Solomon over chunks, Parchive-style recovery blocks, a hybrid)
-and the operational `scrub` / `repair` surface are tracked as
-`T-AEROVAULT-ECC` in the community roadmap and are not part of v3.
+"an encrypted backup survives a bad sector" and "it is gone". The scheme is
+**decided and shipped**: Reed-Solomon parity, kept either embedded in the
+container or in a detached, content-SHA-bound `.aerocorrect` sidecar (the same
+unified format AeroSync uses), with the operational `scrub` / `repair` /
+`export-parity` surface. Details in [`AEROVAULT-V3-SPEC.md` section 11](../AEROVAULT-V3-SPEC.md#11-v4-evolution-note-t-aerovault-ecc-shipped).
 
 ## Where this is today
 
 - **AeroVault v3 (Beta, opt-in):** packing, chunking, per-chunk zstd,
   per-chunk AES-256-GCM-SIV, BLAKE3 chunk id and cipher hash, the extension
-  slot reserved for v4 ECC. The format stays Beta and is not the default tier
+  slot reserved for v4 Error Correction. The format stays Beta and is not the default tier
   until it has had a public spec review pass.
 - **AeroSync:** the streaming surface inherits the wrappers progressively;
   chunk-first ordering is non-negotiable there because the whole product
   depends on "edit one byte, move one chunk".
-- **Error correction:** v4 / dedicated track, scheme selection open.
+- **Error correction:** v4, shipped. Reed-Solomon parity, embedded or in a
+  detached self-healing `.aerocorrect` sidecar, with `scrub` / `repair` /
+  `export-parity`.
 
 The authoritative format specification is
 [`AEROVAULT-V3-SPEC.md`](../AEROVAULT-V3-SPEC.md). This page is the intuition;

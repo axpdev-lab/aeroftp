@@ -752,9 +752,17 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "08:00,512k 12:0
 
 # Simple bandwidth limit (alternative to --limit-rate with schedule syntax)
 aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "1M"
+
+# Generate Reed-Solomon recovery sidecars after successful uploads
+aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload --error-correction
+
+# Pick an overhead level: low=7, medium=15, quartile=25, high=30, or 5-50
+aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload --ec=quartile
 ```
 
-Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
+
+`--error-correction` is opt-in for CLI sync and protects uploaded remote files at rest by writing a sibling `<remote>.aerorec` sidecar after each successful upload. If no level is supplied the CLI uses `medium` (15% target overhead). When enabled, sync automatically excludes `*.aerorec` from comparisons so parity sidecars are not mirrored back as user data or deleted as orphans. Remote deletes best-effort remove the protected file's companion sidecar after the primary delete succeeds; missing sidecars are ignored and sidecar delete failures do not fail the file delete. Phase 1 sidecar generation is capped at 256 MiB per source file; larger files are uploaded normally and counted as `ec_skipped_too_large`. JSON sync reports include `ec_generated`, `ec_skipped_too_large`, `ec_generate_failed`, `ec_sidecar_deleted`, and `ec_sidecar_delete_failed` when EC is enabled. Local-to-local sync ignores this flag.
 
 #### Bisync (bidirectional)
 
@@ -846,9 +854,28 @@ aeroftp-cli sync --profile "server" ./local /remote --from-reconcile diff.json -
 ```bash
 # Preflight: risks + suggested next command
 aeroftp-cli sync-doctor --profile "server" ./local /remote --json
+
+# Include an AeroSync EC sidecar cost estimate without generating parity
+aeroftp-cli sync-doctor --profile "server" ./local /remote --ec=medium --json
 ```
 
-Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
+Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. With `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, sync-doctor automatically excludes `*.aerorec` from scans and adds estimate fields (`ec_enabled`, `ec_level_pct`, `ec_estimated_sidecars`, `ec_estimated_overhead_bytes`, `ec_skipped_too_large`, `ec_phase1_max_file_size`) without computing or uploading parity. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
+
+### AEROSYNC-EC - Sync Error Correction Sidecars
+
+AEROSYNC-EC extends AeroSync backups with Reed-Solomon parity stored next to each protected remote file. It reuses the same AVEC codec family as AeroVault error correction, but wraps sync parity in an `AERC1` sidecar:
+
+```text
+<remote-file>.aerorec
+magic: "AERC1\0\0\0"
+binding: BLAKE3("aerosync-recovery-binding-v1" || relative_path || file_size || content_sha256)
+segments: Phase 1 emits one whole-file AVEC segment
+checksum: trailing BLAKE3 over the sidecar body
+```
+
+The binding prevents stale or mismatched sidecars from being trusted: if the file path, size, or content hash changes, the sidecar no longer matches that file. Backup-class sync profiles use Medium EC by default in the app; the CLI command surface is explicit per run via `sync --error-correction` or `sync --ec`.
+
+Honest limits: EC protects against localized at-rest corruption after upload, not TCP/SSH/TLS wire corruption, logical deletes, ransomware, whole-file loss, or truncation beyond the Reed-Solomon parity budget. Each protected file creates one extra remote object and consumes the selected storage overhead. Phase 1 skips files larger than 256 MiB until the later windowed multi-segment generator lands.
 
 ### transfer - Cross-Profile Transfer
 
@@ -1053,6 +1080,66 @@ small-file batching, Gear-CDC chunking, keyed BLAKE3-128 chunk ids
 (dedup), per-chunk zstd, AES-256-GCM-SIV, BLAKE3-256 cipher-block hashes;
 the `archive` compression profile widens the CDC bounds for a better
 ratio at the cost of finer-grained dedup. Password resolves from
+
+### Error Correction (v4 track): Reed-Solomon error correction
+
+v4 = v3 + non-critical "error-correction.reed-solomon" (Error Correction last wrapper). Opt-in at create:
+
+```bash
+# Create v3 + Error Correction (real RS shards on every seal; ~20% overhead, v2 grid)
+# Flag spelling confirmed with Ehud Kirsh (#276): --error-correction, short alias --ec.
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --error-correction
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec   # short alias
+
+# Info advertises it
+aeroftp-cli vault info myvault.aerovault --json   # has_error_correction: true, error_correction: {enabled,algorithm:"reed-solomon",...}
+
+# Scrub (returns checked + damaged list + the parity source repair would use)
+aeroftp-cli vault scrub myvault.aerovault
+
+# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview)
+aeroftp-cli vault repair myvault.aerovault --dry-run
+aeroftp-cli vault repair myvault.aerovault
+```
+
+**Recovery placement (the SIDECAR slice, #276).** Parity can live inside the
+container (`embedded`, the default), in a sibling `.aerovault.rec` recovery file
+(`detached`), or `both`. Detached keeps the encrypted container byte-identical to
+a plain vault (so a remote storage/browse view stays stable) and lets you add or
+refresh parity *after* the fact, the concrete win over Kopia (which can only
+enable ECC at creation). par2-style: the recovery file carries a binding id to its
+vault, so a wrong file is refused early; staleness after edits is caught by the
+payload's own per-shard checksums.
+
+```bash
+# Create with a detached sidecar instead of embedded parity
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-placement detached
+
+# Pick the QR-style overhead level (#276): named low|medium|quartile|high, or a number 5-50.
+# Overhead is P/K; low ~7%, medium ~15%, quartile ~25%, high ~30%; default 20% (K=10/P=2).
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-level low
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-level 12
+
+# Add parity later to a vault created without it (reads the container, never rewrites it)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault            # -> myvault.aerovault.rec
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault -o out.rec # custom path
+
+# Repair from an explicit recovery file (binding id verified against the vault)
+aeroftp-cli vault repair myvault.aerovault --parity myvault.aerovault.rec
+aeroftp-cli vault scrub  myvault.aerovault --parity myvault.aerovault.rec   # reports parity_source
+
+# Drop the embedded copy once a sidecar exists (refused without one unless --force)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault strip-parity myvault.aerovault
+```
+
+Repair resolves the parity source in priority order: explicit `--parity` ->
+`<vault>.aerovault.rec` sidecar -> embedded extension, and reports which it used
+(`parity_source` in `--json`). Detached parity tracks a fixed data set, so re-run
+`export-parity` after editing a detached/both vault.
+
+See `aeroftp-cli vault --help`, the APPENDIX-AEROVAULT-V4-ECC, AEROVAULT-V3-SPEC §11, and AGENTS.md (use direct paths for vault; --profile for remote servers). Receipts (`--receipt` or GUI) now include error_correction_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match). 
+
+(Closes T-AEROVAULT-ECC.)
 `--password` / `-p`, `AEROFTP_VAULT_PASSWORD`, or a TTY prompt. `vault
 add --receipt <path>` writes a machine-readable JSON receipt and prints a
 human-readable summary to stderr (stdout stays clean JSON for piping).

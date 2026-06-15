@@ -27,6 +27,7 @@ import type {
     DeltaSavingsSummary,
     SyncIndex,
     SyncIndexEntry,
+    SyncEcStatus,
 } from '../types';
 
 /** Per-file lifecycle status emitted to the caller for live UI updates. */
@@ -78,6 +79,14 @@ export interface SyncRunFile {
      * `relativePath`.
      */
     sourcePath?: string;
+    /** Remote/source SHA-256 when available; needed for EC verify/repair. */
+    expectedSha256?: string | null;
+}
+
+export interface ErrorCorrectionRuntime {
+    enabled: boolean;
+    pct: number;
+    maxFileSize?: number;
 }
 
 /** Standalone directories to create (counted in `dirsCreated`). */
@@ -147,6 +156,8 @@ export interface RemoteSyncConfig {
      * and `isFtp` must both be `false` when this is set.
      */
     isLocalLocal?: boolean;
+    /** AeroSync recovery sidecars. P2 wiring only; profile/UI defaults land later. */
+    errorCorrection?: ErrorCorrectionRuntime | null;
 }
 
 /** The rich connected-remote report — superset of the local-local report. */
@@ -173,6 +184,17 @@ export interface SyncRunReport {
     delta_savings?: DeltaSavingsSummary;
     delta_bytes_on_wire?: number;
     delta_batch_files?: number;
+    ec_generated: number;
+    ec_verified: number;
+    ec_repaired: number;
+    ec_skipped_too_large: number;
+    ec_generate_failed: number;
+}
+
+interface SyncEcCommandResult {
+    status: SyncEcStatus;
+    sidecar_path?: string | null;
+    message?: string | null;
 }
 
 export interface RemoteSyncCallbacks {
@@ -348,6 +370,8 @@ export const runRemoteSync = async (
     const remoteBase = stripTrailingSlash(config.remoteRoot);
     const archivingActive =
         !!config.versioningStrategy && config.versioningStrategy !== 'disabled';
+    const errorCorrectionEnabled =
+        config.errorCorrection?.enabled === true && config.isLocalLocal !== true;
 
     const setStatus = (path: string, status: SyncRunFileStatus): void => {
         callbacks.onFileStatus?.(path, status);
@@ -460,8 +484,25 @@ export const runRemoteSync = async (
     let retried = 0;
     let verifyFailed = 0;
     let totalBytes = 0;
+    let ecGenerated = 0;
+    let ecVerified = 0;
+    let ecRepaired = 0;
+    let ecSkippedTooLarge = 0;
+    let ecGenerateFailed = 0;
     let runCancelled = false;
     const errors: SyncErrorInfo[] = [];
+
+    const recordEcStatus = (
+        status: SyncEcStatus,
+        journalEntry?: SyncJournalEntry,
+    ): void => {
+        if (journalEntry) journalEntry.ec_status = status;
+        if (status === 'generated') ecGenerated++;
+        else if (status === 'verified') ecVerified++;
+        else if (status === 'repaired') ecRepaired++;
+        else if (status === 'skipped_too_large') ecSkippedTooLarge++;
+        else if (status === 'generate_failed') ecGenerateFailed++;
+    };
 
     // Reset the backend cancel flag: a stale cancel from a prior run would
     // otherwise fail every upload/download immediately.
@@ -498,6 +539,7 @@ export const runRemoteSync = async (
             last_error: null,
             verified: null,
             bytes_transferred: 0,
+            ec_status: null,
         })),
         completed: false,
     };
@@ -652,6 +694,21 @@ export const runRemoteSync = async (
                     journalEntry.bytes_transferred = item.size;
                     journalEntry.verified = true;
                 }
+                if (errorCorrectionEnabled) {
+                    try {
+                        const ecResult = await invoke<SyncEcCommandResult>('sync_ec_generate', {
+                            localPath: localFilePath,
+                            remotePath: remoteFilePath,
+                            relativePath: item.relativePath,
+                            pct: config.errorCorrection?.pct,
+                            maxFileSize: config.errorCorrection?.maxFileSize,
+                            isProvider: config.isProvider,
+                        });
+                        recordEcStatus(ecResult.status, journalEntry);
+                    } catch {
+                        recordEcStatus('generate_failed', journalEntry);
+                    }
+                }
                 captureDeltaForPath(item.relativePath);
                 setStatus(item.relativePath, 'success');
             } else {
@@ -712,6 +769,21 @@ export const runRemoteSync = async (
             if (result.success) {
                 didTransfer = true;
                 setStatus(item.relativePath, 'verifying');
+                if (errorCorrectionEnabled) {
+                    try {
+                        const ecResult = await invoke<SyncEcCommandResult>('sync_ec_verify_repair', {
+                            localPath: localFilePath,
+                            remotePath: remoteFilePath,
+                            relativePath: item.relativePath,
+                            expectedSha256: item.expectedSha256 ?? null,
+                            expectedMtime: item.mtime || undefined,
+                            isProvider: config.isProvider,
+                        });
+                        recordEcStatus(ecResult.status, journalEntry);
+                    } catch {
+                        recordEcStatus('verify_failed', journalEntry);
+                    }
+                }
                 const vResult = await verifyDownload(localFilePath, item.size, item.mtime);
                 if (vResult && !vResult.passed) {
                     verifyFailed++;
@@ -766,6 +838,18 @@ export const runRemoteSync = async (
                             ? { path: remoteFilePath }
                             : { path: remoteFilePath, isDir: item.isDir === true };
                         await invoke(cmd, args);
+                    }
+                    // Best-effort: remove the `.aerocorrect` EC parity sidecar alongside the
+                    // deleted file so a removed backup never orphans its sidecar. The
+                    // sidecar is excluded from comparison, so it is never its own action.
+                    if (!item.isDir) {
+                        const sidecarPath = `${remoteFilePath}.aerocorrect`;
+                        const sidecarInvoke = config.isLocalLocal
+                            ? invoke('delete_local_file', { path: sidecarPath })
+                            : config.isProvider
+                                ? invoke('provider_delete_file', { path: sidecarPath })
+                                : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
+                        await sidecarInvoke.catch(() => undefined);
                     }
                 } else {
                     // Archive only real files; directories are not versioned.
@@ -944,5 +1028,10 @@ export const runRemoteSync = async (
         delta_savings,
         delta_bytes_on_wire: delta_savings?.total_bytes_sent,
         delta_batch_files: delta_savings?.files_using_delta,
+        ec_generated: ecGenerated,
+        ec_verified: ecVerified,
+        ec_repaired: ecRepaired,
+        ec_skipped_too_large: ecSkippedTooLarge,
+        ec_generate_failed: ecGenerateFailed,
     };
 };

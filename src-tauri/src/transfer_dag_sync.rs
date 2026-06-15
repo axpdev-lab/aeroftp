@@ -67,9 +67,9 @@ use crate::delta_transport::DeltaBatch;
 use crate::providers::StorageProvider;
 use crate::sync::{
     apply_sync_tree_outcome, decide_download, decide_upload, ensure_remote_dir, perform_download,
-    perform_local_delete, perform_remote_delete, perform_upload, DeltaPolicy, FileOutcome,
-    SyncDirection, SyncError, SyncOptions, SyncPhase, SyncProgressSink, SyncReport,
-    SyncTransferSpec, SyncTreeAction,
+    perform_local_delete, perform_remote_delete, perform_upload, scan_options_for_sync,
+    DeltaPolicy, FileOutcome, SyncDirection, SyncError, SyncOptions, SyncPhase, SyncProgressSink,
+    SyncReport, SyncTransferSpec, SyncTreeAction,
 };
 use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, LocalEntry, RemoteEntry};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
@@ -101,6 +101,14 @@ struct PlannedTransfer {
     op: &'static str,
     total: u64,
     decision_policy: DeltaPolicy,
+    expected_sha256_hex: Option<String>,
+}
+
+fn remote_sha256_hex(entry: &RemoteEntry) -> Option<String> {
+    match (entry.checksum_alg.as_deref(), entry.checksum_hex.as_deref()) {
+        (Some(alg), Some(hex)) if alg.eq_ignore_ascii_case("sha256") => Some(hex.to_string()),
+        _ => None,
+    }
 }
 
 /// One resolved skip in a sync plan.
@@ -183,6 +191,7 @@ fn plan_sync_dag(
                         op: "upload",
                         total: local_entry.size,
                         decision_policy: decision.decision_policy,
+                        expected_sha256_hex: None,
                     });
                 }
                 SyncTreeAction::Skip(reason) => {
@@ -221,6 +230,7 @@ fn plan_sync_dag(
                         op: "download",
                         total: remote_entry.size,
                         decision_policy: decision.decision_policy,
+                        expected_sha256_hex: remote_sha256_hex(remote_entry),
                     });
                 }
                 SyncTreeAction::Skip(reason) => {
@@ -359,6 +369,7 @@ async fn drive_sync_transfers(
     remote_root: &str,
     download_segments: u32,
     requested_policy: DeltaPolicy,
+    error_correction: &crate::sync::SyncErrorCorrectionOptions,
 ) {
     while let Some(job) = job_rx.recv().await {
         let transfer = &transfers[job.transfer_index];
@@ -378,6 +389,7 @@ async fn drive_sync_transfers(
                     false,
                     sink,
                     delta_batch,
+                    error_correction,
                 )
                 .await
             }
@@ -391,6 +403,8 @@ async fn drive_sync_transfers(
                     false,
                     sink,
                     delta_batch,
+                    transfer.expected_sha256_hex.as_deref(),
+                    error_correction,
                 )
                 .await
             }
@@ -426,12 +440,13 @@ pub async fn execute_sync_dag(
     // while the network-bound remote scan runs on the provider, so the two
     // overlap instead of running back to back.
     sink.on_phase(SyncPhase::Scanning);
+    let scan = scan_options_for_sync(opts);
     let local_handle = {
         let root = local_root.to_string();
-        let scan_opts = opts.scan.clone();
+        let scan_opts = scan.clone();
         tokio::task::spawn_blocking(move || scan_local_tree(&root, &scan_opts))
     };
-    let remotes = scan_remote_tree(provider, remote_root, &opts.scan).await;
+    let remotes = scan_remote_tree(provider, remote_root, &scan).await;
     // `scan_local_tree` itself returns a `Vec` (best-effort, mirroring
     // `scan_remote_tree`), so the only way the join returns `Err` is a panic
     // inside the blocking thread. `.unwrap_or_default()` would silently turn
@@ -586,6 +601,7 @@ pub async fn execute_sync_dag(
                 remote_root,
                 opts.download_segments,
                 opts.delta_policy,
+                &opts.error_correction,
             );
             let (dag_result, ()) = tokio::join!(dag_future, driver_future);
             dag_result
@@ -610,6 +626,7 @@ pub async fn execute_sync_dag(
                     opts.delta_policy,
                     false,
                     sink,
+                    &opts.error_correction,
                 )
                 .await
             }
@@ -706,6 +723,7 @@ mod tests {
             delete_orphans: false,
             conflict_mode: crate::sync::ConflictMode::Newer,
             scan: Default::default(),
+            error_correction: Default::default(),
             download_segments: 1,
         }
     }
@@ -894,6 +912,7 @@ mod tests {
                 last_error: None,
                 verified: None,
                 bytes_transferred: 0,
+                ec_status: None,
             });
         }
         journal

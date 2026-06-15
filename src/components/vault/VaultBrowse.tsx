@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check } from 'lucide-react';
+import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench, FileDown, Scissors } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, IconProvider } from './useVaultState';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { formatSize } from '../../utils/formatters';
 
@@ -17,6 +18,8 @@ interface VaultBrowseProps {
 
 export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider }) => {
     const t = useTranslation();
+    const scrubDrag = useDraggableModal();
+    const repairDrag = useDraggableModal();
 
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || VaultIcon;
@@ -64,6 +67,49 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <ArrowUpDown size={14} /> {t('vaultSync.title') || 'Sync'}
                     </button>
                 )}
+
+                {/* P2 Error Correction actions: for experimental v3 vaults or any vault with
+                    embedded/detached recovery. Scrub/repair auto-resolve the parity source. */}
+                {(state.vaultSecurity?.level === 'experimental' || state.hasErrorCorrection || state.hasDetachedRecovery) && (
+                    <>
+                        <button
+                            onClick={state.handleScrub}
+                            disabled={state.loading}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded"
+                            title={t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'}
+                        >
+                            <Shield size={14} /> {t('vault.scrubErrorCorrection')}
+                        </button>
+                        <button
+                            onClick={() => { state.setRepairDryRun(true); state.setShowRepairDialog(true); }}
+                            disabled={state.loading}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-rose-700 hover:bg-rose-600 text-white rounded"
+                            title={t('vault.repairErrorCorrection') + ' (dry-run preview available)'}
+                        >
+                            <Wrench size={14} /> {t('vault.repairErrorCorrection')}
+                        </button>
+                        {/* SIDECAR: export a detached .aerocorrect (add/refresh parity without rewriting the container). */}
+                        <button
+                            onClick={state.exportParity}
+                            disabled={state.loading || state.isExportingParity}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded"
+                            title={t('vault.exportParityHint')}
+                        >
+                            <FileDown size={14} /> {state.isExportingParity ? t('vault.exportingParity') : t('vault.exportParity')}
+                        </button>
+                        {/* Strip embedded parity (only meaningful when an in-container copy exists). */}
+                        {state.hasErrorCorrection && (
+                            <button
+                                onClick={() => state.stripParity(false)}
+                                disabled={state.loading || state.isStrippingParity}
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded"
+                                title={t('vault.stripParityHint')}
+                            >
+                                <Scissors size={14} /> {state.isStrippingParity ? t('vault.strippingParity') : t('vault.stripParity')}
+                            </button>
+                        )}
+                    </>
+                )}
                 {/* Remote vault: Save & Close */}
                 {state.remoteLocalPath && (
                     <button
@@ -81,6 +127,22 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         {state.vaultSecurity?.cascadeMode && (
                             <span className="flex items-center gap-0.5">
                                 <Zap size={10} /> {t('vault.cascade')}
+                            </span>
+                        )}
+                        {/* P2: Error Correction badge (theme-aware). Distinguishes detached
+                            sidecar parity from embedded so the user knows the storage shape. */}
+                        {(state.hasErrorCorrection || state.hasDetachedRecovery || state.errorCorrectionEnabled) && (
+                            <span
+                                className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                title={state.hasDetachedRecovery && !state.hasErrorCorrection
+                                    ? (state.hasDetachedHeaderRecovery
+                                        ? `${t('vault.detachedStableStorageNote')} ${t('vault.detachedHeaderProtectedNote')}`
+                                        : t('vault.detachedStableStorageNote'))
+                                    : undefined}
+                            >
+                                {state.hasDetachedRecovery && !state.hasErrorCorrection
+                                    ? t('vault.errorCorrectionDetachedBadge')
+                                    : 'Error Correction'}
                             </span>
                         )}
                     </div>
@@ -284,6 +346,109 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     onClose={() => state.setShowSyncDialog(false)}
                     onSynced={state.refreshVaultEntries}
                 />
+            )}
+
+            {/* P2: Draggable Scrub modal (theme-aware, follows app modal template + useDraggableModal) */}
+            {state.showScrubDialog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => state.setShowScrubDialog(false)}>
+                    <div
+                        {...scrubDrag.panelProps}
+                        className="w-[min(92vw,560px)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div {...scrubDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
+                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <Shield size={16} className="text-amber-500" /> {t('vault.errorCorrectionScrubResult')}
+                            </div>
+                            <button onClick={() => state.setShowScrubDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
+                        </div>
+                        <div className="p-4 text-sm max-h-[60vh] overflow-auto">
+                            {!state.scrubResult || (state.scrubResult.count ?? 0) === 0 ? (
+                                <div className="text-emerald-600 dark:text-emerald-400">{t('vault.noDamageDetected')} {t('vault.checkedParen', { count: String(state.scrubResult?.checked ?? state.scrubResult?.count ?? 0) })}</div>
+                            ) : (
+                                <div>
+                                    <div className="mb-2 text-amber-600 dark:text-amber-400 font-medium">{t('vault.damagedChunksFound', { count: String(state.scrubResult.count), checked: String(state.scrubResult.checked ?? '?') })}</div>
+                                    <ul className="space-y-1 text-xs">
+                                        {(state.scrubResult.damaged || []).map((d: any, i: number) => (
+                                            <li key={i} className="p-2 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                                {d.id} — offset {d.on_disk_start} (len {d.on_disk_len})
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <div className="mt-3 text-[11px] text-gray-500 dark:text-gray-400">{t('vault.useRepairHint')}</div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                            <button onClick={() => state.setShowScrubDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('vault.close')}</button>
+                            <button onClick={() => { state.setShowScrubDialog(false); state.setShowRepairDialog(true); }} className="ml-2 px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500">{t('vault.openRepair')}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* P2: Draggable Repair modal (respects themes, draggable header via hook, template consistent with other app modals) */}
+            {state.showRepairDialog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => state.setShowRepairDialog(false)}>
+                    <div
+                        {...repairDrag.panelProps}
+                        className="w-[min(92vw,620px)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div {...repairDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
+                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <Wrench size={16} className="text-rose-500" /> {t('vault.errorCorrectionRepair')}
+                            </div>
+                            <button onClick={() => state.setShowRepairDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
+                        </div>
+                        <div className="p-4 text-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                                <input type="checkbox" checked={state.repairDryRun} onChange={e => state.setRepairDryRun(e.target.checked)} className="accent-rose-600" />
+                                <span>{t('vault.dryRunLabel')}</span>
+                            </div>
+
+                            {/* Show damaged list from last scrub if available, to make it useful before repair */}
+                            {state.scrubResult && state.scrubResult.damaged && state.scrubResult.damaged.length > 0 && (
+                                <div className="mb-3">
+                                    <div className="text-amber-600 dark:text-amber-400 font-medium mb-1 text-xs">{t('vault.damagedFromLastScrub')}</div>
+                                    <ul className="text-xs max-h-24 overflow-auto border border-gray-200 dark:border-gray-700 rounded p-2 bg-gray-50 dark:bg-gray-800">
+                                        {state.scrubResult.damaged.map((d: any, i: number) => (
+                                            <li key={i}>{d.id} @ {d.on_disk_start} ({d.on_disk_len}B)</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {state.repairResult ? (
+                                <div className="p-3 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                        const r = state.repairResult.repaired ?? 0;
+                                        const d = state.repairResult.damaged ?? 0;
+                                        const dry = state.repairResult.dry_run;
+                                        const prefix = dry ? 'Dry-run: ' : '';
+                                        if (d === 0) return `${prefix}${t('vault.noDamageNothing')}`;
+                                        if (r === 0) return `${prefix}${t('vault.couldNotRepairAny', { damaged: String(d) })}`;
+                                        // all-or-nothing engine: r > 0 implies r === d (all verified + persisted)
+                                        return `${prefix}${t('vault.successfullyRepaired', { repaired: String(r) })}`;
+                                    })()}
+                                    {state.repairResult.dry_run && ' (no changes written)'}
+                                </div>
+                            ) : (
+                                <div className="text-gray-500 dark:text-gray-400 text-xs">{t('vault.runScrubHint')}</div>
+                            )}
+                        </div>
+                        <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
+                            <button onClick={() => state.setShowRepairDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('vault.close')}</button>
+                            <button
+                                onClick={state.handleRepair}
+                                disabled={state.isRepairing || state.loading}
+                                className="px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500 disabled:opacity-50"
+                            >
+                                {state.isRepairing ? t('vault.repairing') : (state.repairDryRun ? t('vault.previewRepair') : t('vault.repairNow'))}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </>
     );

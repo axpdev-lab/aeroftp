@@ -334,6 +334,7 @@ mod tests {
             last_error: None,
             verified: None,
             bytes_transferred: 0,
+            ec_status: None,
         });
         journal.entries.push(SyncJournalEntry {
             relative_path: "b.txt".to_string(),
@@ -343,6 +344,7 @@ mod tests {
             last_error: None,
             verified: None,
             bytes_transferred: 0,
+            ec_status: None,
         });
         journal
     }

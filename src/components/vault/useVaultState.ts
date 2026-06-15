@@ -10,6 +10,9 @@ import { ArchiveEntry, AeroVaultMeta } from '../../types';
 import { useTranslation } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
 
+/** Where Error Correction parity lives relative to the vault container. */
+export type RecoveryPlacement = 'embedded' | 'detached' | 'both';
+
 // --- Error mapping ---
 
 /** Map raw Rust error messages to user-friendly i18n keys */
@@ -123,6 +126,10 @@ export interface VaultReport {
     ms_total: number;
     steps: string[];
     attribution: string;
+    // P3-03 Error Correction telemetry (populated on seal for Error Correction vaults; optional for compat)
+    error_correction_shards_generated?: number;
+    error_correction_bytes_protected?: number;
+    error_correction_overhead_pct?: number;
 }
 
 interface VaultV3Info {
@@ -230,13 +237,18 @@ export const securityLevels = {
         color: 'text-amber-400',
         bgColor: 'bg-amber-600',
         borderColor: 'border-amber-500',
-        label: 'Beta',
+        label: 'Archive',
         version: 3,
         cascade: false,
         features: ['Gear-CDC chunking', 'Chunk deduplication', 'Zstd per chunk', 'AES-256-GCM-SIV'],
-        description: 'Deduplicated archive · zstd chunks · Draft v3'
+        description: 'Deduplicated archive · zstd chunks · v3'
     }
 };
+
+// Error Correction (Reed-Solomon) extends a v3 vault with recoverable parity.
+// When enabled on create, uses vault_v3_create_with_error_correction (non-critical extension).
+// Scrub/repair exposed via dedicated commands.
+
 
 // --- Hook props & return type ---
 
@@ -315,6 +327,30 @@ export interface VaultState {
     showLevelDropdown: boolean;
     setShowLevelDropdown: (show: boolean) => void;
 
+    // Error Correction (Reed-Solomon error-correction) toggle for experimental/Beta vaults (P2).
+    // When enabled on create, uses the dedicated with_error_correction backend (non-critical extension).
+    // Enables scrub/repair actions and Error Correction badge in the UI.
+    errorCorrectionEnabled: boolean;
+    setErrorCorrectionEnabled: (enabled: boolean) => void;
+    hasErrorCorrection: boolean;
+    setHasErrorCorrection: (v: boolean) => void;
+    // Where parity lives when created with Error Correction (embedded/detached/both).
+    recoveryPlacement: RecoveryPlacement;
+    setRecoveryPlacement: (p: RecoveryPlacement) => void;
+    // QR-style Error Correction overhead level (#276), as a target overhead percentage.
+    errorCorrectionPct: number;
+    setErrorCorrectionPct: (p: number) => void;
+    // Detected detached `.aerocorrect` sidecar for the open vault.
+    hasDetachedRecovery: boolean;
+    // The detached sidecar also carries header (+ manifest locator) parity, so the
+    // detached path can rebuild the 1024-byte header, not just the data blocks.
+    hasDetachedHeaderRecovery: boolean;
+    // Export a detached recovery file; strip the embedded parity (sidecar-aware).
+    exportParity: () => Promise<void>;
+    stripParity: (force: boolean) => Promise<void>;
+    isExportingParity: boolean;
+    isStrippingParity: boolean;
+
     // Drag-and-drop
     dragOver: boolean;
     setDragOver: (over: boolean) => void;
@@ -336,6 +372,20 @@ export interface VaultState {
     folderProgress: FolderProgress | null;
     initialFolderPath?: string;
 
+    // P2 Error Correction scrub/repair modals (draggable, theme-aware)
+    showScrubDialog: boolean;
+    setShowScrubDialog: (show: boolean) => void;
+    showRepairDialog: boolean;
+    setShowRepairDialog: (show: boolean) => void;
+    scrubResult: any | null;  // from vault_v3_scrub
+    repairResult: any | null;
+    repairDryRun: boolean;
+    setRepairDryRun: (v: boolean) => void;
+    isRepairing: boolean;
+    setScrubResult: (r: any | null) => void;
+    setRepairResult: (r: any | null) => void;
+    setIsRepairing: (v: boolean) => void;
+
     // Initial props passthrough
     initialFiles?: string[];
 
@@ -352,6 +402,10 @@ export interface VaultState {
     handleRemove: (entryName: string, isDir: boolean) => Promise<void>;
     handleExtract: (entryName: string) => Promise<void>;
     handleChangePassword: () => Promise<void>;
+
+    // P2 Error Correction actions (use the registered Tauri commands; engine shared with CLI)
+    handleScrub: () => Promise<void>;
+    handleRepair: () => Promise<void>;
     handleOpenRemoteVault: () => Promise<void>;
     handleSaveRemoteAndClose: () => Promise<void>;
     handleCleanupRemote: () => Promise<void>;
@@ -403,6 +457,24 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [compressionProfile, setCompressionProfile] = useState<VaultV3CompressionProfile>('balanced');
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
     const [showLevelDropdown, setShowLevelDropdown] = useState(false);
+
+    // Error Correction for Beta/experimental vaults (P2)
+    const [errorCorrectionEnabled, setErrorCorrectionEnabled] = useState(false);
+    const [hasErrorCorrection, setHasErrorCorrection] = useState(false);  // runtime detection for open vaults (via has_error_correction command)
+    const [recoveryPlacement, setRecoveryPlacement] = useState<RecoveryPlacement>('embedded');
+    const [errorCorrectionPct, setErrorCorrectionPct] = useState<number>(20);  // QR-style overhead level (#276); 20% == K=10/P=2
+    const [hasDetachedRecovery, setHasDetachedRecovery] = useState(false);  // detached .aerocorrect sidecar present
+    const [hasDetachedHeaderRecovery, setHasDetachedHeaderRecovery] = useState(false);  // sidecar carries header (+ manifest) parity
+    const [isExportingParity, setIsExportingParity] = useState(false);
+    const [isStrippingParity, setIsStrippingParity] = useState(false);
+
+    // P2 Error Correction dialogs
+    const [showScrubDialog, setShowScrubDialog] = useState(false);
+    const [showRepairDialog, setShowRepairDialog] = useState(false);
+    const [scrubResult, setScrubResult] = useState<any | null>(null);
+    const [repairResult, setRepairResult] = useState<any | null>(null);
+    const [repairDryRun, setRepairDryRun] = useState(true);
+    const [isRepairing, setIsRepairing] = useState(false);
 
     // Drag-and-drop state
     const [dragOver, setDragOver] = useState(false);
@@ -574,11 +646,22 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         try {
             if (levelConfig.version === 3) {
-                await invoke('vault_v3_create', {
-                    vaultPath: savePath,
-                    password,
-                    compressionProfile,
-                });
+                // P2: if Error Correction enabled in experimental, use the dedicated with_ecc creator (non-critical RS extension stub).
+                if (securityLevel === 'experimental' && errorCorrectionEnabled) {
+                    await invoke('vault_v3_create_with_error_correction', {
+                        vaultPath: savePath,
+                        password,
+                        profile: compressionProfile,
+                        placement: recoveryPlacement,
+                        errorCorrectionPct: Math.min(50, Math.max(5, Math.round(errorCorrectionPct))),
+                    });
+                } else {
+                    await invoke('vault_v3_create', {
+                        vaultPath: savePath,
+                        password,
+                        compressionProfile,
+                    });
+                }
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
 
@@ -775,6 +858,14 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
                 setEntries(mapV3InfoToEntries(info));
                 setMeta(mapV3InfoToMeta(info, meta));
+                // P2: detect Error Correction for badge and enabling scrub/repair actions in this session.
+                // recovery_status reports both the embedded extension and a detached .aerocorrect sidecar.
+                try {
+                    const status = await invoke<{ embedded: boolean; detached: boolean; header_parity?: boolean }>('vault_v3_recovery_status', { path: vaultPath });
+                    setHasErrorCorrection(!!status.embedded);
+                    setHasDetachedRecovery(!!status.detached);
+                    setHasDetachedHeaderRecovery(!!status.header_parity);
+                } catch { setHasErrorCorrection(false); setHasDetachedRecovery(false); setHasDetachedHeaderRecovery(false); }
                 setMode('browse');
 
                 const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
@@ -1138,6 +1229,94 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         };
     }, []);
 
+    // --- P2 Error Correction scrub/repair (call the Tauri commands we exposed; draggable modals in UI) ---
+    // Re-aligned to hardened engine (P2-HARD + P2-09 v2): scrub {damaged, count, checked},
+    // repair {repaired, damaged, dry_run}. Honest msgs + checked count surfaced.
+    const handleScrub = async () => {
+        if (!vaultPath) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_scrub', { vaultPath, password });
+            setScrubResult(res);
+            setShowScrubDialog(true);
+            const checked = res.checked ?? res.count ?? 0;
+            const damaged = res.count ?? (res.damaged ? res.damaged.length : 0);
+            setSuccess(t('vault.scrubComplete', { checked: String(checked), damaged: String(damaged) }));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRepair = async () => {
+        if (!vaultPath) return;
+        setIsRepairing(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
+            setRepairResult(res);
+            if (!repairDryRun) {
+                await refreshVaultEntries();
+                const repaired = res.repaired ?? 0;
+                const damaged = res.damaged ?? 0;
+                if (damaged === 0) {
+                    setSuccess(t('vault.repairNoDamage'));
+                } else if (repaired === 0) {
+                    setSuccess(t('vault.repairUntouched', { damaged: String(damaged) }));
+                } else {
+                    // Engine is all-or-nothing: a non-zero repaired count means every
+                    // damaged block verified and was persisted (repaired === damaged).
+                    setSuccess(t('vault.repairSuccess', { repaired: String(repaired) }));
+                }
+            }
+            // keep dialog open to show result (modal renders honest summary from repairResult)
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setIsRepairing(false);
+        }
+    };
+
+    // --- SIDECAR: detached recovery file (.aerocorrect) ---
+    // Export writes/refreshes the sidecar from the current data; strip drops the
+    // embedded parity (refused unless a sidecar exists, mirroring the engine).
+    const exportParity = async () => {
+        if (!vaultPath) return;
+        setIsExportingParity(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_export_parity', { vaultPath, password });
+            setHasDetachedRecovery(true);
+            const protectedBytes = res?.bytes_protected ?? 0;
+            if (protectedBytes === 0) {
+                setSuccess(t('vault.parityExportedEmpty'));
+            } else {
+                setSuccess(t('vault.parityExported', { bytes: String(protectedBytes) }));
+            }
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setIsExportingParity(false);
+        }
+    };
+
+    const stripParity = async (force: boolean) => {
+        if (!vaultPath) return;
+        setIsStrippingParity(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_strip_parity', { vaultPath, password, force });
+            setHasErrorCorrection(false);
+            setSuccess(res?.sidecar_present ? t('vault.parityStripped') : t('vault.parityStrippedNoRecovery'));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setIsStrippingParity(false);
+        }
+    };
+
     return {
         mode, setMode,
         vaultPath, setVaultPath,
@@ -1166,6 +1345,20 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         compressionProfile, setCompressionProfile,
         vaultSecurity, setVaultSecurity,
         showLevelDropdown, setShowLevelDropdown,
+        errorCorrectionEnabled, setErrorCorrectionEnabled,
+        hasErrorCorrection, setHasErrorCorrection,
+        recoveryPlacement, setRecoveryPlacement,
+        errorCorrectionPct, setErrorCorrectionPct,
+        hasDetachedRecovery,
+        hasDetachedHeaderRecovery,
+        exportParity, stripParity,
+        isExportingParity, isStrippingParity,
+        showScrubDialog, setShowScrubDialog,
+        showRepairDialog, setShowRepairDialog,
+        scrubResult, setScrubResult,
+        repairResult, setRepairResult,
+        repairDryRun, setRepairDryRun,
+        isRepairing, setIsRepairing,
         dragOver, setDragOver,
         dragTargetDir, setDragTargetDir,
         showSyncDialog, setShowSyncDialog,
@@ -1189,6 +1382,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         handleRemove,
         handleExtract,
         handleChangePassword,
+        handleScrub,
+        handleRepair,
         handleOpenRemoteVault,
         handleSaveRemoteAndClose,
         handleCleanupRemote,

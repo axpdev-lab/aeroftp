@@ -15,8 +15,9 @@
 # Reviewed: 2026-06-03 (dual-audit CODEX-AV-007: bumped yanked aes 0.9.0 -> 0.9.1
 #           in Cargo.lock via zip/russh; corrected Path B version refs to the
 #           resolved russh 0.60.3 / rsa 0.10.0-rc.16)
-# Reviewed: 2026-06-08 (added RUSTSEC-2026-0173 `proc-macro-error2`, freshly
-#           published on the existing build-time sigstore path)
+# Reviewed: 2026-06-08 (added RUSTSEC-2024-0384 `instant`, pulled transitively by
+#           the new AeroVault v4 ECC dep reed-solomon-erasure; and RUSTSEC-2026-0173
+#           `proc-macro-error2`, freshly published on the existing sigstore build path)
 
 [advisories]
 ignore = [
@@ -224,6 +225,29 @@ ignore = [
     "GHSA-hpv4-5h6f-wqr3",  # russh server userauth reset (serve sftp only)
 
     # ----------------------------------------------------------------
+    # instant 0.1.13 unmaintained (transitive via the AeroVault v4 ECC wrapper)
+    # ----------------------------------------------------------------
+    # RUSTSEC-2024-0384. `instant` is unmaintained (superseded by `web-time`).
+    # It enters the tree ONLY through the optional ECC error-correction wrapper:
+    #   instant 0.1.13 <- parking_lot 0.11.2 <- reed-solomon-erasure 6.0.0 <- aeroftp
+    # `reed-solomon-erasure 6.0.0` pins `parking_lot = "^0.11.2"`, which cannot
+    # resolve to parking_lot 0.12 (the release that dropped `instant`), so the
+    # advisory is not locally fixable without forking the RS crate.
+    #
+    # No security surface: `instant` is a monotonic-clock shim. On AeroFTP's
+    # native desktop targets (Linux/macOS/Windows; never wasm) it compiles to a
+    # thin wrapper over std::time::Instant; the wasm-specific path that carries
+    # any concern is never built. parking_lot uses it only for internal
+    # lock-elapsed bookkeeping, reached exclusively from reed-solomon-erasure's
+    # in-memory parity compute/reconstruct on ECC-enabled vaults. No untrusted
+    # input, no parsing and no crypto decision flows through it.
+    #
+    # Exit path: move to a maintained RS crate (reed-solomon-simd /
+    # reed-solomon-novelpoly) or wait for reed-solomon-erasure to bump parking_lot.
+    # Full evaluation: docs/security-evidence/REED-SOLOMON-ERASURE-EVALUATION-2026-06.md.
+    "RUSTSEC-2024-0384",  # instant unmaintained (ECC wrapper via parking_lot 0.11)
+
+    # ----------------------------------------------------------------
     # proc-macro-error2 2.0.1 unmaintained (build-dep via sigstore / oci-spec)
     # ----------------------------------------------------------------
     # RUSTSEC-2026-0173 (published 2026-06-07). Pulled at BUILD time only:
@@ -231,10 +255,10 @@ ignore = [
     #   oci-client 0.15.0 <- sigstore 0.13.0 <- aeroftp
     # It is a derive-macro helper for `getset`; it runs in the compiler and is
     # NOT present in the runtime binary (same class as proc-macro-error /
-    # RUSTSEC-2024-0370 ignored above). It surfaced on the pre-existing sigstore
-    # path when the advisory was published. Cannot be dropped without a
-    # sigstore/oci-spec upstream bump (sigstore 0.13.0 is the latest stable).
-    # Tracked with the other sigstore-path advisories above.
+    # RUSTSEC-2024-0370 ignored above). Unrelated to the ECC work; it surfaced on
+    # the pre-existing sigstore path when the advisory was published. Cannot be
+    # dropped without a sigstore/oci-spec upstream bump (sigstore 0.13.0 is the
+    # latest stable). Tracked with the other sigstore-path advisories above.
     "RUSTSEC-2026-0173",  # proc-macro-error2 unmaintained (build-time, sigstore path)
 ]
 

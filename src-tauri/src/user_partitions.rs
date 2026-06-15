@@ -597,8 +597,38 @@ fn insert_default_user(
     tx: &Transaction<'_>,
     root_key: &SecretKey,
     now: i64,
-) -> Result<(i64, SecretKey), String> {
+) -> Result<(i64, SecretKey, bool), String> {
     let (name, canonical) = normalize_name(DEFAULT_USER_NAME)?;
+    if let Some((id, has_passphrase, wrapped_dek, dek_verifier)) = tx
+        .query_row(
+            "SELECT id, has_passphrase, wrapped_dek, dek_verifier
+             FROM users WHERE name_canonical = ?1",
+            params![&canonical],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)? != 0,
+                    row.get::<_, Vec<u8>>(2)?,
+                    row.get::<_, Vec<u8>>(3)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| format!("Read existing default user: {e}"))?
+    {
+        if has_passphrase {
+            return Err(
+                "Default user already exists but is passphrase-protected; cannot resume legacy migration without unlocking it"
+                    .to_string(),
+            );
+        }
+        let dek = user_crypto::unwrap_dek(root_key, &wrapped_dek)?;
+        if !user_crypto::verify_dek(&dek, &dek_verifier)? {
+            return Err("DEK_VERIFIER_MISMATCH".to_string());
+        }
+        return Ok((id, dek, false));
+    }
+
     let dek = user_crypto::generate_dek();
     let wrapped_dek = user_crypto::wrap_dek(root_key, &dek)?;
     let verifier = user_crypto::compute_dek_verifier(&dek)?.to_vec();
@@ -622,7 +652,7 @@ fn insert_default_user(
     )
     .map_err(|e| format!("Create default user: {e}"))?;
 
-    Ok((tx.last_insert_rowid(), dek))
+    Ok((tx.last_insert_rowid(), dek, true))
 }
 
 pub fn migrate_legacy_payloads(
@@ -678,7 +708,8 @@ pub fn migrate_legacy_payloads(
         });
     }
     let now = now_ms();
-    let (default_user_id, default_dek) = insert_default_user(&tx, &root_secret, now)?;
+    let (default_user_id, default_dek, created_default_user) =
+        insert_default_user(&tx, &root_secret, now)?;
     let mut seen_uids = HashSet::new();
     let mut migrated_profiles = 0usize;
 
@@ -687,36 +718,37 @@ pub fn migrate_legacy_payloads(
         let uid = user_crypto::metadata_tag(&root_secret, b"profile-uid", &uid_seed)?;
         let key = profile_dedup_key(&root_secret, profile, &uid_seed)?;
         let (encrypted_blob, nonce) = encrypt_value(&default_dek, profile)?;
-        tx.execute(
-            "INSERT INTO server_profiles(
+        let inserted = tx
+            .execute(
+                "INSERT OR IGNORE INTO server_profiles(
                  user_id, profile_uid, dedup_key, name, encrypted_blob, nonce,
                  aead_alg, created_at, updated_at
              )
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7)",
-            params![default_user_id, uid, key, uid, encrypted_blob, nonce, now],
-        )
-        .map_err(|e| format!("Migrate legacy profile: {e}"))?;
-        migrated_profiles += 1;
+                params![default_user_id, uid, key, uid, encrypted_blob, nonce, now],
+            )
+            .map_err(|e| format!("Migrate legacy profile: {e}"))?;
+        migrated_profiles += inserted;
     }
 
     let mut migrated_settings_scopes = 0usize;
     if let Some(settings) = legacy_settings.as_ref() {
         let (encrypted_blob, nonce) = encrypt_value(&default_dek, settings)?;
-        tx.execute(
-            "INSERT INTO user_settings(
+        migrated_settings_scopes = tx
+            .execute(
+                "INSERT OR IGNORE INTO user_settings(
                  user_id, scope, encrypted_blob, nonce, aead_alg, updated_at
              )
              VALUES (?1, ?2, ?3, ?4, 'aes-256-gcm', ?5)",
-            params![
-                default_user_id,
-                LEGACY_SETTINGS_SCOPE,
-                encrypted_blob,
-                nonce,
-                now
-            ],
-        )
-        .map_err(|e| format!("Migrate legacy settings: {e}"))?;
-        migrated_settings_scopes = 1;
+                params![
+                    default_user_id,
+                    LEGACY_SETTINGS_SCOPE,
+                    encrypted_blob,
+                    nonce,
+                    now
+                ],
+            )
+            .map_err(|e| format!("Migrate legacy settings: {e}"))?;
     }
 
     upsert_global_state(&tx, LEGACY_PROFILES_KEY, &legacy_profiles_backup, now)?;
@@ -728,7 +760,7 @@ pub fn migrate_legacy_payloads(
 
     Ok(MigrationReport {
         schema_version: SCHEMA_VERSION.to_string(),
-        created_default_user: true,
+        created_default_user,
         migrated_profiles,
         migrated_settings_scopes,
         already_migrated: false,
@@ -4254,6 +4286,55 @@ mod tests {
         let users = list_users(&b).expect("list users");
         assert_eq!(users.len(), 1);
         assert_eq!(users[0].name, DEFAULT_USER_NAME);
+    }
+
+    #[test]
+    fn legacy_migration_resumes_when_default_user_already_exists() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        init_db_schema(&conn).expect("schema");
+        let root = test_root();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let tx = conn.transaction().expect("tx");
+        let (default_id, _default_dek, created) =
+            insert_default_user(&tx, &root_secret, now_ms()).expect("seed default");
+        assert!(created);
+        tx.commit().expect("commit seed");
+        assert_eq!(
+            current_schema_version(&conn).expect("schema version"),
+            None,
+            "precondition: partial migration has no schema marker"
+        );
+
+        let profiles_json =
+            r#"[{"id":"p0","name":"P0","protocol":"sftp","host":"h","port":22,"username":"u"}]"#;
+        let settings_json = r#"{"theme":"dark"}"#;
+        let report =
+            migrate_legacy_payloads(&mut conn, Some(profiles_json), Some(settings_json), &root)
+                .expect("resume migration");
+        assert!(!report.created_default_user);
+        assert_eq!(report.migrated_profiles, 1);
+        assert_eq!(report.migrated_settings_scopes, 1);
+
+        let users = list_users(&conn).expect("list users");
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].id, default_id);
+        let profile_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM server_profiles", [], |row| row.get(0))
+            .expect("profile count");
+        assert_eq!(profile_count, 1);
+        assert_eq!(
+            current_schema_version(&conn)
+                .expect("schema version")
+                .as_deref(),
+            Some(SCHEMA_VERSION)
+        );
+
+        let second =
+            migrate_legacy_payloads(&mut conn, Some(profiles_json), Some(settings_json), &root)
+                .expect("second migrate");
+        assert!(second.already_migrated);
     }
 
     #[test]

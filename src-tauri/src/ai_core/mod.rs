@@ -8,6 +8,7 @@
 
 pub mod agent_tools;
 pub mod cli_impl;
+pub mod correct_tools;
 pub mod credential_provider;
 pub mod event_sink;
 pub mod local_tools;

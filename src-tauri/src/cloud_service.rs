@@ -647,6 +647,7 @@ impl CloudService {
                         size,
                         modified,
                         is_dir,
+                        checksum_alg: None,
                         checksum: None,
                     },
                 );
@@ -755,6 +756,7 @@ impl CloudService {
                                 })
                         }),
                         is_dir: entry.is_dir,
+                        checksum_alg: None,
                         checksum: None,
                     },
                 );
@@ -1035,6 +1037,7 @@ impl CloudService {
                         is_dir: entry.is_dir,
                         // Use provider-supplied content hash if available (e.g. FileLu).
                         // Enables hash-based comparison for providers that don't preserve mtime.
+                        checksum_alg: None,
                         checksum: entry.metadata.get("content_hash").cloned(),
                     },
                 );

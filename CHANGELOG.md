@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### AeroVault v4 ECC (T-AEROVAULT-ECC) — Reed-Solomon error-correction wrapper, Phase 3+4 close
+
+Full engine (P1 stub + P2 real 10+2 RS on ciphertext with v2 fixed-grid ~20% overhead, per-shard cksums, all-or-nothing repair gate) + surfaces + docs. "v3 + ECC = v4" forward-compat (non-critical extension); ECC runs **last** in the 4-wrappers pipeline (compression → chunking → crypt → ECC) per Ehud Kirsh #272/#276 design.
+
+#### Added
+- Real Reed-Solomon (reed-solomon-erasure 6) on the concatenated live-block stream (P2-09 v2 payload: AVEC magic + version 2, fixed S grid K=10/P=2, clamped 4KiB-1MiB, 16B per-shard BLAKE3 cksum for erasures incl. parity). Overhead proven ~20.1% on 300KB incompressible single-chunk vault (was ~200% v1). 
+- `compute_error_correction_shards` / `reconstruct_from_error_correction`, `scrub_vault`, `repair_vault` (scrub+RS+re-verify all cipher_hash or untouched+rollback).
+- Tauri: `vault_v3_scrub`, `vault_v3_repair` (+ dry-run).
+- CLI: `aeroftp-cli vault create --error-correction` (alias `--ec`), `vault info` (has_ecc + ecc object), `vault scrub <path>`, `vault repair <path> [--dry-run]`. Text + --json, honest reports ("X checked", "repaired R of D", "vault left untouched").
+- GUI: VaultCreate ECC toggle (experimental), VaultBrowse conditional amber "Scrub ECC"/rose "Repair ECC" (hasEcc || experimental), draggable modals (useDraggableModal, full dark:/rounded-xl/app template), success msgs + honest summaries.
+- P3-03: VaultReport + receipt (GUI mini-terminal + export .txt/.json) now include `ecc_shards_generated`, `ecc_bytes_protected`, `ecc_overhead_pct`, `ecc_repair_events` (populated on every ECC seal).
+- P3-05: i18n keys for all new ECC UI strings (handlers, modals, buttons, hints, results); wired via t() (en.json + fallbacks).
+- P3-06: CLI vault help/man-page polished (top-level + Create/Scrub/Repair docs) with v2 grid, 20%, safety gate, returns, 4-wrappers/ECC-last, appendix refs.
+- P2-HARD: repair safety (re-verify every block vs cipher_hash before persist; write lock; scrub checked count; honest CLI msgs); 22 tests incl. p2_repair_recovers_despite_corrupt_parity_shard, p2_repair_refuses_when_damage_exceeds_redundancy, p2_09_overhead_bounded, stress multi-damage.
+
+#### Changed
+- aerovault_v3 engine: ECC payload bumped to v2 (pre-release, no migration); DamagedChunk module-private; reconstruct sig cleaned; save/rebuild paths updated.
+- Receipt surfaces (VaultReceipt, telemetry render) + CLI receipt paths now surface ECC telemetry when present.
+- GUI modals remain 100% template-faithful (no creep).
+
+#### Fixed / Hardened
+- CLAUDE-AV-ECC-01 (repair trusted unverified RS) closed by all-or-nothing gate + regression tests.
+- v1 one-block-one-shard overhead explosion fixed by v2 grid (P2-09).
+- Latent repair truncation misalignment fixed (fixed-len zero-pad buffers).
+
+#### Docs / Close
+- APPENDIX-AEROVAULT-V4-ECC/ (design docs + audit) kept in sync; task tracking in the AUDIT todotree.
+- Phase 4: ROADMAP/SECURITY/SPEC/CLI-GUIDE notes + this CHANGELOG entry (credit Ehud Kirsh + T-AEROVAULT-ECC).
+- T-AEROVAULT-ECC item closed.
+
+#### Security & quality audit (2026-06-11)
+Post-implementation audit of the full v4 EC surface (vault + AeroSync), 4 independent reviewers. All CRITICAL/HIGH/MEDIUM fixed on the branch:
+- **Sidecar parsers hardened** against untrusted-remote input: `ErrorCorrectionPayload::from_bytes` uses checked arithmetic + bound-before-alloc (closes a remote DoS via overflow/OOM); `AeroSyncEcSidecar::from_bytes` bounds the segment count before allocating; remote sidecar reads are size-capped.
+- **AeroSync `.aerorec` correctness**: GUI compare always excludes `*.aerorec` (no longer deletes/re-syncs sidecars as orphans/data); GUI remote-delete removes the paired sidecar; engine surfaces `ec_verify_failed` so an unrepairable download is not reported healthy.
+- **sync-doctor EC cost estimate** now uses real v2 grid geometry (was under-reporting small-file sidecars by up to ~600x).
+- Cleanups: removed dead `sync_sidecar_status_for_bytes` trio + blanket `allow(dead_code)`; wired generation telemetry; pinned `reed-solomon-erasure = "=6.0.0"`; +9 direct codec/estimate tests (incl. the overflow regression).
+- Full report: `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/AUDIT-2026-06-11_security-performance-quality.md`.
+
+#### Unified `.aerocorrect` sidecar + windowed streaming (2026-06-12)
+The two detached parity formats are now ONE `.aerocorrect` format (magic `AEROCORR`), per Ehud Kirsh's #276 request for a single error-correction sidecar usable on any file:
+- **Vault**: the `.aerovault.rec` `RecoveryFile` is retired; the sidecar carries three fixed segments (header, manifest, data windows), bound by the container's content SHA-256 instead of the vault salt. The authenticated repair re-verify (header MAC / manifest `cipher_hash` before persist) is preserved, so a foreign or stale sidecar can only make a repair fail, never overwrite.
+- **AeroSync**: the `.aerorec` format becomes `.aerocorrect`, content-bound, and **windowed**. Large files are tiled into 64 MiB windows (one Reed-Solomon parity segment each); generation, verification and repair stream one window at a time, so peak memory is bounded by the window, not by the file. Repair rebuilds each window into a temp file and replaces the original atomically only if the whole repaired stream hashes back to the expected value. The 256 MiB per-file cap becomes a configurable 1 GiB default.
+- **Surface**: CLI help, the sync-doctor cost estimate, the GUI compare exclusion glob and paired-sidecar delete, and the three sidecar strings across 47 locales follow the unified extension.
+- **Gate / evidence**: `cargo test --lib` 2223/0 (incl. window tiling, windowed estimate equality, per-window repair, streaming-equals-in-memory, all-or-nothing on an unrecoverable window), `--bin aeroftp-cli` 219/0, clippy lib+bin `--tests` clean, fmt/audit/typecheck/257 frontend tests/47 locales all green. Live (real CLI): vault corrupt then repair extracts byte-identical; a 130 MiB AeroSync upload writes a 3-window `.aerocorrect`; the 130 MiB verify-on-download stays byte-identical at about 70 MB peak RSS.
+
+All via shared lib (GUI+CLI+tests), --profile for remote (vault local direct), Co-Authored trailers, 22/22 `cargo test --lib aerovault_v3` baseline+interleaved, AGENTS.md followed.
+
+(@Grok 4.3 + prior handoff work; design anchor Ehud Kirsh discussions #272/#276, issue #162)
+
 ### Per-Account Privacy and Manage Users Localization
 
 #### Added

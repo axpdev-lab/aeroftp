@@ -408,6 +408,7 @@ async fn product_path_uses_delta_when_session_is_eligible() {
         delete_orphans: false,
         conflict_mode: ConflictMode::Larger,
         scan: ScanOptions::default(),
+        error_correction: Default::default(),
         download_segments: 1,
     };
     let mut sink = NoopProgressSink;
@@ -519,6 +520,7 @@ async fn product_path_uses_native_delta_for_password_sftp_with_pinned_host_key()
         delete_orphans: false,
         conflict_mode: ConflictMode::Larger,
         scan: ScanOptions::default(),
+        error_correction: Default::default(),
         download_segments: 1,
     };
     let mut sink = NoopProgressSink;
@@ -948,6 +950,7 @@ async fn z11_kpi_batch_session_reuse_on_100_small_files() {
         delete_orphans: false,
         conflict_mode: ConflictMode::Larger,
         scan: ScanOptions::default(),
+        error_correction: Default::default(),
         download_segments: 1,
     };
     let mut sink = NoopProgressSink;
@@ -1087,6 +1090,7 @@ async fn z11_kpi_delta_savings_on_large_file() {
         delete_orphans: false,
         conflict_mode: ConflictMode::Larger,
         scan: ScanOptions::default(),
+        error_correction: Default::default(),
         download_segments: 1,
     };
     let mut sink = NoopProgressSink;
