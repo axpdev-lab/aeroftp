@@ -4048,6 +4048,38 @@ interface UpdateVerificationInfo {
     return null;
   };
 
+  // P3.3: when a saved profile carries an AeroCrypt overlay binding, unlock it
+  // automatically right after connect so the standard dual-panel renders
+  // transparently decrypted (Filen/MEGA-style), with no modal. The provider is
+  // already positioned at the overlay scope (initialPath == remoteScope) by the
+  // connect listing, so the config is read from there. Native (`aerocrypt`) only;
+  // `rclone-crypt` binding auto-unlock is deferred (the binding lacks the rclone
+  // salt/filename-encryption fields). Returns true when an overlay was activated.
+  const maybeAutoUnlockProfileOverlay = async (savedServerId?: string): Promise<boolean> => {
+    if (!savedServerId) return false;
+    try {
+      const profiles = await loadSavedServerProfiles();
+      const profile = profiles.find((p) => p.id === savedServerId);
+      const binding = profile?.aeroCryptOverlay;
+      if (!binding?.enabled || binding.kind !== 'aerocrypt') return false;
+      if (!profile?.hasStoredAeroCryptPassword) return false;
+      const password = await invoke<string>('get_credential', { account: `aerocrypt_overlay_pw_${savedServerId}` }).catch(() => '');
+      if (!password) return false;
+      const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {}).catch(() => null);
+      const info = configJson
+        ? await invoke<{ vault_id: string }>('aerocrypt_unlock', { password, configJson })
+        : await invoke<{ vault_id: string }>('aerocrypt_provider_create_remote', { password, targetSubpath: null });
+      if (info?.vault_id) {
+        setRcloneCryptVaultId(null);
+        setAeroCryptVaultId(info.vault_id);
+        return true;
+      }
+    } catch (e) {
+      logger.debug('[maybeAutoUnlockProfileOverlay] failed', e);
+    }
+    return false;
+  };
+
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
@@ -13322,6 +13354,15 @@ interface UpdateVerificationInfo {
                     {
                       const savedId = connectedParams.savedServerId || normalizedParams.savedServerId;
                       if (savedId) void clearProfileConnectFailure(savedId);
+                    }
+                    // P3.3: auto-unlock the AeroCrypt overlay when this saved
+                    // profile is bound, then reload the listing so the dual-panel
+                    // renders decrypted names (Filen/MEGA-style, no modal).
+                    {
+                      const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                      if (await maybeAutoUnlockProfileOverlay(overlaySavedId)) {
+                        await loadRemoteFiles(undefined, true, false);
+                      }
                     }
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
