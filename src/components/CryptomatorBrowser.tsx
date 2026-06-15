@@ -159,15 +159,15 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-[650px] max-h-[80vh] flex flex-col animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[650px] max-h-[80vh] flex flex-col animate-scale-in">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
                         <Shield size={18} className="text-emerald-400" />
                         <span className="font-medium">
                             {vaultInfo ? vaultInfo.name : t('cryptomator.title')}
                         </span>
-                        {vaultInfo && <span className="text-xs text-gray-400">Format {vaultInfo.format}</span>}
+                        {vaultInfo && <span className="text-xs text-gray-500 dark:text-gray-400">Format {vaultInfo.format}</span>}
                     </div>
                     <div className="flex items-center gap-1">
                         {vaultInfo && (
@@ -175,13 +175,13 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                 <Lock size={12} /> {t('cryptomator.lock')}
                             </button>
                         )}
-                        <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
+                        <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                     </div>
                 </div>
 
                 {/* Error / Success */}
-                {error && <div className="px-4 py-2 bg-red-900/30 text-red-400 text-sm">{error}</div>}
-                {success && <div className="px-4 py-2 bg-green-900/30 text-green-400 text-sm">{success}</div>}
+                {error && <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm">{error}</div>}
+                {success && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm">{success}</div>}
 
                 {/* Unlock form */}
                 {!vaultInfo && (
@@ -195,55 +195,55 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                         </div>
 
                         <div className="text-center">
-                            <p className="text-gray-300 text-sm max-w-md">
+                            <p className="text-gray-600 dark:text-gray-300 text-sm max-w-md">
                                 {t('cryptomator.description')}
                             </p>
-                            <p className="text-gray-500 text-xs mt-1">
+                            <p className="text-gray-500 dark:text-gray-500 text-xs mt-1">
                                 {t('cryptomator.readOnly')}
                             </p>
                         </div>
 
                         {/* Security features */}
-                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-400 max-w-sm">
-                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
-                                <Lock size={12} className="text-emerald-400" />
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400 max-w-sm">
+                            <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
+                                <Lock size={12} className="text-emerald-500 dark:text-emerald-400" />
                                 <span>AES-GCM content</span>
                             </div>
-                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
-                                <Shield size={12} className="text-emerald-400" />
+                            <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
+                                <Shield size={12} className="text-emerald-500 dark:text-emerald-400" />
                                 <span>scrypt KDF</span>
                             </div>
-                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
-                                <File size={12} className="text-emerald-400" />
+                            <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
+                                <File size={12} className="text-emerald-500 dark:text-emerald-400" />
                                 <span>AES-SIV names</span>
                             </div>
-                            <div className="flex items-center gap-2 bg-gray-800/50 rounded px-2 py-1.5">
-                                <Key size={12} className="text-emerald-400" />
+                            <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800/50 rounded px-2 py-1.5">
+                                <Key size={12} className="text-emerald-500 dark:text-emerald-400" />
                                 <span>AES Key Wrap</span>
                             </div>
                         </div>
 
-                        <p className="text-emerald-400/70 text-xs flex items-center gap-1">
+                        <p className="text-emerald-600 dark:text-emerald-400/70 text-xs flex items-center gap-1">
                             <Shield size={10} /> Compatible with Cryptomator app
                         </p>
 
-                        <button onClick={handleSelectVault} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">
+                        <button onClick={handleSelectVault} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-sm">
                             {vaultPath || t('cryptomator.selectFolder')}
                         </button>
 
                         {vaultPath && (
                             <>
                                 <div className="w-full max-w-sm">
-                                    <label className="text-xs text-gray-400 block mb-1">{t('cryptomator.password')}</label>
+                                    <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('cryptomator.password')}</label>
                                     <div className="relative">
                                         <input
                                             type={showPassword ? 'text' : 'password'}
                                             value={password}
                                             onChange={e => setPassword(e.target.value)}
                                             onKeyDown={e => e.key === 'Enter' && handleUnlock()}
-                                            className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm pr-8"
+                                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8"
                                         />
-                                        <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
+                                        <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                                             {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                                         </button>
                                     </div>
@@ -261,19 +261,19 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                 {vaultInfo && (
                     <>
                         {/* Breadcrumb + toolbar */}
-                        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                             {breadcrumb.length > 1 && (
-                                <button onClick={() => navigateToBreadcrumb(breadcrumb.length - 2)} className="p-1 hover:bg-gray-700 rounded">
+                                <button onClick={() => navigateToBreadcrumb(breadcrumb.length - 2)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                     <ArrowLeft size={14} />
                                 </button>
                             )}
-                            <div className="flex items-center gap-1 text-xs text-gray-400 flex-1 overflow-hidden">
+                            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 flex-1 overflow-hidden">
                                 {breadcrumb.map((item, i) => (
                                     <React.Fragment key={i}>
                                         {i > 0 && <span>/</span>}
                                         <button
                                             onClick={() => navigateToBreadcrumb(i)}
-                                            className="hover:text-white truncate max-w-[120px]"
+                                            className="hover:text-gray-900 dark:hover:text-white truncate max-w-[120px]"
                                         >
                                             {item.name}
                                         </button>
@@ -293,13 +293,13 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                 </div>
                             )}
                             {!loading && entries.length === 0 && (
-                                <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+                                <div className="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400 text-sm">
                                     {t('cryptomator.empty')}
                                 </div>
                             )}
                             {!loading && entries.length > 0 && (
                                 <table className="w-full">
-                                    <thead className="text-xs text-gray-400 border-b border-gray-700 sticky top-0 bg-gray-800">
+                                    <thead className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-gray-50 dark:bg-gray-800">
                                         <tr>
                                             <th className="py-2 px-3 text-left">{t('cryptomator.name')}</th>
                                             <th className="py-2 px-3 text-right w-24">{t('cryptomator.size')}</th>
@@ -310,19 +310,19 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                         {entries.map(entry => (
                                             <tr
                                                 key={entry.name}
-                                                className="hover:bg-gray-700/30 text-sm cursor-pointer"
+                                                className="hover:bg-gray-100 dark:hover:bg-gray-700/30 text-sm cursor-pointer"
                                                 onDoubleClick={() => entry.isDir && entry.dirId && navigateToDir(entry.name, entry.dirId)}
                                             >
                                                 <td className="py-1.5 px-3 flex items-center gap-2">
                                                     {entry.isDir
-                                                        ? <Folder size={14} className="text-yellow-400 shrink-0" />
-                                                        : <File size={14} className="text-gray-400 shrink-0" />}
+                                                        ? <Folder size={14} className="text-yellow-500 dark:text-yellow-400 shrink-0" />
+                                                        : <File size={14} className="text-gray-500 dark:text-gray-400 shrink-0" />}
                                                     <span className="truncate">{entry.name}</span>
                                                 </td>
-                                                <td className="py-1.5 px-3 text-right text-gray-400">{entry.isDir ? '' : formatSize(entry.size)}</td>
+                                                <td className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">{entry.isDir ? '' : formatSize(entry.size)}</td>
                                                 <td className="py-1.5 px-3 text-right">
                                                     {!entry.isDir && (
-                                                        <button onClick={() => handleDecrypt(entry)} className="p-1 hover:bg-gray-600 rounded" title={t('cryptomator.decryptAndSave')}>
+                                                        <button onClick={() => handleDecrypt(entry)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title={t('cryptomator.decryptAndSave')}>
                                                             <Download size={14} />
                                                         </button>
                                                     )}
@@ -335,7 +335,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                         </div>
 
                         {/* Footer */}
-                        <div className="px-4 py-2 border-t border-gray-700 text-xs text-gray-400">
+                        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
                             {entries.length} {t('cryptomator.items')}
                         </div>
                     </>

@@ -312,7 +312,7 @@ The first three are encrypted with a user-chosen password at export time. `.aero
 AeroFTP
 ├── AeroCloud    - Personal cloud (7 transport protocols + 25+ native providers + 6 media services, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
-├── Mount Manager - Persistent FUSE / WebDAV mounts with cross-platform autostart
+├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
 ├── AeroSync     - Bidirectional sync engine
 │   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
 ├── AeroVault    - Military-grade encryption
@@ -344,11 +344,11 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 
 ---
 
-### Mount Manager
+### AeroMount - the Mount Manager
 
 > [Full documentation →](https://docs.aeroftp.app/features/mount-manager.html)
 
-Persistent mount manager reachable from File > Mount Manager, the My Servers toolbar, and the connected remote address bar. Save multiple FUSE / WebDAV mount configs (profile, remote path, mountpoint, read-only, cache TTL, allow-other, auto-start) in either a plaintext sidecar JSON (default, daemon-friendly) or in the encrypted vault, toggleable from the dialog header. Per-row Mount / Unmount / Open in file manager / Edit / Delete actions, with a "Pick free drive letter" helper on Windows.
+**AeroMount** is the Mount Manager of AeroFTP, reachable from File > AeroMount, the My Servers toolbar, and the connected remote address bar. Save multiple FUSE / WebDAV mount configs (profile, remote path, mountpoint, read-only, cache TTL, allow-other, auto-start) in either a plaintext sidecar JSON (default, daemon-friendly) or in the encrypted vault, toggleable from the dialog header. Per-row Mount / Unmount / Open in file manager / Edit / Delete actions, with a "Pick free drive letter" helper on Windows.
 
 - **Cross-platform autostart**: installs `~/.config/systemd/user/aeroftp-mount-<id>.service` units on Linux (Type=simple, Restart=on-failure) and Task Scheduler ONLOGON entries on Windows. Master-password vault mode blocks autostart with a clear UI explanation since the daemon cannot prompt for a password.
 - **Open mount in file manager**: a one-click action on the My Servers context menu that auto-creates a sensible default mount for the selected profile when none exists yet, waits 800 ms for the FUSE / WebDAV layer to settle, then opens the OS file manager at the mountpoint.

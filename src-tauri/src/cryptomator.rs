@@ -911,3 +911,48 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
 
     Ok("Vault created successfully".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression test for #322: AeroFile must unlock a Cryptomator vault from
+    // the directory that holds masterkey.cryptomator. The GUI bug was passing
+    // the wrong directory; this proves the backend contract the fix relies on:
+    // the vault root is the directory CONTAINING masterkey.cryptomator, and any
+    // other directory yields the exact "Failed to read masterkey.cryptomator"
+    // error the user reported.
+    #[tokio::test]
+    async fn unlock_from_vault_root_succeeds_wrong_dir_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault_root = tmp.path().join("MyVault");
+        let password = "correcthorse";
+
+        // Build a real format-8 SIV_GCM vault.
+        cryptomator_create(
+            vault_root.to_string_lossy().to_string(),
+            password.to_string(),
+        )
+        .await
+        .expect("vault creation");
+
+        assert!(vault_root.join("masterkey.cryptomator").exists());
+
+        // Correct directory (the parent of masterkey.cryptomator) unlocks.
+        unlock_vault_inner(&vault_root, password).expect("unlock from vault root");
+
+        // The parent directory (what the user wrongly selected) does NOT hold a
+        // masterkey and must fail with the reported message.
+        let err = match unlock_vault_inner(tmp.path(), password) {
+            Ok(_) => panic!("unlock from a non-vault directory must fail"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("Failed to read masterkey.cryptomator"),
+            "unexpected error: {err}"
+        );
+
+        // Wrong password on the right directory must also fail (sanity).
+        assert!(unlock_vault_inner(&vault_root, "wrong-password").is_err());
+    }
+}

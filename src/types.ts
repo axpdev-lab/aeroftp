@@ -481,6 +481,7 @@ export interface ServerProfile {
   color?: string;
   lastConnected?: string;
   options?: ProviderOptions; // Provider-specific options (S3 bucket, etc.)
+  persistModeCredentials?: boolean; // #215: remember each protocol mode's credentials across restarts (server_modes_<id>)
   providerId?: string; // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
   faviconUrl?: string; // Base64 data URL of detected project favicon
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)

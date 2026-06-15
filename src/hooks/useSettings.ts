@@ -101,6 +101,10 @@ export interface AppSettings {
    *  user can prune folder trees, reorder, then press Start (or Start all).
    *  Wired by TQ-4; APPENDIX-TRANSFER-QUEUE locked decision 1. */
   autoStartTransfers: boolean;
+  /** Glyph used to mark favourited servers in My Servers and the CLI profiles
+   *  table. 'star' = ★ (default), 'heart' = ♥ (red in the GUI). Persisted in the
+   *  shared `app_settings` vault key so the CLI renders the same marker (#270). */
+  favoriteMarker: 'star' | 'heart';
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -135,6 +139,7 @@ const DEFAULTS: AppSettings = {
   introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
   discoverHealthCheck: true,
   autoStartTransfers: true,
+  favoriteMarker: 'star',
 };
 
 export const useSettings = () => {
@@ -167,6 +172,7 @@ export const useSettings = () => {
   const [introHubIconSize, setIntroHubIconSize] = useState<number>(DEFAULTS.introHubIconSize);
   const [discoverHealthCheck, setDiscoverHealthCheck] = useState(DEFAULTS.discoverHealthCheck);
   const [autoStartTransfers, setAutoStartTransfers] = useState(DEFAULTS.autoStartTransfers);
+  const [favoriteMarker, setFavoriteMarker] = useState<AppSettings['favoriteMarker']>(DEFAULTS.favoriteMarker);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -210,6 +216,9 @@ export const useSettings = () => {
     }
     if (typeof parsed.discoverHealthCheck === 'boolean') setDiscoverHealthCheck(parsed.discoverHealthCheck);
     if (typeof parsed.autoStartTransfers === 'boolean') setAutoStartTransfers(parsed.autoStartTransfers);
+    if (parsed.favoriteMarker === 'star' || parsed.favoriteMarker === 'heart') {
+      setFavoriteMarker(parsed.favoriteMarker);
+    }
   }, []);
 
   // Load settings on mount + listen for changes
@@ -299,6 +308,7 @@ export const useSettings = () => {
     introHubIconSize,
     discoverHealthCheck,
     autoStartTransfers,
+    favoriteMarker,
     showSettingsPanel,
 
     // Setters
@@ -331,6 +341,7 @@ export const useSettings = () => {
     setIntroHubIconSize,
     setDiscoverHealthCheck,
     setAutoStartTransfers,
+    setFavoriteMarker,
     setShowSettingsPanel,
 
     // Constants

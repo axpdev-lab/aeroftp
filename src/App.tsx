@@ -902,7 +902,7 @@ const App: React.FC = () => {
   const aeroSyncCompareSeqRef = useRef(0);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
-  const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
+  const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
   const [rcloneCryptVaultId, setRcloneCryptVaultId] = useState<string | null>(null);
   const [rcloneCryptImportBanner, setRcloneCryptImportBanner] = useState<null | {
@@ -4117,9 +4117,12 @@ interface UpdateVerificationInfo {
         return !prev;
       });
     } else {
-      toggleSidebar();
+      // Not connected: AeroFile is the full-screen local view. A second click on
+      // the AeroFile button closes it and returns to the connection picker, so the
+      // button is a true open/close toggle rather than acting like the Places button.
+      setShowConnectionScreen(true);
     }
-  }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles, toggleSidebar]);
+  }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles]);
   handleToggleAeroFileRef.current = handleToggleAeroFile;
 
   // Listen for View > AeroFile menu event
@@ -4297,6 +4300,20 @@ interface UpdateVerificationInfo {
 
   const normalizeProviderConnectionParams = (params: ConnectionParams): ConnectionParams => {
     const protocol = params.protocol;
+    // Issue #215: the Filen Desktop local bridges keep "admin" only as a
+    // placeholder hint, not a hard default, because the real bridge credentials
+    // are whatever the user set inside Filen Desktop > Network Drive. But many
+    // users connect first just to check the bridge is up before customizing it
+    // in both apps, so when the username/password (S3 maps access/secret key to
+    // username/password too) are left empty we fall back to "admin" rather than
+    // blocking the connect with a missing-fields error. Explicit values win.
+    if (params.providerId === 'filen-desktop-webdav' || params.providerId === 'filen-desktop-s3') {
+      return {
+        ...params,
+        username: params.username || 'admin',
+        password: params.password || 'admin',
+      };
+    }
     if (protocol === 'mega') {
       return {
         ...params,
@@ -4409,6 +4426,39 @@ interface UpdateVerificationInfo {
 
   const buildProviderParams = async (params: ConnectionParams, initialPath: string | null) => {
     let effectiveParams = normalizeProviderConnectionParams(params);
+
+    // Issue #215: the MEGAcmd WebDAV bridge is a local daemon AeroFTP can start
+    // itself. Running `mega-webdav /` is idempotent (the same call that warms
+    // the bridge for the mega-df quota probe) and prints the served URL, so on
+    // every connect we run it for the user and adopt the fresh endpoint instead
+    // of asking them to copy it from the MEGAcmd terminal or click Fetch URL,
+    // covering Ehud's "set up for the first time / switched to / connection
+    // issues / in general on connect" cases. If MEGAcmd is not installed or not
+    // logged in the call fails and we keep the saved endpoint so the connect
+    // surfaces a clear error.
+    if (effectiveParams.providerId === 'megacmd-webdav') {
+      try {
+        const url = await invoke<string>('mega_webdav_url');
+        if (url) {
+          let port = effectiveParams.port || 4443;
+          try {
+            const parsed = new URL(url);
+            port = parsed.port ? (parseInt(parsed.port, 10) || port) : (parsed.protocol === 'https:' ? 443 : 80);
+          } catch { /* keep saved port */ }
+          effectiveParams = {
+            ...effectiveParams,
+            server: url,
+            username: '',
+            password: '',
+            port,
+            options: { ...(effectiveParams.options || {}), anonymous: true },
+          };
+        }
+      } catch {
+        // Bridge not reachable (MEGAcmd missing / not logged in): fall back to
+        // the saved endpoint.
+      }
+    }
 
     // GitHub OAuth mode: clear stale saved password, use held token from Device Flow.
     // On app restart (held empty), reload OAuth token from vault (saved under 'github_oauth_token').
@@ -5027,7 +5077,11 @@ interface UpdateVerificationInfo {
     // FTP/FTPS and all provider-backed protocols use provider_connect
     if (isProvider) {
       const infinicloudWithApiKey = effectiveParams.providerId === 'infinicloud' && !!effectiveParams.options?.apiKey;
-      if ((!effectiveParams.server && !infinicloudWithApiKey && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
+      // Anonymous local bridges (MEGAcmd WebDAV) have no username and may have a
+      // blank endpoint: buildProviderParams runs `mega-webdav /` to fill it, so
+      // neither field is required here (#215).
+      const isAnonymousBridge = !!effectiveParams.options?.anonymous;
+      if ((!effectiveParams.server && !infinicloudWithApiKey && !isAnonymousBridge && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github' && !isAnonymousBridge)) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -10652,7 +10706,7 @@ interface UpdateVerificationInfo {
 
     // Rclone Crypt overlay non e' piu' nel context menu file/cartelle:
     // l'overlay e' una proprieta' del pannello remoto, non del singolo entry.
-    // L'aggancio primario vive ora nel pulsante toolbar AeroCrypt.
+    // L'aggancio primario vive ora nel pulsante toolbar Rclone Crypt.
 
     // Ask AeroAgent
     items.push({
@@ -11330,7 +11384,15 @@ interface UpdateVerificationInfo {
       items.push({
         label: t('contextMenu.openAsCryptomator') || 'Open as Cryptomator Vault',
         icon: <Lock size={14} className="text-emerald-500" />,
-        action: () => setShowCryptomatorBrowser(true),
+        // The vault root is the directory containing the right-clicked marker
+        // file (masterkey.cryptomator / vault.cryptomator). Pre-fill it so the
+        // user doesn't have to re-pick the folder and risk selecting the wrong
+        // one, which produced "Failed to read masterkey.cryptomator" (#322).
+        action: () => {
+          const cut = Math.max(file.path.lastIndexOf('\\'), file.path.lastIndexOf('/'));
+          const parent = cut > 0 ? file.path.slice(0, cut) : undefined;
+          setShowCryptomatorBrowser({ initialVaultPath: parent });
+        },
       });
       items.push({
         label: 'Cross-Profile Transfer',
@@ -12566,7 +12628,7 @@ interface UpdateVerificationInfo {
           onClose={() => setShowCloudPanel(false)}
         />
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
-        {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
+        {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock
             onClose={() => setShowRcloneCryptUnlock(false)}
@@ -12613,9 +12675,9 @@ interface UpdateVerificationInfo {
                     });
                     setRcloneCryptVaultId(info.vault_id);
                     void loadRcloneCryptOverlayFiles(info.vault_id);
-                    notify.success('AeroCrypt', t('toolbar.aerocryptOverlayActive'));
+                    notify.success('Rclone Crypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
-                    notify.error('AeroCrypt', String(err));
+                    notify.error('Rclone Crypt', String(err));
                   }
                 }}
                 className="px-3 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white font-semibold"
@@ -13525,9 +13587,9 @@ interface UpdateVerificationInfo {
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                             }`}
                           title={rcloneCryptVaultId
-                            ? `AeroCrypt ON: ${t('toolbar.aerocryptOverlayActive')}`
-                            : `AeroCrypt: ${t('toolbar.aerocryptOverlayInactive')}`}
-                          aria-label={rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
+                            ? `Rclone Crypt ON: ${t('toolbar.aerocryptOverlayActive')}`
+                            : `Rclone Crypt: ${t('toolbar.aerocryptOverlayInactive')}`}
+                          aria-label={rcloneCryptVaultId ? 'Rclone Crypt ON' : 'Rclone Crypt'}
                         >
                           <OverlayIcon size={16} className={rcloneCryptVaultId ? 'text-white' : ''} />
                         </button>
@@ -13731,7 +13793,7 @@ interface UpdateVerificationInfo {
                         title={t('toolbar.aerocryptOverlayActive')}
                       >
                         <OverlayIcon size={11} className="text-blue-400" />
-                        AEROCRYPT
+                        RCLONE CRYPT
                       </span>
                     )}
                     {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (

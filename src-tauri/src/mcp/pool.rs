@@ -347,11 +347,10 @@ fn find_unique_profile<'a>(
 fn resolve_profile_id(server_query: &str) -> Result<String, String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    // MUV-5: resolve the active user's profiles (env-passphrase unlock supported)
+    // instead of the legacy single-user blob; falls back to the blob during the
+    // rollout when the partition cannot serve.
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
 
@@ -372,11 +371,10 @@ fn create_provider_from_vault(
 ) -> Result<(Box<dyn StorageProvider>, String, String), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    // MUV-5: active-user profiles (see resolve_profile_id). The transient
+    // env-passphrase unlock done inside also primes the session so the
+    // `resolve_active_credential` read below decrypts the per-user `server_<id>`.
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
 
@@ -404,9 +402,18 @@ fn create_provider_from_vault(
     // JSON object with {username, password, access_token, ...}. The S3 bucket
     // and provider-specific options live in the profile's `options` field, not
     // in the credential blob.
-    let raw_cred = store
-        .get(&format!("server_{}", profile_id))
-        .unwrap_or_default();
+    // MUV-5: per-user store (active user) with fallback to the legacy vault. The
+    // profile listing above already unlocked a passphrase account from
+    // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
+    // otherwise the dual-written vault copy still answers.
+    let raw_cred = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("server_{}", profile_id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .unwrap_or_default();
 
     let (resolved_username, password) =
         if let Ok(cred_val) = serde_json::from_str::<serde_json::Value>(&raw_cred) {

@@ -14,6 +14,7 @@ import { Checkbox } from './ui/Checkbox';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
 import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { logger } from '../utils/logger';
 
 interface OAuthConnectProps {
@@ -733,12 +734,21 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="font-medium text-sm">{t('connection.oauth.oauth2Credentials')}</h4>
-            <button
-              onClick={() => openUrl(oauthApp.help_url)}
-              className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-            >
-              {t('settings.getCredentials')} <ExternalLink className="w-3 h-3" />
-            </button>
+            <div className="flex items-center gap-3">
+              {/* AeroFTP docs link on every Quick Connect page (#270). */}
+              <button
+                onClick={() => openUrl(getProviderDocsUrl(provider, provider) || PROVIDER_DOCS_INDEX)}
+                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+              >
+                Docs <ExternalLink className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => openUrl(oauthApp.help_url)}
+                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+              >
+                {t('settings.getCredentials')} <ExternalLink className="w-3 h-3" />
+              </button>
+            </div>
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400">

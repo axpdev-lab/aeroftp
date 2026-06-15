@@ -1322,16 +1322,61 @@ impl StorageProvider for SftpProvider {
             })
         })?;
 
-        // Create atomic local file (writes to .aerotmp, renames on commit)
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+        // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
+        // cancel/error (drop) so a later re-download resumes, renames on commit.
+        let mut resumable = super::atomic_write::ResumableFile::open(local_path)
             .await
             .map_err(|e| {
                 ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
             })?;
 
+        let mut resume_offset = resumable.offset();
+        // A partial larger than the current remote file is stale (the remote
+        // changed): discard it and start fresh rather than appending to bad data.
+        if total_size > 0 && resume_offset > total_size {
+            resumable.discard().await.ok();
+            resumable = super::atomic_write::ResumableFile::open_fresh(local_path)
+                .await
+                .map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
+                })?;
+            resume_offset = 0;
+        }
+
+        // The partial already holds the whole file: finalize, nothing to read.
+        if total_size > 0 && resume_offset == total_size {
+            if let Some(ref progress) = on_progress {
+                progress(total_size, total_size);
+            }
+            resumable.commit().await.map_err(|e| {
+                ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+            })?;
+            tracing::info!(
+                "SFTP: Download already complete from partial: {} bytes",
+                total_size
+            );
+            return Ok(());
+        }
+
+        // Resume: seek the remote read to the partial's end so we append the
+        // correct bytes instead of re-fetching from zero.
+        if resume_offset > 0 {
+            use tokio::io::AsyncSeekExt;
+            remote_file
+                .seek(std::io::SeekFrom::Start(resume_offset))
+                .await
+                .map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to seek for resume: {}", e))
+                })?;
+            tracing::info!("SFTP: Resuming download from offset {}", resume_offset);
+        }
+
         // Read and write in chunks with optional rate limiting
         let mut buffer = vec![0u8; self.buffer_size];
-        let mut transferred: u64 = 0;
+        let mut transferred: u64 = resume_offset;
+        if let Some(ref progress) = on_progress {
+            progress(transferred, total_size);
+        }
         let start = std::time::Instant::now();
 
         loop {
@@ -1345,7 +1390,7 @@ impl StorageProvider for SftpProvider {
                 break;
             }
 
-            atomic
+            resumable
                 .write_all(&buffer[..bytes_read])
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
@@ -1356,10 +1401,12 @@ impl StorageProvider for SftpProvider {
                 progress(transferred, total_size);
             }
 
-            // Apply bandwidth throttling
+            // Apply bandwidth throttling on bytes moved THIS session, so a
+            // resume does not over-sleep for already-downloaded data.
             if self.download_limit_bps > 0 {
+                let session_bytes = transferred - resume_offset;
                 let expected = std::time::Duration::from_secs_f64(
-                    transferred as f64 / self.download_limit_bps as f64,
+                    session_bytes as f64 / self.download_limit_bps as f64,
                 );
                 let elapsed = start.elapsed();
                 if expected > elapsed {
@@ -1368,7 +1415,7 @@ impl StorageProvider for SftpProvider {
             }
         }
 
-        atomic.commit().await.map_err(|e| {
+        resumable.commit().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
 

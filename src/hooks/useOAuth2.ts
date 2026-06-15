@@ -161,7 +161,10 @@ export const OAUTH_APPS = {
     // Placeholder - users need to set up their own Azure AD app
     client_id: '',
     client_secret: '',
-    help_url: 'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps',
+    // App Registrations list blade: the deep link that lands directly on the
+    // page where the user creates the app for the OneDrive Client ID / Secret
+    // (#270). The older #blade/ form no longer resolves reliably.
+    help_url: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
   },
   box: {
     // Placeholder - users need to set up their own Box Developer app

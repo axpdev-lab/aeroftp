@@ -9,7 +9,7 @@
 
 use tokio::process::Command;
 
-use super::ProviderError;
+use super::{FileVersion, ProviderError};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -136,6 +136,152 @@ async fn run_mega_cmd_capture(
     })
 }
 
+/// MEGA-absolute path for a remote path arriving from the WebDAV bridge (which
+/// serves the account root) or the native MEGAcmd provider.
+fn mega_abs_path(remote_path: &str) -> String {
+    if remote_path.starts_with('/') {
+        remote_path.to_string()
+    } else {
+        format!("/{}", remote_path)
+    }
+}
+
+/// Map a non-success MEGAcmd exit to a typed error: "not logged in" becomes an
+/// auth error (mirrors `mega_df_query`), everything else a server error.
+fn mega_cmd_failure(label: &str, output: &std::process::Output) -> ProviderError {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if stderr.is_empty() { stdout } else { stderr };
+    let lower = detail.to_ascii_lowercase();
+    if lower.contains("not logged in")
+        || lower.contains("not logged-in")
+        || lower.contains("login required")
+    {
+        ProviderError::AuthenticationFailed(format!("{}: {}", label, detail))
+    } else {
+        ProviderError::ServerError(format!("{}: {}", label, detail))
+    }
+}
+
+/// Parse `mega-ls -l --versions <path>` output into the file's version chain.
+///
+/// MEGAcmd prints the file once, then a `Versions of <name>:` section whose
+/// lines mirror the `-l` columns (`FLAGS VERS SIZE DATE TIME NAME`) with a
+/// `#<epoch>` suffix on the name; that epoch is the addressable version id
+/// (`mega-get "<path>#<epoch>"`). A file with no retained history (VERS 1) has
+/// no section, so the chain comes back empty.
+pub(crate) fn parse_mega_ls_versions(output: &str) -> Vec<FileVersion> {
+    let mut out = Vec::new();
+    let mut in_versions = false;
+    for raw in output.lines() {
+        let trimmed = raw.trim_start();
+        if trimmed.starts_with("Versions of ") {
+            in_versions = true;
+            continue;
+        }
+        if !in_versions || trimmed.is_empty() {
+            continue;
+        }
+        // flags, vers, size, date, time, name(+#epoch)
+        let parts: Vec<&str> = raw.split_whitespace().collect();
+        if parts.len() < 6 {
+            continue;
+        }
+        let name = parts[5..].join(" ");
+        let version_id = match name.rsplit_once('#') {
+            Some((_, epoch)) if !epoch.is_empty() && epoch.bytes().all(|b| b.is_ascii_digit()) => {
+                epoch.to_string()
+            }
+            _ => continue,
+        };
+        let size = parts[2].parse::<u64>().unwrap_or(0);
+        let modified = format!("{} {}", parts[3], parts[4]);
+        out.push(FileVersion {
+            id: version_id,
+            modified: Some(modified),
+            size,
+            modified_by: None,
+        });
+    }
+    out
+}
+
+/// List the retained versions of a MEGA file via `mega-ls -l --versions`.
+pub async fn mega_list_versions(remote_path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+    let path = mega_abs_path(remote_path);
+    let output = run_mega_cmd_capture("mega-ls", &["-l", "--versions", &path]).await?;
+    if !output.status.success() {
+        return Err(mega_cmd_failure("mega-ls --versions", &output));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_mega_ls_versions(&stdout))
+}
+
+/// Fetch a specific MEGA version to a fresh temp file and return its path.
+///
+/// `mega-get` refuses to overwrite an existing local target (it appends
+/// " (NUM)"), so we always download to a unique, non-existent temp path and let
+/// the caller place it where it belongs.
+async fn mega_fetch_version_to_temp(
+    remote_path: &str,
+    version_id: &str,
+) -> Result<std::path::PathBuf, ProviderError> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let temp = std::env::temp_dir().join(format!("aeroftp-megaver-{}-{}.tmp", version_id, nanos));
+    let versioned = format!("{}#{}", mega_abs_path(remote_path), version_id);
+    let temp_str = temp.to_string_lossy().to_string();
+    match run_mega_cmd_capture("mega-get", &[&versioned, &temp_str]).await {
+        Ok(output) if output.status.success() => Ok(temp),
+        Ok(output) => {
+            let _ = std::fs::remove_file(&temp);
+            Err(mega_cmd_failure("mega-get version", &output))
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp);
+            Err(e)
+        }
+    }
+}
+
+/// Download a specific MEGA version to `local_path` via `mega-get "<path>#<id>"`.
+pub async fn mega_download_version(
+    remote_path: &str,
+    version_id: &str,
+    local_path: &str,
+) -> Result<(), ProviderError> {
+    let temp = mega_fetch_version_to_temp(remote_path, version_id).await?;
+    // Move into place, overwriting any existing destination (rename is atomic on
+    // the same filesystem; fall back to copy across mounts / on Windows).
+    if std::fs::rename(&temp, local_path).is_err() {
+        let copy = std::fs::copy(&temp, local_path);
+        let _ = std::fs::remove_file(&temp);
+        copy.map_err(ProviderError::IoError)?;
+    }
+    Ok(())
+}
+
+/// Restore a MEGA file to a previous version. MEGAcmd has no restore verb, so we
+/// download the chosen version and re-upload it: MEGA records the re-upload as
+/// the new current version while preserving the existing chain.
+pub async fn mega_restore_version(
+    remote_path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    let temp = mega_fetch_version_to_temp(remote_path, version_id).await?;
+    let temp_str = temp.to_string_lossy().to_string();
+    let path = mega_abs_path(remote_path);
+    let put = run_mega_cmd_capture("mega-put", &[&temp_str, &path]).await;
+    let _ = std::fs::remove_file(&temp);
+    let output = put?;
+    if !output.status.success() {
+        return Err(mega_cmd_failure("mega-put restore", &output));
+    }
+    Ok(())
+}
+
 /// Interpret a `mega-webdav /` invocation. Pure, for testability.
 ///
 /// `mega-webdav /` is idempotent: re-running it when the bridge is already up is
@@ -187,6 +333,60 @@ pub async fn ensure_megacmd_webdav_bridge() -> Result<(), ProviderError> {
         String::from_utf8_lossy(&output.stdout)
     );
     classify_mega_webdav_result(output.status.success(), &combined)
+}
+
+/// Extract the served WebDAV URL from `mega-webdav /` output. Pure, for testing.
+///
+/// MEGAcmd prints the address whether the location is freshly served
+/// ("Serving via webdav: http://127.0.0.1:4443/") or already up
+/// ("/: already being served at http://127.0.0.1:4443/"). We take the first
+/// http(s) token and trim any trailing prose punctuation.
+pub(crate) fn parse_mega_webdav_url(combined: &str) -> Option<String> {
+    let lower = combined.to_ascii_lowercase();
+    let start = match (lower.find("http://"), lower.find("https://")) {
+        (Some(a), Some(b)) => a.min(b),
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => return None,
+    };
+    let rest = &combined[start..];
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    let mut url = rest[..end].to_string();
+    while url.ends_with(['.', ',', ';', ')', ']', '"', '\'']) {
+        url.pop();
+    }
+    // Reject a bare scheme with no host.
+    if url.starts_with("http://") && url.len() > "http://".len()
+        || url.starts_with("https://") && url.len() > "https://".len()
+    {
+        Some(url)
+    } else {
+        None
+    }
+}
+
+/// Resolve the local MEGAcmd WebDAV bridge URL by running `mega-webdav /`.
+///
+/// Mirrors `mega_df_query`: the same idempotent invocation that ensures the
+/// bridge is up also prints its address, so AeroFTP can fill the Endpoint URL
+/// field instead of asking the user to copy it from the MEGAcmd terminal
+/// (#215). Auth/server failures surface as the actionable errors from
+/// `classify_mega_webdav_result`; a clean run with no parseable URL is a
+/// parse error.
+pub async fn mega_webdav_url_query() -> Result<String, ProviderError> {
+    let output = run_mega_cmd_capture("mega-webdav", &["/"]).await?;
+    let combined = format!(
+        "{} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    classify_mega_webdav_result(output.status.success(), &combined)?;
+    parse_mega_webdav_url(&combined).ok_or_else(|| {
+        ProviderError::ParseError(format!(
+            "Could not parse the WebDAV URL from mega-webdav / output: {}",
+            combined.trim()
+        ))
+    })
 }
 
 pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64, Option<u64>), ProviderError> {
@@ -412,5 +612,75 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
     fn mega_webdav_unknown_failure_is_server_error() {
         let err = classify_mega_webdav_result(false, "some other failure").unwrap_err();
         assert!(matches!(err, ProviderError::ServerError(_)));
+    }
+
+    #[test]
+    fn parses_webdav_url_from_already_served() {
+        assert_eq!(
+            parse_mega_webdav_url("/: already being served at http://127.0.0.1:4443/"),
+            Some("http://127.0.0.1:4443/".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_webdav_url_from_fresh_serve() {
+        assert_eq!(
+            parse_mega_webdav_url("Serving via webdav: http://127.0.0.1:4443/."),
+            Some("http://127.0.0.1:4443/".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_https_webdav_url_when_tls_enabled() {
+        assert_eq!(
+            parse_mega_webdav_url("served at https://127.0.0.1:4443/ (TLS)"),
+            Some("https://127.0.0.1:4443/".to_string())
+        );
+    }
+
+    #[test]
+    fn webdav_url_absent_returns_none() {
+        assert_eq!(parse_mega_webdav_url("[err: Not logged in.]"), None);
+    }
+
+    #[test]
+    fn parses_version_chain_from_mega_ls() {
+        // Real `mega-ls -l --versions` output for a two-version file.
+        let output = "\
+FLAGS VERS      SIZE            DATE       NAME
+----    2     31457280 15May2026 16:56:46 report.bin
+
+Versions of report.bin:
+----    2     31457280 15May2026 16:56:46 report.bin#1778857006
+----    1     31457280 15May2026 16:56:38 report.bin#1778856998
+";
+        let versions = parse_mega_ls_versions(output);
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].id, "1778857006");
+        assert_eq!(versions[0].size, 31_457_280);
+        assert_eq!(versions[0].modified.as_deref(), Some("15May2026 16:56:46"));
+        assert_eq!(versions[1].id, "1778856998");
+        assert_eq!(versions[1].modified.as_deref(), Some("15May2026 16:56:38"));
+    }
+
+    #[test]
+    fn single_version_file_has_empty_chain() {
+        // VERS 1 prints no "Versions of" section.
+        let output = "\
+FLAGS VERS      SIZE            DATE       NAME
+----    1          102 28Apr2026 19:21:25 test_readable.txt
+";
+        assert!(parse_mega_ls_versions(output).is_empty());
+    }
+
+    #[test]
+    fn version_names_with_spaces_keep_the_epoch_id() {
+        let output = "\
+Versions of my report.bin:
+----    2     10 08Jun2026 16:56:46 my report.bin#1778857006
+";
+        let versions = parse_mega_ls_versions(output);
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].id, "1778857006");
     }
 }

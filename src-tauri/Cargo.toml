@@ -160,7 +160,7 @@ scrypt = "0.11"                                                        # Cryptom
 aes-kw = "0.2"                                                         # AES Key Wrap (RFC 3394)
 aes-siv = "0.7"                                                        # AES-SIV filename encryption
 data-encoding = "2"                                                    # Base32/Base64 encoding
-jsonwebtoken = { version = "10.4", default-features = false, features = ["aws-lc-rs", "hmac", "use_pem"] } # JWT HS256 + GitHub App RS256 without RustCrypto rsa
+jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc_rs", "hmac", "use_pem"] } # JWT HS256 + GitHub App RS256 without RustCrypto rsa (feature is aws_lc_rs with underscores; the hyphen form only enabled the optional dep, leaving the crypto provider uninstalled and JWT signing/verification panicking)
 
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 aerovault = "0.4.2"                                                    # AeroVault v2/v3 standalone crate (crates.io, CRYPTO-01 + dual-audit AV-001/006/011/012)
@@ -266,6 +266,14 @@ tauri-plugin-localhost = "2"
 # now lives in `InitFlags::FUSE_WRITEBACK_CACHE` and is always
 # compiled in.
 fuser = "0.17"
+# gtk: needed only to pin a stable GTK program name at startup via
+# `gtk::glib::set_prgname` so the X11/Wayland WM_CLASS is always
+# "aeroftp" regardless of how the binary is launched. This makes the
+# window match `StartupWMClass=aeroftp` in AeroFTP.desktop even when the
+# updater relaunches `current_exe()` (= /usr/lib/aeroftp/aeroftp.bin),
+# fixing the generic-icon-after-update bug. Already present transitively
+# via tauri/wry, so this adds no real build cost.
+gtk = "0.18"
 
 [dev-dependencies]
 

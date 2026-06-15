@@ -78,28 +78,28 @@ const TreeRow: React.FC<{
 
     return (
         <>
-            <tr className="hover:bg-gray-700/30 text-sm">
+            <tr className="hover:bg-gray-100 dark:hover:bg-gray-700/30 text-sm">
                 <td className="py-1 px-2" style={{ paddingLeft: `${depth * 20 + 8}px` }}>
                     <div className="flex items-center gap-1.5">
                         {node.isDir ? (
-                            <button onClick={() => setExpanded(!expanded)} className="p-0.5 hover:bg-gray-600 rounded">
+                            <button onClick={() => setExpanded(!expanded)} className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                                 {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </button>
                         ) : <span className="w-5" />}
-                        {node.isDir ? <Folder size={14} className="text-yellow-400 shrink-0" /> : <File size={14} className="text-gray-400 shrink-0" />}
+                        {node.isDir ? <Folder size={14} className="text-yellow-500 dark:text-yellow-400 shrink-0" /> : <File size={14} className="text-gray-500 dark:text-gray-400 shrink-0" />}
                         {node.isEncrypted && <Lock size={12} className="text-orange-400 shrink-0" />}
                         <span className="truncate">{node.name}</span>
                     </div>
                 </td>
-                <td className="py-1 px-2 text-right text-gray-400 whitespace-nowrap">{node.isDir ? '' : formatSize(node.size)}</td>
-                <td className="py-1 px-2 text-right text-gray-400 whitespace-nowrap">{node.compressedSize > 0 ? formatSize(node.compressedSize) : ''}</td>
+                <td className="py-1 px-2 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">{node.isDir ? '' : formatSize(node.size)}</td>
+                <td className="py-1 px-2 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">{node.compressedSize > 0 ? formatSize(node.compressedSize) : ''}</td>
                 <td className="py-1 px-2 text-right">
                     {!node.isDir && (
                         <div className="flex gap-1 justify-end">
-                            <button onClick={() => onPreview(node.fullPath)} className="p-1 hover:bg-gray-600 rounded" title="Preview">
+                            <button onClick={() => onPreview(node.fullPath)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title="Preview">
                                 <Eye size={14} />
                             </button>
-                            <button onClick={() => onExtract(node.fullPath)} className="p-1 hover:bg-gray-600 rounded" title="Extract">
+                            <button onClick={() => onExtract(node.fullPath)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" title="Extract">
                                 <Download size={14} />
                             </button>
                         </div>
@@ -242,22 +242,22 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
-                        <Archive size={18} className="text-blue-400" />
+                        <Archive size={18} className="text-blue-500 dark:text-blue-400" />
                         <span className="font-medium truncate max-w-[400px]">{archiveName}</span>
-                        <span className="text-xs text-gray-400 uppercase">{archiveType}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 uppercase">{archiveType}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded" title={t('common.close')}>
+                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}>
                         <X size={18} />
                     </button>
                 </div>
 
                 {/* Password prompt */}
                 {needsPassword && (
-                    <div className="p-4 border-b border-gray-700">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-2 mb-2">
                             <Lock size={16} className="text-orange-400" />
                             <span className="text-sm">{t('archive.passwordRequired') || 'This archive is password protected'}</span>
@@ -270,11 +270,11 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                                     onChange={e => setPassword(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()}
                                     placeholder={t('archive.enterPassword') || 'Enter password...'}
-                                    className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm pr-8"
+                                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8"
                                 />
                                 <button
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400"
                                 >
                                     {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
@@ -291,7 +291,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
 
                 {/* Error */}
                 {error && (
-                    <div className="px-4 py-2 bg-red-900/30 text-red-400 text-sm border-b border-gray-700">
+                    <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm border-b border-gray-200 dark:border-gray-700">
                         {error}
                     </div>
                 )}
@@ -299,7 +299,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                 {/* Loading */}
                 {loading && (
                     <div className="flex-1 flex items-center justify-center py-12">
-                        <Loader2 size={24} className="animate-spin text-blue-400" />
+                        <Loader2 size={24} className="animate-spin text-blue-500 dark:text-blue-400" />
                     </div>
                 )}
 
@@ -307,7 +307,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                 {!loading && !needsPassword && entries.length > 0 && (
                     <div className="flex-1 overflow-auto">
                         <table className="w-full">
-                            <thead className="text-xs text-gray-400 border-b border-gray-700 sticky top-0 bg-gray-800">
+                            <thead className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-gray-50 dark:bg-gray-800">
                                 <tr>
                                     <th className="py-2 px-2 text-left">{t('archive.name') || 'Name'}</th>
                                     <th className="py-2 px-2 text-right w-24">{t('archive.size') || 'Size'}</th>
@@ -331,21 +331,21 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
 
                 {/* Empty state */}
                 {!loading && !needsPassword && entries.length === 0 && !error && (
-                    <div className="flex-1 flex items-center justify-center py-12 text-gray-400">
+                    <div className="flex-1 flex items-center justify-center py-12 text-gray-500 dark:text-gray-400">
                         {t('archive.empty') || 'Archive is empty'}
                     </div>
                 )}
 
                 {/* Extracting indicator */}
                 {extracting && (
-                    <div className="px-4 py-2 bg-blue-900/30 text-blue-400 text-sm border-t border-gray-700 flex items-center gap-2">
+                    <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-sm border-t border-gray-200 dark:border-gray-700 flex items-center gap-2">
                         <Loader2 size={14} className="animate-spin" />
                         {t('archive.extracting') || 'Extracting'} {extracting.split('/').pop()}...
                     </div>
                 )}
 
                 {/* Footer */}
-                <div className="px-4 py-2 border-t border-gray-700 text-xs text-gray-400 flex justify-between">
+                <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex justify-between">
                     <span>{fileCount} {t('archive.files') || 'files'}, {formatSize(totalSize)}</span>
                 </div>
             </div>

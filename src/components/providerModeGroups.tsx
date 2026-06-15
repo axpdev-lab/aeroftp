@@ -235,6 +235,61 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             },
         ],
     },
+    {
+        // Issue #215: a single MEGA Quick Connect page that exposes the real
+        // ways to reach one MEGA account: the native API, the local MEGAcmd
+        // WebDAV bridge, and S4 object storage. A fourth surface Ehud asked
+        // for, "Non-WebDAV MEGAcmd" (driving mega-ls/get/put directly), has no
+        // backend yet and is intentionally absent until one exists.
+        id: 'mega',
+        headerLabel: 'MEGA Modes',
+        headerProviderId: 'mega',
+        headerName: 'MEGA',
+        headerDescription: 'MEGA cloud storage with client-side encryption',
+        modes: [
+            {
+                // Native MEGA is selected via the ProtocolSelector (type
+                // 'mega'). A fresh quick-connect carries no providerId while a
+                // saved profile persists providerId 'mega', so the mode is
+                // preset-less and matched by protocol: the lenient rule in
+                // findActiveModeGroup covers both (activeProviderId undefined or
+                // equal to the protocol).
+                protocol: 'mega',
+                icon: <Cloud size={14} />,
+                activeColor: 'text-red-500',
+                label: 'API',
+                description:
+                    'Native MEGA API with email + password (+ optional TOTP). Full feature set: client-side encryption, storage quota, share links, thumbnails.',
+                badge: 'E2E',
+            },
+            {
+                providerId: 'megacmd-webdav',
+                protocol: 'webdav',
+                icon: <Globe size={14} />,
+                activeColor: 'text-blue-500',
+                label: 'WebDAV (MEGAcmd)',
+                description:
+                    'Local WebDAV bridge served by the official MEGAcmd CLI, anonymous on 127.0.0.1. AeroFTP runs "mega-webdav /" for you on connect, so there is no manual step.',
+                badge: 'LOCAL',
+            },
+            {
+                providerId: 'mega-s4',
+                protocol: 's3',
+                icon: <Database size={14} />,
+                activeColor: 'text-amber-500',
+                label: 'S4',
+                description:
+                    'MEGA S4 object storage, S3-compatible (EU/CA regions). Access key + secret key + bucket. Requires a Pro plan.',
+                badge: 'PRO',
+            },
+        ],
+        activeWarnings: {
+            'WebDAV (MEGAcmd)':
+                'Requires MEGAcmd installed and logged in (run "login your-email" once in the MEGAcmd terminal). AeroFTP then runs "mega-webdav /" itself on every connect to start the bridge and read its address: no manual step. From the CLI the same profile works as "aeroftp --profile <name> ls".',
+            S4:
+                'MEGA S4 is a separate paid object-storage product (Pro plan). Create Access Keys and a bucket in the S4 Dashboard, then pick the matching region.',
+        },
+    },
 ];
 
 /**
@@ -317,4 +372,31 @@ export function resolveModeHeader(
     const description = group.headerDescription;
     if (!providerId && !name) return null;
     return { providerId, name, description };
+}
+
+/**
+ * Every registry providerId reachable from the active mode group: the
+ * canonical header preset plus each mode that carries a preset. Deduped,
+ * order-stable (header first, then modes left-to-right).
+ *
+ * The caller resolves group-wide account links (signup / app-password
+ * pages) from these ids so the "Create Account" / "Generate password"
+ * buttons stay visible and identical across every tab of a group. Without
+ * this, a preset-less native mode (Koofr API, OpenDrive API) carries no
+ * provider and the buttons vanished when switching to it (#215). Every
+ * surface in a group hits the same account, so the same signup / password
+ * page is correct for all of them.
+ */
+export function modeGroupProviderIds(
+    activeProviderId: string | null | undefined,
+    activeProtocol: string | null | undefined,
+): string[] {
+    const group = findActiveModeGroup(activeProviderId, activeProtocol);
+    if (!group) return [];
+    const ids: string[] = [];
+    if (group.headerProviderId) ids.push(group.headerProviderId);
+    for (const mode of group.modes) {
+        if (mode.providerId) ids.push(mode.providerId);
+    }
+    return [...new Set(ids)];
 }

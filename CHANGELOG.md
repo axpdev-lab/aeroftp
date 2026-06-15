@@ -56,6 +56,14 @@ All via shared lib (GUI+CLI+tests), --profile for remote (vault local direct), C
 
 (@Grok 4.3 + prior handoff work; design anchor Ehud Kirsh discussions #272/#276, issue #162)
 
+### Per-Account Privacy and Manage Users Localization
+
+#### Added
+- **Per-account password (optional)**: when more than one person uses AeroFTP on the same device, you can give an account its own password so others cannot open it from the account switcher. Your saved servers and keys are always encrypted; an account password additionally isolates that account from the other local accounts on this device. It stays entirely optional, and the zero-password default is unchanged. Manage Users now explains this choice inline.
+
+#### Changed
+- **Manage Users panel fully localized**: every label, button, confirmation and the avatar editor in the Manage Users panel are now translated across all 47 locales (previously English-only).
+
 ## [4.0.4] - 2026-06-07
 
 ### Reversible Restricted-Filename Encoding, CLI Polish and Stability

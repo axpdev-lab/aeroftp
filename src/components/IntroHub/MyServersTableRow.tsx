@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Heart, Loader2, Star, Trash2 } from 'lucide-react';
 import { ServerProfile, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { formatBytes } from '../../utils/formatters';
@@ -16,6 +16,7 @@ import type { MyServersDensity } from '../../hooks/useMyServersDensity';
 import type { MyServersTableColId } from '../../hooks/useMyServersColumns';
 import type { TableColAlign, TableColumnDef } from '../../hooks/useTableColumns';
 import { useTranslation } from '../../i18n';
+import { useFavoriteMarker } from '../../hooks/useFavoriteMarker';
 import { HealthRadial } from './HealthRadial';
 import { getServerIcon, getTimeAgo, RenameInput, ServerBadges } from './ServerCard';
 
@@ -107,6 +108,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     hasActiveSession = false,
 }: MyServersTableRowProps) {
     const t = useTranslation();
+    const favoriteMarker = useFavoriteMarker();
     const isCompact = density === 'compact';
     const rowPadY = isCompact ? 'py-1' : 'py-2';
     const iconBoxSize = isCompact ? 'w-8 h-8' : 'w-10 h-10';
@@ -427,13 +429,19 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         <button
                             onClick={(e) => { e.stopPropagation(); onToggleFavorite(server); }}
                             className={`p-1 rounded-lg transition-colors ${
-                                isFavorite
-                                    ? 'text-yellow-400 hover:text-yellow-500'
-                                    : 'text-gray-400 hover:text-yellow-400 opacity-0 group-hover:opacity-100'
+                                favoriteMarker === 'heart'
+                                    ? (isFavorite
+                                        ? 'text-red-500 hover:text-red-600'
+                                        : 'text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100')
+                                    : (isFavorite
+                                        ? 'text-yellow-400 hover:text-yellow-500'
+                                        : 'text-gray-400 hover:text-yellow-400 opacity-0 group-hover:opacity-100')
                             }`}
                             title={isFavorite ? t('introHub.removeFavorite') : t('introHub.addFavorite')}
                         >
-                            <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
+                            {favoriteMarker === 'heart'
+                                ? <Heart size={12} fill={isFavorite ? 'currentColor' : 'none'} />
+                                : <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />}
                         </button>
                     </td>
                 );
