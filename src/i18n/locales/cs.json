@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Heslo vrstvy",
             "passwordStored": "Uloženo (ponechte prázdné pro zachování)",
-            "scopeHint": "Vzdálená a místní cesta uvedené výše určují šifrovaný rozsah (ponechte Vzdálenou prázdnou pro zašifrování celého kořene)."
+            "scopeHint": "Vzdálená a místní cesta uvedené výše určují šifrovaný rozsah (ponechte Vzdálenou prázdnou pro zašifrování celého kořene).",
+            "immutableWarn": "Typ šifrování a heslo se nastavují jednou a později je nelze změnit: již zašifrované soubory by se staly nečitelnými.",
+            "lockedNote": "Typ šifrování a přihlašovací údaje jsou uzamčeny: tato vrstva již obsahuje zašifrovaná data."
         }
     }
 }

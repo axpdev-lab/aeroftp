@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Perdangos slaptažodis",
             "passwordStored": "Įrašytas (palikite tuščią, kad išliktų)",
-            "scopeHint": "Aukščiau nurodyti nuotolinis ir vietinis keliai apibrėžia šifruotą sritį (palikite Nuotolinį tuščią, kad būtų užšifruota visa šaknis)."
+            "scopeHint": "Aukščiau nurodyti nuotolinis ir vietinis keliai apibrėžia šifruotą sritį (palikite Nuotolinį tuščią, kad būtų užšifruota visa šaknis).",
+            "immutableWarn": "Šifravimo tipas ir slaptažodis nustatomi vieną kartą ir vėliau jų pakeisti negalima: jau užšifruoti failai taptų neįskaitomi.",
+            "lockedNote": "Šifravimo tipas ir prisijungimo duomenys užrakinti: šis sluoksnis jau turi užšifruotų duomenų."
         }
     }
 }

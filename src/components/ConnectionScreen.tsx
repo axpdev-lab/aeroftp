@@ -587,6 +587,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     const [aeroCryptEnabled, setAeroCryptEnabled] = useState(false);
     const [aeroCryptKind, setAeroCryptKind] = useState<'aerocrypt' | 'rclone-crypt'>('aerocrypt');
+    // C-EDIT-GUARD: true when editing a profile that ALREADY has an overlay binding.
+    // The remote already holds blobs whose keys derive directly from kind + salt +
+    // password, so changing any of them would orphan that data. In that case the
+    // kind switch and the credential fields are shown but DISABLED (enable/disable
+    // stays active). Changing the password safely needs a re-encrypt / format
+    // rewrap, tracked as a separate feature.
+    const [overlayBindingLocked, setOverlayBindingLocked] = useState(false);
     const [aeroCryptPassword, setAeroCryptPassword] = useState('');
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
@@ -849,6 +856,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // runtime overlay toolbar button supports (App.tsx usesProviderApi: ftp/ftps
     // + every non-ftp provider).
     const overlayEligible = !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
+    // C-EDIT-GUARD: kind + credential fields are read-only when editing a profile
+    // that already carries an overlay binding (its remote holds keyed blobs).
+    const overlayFieldsLocked = overlayBindingLocked && !!editingProfileId;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -1616,6 +1626,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // is never prefilled (it lives in the vault under aerocrypt_overlay_pw_<id>).
         const overlayBinding = profile.aeroCryptOverlay;
         setAeroCryptEnabled(!!overlayBinding?.enabled);
+        // C-EDIT-GUARD: lock kind + credential edits when a binding already exists.
+        setOverlayBindingLocked(!!overlayBinding?.enabled);
         setAeroCryptKind(overlayBinding?.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt');
         setAeroCryptPassword('');
         // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
@@ -1672,6 +1684,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSaveConnection(false);
         setPersistModeCredentials(false);
         setAeroCryptEnabled(false);
+        setOverlayBindingLocked(false);
         setAeroCryptKind('aerocrypt');
         setAeroCryptPassword('');
         setAeroCryptSalt('');
@@ -2246,15 +2259,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <div className="flex gap-2">
                                     <button
                                         type="button"
+                                        disabled={overlayFieldsLocked}
                                         onClick={() => setAeroCryptKind('aerocrypt')}
-                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'aerocrypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}
+                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'aerocrypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'} ${overlayFieldsLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
                                         {t('aerocryptProfile.kindNative')}
                                     </button>
                                     <button
                                         type="button"
+                                        disabled={overlayFieldsLocked}
                                         onClick={() => setAeroCryptKind('rclone-crypt')}
-                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'rclone-crypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}
+                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'rclone-crypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'} ${overlayFieldsLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
                                         {t('aerocryptProfile.kindRclone')}
                                     </button>
@@ -2263,9 +2278,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <input
                                         type={showAeroCryptPassword ? 'text' : 'password'}
                                         value={aeroCryptPassword}
+                                        disabled={overlayFieldsLocked}
                                         onChange={(e) => setAeroCryptPassword(e.target.value)}
                                         placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
-                                        className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                        className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                     />
                                     <button
                                         type="button"
@@ -2283,14 +2299,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <input
                                             type="password"
                                             value={aeroCryptSalt}
+                                            disabled={overlayFieldsLocked}
                                             onChange={(e) => setAeroCryptSalt(e.target.value)}
                                             placeholder={editingProfileId && !aeroCryptSalt ? t('aerocryptProfile.passwordStored') : t('aerocrypt.saltPlaceholder')}
-                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         />
                                         <select
                                             value={aeroCryptFilenameEnc}
+                                            disabled={overlayFieldsLocked}
                                             onChange={(e) => setAeroCryptFilenameEnc(e.target.value as 'standard' | 'obfuscate' | 'off')}
-                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
                                             <option value="standard">{t('aerocrypt.filenameEncOption.standard')}</option>
                                             <option value="obfuscate">{t('aerocrypt.filenameEncOption.obfuscate')}</option>
@@ -2299,11 +2317,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <Checkbox
                                             checked={aeroCryptDirNameEnc}
                                             onChange={setAeroCryptDirNameEnc}
+                                            disabled={overlayFieldsLocked}
                                             label={t('aerocrypt.directoryNameEncryption')}
                                             labelClassName="text-xs"
                                         />
                                     </>
                                 )}
+                                {/* C-EDIT-GUARD: kind + credentials derive the keys directly, so
+                                    they are immutable once the overlay holds data. */}
+                                <p className={`text-xs ${overlayFieldsLocked ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    {overlayFieldsLocked ? t('aerocryptProfile.lockedNote') : t('aerocryptProfile.immutableWarn')}
+                                </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.scopeHint')}</p>
                             </div>
                         )}

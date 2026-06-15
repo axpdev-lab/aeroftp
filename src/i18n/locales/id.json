@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interoperabilitas)",
             "passwordPlaceholder": "Kata sandi lapisan",
             "passwordStored": "Tersimpan (biarkan kosong untuk mempertahankan)",
-            "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root)."
+            "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root).",
+            "immutableWarn": "Jenis enkripsi dan kata sandi diatur sekali dan tidak dapat diubah nanti: berkas yang sudah dienkripsi akan menjadi tidak terbaca.",
+            "lockedNote": "Jenis enkripsi dan kredensial terkunci: lapisan ini sudah berisi data terenkripsi."
         }
     }
 }

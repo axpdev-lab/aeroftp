@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt（互操作）",
             "passwordPlaceholder": "叠加层密码",
             "passwordStored": "已存储（留空以保留）",
-            "scopeHint": "上方的远程和本地路径定义了加密范围（将远程留空以加密整个根目录）。"
+            "scopeHint": "上方的远程和本地路径定义了加密范围（将远程留空以加密整个根目录）。",
+            "immutableWarn": "加密类型和密码仅设置一次，之后无法更改：已加密的文件将无法读取。",
+            "lockedNote": "加密类型和凭据已锁定：此叠加层已包含加密数据。"
         }
     }
 }

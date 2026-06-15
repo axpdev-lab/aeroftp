@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (birlikte çalışabilirlik)",
             "passwordPlaceholder": "Katman parolası",
             "passwordStored": "Kayıtlı (korumak için boş bırakın)",
-            "scopeHint": "Yukarıdaki Uzak ve Yerel yollar şifreli kapsamı tanımlar (tüm kökü şifrelemek için Uzak'ı boş bırakın)."
+            "scopeHint": "Yukarıdaki Uzak ve Yerel yollar şifreli kapsamı tanımlar (tüm kökü şifrelemek için Uzak'ı boş bırakın).",
+            "immutableWarn": "Şifreleme türü ve parola bir kez ayarlanır ve sonradan değiştirilemez: zaten şifrelenmiş dosyalar okunamaz hale gelir.",
+            "lockedNote": "Şifreleme türü ve kimlik bilgileri kilitli: bu katman zaten şifrelenmiş veri içeriyor."
         }
     }
 }

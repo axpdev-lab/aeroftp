@@ -4818,7 +4818,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Cyfrinair y troshaen",
             "passwordStored": "Wedi'i gadw (gadewch yn wag i'w gadw)",
-            "scopeHint": "Mae'r llwybrau Pell a Lleol uchod yn diffinio'r cwmpas wedi'i amgryptio (gadewch Pell yn wag i amgryptio'r gwreiddyn cyfan)."
+            "scopeHint": "Mae'r llwybrau Pell a Lleol uchod yn diffinio'r cwmpas wedi'i amgryptio (gadewch Pell yn wag i amgryptio'r gwreiddyn cyfan).",
+            "immutableWarn": "Mae'r math o amgryptio a'r cyfrinair yn cael eu gosod unwaith ac ni ellir eu newid yn ddiweddarach: byddai'r ffeiliau sydd eisoes wedi'u hamgryptio yn dod yn annarllenadwy.",
+            "lockedNote": "Mae'r math o amgryptio a'r manylion wedi'u cloi: mae'r troshaen hon eisoes yn dal data wedi'i amgryptio."
         }
     }
 }

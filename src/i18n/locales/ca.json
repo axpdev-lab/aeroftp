@@ -4818,7 +4818,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Contrasenya de la capa",
             "passwordStored": "Desada (deixa-ho en blanc per mantenir-la)",
-            "scopeHint": "Els camins Remot i Local indicats a dalt defineixen l'abast xifrat (deixa Remot buit per xifrar tota l'arrel)."
+            "scopeHint": "Els camins Remot i Local indicats a dalt defineixen l'abast xifrat (deixa Remot buit per xifrar tota l'arrel).",
+            "immutableWarn": "El tipus de xifratge i la contrasenya es defineixen una sola vegada i no es poden canviar després: els fitxers ja xifrats es tornarien illegibles.",
+            "lockedNote": "El tipus de xifratge i les credencials estan bloquejats: aquesta capa ja conté dades xifrades."
         }
     }
 }

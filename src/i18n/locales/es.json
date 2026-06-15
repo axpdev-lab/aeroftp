@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Contraseña de la capa",
             "passwordStored": "Guardada (dejar en blanco para mantener)",
-            "scopeHint": "Las rutas Remota y Local indicadas arriba definen el ámbito cifrado (deja Remota vacía para cifrar toda la raíz)."
+            "scopeHint": "Las rutas Remota y Local indicadas arriba definen el ámbito cifrado (deja Remota vacía para cifrar toda la raíz).",
+            "immutableWarn": "El tipo de cifrado y la contraseña se establecen una sola vez y no se pueden cambiar después: los archivos ya cifrados quedarían ilegibles.",
+            "lockedNote": "El tipo de cifrado y las credenciales están bloqueados: esta superposición ya contiene datos cifrados."
         }
     }
 }

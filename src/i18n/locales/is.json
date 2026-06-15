@@ -4818,7 +4818,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Lykilorð yfirlags",
             "passwordStored": "Vistað (skildu eftir autt til að halda)",
-            "scopeHint": "Fjar- og staðbundnu slóðirnar að ofan skilgreina dulkóðaða umfangið (skildu Fjar eftir autt til að dulkóða alla rótina)."
+            "scopeHint": "Fjar- og staðbundnu slóðirnar að ofan skilgreina dulkóðaða umfangið (skildu Fjar eftir autt til að dulkóða alla rótina).",
+            "immutableWarn": "Dulkóðunartegund og lykilorð eru stillt einu sinni og ekki er hægt að breyta þeim síðar: þegar dulkóðaðar skrár yrðu ólæsilegar.",
+            "lockedNote": "Dulkóðunartegund og auðkenni eru læst: þetta yfirlag inniheldur þegar dulkóðuð gögn."
         }
     }
 }

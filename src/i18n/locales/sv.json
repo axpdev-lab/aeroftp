@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Lösenord för överlägg",
             "passwordStored": "Sparat (lämna tomt för att behålla)",
-            "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten)."
+            "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten).",
+            "immutableWarn": "Krypteringstyp och lösenord anges en gång och kan inte ändras senare: de redan krypterade filerna skulle bli oläsliga.",
+            "lockedNote": "Krypteringstyp och autentiseringsuppgifter är låsta: detta överlägg innehåller redan krypterad data."
         }
     }
 }

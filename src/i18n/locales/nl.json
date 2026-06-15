@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Overlaywachtwoord",
             "passwordStored": "Opgeslagen (laat leeg om te behouden)",
-            "scopeHint": "De bovenstaande externe en lokale paden bepalen het versleutelde bereik (laat Extern leeg om de hele hoofdmap te versleutelen)."
+            "scopeHint": "De bovenstaande externe en lokale paden bepalen het versleutelde bereik (laat Extern leeg om de hele hoofdmap te versleutelen).",
+            "immutableWarn": "Versleutelingstype en wachtwoord worden eenmaal ingesteld en kunnen later niet worden gewijzigd: de al versleutelde bestanden zouden onleesbaar worden.",
+            "lockedNote": "Versleutelingstype en inloggegevens zijn vergrendeld: deze overlay bevat al versleutelde gegevens."
         }
     }
 }

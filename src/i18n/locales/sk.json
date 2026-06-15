@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interoperabilita)",
             "passwordPlaceholder": "Heslo vrstvy",
             "passwordStored": "Uložené (ponechajte prázdne na zachovanie)",
-            "scopeHint": "Vyššie uvedené vzdialené a lokálne cesty určujú šifrovaný rozsah (ponechajte vzdialenú cestu prázdnu na zašifrovanie celého koreňa)."
+            "scopeHint": "Vyššie uvedené vzdialené a lokálne cesty určujú šifrovaný rozsah (ponechajte vzdialenú cestu prázdnu na zašifrovanie celého koreňa).",
+            "immutableWarn": "Typ šifrovania a heslo sa nastavujú raz a neskôr ich nemožno zmeniť: už zašifrované súbory by sa stali nečitateľnými.",
+            "lockedNote": "Typ šifrovania a prihlasovacie údaje sú uzamknuté: táto vrstva už obsahuje zašifrované údaje."
         }
     }
 }

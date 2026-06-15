@@ -4818,7 +4818,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Geruzaren pasahitza",
             "passwordStored": "Gordeta (utzi hutsik mantentzeko)",
-            "scopeHint": "Goian adierazitako Urruneko eta Tokiko bideek zifratutako esparrua zehazten dute (utzi Urrunekoa hutsik erro osoa zifratzeko)."
+            "scopeHint": "Goian adierazitako Urruneko eta Tokiko bideek zifratutako esparrua zehazten dute (utzi Urrunekoa hutsik erro osoa zifratzeko).",
+            "immutableWarn": "Zifratze mota eta pasahitza behin ezartzen dira eta ezin dira gero aldatu: dagoeneko zifratutako fitxategiak irakurtezin bihurtuko lirateke.",
+            "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu."
         }
     }
 }

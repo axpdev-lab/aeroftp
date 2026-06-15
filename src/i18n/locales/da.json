@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Overlay-adgangskode",
             "passwordStored": "Gemt (lad stå tomt for at bevare)",
-            "scopeHint": "De eksterne og lokale stier ovenfor definerer det krypterede omfang (lad Ekstern stå tom for at kryptere hele roden)."
+            "scopeHint": "De eksterne og lokale stier ovenfor definerer det krypterede omfang (lad Ekstern stå tom for at kryptere hele roden).",
+            "immutableWarn": "Krypteringstype og adgangskode angives én gang og kan ikke ændres senere: de allerede krypterede filer ville blive ulæselige.",
+            "lockedNote": "Krypteringstype og legitimationsoplysninger er låst: dette overlay indeholder allerede krypterede data."
         }
     }
 }

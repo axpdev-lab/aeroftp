@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Peittokerroksen salasana",
             "passwordStored": "Tallennettu (jätä tyhjäksi säilyttääksesi)",
-            "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren)."
+            "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren).",
+            "immutableWarn": "Salaustyyppi ja salasana asetetaan kerran, eikä niitä voi muuttaa myöhemmin: jo salatut tiedostot muuttuisivat lukukelvottomiksi.",
+            "lockedNote": "Salaustyyppi ja tunnistetiedot on lukittu: tämä peite sisältää jo salattua dataa."
         }
     }
 }

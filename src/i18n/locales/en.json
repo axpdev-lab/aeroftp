@@ -4799,6 +4799,8 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Overlay password",
             "passwordStored": "Stored (leave blank to keep)",
+            "immutableWarn": "Encryption type and password are set once and cannot be changed later: the already-encrypted files would become unreadable.",
+            "lockedNote": "Encryption type and credentials are locked: this overlay already holds encrypted data.",
             "scopeHint": "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root)."
         }
     }

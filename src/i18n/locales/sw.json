@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (ushirikiano)",
             "passwordPlaceholder": "Nenosiri la safu",
             "passwordStored": "Imehifadhiwa (acha wazi ili kudumisha)",
-            "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima)."
+            "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima).",
+            "immutableWarn": "Aina ya usimbaji na nenosiri huwekwa mara moja na haviwezi kubadilishwa baadaye: faili zilizosimbwa tayari zingekuwa hazisomeki.",
+            "lockedNote": "Aina ya usimbaji na stakabadhi zimefungwa: safu hii tayari ina data iliyosimbwa."
         }
     }
 }

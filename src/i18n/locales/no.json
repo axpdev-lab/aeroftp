@@ -4818,7 +4818,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Overleggspassord",
             "passwordStored": "Lagret (la stå tomt for å beholde)",
-            "scopeHint": "De eksterne og lokale stiene ovenfor definerer det krypterte omfanget (la Ekstern stå tom for å kryptere hele roten)."
+            "scopeHint": "De eksterne og lokale stiene ovenfor definerer det krypterte omfanget (la Ekstern stå tom for å kryptere hele roten).",
+            "immutableWarn": "Krypteringstype og passord angis én gang og kan ikke endres senere: de allerede krypterte filene ville blitt uleselige.",
+            "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data."
         }
     }
 }

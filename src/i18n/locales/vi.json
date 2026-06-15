@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (tương tác)",
             "passwordPlaceholder": "Mật khẩu lớp phủ",
             "passwordStored": "Đã lưu (để trống để giữ nguyên)",
-            "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc)."
+            "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc).",
+            "immutableWarn": "Loại mã hóa và mật khẩu được đặt một lần và không thể thay đổi sau đó: các tệp đã mã hóa sẽ không thể đọc được.",
+            "lockedNote": "Loại mã hóa và thông tin đăng nhập đã bị khóa: lớp phủ này đã chứa dữ liệu mã hóa."
         }
     }
 }

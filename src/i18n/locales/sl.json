@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interoperabilnost)",
             "passwordPlaceholder": "Geslo plasti",
             "passwordStored": "Shranjeno (pustite prazno za ohranitev)",
-            "scopeHint": "Zgornji oddaljeni in lokalni poti določata šifrirani obseg (pustite oddaljeno pot prazno za šifriranje celotnega korena)."
+            "scopeHint": "Zgornji oddaljeni in lokalni poti določata šifrirani obseg (pustite oddaljeno pot prazno za šifriranje celotnega korena).",
+            "immutableWarn": "Vrsta šifriranja in geslo se nastavita enkrat in ju pozneje ni mogoče spremeniti: že šifrirane datoteke bi postale neberljive.",
+            "lockedNote": "Vrsta šifriranja in poverilnice so zaklenjene: ta plast že vsebuje šifrirane podatke."
         }
     }
 }

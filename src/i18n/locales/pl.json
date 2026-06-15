@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Hasło nakładki",
             "passwordStored": "Zapisane (pozostaw puste, aby zachować)",
-            "scopeHint": "Powyższe ścieżki zdalna i lokalna definiują zaszyfrowany zakres (pozostaw Zdalną pustą, aby zaszyfrować cały katalog główny)."
+            "scopeHint": "Powyższe ścieżki zdalna i lokalna definiują zaszyfrowany zakres (pozostaw Zdalną pustą, aby zaszyfrować cały katalog główny).",
+            "immutableWarn": "Typ szyfrowania i hasło ustawia się raz i nie można ich później zmienić: już zaszyfrowane pliki stałyby się nieczytelne.",
+            "lockedNote": "Typ szyfrowania i poświadczenia są zablokowane: ta nakładka zawiera już zaszyfrowane dane."
         }
     }
 }

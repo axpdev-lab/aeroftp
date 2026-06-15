@@ -4799,6 +4799,8 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Password overlay",
             "passwordStored": "Salvata (lascia vuoto per mantenerla)",
+            "immutableWarn": "Tipo di cifratura e password si impostano una sola volta e non sono modificabili in seguito: i file gia cifrati diventerebbero illeggibili.",
+            "lockedNote": "Tipo di cifratura e credenziali bloccati: questo overlay contiene gia dati cifrati.",
             "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root)."
         }
     }

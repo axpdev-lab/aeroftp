@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Parola stratului",
             "passwordStored": "Salvată (lăsați gol pentru a o păstra)",
-            "scopeHint": "Căile la distanță și locală indicate mai sus definesc domeniul criptat (lăsați câmpul La distanță gol pentru a cripta întreaga rădăcină)."
+            "scopeHint": "Căile la distanță și locală indicate mai sus definesc domeniul criptat (lăsați câmpul La distanță gol pentru a cripta întreaga rădăcină).",
+            "immutableWarn": "Tipul de criptare și parola se setează o singură dată și nu pot fi schimbate ulterior: fișierele deja criptate ar deveni ilizibile.",
+            "lockedNote": "Tipul de criptare și credențialele sunt blocate: acest strat conține deja date criptate."
         }
     }
 }

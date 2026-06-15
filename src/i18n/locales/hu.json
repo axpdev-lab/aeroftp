@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Réteg jelszava",
             "passwordStored": "Mentve (hagyja üresen a megtartáshoz)",
-            "scopeHint": "A fent megadott távoli és helyi útvonalak határozzák meg a titkosított hatókört (hagyja üresen a Távolit a teljes gyökér titkosításához)."
+            "scopeHint": "A fent megadott távoli és helyi útvonalak határozzák meg a titkosított hatókört (hagyja üresen a Távolit a teljes gyökér titkosításához).",
+            "immutableWarn": "A titkosítás típusa és a jelszó egyszer állítható be, később nem módosítható: a már titkosított fájlok olvashatatlanná válnának.",
+            "lockedNote": "A titkosítás típusa és a hitelesítő adatok zárolva vannak: ez a réteg már titkosított adatokat tartalmaz."
         }
     }
 }

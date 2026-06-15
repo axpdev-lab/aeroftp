@@ -4799,7 +4799,9 @@
             "kindRclone": "Rclone Crypt (interop)",
             "passwordPlaceholder": "Palavra-passe da camada",
             "passwordStored": "Guardada (deixe em branco para manter)",
-            "scopeHint": "Os caminhos Remoto e Local indicados acima definem o âmbito cifrado (deixe o Remoto vazio para cifrar toda a raiz)."
+            "scopeHint": "Os caminhos Remoto e Local indicados acima definem o âmbito cifrado (deixe o Remoto vazio para cifrar toda a raiz).",
+            "immutableWarn": "O tipo de cifragem e a palavra-passe definem-se uma única vez e não podem ser alterados depois: os ficheiros já cifrados ficariam ilegíveis.",
+            "lockedNote": "O tipo de cifragem e as credenciais estão bloqueados: esta sobreposição já contém dados cifrados."
         }
     }
 }
