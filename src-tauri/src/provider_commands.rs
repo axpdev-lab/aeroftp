@@ -1832,20 +1832,61 @@ pub async fn provider_download_file(
         .await;
     }
 
-    let result = if let Some(Ok(())) = &segmented_result {
-        Ok(())
-    } else if partial_offset > 0 {
-        info!(
-            "Resuming download from offset {} bytes: {}",
-            partial_offset, filename
-        );
-        provider
-            .resume_download(&remote_path, &local_path, partial_offset, progress_cb)
-            .await
-    } else {
-        provider
-            .download(&remote_path, &local_path, progress_cb)
-            .await
+    // Issue #332: make an in-flight download interruptible. Reset the shared
+    // provider cancel flag for this transfer, then race the download future
+    // against it. A user Cancel raises the flag via `cancel_transfer`; when it
+    // flips we stop polling and drop the download future, which tears down the
+    // connection and returns promptly instead of running the transfer to
+    // completion. The steady-state (no-cancel) path is unchanged apart from a
+    // 200ms wakeup. The leftover `.aerotmp` is reclaimed by `cleanup`.
+    state
+        .cancel_flag
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let dl_cancel = state.cancel_flag.clone();
+    let result = {
+        let work = async {
+            if let Some(Ok(())) = &segmented_result {
+                Ok(())
+            } else if partial_offset > 0 {
+                info!(
+                    "Resuming download from offset {} bytes: {}",
+                    partial_offset, filename
+                );
+                provider
+                    .resume_download(&remote_path, &local_path, partial_offset, progress_cb)
+                    .await
+            } else {
+                provider
+                    .download(&remote_path, &local_path, progress_cb)
+                    .await
+            }
+        };
+        tokio::pin!(work);
+        loop {
+            tokio::select! {
+                biased;
+                r = &mut work => break r,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
+                    if dl_cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = app.emit(
+                            "transfer_event",
+                            crate::TransferEvent {
+                                event_type: "error".to_string(),
+                                transfer_id: transfer_id.clone(),
+                                filename: filename.clone(),
+                                direction: "download".to_string(),
+                                message: Some("Download cancelled by user".to_string()),
+                                progress: None,
+                                path: None,
+                                delta_stats: None,
+                                fallback_reason: None,
+                            },
+                        );
+                        return Err(format!("Download cancelled by user: {}", filename));
+                    }
+                }
+            }
+        }
     };
 
     match &result {
@@ -3037,20 +3078,58 @@ pub async fn provider_upload_file(
         .await;
     }
 
-    let result = if provider.provider_type() == ProviderType::GitHub {
-        let github = provider
-            .as_any_mut()
-            .downcast_mut::<crate::providers::github::GitHubProvider>()
-            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github
-            .upload_file(&local_path, &remote_path, commit_message.as_deref())
-            .await
-            .map_err(|e| format!("Upload failed: {}", e))
-    } else {
-        provider
-            .upload(&local_path, &remote_path, progress_cb)
-            .await
-            .map_err(|e| format!("Upload failed: {}", e))
+    // Issue #332: make an in-flight upload interruptible, mirroring
+    // provider_download_file. Reset the cancel flag for this transfer, then race
+    // the upload future against it so a user Cancel drops the future and returns
+    // promptly. The steady-state path is unchanged apart from a 200ms wakeup.
+    state
+        .cancel_flag
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let ul_cancel = state.cancel_flag.clone();
+    let result = {
+        let work = async {
+            if provider.provider_type() == ProviderType::GitHub {
+                let github = provider
+                    .as_any_mut()
+                    .downcast_mut::<crate::providers::github::GitHubProvider>()
+                    .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+                github
+                    .upload_file(&local_path, &remote_path, commit_message.as_deref())
+                    .await
+                    .map_err(|e| format!("Upload failed: {}", e))
+            } else {
+                provider
+                    .upload(&local_path, &remote_path, progress_cb)
+                    .await
+                    .map_err(|e| format!("Upload failed: {}", e))
+            }
+        };
+        tokio::pin!(work);
+        loop {
+            tokio::select! {
+                biased;
+                r = &mut work => break r,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
+                    if ul_cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = app.emit(
+                            "transfer_event",
+                            crate::TransferEvent {
+                                event_type: "error".to_string(),
+                                transfer_id: transfer_id.clone(),
+                                filename: filename.clone(),
+                                direction: "upload".to_string(),
+                                message: Some("Upload cancelled by user".to_string()),
+                                progress: None,
+                                path: None,
+                                delta_stats: None,
+                                fallback_reason: None,
+                            },
+                        );
+                        return Err(format!("Upload cancelled by user: {}", filename));
+                    }
+                }
+            }
+        }
     };
 
     match &result {

@@ -8121,6 +8121,11 @@ interface UpdateVerificationInfo {
         return;
       }
       remoteSyncRunningRef.current = true;
+      // Issue #332: arm the cancel path. batchCancelledRef (raised by
+      // cancelTransfer level 1) stops the runner loop at the next file boundary;
+      // level 2 also raises the backend cancel flag to abort an in-flight file.
+      batchCancelledRef.current = false;
+      cancelLevelRef.current = 0;
       // Per-file delta stats are captured from the global transfer-event
       // bridge and handed to the runner for the savings aggregation.
       const deltaStats = new Map<string, DeltaTransferStats>();
@@ -8137,7 +8142,7 @@ interface UpdateVerificationInfo {
             runFiles,
             runDirs,
             runConfig,
-            {},
+            { isCancelled: () => batchCancelledRef.current },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
           setRemoteSyncResult({ report, localLocal: false });
@@ -8273,13 +8278,16 @@ interface UpdateVerificationInfo {
     };
 
     remoteSyncRunningRef.current = true;
+    // Issue #332: arm the cancel path for the local-local copy run too.
+    batchCancelledRef.current = false;
+    cancelLevelRef.current = 0;
     void (async () => {
       try {
         const report = await runRemoteSync(
           runFiles,
           runDirs,
           runConfig,
-          {},
+          { isCancelled: () => batchCancelledRef.current },
           { invoke, resumeJournal: opts.resumeJournal, writeIndex: true },
         );
         setRemoteSyncResult({ report, localLocal: true });

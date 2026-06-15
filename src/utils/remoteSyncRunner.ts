@@ -386,6 +386,11 @@ export const runRemoteSync = async (
     ): Promise<TransferOutcome> => {
         const maxAttempts = Math.max(1, config.retryPolicy.max_retries);
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            // Issue #332: a user Cancel stops the run; never (re)attempt a
+            // transfer once cancellation has been requested.
+            if (isCancelled()) {
+                return { success: false, attempts: attempt };
+            }
             try {
                 if (config.retryPolicy.timeout_ms > 0) {
                     let timerId: ReturnType<typeof setTimeout>;
