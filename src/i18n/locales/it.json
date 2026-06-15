@@ -1891,6 +1891,9 @@
             "reconnect_success": "Riconnessione riuscita a {server}",
             "reconnect_error": "Riconnessione fallita, riprova manualmente",
             "loaded_items": "Caricati {count} elementi da {provider}",
+            "overlay_opening": "Apertura overlay cifrato, decifratura nomi",
+            "overlay_unlocked": "Overlay cifrato sbloccato",
+            "overlay_failed": "Impossibile sbloccare l'overlay cifrato",
             "update_checking": "Controllo aggiornamenti...",
             "update_available": "Aggiornamento disponibile: v{version} (.{format})",
             "update_uptodate": "Aggiornato (v{version})",
@@ -4395,7 +4398,14 @@
                 "dev": "Dev",
                 "media": "Media",
                 "localBridge": "Bridge locale",
-                "paid": "A pagamento"
+                "paid": "A pagamento",
+                "encrypted": "Cifrati"
+            },
+            "cryptBadge": {
+                "aerocrypt": "AeroCrypt",
+                "rclone": "rclone crypt",
+                "aerocryptTitle": "Overlay cifrato AeroCrypt (nativo): nomi e contenuti sono cifrati su questo server.",
+                "rcloneTitle": "Overlay rclone crypt (interop): nomi e contenuti sono cifrati su questo server."
             },
             "noServers": "Nessun server salvato",
             "noServersHint": "Inizia con una connessione rapida o esplora il catalogo dei servizi.",

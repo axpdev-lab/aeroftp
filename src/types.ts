@@ -479,6 +479,7 @@ export interface AeroCryptOverlayBinding {
   localScope?: string; // bound local working folder: downloads land here, uploads source here
   localEncrypted?: boolean; // opt-in, schema-ready now, implementation deferred (P3b/P4)
   filenameEncryption?: "standard" | "obfuscate" | "off"; // default "standard"
+  directoryNameEncryption?: boolean; // rclone-crypt only (P3.3b): default true; native ignores it
   aead?: "auto" | "aes-256-gcm-siv" | "xchacha20-poly1305"; // native only; see master plan §5
 }
 
@@ -501,6 +502,7 @@ export interface ServerProfile {
   persistModeCredentials?: boolean; // #215: remember each protocol mode's credentials across restarts (server_modes_<id>)
   aeroCryptOverlay?: AeroCryptOverlayBinding; // P3: encrypted-overlay binding (transparent dual-panel). Spec: master plan §3.3
   hasStoredAeroCryptPassword?: boolean; // true if the overlay password is stored in the vault under aerocrypt_overlay_pw_<id>
+  hasStoredAeroCryptSalt?: boolean; // rclone-crypt only (P3.3b): true if the overlay salt/password2 is stored in the vault under aerocrypt_overlay_salt_<id>
   providerId?: string; // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
   faviconUrl?: string; // Base64 data URL of detected project favicon
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)
@@ -608,6 +610,18 @@ export const profileHasQuota = (server: {
 }): boolean =>
   supportsStorageQuota((server.protocol || "ftp") as ProviderType) ||
   !!(server.options?.manualTotalBytes && server.options.manualTotalBytes > 0);
+
+// Crypt-overlay kind for a saved profile, or null when the profile has no
+// enabled encrypted overlay binding. Drives the at-rest "Encrypted" markers
+// in My Servers (corner shield + list badge + filter chip): 'aerocrypt' is the
+// native overlay (emerald), 'rclone-crypt' is the interop lane (blue).
+export type CryptOverlayKind = "aerocrypt" | "rclone-crypt";
+export const getServerCryptOverlay = (
+  server: Pick<ServerProfile, "aeroCryptOverlay">,
+): CryptOverlayKind | null => {
+  const ov = server.aeroCryptOverlay;
+  return ov?.enabled ? ov.kind : null;
+};
 
 // Session status for multi-tab management
 export type SessionStatus =

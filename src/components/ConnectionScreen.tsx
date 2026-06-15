@@ -589,6 +589,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [aeroCryptKind, setAeroCryptKind] = useState<'aerocrypt' | 'rclone-crypt'>('aerocrypt');
     const [aeroCryptPassword, setAeroCryptPassword] = useState('');
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
+    // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
+    // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
+    // modal. Native AeroCrypt ignores these (config lives in .aeroftp-crypt.json).
+    const [aeroCryptSalt, setAeroCryptSalt] = useState('');
+    const [aeroCryptFilenameEnc, setAeroCryptFilenameEnc] = useState<'standard' | 'obfuscate' | 'off'>('standard');
+    const [aeroCryptDirNameEnc, setAeroCryptDirNameEnc] = useState(true);
 
     // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
     // `mega-webdav /` (same idempotent call that warms the bridge for the
@@ -848,13 +854,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
     // Always returns explicit values so disabling the toggle on an existing
     // profile clears the binding. The password is never written to the JSON.
-    const aeroCryptOverlayFields = async (profileId: string, hadStored?: boolean): Promise<Partial<ServerProfile>> => {
+    const aeroCryptOverlayFields = async (profileId: string, hadStored?: boolean, hadStoredSalt?: boolean): Promise<Partial<ServerProfile>> => {
         if (!aeroCryptEnabled || !overlayEligible) {
-            return { aeroCryptOverlay: undefined, hasStoredAeroCryptPassword: false };
+            return { aeroCryptOverlay: undefined, hasStoredAeroCryptPassword: false, hasStoredAeroCryptSalt: false };
         }
+        const isRclone = aeroCryptKind === 'rclone-crypt';
         let pwStored = !!hadStored;
         if (aeroCryptPassword && aeroCryptPassword.trim()) {
             pwStored = await tryStoreCredential(`aerocrypt_overlay_pw_${profileId}`, aeroCryptPassword);
+        }
+        // rclone-crypt salt (password2): stored in the vault like the password, never
+        // in the JSON. Native AeroCrypt has no salt field (config carries the salt).
+        let saltStored = isRclone ? !!hadStoredSalt : false;
+        if (isRclone && aeroCryptSalt && aeroCryptSalt.trim()) {
+            saltStored = await tryStoreCredential(`aerocrypt_overlay_salt_${profileId}`, aeroCryptSalt);
         }
         return {
             aeroCryptOverlay: {
@@ -862,10 +875,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 kind: aeroCryptKind,
                 remoteScope: quickConnectDirs.remoteDir || '',
                 localScope: quickConnectDirs.localDir || '',
-                filenameEncryption: 'standard',
+                filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
+                ...(isRclone ? { directoryNameEncryption: aeroCryptDirNameEnc } : {}),
                 aead: 'auto',
             },
             hasStoredAeroCryptPassword: pwStored,
+            hasStoredAeroCryptSalt: saltStored,
         };
     };
 
@@ -1036,7 +1051,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 );
             }
 
-            const aeroFieldsEdit = await aeroCryptOverlayFields(editingProfileId, prevProfile?.hasStoredAeroCryptPassword);
+            const aeroFieldsEdit = await aeroCryptOverlayFields(editingProfileId, prevProfile?.hasStoredAeroCryptPassword, prevProfile?.hasStoredAeroCryptSalt);
             const updatedServers = existingServers.map((s: ServerProfile) => {
                 if (s.id === editingProfileId) {
                     return {
@@ -1603,6 +1618,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptEnabled(!!overlayBinding?.enabled);
         setAeroCryptKind(overlayBinding?.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt');
         setAeroCryptPassword('');
+        // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
+        setAeroCryptSalt('');
+        setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
+        setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
 
         // Then load password from OS keyring asynchronously (if stored)
         const targetProfileId = profile.id;
@@ -1655,6 +1674,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptEnabled(false);
         setAeroCryptKind('aerocrypt');
         setAeroCryptPassword('');
+        setAeroCryptSalt('');
+        setAeroCryptFilenameEnc('standard');
+        setAeroCryptDirNameEnc(true);
         modeCredentialSnapshotsRef.current = {};
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
@@ -2253,6 +2275,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                     </button>
                                 </div>
+                                {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
+                                    encryption so the bound profile auto-unlocks like native.
+                                    Native AeroCrypt reads these from .aeroftp-crypt.json. */}
+                                {aeroCryptKind === 'rclone-crypt' && (
+                                    <>
+                                        <input
+                                            type="password"
+                                            value={aeroCryptSalt}
+                                            onChange={(e) => setAeroCryptSalt(e.target.value)}
+                                            placeholder={editingProfileId && !aeroCryptSalt ? t('aerocryptProfile.passwordStored') : t('aerocrypt.saltPlaceholder')}
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                        />
+                                        <select
+                                            value={aeroCryptFilenameEnc}
+                                            onChange={(e) => setAeroCryptFilenameEnc(e.target.value as 'standard' | 'obfuscate' | 'off')}
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                        >
+                                            <option value="standard">{t('aerocrypt.filenameEncOption.standard')}</option>
+                                            <option value="obfuscate">{t('aerocrypt.filenameEncOption.obfuscate')}</option>
+                                            <option value="off">{t('aerocrypt.filenameEncOption.off')}</option>
+                                        </select>
+                                        <Checkbox
+                                            checked={aeroCryptDirNameEnc}
+                                            onChange={setAeroCryptDirNameEnc}
+                                            label={t('aerocrypt.directoryNameEncryption')}
+                                            labelClassName="text-xs"
+                                        />
+                                    </>
+                                )}
                                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.scopeHint')}</p>
                             </div>
                         )}

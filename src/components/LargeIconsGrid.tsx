@@ -11,6 +11,7 @@
 import React, { useCallback, useRef } from 'react';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { ImageThumbnail } from './ImageThumbnail';
+import { DecryptingText } from './DecryptingText';
 import type { LocalFile } from '../types';
 
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i;
@@ -44,6 +45,11 @@ interface LargeIconsGridProps {
   // Formatters
   formatBytes: (bytes: number) => string;
   showFileExtensions?: boolean;
+  // AeroCrypt overlay decryption animation (remote panel only): scramble names
+  // while unlocking, then reveal. `revealing` keeps the cards animated through
+  // the brief reveal window after `decrypting` flips false.
+  decrypting?: boolean;
+  revealing?: boolean;
 }
 
 // --- Individual file card (memoized) ---
@@ -68,6 +74,9 @@ interface LargeIconCardProps {
   onInlineRenameCancel: LargeIconsGridProps['onInlineRenameCancel'];
   formatBytes: (bytes: number) => string;
   showFileExtensions?: boolean;
+  decrypting?: boolean;
+  revealing?: boolean;
+  cardIndex?: number;
 }
 
 const LargeIconCard = React.memo<LargeIconCardProps>(({
@@ -90,10 +99,14 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   onInlineRenameCancel,
   formatBytes,
   showFileExtensions = true,
+  decrypting = false,
+  revealing = false,
+  cardIndex = 0,
 }) => {
   const renameRef = useRef<HTMLInputElement>(null);
   const isRenaming = inlineRename?.path === file.path;
   const isImage = IMAGE_EXTENSIONS.test(file.name);
+  const animateName = (decrypting || revealing) && file.name !== '..';
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     onFileClick(file, e);
@@ -200,6 +213,15 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
           onClick={(e) => e.stopPropagation()}
           className="mt-1.5 px-1 w-full text-sm text-center bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none"
         />
+      ) : animateName ? (
+        <DecryptingText
+          text={!file.is_dir && !showFileExtensions && file.name.lastIndexOf('.') > 0
+            ? file.name.substring(0, file.name.lastIndexOf('.'))
+            : file.name}
+          active={decrypting}
+          delayMs={Math.min(cardIndex, 24) * 28}
+          className="text-sm text-center leading-tight mt-1.5 max-w-full"
+        />
       ) : (
         <span className="text-sm text-center leading-tight mt-1.5 line-clamp-2 max-w-full break-all">
           {!file.is_dir && !showFileExtensions && file.name.lastIndexOf('.') > 0
@@ -245,6 +267,8 @@ export function LargeIconsGrid({
   onInlineRenameCancel,
   formatBytes,
   showFileExtensions = true,
+  decrypting = false,
+  revealing = false,
 }: LargeIconsGridProps) {
   const handleNavigateUp = useCallback(() => {
     if (!isAtRoot) onNavigateUp();
@@ -291,12 +315,15 @@ export function LargeIconsGrid({
         onInlineRenameCancel={onInlineRenameCancel}
         formatBytes={formatBytes}
         showFileExtensions={showFileExtensions}
+        decrypting={decrypting}
+        revealing={revealing}
+        cardIndex={index}
       />
     );
   }, [files, selectedFiles, dragOverTarget, currentPath, getFileIcon, onFileClick,
     onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
     onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
-    onInlineRenameCancel, formatBytes, showFileExtensions]);
+    onInlineRenameCancel, formatBytes, showFileExtensions, decrypting, revealing]);
 
   // Non-virtualized path for small directories (<=100 items)
   if (!shouldVirtualize) {

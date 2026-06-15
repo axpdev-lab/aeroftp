@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check } from 'lucide-react';
-import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
+import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
@@ -768,6 +768,8 @@ export function MyServersPanel({
             result = result.filter(s => members.has(s.id));
         } else if (activeFilter === 'favorites') {
             result = result.filter(s => favorites.has(s.id));
+        } else if (activeFilter === 'encrypted') {
+            result = result.filter(s => getServerCryptOverlay(s) !== null);
         } else if (activeFilter !== 'all') {
             const chip = FILTER_CHIPS.find(c => c.id === activeFilter);
             if (chip) {
@@ -879,7 +881,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0, encrypted: 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
@@ -887,6 +889,8 @@ export function MyServersPanel({
                 if (chip.id === 'all') continue;
                 if (chip.id === 'favorites') {
                     if (favorites.has(s.id)) counts.favorites++;
+                } else if (chip.id === 'encrypted') {
+                    if (getServerCryptOverlay(s)) counts.encrypted++;
                 } else if (chip.matchFn(p, s.providerId)) {
                     counts[chip.id]++;
                 }

@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
+import { OverlayIcon } from '../icons/OverlayIcon';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
 import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
@@ -140,7 +141,7 @@ function StorageUsageBar({
     );
 }
 
-export function ServerBadges({ server }: { server: ServerProfile }) {
+export function ServerBadges({ server, cryptDetailed = false }: { server: ServerProfile; cryptDetailed?: boolean }) {
     const t = useTranslation();
     const proto = server.protocol || 'ftp';
     // Default tlsMode matches ProtocolSelector: ftp→'explicit', ftps→'implicit'
@@ -195,6 +196,52 @@ export function ServerBadges({ server }: { server: ServerProfile }) {
     const ocsBadgeStyle = isOcsBranded
         ? { backgroundColor: '#0083ce22', color: '#0083ce' }
         : undefined;
+
+    // Encrypted-overlay profile: an enabled AeroCrypt (native) or rclone-crypt
+    // (interop) binding REPLACES the default protocol/cert badge set with the
+    // crypt identity badge (shield + brand). In detailed mode (list view) a
+    // second strength badge (lock + "256-bit") follows the E2E provider badge
+    // convention; in compact mode (card view) the cipher lives in the identity
+    // tooltip only, so the single badge never wraps. Emerald = native, blue =
+    // interop. The transport stays visible in the subtitle/host.
+    const cryptKind = getServerCryptOverlay(server);
+    const cryptIsRclone = cryptKind === 'rclone-crypt';
+    // Both kinds use a 256-bit key, so the badge follows the E2E "256-bit"
+    // convention while the exact cipher (kind-accurate) sits in the tooltip:
+    // AeroCrypt = AES-256-GCM-SIV; rclone-crypt content = XSalsa20-Poly1305
+    // (NaCl secretbox), filenames AES-256 (EME). Labelling rclone as "AES"
+    // would be wrong, hence the cipher string is per-kind.
+    const cryptCipher = cryptIsRclone ? 'XSalsa20-Poly1305' : 'AES-256-GCM-SIV';
+    const cryptTint = cryptIsRclone
+        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+        : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300';
+
+    if (cryptKind) {
+        const baseTitle = cryptIsRclone ? t('introHub.cryptBadge.rcloneTitle') : t('introHub.cryptBadge.aerocryptTitle');
+        // Compact (card) keeps the cipher in the identity tooltip; detailed
+        // (list) shows it on the dedicated strength badge instead.
+        const identityTitle = cryptDetailed ? baseTitle : `${cryptCipher} — ${baseTitle}`;
+        return (
+            <div className="flex items-center gap-1">
+                <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 whitespace-nowrap ${cryptTint}`}
+                    title={identityTitle}
+                >
+                    <OverlayIcon size={10} />
+                    {cryptIsRclone ? t('introHub.cryptBadge.rclone') : t('introHub.cryptBadge.aerocrypt')}
+                </span>
+                {cryptDetailed && (
+                    <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 whitespace-nowrap ${cryptTint}`}
+                        title={cryptCipher}
+                    >
+                        <Lock size={10} />
+                        256-bit
+                    </span>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="flex items-center gap-1 flex-wrap">

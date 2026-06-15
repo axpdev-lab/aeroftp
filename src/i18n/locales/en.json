@@ -78,6 +78,9 @@
             "download_success": "[Local] Download completed: {filename} {details}",
             "file_skipped": "Skipped (unchanged): {filename}",
             "loaded_items": "Loaded {count} items from {provider}",
+            "overlay_opening": "Opening encrypted overlay, decrypting names",
+            "overlay_unlocked": "Encrypted overlay unlocked",
+            "overlay_failed": "Encrypted overlay could not be unlocked",
             "mkdir_error": "[{location}] Could not create folder: {foldername}",
             "mkdir_start": "[{location}] Creating folder {foldername}...",
             "mkdir_success": "[{location}] Created folder {foldername}",
@@ -4381,7 +4384,14 @@
                 "dev": "Dev",
                 "favorites": "Favorites",
                 "localBridge": "Local bridge",
-                "paid": "Paid"
+                "paid": "Paid",
+                "encrypted": "Encrypted"
+            },
+            "cryptBadge": {
+                "aerocrypt": "AeroCrypt",
+                "rclone": "rclone crypt",
+                "aerocryptTitle": "AeroCrypt encrypted overlay (native): names and contents are encrypted on this server.",
+                "rcloneTitle": "rclone crypt overlay (interop): names and contents are encrypted on this server."
             },
             "confirmDeleteServer": "Delete server \"{name}\"? This removes saved credentials and cannot be undone.",
             "noServers": "No saved servers",

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, FolderPlus, Folder } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, FolderPlus, Folder, ShieldCheck } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -128,6 +128,7 @@ export function MyServersToolbar({
                     >
                         {chip.id === 'favorites' && <Star size={10} />}
                         {chip.id === 'local-bridge' && <HardDrive size={10} />}
+                        {chip.id === 'encrypted' && <ShieldCheck size={10} />}
                         <span>{t(chip.labelKey)}</span>
                         <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
                             isActive ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'

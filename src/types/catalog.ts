@@ -31,7 +31,8 @@ export type MyServersFilterBy =
     | 'media'
     | 'dev'
     | 'local-bridge'
-    | 'favorites';
+    | 'favorites'
+    | 'encrypted';
 
 /** Filter chip definition for My Servers toolbar */
 export interface FilterChip {
@@ -62,4 +63,5 @@ export const FILTER_CHIPS: FilterChip[] = [
     { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p, pid) => isDevService(p, pid) },
     { id: 'local-bridge', labelKey: 'introHub.filter.localBridge', matchFn: (_p, pid) => isLocalBridgeProvider(pid) },
     { id: 'favorites', labelKey: 'introHub.filter.favorites', matchFn: () => true }, // Filtered by isFavorite in MyServersPanel
+    { id: 'encrypted', labelKey: 'introHub.filter.encrypted', matchFn: () => true }, // Filtered by getServerCryptOverlay in MyServersPanel (matchFn can't see the overlay binding)
 ];
