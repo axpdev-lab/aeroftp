@@ -80,9 +80,32 @@ pub async fn recv_blob(conn: &Connection, offer: &PeerBlobOffer) -> Result<Vec<u
     Ok(data)
 }
 
+/// Chunk size for streaming the ciphertext to the QUIC stream while reporting
+/// progress. 256 KiB balances syscall/await overhead against bar granularity.
+const SEND_PROGRESS_CHUNK: usize = 256 * 1024;
+
 /// Send an encrypted blob: first the 12-byte nonce, then the ciphertext.
 /// The offer (sent earlier) still advertises the *plaintext* hash and size.
 pub async fn send_encrypted_blob(conn: &Connection, nonce: &[u8], ciphertext: &[u8]) -> Result<()> {
+    send_encrypted_blob_with_progress(conn, nonce, ciphertext, |_, _| {}).await
+}
+
+/// Like [`send_encrypted_blob`] but streams the ciphertext in fixed-size chunks
+/// and invokes `on_progress(bytes_sent, bytes_total)` after each one, so the app
+/// can render a live progress bar. The framing, the receiver ACK wait, and the
+/// end-to-end receipt semantics are IDENTICAL to [`send_encrypted_blob`]; the only
+/// difference is that the single `write_all(ciphertext)` becomes a chunked write
+/// with a progress tick. `on_progress` is called once with `(0, total)` up front
+/// so the UI can show the bar at 0% before bytes start flowing.
+pub async fn send_encrypted_blob_with_progress<F>(
+    conn: &Connection,
+    nonce: &[u8],
+    ciphertext: &[u8],
+    on_progress: F,
+) -> Result<()>
+where
+    F: Fn(u64, u64),
+{
     let (mut send, mut recv) = conn.open_bi().await.context("open_bi for encrypted blob")?;
     if nonce.len() != 12 {
         bail!("nonce must be 12 bytes");
@@ -90,7 +113,14 @@ pub async fn send_encrypted_blob(conn: &Connection, nonce: &[u8], ciphertext: &[
     // We send nonce + ciphertext length + data for robustness.
     send.write_all(nonce).await?;
     send.write_u64(ciphertext.len() as u64).await?;
-    send.write_all(ciphertext).await?;
+    let total = ciphertext.len() as u64;
+    let mut sent = 0u64;
+    on_progress(0, total);
+    for chunk in ciphertext.chunks(SEND_PROGRESS_CHUNK) {
+        send.write_all(chunk).await?;
+        sent += chunk.len() as u64;
+        on_progress(sent, total);
+    }
     send.finish()?;
 
     // Wait for the receiver's application-level ACK on the return path of this same

@@ -46,6 +46,7 @@ import {
   type PeerIncomingOfferEvent,
   type PeerIncomingStatusEvent,
   type PeerKnockEvent,
+  type PeerActionEvent,
 } from '../../utils/aeroShare';
 import { knockLabelKey, knockReplies } from '../../utils/aeroShareKnock';
 
@@ -307,6 +308,47 @@ export function AeroShareHub() {
     };
   }, [info, notify, t]);
 
+  // ---- peer://action: structured agent-to-agent message (verb + payload) ----
+  // Actions are the extensible generalization of a knock, meant for automation
+  // (the action bus), so they are NOT prompted with a modal like a human knock;
+  // they are SURFACED durably in the notification center + the activity log so the
+  // user can see what arrived while the app is open (D5). A correlated reply and a
+  // small payload preview are folded into the body.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let disposed = false;
+    (async () => {
+      unlisten = await listen<PeerActionEvent>('peer://action', async (e) => {
+        const ev = e.payload;
+        const alias = await resolveFriendAlias(ev.senderAfid);
+        const senderLabel = alias || shortAfid(ev.senderAfid);
+        const corr = ev.correlationId ? ` (reply ${ev.correlationId})` : '';
+        let preview = '';
+        if (ev.payload != null) {
+          try {
+            const json = JSON.stringify(ev.payload);
+            preview = json.length > 120 ? ` ${json.slice(0, 117)}...` : ` ${json}`;
+          } catch {
+            /* unserializable payload: show the verb alone */
+          }
+        }
+        // The verb is free-form agent data (an extensible catalog), not a fixed
+        // translatable string, so it is surfaced verbatim - no i18n key needed.
+        const body = `${ev.verb}${corr}${preview}`;
+        notify({ kind: 'knock', title: senderLabel, body, ts: ev.atMs });
+        log('INFO', `${senderLabel} - ${body}`, 'success');
+      });
+      if (disposed) {
+        unlisten();
+        unlisten = undefined;
+      }
+    })();
+    return () => {
+      disposed = true;
+      if (unlisten) unlisten();
+    };
+  }, [notify, log]);
+
   // ---- global open events (send dialog / inbox) ----
   useEffect(() => {
     const onSend = (e: Event) => {
@@ -559,7 +601,36 @@ function SendFileDialog({
   const [probing, setProbing] = useState(false);
   const [manualAfid, setManualAfid] = useState('');
   const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState<{ percent: number; speed: number } | null>(null);
+  const lastTickRef = useRef<{ t: number; bytes: number } | null>(null);
   const fileName = basenameOf(filePath);
+
+  // Live send progress: the backend streams `peer://send-status` byte ticks while
+  // the (post-accept) blob transfers. Match on the file name (the dialog sends one
+  // file at a time) and derive an instantaneous throughput from successive ticks.
+  useEffect(() => {
+    let un: UnlistenFn | undefined;
+    let cancelled = false;
+    listen<{ name: string; sent: number; total: number; percent: number; phase: string }>(
+      'peer://send-status',
+      (e) => {
+        const p = e.payload;
+        if (p.name !== fileName) return;
+        const now = Date.now();
+        const last = lastTickRef.current;
+        const speed = last && now > last.t ? ((p.sent - last.bytes) * 1000) / (now - last.t) : 0;
+        lastTickRef.current = { t: now, bytes: p.sent };
+        setProgress({ percent: p.percent, speed });
+      },
+    ).then((u) => {
+      if (cancelled) u();
+      else un = u;
+    });
+    return () => {
+      cancelled = true;
+      if (un) un();
+    };
+  }, [fileName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -602,6 +673,8 @@ function SendFileDialog({
     async (recipientAfid: string, friendLabel: string) => {
       if (sending) return;
       setSending(true);
+      lastTickRef.current = null;
+      setProgress(null);
       try {
         await peerSendFile({ recipientAfid, filePath });
         onSent(fileName, friendLabel);
@@ -645,6 +718,24 @@ function SendFileDialog({
           <p className="text-xs text-gray-500 mb-3">
             {t('aeroShare.send.file')}: <span className="font-medium text-gray-700 dark:text-gray-300">{fileName}</span>
           </p>
+
+          {sending && progress && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+                <span>{t('aeroShare.send.sending')}</span>
+                <span className="tabular-nums">
+                  {progress.percent}%
+                  {progress.speed > 0 && ` · ${formatBytes(progress.speed)}/s`}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className="h-full bg-violet-500 transition-[width] duration-150"
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
             {t('aeroShare.send.pickFriend')}

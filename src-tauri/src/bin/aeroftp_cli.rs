@@ -8532,6 +8532,26 @@ enum PeerCommands {
         #[arg(long)]
         relay: Option<String>,
     },
+    /// One-shot agent provisioning: create + identify a peer agent in a single verb
+    Agent {
+        #[command(subcommand)]
+        command: PeerAgentCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum PeerAgentCommands {
+    /// Provision an agent: create the user-partition <name> if absent, initialise
+    /// its P2P identity if absent, and print the AeroFTP-ID. Collapses the
+    /// two-step `users add <name>` + `--user <name> peer identity init` into one
+    /// verb for headless agents. Idempotent: re-running prints the existing AFID.
+    Init {
+        /// The agent's user-partition name (created passphrase-less if absent)
+        name: String,
+        /// Re-key an existing identity (invalidates old grants)
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -8780,6 +8800,13 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
             return 5;
         }
     };
+
+    // `peer agent init <name>` provisions a NAMED partition, so it must run before
+    // (and independently of) the active-user resolution every other verb requires.
+    if let PeerCommands::Agent { command } = command {
+        return cmd_peer_agent(&store, command, format);
+    }
+
     let user_id = match ensure_active_user_unlocked(cli, &store) {
         Ok(Some(meta)) => meta.id,
         Ok(None) => {
@@ -9527,6 +9554,97 @@ async fn cmd_peer(cli: &Cli, command: &PeerCommands, format: OutputFormat) -> i3
                 },
                 _ = first_event.notified(), if exit_once => { println!("[once] first event received, exiting"); 0 }
                 _ = tokio::signal::ctrl_c() => { println!("\nstopped"); 0 }
+            }
+        }
+        // Handled by the early return above (targets a named partition, not the
+        // active user); listed here only to keep the match exhaustive.
+        PeerCommands::Agent { .. } => {
+            unreachable!("peer agent dispatched before active-user resolution")
+        }
+    }
+}
+
+/// One-shot agent provisioning for `aeroftp peer agent init <name>`. Creates the
+/// named user-partition if absent (passphrase-less, headless), initialises its
+/// peer identity if absent, and prints the AeroFTP-ID. Idempotent: re-running on
+/// an already-provisioned agent prints the existing AFID with exit 0.
+fn cmd_peer_agent(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    command: &PeerAgentCommands,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::{peer, user_partitions};
+
+    match command {
+        PeerAgentCommands::Init { name, force } => {
+            // 1. Resolve the partition, creating it passphrase-less if it does not
+            //    exist yet. A passphrase-protected partition cannot be provisioned
+            //    headlessly: fall back to the explicit two-step flow.
+            let user = match user_partitions::cli_find_user_by_name(store, name) {
+                Ok(user) => user,
+                Err(e) if e.starts_with("USER_NOT_FOUND") => {
+                    match user_partitions::cli_create_user(store, name, None, None, None) {
+                        Ok(user) => user,
+                        Err(err) => {
+                            print_error(format, &err, 5);
+                            return 5;
+                        }
+                    }
+                }
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            if user.has_passphrase {
+                print_error(
+                    format,
+                    &format!(
+                        "agent partition '{name}' is passphrase-protected; provision it with `--user {name} peer identity init` after unlocking"
+                    ),
+                    6,
+                );
+                return 6;
+            }
+
+            // 2. Initialise the identity if absent. A passphrase-less partition
+            //    unwraps its DEK from the vault root key, so no session unlock is
+            //    needed. On --force the existing identity is re-keyed.
+            let (secret, afid) = peer::generate_identity();
+            match user_partitions::cli_peer_identity_store(store, user.id, &secret, &afid, *force) {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "aeroftpId": afid,
+                            "user": user.name,
+                            "created": true,
+                        }));
+                    } else {
+                        println!("AeroFTP-ID: {afid}");
+                    }
+                    0
+                }
+                // Already provisioned: idempotent success, print the existing AFID.
+                Err(e) if e == "PEER_IDENTITY_EXISTS" => {
+                    let existing = user_partitions::cli_peer_identity_show(store, user.id)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "aeroftpId": existing,
+                            "user": user.name,
+                            "created": false,
+                        }));
+                    } else {
+                        println!("AeroFTP-ID: {existing}");
+                    }
+                    0
+                }
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    5
+                }
             }
         }
     }

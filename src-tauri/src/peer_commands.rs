@@ -25,7 +25,7 @@
 use crate::peer::runtime::PeerRuntime;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 /// The ONE share link of the handshake (design §6): ticket + sealed
 /// capability in a single QR-friendly string. Both parts are URL-safe by
@@ -612,11 +612,47 @@ pub async fn peer_send_file(
     let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
         .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
 
+    // Live progress: stream byte ticks to the FE on `peer://send-status` so the
+    // Send dialog can render a bar. Throttled to integer-percent changes so a
+    // large transfer does not flood the IPC channel.
+    let progress_app = app.clone();
+    let progress_recipient = recipient.clone();
+    let progress_name = Path::new(file_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".to_string());
+    let last_pct = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(u64::MAX));
+    let progress: aeroftp_peer_l0::send::SendProgress =
+        std::sync::Arc::new(move |sent: u64, total: u64| {
+            // checked_div folds the total==0 guard into the divide (clippy
+            // manual-checked-ops): an empty transfer reports 100%.
+            let pct = sent
+                .checked_mul(100)
+                .and_then(|n| n.checked_div(total))
+                .unwrap_or(100);
+            // Only emit when the integer percent advances (the up-front 0 and the
+            // final 100 always fire because the seed is u64::MAX).
+            if last_pct.swap(pct, std::sync::atomic::Ordering::Relaxed) == pct {
+                return;
+            }
+            let _ = progress_app.emit(
+                "peer://send-status",
+                serde_json::json!({
+                    "recipientAfid": progress_recipient,
+                    "name": progress_name,
+                    "sent": sent,
+                    "total": total,
+                    "percent": pct,
+                    "phase": if pct >= 100 { "complete" } else { "transferring" },
+                }),
+            );
+        });
+
     // Route through the runtime so the send REUSES the standing receiver's
     // identity endpoint when one is up (Finding 6b), instead of binding a second
     // same-identity endpoint that the relay would evict the receiver for.
     peer_runtime
-        .send_file(&recipient, &identity_secret, file_path)
+        .send_file(&recipient, &identity_secret, file_path, Some(progress))
         .await
 }
 

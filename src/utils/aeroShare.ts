@@ -111,6 +111,17 @@ export interface PeerKnockEvent {
   atMs: number;
 }
 
+/** Payload of the `peer://action` event (an incoming structured agent-to-agent
+ *  message: a verb + an optional small JSON payload + an optional correlation id
+ *  tying a reply back to a request). The extensible generalization of a knock. */
+export interface PeerActionEvent {
+  senderAfid: string;
+  verb: string;
+  payload: unknown | null;
+  correlationId: string | null;
+  atMs: number;
+}
+
 /** Send a knock (predefined-code ping, no file) to a friend. `inReplyTo`, when
  *  set, is the code of the knock being answered (bounded predefined Q/A). */
 export const peerSendKnock = (

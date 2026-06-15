@@ -778,18 +778,27 @@ impl PeerRuntime {
         recipient_afid: &str,
         my_secret: &[u8],
         file_path: &str,
+        progress: Option<aeroftp_peer_l0::send::SendProgress>,
     ) -> Result<(), String> {
         let shared = self.identity_endpoint.lock().await.clone();
         let result = match shared {
             Some(ep) => {
-                crate::peer::send_on_endpoint(&ep, recipient_afid, my_secret, file_path).await
+                crate::peer::send_on_endpoint_with_progress(
+                    &ep,
+                    recipient_afid,
+                    my_secret,
+                    file_path,
+                    progress,
+                )
+                .await
             }
             None => {
-                crate::peer::send_file_oneshot(
+                crate::peer::send_file_oneshot_with_progress(
                     recipient_afid,
                     my_secret,
                     file_path,
                     relay_urls_from_env(),
+                    progress,
                 )
                 .await
             }

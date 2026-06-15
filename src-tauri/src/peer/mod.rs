@@ -306,11 +306,31 @@ pub async fn send_file_oneshot(
     file_path: &str,
     custom_relay_urls: Option<Vec<String>>,
 ) -> anyhow::Result<()> {
-    aeroftp_peer_l0::send::run_send_file(
+    send_file_oneshot_with_progress(
+        recipient_afid,
+        my_secret,
+        file_path,
+        custom_relay_urls,
+        None,
+    )
+    .await
+}
+
+/// Like [`send_file_oneshot`] but reports byte progress via `progress`, for the
+/// GUI dialog's live bar when no standing receiver endpoint is available.
+pub async fn send_file_oneshot_with_progress(
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
+    custom_relay_urls: Option<Vec<String>>,
+    progress: Option<aeroftp_peer_l0::send::SendProgress>,
+) -> anyhow::Result<()> {
+    aeroftp_peer_l0::send::run_send_file_with_progress(
         recipient_afid,
         my_secret,
         file_path,
         endpoint_config(custom_relay_urls),
+        progress,
     )
     .await
 }
@@ -381,6 +401,25 @@ pub async fn send_on_endpoint(
     file_path: &str,
 ) -> anyhow::Result<()> {
     aeroftp_peer_l0::send::send_on_endpoint(ep, recipient_afid, my_secret, file_path).await
+}
+
+/// Like [`send_on_endpoint`] but reports byte progress via `progress`, for the GUI
+/// dialog's live bar when the send reuses the standing receiver endpoint.
+pub async fn send_on_endpoint_with_progress(
+    ep: &aeroftp_peer_l0::PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
+    progress: Option<aeroftp_peer_l0::send::SendProgress>,
+) -> anyhow::Result<()> {
+    aeroftp_peer_l0::send::send_on_endpoint_with_progress(
+        ep,
+        recipient_afid,
+        my_secret,
+        file_path,
+        progress,
+    )
+    .await
 }
 
 /// Send a knock (predefined-code signal, no file) over the shared identity

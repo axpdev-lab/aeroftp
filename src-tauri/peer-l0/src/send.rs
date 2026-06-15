@@ -34,7 +34,9 @@
 
 use crate::endpoint::{PeerBlobOffer, PeerEndpoint, PeerEndpointConfig};
 use crate::identity::{Identity, IdentityPublic};
-use crate::protocol::{recv_encrypted_blob_capped, send_encrypted_blob};
+use crate::protocol::{
+    recv_encrypted_blob_capped, send_encrypted_blob, send_encrypted_blob_with_progress,
+};
 use anyhow::{bail, Context, Result};
 use iroh::endpoint::Connection;
 use iroh::NodeId;
@@ -182,6 +184,12 @@ pub enum ReceiveEvent {
     },
 }
 
+/// Progress callback for an outbound one-shot send: `(bytes_sent, bytes_total)`
+/// over the ciphertext stream, invoked after each chunk (and once at 0 up front).
+/// Boxed in an `Arc` so it threads cheaply through the runtime layers without a
+/// generic parameter on every send signature.
+pub type SendProgress = std::sync::Arc<dyn Fn(u64, u64) + Send + Sync>;
+
 fn ed_seed_of(secret: &[u8]) -> Result<[u8; 32]> {
     if secret.len() != 64 {
         bail!("identity secret must be 64 bytes (ed32 || x32)");
@@ -202,12 +210,24 @@ pub async fn run_send_file(
     recipient_afid: &str,
     my_secret: &[u8],
     file_path: &str,
+    cfg: PeerEndpointConfig,
+) -> Result<()> {
+    run_send_file_with_progress(recipient_afid, my_secret, file_path, cfg, None).await
+}
+
+/// Like [`run_send_file`] but reports byte progress via `progress`. Used by the
+/// GUI one-shot send (no standing receiver) so the dialog can show a live bar.
+pub async fn run_send_file_with_progress(
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
     mut cfg: PeerEndpointConfig,
+    progress: Option<SendProgress>,
 ) -> Result<()> {
     // Bind OUR endpoint with our identity so remote_node_id == our AFID ed.
     cfg.identity_secret_key = Some(ed_seed_of(my_secret)?);
     let ep = PeerEndpoint::new(cfg).await?;
-    send_on_endpoint(&ep, recipient_afid, my_secret, file_path).await
+    send_on_endpoint_with_progress(&ep, recipient_afid, my_secret, file_path, progress).await
 }
 
 /// Send `file_path` to `recipient_afid` over an ALREADY-BOUND identity endpoint.
@@ -221,6 +241,20 @@ pub async fn send_on_endpoint(
     recipient_afid: &str,
     my_secret: &[u8],
     file_path: &str,
+) -> Result<()> {
+    send_on_endpoint_with_progress(ep, recipient_afid, my_secret, file_path, None).await
+}
+
+/// Like [`send_on_endpoint`] but reports byte progress via `progress`, called with
+/// `(bytes_sent, bytes_total)` over the ciphertext stream. The transport, the
+/// offer/decision handshake, and the verified receipt ACK are unchanged: progress
+/// is observed only on the post-accept blob write.
+pub async fn send_on_endpoint_with_progress(
+    ep: &PeerEndpoint,
+    recipient_afid: &str,
+    my_secret: &[u8],
+    file_path: &str,
+    progress: Option<SendProgress>,
 ) -> Result<()> {
     let me = Identity::from_secret_bytes(&{
         let mut b = [0u8; 64];
@@ -288,7 +322,15 @@ pub async fn send_on_endpoint(
     // Accepted: encrypt with the per-transfer key and ship via the proven path
     // (the receiver ACKs only after decrypt + BLAKE3 verify).
     let (nonce, ciphertext) = crate::encrypt_blob(&content_key, &data)?;
-    send_encrypted_blob(&conn, &nonce, &ciphertext).await?;
+    match progress {
+        Some(cb) => {
+            send_encrypted_blob_with_progress(&conn, &nonce, &ciphertext, |sent, total| {
+                cb(sent, total)
+            })
+            .await?
+        }
+        None => send_encrypted_blob(&conn, &nonce, &ciphertext).await?,
+    }
     conn.close(0u32.into(), b"sent");
     info!(%name, bytes = data.len(), "one-shot send complete (recipient ACKed)");
     Ok(())
