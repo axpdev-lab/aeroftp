@@ -4797,6 +4797,7 @@
             "hint": "Encrypt this connection transparently: the dual-panel shows clear names, uploads encrypt, downloads decrypt. Readable only from AeroFTP with this password.",
             "kindNative": "AeroCrypt (native)",
             "kindRclone": "Rclone Crypt (interop)",
+            "chooseKind": "Choose an encryption type to continue: there is no default, the choice is deliberate.",
             "passwordPlaceholder": "Overlay password",
             "passwordStored": "Stored (leave blank to keep)",
             "immutableWarn": "Encryption type and password are set once and cannot be changed later: the already-encrypted files would become unreadable.",

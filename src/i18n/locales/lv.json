@@ -4802,7 +4802,8 @@
             "scopeHint": "Iepriekš norādītie attālie un vietējie ceļi nosaka šifrēto tvērumu (atstājiet Attālo tukšu, lai šifrētu visu sakni).",
             "immutableWarn": "Šifrēšanas veids un parole tiek iestatīti vienreiz, un tos vēlāk nevar mainīt: jau šifrētie faili kļūtu nelasāmi.",
             "lockedNote": "Šifrēšanas veids un akreditācijas dati ir bloķēti: šis slānis jau satur šifrētus datus.",
-            "addToExistingWarn": "Iespējojot pārklājumu esošā profilā: visi vienkārša teksta faili, kas jau ir šajā attālinātajā vietā, paliek nešifrēti un tiks rādīti kā neatšifrējams sajaukums. Izmantojiet tukšu attālināto vietu."
+            "addToExistingWarn": "Iespējojot pārklājumu esošā profilā: visi vienkārša teksta faili, kas jau ir šajā attālinātajā vietā, paliek nešifrēti un tiks rādīti kā neatšifrējams sajaukums. Izmantojiet tukšu attālināto vietu.",
+            "chooseKind": "Lai turpinātu, izvēlieties šifrēšanas veidu: noklusējuma nav, izvēle ir apzināta."
         }
     }
 }

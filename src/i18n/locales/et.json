@@ -4802,7 +4802,8 @@
             "scopeHint": "Ülal määratud kaug- ja kohalikud teed määravad krüptitud ulatuse (jäta Kaug tühjaks, et krüptida kogu juur).",
             "immutableWarn": "Krüptimise tüüp ja parool määratakse üks kord ega ole hiljem muudetavad: juba krüpteeritud failid muutuksid loetamatuks.",
             "lockedNote": "Krüptimise tüüp ja mandaadid on lukus: see kiht sisaldab juba krüpteeritud andmeid.",
-            "addToExistingWarn": "Ülekatte lubamine olemasoleval profiilil: kõik selles kaugkohas juba olevad lihttekstifailid jäävad krüptimata ja kuvatakse dekrüptimatu seguna. Kasuta tühja kaugkohta."
+            "addToExistingWarn": "Ülekatte lubamine olemasoleval profiilil: kõik selles kaugkohas juba olevad lihttekstifailid jäävad krüptimata ja kuvatakse dekrüptimatu seguna. Kasuta tühja kaugkohta.",
+            "chooseKind": "Jätkamiseks vali krüpteerimise tüüp: vaikeväärtust pole, valik on teadlik."
         }
     }
 }

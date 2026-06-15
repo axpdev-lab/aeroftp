@@ -4797,6 +4797,7 @@
             "hint": "Cifra questa connessione in modo trasparente: il dual-panel mostra i nomi in chiaro, gli upload cifrano, i download decifrano. Leggibile solo da AeroFTP con questa password.",
             "kindNative": "AeroCrypt (nativo)",
             "kindRclone": "Rclone Crypt (interop)",
+            "chooseKind": "Scegli un tipo di cifratura per continuare: non c'e un default, la scelta e deliberata.",
             "passwordPlaceholder": "Password overlay",
             "passwordStored": "Salvata (lascia vuoto per mantenerla)",
             "immutableWarn": "Tipo di cifratura e password si impostano una sola volta e non sono modificabili in seguito: i file gia cifrati diventerebbero illeggibili.",

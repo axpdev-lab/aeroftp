@@ -4802,7 +4802,8 @@
             "scopeHint": "Vyššie uvedené vzdialené a lokálne cesty určujú šifrovaný rozsah (ponechajte vzdialenú cestu prázdnu na zašifrovanie celého koreňa).",
             "immutableWarn": "Typ šifrovania a heslo sa nastavujú raz a neskôr ich nemožno zmeniť: už zašifrované súbory by sa stali nečitateľnými.",
             "lockedNote": "Typ šifrovania a prihlasovacie údaje sú uzamknuté: táto vrstva už obsahuje zašifrované údaje.",
-            "addToExistingWarn": "Zapnutím prekrytia pre existujúci profil: akékoľvek súbory v čistom texte, ktoré sú už na tomto vzdialenom úložisku, zostanú nešifrované a zobrazia sa ako nedešifrovateľná zmes. Použite prázdne vzdialené úložisko."
+            "addToExistingWarn": "Zapnutím prekrytia pre existujúci profil: akékoľvek súbory v čistom texte, ktoré sú už na tomto vzdialenom úložisku, zostanú nešifrované a zobrazia sa ako nedešifrovateľná zmes. Použite prázdne vzdialené úložisko.",
+            "chooseKind": "Pokračujte výberom typu šifrovania: žiadna predvolená hodnota neexistuje, voľba je zámerná."
         }
     }
 }

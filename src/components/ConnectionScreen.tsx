@@ -586,7 +586,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     const [aeroCryptEnabled, setAeroCryptEnabled] = useState(false);
-    const [aeroCryptKind, setAeroCryptKind] = useState<'aerocrypt' | 'rclone-crypt'>('aerocrypt');
+    // No default crypt kind: the user must actively pick aerocrypt vs rclone-crypt
+    // (Ehud #276, 2026-06-13: both opt-in, no tap-Enter default). null until chosen.
+    const [aeroCryptKind, setAeroCryptKind] = useState<'aerocrypt' | 'rclone-crypt' | null>(null);
     // C-EDIT-GUARD: true when editing a profile that ALREADY has an overlay binding.
     // The remote already holds blobs whose keys derive directly from kind + salt +
     // password, so changing any of them would orphan that data. In that case the
@@ -870,7 +872,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Always returns explicit values so disabling the toggle on an existing
     // profile clears the binding. The password is never written to the JSON.
     const aeroCryptOverlayFields = async (profileId: string, hadStored?: boolean, hadStoredSalt?: boolean): Promise<Partial<ServerProfile>> => {
-        if (!aeroCryptEnabled || !overlayEligible) {
+        // No kind chosen yet means the overlay was enabled but not actively
+        // configured: build no binding (fail to plaintext, never a default cipher).
+        if (!aeroCryptEnabled || !overlayEligible || !aeroCryptKind) {
             return { aeroCryptOverlay: undefined, hasStoredAeroCryptPassword: false, hasStoredAeroCryptSalt: false };
         }
         const isRclone = aeroCryptKind === 'rclone-crypt';
@@ -1633,7 +1637,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptEnabled(!!overlayBinding?.enabled);
         // C-EDIT-GUARD: lock kind + credential edits when a binding already exists.
         setOverlayBindingLocked(!!overlayBinding?.enabled);
-        setAeroCryptKind(overlayBinding?.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt');
+        // Only seed a kind when a binding already exists; a binding-less profile
+        // starts unselected so the user must actively choose on enable.
+        setAeroCryptKind(overlayBinding?.enabled ? (overlayBinding.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt') : null);
         setAeroCryptPassword('');
         // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
         setAeroCryptSalt('');
@@ -1690,7 +1696,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setPersistModeCredentials(false);
         setAeroCryptEnabled(false);
         setOverlayBindingLocked(false);
-        setAeroCryptKind('aerocrypt');
+        setAeroCryptKind(null);
         setAeroCryptPassword('');
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc('standard');
@@ -2279,6 +2285,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {t('aerocryptProfile.kindRclone')}
                                     </button>
                                 </div>
+                                {!aeroCryptKind && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.chooseKind')}</p>
+                                )}
+                                {aeroCryptKind && (<>
                                 <div className="relative">
                                     <input
                                         type={showAeroCryptPassword ? 'text' : 'password'}
@@ -2336,6 +2346,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 {overlayNewlyBound && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.addToExistingWarn')}</p>
                                 )}
+                                </>)}
                                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.scopeHint')}</p>
                             </div>
                         )}

@@ -4802,7 +4802,8 @@
             "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten).",
             "immutableWarn": "Krypteringstyp och lösenord anges en gång och kan inte ändras senare: de redan krypterade filerna skulle bli oläsliga.",
             "lockedNote": "Krypteringstyp och autentiseringsuppgifter är låsta: detta överlägg innehåller redan krypterad data.",
-            "addToExistingWarn": "När du aktiverar ett överlägg på en befintlig profil: alla klartextfiler som redan finns på denna fjärrplats förblir okrypterade och visas som en odekrypterbar blandning. Använd en tom fjärrplats."
+            "addToExistingWarn": "När du aktiverar ett överlägg på en befintlig profil: alla klartextfiler som redan finns på denna fjärrplats förblir okrypterade och visas som en odekrypterbar blandning. Använd en tom fjärrplats.",
+            "chooseKind": "Välj en krypteringstyp för att fortsätta: det finns ingen standard, valet är medvetet."
         }
     }
 }

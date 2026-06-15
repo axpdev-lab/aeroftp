@@ -4802,7 +4802,8 @@
             "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren).",
             "immutableWarn": "Salaustyyppi ja salasana asetetaan kerran, eikä niitä voi muuttaa myöhemmin: jo salatut tiedostot muuttuisivat lukukelvottomiksi.",
             "lockedNote": "Salaustyyppi ja tunnistetiedot on lukittu: tämä peite sisältää jo salattua dataa.",
-            "addToExistingWarn": "Kun otat peittokuvan käyttöön olemassa olevassa profiilissa: kaikki tässä etäkohteessa jo olevat pelkkätekstitiedostot pysyvät salaamattomina ja näkyvät salaamattomana sekoituksena. Käytä tyhjää etäkohdetta."
+            "addToExistingWarn": "Kun otat peittokuvan käyttöön olemassa olevassa profiilissa: kaikki tässä etäkohteessa jo olevat pelkkätekstitiedostot pysyvät salaamattomina ja näkyvät salaamattomana sekoituksena. Käytä tyhjää etäkohdetta.",
+            "chooseKind": "Valitse salaustyyppi jatkaaksesi: oletusta ei ole, valinta on tietoinen."
         }
     }
 }

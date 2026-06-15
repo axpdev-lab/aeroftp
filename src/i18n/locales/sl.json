@@ -4802,7 +4802,8 @@
             "scopeHint": "Zgornji oddaljeni in lokalni poti določata šifrirani obseg (pustite oddaljeno pot prazno za šifriranje celotnega korena).",
             "immutableWarn": "Vrsta šifriranja in geslo se nastavita enkrat in ju pozneje ni mogoče spremeniti: že šifrirane datoteke bi postale neberljive.",
             "lockedNote": "Vrsta šifriranja in poverilnice so zaklenjene: ta plast že vsebuje šifrirane podatke.",
-            "addToExistingWarn": "Ob omogočanju prekrivanja na obstoječem profilu: vse datoteke z navadnim besedilom, ki so že na tem oddaljenem mestu, ostanejo nešifrirane in se prikažejo kot nedešifrirljiva mešanica. Uporabite prazno oddaljeno mesto."
+            "addToExistingWarn": "Ob omogočanju prekrivanja na obstoječem profilu: vse datoteke z navadnim besedilom, ki so že na tem oddaljenem mestu, ostanejo nešifrirane in se prikažejo kot nedešifrirljiva mešanica. Uporabite prazno oddaljeno mesto.",
+            "chooseKind": "Za nadaljevanje izberite vrsto šifriranja: privzete vrednosti ni, izbira je premišljena."
         }
     }
 }

@@ -4802,7 +4802,8 @@
             "scopeHint": "De bovenstaande externe en lokale paden bepalen het versleutelde bereik (laat Extern leeg om de hele hoofdmap te versleutelen).",
             "immutableWarn": "Versleutelingstype en wachtwoord worden eenmaal ingesteld en kunnen later niet worden gewijzigd: de al versleutelde bestanden zouden onleesbaar worden.",
             "lockedNote": "Versleutelingstype en inloggegevens zijn vergrendeld: deze overlay bevat al versleutelde gegevens.",
-            "addToExistingWarn": "Bij het inschakelen van een overlay op een bestaand profiel: bestanden in platte tekst die al op deze externe locatie staan blijven onversleuteld en verschijnen als een niet-ontsleutelbare mix. Gebruik een lege externe locatie."
+            "addToExistingWarn": "Bij het inschakelen van een overlay op een bestaand profiel: bestanden in platte tekst die al op deze externe locatie staan blijven onversleuteld en verschijnen als een niet-ontsleutelbare mix. Gebruik een lege externe locatie.",
+            "chooseKind": "Kies een versleutelingstype om door te gaan: er is geen standaard, de keuze is bewust."
         }
     }
 }

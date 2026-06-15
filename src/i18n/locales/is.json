@@ -4821,7 +4821,8 @@
             "scopeHint": "Fjar- og staðbundnu slóðirnar að ofan skilgreina dulkóðaða umfangið (skildu Fjar eftir autt til að dulkóða alla rótina).",
             "immutableWarn": "Dulkóðunartegund og lykilorð eru stillt einu sinni og ekki er hægt að breyta þeim síðar: þegar dulkóðaðar skrár yrðu ólæsilegar.",
             "lockedNote": "Dulkóðunartegund og auðkenni eru læst: þetta yfirlag inniheldur þegar dulkóðuð gögn.",
-            "addToExistingWarn": "Þegar yfirlag er virkjað á núverandi sniði: allar ódulkóðaðar skrár sem þegar eru á þessum fjartengda stað haldast ódulkóðaðar og birtast sem óafkóðanleg blanda. Notaðu tóman fjartengdan stað."
+            "addToExistingWarn": "Þegar yfirlag er virkjað á núverandi sniði: allar ódulkóðaðar skrár sem þegar eru á þessum fjartengda stað haldast ódulkóðaðar og birtast sem óafkóðanleg blanda. Notaðu tóman fjartengdan stað.",
+            "chooseKind": "Veldu dulkóðunartegund til að halda áfram: það er ekkert sjálfgefið, valið er meðvitað."
         }
     }
 }

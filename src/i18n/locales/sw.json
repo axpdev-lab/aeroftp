@@ -4802,7 +4802,8 @@
             "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima).",
             "immutableWarn": "Aina ya usimbaji na nenosiri huwekwa mara moja na haviwezi kubadilishwa baadaye: faili zilizosimbwa tayari zingekuwa hazisomeki.",
             "lockedNote": "Aina ya usimbaji na stakabadhi zimefungwa: safu hii tayari ina data iliyosimbwa.",
-            "addToExistingWarn": "Kuwezesha tabaka kwenye wasifu uliopo: faili zozote za maandishi wazi zilizopo tayari kwenye seva hii za mbali zinabaki bila kusimbwa na zitaonekana kama mchanganyiko usioweza kusimbuliwa. Tumia seva ya mbali tupu."
+            "addToExistingWarn": "Kuwezesha tabaka kwenye wasifu uliopo: faili zozote za maandishi wazi zilizopo tayari kwenye seva hii za mbali zinabaki bila kusimbwa na zitaonekana kama mchanganyiko usioweza kusimbuliwa. Tumia seva ya mbali tupu.",
+            "chooseKind": "Chagua aina ya usimbaji ili kuendelea: hakuna chaguo-msingi, uchaguzi ni wa makusudi."
         }
     }
 }

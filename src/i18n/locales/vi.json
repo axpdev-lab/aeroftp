@@ -4802,7 +4802,8 @@
             "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc).",
             "immutableWarn": "Loại mã hóa và mật khẩu được đặt một lần và không thể thay đổi sau đó: các tệp đã mã hóa sẽ không thể đọc được.",
             "lockedNote": "Loại mã hóa và thông tin đăng nhập đã bị khóa: lớp phủ này đã chứa dữ liệu mã hóa.",
-            "addToExistingWarn": "Khi bật lớp phủ trên một hồ sơ hiện có: mọi tập tin văn bản thuần đã có trên máy từ xa này vẫn không được mã hóa và sẽ hiển thị như một hỗn hợp không thể giải mã. Hãy dùng một máy từ xa trống."
+            "addToExistingWarn": "Khi bật lớp phủ trên một hồ sơ hiện có: mọi tập tin văn bản thuần đã có trên máy từ xa này vẫn không được mã hóa và sẽ hiển thị như một hỗn hợp không thể giải mã. Hãy dùng một máy từ xa trống.",
+            "chooseKind": "Chọn một loại mã hóa để tiếp tục: không có mặc định, lựa chọn là có chủ đích."
         }
     }
 }
