@@ -176,6 +176,8 @@ These are verified compliance checks, not formal certifications.
 | ID | Severity | Status | Details |
 | -- | -------- | ------ | ------- |
 | [CVE-2025-54804](https://github.com/axpdev-lab/aeroftp/security/dependabot/3) | Medium | **Resolved** | russh SFTP, fixed by upgrade to v0.57 |
+| [GHSA-wwx6-x28x-8259](https://github.com/advisories/GHSA-wwx6-x28x-8259) | High | **Resolved** | russh, resolved by upgrade to 0.61.2 (v4.0.5) |
+| [GHSA-hpv4-5h6f-wqr3](https://github.com/advisories/GHSA-hpv4-5h6f-wqr3) | Medium | **Resolved** | russh, resolved by upgrade to 0.61.2 (v4.0.5) |
 
 ## Reporting a Vulnerability
 
@@ -187,4 +189,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v4.0.4 - 7 June 2026*
+*AeroFTP v4.0.5 - 16 June 2026*

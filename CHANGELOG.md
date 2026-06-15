@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.0.5] - 2026-06-16
+
+### Error Correction, Encrypted Overlay, Archives, SSH Hardening and Windows Fixes
 
 ### AeroVault v4 ECC (T-AEROVAULT-ECC) — Reed-Solomon error-correction wrapper, Phase 3+4 close
 
@@ -63,6 +65,39 @@ All via shared lib (GUI+CLI+tests), --profile for remote (vault local direct), C
 
 #### Changed
 - **Manage Users panel fully localized**: every label, button, confirmation and the avatar editor in the Manage Users panel are now translated across all 47 locales (previously English-only).
+
+### AeroCrypt Encrypted Overlay
+
+#### Added
+- **Native AeroCrypt overlay** bound to a saved server profile: client-side encryption (AES-256-GCM-SIV content, AES-256-SIV deterministic names, Argon2id) that turns any provider into zero-knowledge storage, with a clearly labelled rclone-crypt interop lane beside it. It is opt-in with no default cipher (you actively pick AeroCrypt or rclone-crypt), and the standard dual-panel renders decrypted names transparently with full GUI parity to the existing CLI `crypt` subcommand. At rest the bucket holds only ciphertext names and content. (@EhudKirsh, #276)
+
+### CLI Archives
+
+#### Added
+- **`compress` and `extract`** for zip, 7z, tar, tar.gz, tar.xz and tar.bz2 (plus rar extract), with an AES-256 `--password` for zip and 7z, compression-level control and a format override. Local-only and scriptable with `--json`.
+
+### AeroVault v3 Usability and Interactive profiles Menu
+
+#### Added
+- **`profiles -i` inline action menu**: the interactive profiles selector gains a single-key inline action bar (re-index, favourite, connect, edit, delete, quit) instead of a separate full-screen view. (@EhudKirsh, #311)
+- **AeroVault v3 usability**: the latest beta-feedback items for the vault flow. (@EhudKirsh)
+
+### Security
+
+#### Changed
+- **russh upgraded to 0.61.2** (with russh-sftp 2.1.2), clearing the long-deferred SSH advisories (HIGH GHSA-wwx6-x28x-8259 and MEDIUM GHSA-hpv4-5h6f-wqr3 plus the SFTP parsing advisories). The upgrade was gated on an SFTP live test (connect, listing, download, upload, stat, recursive delete including dotfiles, df) that passed byte-intact against a real server, and two suppressions are removed from the audit config.
+
+### Windows and Cross-Platform Fixes
+
+#### Fixed
+- **Cancelling a sync now stops it**: the Stop control was not wired to the sync loop, and an individual download or upload already in progress could not be interrupted. Stop now halts the run at the next file and a force stop aborts the in-flight transfer, so a large item no longer keeps going. (@rockaut, #332)
+- **Removing the master password always completes**: "unsecuring" the app could get stuck when the OS credential store rejected the write, leaving you locked in protected mode. It now falls back to a file-permission-protected on-disk key when the keyring is unavailable. (@rockaut, #333)
+- **Windows portable persists server profiles**: the portable build could silently fail to save profiles when the Windows Credential Manager was unavailable, because the vault never initialized. It now falls back to a self-contained on-disk key so the vault initializes and profiles are saved. (@rockaut, #334)
+- **AeroFile decrypts .cryptomator vaults again**: the unlock window prefills the correct vault root from the file you select, and a crypto feature flag that broke Cryptomator vault creation and GitHub App auth is fixed. (@EhudKirsh, #322)
+- **FTP recursive delete includes dotfiles**: hidden files are no longer left behind, which previously could make a recursive delete fail on a non-empty directory.
+
+#### Contributors
+[<img src="https://github.com/rockaut.png?size=48" width="48" height="48" alt="@rockaut" />](https://github.com/rockaut) [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
 
 ## [4.0.4] - 2026-06-07
 

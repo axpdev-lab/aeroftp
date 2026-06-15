@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.0.5" date="2026-06-16">
+      <description>
+        <p>Error Correction, Encrypted Overlay, Archives, SSH Hardening and Windows Fixes. AeroVault v4 adds a Reed-Solomon self-healing error-correction layer that scrubs a vault for damage and repairs it from embedded parity, leaving the vault byte-for-byte untouched when damage exceeds the recoverable budget (design anchor @EhudKirsh, #276). A new AeroCrypt encrypted overlay binds native client-side encryption (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id) to a saved server profile alongside a labelled rclone-crypt interop lane, opt-in with no default cipher and full GUI parity to the CLI. The CLI gains compress and extract for zip, 7z and the tar family with optional AES-256 passwords, the interactive profiles selector gets an inline action menu (#311, @EhudKirsh), and AeroVault v3 usability picks up the latest beta feedback (@EhudKirsh).</p>
+        <p>Security and fixes: the SSH stack is upgraded to russh 0.61.2, clearing the deferred advisories, validated with a byte-intact SFTP live test. Cancelling a sync now actually stops it and aborts an in-progress transfer (#332, @rockaut); removing the master password always completes by falling back to a file-permission-protected on-disk key when the OS keyring is unavailable (#333, @rockaut); the Windows portable build initializes its vault and persists server profiles without the credential manager (#334, @rockaut); AeroFile decrypts .cryptomator vaults again (#322, @EhudKirsh); and FTP recursive delete includes dotfiles. 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.0.4" date="2026-06-07">
       <description>
         <p>Reversible Restricted-Filename Encoding, CLI Polish and Stability. Filenames containing characters a provider would otherwise reject now round-trip transparently on Box, Dropbox, Jottacloud and OpenDrive: control characters and each provider's reserved set are encoded with the rclone-compatible reversible scheme (fullwidth and control-picture mappings, a quote-collision escape and position-dependent space and dot rules) and decoded back on listing, so a name like a:b is preserved instead of failing silently. The encoding runs once at the provider boundary, covering the GUI, every CLI command, sync and benchmark, the transfer engine and the session manager, and is property-tested over tens of thousands of cases per provider (#272, #266, @EhudKirsh).</p>

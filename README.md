@@ -549,6 +549,7 @@ Output is published in [`docs/security/security-report-latest.html`](docs/securi
 | Month | Version | Open | Suppressed (justified) | Notes |
 |---|---|---|---|---|
 | May 2026 | v3.7.5 | **0** | 25 | Closed CVE-2026-42184 (tauri origin confusion), GHSA-2p6r-x3vv-xqm2 (rpassword), 2x openssl GHSA |
+| Jun 2026 | v4.0.5 | **0** | 23 | russh 0.61.2 cleared GHSA-wwx6-x28x-8259 (HIGH) + GHSA-hpv4-5h6f-wqr3 (MEDIUM) + SFTP parsing advisories; 2 suppressions removed |
 
 Each month we publish the run results here. Past Aikido Security reports remain linked in the Security Posture table below for archive.
 
