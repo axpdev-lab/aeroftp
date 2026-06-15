@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Odstrániť heslo účtu pre „{name}“?",
       "confirmDelete": "Odstrániť účet „{name}“?\n\nZašifrované údaje na odstránenie: {profiles} profilov, {settings} rozsahov nastavení.",
       "passwordChoiceNote": "Nastavenie hesla účtu je voliteľné. Zabráni ostatným ľuďom, ktorí používajú toto zariadenie, otvoriť váš účet; vaše uložené údaje zostávajú tak či tak zašifrované. Tento krok preskočte, ak ste tu jediný používateľ alebo ak dôverujete všetkým, ktorí toto zariadenie používajú."
+    },
+    "aerocryptNative": {
+      "title": "Vrstva AeroCrypt",
+      "recommended": "Odporúčané",
+      "intro": {
+        "heading": "Čo táto vrstva robí",
+        "p1": "Šifruje názvy a obsah súborov <strong>za behu</strong>, ešte pred ich odoslaním na server, a pri sťahovaní ich dešifruje. Server vidí iba bloby so zašifrovanými názvami. Vy vidíte pôvodné názvy.",
+        "p2": "Kým je vrstva aktívna: vaša vzdialená relácia zobrazuje obsah v čitateľnej podobe, každé nahrávanie je šifrované a každé sťahovanie je dešifrované. Hľadajte odznak <em>AEROCRYPT</em> v lište cesty.",
+        "p3": "Toto je <strong>natívna</strong> vrstva AeroFTP, postavená na rovnakom auditovanom jadre ako AeroVault (obsah AES-256-GCM-SIV, názvy AES-256-SIV, Argon2id). Soľ tejto vrstvy je uložená v súbore <code>.aeroftp-crypt.json</code> v jej koreni na vzdialenom serveri, takže ju môžete znova otvoriť z akéhokoľvek zariadenia iba pomocou hesla."
+      },
+      "openExisting": "Otvoriť existujúcu",
+      "createNew": "Vytvoriť novú",
+      "openHint": "Prejdite vo vzdialenom paneli do priečinka vrstvy a potom zadajte jej heslo.",
+      "createHint": "Vytvorte novú šifrovanú vrstvu v aktuálnom vzdialenom priečinku (alebo podpriečinku).",
+      "password": "Heslo",
+      "passwordPlaceholder": "Heslo vrstvy",
+      "targetSubpath": "Podpriečinok (voliteľné)",
+      "targetSubpathPlaceholder": "napr. encrypted",
+      "targetSubpathHint": "Ponechajte prázdne na zašifrovanie aktuálneho vzdialeného priečinka alebo zadajte názov podpriečinka, ktorý sa má vytvoriť.",
+      "unlock": "Odomknúť",
+      "createAndUnlock": "Vytvoriť a odomknúť",
+      "unlocked": "Vrstva odomknutá.",
+      "initialised": "Vrstva vytvorená a odomknutá.",
+      "noOverlayFound": "V aktuálnom vzdialenom priečinku sa nenašla žiadna vrstva AeroCrypt. Prepnite na „Vytvoriť novú“ a vytvorte ju.",
+      "remoteUnlocked": "Vzdialený server odomknutý (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Šifrovaný vzdialený prehliadač",
+      "upload": "Nahrať",
+      "up": "Hore",
+      "path": "Cesta: {path}",
+      "loading": "Načítava sa...",
+      "emptyFolder": "Prázdny priečinok",
+      "download": "Stiahnuť",
+      "nameNotDecrypted": "názov sa nepodarilo dešifrovať",
+      "fileDecryptedTo": "Súbor dešifrovaný do {path}",
+      "encryptedUploadCompleted": "Šifrované nahrávanie dokončené: {path}",
+      "lock": "Uzamknúť vrstvu"
     }
   }
 }

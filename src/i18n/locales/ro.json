@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Elimini parola contului pentru „{name}”?",
       "confirmDelete": "Ștergi contul „{name}”?\n\nDate criptate de eliminat: {profiles} profiluri, {settings} domenii de setări.",
       "passwordChoiceNote": "Setarea unei parole de cont este opțională. Împiedică alte persoane care folosesc acest dispozitiv să îți deschidă contul; datele tale salvate rămân criptate oricum. Sari peste acest pas dacă ești singurul utilizator aici sau dacă ai încredere în toți cei care folosesc acest dispozitiv."
+    },
+    "aerocryptNative": {
+      "title": "Strat AeroCrypt",
+      "recommended": "Recomandat",
+      "intro": {
+        "heading": "Ce face acest strat",
+        "p1": "Criptează numele și conținutul fișierelor <strong>din mers</strong>, înainte de a le trimite către server, și le decriptează la descărcare. Serverul vede doar blob-uri cu nume amestecate. Dumneavoastră vedeți numele originale.",
+        "p2": "Cât timp stratul este activ: sesiunea la distanță afișează conținutul în clar, fiecare încărcare este criptată, fiecare descărcare este decriptată. Căutați insigna <em>AEROCRYPT</em> în bara de cale.",
+        "p3": "Acesta este stratul <strong>nativ</strong> al AeroFTP, pe același motor auditat ca AeroVault (conținut AES-256-GCM-SIV, nume AES-256-SIV, Argon2id). Sarea stratului este stocată în <code>.aeroftp-crypt.json</code> la rădăcina sa pe serverul la distanță, astfel încât îl puteți redeschide de pe orice dispozitiv doar cu parola."
+      },
+      "openExisting": "Deschide existent",
+      "createNew": "Creează nou",
+      "openHint": "Navigați în panoul la distanță până la folderul stratului, apoi introduceți parola acestuia.",
+      "createHint": "Creați un nou strat criptat în folderul la distanță curent (sau într-un subfolder).",
+      "password": "Parolă",
+      "passwordPlaceholder": "Parola stratului",
+      "targetSubpath": "Subfolder (opțional)",
+      "targetSubpathPlaceholder": "ex. encrypted",
+      "targetSubpathHint": "Lăsați gol pentru a cripta folderul la distanță curent sau indicați un nume de subfolder de creat.",
+      "unlock": "Deblochează",
+      "createAndUnlock": "Creează și deblochează",
+      "unlocked": "Strat deblocat.",
+      "initialised": "Strat creat și deblocat.",
+      "noOverlayFound": "Nu a fost găsit niciun strat AeroCrypt în folderul la distanță curent. Comutați la „Creează nou” pentru a crea unul.",
+      "remoteUnlocked": "Server la distanță deblocat (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Browser la distanță criptat",
+      "upload": "Încarcă",
+      "up": "Sus",
+      "path": "Cale: {path}",
+      "loading": "Se încarcă...",
+      "emptyFolder": "Folder gol",
+      "download": "Descarcă",
+      "nameNotDecrypted": "numele nu a putut fi decriptat",
+      "fileDecryptedTo": "Fișier decriptat în {path}",
+      "encryptedUploadCompleted": "Încărcare criptată finalizată: {path}",
+      "lock": "Blochează stratul"
     }
   }
 }

@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "Fjerne kontopassordet for \"{name}\"?",
       "confirmDelete": "Slette kontoen \"{name}\"?\n\nKrypterte data som skal fjernes: {profiles} profiler, {settings} innstillingsområder.",
       "passwordChoiceNote": "Det er valgfritt å angi et kontopassord. Det hindrer andre som bruker denne enheten i å åpne kontoen din; de lagrede dataene dine forblir kryptert uansett. Hopp over dette hvis du er den eneste brukeren, eller hvis du stoler på alle som bruker denne enheten."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt-overlegg",
+      "recommended": "Anbefalt",
+      "intro": {
+        "heading": "Hva dette overlegget gjør",
+        "p1": "Krypterer filnavn og innhold <strong>fortløpende</strong>, før de sendes til serveren, og dekrypterer dem når du laster ned. Serveren ser bare blobber med forvrengte navn. Du ser de opprinnelige navnene.",
+        "p2": "Mens overlegget er aktivt: fjernøkten din viser innholdet i klartekst, hver opplasting krypteres, og hver nedlasting dekrypteres. Se etter <em>AEROCRYPT</em>-merket i stilinjen.",
+        "p3": "Dette er AeroFTPs <strong>opprinnelige</strong> overlegg, på samme reviderte motor som AeroVault (AES-256-GCM-SIV for innhold, AES-256-SIV for navn, Argon2id). Overleggets salt lagres i <code>.aeroftp-crypt.json</code> i roten på fjernserveren, slik at du kan åpne det på nytt fra hvilken som helst enhet med bare passordet."
+      },
+      "openExisting": "Åpne eksisterende",
+      "createNew": "Opprett ny",
+      "openHint": "Naviger fjernpanelet inn i overleggmappen, og skriv deretter inn passordet.",
+      "createHint": "Opprett et nytt kryptert overlegg i den gjeldende fjernmappen (eller en undermappe).",
+      "password": "Passord",
+      "passwordPlaceholder": "Overleggspassord",
+      "targetSubpath": "Undermappe (valgfritt)",
+      "targetSubpathPlaceholder": "f.eks. encrypted",
+      "targetSubpathHint": "La feltet stå tomt for å kryptere den gjeldende fjernmappen, eller oppgi en undermappe som skal opprettes.",
+      "unlock": "Lås opp",
+      "createAndUnlock": "Opprett og lås opp",
+      "unlocked": "Overlegg låst opp.",
+      "initialised": "Overlegg opprettet og låst opp.",
+      "noOverlayFound": "Fant ikke noe AeroCrypt-overlegg i den gjeldende fjernmappen. Bytt til \"Opprett ny\" for å lage et.",
+      "remoteUnlocked": "Fjernserver låst opp (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Kryptert fjernutforsker",
+      "upload": "Last opp",
+      "up": "Opp",
+      "path": "Sti: {path}",
+      "loading": "Laster inn...",
+      "emptyFolder": "Tom mappe",
+      "download": "Last ned",
+      "nameNotDecrypted": "navnet kunne ikke dekrypteres",
+      "fileDecryptedTo": "Fil dekryptert til {path}",
+      "encryptedUploadCompleted": "Kryptert opplasting fullført: {path}",
+      "lock": "Lås overlegg"
     }
   }
 }

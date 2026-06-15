@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Noņemt konta paroli kontam \"{name}\"?",
       "confirmDelete": "Dzēst kontu \"{name}\"?\n\nNoņemamie šifrētie dati: {profiles} profili, {settings} iestatījumu jomas.",
       "passwordChoiceNote": "Konta paroles iestatīšana nav obligāta. Tā neļauj citiem cilvēkiem, kuri izmanto šo ierīci, atvērt jūsu kontu; jūsu saglabātie dati abos gadījumos paliek šifrēti. Izlaidiet to, ja esat vienīgais lietotājs vai ja uzticaties visiem, kas izmanto šo ierīci."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt pārklājums",
+      "recommended": "Ieteicams",
+      "intro": {
+        "heading": "Ko šis pārklājums dara",
+        "p1": "Šifrē failu nosaukumus un saturu <strong>uzreiz</strong>, pirms tos nosūta uz serveri, un atšifrē tos lejupielādes laikā. Serveris redz tikai blobus ar sajauktiem nosaukumiem. Tu redzi sākotnējos nosaukumus.",
+        "p2": "Kamēr pārklājums ir aktīvs: tava attālā sesija rāda saturu atklātā veidā, katra augšupielāde tiek šifrēta un katra lejupielāde tiek atšifrēta. Meklē <em>AEROCRYPT</em> apzīmējumu ceļa joslā.",
+        "p3": "Šis ir AeroFTP <strong>vietējais</strong> pārklājums uz tā paša auditētā dzinēja kā AeroVault (AES-256-GCM-SIV saturam, AES-256-SIV nosaukumiem, Argon2id). Pārklājuma sāls tiek glabāta failā <code>.aeroftp-crypt.json</code> tā saknē attālajā serverī, tāpēc to var atkārtoti atvērt no jebkuras ierīces, izmantojot tikai paroli."
+      },
+      "openExisting": "Atvērt esošu",
+      "createNew": "Izveidot jaunu",
+      "openHint": "Attālajā panelī pārvietojies uz pārklājuma mapi un pēc tam ievadi tās paroli.",
+      "createHint": "Izveido jaunu šifrētu pārklājumu pašreizējā attālajā mapē (vai apakšmapē).",
+      "password": "Parole",
+      "passwordPlaceholder": "Pārklājuma parole",
+      "targetSubpath": "Apakšmape (neobligāti)",
+      "targetSubpathPlaceholder": "piem., encrypted",
+      "targetSubpathHint": "Atstāj tukšu, lai šifrētu pašreizējo attālo mapi, vai norādi izveidojamo apakšmapi.",
+      "unlock": "Atbloķēt",
+      "createAndUnlock": "Izveidot un atbloķēt",
+      "unlocked": "Pārklājums atbloķēts.",
+      "initialised": "Pārklājums izveidots un atbloķēts.",
+      "noOverlayFound": "Pašreizējā attālajā mapē netika atrasts AeroCrypt pārklājums. Pārslēdzies uz \"Izveidot jaunu\", lai to izveidotu.",
+      "remoteUnlocked": "Attālais serveris atbloķēts (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Šifrēts attālais pārlūks",
+      "upload": "Augšupielādēt",
+      "up": "Uz augšu",
+      "path": "Ceļš: {path}",
+      "loading": "Notiek ielāde...",
+      "emptyFolder": "Tukša mape",
+      "download": "Lejupielādēt",
+      "nameNotDecrypted": "nosaukumu nevarēja atšifrēt",
+      "fileDecryptedTo": "Fails atšifrēts uz {path}",
+      "encryptedUploadCompleted": "Šifrēta augšupielāde pabeigta: {path}",
+      "lock": "Bloķēt pārklājumu"
     }
   }
 }

@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Supprimer le mot de passe du compte pour \"{name}\" ?",
       "confirmDelete": "Supprimer le compte \"{name}\" ?\n\nDonnées chiffrées à supprimer : {profiles} profils, {settings} domaines de paramètres.",
       "passwordChoiceNote": "Définir un mot de passe de compte est facultatif. Cela empêche les autres personnes qui utilisent cet appareil d'ouvrir votre compte; vos données enregistrées restent chiffrées dans tous les cas. Ignorez cette étape si vous êtes le seul utilisateur ou si vous faites confiance à tous ceux qui utilisent cet appareil."
+    },
+    "aerocryptNative": {
+      "title": "Superposition AeroCrypt",
+      "recommended": "Recommandé",
+      "intro": {
+        "heading": "Ce que fait cette superposition",
+        "p1": "Chiffre les noms et le contenu des fichiers <strong>à la volée</strong>, avant de les envoyer au serveur, et les déchiffre lors du téléchargement. Le serveur ne voit que des blobs aux noms brouillés. Vous voyez les noms d'origine.",
+        "p2": "Tant que la superposition est active : votre session distante affiche le contenu en clair, chaque envoi est chiffré, chaque téléchargement est déchiffré. Repérez le badge <em>AEROCRYPT</em> dans la barre de chemin.",
+        "p3": "Il s'agit de la superposition <strong>native</strong> d'AeroFTP, sur le même moteur audité qu'AeroVault (AES-256-GCM-SIV pour le contenu, AES-256-SIV pour les noms, Argon2id). Le sel de la superposition est stocké dans <code>.aeroftp-crypt.json</code> à sa racine sur le serveur distant, ce qui vous permet de la rouvrir depuis n'importe quel appareil avec le seul mot de passe."
+      },
+      "openExisting": "Ouvrir une existante",
+      "createNew": "En créer une",
+      "openHint": "Naviguez dans le panneau distant jusqu'au dossier de la superposition, puis saisissez son mot de passe.",
+      "createHint": "Créez une nouvelle superposition chiffrée dans le dossier distant actuel (ou un sous-dossier).",
+      "password": "Mot de passe",
+      "passwordPlaceholder": "Mot de passe de la superposition",
+      "targetSubpath": "Sous-dossier (facultatif)",
+      "targetSubpathPlaceholder": "p. ex. encrypted",
+      "targetSubpathHint": "Laissez vide pour chiffrer le dossier distant actuel, ou nommez un sous-dossier à créer.",
+      "unlock": "Déverrouiller",
+      "createAndUnlock": "Créer et déverrouiller",
+      "unlocked": "Superposition déverrouillée.",
+      "initialised": "Superposition créée et déverrouillée.",
+      "noOverlayFound": "Aucune superposition AeroCrypt trouvée dans le dossier distant actuel. Passez à « En créer une » pour en créer une.",
+      "remoteUnlocked": "Distant déverrouillé (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Explorateur distant chiffré",
+      "upload": "Envoyer",
+      "up": "Remonter",
+      "path": "Chemin : {path}",
+      "loading": "Chargement…",
+      "emptyFolder": "Dossier vide",
+      "download": "Télécharger",
+      "nameNotDecrypted": "le nom n'a pas pu être déchiffré",
+      "fileDecryptedTo": "Fichier déchiffré vers {path}",
+      "encryptedUploadCompleted": "Envoi chiffré terminé : {path}",
+      "lock": "Verrouiller la superposition"
     }
   }
 }

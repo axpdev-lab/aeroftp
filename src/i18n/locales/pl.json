@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Usunąć hasło konta dla „{name}”?",
       "confirmDelete": "Usunąć konto „{name}”?\n\nZaszyfrowane dane do usunięcia: {profiles} profili, {settings} zakresów ustawień.",
       "passwordChoiceNote": "Ustawienie hasła konta jest opcjonalne. Uniemożliwia ono innym osobom korzystającym z tego urządzenia otwarcie Twojego konta; zapisane dane i tak pozostają zaszyfrowane. Pomiń ten krok, jeśli jesteś jedyną osobą, która tu pracuje, lub jeśli ufasz wszystkim, którzy używają tego urządzenia."
+    },
+    "aerocryptNative": {
+      "title": "Nakładka AeroCrypt",
+      "recommended": "Zalecane",
+      "intro": {
+        "heading": "Co robi ta nakładka",
+        "p1": "Szyfruje nazwy plików i zawartość <strong>w locie</strong>, zanim zostaną wysłane na serwer, i odszyfrowuje je podczas pobierania. Serwer widzi tylko obiekty blob z zaszyfrowanymi nazwami. Ty widzisz oryginalne nazwy.",
+        "p2": "Gdy nakładka jest aktywna: Twoja sesja zdalna pokazuje zawartość jako tekst jawny, każde wysłanie jest szyfrowane, a każde pobranie odszyfrowywane. Szukaj oznaczenia <em>AEROCRYPT</em> na pasku ścieżki.",
+        "p3": "To <strong>natywna</strong> nakładka AeroFTP, działająca na tym samym audytowanym silniku co AeroVault (AES-256-GCM-SIV dla zawartości, AES-256-SIV dla nazw, Argon2id). Sól nakładki jest przechowywana w pliku <code>.aeroftp-crypt.json</code> w jej katalogu głównym na serwerze zdalnym, dzięki czemu możesz ją ponownie otworzyć z dowolnego urządzenia, używając tylko hasła."
+      },
+      "openExisting": "Otwórz istniejącą",
+      "createNew": "Utwórz nową",
+      "openHint": "Przejdź w panelu zdalnym do folderu nakładki, a następnie wprowadź jej hasło.",
+      "createHint": "Utwórz nową zaszyfrowaną nakładkę w bieżącym folderze zdalnym (lub podfolderze).",
+      "password": "Hasło",
+      "passwordPlaceholder": "Hasło nakładki",
+      "targetSubpath": "Podfolder (opcjonalnie)",
+      "targetSubpathPlaceholder": "np. encrypted",
+      "targetSubpathHint": "Pozostaw puste, aby zaszyfrować bieżący folder zdalny, lub podaj nazwę podfolderu do utworzenia.",
+      "unlock": "Odblokuj",
+      "createAndUnlock": "Utwórz i odblokuj",
+      "unlocked": "Nakładka odblokowana.",
+      "initialised": "Nakładka utworzona i odblokowana.",
+      "noOverlayFound": "Nie znaleziono nakładki AeroCrypt w bieżącym folderze zdalnym. Przełącz na „Utwórz nową”, aby ją utworzyć.",
+      "remoteUnlocked": "Serwer zdalny odblokowany (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Zaszyfrowana przeglądarka zdalna",
+      "upload": "Wyślij",
+      "up": "W górę",
+      "path": "Ścieżka: {path}",
+      "loading": "Ładowanie...",
+      "emptyFolder": "Pusty folder",
+      "download": "Pobierz",
+      "nameNotDecrypted": "nie udało się odszyfrować nazwy",
+      "fileDecryptedTo": "Plik odszyfrowany do {path}",
+      "encryptedUploadCompleted": "Zaszyfrowane wysyłanie zakończone: {path}",
+      "lock": "Zablokuj nakładkę"
     }
   }
 }

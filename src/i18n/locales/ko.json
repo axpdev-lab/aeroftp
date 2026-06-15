@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "\"{name}\"의 계정 비밀번호를 제거하시겠습니까?",
       "confirmDelete": "계정 \"{name}\"을(를) 삭제하시겠습니까?\n\n제거될 암호화된 데이터: 프로필 {profiles}개, 설정 범위 {settings}개.",
       "passwordChoiceNote": "계정 비밀번호 설정은 선택 사항입니다. 이 기기를 사용하는 다른 사람이 계정을 여는 것을 막아 줍니다. 저장된 데이터는 어느 경우든 암호화된 상태로 유지됩니다. 사용자가 본인뿐이거나 이 기기를 사용하는 모든 사람을 신뢰한다면 건너뛰어도 됩니다."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt 오버레이",
+      "recommended": "권장",
+      "intro": {
+        "heading": "이 오버레이의 기능",
+        "p1": "파일 이름과 내용을 서버로 보내기 전에 <strong>실시간으로</strong> 암호화하고, 다운로드할 때 복호화합니다. 서버에는 이름이 뒤섞인 데이터 덩어리만 보입니다. 사용자에게는 원래 이름이 표시됩니다.",
+        "p2": "오버레이가 활성화된 동안: 원격 세션에는 내용이 평문으로 표시되고, 모든 업로드는 암호화되며, 모든 다운로드는 복호화됩니다. 경로 표시줄의 <em>AEROCRYPT</em> 배지를 확인하세요.",
+        "p3": "이것은 AeroVault와 동일한 감사된 엔진(콘텐츠는 AES-256-GCM-SIV, 이름은 AES-256-SIV, Argon2id)을 사용하는 AeroFTP의 <strong>네이티브</strong> 오버레이입니다. 오버레이의 솔트는 원격의 루트에 있는 <code>.aeroftp-crypt.json</code>에 저장되므로 비밀번호만 있으면 어떤 기기에서든 다시 열 수 있습니다."
+      },
+      "openExisting": "기존 열기",
+      "createNew": "새로 만들기",
+      "openHint": "원격 패널에서 오버레이 폴더로 이동한 다음 해당 비밀번호를 입력하세요.",
+      "createHint": "현재 원격 폴더(또는 하위 폴더)에 새 암호화 오버레이를 만듭니다.",
+      "password": "비밀번호",
+      "passwordPlaceholder": "오버레이 비밀번호",
+      "targetSubpath": "하위 폴더(선택 사항)",
+      "targetSubpathPlaceholder": "예: encrypted",
+      "targetSubpathHint": "비워 두면 현재 원격 폴더를 암호화하거나, 만들 하위 폴더 이름을 지정하세요.",
+      "unlock": "잠금 해제",
+      "createAndUnlock": "만들고 잠금 해제",
+      "unlocked": "오버레이 잠금이 해제되었습니다.",
+      "initialised": "오버레이가 생성되고 잠금이 해제되었습니다.",
+      "noOverlayFound": "현재 원격 폴더에서 AeroCrypt 오버레이를 찾을 수 없습니다. \"새로 만들기\"로 전환하여 만드세요.",
+      "remoteUnlocked": "원격 잠금이 해제되었습니다(ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "암호화 원격 브라우저",
+      "upload": "업로드",
+      "up": "위로",
+      "path": "경로: {path}",
+      "loading": "불러오는 중...",
+      "emptyFolder": "빈 폴더",
+      "download": "다운로드",
+      "nameNotDecrypted": "이름을 복호화할 수 없습니다",
+      "fileDecryptedTo": "파일이 {path}에 복호화되었습니다",
+      "encryptedUploadCompleted": "암호화 업로드가 완료되었습니다: {path}",
+      "lock": "오버레이 잠금"
     }
   }
 }

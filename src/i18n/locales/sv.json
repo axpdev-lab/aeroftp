@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Ta bort kontolösenordet för \"{name}\"?",
       "confirmDelete": "Ta bort kontot \"{name}\"?\n\nKrypterade data att ta bort: {profiles} profiler, {settings} inställningsområden.",
       "passwordChoiceNote": "Att ange ett kontolösenord är valfritt. Det hindrar andra som använder den här enheten från att öppna ditt konto; dina sparade data förblir krypterade oavsett. Hoppa över det här steget om du är den enda här eller om du litar på alla som använder den här enheten."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt-överlägg",
+      "recommended": "Rekommenderas",
+      "intro": {
+        "heading": "Vad det här överlägget gör",
+        "p1": "Krypterar filnamn och innehåll <strong>i farten</strong>, innan de skickas till servern, och dekrypterar dem när du laddar ner. Servern ser bara blobbar med förvanskade namn. Du ser de ursprungliga namnen.",
+        "p2": "Medan överlägget är aktivt: din fjärrsession visar innehållet i klartext, varje uppladdning krypteras och varje nedladdning dekrypteras. Håll utkik efter <em>AEROCRYPT</em>-märket i sökvägsfältet.",
+        "p3": "Det här är AeroFTP:s <strong>inbyggda</strong> överlägg, på samma granskade motor som AeroVault (AES-256-GCM-SIV för innehåll, AES-256-SIV för namn, Argon2id). Överläggets salt lagras i <code>.aeroftp-crypt.json</code> i dess rot på fjärrservern, så att du kan öppna det igen från valfri enhet med bara lösenordet."
+      },
+      "openExisting": "Öppna befintligt",
+      "createNew": "Skapa nytt",
+      "openHint": "Navigera fjärrpanelen in i överläggsmappen och ange sedan dess lösenord.",
+      "createHint": "Skapa ett nytt krypterat överlägg i den aktuella fjärrmappen (eller en undermapp).",
+      "password": "Lösenord",
+      "passwordPlaceholder": "Överläggslösenord",
+      "targetSubpath": "Undermapp (valfritt)",
+      "targetSubpathPlaceholder": "t.ex. encrypted",
+      "targetSubpathHint": "Lämna tomt för att kryptera den aktuella fjärrmappen, eller ange en undermapp som ska skapas.",
+      "unlock": "Lås upp",
+      "createAndUnlock": "Skapa och lås upp",
+      "unlocked": "Överlägg upplåst.",
+      "initialised": "Överlägg skapat och upplåst.",
+      "noOverlayFound": "Inget AeroCrypt-överlägg hittades i den aktuella fjärrmappen. Växla till \"Skapa nytt\" för att skapa ett.",
+      "remoteUnlocked": "Fjärrserver upplåst (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Krypterad fjärrutforskare",
+      "upload": "Ladda upp",
+      "up": "Upp",
+      "path": "Sökväg: {path}",
+      "loading": "Läser in...",
+      "emptyFolder": "Tom mapp",
+      "download": "Ladda ner",
+      "nameNotDecrypted": "namnet kunde inte dekrypteras",
+      "fileDecryptedTo": "Fil dekrypterad till {path}",
+      "encryptedUploadCompleted": "Krypterad uppladdning slutförd: {path}",
+      "lock": "Lås överlägg"
     }
   }
 }

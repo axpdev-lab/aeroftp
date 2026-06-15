@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Buang kata laluan akaun untuk \"{name}\"?",
       "confirmDelete": "Padam akaun \"{name}\"?\n\nMuatan disulitkan untuk dibuang: {profiles} profil, {settings} skop tetapan.",
       "passwordChoiceNote": "Menetapkan kata laluan akaun adalah pilihan. Ia menghalang orang lain yang menggunakan peranti ini daripada membuka akaun anda; data tersimpan anda kekal disulitkan dalam kedua-dua keadaan. Langkau langkah ini jika anda satu-satunya pengguna, atau jika anda mempercayai semua orang yang menggunakan peranti ini."
+    },
+    "aerocryptNative": {
+      "title": "Tindanan AeroCrypt",
+      "recommended": "Disyorkan",
+      "intro": {
+        "heading": "Apa yang dilakukan tindanan ini",
+        "p1": "Menyulitkan nama dan kandungan fail <strong>secara langsung</strong> sebelum menghantarnya ke pelayan, dan menyahsulitnya semasa anda memuat turun. Pelayan hanya melihat gumpalan data dengan nama yang dikelirukan. Anda melihat nama asal.",
+        "p2": "Semasa tindanan aktif: sesi jauh anda memaparkan kandungan dalam bentuk teks jelas, setiap muat naik disulitkan, setiap muat turun dinyahsulit. Cari lencana <em>AEROCRYPT</em> dalam bar laluan.",
+        "p3": "Ini ialah tindanan <strong>asli</strong> AeroFTP, pada enjin teraudit yang sama seperti AeroVault (kandungan AES-256-GCM-SIV, nama AES-256-SIV, Argon2id). Salt tindanan disimpan dalam <code>.aeroftp-crypt.json</code> pada rootnya di pelayan jauh, jadi anda boleh membukanya semula daripada mana-mana peranti hanya dengan kata laluan."
+      },
+      "openExisting": "Buka sedia ada",
+      "createNew": "Cipta baharu",
+      "openHint": "Navigasi panel jauh ke folder tindanan, kemudian masukkan kata laluannya.",
+      "createHint": "Cipta tindanan tersulit baharu dalam folder jauh semasa (atau subfolder).",
+      "password": "Kata laluan",
+      "passwordPlaceholder": "Kata laluan tindanan",
+      "targetSubpath": "Subfolder (pilihan)",
+      "targetSubpathPlaceholder": "cth. encrypted",
+      "targetSubpathHint": "Biarkan kosong untuk menyulitkan folder jauh semasa, atau namakan subfolder untuk dicipta.",
+      "unlock": "Buka kunci",
+      "createAndUnlock": "Cipta dan buka kunci",
+      "unlocked": "Tindanan dibuka kunci.",
+      "initialised": "Tindanan dicipta dan dibuka kunci.",
+      "noOverlayFound": "Tiada tindanan AeroCrypt ditemui dalam folder jauh semasa. Tukar ke \"Cipta baharu\" untuk menciptanya.",
+      "remoteUnlocked": "Jauh dibuka kunci (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Pelayar jauh tersulit",
+      "upload": "Muat naik",
+      "up": "Naik",
+      "path": "Laluan: {path}",
+      "loading": "Memuatkan...",
+      "emptyFolder": "Folder kosong",
+      "download": "Muat turun",
+      "nameNotDecrypted": "nama tidak dapat dinyahsulit",
+      "fileDecryptedTo": "Fail dinyahsulit ke {path}",
+      "encryptedUploadCompleted": "Muat naik tersulit selesai: {path}",
+      "lock": "Kunci tindanan"
     }
   }
 }

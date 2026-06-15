@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Eltávolítja a fiók jelszavát ehhez: \"{name}\"?",
       "confirmDelete": "Törli a(z) \"{name}\" fiókot?\n\nEltávolítandó titkosított adatok: {profiles} profil, {settings} beállítási hatókör.",
       "passwordChoiceNote": "A fiókjelszó beállítása nem kötelező. Megakadályozza, hogy mások, akik ezt az eszközt használják, megnyissák a fiókodat; a mentett adataid mindkét esetben titkosítva maradnak. Hagyd ki, ha egyedül használod, vagy ha megbízol mindenkiben, aki ezt az eszközt használja."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt réteg",
+      "recommended": "Ajánlott",
+      "intro": {
+        "heading": "Mit csinál ez a réteg",
+        "p1": "A fájlneveket és tartalmakat <strong>menet közben</strong> titkosítja, mielőtt elküldené a kiszolgálónak, és letöltéskor visszafejti azokat. A kiszolgáló csak összekevert nevű blobokat lát. Ön az eredeti neveket látja.",
+        "p2": "Amíg a réteg aktív: a távoli munkamenet a tartalmakat olvasható formában jeleníti meg, minden feltöltés titkosítva van, minden letöltés visszafejtve. Keresse az <em>AEROCRYPT</em> jelvényt az útvonalsávon.",
+        "p3": "Ez az AeroFTP <strong>natív</strong> rétege, ugyanazon az auditált motoron, mint az AeroVault (AES-256-GCM-SIV tartalom, AES-256-SIV nevek, Argon2id). A réteg sója a <code>.aeroftp-crypt.json</code> fájlban tárolódik a gyökerében a távoli kiszolgálón, így bármely eszközről újra megnyithatja pusztán a jelszóval."
+      },
+      "openExisting": "Meglévő megnyitása",
+      "createNew": "Új létrehozása",
+      "openHint": "Navigáljon a távoli panelen a réteg mappájába, majd adja meg a jelszavát.",
+      "createHint": "Hozzon létre új titkosított réteget az aktuális távoli mappában (vagy almappában).",
+      "password": "Jelszó",
+      "passwordPlaceholder": "Réteg jelszava",
+      "targetSubpath": "Almappa (opcionális)",
+      "targetSubpathPlaceholder": "pl. encrypted",
+      "targetSubpathHint": "Hagyja üresen az aktuális távoli mappa titkosításához, vagy adjon meg egy létrehozandó almappa nevet.",
+      "unlock": "Feloldás",
+      "createAndUnlock": "Létrehozás és feloldás",
+      "unlocked": "Réteg feloldva.",
+      "initialised": "Réteg létrehozva és feloldva.",
+      "noOverlayFound": "Nem található AeroCrypt réteg az aktuális távoli mappában. Váltson az „Új létrehozása” lehetőségre egy létrehozásához.",
+      "remoteUnlocked": "Távoli kiszolgáló feloldva (azonosító: {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Titkosított távoli böngésző",
+      "upload": "Feltöltés",
+      "up": "Fel",
+      "path": "Útvonal: {path}",
+      "loading": "Betöltés...",
+      "emptyFolder": "Üres mappa",
+      "download": "Letöltés",
+      "nameNotDecrypted": "a nevet nem sikerült visszafejteni",
+      "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
+      "encryptedUploadCompleted": "Titkosított feltöltés befejezve: {path}",
+      "lock": "Réteg zárolása"
     }
   }
 }

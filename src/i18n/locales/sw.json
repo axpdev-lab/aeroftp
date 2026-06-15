@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Ondoa nenosiri la akaunti kwa \"{name}\"?",
       "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}.",
       "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki."
+    },
+    "aerocryptNative": {
+      "title": "Tabaka la AeroCrypt",
+      "recommended": "Inapendekezwa",
+      "intro": {
+        "heading": "Tabaka hili hufanya nini",
+        "p1": "Husimba majina ya faili na maudhui <strong>papo hapo</strong>, kabla ya kuyatuma kwa seva, na huyafichua wakati wa kupakua. Seva huona tu data zenye majina yaliyochanganywa. Wewe huona majina halisi.",
+        "p2": "Wakati tabaka likiwa hai: kipindi chako cha mbali huonyesha maudhui wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>AEROCRYPT</em> kwenye upau wa njia.",
+        "p3": "Hili ni tabaka <strong>asilia</strong> la AeroFTP, kwenye injini ile ile iliyokaguliwa kama AeroVault (maudhui AES-256-GCM-SIV, majina AES-256-SIV, Argon2id). Chumvi ya tabaka huhifadhiwa katika <code>.aeroftp-crypt.json</code> kwenye mzizi wake kwenye seva ya mbali, ili uweze kulifungua tena kutoka kifaa chochote kwa nenosiri tu."
+      },
+      "openExisting": "Fungua lililopo",
+      "createNew": "Unda jipya",
+      "openHint": "Pitia paneli ya mbali hadi kwenye folda ya tabaka, kisha ingiza nenosiri lake.",
+      "createHint": "Unda tabaka jipya lililosimbwa katika folda ya sasa ya mbali (au folda ndogo).",
+      "password": "Nenosiri",
+      "passwordPlaceholder": "Nenosiri la tabaka",
+      "targetSubpath": "Folda ndogo (hiari)",
+      "targetSubpathPlaceholder": "k.m. encrypted",
+      "targetSubpathHint": "Acha tupu ili kusimba folda ya sasa ya mbali, au taja folda ndogo ya kuunda.",
+      "unlock": "Fungua",
+      "createAndUnlock": "Unda na ufungue",
+      "unlocked": "Tabaka limefunguliwa.",
+      "initialised": "Tabaka limeundwa na kufunguliwa.",
+      "noOverlayFound": "Hakuna tabaka la AeroCrypt lililopatikana katika folda ya sasa ya mbali. Badilisha hadi \"Unda jipya\" ili kuunda moja.",
+      "remoteUnlocked": "Mbali limefunguliwa (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Kivinjari cha mbali kilichosimbwa",
+      "upload": "Pakia",
+      "up": "Juu",
+      "path": "Njia: {path}",
+      "loading": "Inapakia...",
+      "emptyFolder": "Folda tupu",
+      "download": "Pakua",
+      "nameNotDecrypted": "jina halikuweza kufichuliwa",
+      "fileDecryptedTo": "Faili limefichuliwa hadi {path}",
+      "encryptedUploadCompleted": "Upakiaji uliosimbwa umekamilika: {path}",
+      "lock": "Funga tabaka"
     }
   }
 }

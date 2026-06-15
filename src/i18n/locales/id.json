@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Hapus kata sandi akun untuk \"{name}\"?",
       "confirmDelete": "Hapus akun \"{name}\"?\n\nData terenkripsi yang akan dihapus: {profiles} profil, {settings} cakupan pengaturan.",
       "passwordChoiceNote": "Mengatur kata sandi akun bersifat opsional. Ini mencegah orang lain yang menggunakan perangkat ini membuka akun Anda; data tersimpan Anda tetap terenkripsi dalam kedua kasus. Lewati saja jika Anda satu-satunya pengguna, atau jika Anda memercayai semua orang yang menggunakan perangkat ini."
+    },
+    "aerocryptNative": {
+      "title": "Overlay AeroCrypt",
+      "recommended": "Direkomendasikan",
+      "intro": {
+        "heading": "Apa yang dilakukan overlay ini",
+        "p1": "Mengenkripsi nama dan isi file <strong>secara langsung</strong> sebelum mengirimnya ke server, dan mendekripsinya saat Anda mengunduh. Server hanya melihat gumpalan data dengan nama yang teracak. Anda melihat nama aslinya.",
+        "p2": "Saat overlay aktif: sesi jarak jauh Anda menampilkan isi dalam bentuk teks biasa, setiap unggahan dienkripsi, setiap unduhan didekripsi. Cari lencana <em>AEROCRYPT</em> di bilah jalur.",
+        "p3": "Ini adalah overlay <strong>native</strong> AeroFTP, pada engine teraudit yang sama dengan AeroVault (konten AES-256-GCM-SIV, nama AES-256-SIV, Argon2id). Salt overlay disimpan dalam <code>.aeroftp-crypt.json</code> di root-nya pada server jarak jauh, sehingga Anda dapat membukanya kembali dari perangkat mana pun hanya dengan kata sandi."
+      },
+      "openExisting": "Buka yang ada",
+      "createNew": "Buat baru",
+      "openHint": "Navigasikan panel jarak jauh ke folder overlay, lalu masukkan kata sandinya.",
+      "createHint": "Buat overlay terenkripsi baru di folder jarak jauh saat ini (atau subfolder).",
+      "password": "Kata sandi",
+      "passwordPlaceholder": "Kata sandi overlay",
+      "targetSubpath": "Subfolder (opsional)",
+      "targetSubpathPlaceholder": "mis. encrypted",
+      "targetSubpathHint": "Biarkan kosong untuk mengenkripsi folder jarak jauh saat ini, atau beri nama subfolder yang akan dibuat.",
+      "unlock": "Buka kunci",
+      "createAndUnlock": "Buat dan buka kunci",
+      "unlocked": "Overlay terbuka kuncinya.",
+      "initialised": "Overlay dibuat dan dibuka kuncinya.",
+      "noOverlayFound": "Tidak ada overlay AeroCrypt yang ditemukan di folder jarak jauh saat ini. Beralih ke \"Buat baru\" untuk membuatnya.",
+      "remoteUnlocked": "Jarak jauh terbuka kuncinya (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Peramban jarak jauh terenkripsi",
+      "upload": "Unggah",
+      "up": "Naik",
+      "path": "Jalur: {path}",
+      "loading": "Memuat...",
+      "emptyFolder": "Folder kosong",
+      "download": "Unduh",
+      "nameNotDecrypted": "nama tidak dapat didekripsi",
+      "fileDecryptedTo": "File didekripsi ke {path}",
+      "encryptedUploadCompleted": "Unggahan terenkripsi selesai: {path}",
+      "lock": "Kunci overlay"
     }
   }
 }

@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Odstranim geslo računa za \"{name}\"?",
       "confirmDelete": "Izbrišem račun \"{name}\"?\n\nŠifrirane vsebine za odstranitev: {profiles} profilov, {settings} obsegov nastavitev.",
       "passwordChoiceNote": "Nastavitev gesla za račun je izbirna. Drugim ljudem, ki uporabljajo to napravo, prepreči, da bi odprli vaš račun; vaši shranjeni podatki ostanejo v vsakem primeru šifrirani. Ta korak preskočite, če ste edini uporabnik tukaj ali če zaupate vsem, ki uporabljajo to napravo."
+    },
+    "aerocryptNative": {
+      "title": "Sloj AeroCrypt",
+      "recommended": "Priporočeno",
+      "intro": {
+        "heading": "Kaj počne ta sloj",
+        "p1": "Imena in vsebino datotek šifrira <strong>sproti</strong>, preden jih pošlje na strežnik, in jih pri prenosu dešifrira. Strežnik vidi le blobe s premešanimi imeni. Vi vidite izvirna imena.",
+        "p2": "Medtem ko je sloj aktiven: vaša oddaljena seja prikazuje vsebino v čistem besedilu, vsako nalaganje je šifrirano, vsak prenos pa dešifriran. Poiščite oznako <em>AEROCRYPT</em> v vrstici poti.",
+        "p3": "To je <strong>izvorni</strong> sloj aplikacije AeroFTP na istem revidiranem pogonu kot AeroVault (vsebina AES-256-GCM-SIV, imena AES-256-SIV, Argon2id). Sol sloja je shranjena v datoteki <code>.aeroftp-crypt.json</code> v njegovem korenu na oddaljenem strežniku, tako da ga lahko znova odprete s katere koli naprave samo z geslom."
+      },
+      "openExisting": "Odpri obstoječega",
+      "createNew": "Ustvari novega",
+      "openHint": "V oddaljenem podoknu se pomaknite do mape sloja, nato vnesite njeno geslo.",
+      "createHint": "Ustvarite nov šifriran sloj v trenutni oddaljeni mapi (ali podmapi).",
+      "password": "Geslo",
+      "passwordPlaceholder": "Geslo sloja",
+      "targetSubpath": "Podmapa (neobvezno)",
+      "targetSubpathPlaceholder": "npr. encrypted",
+      "targetSubpathHint": "Pustite prazno za šifriranje trenutne oddaljene mape ali navedite ime podmape, ki naj se ustvari.",
+      "unlock": "Odkleni",
+      "createAndUnlock": "Ustvari in odkleni",
+      "unlocked": "Sloj odklenjen.",
+      "initialised": "Sloj ustvarjen in odklenjen.",
+      "noOverlayFound": "V trenutni oddaljeni mapi ni bilo najdenega sloja AeroCrypt. Preklopite na „Ustvari novega“, da ga ustvarite.",
+      "remoteUnlocked": "Oddaljeni strežnik odklenjen (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Šifrirani oddaljeni brskalnik",
+      "upload": "Naloži",
+      "up": "Gor",
+      "path": "Pot: {path}",
+      "loading": "Nalaganje...",
+      "emptyFolder": "Prazna mapa",
+      "download": "Prenesi",
+      "nameNotDecrypted": "imena ni bilo mogoče dešifrirati",
+      "fileDecryptedTo": "Datoteka dešifrirana v {path}",
+      "encryptedUploadCompleted": "Šifrirano nalaganje končano: {path}",
+      "lock": "Zakleni sloj"
     }
   }
 }

@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "Fjarlægja lykilorð reiknings fyrir \"{name}\"?",
       "confirmDelete": "Eyða reikningnum \"{name}\"?\n\nDulkóðuð gögn til að fjarlægja: {profiles} snið, {settings} stillingasvið.",
       "passwordChoiceNote": "Það er valfrjálst að setja lykilorð fyrir reikninginn. Það kemur í veg fyrir að aðrir sem nota þetta tæki opni reikninginn þinn; vistuðu gögnin þín haldast dulkóðuð hvort sem er. Slepptu þessu ef þú ert eini notandinn, eða ef þú treystir öllum sem nota þetta tæki."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt-yfirlag",
+      "recommended": "Mælt með",
+      "intro": {
+        "heading": "Hvað þetta yfirlag gerir",
+        "p1": "Dulkóðar skráarnöfn og innihald <strong>jafnóðum</strong>, áður en þau eru send á þjóninn, og afkóðar þau þegar þú sækir. Þjónninn sér aðeins gagnaklumpa með ruglað nöfn. Þú sérð upprunalegu nöfnin.",
+        "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihaldið ódulkóðað, hver upphleðsla er dulkóðuð og hvert niðurhal er afkóðað. Leitaðu að <em>AEROCRYPT</em>-merkinu í slóðastikunni.",
+        "p3": "Þetta er <strong>innbyggða</strong> yfirlag AeroFTP, á sömu úttektuðu vél og AeroVault (AES-256-GCM-SIV fyrir innihald, AES-256-SIV fyrir nöfn, Argon2id). Salt yfirlagsins er geymt í <code>.aeroftp-crypt.json</code> í rót þess á fjarþjóninum, svo þú getur opnað það aftur úr hvaða tæki sem er aðeins með lykilorðinu."
+      },
+      "openExisting": "Opna fyrirliggjandi",
+      "createNew": "Búa til nýtt",
+      "openHint": "Flettu í fjarspjaldinu inn í yfirlagsmöppuna og sláðu svo inn lykilorð hennar.",
+      "createHint": "Búðu til nýtt dulkóðað yfirlag í núverandi fjarmöppu (eða undirmöppu).",
+      "password": "Lykilorð",
+      "passwordPlaceholder": "Lykilorð yfirlags",
+      "targetSubpath": "Undirmappa (valfrjálst)",
+      "targetSubpathPlaceholder": "t.d. encrypted",
+      "targetSubpathHint": "Skildu eftir autt til að dulkóða núverandi fjarmöppu, eða nefndu undirmöppu sem á að búa til.",
+      "unlock": "Aflæsa",
+      "createAndUnlock": "Búa til og aflæsa",
+      "unlocked": "Yfirlag aflæst.",
+      "initialised": "Yfirlag búið til og aflæst.",
+      "noOverlayFound": "Ekkert AeroCrypt-yfirlag fannst í núverandi fjarmöppu. Skiptu yfir í „Búa til nýtt“ til að búa eitt til.",
+      "remoteUnlocked": "Fjartenging aflæst (auðkenni {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Dulkóðaður fjarvafri",
+      "upload": "Hlaða upp",
+      "up": "Upp",
+      "path": "Slóð: {path}",
+      "loading": "Hleð…",
+      "emptyFolder": "Tóm mappa",
+      "download": "Sækja",
+      "nameNotDecrypted": "ekki tókst að afkóða nafnið",
+      "fileDecryptedTo": "Skrá afkóðuð í {path}",
+      "encryptedUploadCompleted": "Dulkóðaðri upphleðslu lokið: {path}",
+      "lock": "Læsa yfirlagi"
     }
   }
 }

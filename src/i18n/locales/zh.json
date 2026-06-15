@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "移除 \"{name}\" 的账户密码？",
       "confirmDelete": "删除账户 \"{name}\"？\n\n要移除的加密数据：{profiles} 个配置文件，{settings} 个设置范围。",
       "passwordChoiceNote": "设置账户密码是可选的。它可以防止使用此设备的其他人打开你的账户;无论是否设置，你保存的数据都会保持加密。如果这里只有你一个人使用，或者你信任使用此设备的每个人，可以跳过此步骤。"
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt 叠加层",
+      "recommended": "推荐",
+      "intro": {
+        "heading": "此叠加层的功能",
+        "p1": "在将文件名和内容发送到服务器之前<strong>实时</strong>加密，并在下载时解密。服务器只能看到名称被打乱的数据块。而你看到的是原始名称。",
+        "p2": "当叠加层处于活动状态时：远程会话以明文显示内容，每次上传都会被加密，每次下载都会被解密。请留意路径栏中的 <em>AEROCRYPT</em> 徽章。",
+        "p3": "这是 AeroFTP 的<strong>原生</strong>叠加层，使用与 AeroVault 相同的经审计引擎（内容采用 AES-256-GCM-SIV，名称采用 AES-256-SIV，以及 Argon2id）。叠加层的盐值存储在远程根目录下的 <code>.aeroftp-crypt.json</code> 中，因此你只需密码即可在任何设备上重新打开它。"
+      },
+      "openExisting": "打开现有",
+      "createNew": "新建",
+      "openHint": "在远程面板中导航至叠加层文件夹，然后输入其密码。",
+      "createHint": "在当前远程文件夹（或子文件夹）中创建新的加密叠加层。",
+      "password": "密码",
+      "passwordPlaceholder": "叠加层密码",
+      "targetSubpath": "子文件夹（可选）",
+      "targetSubpathPlaceholder": "例如：encrypted",
+      "targetSubpathHint": "留空以加密当前远程文件夹，或指定要创建的子文件夹名称。",
+      "unlock": "解锁",
+      "createAndUnlock": "创建并解锁",
+      "unlocked": "叠加层已解锁。",
+      "initialised": "叠加层已创建并解锁。",
+      "noOverlayFound": "在当前远程文件夹中未找到 AeroCrypt 叠加层。切换到“新建”来创建一个。",
+      "remoteUnlocked": "远程已解锁（ID {id}）",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "加密远程浏览器",
+      "upload": "上传",
+      "up": "上一级",
+      "path": "路径：{path}",
+      "loading": "正在加载...",
+      "emptyFolder": "空文件夹",
+      "download": "下载",
+      "nameNotDecrypted": "无法解密名称",
+      "fileDecryptedTo": "文件已解密至 {path}",
+      "encryptedUploadCompleted": "加密上传已完成：{path}",
+      "lock": "锁定叠加层"
     }
   }
 }

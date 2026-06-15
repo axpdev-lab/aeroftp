@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "「{name}」のアカウントパスワードを削除しますか？",
       "confirmDelete": "アカウント「{name}」を削除しますか？\n\n削除される暗号化データ: {profiles} 件のプロファイル、{settings} 件の設定スコープ。",
       "passwordChoiceNote": "アカウントパスワードの設定は任意です。このデバイスを使う他の人があなたのアカウントを開くのを防ぎます。保存したデータはどちらの場合でも暗号化されたままです。あなたが唯一の利用者であるか、このデバイスを使う全員を信頼できる場合は、この手順をスキップしてかまいません。"
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt オーバーレイ",
+      "recommended": "推奨",
+      "intro": {
+        "heading": "このオーバーレイの機能",
+        "p1": "ファイル名と内容をサーバーへ送信する前に<strong>その場で</strong>暗号化し、ダウンロード時に復号します。サーバーには名前が暗号化されたデータの塊しか見えません。あなたには元の名前が表示されます。",
+        "p2": "オーバーレイが有効な間：リモートセッションには内容が平文で表示され、アップロードはすべて暗号化、ダウンロードはすべて復号されます。パスバーの <em>AEROCRYPT</em> バッジを確認してください。",
+        "p3": "これは AeroVault と同じ監査済みエンジン（コンテンツに AES-256-GCM-SIV、名前に AES-256-SIV、Argon2id）を使用する AeroFTP の<strong>ネイティブ</strong>オーバーレイです。オーバーレイのソルトはリモートのルートにある <code>.aeroftp-crypt.json</code> に保存されるため、パスワードさえあればどのデバイスからでも再び開けます。"
+      },
+      "openExisting": "既存を開く",
+      "createNew": "新規作成",
+      "openHint": "リモートパネルでオーバーレイフォルダーに移動し、そのパスワードを入力してください。",
+      "createHint": "現在のリモートフォルダー（またはサブフォルダー）に新しい暗号化オーバーレイを作成します。",
+      "password": "パスワード",
+      "passwordPlaceholder": "オーバーレイのパスワード",
+      "targetSubpath": "サブフォルダー（任意）",
+      "targetSubpathPlaceholder": "例: encrypted",
+      "targetSubpathHint": "空欄のままにすると現在のリモートフォルダーを暗号化します。作成するサブフォルダー名を指定することもできます。",
+      "unlock": "ロック解除",
+      "createAndUnlock": "作成してロック解除",
+      "unlocked": "オーバーレイのロックを解除しました。",
+      "initialised": "オーバーレイを作成してロック解除しました。",
+      "noOverlayFound": "現在のリモートフォルダーに AeroCrypt オーバーレイが見つかりません。「新規作成」に切り替えて作成してください。",
+      "remoteUnlocked": "リモートのロックを解除しました（ID {id}）",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "暗号化リモートブラウザー",
+      "upload": "アップロード",
+      "up": "上へ",
+      "path": "パス: {path}",
+      "loading": "読み込み中...",
+      "emptyFolder": "空のフォルダー",
+      "download": "ダウンロード",
+      "nameNotDecrypted": "名前を復号できませんでした",
+      "fileDecryptedTo": "ファイルを {path} に復号しました",
+      "encryptedUploadCompleted": "暗号化アップロードが完了しました: {path}",
+      "lock": "オーバーレイをロック"
     }
   }
 }

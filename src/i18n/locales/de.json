@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Das Kontopasswort für \"{name}\" entfernen?",
       "confirmDelete": "Konto \"{name}\" löschen?\n\nZu entfernende verschlüsselte Daten: {profiles} Profile, {settings} Einstellungsbereiche.",
       "passwordChoiceNote": "Das Festlegen eines Kontopassworts ist optional. Es verhindert, dass andere Personen, die dieses Gerät nutzen, Ihr Konto öffnen; Ihre gespeicherten Daten bleiben in beiden Fällen verschlüsselt. Überspringen Sie es, wenn Sie der einzige Nutzer sind oder allen vertrauen, die dieses Gerät verwenden."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt-Overlay",
+      "recommended": "Empfohlen",
+      "intro": {
+        "heading": "Was dieses Overlay bewirkt",
+        "p1": "Verschlüsselt Dateinamen und Inhalte <strong>im laufenden Betrieb</strong>, bevor sie an den Server gesendet werden, und entschlüsselt sie beim Download. Der Server sieht nur Blobs mit verschlüsselten Namen. Sie sehen die Originalnamen.",
+        "p2": "Während das Overlay aktiv ist: Ihre Remote-Sitzung zeigt Inhalte im Klartext, jeder Upload wird verschlüsselt, jeder Download wird entschlüsselt. Achten Sie auf das <em>AEROCRYPT</em>-Abzeichen in der Pfadleiste.",
+        "p3": "Dies ist das <strong>native</strong> Overlay von AeroFTP, auf derselben geprüften Engine wie AeroVault (AES-256-GCM-SIV für Inhalte, AES-256-SIV für Namen, Argon2id). Das Salt des Overlays wird in <code>.aeroftp-crypt.json</code> in seinem Stammverzeichnis auf dem Remote gespeichert, sodass Sie es von jedem Gerät aus nur mit dem Passwort wieder öffnen können."
+      },
+      "openExisting": "Vorhandenes öffnen",
+      "createNew": "Neu erstellen",
+      "openHint": "Navigieren Sie im Remote-Panel in den Overlay-Ordner und geben Sie dann dessen Passwort ein.",
+      "createHint": "Erstellen Sie ein neues verschlüsseltes Overlay im aktuellen Remote-Ordner (oder einem Unterordner).",
+      "password": "Passwort",
+      "passwordPlaceholder": "Overlay-Passwort",
+      "targetSubpath": "Unterordner (optional)",
+      "targetSubpathPlaceholder": "z. B. encrypted",
+      "targetSubpathHint": "Leer lassen, um den aktuellen Remote-Ordner zu verschlüsseln, oder einen zu erstellenden Unterordner benennen.",
+      "unlock": "Entsperren",
+      "createAndUnlock": "Erstellen und entsperren",
+      "unlocked": "Overlay entsperrt.",
+      "initialised": "Overlay erstellt und entsperrt.",
+      "noOverlayFound": "Kein AeroCrypt-Overlay im aktuellen Remote-Ordner gefunden. Wechseln Sie zu „Neu erstellen“, um eines anzulegen.",
+      "remoteUnlocked": "Remote entsperrt (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Verschlüsselter Remote-Browser",
+      "upload": "Hochladen",
+      "up": "Nach oben",
+      "path": "Pfad: {path}",
+      "loading": "Wird geladen …",
+      "emptyFolder": "Leerer Ordner",
+      "download": "Herunterladen",
+      "nameNotDecrypted": "Name konnte nicht entschlüsselt werden",
+      "fileDecryptedTo": "Datei entschlüsselt nach {path}",
+      "encryptedUploadCompleted": "Verschlüsselter Upload abgeschlossen: {path}",
+      "lock": "Overlay sperren"
     }
   }
 }

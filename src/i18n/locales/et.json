@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Kas eemaldada konto parool kasutajale \"{name}\"?",
       "confirmDelete": "Kas kustutada konto \"{name}\"?\n\nEemaldatavad krüpteeritud andmed: {profiles} profiili, {settings} seadete ulatust.",
       "passwordChoiceNote": "Konto parooli määramine on valikuline. See takistab teistel seda seadet kasutavatel inimestel teie kontot avada; teie salvestatud andmed jäävad nii või teisiti krüptituks. Jätke see vahele, kui olete ainus kasutaja või kui usaldate kõiki, kes seda seadet kasutavad."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypti kattekiht",
+      "recommended": "Soovitatav",
+      "intro": {
+        "heading": "Mida see kattekiht teeb",
+        "p1": "Krüpteerib failinimed ja sisu <strong>lennult</strong>, enne nende serverisse saatmist, ning dekrüpteerib need allalaadimisel. Server näeb ainult segatud nimedega blobe. Sina näed algupäraseid nimesid.",
+        "p2": "Kui kattekiht on aktiivne: sinu kaugseanss näitab sisu selgel kujul, iga üleslaadimine krüpteeritakse ja iga allalaadimine dekrüpteeritakse. Otsi teeribalt <em>AEROCRYPT</em> märki.",
+        "p3": "See on AeroFTP <strong>natiivne</strong> kattekiht, mis kasutab sama auditeeritud mootorit nagu AeroVault (AES-256-GCM-SIV sisu jaoks, AES-256-SIV nimede jaoks, Argon2id). Kattekihi sool salvestatakse failis <code>.aeroftp-crypt.json</code> selle juurkaustas kaugserveris, nii et saad selle uuesti avada igast seadmest ainult parooliga."
+      },
+      "openExisting": "Ava olemasolev",
+      "createNew": "Loo uus",
+      "openHint": "Liigu kaugpaneelil kattekihi kausta ja sisesta seejärel selle parool.",
+      "createHint": "Loo praeguses kaugkaustas (või alamkaustas) uus krüpteeritud kattekiht.",
+      "password": "Parool",
+      "passwordPlaceholder": "Kattekihi parool",
+      "targetSubpath": "Alamkaust (valikuline)",
+      "targetSubpathPlaceholder": "nt encrypted",
+      "targetSubpathHint": "Jäta tühjaks, et krüpteerida praegune kaugkaust, või nimeta loodav alamkaust.",
+      "unlock": "Ava lukk",
+      "createAndUnlock": "Loo ja ava lukk",
+      "unlocked": "Kattekiht avatud.",
+      "initialised": "Kattekiht loodud ja avatud.",
+      "noOverlayFound": "Praegusest kaugkaustast ei leitud AeroCrypti kattekihti. Selle loomiseks vaheta valikule \"Loo uus\".",
+      "remoteUnlocked": "Kaugserver avatud (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Krüpteeritud kaugbrauser",
+      "upload": "Laadi üles",
+      "up": "Üles",
+      "path": "Tee: {path}",
+      "loading": "Laadimine...",
+      "emptyFolder": "Tühi kaust",
+      "download": "Laadi alla",
+      "nameNotDecrypted": "nime ei õnnestunud dekrüpteerida",
+      "fileDecryptedTo": "Fail dekrüpteeritud asukohta {path}",
+      "encryptedUploadCompleted": "Krüpteeritud üleslaadimine lõpetatud: {path}",
+      "lock": "Lukusta kattekiht"
     }
   }
 }

@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "\"{name}\" kontuaren pasahitza kendu?",
       "confirmDelete": "\"{name}\" kontua ezabatu?\n\nKendu beharreko karga zifratuak: {profiles} profil, {settings} ezarpen-eremu.",
       "passwordChoiceNote": "Kontuaren pasahitza ezartzea aukerakoa da. Gailu hau erabiltzen duten beste pertsona batzuek zure kontua irekitzea eragozten du; zure gordetako datuak zifratuta jarraitzen dute edonola ere. Saltatu hau gailua erabiltzen duen bakarra bazara, edo gailu hau erabiltzen duten guztiengan konfiantza baduzu."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt gainjartzea",
+      "recommended": "Gomendatua",
+      "intro": {
+        "heading": "Zer egiten du gainjartze honek",
+        "p1": "Fitxategien izenak eta edukiak <strong>une berean</strong> zifratzen ditu, zerbitzarira bidali aurretik, eta deszifratu egiten ditu deskargatzean. Zerbitzariak izen nahasiak dituzten blobak baino ez ditu ikusten. Zuk jatorrizko izenak ikusten dituzu.",
+        "p2": "Gainjartzea aktibo dagoen bitartean: zure urruneko saioak edukiak garbi erakusten ditu, igoera bakoitza zifratu egiten da eta deskarga bakoitza deszifratu. Bilatu <em>AEROCRYPT</em> bereizgarria bide-barran.",
+        "p3": "Hau AeroFTPren gainjartze <strong>natiboa</strong> da, AeroVault-en motor auditatu beraren gainean (AES-256-GCM-SIV edukirako, AES-256-SIV izenetarako, Argon2id). Gainjartzearen gatza <code>.aeroftp-crypt.json</code> fitxategian gordetzen da bere erroan urrunekoan, beraz, edozein gailutatik berriro ireki dezakezu pasahitzarekin soilik."
+      },
+      "openExisting": "Ireki lehendik dagoena",
+      "createNew": "Sortu berria",
+      "openHint": "Nabigatu urruneko paneletik gainjartze-karpetara, eta sartu haren pasahitza.",
+      "createHint": "Sortu gainjartze zifratu berri bat uneko urruneko karpetan (edo azpikarpeta batean).",
+      "password": "Pasahitza",
+      "passwordPlaceholder": "Gainjartzearen pasahitza",
+      "targetSubpath": "Azpikarpeta (aukerakoa)",
+      "targetSubpathPlaceholder": "adib. encrypted",
+      "targetSubpathHint": "Utzi hutsik uneko urruneko karpeta zifratzeko, edo eman sortu beharreko azpikarpeta baten izena.",
+      "unlock": "Desblokeatu",
+      "createAndUnlock": "Sortu eta desblokeatu",
+      "unlocked": "Gainjartzea desblokeatuta.",
+      "initialised": "Gainjartzea sortua eta desblokeatua.",
+      "noOverlayFound": "Ez da AeroCrypt gainjartzerik aurkitu uneko urruneko karpetan. Aldatu «Sortu berria» aukerara bat sortzeko.",
+      "remoteUnlocked": "Urrunekoa desblokeatuta ({id} IDa)",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Urruneko arakatzaile zifratua",
+      "upload": "Igo",
+      "up": "Gora",
+      "path": "Bidea: {path}",
+      "loading": "Kargatzen…",
+      "emptyFolder": "Karpeta hutsa",
+      "download": "Deskargatu",
+      "nameNotDecrypted": "izena ezin izan da deszifratu",
+      "fileDecryptedTo": "Fitxategia hona deszifratu da: {path}",
+      "encryptedUploadCompleted": "Igoera zifratua osatu da: {path}",
+      "lock": "Blokeatu gainjartzea"
     }
   }
 }

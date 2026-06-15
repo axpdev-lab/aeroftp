@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "Eliminar o contrasinal da conta para \"{name}\"?",
       "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDatos cifrados que eliminar: {profiles} perfís, {settings} ámbitos de configuración.",
       "passwordChoiceNote": "Establecer un contrasinal da conta é opcional. Evita que outras persoas que usan este dispositivo abran a túa conta; os teus datos gardados seguen cifrados en calquera caso. Omíteo se es o único que o usa, ou se confías en todos os que usan este dispositivo."
+    },
+    "aerocryptNative": {
+      "title": "Superposición AeroCrypt",
+      "recommended": "Recomendado",
+      "intro": {
+        "heading": "Que fai esta superposición",
+        "p1": "Cifra os nomes e o contido dos ficheiros <strong>sobre a marcha</strong>, antes de envialos ao servidor, e descífraos ao descargar. O servidor só ve blobs con nomes ilexibles. Ti ves os nomes orixinais.",
+        "p2": "Mentres a superposición está activa: a túa sesión remota mostra o contido en claro, cada envío cífrase e cada descarga descífrase. Busca a insignia <em>AEROCRYPT</em> na barra de ruta.",
+        "p3": "Esta é a superposición <strong>nativa</strong> de AeroFTP, sobre o mesmo motor auditado que AeroVault (AES-256-GCM-SIV para o contido, AES-256-SIV para os nomes, Argon2id). O sal da superposición gárdase en <code>.aeroftp-crypt.json</code> na súa raíz no servidor remoto, polo que podes reabrila desde calquera dispositivo só co contrasinal."
+      },
+      "openExisting": "Abrir existente",
+      "createNew": "Crear nova",
+      "openHint": "Navega no panel remoto ata o cartafol da superposición e logo introduce o seu contrasinal.",
+      "createHint": "Crea unha nova superposición cifrada no cartafol remoto actual (ou nun subcartafol).",
+      "password": "Contrasinal",
+      "passwordPlaceholder": "Contrasinal da superposición",
+      "targetSubpath": "Subcartafol (opcional)",
+      "targetSubpathPlaceholder": "p. ex. encrypted",
+      "targetSubpathHint": "Déixao baleiro para cifrar o cartafol remoto actual, ou indica o nome dun subcartafol a crear.",
+      "unlock": "Desbloquear",
+      "createAndUnlock": "Crear e desbloquear",
+      "unlocked": "Superposición desbloqueada.",
+      "initialised": "Superposición creada e desbloqueada.",
+      "noOverlayFound": "Non se atopou ningunha superposición AeroCrypt no cartafol remoto actual. Cambia a «Crear nova» para crear unha.",
+      "remoteUnlocked": "Remoto desbloqueado (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Navegador remoto cifrado",
+      "upload": "Enviar",
+      "up": "Arriba",
+      "path": "Ruta: {path}",
+      "loading": "Cargando…",
+      "emptyFolder": "Cartafol baleiro",
+      "download": "Descargar",
+      "nameNotDecrypted": "non se puido descifrar o nome",
+      "fileDecryptedTo": "Ficheiro descifrado en {path}",
+      "encryptedUploadCompleted": "Envío cifrado completado: {path}",
+      "lock": "Bloquear superposición"
     }
   }
 }

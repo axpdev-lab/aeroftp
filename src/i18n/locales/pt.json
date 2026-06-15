@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Remover a palavra-passe da conta de \"{name}\"?",
       "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDados encriptados a remover: {profiles} perfis, {settings} âmbitos de definições.",
       "passwordChoiceNote": "Definir uma palavra-passe da conta é opcional. Impede que outras pessoas que usam este dispositivo abram a sua conta; os seus dados guardados permanecem encriptados de qualquer forma. Ignore este passo se for o único utilizador aqui, ou se confiar em todos os que usam este dispositivo."
+    },
+    "aerocryptNative": {
+      "title": "Sobreposição AeroCrypt",
+      "recommended": "Recomendado",
+      "intro": {
+        "heading": "O que esta sobreposição faz",
+        "p1": "Cifra os nomes e o conteúdo dos ficheiros <strong>em tempo real</strong>, antes de os enviar para o servidor, e decifra-os ao transferir. O servidor só vê blobs com nomes baralhados. Você vê os nomes originais.",
+        "p2": "Enquanto a sobreposição está ativa: a sua sessão remota mostra o conteúdo em claro, cada envio é cifrado e cada transferência é decifrada. Procure o emblema <em>AEROCRYPT</em> na barra de caminho.",
+        "p3": "Esta é a sobreposição <strong>nativa</strong> do AeroFTP, no mesmo motor auditado que o AeroVault (AES-256-GCM-SIV para o conteúdo, AES-256-SIV para os nomes, Argon2id). O sal da sobreposição é guardado em <code>.aeroftp-crypt.json</code> na sua raiz no servidor remoto, para que possa reabri-la a partir de qualquer dispositivo apenas com a palavra-passe."
+      },
+      "openExisting": "Abrir existente",
+      "createNew": "Criar nova",
+      "openHint": "Navegue no painel remoto até à pasta da sobreposição e depois introduza a respetiva palavra-passe.",
+      "createHint": "Crie uma nova sobreposição cifrada na pasta remota atual (ou numa subpasta).",
+      "password": "Palavra-passe",
+      "passwordPlaceholder": "Palavra-passe da sobreposição",
+      "targetSubpath": "Subpasta (opcional)",
+      "targetSubpathPlaceholder": "p. ex. encrypted",
+      "targetSubpathHint": "Deixe vazio para cifrar a pasta remota atual, ou indique o nome de uma subpasta a criar.",
+      "unlock": "Desbloquear",
+      "createAndUnlock": "Criar e desbloquear",
+      "unlocked": "Sobreposição desbloqueada.",
+      "initialised": "Sobreposição criada e desbloqueada.",
+      "noOverlayFound": "Nenhuma sobreposição AeroCrypt encontrada na pasta remota atual. Mude para «Criar nova» para criar uma.",
+      "remoteUnlocked": "Remoto desbloqueado (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Explorador remoto cifrado",
+      "upload": "Enviar",
+      "up": "Acima",
+      "path": "Caminho: {path}",
+      "loading": "A carregar…",
+      "emptyFolder": "Pasta vazia",
+      "download": "Transferir",
+      "nameNotDecrypted": "não foi possível decifrar o nome",
+      "fileDecryptedTo": "Ficheiro decifrado para {path}",
+      "encryptedUploadCompleted": "Envio cifrado concluído: {path}",
+      "lock": "Bloquear sobreposição"
     }
   }
 }

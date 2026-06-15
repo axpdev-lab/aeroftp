@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Fjern kontoadgangskoden for \"{name}\"?",
       "confirmDelete": "Slet kontoen \"{name}\"?\n\nKrypterede data, der skal fjernes: {profiles} profiler, {settings} indstillingsområder.",
       "passwordChoiceNote": "Det er valgfrit at angive en adgangskode til kontoen. Den forhindrer andre, der bruger denne enhed, i at åbne din konto; dine gemte data forbliver krypterede under alle omstændigheder. Spring det over, hvis du er den eneste her, eller hvis du har tillid til alle, der bruger denne enhed."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt-overlay",
+      "recommended": "Anbefales",
+      "intro": {
+        "heading": "Hvad dette overlay gør",
+        "p1": "Krypterer filnavne og indhold <strong>i farten</strong>, før de sendes til serveren, og dekrypterer dem, når du downloader. Serveren ser kun blobs med forvanskede navne. Du ser de oprindelige navne.",
+        "p2": "Mens overlayet er aktivt: din fjernsession viser indholdet i klar tekst, hver upload krypteres, og hver download dekrypteres. Hold øje med <em>AEROCRYPT</em>-mærket i stilinjen.",
+        "p3": "Dette er AeroFTP's <strong>oprindelige</strong> overlay på samme reviderede motor som AeroVault (AES-256-GCM-SIV til indhold, AES-256-SIV til navne, Argon2id). Overlayets salt gemmes i <code>.aeroftp-crypt.json</code> i dets rod på fjernserveren, så du kan genåbne det fra enhver enhed med blot adgangskoden."
+      },
+      "openExisting": "Åbn eksisterende",
+      "createNew": "Opret ny",
+      "openHint": "Naviger fjernpanelet ind i overlay-mappen, og indtast derefter dens adgangskode.",
+      "createHint": "Opret et nyt krypteret overlay i den aktuelle fjernmappe (eller en undermappe).",
+      "password": "Adgangskode",
+      "passwordPlaceholder": "Overlay-adgangskode",
+      "targetSubpath": "Undermappe (valgfri)",
+      "targetSubpathPlaceholder": "f.eks. encrypted",
+      "targetSubpathHint": "Lad feltet stå tomt for at kryptere den aktuelle fjernmappe, eller angiv en undermappe, der skal oprettes.",
+      "unlock": "Lås op",
+      "createAndUnlock": "Opret og lås op",
+      "unlocked": "Overlay låst op.",
+      "initialised": "Overlay oprettet og låst op.",
+      "noOverlayFound": "Intet AeroCrypt-overlay fundet i den aktuelle fjernmappe. Skift til \"Opret ny\" for at lave et.",
+      "remoteUnlocked": "Fjernserver låst op (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Krypteret fjernbrowser",
+      "upload": "Upload",
+      "up": "Op",
+      "path": "Sti: {path}",
+      "loading": "Indlæser...",
+      "emptyFolder": "Tom mappe",
+      "download": "Download",
+      "nameNotDecrypted": "navnet kunne ikke dekrypteres",
+      "fileDecryptedTo": "Fil dekrypteret til {path}",
+      "encryptedUploadCompleted": "Krypteret upload fuldført: {path}",
+      "lock": "Lås overlay"
     }
   }
 }

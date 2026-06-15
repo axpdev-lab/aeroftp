@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "Tanggalin ang password ng account para sa \"{name}\"?",
       "confirmDelete": "Tanggalin ang account na \"{name}\"?\n\nMga naka-encrypt na payload na tatanggalin: {profiles} na profile, {settings} na saklaw ng setting.",
       "passwordChoiceNote": "Opsyonal ang pagtatakda ng password ng account. Pinipigilan nito ang ibang taong gumagamit ng device na ito na buksan ang iyong account; mananatiling naka-encrypt ang iyong naka-save na data sa alinmang paraan. Laktawan ito kung ikaw lang ang gumagamit dito, o kung pinagkakatiwalaan mo ang lahat ng gumagamit ng device na ito."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt overlay",
+      "recommended": "Inirerekomenda",
+      "intro": {
+        "heading": "Ano ang ginagawa ng overlay na ito",
+        "p1": "Ine-encrypt ang mga pangalan at nilalaman ng file <strong>habang ginagawa</strong>, bago ipadala ang mga ito sa server, at dine-decrypt ang mga ito kapag nag-download ka. Nakikita lang ng server ang mga blob na may nagulong pangalan. Nakikita mo ang orihinal na mga pangalan.",
+        "p2": "Habang aktibo ang overlay: ipinapakita ng iyong remote session ang nilalaman nang malinaw, bawat upload ay naka-encrypt, bawat download ay na-decrypt. Hanapin ang <em>AEROCRYPT</em> badge sa path bar.",
+        "p3": "Ito ang <strong>native</strong> overlay ng AeroFTP, sa parehong audited engine gaya ng AeroVault (AES-256-GCM-SIV para sa nilalaman, AES-256-SIV para sa mga pangalan, Argon2id). Ang salt ng overlay ay nakaimbak sa <code>.aeroftp-crypt.json</code> sa root nito sa remote, kaya maaari mo itong buksang muli mula sa anumang device gamit lamang ang password."
+      },
+      "openExisting": "Buksan ang umiiral",
+      "createNew": "Gumawa ng bago",
+      "openHint": "Mag-navigate sa remote panel papunta sa overlay folder, pagkatapos ay ilagay ang password nito.",
+      "createHint": "Gumawa ng bagong naka-encrypt na overlay sa kasalukuyang remote folder (o sa isang sub-folder).",
+      "password": "Password",
+      "passwordPlaceholder": "Password ng overlay",
+      "targetSubpath": "Sub-folder (opsyonal)",
+      "targetSubpathPlaceholder": "hal. encrypted",
+      "targetSubpathHint": "Iwang blangko para i-encrypt ang kasalukuyang remote folder, o pangalanan ang sub-folder na gagawin.",
+      "unlock": "I-unlock",
+      "createAndUnlock": "Gumawa at i-unlock",
+      "unlocked": "Na-unlock ang overlay.",
+      "initialised": "Nagawa at na-unlock ang overlay.",
+      "noOverlayFound": "Walang nakitang AeroCrypt overlay sa kasalukuyang remote folder. Lumipat sa \"Gumawa ng bago\" para gumawa ng isa.",
+      "remoteUnlocked": "Na-unlock ang remote (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Naka-encrypt na remote browser",
+      "upload": "Mag-upload",
+      "up": "Pataas",
+      "path": "Path: {path}",
+      "loading": "Naglo-load...",
+      "emptyFolder": "Walang laman na folder",
+      "download": "I-download",
+      "nameNotDecrypted": "hindi ma-decrypt ang pangalan",
+      "fileDecryptedTo": "Na-decrypt ang file sa {path}",
+      "encryptedUploadCompleted": "Nakumpleto ang naka-encrypt na upload: {path}",
+      "lock": "I-lock ang overlay"
     }
   }
 }

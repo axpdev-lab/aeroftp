@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Xóa mật khẩu tài khoản cho \"{name}\"?",
       "confirmDelete": "Xóa tài khoản \"{name}\"?\n\nDữ liệu mã hóa cần xóa: {profiles} hồ sơ, {settings} phạm vi cài đặt.",
       "passwordChoiceNote": "Việc đặt mật khẩu tài khoản là tùy chọn. Nó ngăn những người khác dùng thiết bị này mở tài khoản của bạn; dữ liệu đã lưu của bạn vẫn được mã hóa trong mọi trường hợp. Bỏ qua bước này nếu bạn là người duy nhất ở đây, hoặc nếu bạn tin tưởng tất cả những người dùng thiết bị này."
+    },
+    "aerocryptNative": {
+      "title": "Lớp phủ AeroCrypt",
+      "recommended": "Khuyến nghị",
+      "intro": {
+        "heading": "Lớp phủ này làm gì",
+        "p1": "Mã hóa tên và nội dung tệp <strong>tức thời</strong> trước khi gửi lên máy chủ, và giải mã khi bạn tải xuống. Máy chủ chỉ thấy các khối dữ liệu với tên bị xáo trộn. Bạn thì thấy tên gốc.",
+        "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>AEROCRYPT</em> trên thanh đường dẫn.",
+        "p3": "Đây là lớp phủ <strong>gốc</strong> của AeroFTP, chạy trên cùng engine đã được kiểm toán như AeroVault (nội dung dùng AES-256-GCM-SIV, tên dùng AES-256-SIV, Argon2id). Giá trị salt của lớp phủ được lưu trong <code>.aeroftp-crypt.json</code> tại thư mục gốc trên máy chủ từ xa, vì vậy bạn có thể mở lại nó từ bất kỳ thiết bị nào chỉ với mật khẩu."
+      },
+      "openExisting": "Mở hiện có",
+      "createNew": "Tạo mới",
+      "openHint": "Điều hướng bảng điều khiển từ xa vào thư mục lớp phủ, sau đó nhập mật khẩu của nó.",
+      "createHint": "Tạo một lớp phủ mã hóa mới trong thư mục từ xa hiện tại (hoặc thư mục con).",
+      "password": "Mật khẩu",
+      "passwordPlaceholder": "Mật khẩu lớp phủ",
+      "targetSubpath": "Thư mục con (tùy chọn)",
+      "targetSubpathPlaceholder": "ví dụ: encrypted",
+      "targetSubpathHint": "Để trống để mã hóa thư mục từ xa hiện tại, hoặc đặt tên thư mục con để tạo.",
+      "unlock": "Mở khóa",
+      "createAndUnlock": "Tạo và mở khóa",
+      "unlocked": "Đã mở khóa lớp phủ.",
+      "initialised": "Đã tạo và mở khóa lớp phủ.",
+      "noOverlayFound": "Không tìm thấy lớp phủ AeroCrypt trong thư mục từ xa hiện tại. Chuyển sang \"Tạo mới\" để tạo một lớp phủ.",
+      "remoteUnlocked": "Đã mở khóa từ xa (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Trình duyệt từ xa được mã hóa",
+      "upload": "Tải lên",
+      "up": "Lên",
+      "path": "Đường dẫn: {path}",
+      "loading": "Đang tải...",
+      "emptyFolder": "Thư mục trống",
+      "download": "Tải xuống",
+      "nameNotDecrypted": "không thể giải mã tên",
+      "fileDecryptedTo": "Đã giải mã tệp tới {path}",
+      "encryptedUploadCompleted": "Tải lên đã mã hóa hoàn tất: {path}",
+      "lock": "Khóa lớp phủ"
     }
   }
 }

@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Pašalinti paskyros „{name}“ slaptažodį?",
       "confirmDelete": "Ištrinti paskyrą „{name}“?\n\nPašalinami užšifruoti duomenys: {profiles} profiliai, {settings} nustatymų sritys.",
       "passwordChoiceNote": "Paskyros slaptažodžio nustatymas yra neprivalomas. Jis neleidžia kitiems šį įrenginį naudojantiems žmonėms atidaryti jūsų paskyros; jūsų išsaugoti duomenys bet kuriuo atveju lieka užšifruoti. Praleiskite tai, jei esate vienintelis naudotojas arba jei pasitikite visais, kurie naudoja šį įrenginį."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt perdanga",
+      "recommended": "Rekomenduojama",
+      "intro": {
+        "heading": "Ką ši perdanga daro",
+        "p1": "Užšifruoja failų pavadinimus ir turinį <strong>realiuoju laiku</strong>, prieš siunčiant juos į serverį, ir iššifruoja juos, kai atsisiunčiate. Serveris mato tik blobus su sumaišytais pavadinimais. Jūs matote originalius pavadinimus.",
+        "p2": "Kol perdanga aktyvi: jūsų nuotolinis seansas rodo turinį atviru tekstu, kiekvienas įkėlimas užšifruojamas, o kiekvienas atsisiuntimas iššifruojamas. Kelio juostoje ieškokite <em>AEROCRYPT</em> ženklo.",
+        "p3": "Tai AeroFTP <strong>natyvinė</strong> perdanga, veikianti tuo pačiu audituotu varikliu kaip ir AeroVault (AES-256-GCM-SIV turiniui, AES-256-SIV pavadinimams, Argon2id). Perdangos druska saugoma faile <code>.aeroftp-crypt.json</code> jos šaknyje nuotoliniame serveryje, todėl ją galite vėl atidaryti iš bet kurio įrenginio tik su slaptažodžiu."
+      },
+      "openExisting": "Atidaryti esamą",
+      "createNew": "Sukurti naują",
+      "openHint": "Nuotoliniame skydelyje pereikite į perdangos aplanką ir įveskite jo slaptažodį.",
+      "createHint": "Sukurkite naują užšifruotą perdangą dabartiniame nuotoliniame aplanke (arba poaplankyje).",
+      "password": "Slaptažodis",
+      "passwordPlaceholder": "Perdangos slaptažodis",
+      "targetSubpath": "Poaplankis (neprivaloma)",
+      "targetSubpathPlaceholder": "pvz., encrypted",
+      "targetSubpathHint": "Palikite tuščią, kad užšifruotumėte dabartinį nuotolinį aplanką, arba nurodykite kuriamą poaplankį.",
+      "unlock": "Atrakinti",
+      "createAndUnlock": "Sukurti ir atrakinti",
+      "unlocked": "Perdanga atrakinta.",
+      "initialised": "Perdanga sukurta ir atrakinta.",
+      "noOverlayFound": "Dabartiniame nuotoliniame aplanke AeroCrypt perdangos nerasta. Norėdami ją sukurti, perjunkite į \"Sukurti naują\".",
+      "remoteUnlocked": "Nuotolinis serveris atrakintas (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Užšifruota nuotolinė naršyklė",
+      "upload": "Įkelti",
+      "up": "Aukštyn",
+      "path": "Kelias: {path}",
+      "loading": "Įkeliama...",
+      "emptyFolder": "Tuščias aplankas",
+      "download": "Atsisiųsti",
+      "nameNotDecrypted": "pavadinimo nepavyko iššifruoti",
+      "fileDecryptedTo": "Failas iššifruotas į {path}",
+      "encryptedUploadCompleted": "Užšifruotas įkėlimas baigtas: {path}",
+      "lock": "Užrakinti perdangą"
     }
   }
 }

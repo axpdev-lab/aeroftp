@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "Het accountwachtwoord voor \"{name}\" verwijderen?",
       "confirmDelete": "Account \"{name}\" verwijderen?\n\nTe verwijderen versleutelde gegevens: {profiles} profielen, {settings} instellingsbereiken.",
       "passwordChoiceNote": "Een accountwachtwoord instellen is optioneel. Het voorkomt dat andere mensen die dit apparaat gebruiken je account openen; je opgeslagen gegevens blijven hoe dan ook versleuteld. Sla dit over als je de enige gebruiker bent of als je iedereen vertrouwt die dit apparaat gebruikt."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt-overlay",
+      "recommended": "Aanbevolen",
+      "intro": {
+        "heading": "Wat deze overlay doet",
+        "p1": "Versleutelt bestandsnamen en inhoud <strong>direct</strong>, voordat ze naar de server worden verzonden, en ontsleutelt ze bij het downloaden. De server ziet alleen blobs met door elkaar gehaalde namen. U ziet de oorspronkelijke namen.",
+        "p2": "Zolang de overlay actief is: uw externe sessie toont de inhoud leesbaar, elke upload wordt versleuteld en elke download wordt ontsleuteld. Let op het <em>AEROCRYPT</em>-label in de padbalk.",
+        "p3": "Dit is de <strong>native</strong> overlay van AeroFTP, op dezelfde gecontroleerde engine als AeroVault (AES-256-GCM-SIV voor inhoud, AES-256-SIV voor namen, Argon2id). De salt van de overlay wordt opgeslagen in <code>.aeroftp-crypt.json</code> in de hoofdmap op de externe server, zodat u deze vanaf elk apparaat opnieuw kunt openen met alleen het wachtwoord."
+      },
+      "openExisting": "Bestaande openen",
+      "createNew": "Nieuwe maken",
+      "openHint": "Navigeer in het externe paneel naar de overlaymap en voer vervolgens het wachtwoord ervan in.",
+      "createHint": "Maak een nieuwe versleutelde overlay in de huidige externe map (of een submap).",
+      "password": "Wachtwoord",
+      "passwordPlaceholder": "Overlaywachtwoord",
+      "targetSubpath": "Submap (optioneel)",
+      "targetSubpathPlaceholder": "bijv. encrypted",
+      "targetSubpathHint": "Laat leeg om de huidige externe map te versleutelen, of geef een submap op die moet worden gemaakt.",
+      "unlock": "Ontgrendelen",
+      "createAndUnlock": "Maken en ontgrendelen",
+      "unlocked": "Overlay ontgrendeld.",
+      "initialised": "Overlay gemaakt en ontgrendeld.",
+      "noOverlayFound": "Geen AeroCrypt-overlay gevonden in de huidige externe map. Schakel over naar 'Nieuwe maken' om er een te maken.",
+      "remoteUnlocked": "Extern ontgrendeld (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Versleutelde externe browser",
+      "upload": "Uploaden",
+      "up": "Omhoog",
+      "path": "Pad: {path}",
+      "loading": "Laden…",
+      "emptyFolder": "Lege map",
+      "download": "Downloaden",
+      "nameNotDecrypted": "naam kon niet worden ontsleuteld",
+      "fileDecryptedTo": "Bestand ontsleuteld naar {path}",
+      "encryptedUploadCompleted": "Versleutelde upload voltooid: {path}",
+      "lock": "Overlay vergrendelen"
     }
   }
 }

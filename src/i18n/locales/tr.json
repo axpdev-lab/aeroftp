@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "\"{name}\" hesabinin parolasi kaldirilsin mi?",
       "confirmDelete": "\"{name}\" hesabi silinsin mi?\n\nKaldirilacak sifreli veriler: {profiles} profil, {settings} ayar kapsami.",
       "passwordChoiceNote": "Hesap parolası belirlemek isteğe bağlıdır. Bu cihazı kullanan diğer kişilerin hesabınızı açmasını engeller; kayıtlı verileriniz her durumda şifreli kalır. Burada tek kullanıcı sizseniz ya da bu cihazı kullanan herkese güveniyorsanız bu adımı atlayın."
+    },
+    "aerocryptNative": {
+      "title": "AeroCrypt katmanı",
+      "recommended": "Önerilir",
+      "intro": {
+        "heading": "Bu katman ne yapar",
+        "p1": "Dosya adlarını ve içeriklerini sunucuya göndermeden önce <strong>anında</strong> şifreler ve indirdiğinizde çözer. Sunucu yalnızca karıştırılmış adlara sahip ham verileri görür. Siz orijinal adları görürsünüz.",
+        "p2": "Katman etkinken: uzak oturumunuz içerikleri açık olarak gösterir, her yükleme şifrelenir, her indirme çözülür. Yol çubuğunda <em>AEROCRYPT</em> rozetini arayın.",
+        "p3": "Bu, AeroFTP'nin AeroVault ile aynı denetlenmiş motor üzerinde çalışan <strong>yerel</strong> katmanıdır (AES-256-GCM-SIV içerik, AES-256-SIV adlar, Argon2id). Katmanın salt değeri uzak sunucudaki kök dizinde <code>.aeroftp-crypt.json</code> dosyasında saklanır, böylece yalnızca parolayla herhangi bir cihazdan yeniden açabilirsiniz."
+      },
+      "openExisting": "Mevcut olanı aç",
+      "createNew": "Yeni oluştur",
+      "openHint": "Uzak panelde katman klasörüne gidin, ardından parolasını girin.",
+      "createHint": "Geçerli uzak klasörde (veya bir alt klasörde) yeni bir şifreli katman oluşturun.",
+      "password": "Parola",
+      "passwordPlaceholder": "Katman parolası",
+      "targetSubpath": "Alt klasör (isteğe bağlı)",
+      "targetSubpathPlaceholder": "örn. encrypted",
+      "targetSubpathHint": "Geçerli uzak klasörü şifrelemek için boş bırakın veya oluşturulacak bir alt klasör adı girin.",
+      "unlock": "Kilidi aç",
+      "createAndUnlock": "Oluştur ve kilidi aç",
+      "unlocked": "Katmanın kilidi açıldı.",
+      "initialised": "Katman oluşturuldu ve kilidi açıldı.",
+      "noOverlayFound": "Geçerli uzak klasörde AeroCrypt katmanı bulunamadı. Bir tane oluşturmak için \"Yeni oluştur\" seçeneğine geçin.",
+      "remoteUnlocked": "Uzak kilidi açıldı (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Şifreli uzak tarayıcı",
+      "upload": "Yükle",
+      "up": "Yukarı",
+      "path": "Yol: {path}",
+      "loading": "Yükleniyor...",
+      "emptyFolder": "Boş klasör",
+      "download": "İndir",
+      "nameNotDecrypted": "ad çözülemedi",
+      "fileDecryptedTo": "Dosya şuraya çözüldü: {path}",
+      "encryptedUploadCompleted": "Şifreli yükleme tamamlandı: {path}",
+      "lock": "Katmanı kilitle"
     }
   }
 }

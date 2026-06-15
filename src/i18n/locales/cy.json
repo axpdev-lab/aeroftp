@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "Tynnu cyfrinair y cyfrif ar gyfer \"{name}\"?",
       "confirmDelete": "Dileu'r cyfrif \"{name}\"?\n\nLlwythi wedi'u hamgryptio i'w tynnu: {profiles} proffil, {settings} cwmpas gosodiadau.",
       "passwordChoiceNote": "Mae gosod cyfrinair cyfrif yn ddewisol. Mae'n atal pobl eraill sy'n defnyddio'r ddyfais hon rhag agor eich cyfrif; mae eich data sydd wedi'i gadw yn aros wedi'i amgryptio y naill ffordd neu'r llall. Hepgorwch ef os mai chi yw'r unig un yma, neu os ydych yn ymddiried yn bawb sy'n defnyddio'r ddyfais hon."
+    },
+    "aerocryptNative": {
+      "title": "Troshaen AeroCrypt",
+      "recommended": "Argymhellir",
+      "intro": {
+        "heading": "Beth mae'r troshaen hwn yn ei wneud",
+        "p1": "Mae'n amgryptio enwau ffeiliau a chynnwys <strong>ar y pryd</strong>, cyn eu hanfon at y gweinydd, ac yn eu dadamgryptio pan fyddwch yn lawrlwytho. Dim ond blobiau ag enwau wedi'u cymysgu y mae'r gweinydd yn eu gweld. Rydych chi'n gweld yr enwau gwreiddiol.",
+        "p2": "Tra bo'r troshaen yn weithredol: mae eich sesiwn bell yn dangos y cynnwys yn glir, mae pob llwytho i fyny yn cael ei amgryptio, ac mae pob lawrlwythiad yn cael ei ddadamgryptio. Chwiliwch am y bathodyn <em>AEROCRYPT</em> yn y bar llwybr.",
+        "p3": "Dyma droshaen <strong>brodorol</strong> AeroFTP, ar yr un peiriant archwiliedig ag AeroVault (AES-256-GCM-SIV ar gyfer cynnwys, AES-256-SIV ar gyfer enwau, Argon2id). Mae halen y troshaen yn cael ei storio yn <code>.aeroftp-crypt.json</code> yn ei wraidd ar y gweinydd pell, fel y gallwch ei ailagor o unrhyw ddyfais gyda'r cyfrinair yn unig."
+      },
+      "openExisting": "Agor un sy'n bodoli",
+      "createNew": "Creu un newydd",
+      "openHint": "Llywiwch y panel pell i mewn i ffolder y troshaen, yna rhowch ei gyfrinair.",
+      "createHint": "Crëwch droshaen amgryptiedig newydd yn y ffolder bell gyfredol (neu is-ffolder).",
+      "password": "Cyfrinair",
+      "passwordPlaceholder": "Cyfrinair y troshaen",
+      "targetSubpath": "Is-ffolder (dewisol)",
+      "targetSubpathPlaceholder": "e.e. encrypted",
+      "targetSubpathHint": "Gadewch yn wag i amgryptio'r ffolder bell gyfredol, neu enwch is-ffolder i'w chreu.",
+      "unlock": "Datgloi",
+      "createAndUnlock": "Creu a datgloi",
+      "unlocked": "Troshaen wedi'i ddatgloi.",
+      "initialised": "Troshaen wedi'i greu a'i ddatgloi.",
+      "noOverlayFound": "Ni chafwyd troshaen AeroCrypt yn y ffolder bell gyfredol. Newidiwch i \"Creu un newydd\" i wneud un.",
+      "remoteUnlocked": "Gweinydd pell wedi'i ddatgloi (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Porwr pell amgryptiedig",
+      "upload": "Llwytho i fyny",
+      "up": "I fyny",
+      "path": "Llwybr: {path}",
+      "loading": "Wrthi'n llwytho...",
+      "emptyFolder": "Ffolder gwag",
+      "download": "Lawrlwytho",
+      "nameNotDecrypted": "ni ellid dadamgryptio'r enw",
+      "fileDecryptedTo": "Ffeil wedi'i dadamgryptio i {path}",
+      "encryptedUploadCompleted": "Llwytho i fyny amgryptiedig wedi'i gwblhau: {path}",
+      "lock": "Cloi'r troshaen"
     }
   }
 }

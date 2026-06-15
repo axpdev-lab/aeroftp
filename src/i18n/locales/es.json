@@ -4744,6 +4744,43 @@
       "confirmRemovePassword": "¿Quitar la contraseña de la cuenta de \"{name}\"?",
       "confirmDelete": "¿Eliminar la cuenta \"{name}\"?\n\nDatos cifrados que se eliminarán: {profiles} perfiles, {settings} ámbitos de ajustes.",
       "passwordChoiceNote": "Establecer una contraseña de cuenta es opcional. Evita que otras personas que usan este dispositivo abran tu cuenta; tus datos guardados permanecen cifrados de todos modos. Omítelo si eres el único que lo usa, o si confías en todos los que usan este dispositivo."
+    },
+    "aerocryptNative": {
+      "title": "Superposición AeroCrypt",
+      "recommended": "Recomendado",
+      "intro": {
+        "heading": "Qué hace esta superposición",
+        "p1": "Cifra los nombres y el contenido de los archivos <strong>sobre la marcha</strong>, antes de enviarlos al servidor, y los descifra al descargarlos. El servidor solo ve blobs con nombres ilegibles. Tú ves los nombres originales.",
+        "p2": "Mientras la superposición está activa: tu sesión remota muestra el contenido en claro, cada subida se cifra y cada descarga se descifra. Busca la insignia <em>AEROCRYPT</em> en la barra de ruta.",
+        "p3": "Esta es la superposición <strong>nativa</strong> de AeroFTP, sobre el mismo motor auditado que AeroVault (AES-256-GCM-SIV para el contenido, AES-256-SIV para los nombres, Argon2id). La sal de la superposición se guarda en <code>.aeroftp-crypt.json</code> en su raíz en el servidor remoto, por lo que puedes volver a abrirla desde cualquier dispositivo solo con la contraseña."
+      },
+      "openExisting": "Abrir existente",
+      "createNew": "Crear nueva",
+      "openHint": "Navega en el panel remoto hasta la carpeta de la superposición y, a continuación, introduce su contraseña.",
+      "createHint": "Crea una nueva superposición cifrada en la carpeta remota actual (o en una subcarpeta).",
+      "password": "Contraseña",
+      "passwordPlaceholder": "Contraseña de la superposición",
+      "targetSubpath": "Subcarpeta (opcional)",
+      "targetSubpathPlaceholder": "p. ej. encrypted",
+      "targetSubpathHint": "Déjalo vacío para cifrar la carpeta remota actual, o indica el nombre de una subcarpeta que se creará.",
+      "unlock": "Desbloquear",
+      "createAndUnlock": "Crear y desbloquear",
+      "unlocked": "Superposición desbloqueada.",
+      "initialised": "Superposición creada y desbloqueada.",
+      "noOverlayFound": "No se ha encontrado ninguna superposición AeroCrypt en la carpeta remota actual. Cambia a «Crear nueva» para crear una.",
+      "remoteUnlocked": "Remoto desbloqueado (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Explorador remoto cifrado",
+      "upload": "Subir",
+      "up": "Arriba",
+      "path": "Ruta: {path}",
+      "loading": "Cargando…",
+      "emptyFolder": "Carpeta vacía",
+      "download": "Descargar",
+      "nameNotDecrypted": "no se pudo descifrar el nombre",
+      "fileDecryptedTo": "Archivo descifrado en {path}",
+      "encryptedUploadCompleted": "Subida cifrada completada: {path}",
+      "lock": "Bloquear superposición"
     }
   }
 }

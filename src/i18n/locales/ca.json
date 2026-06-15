@@ -4763,6 +4763,43 @@
       "confirmRemovePassword": "Voleu eliminar la contrasenya del compte de \"{name}\"?",
       "confirmDelete": "Voleu eliminar el compte \"{name}\"?\n\nDades xifrades a eliminar: {profiles} perfils, {settings} àmbits de configuració.",
       "passwordChoiceNote": "Establir una contrasenya del compte és opcional. Evita que altres persones que utilitzen aquest dispositiu obrin el vostre compte; les vostres dades desades es mantenen xifrades en qualsevol cas. Ometeu-ho si sou l'única persona que l'utilitza, o si confieu en tothom qui utilitza aquest dispositiu."
+    },
+    "aerocryptNative": {
+      "title": "Superposició AeroCrypt",
+      "recommended": "Recomanat",
+      "intro": {
+        "heading": "Què fa aquesta superposició",
+        "p1": "Xifra els noms i el contingut dels fitxers <strong>sobre la marxa</strong>, abans d'enviar-los al servidor, i els desxifra en baixar-los. El servidor només veu blobs amb noms il·legibles. Tu veus els noms originals.",
+        "p2": "Mentre la superposició és activa: la teva sessió remota mostra el contingut en clar, cada pujada es xifra i cada baixada es desxifra. Cerca la insígnia <em>AEROCRYPT</em> a la barra de camí.",
+        "p3": "Aquesta és la superposició <strong>nativa</strong> d'AeroFTP, sobre el mateix motor auditat que AeroVault (AES-256-GCM-SIV per al contingut, AES-256-SIV per als noms, Argon2id). La sal de la superposició es desa a <code>.aeroftp-crypt.json</code> a la seva arrel al servidor remot, de manera que la pots tornar a obrir des de qualsevol dispositiu només amb la contrasenya."
+      },
+      "openExisting": "Obre una existent",
+      "createNew": "Crea'n una de nova",
+      "openHint": "Navega pel tauler remot fins a la carpeta de la superposició i, tot seguit, introdueix-ne la contrasenya.",
+      "createHint": "Crea una nova superposició xifrada a la carpeta remota actual (o en una subcarpeta).",
+      "password": "Contrasenya",
+      "passwordPlaceholder": "Contrasenya de la superposició",
+      "targetSubpath": "Subcarpeta (opcional)",
+      "targetSubpathPlaceholder": "p. ex. encrypted",
+      "targetSubpathHint": "Deixa-ho buit per xifrar la carpeta remota actual, o indica el nom d'una subcarpeta que es crearà.",
+      "unlock": "Desbloqueja",
+      "createAndUnlock": "Crea i desbloqueja",
+      "unlocked": "Superposició desbloquejada.",
+      "initialised": "Superposició creada i desbloquejada.",
+      "noOverlayFound": "No s'ha trobat cap superposició AeroCrypt a la carpeta remota actual. Canvia a «Crea'n una de nova» per crear-ne una.",
+      "remoteUnlocked": "Remot desbloquejat (ID {id})",
+      "versionLabel": "AECR v{version}",
+      "remoteBrowser": "Navegador remot xifrat",
+      "upload": "Puja",
+      "up": "Amunt",
+      "path": "Camí: {path}",
+      "loading": "S'està carregant…",
+      "emptyFolder": "Carpeta buida",
+      "download": "Baixa",
+      "nameNotDecrypted": "no s'ha pogut desxifrar el nom",
+      "fileDecryptedTo": "Fitxer desxifrat a {path}",
+      "encryptedUploadCompleted": "Pujada xifrada completada: {path}",
+      "lock": "Bloqueja la superposició"
     }
   }
 }
