@@ -96,6 +96,20 @@ Var AeroFTPAppDataPresentPre
     Pop $0
     DetailPrint "EnVar::AddValue Path $INSTDIR -> code $0"
 
+    ; --- Opt-in alias bin dir on PATH (for `aeroftp-cli alias-toggle`) ---
+    ; v4.0.5 / discussion #273. `alias-toggle <name>` drops a `<name>.cmd`
+    ; shim into %LOCALAPPDATA%\AeroFTP\bin (its default --bin-dir). Pre-create
+    ; that directory and register it in HKCU\Environment\Path so the shim is
+    ; usable in a fresh shell without the user hand-editing PATH. This mirrors
+    ; the convenience the Linux packages get for free (~/.local/bin is already
+    ; on PATH on most distros). EnVar::AddValue is idempotent; the matching
+    ; PREUNINSTALL block removes the entry. The directory stays empty until
+    ; the user actually runs alias-toggle, which is harmless on PATH.
+    CreateDirectory "$LOCALAPPDATA\AeroFTP\bin"
+    EnVar::AddValue "Path" "$LOCALAPPDATA\AeroFTP\bin"
+    Pop $0
+    DetailPrint "EnVar::AddValue Path $LOCALAPPDATA\AeroFTP\bin -> code $0"
+
     ; WM_SETTINGCHANGE = 0x001A — same signal Inno Setup's
     ; ChangesEnvironment=yes emits. Running shells (Explorer, VS Code,
     ; PowerShell via integrated terminal) get a chance to refresh
@@ -104,7 +118,23 @@ Var AeroFTPAppDataPresentPre
     ; they cannot resolve aeroftp-cli — the DetailPrint below documents
     ; the new-terminal requirement.
     System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
-    DetailPrint "Added $INSTDIR to PATH. Open a NEW terminal to run 'aeroftp-cli'."
+    DetailPrint "Added $INSTDIR to PATH. Open a NEW terminal to run 'aeroftp-cli' or 'aftp'."
+
+    ; --- Ship the `aftp` short-name launcher (mirrors Linux /usr/bin/aftp) ---
+    ; v4.0.5 / discussion #273. The reporter could run `aeroftp-cli` but not
+    ; `aftp` on Windows because no aftp.exe was shipped. On Linux deb-postinst
+    ; symlinks `aftp` -> the dispatcher; Windows has no package symlink step,
+    ; so copy the dispatcher to aftp.exe here. aeroftp-dispatch.exe routes by
+    ; argv[0]: invoked as `aftp`, its stem != "aeroftp", so it forwards every
+    ; argument straight to aeroftp-cli.exe (both live in $INSTDIR, already on
+    ; PATH from the block above). The matching PREUNINSTALL block deletes it.
+    IfFileExists "$INSTDIR\aeroftp-dispatch.exe" 0 _aeroftp_no_dispatch
+        CopyFiles /SILENT "$INSTDIR\aeroftp-dispatch.exe" "$INSTDIR\aftp.exe"
+        DetailPrint "Installed aftp.exe (copy of aeroftp-dispatch.exe)."
+        Goto _aeroftp_aftp_done
+    _aeroftp_no_dispatch:
+        DetailPrint "WARNING: aeroftp-dispatch.exe not found in $INSTDIR; aftp.exe not created."
+    _aeroftp_aftp_done:
 
     ; --- VC++ Runtime dependency check ---
     ; Tauri (MSVC toolchain) requires vcruntime140.dll / vcruntime140_1.dll.
@@ -208,6 +238,19 @@ Var AeroFTPAppDataPresentPre
     EnVar::DeleteValue "Path" "$INSTDIR"
     Pop $0
     DetailPrint "EnVar::DeleteValue Path $INSTDIR -> code $0"
+
+    ; --- Remove the `aftp` launcher and the opt-in alias bin dir (v4.0.5) ---
+    ; Mirror of the POSTINSTALL additions. aftp.exe is an untracked copy the
+    ; Tauri uninstaller does not know about, so delete it here (before Tauri's
+    ; file loop + final RMDir) or $INSTDIR would be left behind non-empty.
+    ; RMDir /r drops the bin dir together with any managed `<name>.cmd` shims
+    ; alias-toggle created (satisfies "uninstall removes any managed shim"),
+    ; then EnVar::DeleteValue removes its PATH entry.
+    Delete "$INSTDIR\aftp.exe"
+    RMDir /r "$LOCALAPPDATA\AeroFTP\bin"
+    EnVar::DeleteValue "Path" "$LOCALAPPDATA\AeroFTP\bin"
+    Pop $0
+    DetailPrint "EnVar::DeleteValue Path $LOCALAPPDATA\AeroFTP\bin -> code $0"
     System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
 
     ; Remove file associations and class registrations for all 3 AeroFTP

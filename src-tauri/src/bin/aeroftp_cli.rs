@@ -2059,7 +2059,8 @@ enum Commands {
         /// Alias name to toggle (default: aero)
         #[arg(default_value = "aero")]
         name: String,
-        /// Override the target directory (default: ~/.local/bin on Unix)
+        /// Override the target directory (default: ~/.local/bin on Unix,
+        /// %LOCALAPPDATA%\AeroFTP\bin on Windows)
         #[arg(long)]
         bin_dir: Option<PathBuf>,
     },
@@ -27042,11 +27043,21 @@ fn is_valid_opt_in_alias_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+#[cfg(unix)]
 fn default_opt_in_bin_dir() -> Result<PathBuf, String> {
     if let Some(home) = std::env::var_os("HOME") {
         Ok(PathBuf::from(home).join(".local").join("bin"))
     } else {
         Err("cannot resolve $HOME; pass --bin-dir explicitly".to_string())
+    }
+}
+
+#[cfg(windows)]
+fn default_opt_in_bin_dir() -> Result<PathBuf, String> {
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        Ok(PathBuf::from(local).join("AeroFTP").join("bin"))
+    } else {
+        Err("cannot resolve %LOCALAPPDATA%; pass --bin-dir explicitly".to_string())
     }
 }
 
@@ -27070,12 +27081,142 @@ fn cmd_alias_toggle(name: &str, bin_dir: Option<&Path>, format: OutputFormat) ->
         return 5;
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // Windows has no user-writable symlink equivalent of ~/.local/bin, so
+        // the opt-in alias is a tiny `<name>.cmd` batch shim instead. `.cmd`
+        // resolves under both cmd.exe and PowerShell via PATHEXT, and forwards
+        // every argument to the current CLI exe. Same toggle semantics as the
+        // Unix symlink path: present-and-ours -> remove (Off), absent -> create
+        // (On), present-but-not-ours -> refuse (exit 5).
+        const ALIAS_SHIM_MARKER: &str = "AeroFTP managed alias shim";
+
+        let exe = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("cannot resolve current executable: {}", e),
+                    2,
+                );
+                return 2;
+            }
+        };
+        let bin_dir = match bin_dir
+            .map(|p| p.to_path_buf())
+            .map_or_else(default_opt_in_bin_dir, Ok)
+        {
+            Ok(path) => path,
+            Err(e) => {
+                print_error(format, &e, 5);
+                return 5;
+            }
+        };
+        let shim_path = bin_dir.join(format!("{}.cmd", name));
+
+        match std::fs::symlink_metadata(&shim_path) {
+            Ok(_) => {
+                // Something already exists at the shim path. Only remove it if it
+                // carries our managed marker; never clobber a batch file the user
+                // wrote themselves (or one we cannot read).
+                let is_ours = std::fs::read_to_string(&shim_path)
+                    .map(|c| c.contains(ALIAS_SHIM_MARKER))
+                    .unwrap_or(false);
+                if !is_ours {
+                    print_error(
+                        format,
+                        &format!(
+                            "'{}' exists and was not created by AeroFTP; refusing to overwrite.",
+                            shim_path.display()
+                        ),
+                        5,
+                    );
+                    return 5;
+                }
+                if let Err(e) = std::fs::remove_file(&shim_path) {
+                    print_error(
+                        format,
+                        &format!("cannot remove '{}': {}", shim_path.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("The '{}' alias is now Off", name);
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "state": "off",
+                            "path": shim_path.display().to_string(),
+                        }));
+                    }
+                }
+                0
+            }
+            Err(_) => {
+                if let Err(e) = std::fs::create_dir_all(&bin_dir) {
+                    print_error(
+                        format,
+                        &format!("cannot create '{}': {}", bin_dir.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                // CRLF endings + a leading marker comment so a later toggle can
+                // recognise the file as ours. `%*` forwards every argument; the
+                // exe path is quoted to survive spaces.
+                let shim_body = format!(
+                    "@echo off\r\n:: {} (alias-toggle) -- safe to delete.\r\n\"{}\" %*\r\n",
+                    ALIAS_SHIM_MARKER,
+                    exe.display()
+                );
+                if let Err(e) = std::fs::write(&shim_path, shim_body) {
+                    print_error(
+                        format,
+                        &format!("cannot create shim '{}': {}", shim_path.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("The '{}' alias is now On", name);
+                        if !path_dir_is_in_env(&bin_dir) {
+                            eprintln!(
+                                "note: {dir} is not in PATH. Add it (PowerShell): \
+                                 [Environment]::SetEnvironmentVariable('Path', \
+                                 [Environment]::GetEnvironmentVariable('Path','User') + ';{dir}', 'User') \
+                                 -- then open a new terminal to use '{name}' directly.",
+                                dir = bin_dir.display(),
+                                name = name
+                            );
+                        }
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "state": "on",
+                            "path": shim_path.display().to_string(),
+                            "target": exe.display().to_string(),
+                            "path_in_env": path_dir_is_in_env(&bin_dir),
+                        }));
+                    }
+                }
+                0
+            }
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = bin_dir;
         print_error(
             format,
-            "alias-toggle is not yet supported on this platform; see CLI-GUIDE.md for the PowerShell profile recipe.",
+            "alias-toggle is not supported on this platform; see CLI-GUIDE.md for the manual alias recipe.",
             7,
         );
         return 7;
