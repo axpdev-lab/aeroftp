@@ -15956,6 +15956,79 @@ mod overlay_helpers_tests {
     use secrecy::SecretString;
     use std::time::Duration;
 
+    /// C-BUG-1 regression: an rclone-crypt multi-block file must still decrypt
+    /// after a RENAME (encrypted-name mv) followed by a fresh download. Mirrors
+    /// the GUI backend ops exactly: encrypt content -> upload under the encrypted
+    /// name -> rename (mv) -> download_to_bytes -> decrypt. Ignored by default
+    /// because it hits the live SFTP lab server. Run with:
+    ///   AEROFTP_MASTER_PASSWORD=x cargo test --lib \
+    ///     rclone_overlay_rename_then_download_multiblock -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn rclone_overlay_rename_then_download_multiblock_roundtrip() {
+        use crate::providers::{SftpConfig, SftpProvider, StorageProvider};
+
+        let key = format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap());
+        let config = SftpConfig {
+            host: "49.13.171.110".to_string(),
+            port: 22,
+            username: "axpdev".to_string(),
+            password: None,
+            private_key_path: Some(key),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: true,
+        };
+        let mut p = SftpProvider::new(config);
+        p.connect().await.expect("connect");
+
+        let (name_key, data_key, name_tweak) =
+            rclone_crypt::derive_keys_with_tweak("aaa01ppp", "").unwrap();
+
+        let dir = "/home/axpdev/rclone_rename_regression";
+        let _ = p.mkdir(dir).await;
+
+        // Multi-block plaintext: 200 KiB spans several 64 KiB rclone blocks.
+        let plaintext: Vec<u8> = (0..200 * 1024).map(|i| (i % 251) as u8).collect();
+        let encrypted = rclone_crypt::encrypt_file_content(&plaintext, &data_key).unwrap();
+
+        let enc_old = rclone_crypt::encrypt_name(&name_key, &name_tweak, "regr.pdf").unwrap();
+        let enc_new =
+            rclone_crypt::encrypt_name(&name_key, &name_tweak, "regr-renamed.pdf").unwrap();
+        let path_old = format!("{}/{}", dir, enc_old);
+        let path_new = format!("{}/{}", dir, enc_new);
+
+        let tmp = std::env::temp_dir().join("rclone_regr_upload.bin");
+        tokio::fs::write(&tmp, &encrypted).await.unwrap();
+        p.upload(tmp.to_str().unwrap(), &path_old, None)
+            .await
+            .expect("upload");
+        let _ = tokio::fs::remove_file(&tmp).await;
+
+        // Pre-rename download must round-trip.
+        let dl0 = p
+            .download_to_bytes(&path_old)
+            .await
+            .expect("download pre-rename");
+        let dec0 = rclone_crypt::decrypt_file_content(&dl0, &data_key).expect("decrypt pre-rename");
+        assert_eq!(dec0, plaintext, "pre-rename content mismatch");
+
+        // Rename (encrypted-name mv), exactly like rclone_crypt_provider_rename.
+        p.rename(&path_old, &path_new).await.expect("rename");
+
+        // Post-rename download must still round-trip: this is C-BUG-1.
+        let dl1 = p
+            .download_to_bytes(&path_new)
+            .await
+            .expect("download post-rename");
+        let dec1 = rclone_crypt::decrypt_file_content(&dl1, &data_key)
+            .expect("decrypt post-rename (C-BUG-1 magic header)");
+        assert_eq!(dec1, plaintext, "post-rename content mismatch");
+
+        let _ = p.delete(&path_new).await;
+    }
+
     fn make_session(
         idle_timeout_secs: u64,
         last_activity: Instant,
