@@ -25,6 +25,7 @@ use url::Url;
 use zeroize::Zeroize;
 
 pub mod aerocrypt;
+pub mod aerocrypt_provider;
 pub mod aerovault;
 pub mod aerovault_v2;
 pub mod aerovault_v3;
@@ -15038,6 +15039,7 @@ pub fn run() {
     let builder = builder.manage(create_ssh_shell_state());
     let builder = builder.manage(cryptomator::CryptomatorState::new());
     let builder = builder.manage(rclone_crypt::RcloneCryptState::new());
+    let builder = builder.manage(aerocrypt_provider::AeroCryptState::new());
     let builder = builder.manage(AeroVaultOverlayState::new());
     let builder = builder.manage(cross_profile_commands::CrossProfileState::new());
     // Master Password state for app-level security
@@ -15394,6 +15396,18 @@ pub fn run() {
             rclone_crypt_provider_download_folder,
             rclone_crypt_provider_upload_folder,
             rclone_crypt_provider_create_remote,
+            // Native AeroCrypt overlay (mirrors the rclone set on our own codec)
+            aerocrypt_provider::aerocrypt_unlock,
+            aerocrypt_provider::aerocrypt_lock,
+            aerocrypt_provider::aerocrypt_provider_read_config,
+            aerocrypt_provider::aerocrypt_provider_list,
+            aerocrypt_provider::aerocrypt_provider_mkdir,
+            aerocrypt_provider::aerocrypt_provider_rename,
+            aerocrypt_provider::aerocrypt_provider_download_file,
+            aerocrypt_provider::aerocrypt_provider_upload_file,
+            aerocrypt_provider::aerocrypt_provider_download_folder,
+            aerocrypt_provider::aerocrypt_provider_upload_folder,
+            aerocrypt_provider::aerocrypt_provider_create_remote,
             aerovault_overlay_unlock,
             aerovault_overlay_lock,
             aerovault_overlay_list,

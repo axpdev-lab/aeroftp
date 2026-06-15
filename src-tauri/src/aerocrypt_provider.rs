@@ -1,0 +1,871 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+//! Native AeroCrypt overlay: Tauri provider commands (P2a).
+//!
+//! These commands give the **native** AeroCrypt overlay the same GUI-facing
+//! surface the rclone-crypt interop format already has
+//! (`rclone_crypt_provider_*` in `lib.rs`), but built on our own audited
+//! [`crate::aerocrypt`] codec instead of rclone's wire format. They open the
+//! currently-connected provider and encrypt/decrypt on the fly so a dual-panel
+//! GUI can browse and transfer through the overlay transparently (master plan
+//! 3.6). Per-session unlock returns a `vault_id`; binding the overlay to a saved
+//! profile is P3, deliberately not done here.
+//!
+//! Two facts make this set diverge from the rclone mirror, both inherent to the
+//! native model (not a gap):
+//! - Names use **AES-256-SIV deterministically over the master key alone**
+//!   ([`crate::aerocrypt::names`]); there is no per-directory IV, so name
+//!   encoding takes no `is_dir`/`dir_iv` argument.
+//! - The overlay's salt lives in a `.aeroftp-crypt.json` config **on the
+//!   remote** (rclone keeps its config locally). Unlocking an existing overlay
+//!   therefore needs to read that file first, which is why this set adds
+//!   [`aerocrypt_provider_read_config`] on top of the eight rclone-parallel
+//!   commands.
+
+use std::collections::HashMap;
+
+use serde::Serialize;
+use tauri::State;
+use tokio::sync::Mutex;
+use zeroize::Zeroize;
+
+use crate::aerocrypt::overlay::{self, OverlayConfig};
+use crate::aerocrypt::{names, KEY_SIZE};
+use crate::filesystem::validate_path;
+use crate::provider_commands::ProviderState;
+use crate::{join_remote_path, sanitize_local_name, validate_single_remote_name};
+
+/// Config file written at the root of an overlay; holds the version + salt the
+/// master key is derived from. Skipped from every listing and never decrypted.
+const CONFIG_NAME: &str = ".aeroftp-crypt.json";
+
+/// Maximum directory recursion depth for folder transfers. Matches the
+/// rclone-crypt overlay (`RCLONE_OVERLAY_MAX_DEPTH`) and the CLI
+/// (`CRYPT_OVERLAY_MAX_DEPTH`) so all three refuse pathologically deep trees
+/// identically.
+const AEROCRYPT_OVERLAY_MAX_DEPTH: usize = 64;
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+/// Derived material for one unlocked native AeroCrypt overlay. The master key is
+/// zeroized on drop; the config carries only the (public) version + salt.
+pub struct AeroCryptKeys {
+    pub master_key: [u8; KEY_SIZE],
+    pub config: OverlayConfig,
+}
+
+impl Drop for AeroCryptKeys {
+    fn drop(&mut self) {
+        self.master_key.zeroize();
+    }
+}
+
+/// Managed state holding every unlocked native AeroCrypt overlay, keyed by the
+/// per-session `vault_id`.
+pub struct AeroCryptState {
+    pub vaults: Mutex<HashMap<String, AeroCryptKeys>>,
+}
+
+impl AeroCryptState {
+    pub fn new() -> Self {
+        Self {
+            vaults: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl Default for AeroCryptState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Info returned after unlock / create.
+#[derive(Debug, Clone, Serialize)]
+pub struct AeroCryptVaultInfo {
+    pub vault_id: String,
+    pub version: u8,
+    /// The overlay config JSON. For a fresh overlay (no `config_json` passed to
+    /// unlock) this is the newly generated config the caller must persist as
+    /// `.aeroftp-crypt.json` at the overlay root.
+    pub config_json: String,
+}
+
+/// One listing row with the decrypted name resolved.
+#[derive(Serialize)]
+pub struct AeroCryptBrowserEntry {
+    /// Obfuscated (on-the-wire) name.
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    /// Size on the remote (ciphertext: includes the AECR header + per-block
+    /// tags). Surfacing the plaintext size is a later refinement.
+    pub size: u64,
+    pub modified: Option<String>,
+    pub permissions: Option<String>,
+    /// Decrypted name, or the raw name when it could not be decrypted.
+    pub decrypted_name: String,
+    pub decrypt_ok: bool,
+}
+
+/// Response for a browse listing through the overlay.
+#[derive(Serialize)]
+pub struct AeroCryptBrowserListResponse {
+    /// Current remote path (obfuscated, as the provider sees it).
+    pub current_path: String,
+    /// Current remote path with each component decrypted, for display.
+    pub display_current_path: String,
+    pub files: Vec<AeroCryptBrowserEntry>,
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Fetch the master key + config for an unlocked vault without holding the
+/// state lock across provider I/O.
+async fn load_keys(
+    state: &State<'_, AeroCryptState>,
+    vault_id: &str,
+) -> Result<([u8; KEY_SIZE], OverlayConfig), String> {
+    let vaults = state.vaults.lock().await;
+    let keys = vaults
+        .get(vault_id)
+        .ok_or_else(|| "Vault not unlocked".to_string())?;
+    Ok((keys.master_key, keys.config.clone()))
+}
+
+/// Encrypt a single plaintext path component to its obfuscated form.
+fn encode_name(master_key: &[u8; KEY_SIZE], plain: &str) -> Result<String, String> {
+    names::encrypt_filename(master_key, plain)
+}
+
+/// Decrypt an obfuscated path component, or `None` if it is not a valid
+/// AeroCrypt name (e.g. the config file or a foreign entry).
+fn decode_name(master_key: &[u8; KEY_SIZE], encoded: &str) -> Option<String> {
+    names::decrypt_filename(master_key, encoded)
+}
+
+/// Encrypt a relative plaintext path component-by-component (deterministic, so
+/// the same tree always maps to the same remote layout). `.` segments are
+/// dropped; `..` is rejected to forbid traversal in crypt paths.
+fn encode_rel_path(master_key: &[u8; KEY_SIZE], rel: &str) -> Result<String, String> {
+    let absolute = rel.starts_with('/');
+    let mut parts: Vec<String> = Vec::new();
+    for comp in rel.split('/') {
+        if comp.is_empty() || comp == "." {
+            continue;
+        }
+        if comp == ".." || comp.contains('\0') {
+            return Err("Invalid AeroCrypt path component".to_string());
+        }
+        parts.push(encode_name(master_key, comp)?);
+    }
+    let joined = parts.join("/");
+    if absolute {
+        Ok(format!("/{}", joined))
+    } else {
+        Ok(joined)
+    }
+}
+
+/// Decrypt an obfuscated remote path for display, leaving undecryptable
+/// components as-is.
+fn decode_path(master_key: &[u8; KEY_SIZE], encrypted_path: &str) -> String {
+    if encrypted_path.is_empty() || encrypted_path == "." || encrypted_path == "/" {
+        return encrypted_path.to_string();
+    }
+    let absolute = encrypted_path.starts_with('/');
+    let parts: Vec<String> = encrypted_path
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .map(|part| decode_name(master_key, part).unwrap_or_else(|| part.to_string()))
+        .collect();
+    let joined = parts.join("/");
+    if absolute {
+        format!("/{}", joined)
+    } else {
+        joined
+    }
+}
+
+// ── Unlock / lock (pure, no provider I/O) ────────────────────────────────────
+
+/// Unlock a native AeroCrypt overlay for the session.
+///
+/// `config_json`:
+/// - `Some(json)` — an existing overlay; parse it and derive the master key
+///   (the caller reads it from the remote via [`aerocrypt_provider_read_config`]).
+/// - `None` — prepare a fresh overlay: generate a v2 salt + config and derive
+///   the key. The returned `config_json` is what the caller persists on the
+///   remote (e.g. via [`aerocrypt_provider_create_remote`]).
+#[tauri::command]
+pub async fn aerocrypt_unlock(
+    state: State<'_, AeroCryptState>,
+    password: String,
+    config_json: Option<String>,
+) -> Result<AeroCryptVaultInfo, String> {
+    let secret_pwd = secrecy::SecretString::from(password);
+
+    let (config, config_json_out) = match config_json {
+        Some(json) => (overlay::parse_config(&json)?, json),
+        None => {
+            let salt = overlay::random_salt_v2();
+            let json = overlay::init_config_v2(&salt);
+            (OverlayConfig::V2 { salt }, json)
+        }
+    };
+
+    let master_key =
+        overlay::derive_master_key(&config, secrecy::ExposeSecret::expose_secret(&secret_pwd))?;
+    let version = config.version();
+
+    let vault_id = uuid::Uuid::new_v4().to_string();
+    let info = AeroCryptVaultInfo {
+        vault_id: vault_id.clone(),
+        version,
+        config_json: config_json_out,
+    };
+
+    state
+        .vaults
+        .lock()
+        .await
+        .insert(vault_id, AeroCryptKeys { master_key, config });
+    Ok(info)
+}
+
+/// Lock (forget) an unlocked overlay, zeroizing its master key via `Drop`.
+#[tauri::command]
+pub async fn aerocrypt_lock(
+    state: State<'_, AeroCryptState>,
+    vault_id: String,
+) -> Result<(), String> {
+    let mut vaults = state.vaults.lock().await;
+    if vaults.remove(&vault_id).is_none() {
+        return Err("Vault not found or already locked".to_string());
+    }
+    Ok(())
+}
+
+// ── Provider commands ────────────────────────────────────────────────────────
+
+/// Read the overlay config (`.aeroftp-crypt.json`) from the provider's current
+/// directory. Returns `None` when no overlay is present there, so a GUI can tell
+/// "open existing" from "create new". Native-model addition over the rclone set.
+#[tauri::command]
+pub async fn aerocrypt_provider_read_config(
+    provider_state: State<'_, ProviderState>,
+) -> Result<Option<String>, String> {
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let cwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let config_path = join_remote_path(&cwd, CONFIG_NAME);
+    match provider.download_to_bytes(&config_path).await {
+        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).to_string())),
+        Err(_) => Ok(None),
+    }
+}
+
+/// List an overlay directory, returning decrypted names. `plain_path` (when the
+/// `path` is a plaintext name to descend into) is encoded before the `cd`.
+#[tauri::command]
+pub async fn aerocrypt_provider_list(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    path: Option<String>,
+    plain_path: Option<bool>,
+) -> Result<AeroCryptBrowserListResponse, String> {
+    let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if let Some(target) = path.as_deref() {
+        if target == ".." {
+            provider
+                .cd_up()
+                .await
+                .map_err(|e| format!("Failed to go up: {}", e))?;
+        } else if !target.is_empty() && target != "." {
+            let target_path = if plain_path.unwrap_or(false) {
+                encode_rel_path(&master_key, target)?
+            } else {
+                target.to_string()
+            };
+            provider
+                .cd(&target_path)
+                .await
+                .map_err(|e| format!("Failed to change directory: {}", e))?;
+        }
+    }
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let display_current_path = decode_path(&master_key, &current_path);
+    let files = provider
+        .list(".")
+        .await
+        .map_err(|e| format!("Failed to list files: {}", e))?;
+
+    let mut out = Vec::new();
+    for entry in files {
+        if entry.name == CONFIG_NAME {
+            continue;
+        }
+        let (decrypted_name, decrypt_ok) = match decode_name(&master_key, &entry.name) {
+            Some(name) => (name, true),
+            None => (entry.name.clone(), false),
+        };
+        out.push(AeroCryptBrowserEntry {
+            name: entry.name,
+            path: entry.path,
+            is_dir: entry.is_dir,
+            size: entry.size,
+            modified: entry.modified,
+            permissions: entry.permissions,
+            decrypted_name,
+            decrypt_ok,
+        });
+    }
+
+    Ok(AeroCryptBrowserListResponse {
+        current_path,
+        display_current_path,
+        files: out,
+    })
+}
+
+/// Create an encrypted-named subdirectory in the current overlay directory.
+#[tauri::command]
+pub async fn aerocrypt_provider_mkdir(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    plain_name: String,
+) -> Result<String, String> {
+    validate_single_remote_name(&plain_name)?;
+    let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
+    let encrypted_name = encode_name(&master_key, &plain_name)?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    provider
+        .mkdir(&encrypted_path)
+        .await
+        .map_err(|e| format!("Failed to create encrypted folder: {}", e))?;
+    Ok(encrypted_path)
+}
+
+/// Rename an overlay entry to a new plaintext name, keeping it in place.
+#[tauri::command]
+pub async fn aerocrypt_provider_rename(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    from_encrypted_path: String,
+    new_plain_name: String,
+) -> Result<String, String> {
+    validate_single_remote_name(&new_plain_name)?;
+    let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
+    let encrypted_name = encode_name(&master_key, &new_plain_name)?;
+
+    let parent = from_encrypted_path
+        .rsplit_once('/')
+        .map(|(parent, _)| if parent.is_empty() { "/" } else { parent })
+        .unwrap_or("/");
+    let to_encrypted_path = join_remote_path(parent, &encrypted_name);
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider
+        .rename(&from_encrypted_path, &to_encrypted_path)
+        .await
+        .map_err(|e| format!("Failed to rename encrypted entry: {}", e))?;
+    Ok(to_encrypted_path)
+}
+
+/// Download one encrypted object and decrypt it to `output_path`.
+#[tauri::command]
+pub async fn aerocrypt_provider_download_file(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    remote_encrypted_path: String,
+    output_path: String,
+) -> Result<String, String> {
+    let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let encrypted = provider
+        .download_to_bytes(&remote_encrypted_path)
+        .await
+        .map_err(|e| format!("Failed to download encrypted file: {}", e))?;
+
+    let plaintext = overlay::decrypt_data(&master_key, &encrypted)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
+
+    validate_path(&output_path)?;
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    tokio::fs::write(&output_path, &plaintext)
+        .await
+        .map_err(|e| format!("Failed to write output file: {}", e))?;
+
+    Ok(output_path)
+}
+
+/// Encrypt a local file and upload it under an obfuscated name in the current
+/// overlay directory.
+#[tauri::command]
+pub async fn aerocrypt_provider_upload_file(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    local_plaintext_path: String,
+    remote_plain_name: Option<String>,
+) -> Result<String, String> {
+    validate_path(&local_plaintext_path)?;
+    let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_plaintext_path))
+        .map_err(|e| format!("Failed to inspect local file: {}", e))?;
+    if local_meta.file_type().is_symlink() {
+        return Err("Local plaintext path cannot be a symlink".to_string());
+    }
+    if !local_meta.is_file() {
+        return Err("Local plaintext path must be a regular file".to_string());
+    }
+
+    let (master_key, config) = load_keys(&aerocrypt_state, &vault_id).await?;
+
+    let plaintext = tokio::fs::read(&local_plaintext_path)
+        .await
+        .map_err(|e| format!("Failed to read local file: {}", e))?;
+    let encrypted_payload = overlay::encrypt_data(&config, &master_key, &plaintext)
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    let plain_name = remote_plain_name
+        .and_then(|s| {
+            let trimmed = s.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .or_else(|| {
+            std::path::Path::new(&local_plaintext_path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+        })
+        .ok_or_else(|| "Cannot determine destination filename".to_string())?;
+    let encrypted_name = encode_name(&master_key, &plain_name)?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let remote_encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    let temp_path = std::env::temp_dir().join(format!(
+        "aeroftp_aerocrypt_upload_{}_{}.bin",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    ));
+    tokio::fs::write(&temp_path, &encrypted_payload)
+        .await
+        .map_err(|e| format!("Failed to write encrypted temp file: {}", e))?;
+
+    let upload_result = provider
+        .upload(&temp_path.to_string_lossy(), &remote_encrypted_path, None)
+        .await
+        .map_err(|e| format!("Failed to upload encrypted file: {}", e));
+
+    let _ = tokio::fs::remove_file(&temp_path).await;
+    upload_result?;
+    Ok(remote_encrypted_path)
+}
+
+/// Recursively download an encrypted overlay subtree, rebuilding the plaintext
+/// tree under `local_dest_root`. Undecryptable entries are skipped.
+#[tauri::command]
+pub async fn aerocrypt_provider_download_folder(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    remote_encrypted_path: String,
+    local_dest_root: String,
+) -> Result<String, String> {
+    validate_path(&local_dest_root)?;
+    tokio::fs::create_dir_all(&local_dest_root)
+        .await
+        .map_err(|e| format!("Failed to create local destination: {}", e))?;
+
+    let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let saved_pwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let mut files_done: u64 = 0;
+
+    let mut stack: Vec<(String, String, usize)> =
+        vec![(remote_encrypted_path.clone(), local_dest_root.clone(), 0)];
+    let walk_result: Result<(), String> = async {
+        while let Some((remote_dir, local_dir, depth)) = stack.pop() {
+            if depth >= AEROCRYPT_OVERLAY_MAX_DEPTH {
+                return Err(format!(
+                    "AeroCrypt overlay: directory depth {} exceeds {}",
+                    depth, AEROCRYPT_OVERLAY_MAX_DEPTH
+                ));
+            }
+            tokio::fs::create_dir_all(&local_dir)
+                .await
+                .map_err(|e| format!("Failed to create {}: {}", local_dir, e))?;
+
+            provider
+                .cd(&remote_dir)
+                .await
+                .map_err(|e| format!("Failed to cd into {}: {}", remote_dir, e))?;
+            let resolved_dir = provider.pwd().await.unwrap_or_else(|_| remote_dir.clone());
+
+            let entries = provider
+                .list(".")
+                .await
+                .map_err(|e| format!("Failed to list {}: {}", resolved_dir, e))?;
+
+            for entry in entries {
+                if entry.name == CONFIG_NAME {
+                    continue;
+                }
+                let plain_name = match decode_name(&master_key, &entry.name) {
+                    Some(n) => n,
+                    None => continue, // skip undecryptable entries
+                };
+                let safe_name = sanitize_local_name(&plain_name);
+                let local_target = std::path::Path::new(&local_dir)
+                    .join(&safe_name)
+                    .to_string_lossy()
+                    .to_string();
+                let remote_child = join_remote_path(&resolved_dir, &entry.name);
+
+                if entry.is_dir {
+                    stack.push((remote_child, local_target, depth + 1));
+                    continue;
+                }
+
+                let encrypted_blob = provider
+                    .download_to_bytes(&remote_child)
+                    .await
+                    .map_err(|e| format!("Failed to download {}: {}", remote_child, e))?;
+                let plaintext = overlay::decrypt_data(&master_key, &encrypted_blob)
+                    .map_err(|e| format!("Decrypt failed for {}: {}", plain_name, e))?;
+                tokio::fs::write(&local_target, &plaintext)
+                    .await
+                    .map_err(|e| format!("Failed to write {}: {}", local_target, e))?;
+                files_done += 1;
+            }
+        }
+        Ok(())
+    }
+    .await;
+
+    let _ = provider.cd(&saved_pwd).await;
+    walk_result?;
+
+    Ok(format!(
+        "Downloaded {} files into {}",
+        files_done, local_dest_root
+    ))
+}
+
+/// Recursively encrypt and upload a local folder into the overlay, recreating it
+/// as an encrypted-named subtree under `remote_parent_path` (or the current dir).
+#[tauri::command]
+pub async fn aerocrypt_provider_upload_folder(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    vault_id: String,
+    local_path: String,
+    remote_parent_path: Option<String>,
+) -> Result<String, String> {
+    validate_path(&local_path)?;
+    let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_path))
+        .map_err(|e| format!("Failed to inspect local folder: {}", e))?;
+    if local_meta.file_type().is_symlink() {
+        return Err("Local folder cannot be a symlink".to_string());
+    }
+    if !local_meta.is_dir() {
+        return Err("Local path must be a directory".to_string());
+    }
+
+    let (master_key, config) = load_keys(&aerocrypt_state, &vault_id).await?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let saved_pwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+
+    let parent_remote = match remote_parent_path.as_deref() {
+        Some(p) if !p.is_empty() => p.to_string(),
+        _ => saved_pwd.clone(),
+    };
+    let local_root_name = std::path::Path::new(&local_path)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .ok_or_else(|| "Cannot determine root folder name".to_string())?;
+
+    let mut files_uploaded: u64 = 0;
+
+    let walk_result: Result<(), String> = async {
+        provider
+            .cd(&parent_remote)
+            .await
+            .map_err(|e| format!("Failed to cd into {}: {}", parent_remote, e))?;
+        let resolved_parent = provider
+            .pwd()
+            .await
+            .unwrap_or_else(|_| parent_remote.clone());
+        let root_enc_name = encode_name(&master_key, &local_root_name)?;
+        let root_remote = join_remote_path(&resolved_parent, &root_enc_name);
+        let _ = provider.mkdir(&root_remote).await; // best-effort: may already exist
+
+        let mut stack: Vec<(std::path::PathBuf, String, usize)> =
+            vec![(std::path::PathBuf::from(&local_path), root_remote, 0)];
+
+        while let Some((local_dir, remote_dir, depth)) = stack.pop() {
+            if depth >= AEROCRYPT_OVERLAY_MAX_DEPTH {
+                return Err(format!(
+                    "AeroCrypt overlay upload: depth {} exceeds {}",
+                    depth, AEROCRYPT_OVERLAY_MAX_DEPTH
+                ));
+            }
+
+            provider
+                .cd(&remote_dir)
+                .await
+                .map_err(|e| format!("Failed to cd into {}: {}", remote_dir, e))?;
+            let resolved_dir = provider.pwd().await.unwrap_or_else(|_| remote_dir.clone());
+
+            let mut rd = tokio::fs::read_dir(&local_dir)
+                .await
+                .map_err(|e| format!("Failed to read {}: {}", local_dir.display(), e))?;
+            while let Some(entry) = rd
+                .next_entry()
+                .await
+                .map_err(|e| format!("Failed to walk {}: {}", local_dir.display(), e))?
+            {
+                let entry_path = entry.path();
+                let entry_meta = match entry.metadata().await {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if entry_meta.file_type().is_symlink() {
+                    continue;
+                }
+                let entry_name = entry.file_name().to_string_lossy().to_string();
+                if entry_name.is_empty() {
+                    continue;
+                }
+                let encoded = encode_name(&master_key, &entry_name)?;
+                let encoded_remote = join_remote_path(&resolved_dir, &encoded);
+
+                if entry_meta.is_dir() {
+                    let _ = provider.mkdir(&encoded_remote).await;
+                    stack.push((entry_path, encoded_remote, depth + 1));
+                } else if entry_meta.is_file() {
+                    let plaintext = tokio::fs::read(&entry_path)
+                        .await
+                        .map_err(|e| format!("Failed to read {}: {}", entry_path.display(), e))?;
+                    let cipher = overlay::encrypt_data(&config, &master_key, &plaintext)
+                        .map_err(|e| format!("Encrypt failed for {}: {}", entry_name, e))?;
+
+                    let temp = std::env::temp_dir().join(format!(
+                        "aeroftp_aerocrypt_upfolder_{}_{}.bin",
+                        chrono::Utc::now().timestamp_millis(),
+                        uuid::Uuid::new_v4()
+                    ));
+                    tokio::fs::write(&temp, &cipher)
+                        .await
+                        .map_err(|e| format!("Failed to stage encrypted blob: {}", e))?;
+                    let up = provider
+                        .upload(&temp.to_string_lossy(), &encoded_remote, None)
+                        .await
+                        .map_err(|e| format!("Failed to upload {}: {}", entry_name, e));
+                    let _ = tokio::fs::remove_file(&temp).await;
+                    up?;
+                    files_uploaded += 1;
+                }
+            }
+        }
+        Ok(())
+    }
+    .await;
+
+    let _ = provider.cd(&saved_pwd).await;
+    walk_result?;
+
+    Ok(format!(
+        "Uploaded {} files from {} into encrypted overlay",
+        files_uploaded, local_path
+    ))
+}
+
+/// Bootstrap a brand-new native AeroCrypt overlay on the connected provider:
+/// generate a fresh v2 config, derive the key, write `.aeroftp-crypt.json` at
+/// the (optional) sub-path, and register the unlocked vault.
+#[tauri::command]
+pub async fn aerocrypt_provider_create_remote(
+    provider_state: State<'_, ProviderState>,
+    aerocrypt_state: State<'_, AeroCryptState>,
+    password: String,
+    target_subpath: Option<String>,
+) -> Result<AeroCryptVaultInfo, String> {
+    let secret_pwd = secrecy::SecretString::from(password);
+    let salt = overlay::random_salt_v2();
+    let config = OverlayConfig::V2 { salt };
+    let config_json = overlay::init_config_v2(&salt);
+    let master_key =
+        overlay::derive_master_key(&config, secrecy::ExposeSecret::expose_secret(&secret_pwd))?;
+
+    {
+        let mut provider_lock = provider_state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        let saved_pwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+
+        let target = target_subpath
+            .as_deref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+
+        let init_result: Result<(), String> = async {
+            if let Some(sub) = target {
+                let _ = provider.mkdir(sub).await; // idempotent
+                provider
+                    .cd(sub)
+                    .await
+                    .map_err(|e| format!("Failed to cd into {}: {}", sub, e))?;
+            }
+
+            let base = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+            let config_path = join_remote_path(&base, CONFIG_NAME);
+            let temp = std::env::temp_dir().join(format!(
+                "aeroftp_aerocrypt_config_{}_{}.json",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4()
+            ));
+            tokio::fs::write(&temp, &config_json)
+                .await
+                .map_err(|e| format!("Failed to stage overlay config: {}", e))?;
+            let up = provider
+                .upload(&temp.to_string_lossy(), &config_path, None)
+                .await
+                .map_err(|e| format!("Failed to write overlay config: {}", e));
+            let _ = tokio::fs::remove_file(&temp).await;
+            up
+        }
+        .await;
+
+        let _ = provider.cd(&saved_pwd).await;
+        init_result?;
+    }
+
+    let version = config.version();
+    let vault_id = uuid::Uuid::new_v4().to_string();
+    let info = AeroCryptVaultInfo {
+        vault_id: vault_id.clone(),
+        version,
+        config_json,
+    };
+    aerocrypt_state
+        .vaults
+        .lock()
+        .await
+        .insert(vault_id, AeroCryptKeys { master_key, config });
+    Ok(info)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_master_key() -> [u8; KEY_SIZE] {
+        let cfg = OverlayConfig::V2 { salt: [7u8; 32] };
+        overlay::derive_master_key(&cfg, "correct horse battery staple").unwrap()
+    }
+
+    #[test]
+    fn name_encode_decode_round_trip() {
+        let master = test_master_key();
+        let enc = encode_name(&master, "report 2026.pdf").unwrap();
+        assert_ne!(enc, "report 2026.pdf");
+        assert_eq!(
+            decode_name(&master, &enc).as_deref(),
+            Some("report 2026.pdf")
+        );
+        // A foreign / config entry must not decode.
+        assert_eq!(decode_name(&master, CONFIG_NAME), None);
+    }
+
+    #[test]
+    fn encode_rel_path_encodes_each_component_and_rejects_dotdot() {
+        let master = test_master_key();
+        let encoded = encode_rel_path(&master, "docs/2026/report.pdf").unwrap();
+        let parts: Vec<&str> = encoded.split('/').collect();
+        assert_eq!(parts.len(), 3);
+        // Each component round-trips back to the plaintext name.
+        let decoded: Vec<String> = parts
+            .iter()
+            .map(|c| decode_name(&master, c).expect("component decodes"))
+            .collect();
+        assert_eq!(decoded, vec!["docs", "2026", "report.pdf"]);
+        // Empty / `.` segments drop; `..` is rejected.
+        assert_eq!(
+            encode_rel_path(&master, "a/./b")
+                .unwrap()
+                .split('/')
+                .count(),
+            2
+        );
+        assert!(encode_rel_path(&master, "a/../b").is_err());
+    }
+
+    #[test]
+    fn decode_path_leaves_undecryptable_components_intact() {
+        let master = test_master_key();
+        let enc_a = encode_name(&master, "alpha").unwrap();
+        let path = format!("/{}/not-a-valid-name", enc_a);
+        assert_eq!(decode_path(&master, &path), "/alpha/not-a-valid-name");
+        assert_eq!(decode_path(&master, "/"), "/");
+    }
+
+    #[test]
+    fn file_round_trip_through_codec() {
+        let cfg = OverlayConfig::V2 { salt: [9u8; 32] };
+        let master = overlay::derive_master_key(&cfg, "pw").unwrap();
+        let plaintext = b"AeroCrypt provider round trip".repeat(4096);
+        let blob = overlay::encrypt_data(&cfg, &master, &plaintext).unwrap();
+        assert_eq!(overlay::decrypt_data(&master, &blob).unwrap(), plaintext);
+    }
+}
