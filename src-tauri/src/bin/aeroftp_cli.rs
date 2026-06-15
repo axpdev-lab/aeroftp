@@ -13225,7 +13225,7 @@ fn interactive_profiles_loop(
             cmd
         } else {
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -13272,7 +13272,7 @@ fn interactive_profiles_loop(
                 "  u [N|name]      switch active user (lists accounts when bare); reloads profiles (compact 'u3'/'3u' also work)"
             );
             eprintln!(
-                "  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually"
+                "  tui / nav       inline action menu: pick an action (single key or arrows + Enter), then type the target"
             );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!(
@@ -13295,14 +13295,16 @@ fn interactive_profiles_loop(
             continue;
         }
 
-        // Raw-mode arrow-key navigator (issue #270 17137604). Opt-in from the
-        // line prompt: it lets the user pick a profile + action visually and
-        // returns the equivalent line-mode command, which the existing dispatch
-        // below executes (with its prompts and confirmations). Keeping the
-        // mutation logic in one place means the navigator never duplicates it.
+        // Inline action menu (issue #270 17137604, refined per @EhudKirsh #311).
+        // Opt-in from the line prompt: it shows a compact, width-adaptive action
+        // bar (no full-screen takeover), lets the user pick an action, then asks
+        // for the target and returns the equivalent line-mode command, which the
+        // existing dispatch below executes (with its prompts and confirmations).
+        // Keeping the mutation logic in one place means the menu never duplicates
+        // it.
         if lower == "tui" || lower == "nav" {
             if !std::io::stdin().is_terminal() {
-                eprintln!("The arrow-key navigator needs an interactive terminal.");
+                eprintln!("The inline action menu needs an interactive terminal.");
                 continue;
             }
             match profiles_tui_pick(&current, fav_marker) {
@@ -14218,160 +14220,243 @@ enum ProfilesTuiOutcome {
     Quit,
 }
 
-/// Raw-mode arrow-key navigator for `profiles -i` (issue #270 17137604).
+/// What the user types after picking an action in the inline menu.
+enum ProfilesActionTarget {
+    /// No target needed (Quit).
+    None,
+    /// One or more space-separated selectors (list/tree/delete/fav/copy).
+    Many,
+    /// A single selector (rename/edit; the handler prompts for the rest).
+    One,
+    /// `<selector> <new-index>` for re-index.
+    Reindex,
+}
+
+/// Inline action menu for `profiles -i` (issue #270, refined per @EhudKirsh #311).
 ///
-/// A pure input front-end: it renders the profile list, lets the user move with
-/// the arrow keys (or j/k) and press an action key, then returns the equivalent
-/// line-mode command (e.g. `d 3`). The caller runs that through the existing,
-/// tested action handlers after raw mode is left, so all vault mutation stays in
-/// one place. Mirrors the ncdu TUI's crossterm/ratatui setup and always restores
-/// the terminal, even on error.
+/// Faithful to Ehud's raw-mode demo, and deliberately NOT a full-screen app: it
+/// does not enter the alternate screen and never redraws the profile table,
+/// which `profiles -i` has already printed in full above (with headers and the
+/// favourite column). It shows a compact, width-adaptive action bar on a couple
+/// of lines, lets the user pick an action either with a single key or by moving
+/// the highlight (Left/Right, Up/Down, Tab/Shift+Tab, PageUp/PageDown, all
+/// wrapping at the ends) and Enter, then prompts on one line for the target
+/// profile(s)/index, which are typed just like `rclone config`. It returns the
+/// equivalent line-mode command (e.g. `d 3 4`) so the existing, tested action
+/// handlers do the actual work; the menu never mutates the vault itself. Raw
+/// mode and the cursor are always restored, even on error.
 fn profiles_tui_pick(
     profiles: &[serde_json::Value],
     fav_marker: &str,
 ) -> std::io::Result<ProfilesTuiOutcome> {
-    use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-    use ratatui::{
-        layout::{Constraint, Layout},
-        style::{Color, Modifier, Style},
-        text::{Line, Span},
-        widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    use crossterm::{
+        cursor,
+        event::{self, Event, KeyCode, KeyEventKind},
+        queue,
+        style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
+        terminal::{self, Clear, ClearType},
     };
+    use std::io::{BufRead, Write};
 
     if profiles.is_empty() {
         return Ok(ProfilesTuiOutcome::Quit);
     }
 
-    let mut selected: usize = 0;
-    let mut outcome = ProfilesTuiOutcome::Quit;
+    // Actions in Ehud's order: re-index(#)|List/ls(L)|Tree(T)|Delete(D)|Fav★(F)|
+    // Copy(C)|Rename(R)|Edit(E)|Quit(Q/0). `Fav` carries the user's marker glyph
+    // (★ default, ♥ if chosen) so it matches the rest of the CLI.
+    let actions: Vec<(char, String, ProfilesActionTarget)> = vec![
+        (
+            '#',
+            "re-index(#)".to_string(),
+            ProfilesActionTarget::Reindex,
+        ),
+        ('l', "List/ls(L)".to_string(), ProfilesActionTarget::Many),
+        ('t', "Tree(T)".to_string(), ProfilesActionTarget::Many),
+        ('d', "Delete(D)".to_string(), ProfilesActionTarget::Many),
+        (
+            'f',
+            format!("Fav{}(F)", fav_marker),
+            ProfilesActionTarget::Many,
+        ),
+        ('c', "Copy(C)".to_string(), ProfilesActionTarget::Many),
+        ('r', "Rename(R)".to_string(), ProfilesActionTarget::One),
+        ('e', "Edit(E)".to_string(), ProfilesActionTarget::One),
+        ('q', "Quit(Q/0)".to_string(), ProfilesActionTarget::None),
+    ];
+    let n = actions.len();
+    let mut selected = 0usize;
 
-    cli_tui::with_terminal(|terminal| {
-        loop {
-            terminal.draw(|frame| {
-                let area = frame.area();
-                let chunks = Layout::vertical([
-                    Constraint::Length(2),
-                    Constraint::Min(1),
-                    Constraint::Length(2),
-                ])
-                .split(area);
+    // Restore the terminal no matter how we leave (early return, panic unwind).
+    struct RawGuard;
+    impl Drop for RawGuard {
+        fn drop(&mut self) {
+            let _ = terminal::disable_raw_mode();
+            let mut err = std::io::stderr();
+            let _ = queue!(err, cursor::Show);
+            let _ = err.flush();
+        }
+    }
 
-                let header = Paragraph::new(vec![
-                    Line::from(Span::styled(
-                        " AeroFTP profiles",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                    Line::from(Span::styled(
-                        format!(" {} profile(s)", profiles.len()),
-                        Style::default().fg(Color::DarkGray),
-                    )),
-                ]);
-                frame.render_widget(header, chunks[0]);
+    // Pack the options into width-bounded lines so an option is never cut off
+    // (Ehud: on a narrow split screen the 'd delete' option was hidden). We wrap
+    // on option boundaries, joining with " | ", and keep each line one column
+    // short of the terminal width so the terminal never auto-wraps it (which
+    // would desync the in-place redraw). Each line carries its printed width so
+    // the redraw can compute how many physical rows it occupies, including after
+    // a live resize reflows it.
+    let layout = |cols: usize| -> Vec<(Vec<usize>, usize)> {
+        let budget = cols.max(20).saturating_sub(1).max(8);
+        let sep = 3usize; // " | "
+        let mut lines: Vec<(Vec<usize>, usize)> = Vec::new();
+        let mut cur: Vec<usize> = Vec::new();
+        let mut width = 1usize; // leading space
+        for (i, (_, label, _)) in actions.iter().enumerate() {
+            let w = label.chars().count();
+            let add = if cur.is_empty() { w } else { w + sep };
+            if !cur.is_empty() && width + add > budget {
+                lines.push((std::mem::take(&mut cur), width));
+                width = 1;
+            }
+            width += if cur.is_empty() { w } else { w + sep };
+            cur.push(i);
+        }
+        if !cur.is_empty() {
+            lines.push((cur, width));
+        }
+        lines
+    };
 
-                let items: Vec<ListItem> = profiles
-                    .iter()
-                    .enumerate()
-                    .map(|(i, p)| {
-                        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-                        let proto = p
-                            .get("protocol")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("ftp");
-                        let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
-                        let fav = p
-                            .get("favorite")
-                            .and_then(|v| v.as_bool())
-                            .or_else(|| p.get("isFavorite").and_then(|v| v.as_bool()))
-                            .unwrap_or(false);
-                        let (star, star_color) = if fav {
-                            let color = if fav_marker == "\u{2665}" { Color::Red } else { Color::Yellow };
-                            (format!("{} ", fav_marker), color)
-                        } else {
-                            ("  ".to_string(), Color::Yellow)
-                        };
-                        ListItem::new(Line::from(vec![
-                            Span::styled(
-                                format!("{:>2}. ", i + 1),
-                                Style::default().fg(Color::DarkGray),
-                            ),
-                            Span::styled(star, Style::default().fg(star_color)),
-                            Span::raw(name.to_string()),
-                            Span::styled(
-                                format!("  {}", proto),
-                                Style::default().fg(Color::Blue),
-                            ),
-                            Span::styled(
-                                format!("  {}", host),
-                                Style::default().fg(Color::DarkGray),
-                            ),
-                        ]))
-                    })
-                    .collect();
-                let list = List::new(items)
-                    .block(Block::default().borders(Borders::ALL).title(" Profiles "))
-                    .highlight_style(
-                        Style::default()
-                            .bg(Color::Blue)
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .highlight_symbol("> ");
-                let mut list_state = ListState::default();
-                list_state.select(Some(selected));
-                frame.render_stateful_widget(list, chunks[1], &mut list_state);
+    // Physical rows a set of line widths occupies at the current width. A line
+    // wider than the terminal (after a live shrink) reflows onto several rows,
+    // so we count `ceil(width / cols)` per line; this keeps the rewind exact.
+    let rows_used = |widths: &[usize], cols: usize| -> usize {
+        let cols = cols.max(1);
+        widths
+            .iter()
+            .map(|w| (*w).max(1).div_ceil(cols))
+            .sum::<usize>()
+            .max(1)
+    };
 
-                let footer = Paragraph::new(vec![
-                    Line::from(Span::styled(
-                        " Up/Down move   Enter/l list   t tree   f fav   c copy   r rename   e edit   d delete",
-                        Style::default().fg(Color::DarkGray),
-                    )),
-                    Line::from(Span::styled(
-                        " q/Esc back to the prompt",
-                        Style::default().fg(Color::DarkGray),
-                    )),
-                ]);
-                frame.render_widget(footer, chunks[2]);
-            })?;
+    terminal::enable_raw_mode()?;
+    let guard = RawGuard;
+    let mut err = std::io::stderr();
+    let _ = queue!(err, cursor::Hide);
 
-            if event::poll(std::time::Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind != KeyEventKind::Press {
-                        continue;
-                    }
-                    let n = profiles.len();
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            outcome = ProfilesTuiOutcome::Quit;
-                            break;
-                        }
-                        KeyCode::Down | KeyCode::Char('j') if selected + 1 < n => selected += 1,
-                        KeyCode::Up | KeyCode::Char('k') if selected > 0 => selected -= 1,
-                        KeyCode::Home => selected = 0,
-                        KeyCode::End => selected = n - 1,
-                        KeyCode::PageDown => {
-                            selected = (selected + 10).min(n.saturating_sub(1));
-                        }
-                        KeyCode::PageUp => selected = selected.saturating_sub(10),
-                        KeyCode::Enter | KeyCode::Char('l') => {
-                            outcome = ProfilesTuiOutcome::Command(format!("l {}", selected + 1));
-                            break;
-                        }
-                        KeyCode::Char(c) if matches!(c, 't' | 'f' | 'c' | 'r' | 'e' | 'd') => {
-                            outcome =
-                                ProfilesTuiOutcome::Command(format!("{} {}", c, selected + 1));
-                            break;
-                        }
-                        _ => {}
-                    }
+    let mut prev_widths: Vec<usize> = Vec::new();
+    let chosen: Option<usize> = loop {
+        let cols = terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
+        let lines = layout(cols);
+
+        // Redraw in place: rewind over every physical row the previous render
+        // occupies at the current width (so a live resize that reflowed the old
+        // bar onto extra rows is fully cleared), then clear downward, leaving
+        // everything printed above (the table) untouched.
+        if !prev_widths.is_empty() {
+            let rows = rows_used(&prev_widths, cols);
+            let _ = queue!(err, cursor::MoveToColumn(0));
+            if rows > 1 {
+                let _ = queue!(err, cursor::MoveUp((rows - 1) as u16));
+            }
+            let _ = queue!(err, Clear(ClearType::FromCursorDown));
+        }
+        for (li, (line, _)) in lines.iter().enumerate() {
+            let _ = queue!(err, Print(" "));
+            for (pos, &ai) in line.iter().enumerate() {
+                if pos > 0 {
+                    let _ = queue!(
+                        err,
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(" | "),
+                        ResetColor
+                    );
+                }
+                if ai == selected {
+                    let _ = queue!(
+                        err,
+                        SetAttribute(Attribute::Reverse),
+                        SetAttribute(Attribute::Bold),
+                        Print(&actions[ai].1),
+                        SetAttribute(Attribute::Reset)
+                    );
+                } else {
+                    let _ = queue!(err, Print(&actions[ai].1));
                 }
             }
+            if li + 1 < lines.len() {
+                let _ = queue!(err, Print("\r\n"));
+            }
         }
-        Ok(())
-    })?;
+        prev_widths = lines.iter().map(|(_, w)| *w).collect();
+        let _ = err.flush();
 
-    Ok(outcome)
+        match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Char('0') | KeyCode::Esc => {
+                    break None;
+                }
+                KeyCode::Enter => break Some(selected),
+                KeyCode::Right | KeyCode::Down | KeyCode::Tab => selected = (selected + 1) % n,
+                KeyCode::Left | KeyCode::Up | KeyCode::BackTab => selected = (selected + n - 1) % n,
+                KeyCode::PageDown | KeyCode::End => selected = n - 1,
+                KeyCode::PageUp | KeyCode::Home => selected = 0,
+                KeyCode::Char(c) => {
+                    let lc = c.to_ascii_lowercase();
+                    if let Some(idx) = actions.iter().position(|(k, _, _)| *k == lc) {
+                        break Some(idx);
+                    }
+                }
+                _ => {}
+            },
+            // Resize (and anything else) just falls through to a redraw with the
+            // new width on the next loop turn.
+            _ => {}
+        }
+    };
+
+    // Wipe the action bar so the table above is all that remains, then leave raw
+    // mode for the cooked-mode line read that follows.
+    let cols = terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
+    let rows = rows_used(&prev_widths, cols);
+    let _ = queue!(err, cursor::MoveToColumn(0));
+    if rows > 1 {
+        let _ = queue!(err, cursor::MoveUp((rows - 1) as u16));
+    }
+    let _ = queue!(err, Clear(ClearType::FromCursorDown));
+    let _ = err.flush();
+    drop(guard);
+
+    let Some(idx) = chosen else {
+        return Ok(ProfilesTuiOutcome::Quit);
+    };
+    let (key, _, target) = &actions[idx];
+    if matches!(target, ProfilesActionTarget::None) {
+        return Ok(ProfilesTuiOutcome::Quit);
+    }
+
+    // Second step: the action is picked, the target is typed (Ehud's model).
+    let prompt = match target {
+        ProfilesActionTarget::Reindex => {
+            "re-index <profile> <new-index> (e.g. 3 1, blank cancels): "
+        }
+        ProfilesActionTarget::One => "target profile (blank cancels): ",
+        ProfilesActionTarget::Many => "target profile(s) (blank cancels): ",
+        ProfilesActionTarget::None => "",
+    };
+    eprint!("{}", prompt);
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    if std::io::stdin().lock().read_line(&mut line).unwrap_or(0) == 0 {
+        return Ok(ProfilesTuiOutcome::Quit);
+    }
+    let line = line.trim();
+    if line.is_empty() {
+        // Nothing typed: treat as cancel, back to the prompt with no change.
+        return Ok(ProfilesTuiOutcome::Quit);
+    }
+
+    Ok(ProfilesTuiOutcome::Command(format!("{} {}", key, line)))
 }
 
 /// Resolve a single selector (integer or profile name) against the visible
