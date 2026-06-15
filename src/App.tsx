@@ -926,6 +926,7 @@ const App: React.FC = () => {
     if (isConnected || !rcloneCryptVaultId) return;
     const vaultId = rcloneCryptVaultId;
     setRcloneCryptVaultId(null);
+    setCryptOverlayOwner(null);
     void invoke('rclone_crypt_lock', { vaultId }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
@@ -973,14 +974,24 @@ const App: React.FC = () => {
   // names stay wrapped in DecryptingText long enough to play the reveal ("puff")
   // instead of unmounting to plain text mid-transition.
   const [overlayRevealing, setOverlayRevealing] = useState(false);
-  // The session tab that owns the active (or in-progress) encrypted overlay.
-  // Both the crypt vault routing (activeCryptOverlay) and the decryption
-  // animation are gated on this matching the active session, so an overlay can
-  // NEVER bleed onto another connected server: a different tab sees no overlay
-  // (its uploads stay plaintext) and no animation. Set when an unlock begins or
-  // a vault activates; a null vault already makes activeCryptOverlay() return
-  // null, so a stale id is harmless (the vault check gates it too).
-  const [overlaySessionId, setOverlaySessionId] = useState<string | null>(null);
+  // The owner of the active (or in-progress) encrypted overlay. Both the crypt
+  // vault routing (activeCryptOverlay) and the decryption animation are gated on
+  // this owner matching the active session, so an overlay can NEVER bleed onto
+  // another connected server: a different tab sees no overlay (its uploads stay
+  // plaintext) and no animation.
+  //
+  // The owner is described by `savedServerId` for auto-unlocked saved profiles
+  // (stable identity, known from `pendingOverlayUnlock` the instant the unlock
+  // begins) and by `sessionId` for ad-hoc modal/banner overlays on the current
+  // tab. Matching on `savedServerId` at READ time is what fixes the P3.3 stale
+  // id: `createSession` is async and commits `activeSessionId` only after its
+  // profile-load await, so capturing `activeSessionId` when the unlock starts
+  // recorded the PREVIOUS session and the gate never matched (the whole overlay
+  // silently fell back to the plaintext listing). The saved-server session is
+  // guaranteed present and active by the time the gate is read.
+  const [cryptOverlayOwner, setCryptOverlayOwner] = useState<
+    { savedServerId: string | null; sessionId: string | null } | null
+  >(null);
   const prevOverlayDecryptingRef = useRef(false);
   useEffect(() => {
     const was = prevOverlayDecryptingRef.current;
@@ -1005,6 +1016,7 @@ const App: React.FC = () => {
     if (isConnected || !aeroCryptVaultId) return;
     const vaultId = aeroCryptVaultId;
     setAeroCryptVaultId(null);
+    setCryptOverlayOwner(null);
     void invoke('aerocrypt_lock', { vaultId }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
@@ -3220,10 +3232,67 @@ interface UpdateVerificationInfo {
   sortedLocalFilesRef.current = sortedLocalFiles;
   sortedRemoteFilesRef.current = sortedRemoteFiles;
 
-  // T2: the decryption animation is allowed only on the session tab that owns
-  // the overlay (overlaySessionId), so it never plays on another connected
-  // server's panel and stops as soon as you switch tabs.
-  const overlayAnimActive = (overlayDecrypting || overlayRevealing) && overlaySessionId === activeSessionId;
+  // True when the active session tab is the one that owns the encrypted overlay
+  // (or is unlocking it). Routing and the decryption animation are both gated on
+  // this so an overlay can never bleed onto another connected server's panel.
+  const cryptOverlayOwnerMatchesActive = (() => {
+    if (!cryptOverlayOwner) return false;
+    if (cryptOverlayOwner.sessionId != null) return cryptOverlayOwner.sessionId === activeSessionId;
+    if (cryptOverlayOwner.savedServerId != null) {
+      const activeSession = sessions.find((s) => s.id === activeSessionId);
+      return activeSession?.savedServerId === cryptOverlayOwner.savedServerId;
+    }
+    return false;
+  })();
+
+  // T2: the decryption animation is allowed only on the tab that owns the
+  // overlay, so it never plays on another connected server's panel and stops as
+  // soon as you switch tabs.
+  const overlayAnimActive = (overlayDecrypting || overlayRevealing) && cryptOverlayOwnerMatchesActive;
+
+  // Path-bar crypt overlay TOGGLE badge state. The badge is shown for any overlay
+  // tab (capability persists across lock) so it can be clicked to lock/unlock:
+  //   - decrypting -> grey + pulse, not clickable
+  //   - active     -> lit (emerald aerocrypt / blue rclone), click locks
+  //   - locked     -> grey, click re-unlocks (real key re-derivation)
+  const overlayBadgeKind = sessions.find((s) => s.id === activeSessionId)?.cryptOverlayKind ?? null;
+  const overlayVaultLit = cryptOverlayOwnerMatchesActive && !!(rcloneCryptVaultId || aeroCryptVaultId);
+  const overlayBadgeDecrypting = overlayAnimActive && overlayDecrypting;
+  const overlayBadgeState: 'decrypting' | 'active' | 'locked' =
+    overlayBadgeDecrypting ? 'decrypting' : overlayVaultLit ? 'active' : 'locked';
+
+  const toggleActiveCryptOverlay = () => {
+    const sess = sessions.find((s) => s.id === activeSessionId);
+    const kind = sess?.cryptOverlayKind;
+    if (!kind || overlayBadgeDecrypting) return;
+    // ACTIVE -> lock (drop the live vault, keep the badge, show raw names).
+    if (rcloneCryptVaultId || aeroCryptVaultId) {
+      if (aeroCryptVaultId) {
+        const vaultId = aeroCryptVaultId;
+        setAeroCryptVaultId(null);
+        void invoke('aerocrypt_lock', { vaultId }).catch(() => { });
+      }
+      if (rcloneCryptVaultId) {
+        const vaultId = rcloneCryptVaultId;
+        setRcloneCryptVaultId(null);
+        void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
+      }
+      setCryptOverlayOwner(null);
+      lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
+      void loadRemoteFiles(undefined, true, true);
+      return;
+    }
+    // LOCKED -> re-unlock. Saved profiles re-run the auto-unlock+decrypt flow
+    // (animation + real key re-derivation); ad-hoc overlays re-open their modal.
+    if (sess?.savedServerId) {
+      overlayReloadedVaultRef.current = null;
+      setPendingOverlayUnlock(sess.savedServerId);
+    } else if (kind === 'aerocrypt') {
+      setShowAeroCryptUnlock(true);
+    } else {
+      setShowRcloneCryptUnlock(true);
+    }
+  };
 
   const activeUnifiedRemoteProfile = useMemo(() => {
     if (!isConnected) return null;
@@ -4089,10 +4158,52 @@ interface UpdateVerificationInfo {
   // (uploads stay plaintext, listings show the real names) — an overlay can never
   // bleed onto a different server, even if a vault id is still held in memory.
   const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
-    if (overlaySessionId !== activeSessionId) return null;
+    if (!cryptOverlayOwnerMatchesActive) return null;
     if (rcloneCryptVaultId) return { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' };
     if (aeroCryptVaultId) return { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' };
     return null;
+  };
+
+  // Per-session overlay binding. Each connected tab remembers its own overlay so
+  // switching/reconnecting to it restores ITS decrypted view (the single global
+  // vault-id mirror only ever reflects one tab). The owning session is matched by
+  // saved profile id (auto-unlock, where activeSessionId is not settled yet) or
+  // by an explicit session id (ad-hoc modal on the current tab).
+  const sessionMatches = (s: FtpSession, match: { savedServerId?: string; sessionId?: string }) =>
+    (match.sessionId != null && s.id === match.sessionId) ||
+    (match.savedServerId != null && s.savedServerId === match.savedServerId);
+  // Mark the tab's persistent overlay CAPABILITY (kind) without a live vault yet:
+  // used at decrypt-start so the badge shows immediately (grey) while unlocking.
+  const markSessionOverlayKind = (
+    match: { savedServerId?: string; sessionId?: string },
+    kind: 'rclone-crypt' | 'aerocrypt',
+  ) => {
+    setSessions((prev) => prev.map((s) =>
+      sessionMatches(s, match) ? { ...s, cryptOverlayKind: kind } : s,
+    ));
+  };
+  // Overlay UNLOCKED: store the live vault + keep the capability kind.
+  const bindSessionCryptOverlay = (
+    match: { savedServerId?: string; sessionId?: string },
+    vaultId: string,
+    kind: 'rclone-crypt' | 'aerocrypt',
+  ) => {
+    setSessions((prev) => prev.map((s) =>
+      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind }, cryptOverlayKind: kind } : s,
+    ));
+  };
+  // Overlay LOCKED: drop the live vault but KEEP the capability kind so the badge
+  // stays visible (grey) and can be clicked to re-decrypt.
+  const lockSessionCryptOverlay = (match: { savedServerId?: string; sessionId?: string }) => {
+    setSessions((prev) => prev.map((s) =>
+      sessionMatches(s, match) ? { ...s, cryptOverlay: null } : s,
+    ));
+  };
+  // Tab is no longer an overlay tab (disconnect / switch-away): drop everything.
+  const clearSessionCryptOverlay = (match: { savedServerId?: string; sessionId?: string }) => {
+    setSessions((prev) => prev.map((s) =>
+      sessionMatches(s, match) ? { ...s, cryptOverlay: null, cryptOverlayKind: null } : s,
+    ));
   };
 
   // P3.3 / P3.3b: when a saved profile carries an encrypted-overlay binding,
@@ -4102,17 +4213,32 @@ interface UpdateVerificationInfo {
   // remoteScope) by the connect listing. Both kinds are handled: native
   // (`aerocrypt`, config from .aeroftp-crypt.json) and `rclone-crypt` interop
   // (salt + filename/dir-name encryption from the binding, salt from the vault).
-  // Returns true when an overlay was activated.
-  const maybeAutoUnlockProfileOverlay = async (savedServerId?: string): Promise<boolean> => {
-    if (!savedServerId) return false;
+  // Returns the activated overlay's vault id + provider prefix, or null when no
+  // overlay was activated. The vault info lets callers (switchSession recovery)
+  // list through it immediately without waiting for async state to settle.
+  const maybeAutoUnlockProfileOverlay = async (
+    savedServerId?: string,
+  ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null> => {
+    if (!savedServerId) return null;
     try {
       const profiles = await loadSavedServerProfiles();
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
-      if (!binding?.enabled) return false;
-      if (!profile?.hasStoredAeroCryptPassword) return false;
+      if (!binding?.enabled) return null;
+      if (!profile?.hasStoredAeroCryptPassword) return null;
       const password = await invoke<string>('get_credential', { account: `aerocrypt_overlay_pw_${savedServerId}` }).catch(() => '');
-      if (!password) return false;
+      if (!password) return null;
+
+      // Only NOW that a real overlay binding is confirmed do we arm the
+      // decryption animation and bind the overlay owner. Doing it speculatively
+      // in the phase-1 effect (before this check) made every saved-server
+      // connect flash the scramble/reveal on a plain server's real filenames,
+      // because pendingOverlayUnlock fires for every saved profile, not just
+      // overlay ones.
+      setCryptOverlayOwner({ savedServerId, sessionId: null });
+      // Show the path-bar badge immediately (grey) for the whole decrypt window.
+      markSessionOverlayKind({ savedServerId }, binding.kind);
+      setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
       overlayLogIdRef.current = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
@@ -4129,7 +4255,8 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setAeroCryptVaultId(null);
             setRcloneCryptVaultId(info.vault_id);
-            return true;
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt');
+            return { vaultId: info.vault_id, prefix: 'rclone_crypt_provider' };
           }
         } else {
           const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {}).catch(() => null);
@@ -4139,7 +4266,8 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(info.vault_id);
-            return true;
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt');
+            return { vaultId: info.vault_id, prefix: 'aerocrypt_provider' };
           }
         }
         // Unlock returned no vault id: mark the entry failed.
@@ -4157,7 +4285,7 @@ interface UpdateVerificationInfo {
     } catch (e) {
       logger.debug('[maybeAutoUnlockProfileOverlay] failed', e);
     }
-    return false;
+    return null;
   };
 
   // P3.3 (phase 1): once a profile with an overlay binding has connected (state
@@ -4174,21 +4302,34 @@ interface UpdateVerificationInfo {
     if (overlayUnlockInFlightRef.current) return;
     const savedId = pendingOverlayUnlock;
     overlayUnlockInFlightRef.current = true;
-    // Bind the overlay (and its decryption animation) to this session tab.
-    setOverlaySessionId(activeSessionId);
+    // pendingOverlayUnlock fires for EVERY saved-server connect, not just overlay
+    // ones, so the overlay owner and the decryption animation must NOT be armed
+    // here. maybeAutoUnlockProfileOverlay arms them (setCryptOverlayOwner +
+    // setOverlayDecrypting) only once it has confirmed a real overlay binding +
+    // stored password — otherwise a plain server would flash the scramble/reveal
+    // on its real filenames. The owner is bound to the SAVED PROFILE (stable),
+    // not to activeSessionId, which createSession has not committed yet.
     let cancelled = false;
     void (async () => {
-      setOverlayDecrypting(true);
       let activated = false;
       try {
-        activated = await maybeAutoUnlockProfileOverlay(savedId);
+        activated = !!(await maybeAutoUnlockProfileOverlay(savedId));
       } finally {
         // Once a vault is set the vault guard blocks re-entry, so it is safe to
         // release here; on a no-op/failure we also stop waiting.
         overlayUnlockInFlightRef.current = false;
       }
       if (!cancelled && !activated) {
+        // No overlay (or unlock failed): undo anything maybeAutoUnlock armed AND
+        // drop the global vault-id mirror left by a previously-active overlay tab,
+        // so this plain server is fully excluded from the crypt path, animation,
+        // badge and gating. Clearing the mirror does NOT lock the backend vault
+        // (the guard is !isConnected, still true here), so the background overlay
+        // tab's own session.cryptOverlay restores it on switch-back.
         setOverlayDecrypting(false);
+        setCryptOverlayOwner(null);
+        setRcloneCryptVaultId(null);
+        setAeroCryptVaultId(null);
         setPendingOverlayUnlock(null);
       }
     })();
@@ -4285,6 +4426,7 @@ interface UpdateVerificationInfo {
       if (String(error).toLowerCase().includes('vault not unlocked')) {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
+        setCryptOverlayOwner(null);
       }
       if (String(error).toLowerCase().includes('overlay session not found')) {
         setAeroVaultOverlaySession(null);
@@ -5924,6 +6066,65 @@ interface UpdateVerificationInfo {
           }
         }
         response = await invoke('list_files');
+      }
+
+      // Per-session overlay restore: if this tab holds an AeroCrypt/rclone-crypt
+      // overlay, its vault is still unlocked in the backend (a tab switch does not
+      // lock it), so re-list THROUGH the overlay to render decrypted names and
+      // re-arm the global vault-id mirror + owner so every operation on this tab
+      // routes through the overlay. A tab WITHOUT an overlay clears them, so the
+      // crypt path can never bleed onto a plain server.
+      const targetOverlay = targetSession.cryptOverlay;
+      if (targetOverlay) {
+        const prefix = targetOverlay.kind === 'rclone-crypt' ? 'rclone_crypt_provider' : 'aerocrypt_provider';
+        setRcloneCryptVaultId(targetOverlay.kind === 'rclone-crypt' ? targetOverlay.vaultId : null);
+        setAeroCryptVaultId(targetOverlay.kind === 'aerocrypt' ? targetOverlay.vaultId : null);
+        setCryptOverlayOwner({ savedServerId: null, sessionId });
+        try {
+          const cryptResp = await invoke<RcloneCryptBrowserListResponse>(`${prefix}_list`, {
+            vaultId: targetOverlay.vaultId,
+            path: null,
+          });
+          response = mapRcloneCryptListResponse(cryptResp);
+        } catch (overlayErr) {
+          // The stored vault id is no longer addressable in the backend (it can be
+          // evicted between visits, e.g. native AeroCrypt). Re-unlock from the saved
+          // profile (real key re-derivation, with the decryption animation) and list
+          // through the fresh vault so this tab matches rclone's behaviour. Only fall
+          // back to the plain listing if there is no profile to re-unlock from.
+          logger.warn('[switchSession] overlay vault stale, re-unlocking from profile:', overlayErr);
+          let recovered = false;
+          if (targetSession.savedServerId) {
+            try {
+              const reunlocked = await maybeAutoUnlockProfileOverlay(targetSession.savedServerId);
+              if (reunlocked) {
+                setCryptOverlayOwner({ savedServerId: null, sessionId });
+                const cryptResp = await invoke<RcloneCryptBrowserListResponse>(`${reunlocked.prefix}_list`, {
+                  vaultId: reunlocked.vaultId,
+                  path: null,
+                });
+                response = mapRcloneCryptListResponse(cryptResp);
+                recovered = true;
+              }
+            } catch (reErr) {
+              logger.warn('[switchSession] overlay re-unlock failed:', reErr);
+            } finally {
+              // maybeAutoUnlockProfileOverlay arms the decryption animation; close it
+              // here since the switch path has no phase-2 effect to settle it.
+              setOverlayDecrypting(false);
+            }
+          }
+          if (!recovered) {
+            setRcloneCryptVaultId(null);
+            setAeroCryptVaultId(null);
+            setCryptOverlayOwner(null);
+            clearSessionCryptOverlay({ sessionId });
+          }
+        }
+      } else {
+        setRcloneCryptVaultId(null);
+        setAeroCryptVaultId(null);
+        setCryptOverlayOwner(null);
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
@@ -12880,12 +13081,15 @@ interface UpdateVerificationInfo {
             onClose={() => setShowRcloneCryptUnlock(false)}
             activeVaultId={rcloneCryptVaultId}
             onUnlocked={(vaultId) => {
-              setOverlaySessionId(activeSessionId);
+              setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
               setRcloneCryptVaultId(vaultId);
+              bindSessionCryptOverlay({ sessionId: activeSessionId ?? undefined }, vaultId, 'rclone-crypt');
               void loadRcloneCryptOverlayFiles(vaultId);
             }}
             onLocked={() => {
               setRcloneCryptVaultId(null);
+              setCryptOverlayOwner(null);
+              lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
               void loadRemoteFiles(undefined, true, true);
             }}
           />
@@ -12895,12 +13099,15 @@ interface UpdateVerificationInfo {
             onClose={() => setShowAeroCryptUnlock(false)}
             activeVaultId={aeroCryptVaultId}
             onUnlocked={(vaultId) => {
-              setOverlaySessionId(activeSessionId);
+              setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
               setAeroCryptVaultId(vaultId);
+              bindSessionCryptOverlay({ sessionId: activeSessionId ?? undefined }, vaultId, 'aerocrypt');
               void loadAeroCryptOverlayFiles(vaultId);
             }}
             onLocked={() => {
               setAeroCryptVaultId(null);
+              setCryptOverlayOwner(null);
+              lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
               void loadRemoteFiles(undefined, true, true);
             }}
           />
@@ -12935,8 +13142,9 @@ interface UpdateVerificationInfo {
                       filenameEncryption: banner.filenameEncryption || 'standard',
                       directoryNameEncryption: banner.directoryNameEncryption !== false,
                     });
-                    setOverlaySessionId(activeSessionId);
+                    setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
                     setRcloneCryptVaultId(info.vault_id);
+                    bindSessionCryptOverlay({ sessionId: activeSessionId ?? undefined }, info.vault_id, 'rclone-crypt');
                     void loadRcloneCryptOverlayFiles(info.vault_id);
                     notify.success('Rclone Crypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
@@ -14040,40 +14248,40 @@ interface UpdateVerificationInfo {
                         OVERLAY
                       </span>
                     )}
-                    {aeroCryptVaultId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const vaultId = aeroCryptVaultId;
-                          setAeroCryptVaultId(null);
-                          void invoke('aerocrypt_lock', { vaultId }).catch(() => { });
-                          void loadRemoteFiles(undefined, true, true);
-                        }}
-                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 border border-emerald-500/30 transition-colors cursor-pointer"
-                        title={`${t('aerocryptNative.title')} ON · ${t('aerocryptNative.lock')}`}
-                        aria-label={`${t('aerocryptNative.title')} ON · ${t('aerocryptNative.lock')}`}
-                      >
-                        <OverlayIcon size={11} className="text-emerald-400" />
-                        AEROCRYPT
-                      </button>
-                    )}
-                    {rcloneCryptVaultId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const vaultId = rcloneCryptVaultId;
-                          setRcloneCryptVaultId(null);
-                          void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
-                          void loadRemoteFiles(undefined, true, true);
-                        }}
-                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 border border-blue-500/30 transition-colors cursor-pointer"
-                        title={`Rclone Crypt ON · ${t('aerocryptNative.lock')}`}
-                        aria-label={`Rclone Crypt ON · ${t('aerocryptNative.lock')}`}
-                      >
-                        <OverlayIcon size={11} className="text-blue-400" />
-                        RCLONE CRYPT
-                      </button>
-                    )}
+                    {overlayBadgeKind && (() => {
+                      const isAero = overlayBadgeKind === 'aerocrypt';
+                      const label = isAero ? 'AEROCRYPT' : 'RCLONE CRYPT';
+                      const litCls = isAero
+                        ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 border-emerald-500/30'
+                        : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 border-blue-500/30';
+                      const greyCls = 'bg-gray-400/15 text-gray-400 border-gray-400/30';
+                      const stateCls = overlayBadgeState === 'active'
+                        ? `${litCls} cursor-pointer`
+                        : overlayBadgeState === 'decrypting'
+                          ? `${greyCls} animate-pulse cursor-wait`
+                          : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
+                      const iconCls = overlayBadgeState === 'active'
+                        ? (isAero ? 'text-emerald-400' : 'text-blue-400')
+                        : 'text-gray-400';
+                      const title = overlayBadgeState === 'active'
+                        ? `${label} · ${t('aerocrypt.lock')}`
+                        : overlayBadgeState === 'decrypting'
+                          ? `${label} · …`
+                          : `${label} · ${t('aerocrypt.unlock')}`;
+                      return (
+                        <button
+                          type="button"
+                          disabled={overlayBadgeState === 'decrypting'}
+                          onClick={toggleActiveCryptOverlay}
+                          className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${stateCls}`}
+                          title={title}
+                          aria-label={title}
+                        >
+                          <OverlayIcon size={11} className={iconCls} />
+                          {label}
+                        </button>
+                      );
+                    })()}
                     {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (
                       <GitHubBranchSelector
                         currentBranch={gitHubRepoInfo.branch}
@@ -14406,7 +14614,8 @@ interface UpdateVerificationInfo {
                                   />
                                 ) : (
                                   <span
-                                    className="cursor-text"
+                                    className="cursor-text truncate min-w-0"
+                                    title={displayName(file.name, file.is_dir)}
                                     onClick={(e) => {
                                       if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
                                         e.stopPropagation();

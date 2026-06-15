@@ -663,6 +663,18 @@ export interface FtpSession {
   syncBasePaths?: { remote: string; local: string } | null;
   // Per-session AeroVault overlay state (N1)
   aeroVaultOverlaySession?: AeroVaultOverlaySession | null;
+  // Per-session AeroCrypt / rclone-crypt transparent overlay binding. The backend
+  // keeps each unlocked vault addressable by its own vault_id, so every tab can
+  // hold its own overlay independently. Stored here so switching/reconnecting to
+  // a tab restores ITS overlay (the global vault-id mirror alone cannot, because
+  // it only ever reflects one tab at a time).
+  cryptOverlay?: { vaultId: string; kind: 'rclone-crypt' | 'aerocrypt' } | null;
+  // Persistent overlay CAPABILITY of this tab (the saved profile's overlay kind),
+  // set the moment an overlay tab connects and kept across lock/unlock so the
+  // path-bar badge can render as a stateful toggle: grey while decrypting/locked,
+  // lit when active. Distinct from `cryptOverlay` (the live unlocked vault, which
+  // is cleared on lock). Cleared only on disconnect / switch-away.
+  cryptOverlayKind?: 'rclone-crypt' | 'aerocrypt' | null;
 }
 
 // State for managing multiple tabs
