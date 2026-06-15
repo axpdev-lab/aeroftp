@@ -632,11 +632,23 @@ impl CredentialStore {
         // A2-03: Zeroize intermediate buffer immediately
         passphrase_bytes.zeroize();
 
-        store_passphrase_in_keyring(&passphrase)?;
-
-        let key_file = VaultKeyFile {
-            mode: VaultKeyMode::AutoKeyring,
+        // Issue #334: keyring-failure on-disk fallback. On Windows portable (or a
+        // locked / unavailable Credential Manager) there is no OS keyring to hold
+        // the passphrase. Failing here left the vault uninitialized, so every
+        // profile/credential write silently returned STORE_NOT_READY and nothing
+        // persisted. Fall back to an on-disk LegacyAuto key (vault.key is
+        // file-permission protected: unix 0600 / Windows ACL) so the portable
+        // install is self-contained and profiles actually persist.
+        let key_mode = match store_passphrase_in_keyring(&passphrase) {
+            Ok(()) => VaultKeyMode::AutoKeyring,
+            Err(e) => {
+                warn!(
+                    "first_run_init: OS keyring unavailable ({e}); using on-disk vault.key fallback (portable/no-keyring mode)"
+                );
+                VaultKeyMode::LegacyAuto { passphrase }
+            }
         };
+        let key_file = VaultKeyFile { mode: key_mode };
         key_file.write()?;
 
         // Derive vault key and create empty vault.db
@@ -934,14 +946,36 @@ impl CredentialStore {
             }
         });
 
-        store_passphrase_in_keyring(&passphrase)?;
-
-        let new_key_file = VaultKeyFile {
-            mode: VaultKeyMode::AutoKeyring,
-        };
-        new_key_file.write()?;
-
-        info!("Master password disabled: vault key moved back to system keyring");
+        // Issue #333: do NOT fail closed when the keyring write fails. Enabling a
+        // master password deletes the keyring slot, so disabling is a fresh write
+        // back into it; on Windows (locked / portable Credential Manager) that
+        // write can fail, and the old code returned early WITHOUT flipping
+        // vault.key, leaving the user stuck in master mode with no way to remove
+        // it. Land in an on-disk LegacyAuto key instead so removal always
+        // completes (passphrase is file-permission protected: unix 0600 / Win ACL).
+        match store_passphrase_in_keyring(&passphrase) {
+            Ok(()) => {
+                VaultKeyFile {
+                    mode: VaultKeyMode::AutoKeyring,
+                }
+                .write()?;
+                info!("Master password disabled: vault key moved back to system keyring");
+            }
+            Err(e) => {
+                warn!(
+                    "Master password disable: OS keyring unavailable ({e}); writing on-disk vault.key fallback"
+                );
+                VaultKeyFile {
+                    mode: VaultKeyMode::LegacyAuto {
+                        passphrase: *passphrase,
+                    },
+                }
+                .write()?;
+                info!(
+                    "Master password disabled: vault key written to on-disk fallback (no keyring)"
+                );
+            }
+        }
         Ok(())
     }
 
