@@ -465,6 +465,23 @@ export interface TransferEvent {
   fallback_reason?: string; // Present only when delta was attempted, then fell back to classic
 }
 
+// AeroCrypt overlay binding (P3). When present and enabled, connecting this
+// profile unlocks an encrypted overlay and presents the standard dual-panel
+// transparently (decrypted names/sizes), Filen/MEGA-style, on any provider-API
+// backend. The overlay password is NEVER stored in the profile JSON: it lives
+// in the OS vault under aerocrypt_overlay_pw_<id> (mirrors hasStoredFilenApiKey),
+// flagged by ServerProfile.hasStoredAeroCryptPassword.
+// Spec: APPENDIX-AEROVAULT-STACK master plan §3.3/§3.6/§3.8.
+export interface AeroCryptOverlayBinding {
+  enabled: boolean;
+  kind: "aerocrypt" | "rclone-crypt"; // native (recommended) or interop (opens pre-existing rclone-crypt folders)
+  remoteScope?: string; // "" / undefined = whole remote root; else a subfolder to encrypt
+  localScope?: string; // bound local working folder: downloads land here, uploads source here
+  localEncrypted?: boolean; // opt-in, schema-ready now, implementation deferred (P3b/P4)
+  filenameEncryption?: "standard" | "obfuscate" | "off"; // default "standard"
+  aead?: "auto" | "aes-256-gcm-siv" | "xchacha20-poly1305"; // native only; see master plan §5
+}
+
 // Server profile for saved connections
 export interface ServerProfile {
   id: string;
@@ -482,6 +499,8 @@ export interface ServerProfile {
   lastConnected?: string;
   options?: ProviderOptions; // Provider-specific options (S3 bucket, etc.)
   persistModeCredentials?: boolean; // #215: remember each protocol mode's credentials across restarts (server_modes_<id>)
+  aeroCryptOverlay?: AeroCryptOverlayBinding; // P3: encrypted-overlay binding (transparent dual-panel). Spec: master plan §3.3
+  hasStoredAeroCryptPassword?: boolean; // true if the overlay password is stored in the vault under aerocrypt_overlay_pw_<id>
   providerId?: string; // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
   faviconUrl?: string; // Base64 data URL of detected project favicon
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)
