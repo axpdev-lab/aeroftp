@@ -111,6 +111,14 @@ interface RcloneCryptBrowserListResponse {
   files: RcloneCryptBrowserEntry[];
 }
 
+// Native AeroCrypt overlay list response: same entry shape as rclone-crypt, minus
+// the rclone-specific dir_iv_found. Reuses RcloneCryptBrowserEntry structurally.
+interface AeroCryptBrowserListResponse {
+  current_path: string;
+  display_current_path: string;
+  files: RcloneCryptBrowserEntry[];
+}
+
 interface ImportedServerProfile {
   id: string;
   name: string;
@@ -189,6 +197,7 @@ import { CanaryResultDialog, type CanaryResult } from './components/Sync/CanaryR
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
+import { AeroCryptUnlock } from './components/AeroCryptUnlock';
 import { CrossProfilePanel } from './components/CrossProfile/CrossProfilePanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
@@ -950,6 +959,19 @@ const App: React.FC = () => {
       setRcloneCryptImportBanner(null);
     }
   }, [isConnected]);
+  // Native AeroCrypt overlay (P2c): parallel to the rclone-crypt overlay above,
+  // on our own aerocrypt_provider_* backend. The two provider overlays are mutually
+  // exclusive (a panel has at most one active); transfer-flow picks via activeCryptOverlay().
+  const [showAeroCryptUnlock, setShowAeroCryptUnlock] = useState(false);
+  const [aeroCryptVaultId, setAeroCryptVaultId] = useState<string | null>(null);
+  useEffect(() => {
+    if (isConnected || !aeroCryptVaultId) return;
+    const vaultId = aeroCryptVaultId;
+    setAeroCryptVaultId(null);
+    void invoke('aerocrypt_lock', { vaultId }).catch(() => {
+      // Best effort cleanup: backend may already be cleared.
+    });
+  }, [isConnected, aeroCryptVaultId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3971,7 +3993,7 @@ interface UpdateVerificationInfo {
     };
   }, [notify, toast, t]);
 
-  const mapRcloneCryptListResponse = (cryptResponse: RcloneCryptBrowserListResponse) => ({
+  const mapRcloneCryptListResponse = (cryptResponse: { current_path: string; display_current_path: string; files: RcloneCryptBrowserEntry[] }) => ({
     current_path: cryptResponse.current_path,
     display_current_path: cryptResponse.display_current_path,
     files: cryptResponse.files.map((file) => ({
@@ -4006,6 +4028,26 @@ interface UpdateVerificationInfo {
     return response;
   };
 
+  const loadAeroCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
+    const cryptResponse = await invoke<AeroCryptBrowserListResponse>('aerocrypt_provider_list', {
+      vaultId,
+      path: path ?? null,
+      plainPath: !!plainPath,
+    });
+    const response = mapRcloneCryptListResponse(cryptResponse);
+    applyRemoteFileList(response);
+    return response;
+  };
+
+  // The active provider-overlay (rclone-crypt OR native AeroCrypt) on the remote
+  // panel, if any. They are mutually exclusive; rclone-first keeps existing behaviour
+  // unchanged. Transfer-flow uses `${prefix}_<op>` so both share one code path.
+  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+    if (rcloneCryptVaultId) return { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' };
+    if (aeroCryptVaultId) return { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' };
+    return null;
+  };
+
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
@@ -4014,7 +4056,7 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const isRcloneCryptOverlay = !ignoreRcloneCrypt && isProvider && !!rcloneCryptVaultId;
+      const cryptOverlay = !ignoreRcloneCrypt && isProvider ? activeCryptOverlay() : null;
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -4024,9 +4066,9 @@ interface UpdateVerificationInfo {
           path: null,
         });
       } else if (isProvider) {
-        if (isRcloneCryptOverlay) {
-          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
-            vaultId: rcloneCryptVaultId,
+        if (cryptOverlay) {
+          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
+            vaultId: cryptOverlay.vaultId,
             path: null,
           });
           response = mapRcloneCryptListResponse(cryptResponse);
@@ -4058,6 +4100,7 @@ interface UpdateVerificationInfo {
     } catch (error) {
       if (String(error).toLowerCase().includes('vault not unlocked')) {
         setRcloneCryptVaultId(null);
+        setAeroCryptVaultId(null);
       }
       if (String(error).toLowerCase().includes('overlay session not found')) {
         setAeroVaultOverlaySession(null);
@@ -6198,7 +6241,7 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+      const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
       let response: FileListResponse;
       if (isAeroVaultOverlay) {
@@ -6207,9 +6250,9 @@ interface UpdateVerificationInfo {
           path,
         });
       } else if (isProvider) {
-        if (isRcloneCryptOverlay) {
-          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
-            vaultId: rcloneCryptVaultId,
+        if (cryptOverlay) {
+          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
+            vaultId: cryptOverlay.vaultId,
             path,
             plainPath: !!plainPath,
           });
@@ -6561,7 +6604,7 @@ interface UpdateVerificationInfo {
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isProvider = usesProviderApi(protocol);
     const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-    const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+    const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
     try {
       if (isDir) {
@@ -6569,15 +6612,16 @@ interface UpdateVerificationInfo {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
         }
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
-        if (isRcloneCryptOverlay && downloadPath) {
+        if (cryptOverlay && downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
-          await invoke<string>('rclone_crypt_provider_download_folder', {
-            vaultId: rcloneCryptVaultId,
+          const overlayLabel = cryptOverlay.prefix === 'aerocrypt_provider' ? 'AeroCrypt' : 'Rclone Crypt';
+          await invoke<string>(`${cryptOverlay.prefix}_download_folder`, {
+            vaultId: cryptOverlay.vaultId,
             remoteEncryptedPath: remoteFilePath,
             localDestRoot: folderPath,
           });
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          humanLog.log('DOWNLOAD', `[Rclone Crypt] Decrypted folder ${folderPath} in ${elapsed}s`, 'success');
+          humanLog.log('DOWNLOAD', `[${overlayLabel}] Decrypted folder ${folderPath} in ${elapsed}s`, 'success');
           humanLog.updateEntry(logId, { status: 'success', message: `Decrypted folder ${folderPath} in ${elapsed}s` });
           return;
         }
@@ -6653,9 +6697,9 @@ interface UpdateVerificationInfo {
               entryPath: remoteFilePath,
               outputPath: localFilePath,
             });
-          } else if (isRcloneCryptOverlay) {
-            await invoke<string>('rclone_crypt_provider_download_file', {
-              vaultId: rcloneCryptVaultId,
+          } else if (cryptOverlay) {
+            await invoke<string>(`${cryptOverlay.prefix}_download_file`, {
+              vaultId: cryptOverlay.vaultId,
               remoteEncryptedPath: remoteFilePath,
               outputPath: localFilePath,
             });
@@ -6709,18 +6753,18 @@ interface UpdateVerificationInfo {
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+      const cryptOverlay = isProvider ? activeCryptOverlay() : null;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
 
       if (isDir) {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder upload not yet supported in main browser');
         }
-        if (isRcloneCryptOverlay) {
+        if (cryptOverlay) {
           const logId = humanLog.logStart('UPLOAD', { filename: fileName });
           pendingFileLogIds.current.set(fileName, logId);
-          await invoke<string>('rclone_crypt_provider_upload_folder', {
-            vaultId: rcloneCryptVaultId,
+          await invoke<string>(`${cryptOverlay.prefix}_upload_folder`, {
+            vaultId: cryptOverlay.vaultId,
             localPath: localFilePath,
             remoteParentPath: currentRemotePath,
           });
@@ -6839,9 +6883,9 @@ interface UpdateVerificationInfo {
             localPlaintextPath: localFilePath,
             remotePlainName: targetName,
           });
-        } else if (isRcloneCryptOverlay) {
-          await invoke<string>('rclone_crypt_provider_upload_file', {
-            vaultId: rcloneCryptVaultId,
+        } else if (cryptOverlay) {
+          await invoke<string>(`${cryptOverlay.prefix}_upload_file`, {
+            vaultId: cryptOverlay.vaultId,
             localPlaintextPath: localFilePath,
             remotePlainName: targetName,
           });
@@ -9547,7 +9591,7 @@ interface UpdateVerificationInfo {
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-            const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+            const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
             if (isAeroVaultOverlay) {
               await invoke<string>('aerovault_overlay_rename_entry', {
@@ -9555,9 +9599,9 @@ interface UpdateVerificationInfo {
                 entryPath: path,
                 newName,
               });
-            } else if (isRcloneCryptOverlay) {
-              await invoke<string>('rclone_crypt_provider_rename', {
-                vaultId: rcloneCryptVaultId,
+            } else if (cryptOverlay) {
+              await invoke<string>(`${cryptOverlay.prefix}_rename`, {
+                vaultId: cryptOverlay.vaultId,
                 fromEncryptedPath: path,
                 newPlainName: newName,
                 isDir: isDir ?? getRemoteFileIsDir(path),
@@ -9632,7 +9676,7 @@ interface UpdateVerificationInfo {
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
         const isProvider = usesProviderApi(protocol);
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-        const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+        const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
         if (isAeroVaultOverlay) {
           await invoke<string>('aerovault_overlay_rename_entry', {
@@ -9640,9 +9684,9 @@ interface UpdateVerificationInfo {
             entryPath: path,
             newName,
           });
-        } else if (isRcloneCryptOverlay) {
-          await invoke<string>('rclone_crypt_provider_rename', {
-            vaultId: rcloneCryptVaultId,
+        } else if (cryptOverlay) {
+          await invoke<string>(`${cryptOverlay.prefix}_rename`, {
+            vaultId: cryptOverlay.vaultId,
             fromEncryptedPath: path,
             newPlainName: newName,
             isDir: isDir ?? getRemoteFileIsDir(path),
@@ -9724,7 +9768,7 @@ interface UpdateVerificationInfo {
           const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
           const isProvider = usesProviderApi(protocol);
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-          const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+          const cryptOverlay = isProvider ? activeCryptOverlay() : null;
           const batchFile = batchRenameDialog?.files.find(f => f.path === oldPath);
 
           if (isAeroVaultOverlay) {
@@ -9733,9 +9777,9 @@ interface UpdateVerificationInfo {
               entryPath: oldPath,
               newName,
             });
-          } else if (isRcloneCryptOverlay) {
-            await invoke<string>('rclone_crypt_provider_rename', {
-              vaultId: rcloneCryptVaultId,
+          } else if (cryptOverlay) {
+            await invoke<string>(`${cryptOverlay.prefix}_rename`, {
+              vaultId: cryptOverlay.vaultId,
               fromEncryptedPath: oldPath,
               newPlainName: newName,
               isDir: batchFile?.isDir ?? getRemoteFileIsDir(oldPath),
@@ -9795,7 +9839,7 @@ interface UpdateVerificationInfo {
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-            const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+            const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
@@ -9804,9 +9848,9 @@ interface UpdateVerificationInfo {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 dirName: name,
               });
-            } else if (isRcloneCryptOverlay) {
-              await invoke<string>('rclone_crypt_provider_mkdir', {
-                vaultId: rcloneCryptVaultId,
+            } else if (cryptOverlay) {
+              await invoke<string>(`${cryptOverlay.prefix}_mkdir`, {
+                vaultId: cryptOverlay.vaultId,
                 plainName: name,
               });
             } else if (isProvider) {
@@ -12631,6 +12675,20 @@ interface UpdateVerificationInfo {
             }}
           />
         )}
+        {showAeroCryptUnlock && (
+          <AeroCryptUnlock
+            onClose={() => setShowAeroCryptUnlock(false)}
+            activeVaultId={aeroCryptVaultId}
+            onUnlocked={(vaultId) => {
+              setAeroCryptVaultId(vaultId);
+              void loadAeroCryptOverlayFiles(vaultId);
+            }}
+            onLocked={() => {
+              setAeroCryptVaultId(null);
+              void loadRemoteFiles(undefined, true, true);
+            }}
+          />
+        )}
         {rcloneCryptImportBanner && !rcloneCryptVaultId && (
           <div className="fixed bottom-12 right-6 z-40 max-w-sm rounded-lg border border-blue-400/40 bg-blue-500/10 dark:bg-blue-500/15 backdrop-blur shadow-xl p-4 flex flex-col gap-2 animate-scale-in">
             <div className="flex items-start gap-2">
@@ -13561,6 +13619,30 @@ interface UpdateVerificationInfo {
                       {usesProviderApi(getActiveProviderProtocol()) && (
                         <button
                           onClick={() => {
+                            if (aeroCryptVaultId) {
+                              const vaultId = aeroCryptVaultId;
+                              setAeroCryptVaultId(null);
+                              void invoke('aerocrypt_lock', { vaultId }).catch(() => { });
+                              void loadRemoteFiles(undefined, true, true);
+                            } else {
+                              setShowAeroCryptUnlock(true);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm flex items-center justify-center transition-colors ${aeroCryptVaultId
+                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                            : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
+                            }`}
+                          title={aeroCryptVaultId
+                            ? `${t('aerocryptNative.title')} ON`
+                            : `${t('aerocryptNative.title')} (${t('aerocryptNative.recommended')})`}
+                          aria-label={aeroCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
+                        >
+                          <OverlayIcon size={16} className={aeroCryptVaultId ? 'text-white' : ''} />
+                        </button>
+                      )}
+                      {usesProviderApi(getActiveProviderProtocol()) && (
+                        <button
+                          onClick={() => {
                             if (rcloneCryptVaultId) {
                               const vaultId = rcloneCryptVaultId;
                               setRcloneCryptVaultId(null);
@@ -13726,12 +13808,12 @@ interface UpdateVerificationInfo {
                       </div>
                       <input
                         type="text"
-                        value={isConnected ? (rcloneCryptVaultId ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
+                        value={isConnected ? ((rcloneCryptVaultId || aeroCryptVaultId) ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
                         onChange={(e) => {
-                          if (rcloneCryptVaultId) setCurrentRemoteDisplayPath(e.target.value);
+                          if (rcloneCryptVaultId || aeroCryptVaultId) setCurrentRemoteDisplayPath(e.target.value);
                           else setCurrentRemotePath(e.target.value);
                         }}
-                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value, undefined, !!rcloneCryptVaultId)}
+                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
                         disabled={!isConnected}
                         className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
                         title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
@@ -13773,6 +13855,15 @@ interface UpdateVerificationInfo {
                       >
                         <VaultIcon size={11} className="text-emerald-400" />
                         OVERLAY
+                      </span>
+                    )}
+                    {aeroCryptVaultId && (
+                      <span
+                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
+                        title={t('aerocryptNative.title')}
+                      >
+                        <OverlayIcon size={11} className="text-emerald-400" />
+                        AEROCRYPT
                       </span>
                     )}
                     {rcloneCryptVaultId && (
