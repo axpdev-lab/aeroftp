@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
       "encryptedUploadCompleted": "Titkosított feltöltés befejezve: {path}",
       "lock": "Réteg zárolása"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt profil (titkosított réteg)",
+      "hint": "Titkosítsa ezt a kapcsolatot átlátszóan: a kettős panel a neveket olvashatóan jeleníti meg, a feltöltések titkosítva, a letöltések visszafejtve. Csak az AeroFTP-ből olvasható ezzel a jelszóval.",
+      "kindNative": "AeroCrypt (natív)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Réteg jelszava",
+      "passwordStored": "Mentve (hagyja üresen a megtartáshoz)",
+      "scopeHint": "A fent megadott távoli és helyi útvonalak határozzák meg a titkosított hatókört (hagyja üresen a Távolit a teljes gyökér titkosításához)."
     }
   }
 }

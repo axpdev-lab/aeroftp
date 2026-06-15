@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fișier decriptat în {path}",
       "encryptedUploadCompleted": "Încărcare criptată finalizată: {path}",
       "lock": "Blochează stratul"
+    },
+    "aerocryptProfile": {
+      "enable": "Profil AeroCrypt (strat criptat)",
+      "hint": "Criptați această conexiune în mod transparent: panoul dublu afișează numele în clar, încărcările sunt criptate, iar descărcările decriptate. Lizibil doar din AeroFTP cu această parolă.",
+      "kindNative": "AeroCrypt (nativ)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Parola stratului",
+      "passwordStored": "Salvată (lăsați gol pentru a o păstra)",
+      "scopeHint": "Căile la distanță și locală indicate mai sus definesc domeniul criptat (lăsați câmpul La distanță gol pentru a cripta întreaga rădăcină)."
     }
   }
 }

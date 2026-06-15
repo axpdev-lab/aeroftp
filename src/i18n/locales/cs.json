@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Soubor dešifrován do {path}",
       "encryptedUploadCompleted": "Šifrované nahrání dokončeno: {path}",
       "lock": "Uzamknout vrstvu"
+    },
+    "aerocryptProfile": {
+      "enable": "Profil AeroCrypt (šifrovaná vrstva)",
+      "hint": "Šifrujte toto připojení transparentně: dvojitý panel zobrazuje čitelné názvy, nahrávané soubory se šifrují a stahované dešifrují. Čitelné pouze z AeroFTP s tímto heslem.",
+      "kindNative": "AeroCrypt (nativní)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Heslo vrstvy",
+      "passwordStored": "Uloženo (ponechte prázdné pro zachování)",
+      "scopeHint": "Vzdálená a místní cesta uvedené výše určují šifrovaný rozsah (ponechte Vzdálenou prázdnou pro zašifrování celého kořene)."
     }
   }
 }

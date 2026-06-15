@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Plik odszyfrowany do {path}",
       "encryptedUploadCompleted": "Zaszyfrowane wysyłanie zakończone: {path}",
       "lock": "Zablokuj nakładkę"
+    },
+    "aerocryptProfile": {
+      "enable": "Profil AeroCrypt (zaszyfrowana nakładka)",
+      "hint": "Szyfruj to połączenie w sposób przejrzysty: podwójny panel pokazuje czytelne nazwy, wysyłane pliki są szyfrowane, a pobierane odszyfrowywane. Czytelne tylko z poziomu AeroFTP przy użyciu tego hasła.",
+      "kindNative": "AeroCrypt (natywny)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Hasło nakładki",
+      "passwordStored": "Zapisane (pozostaw puste, aby zachować)",
+      "scopeHint": "Powyższe ścieżki zdalna i lokalna definiują zaszyfrowany zakres (pozostaw Zdalną pustą, aby zaszyfrować cały katalog główny)."
     }
   }
 }

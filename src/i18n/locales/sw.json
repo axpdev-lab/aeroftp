@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Faili limefichuliwa hadi {path}",
       "encryptedUploadCompleted": "Upakiaji uliosimbwa umekamilika: {path}",
       "lock": "Funga tabaka"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (safu iliyosimbwa)",
+      "hint": "Husimba muunganisho huu kwa uwazi: paneli mbili huonyesha majina yanayosomeka, vipakiwa husimbwa, vipakuliwa husimbuliwa. Husomeka tu kutoka AeroFTP kwa nenosiri hili.",
+      "kindNative": "AeroCrypt (asilia)",
+      "kindRclone": "Rclone Crypt (ushirikiano)",
+      "passwordPlaceholder": "Nenosiri la safu",
+      "passwordStored": "Imehifadhiwa (acha wazi ili kudumisha)",
+      "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima)."
     }
   }
 }

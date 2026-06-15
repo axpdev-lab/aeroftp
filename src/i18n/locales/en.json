@@ -4781,6 +4781,15 @@
             "verifyPolicy_size_and_mtime": "Size + timestamp",
             "verifyPolicy_full_checksum": "Full checksum",
             "verifyPolicyHint": "Post-transfer integrity check applied to each file."
+        },
+        "aerocryptProfile": {
+            "enable": "AeroCrypt Profile (encrypted overlay)",
+            "hint": "Encrypt this connection transparently: the dual-panel shows clear names, uploads encrypt, downloads decrypt. Readable only from AeroFTP with this password.",
+            "kindNative": "AeroCrypt (native)",
+            "kindRclone": "Rclone Crypt (interop)",
+            "passwordPlaceholder": "Overlay password",
+            "passwordStored": "Stored (leave blank to keep)",
+            "scopeHint": "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root)."
         }
     }
 }

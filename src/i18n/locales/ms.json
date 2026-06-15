@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fail dinyahsulit ke {path}",
       "encryptedUploadCompleted": "Muat naik tersulit selesai: {path}",
       "lock": "Kunci tindanan"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (lapisan tersulit)",
+      "hint": "Sulitkan sambungan ini secara telus: panel dwi memaparkan nama yang jelas, muat naik disulitkan, muat turun dinyahsulit. Hanya boleh dibaca daripada AeroFTP dengan kata laluan ini.",
+      "kindNative": "AeroCrypt (asli)",
+      "kindRclone": "Rclone Crypt (saling kendali)",
+      "passwordPlaceholder": "Kata laluan lapisan",
+      "passwordStored": "Disimpan (biarkan kosong untuk mengekalkan)",
+      "scopeHint": "Laluan Jauh dan Tempatan di atas menentukan skop tersulit (biarkan Jauh kosong untuk menyulitkan seluruh root)."
     }
   }
 }

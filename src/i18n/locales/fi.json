@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Tiedoston salaus purettu sijaintiin {path}",
       "encryptedUploadCompleted": "Salattu lähetys valmis: {path}",
       "lock": "Lukitse peittokerros"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt-profiili (salattu peittokerros)",
+      "hint": "Salaa tämä yhteys läpinäkyvästi: kaksoispaneeli näyttää selkokieliset nimet, lähetykset salataan ja lataukset puretaan. Luettavissa vain AeroFTP:stä tällä salasanalla.",
+      "kindNative": "AeroCrypt (natiivi)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Peittokerroksen salasana",
+      "passwordStored": "Tallennettu (jätä tyhjäksi säilyttääksesi)",
+      "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren)."
     }
   }
 }

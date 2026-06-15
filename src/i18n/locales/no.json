@@ -4800,6 +4800,15 @@
       "fileDecryptedTo": "Fil dekryptert til {path}",
       "encryptedUploadCompleted": "Kryptert opplasting fullført: {path}",
       "lock": "Lås overlegg"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt-profil (kryptert overlegg)",
+      "hint": "Krypter denne tilkoblingen transparent: dobbeltpanelet viser klare navn, opplastinger krypteres og nedlastinger dekrypteres. Bare lesbar fra AeroFTP med dette passordet.",
+      "kindNative": "AeroCrypt (native)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Overleggspassord",
+      "passwordStored": "Lagret (la stå tomt for å beholde)",
+      "scopeHint": "De eksterne og lokale stiene ovenfor definerer det krypterte omfanget (la Ekstern stå tom for å kryptere hele roten)."
     }
   }
 }

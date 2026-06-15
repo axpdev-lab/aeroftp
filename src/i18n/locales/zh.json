@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "文件已解密至 {path}",
       "encryptedUploadCompleted": "加密上传已完成：{path}",
       "lock": "锁定叠加层"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt 配置文件（加密叠加层）",
+      "hint": "透明地加密此连接：双面板显示可读的名称，上传时加密，下载时解密。仅可在使用此密码的 AeroFTP 中读取。",
+      "kindNative": "AeroCrypt（原生）",
+      "kindRclone": "Rclone Crypt（互操作）",
+      "passwordPlaceholder": "叠加层密码",
+      "passwordStored": "已存储（留空以保留）",
+      "scopeHint": "上方的远程和本地路径定义了加密范围（将远程留空以加密整个根目录）。"
     }
   }
 }

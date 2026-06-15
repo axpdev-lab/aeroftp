@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fails atšifrēts uz {path}",
       "encryptedUploadCompleted": "Šifrēta augšupielāde pabeigta: {path}",
       "lock": "Bloķēt pārklājumu"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt profils (šifrēts pārklājums)",
+      "hint": "Šifrējiet šo savienojumu caurspīdīgi: dubultpanelī redzami atklāti nosaukumi, augšupielādes tiek šifrētas, lejupielādes atšifrētas. Lasāms tikai no AeroFTP ar šo paroli.",
+      "kindNative": "AeroCrypt (vietējais)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Pārklājuma parole",
+      "passwordStored": "Saglabāta (atstājiet tukšu, lai paturētu)",
+      "scopeHint": "Iepriekš norādītie attālie un vietējie ceļi nosaka šifrēto tvērumu (atstājiet Attālo tukšu, lai šifrētu visu sakni)."
     }
   }
 }

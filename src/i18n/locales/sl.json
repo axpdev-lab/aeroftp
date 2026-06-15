@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Datoteka dešifrirana v {path}",
       "encryptedUploadCompleted": "Šifrirano nalaganje končano: {path}",
       "lock": "Zakleni sloj"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (šifrirana plast)",
+      "hint": "To povezavo šifrira pregledno: dvopanelni prikaz kaže razumljiva imena, nalaganja se šifrirajo, prenosi se dešifrirajo. Berljivo samo iz AeroFTP s tem geslom.",
+      "kindNative": "AeroCrypt (izvorni)",
+      "kindRclone": "Rclone Crypt (interoperabilnost)",
+      "passwordPlaceholder": "Geslo plasti",
+      "passwordStored": "Shranjeno (pustite prazno za ohranitev)",
+      "scopeHint": "Zgornji oddaljeni in lokalni poti določata šifrirani obseg (pustite oddaljeno pot prazno za šifriranje celotnega korena)."
     }
   }
 }

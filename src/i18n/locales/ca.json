@@ -4800,6 +4800,15 @@
       "fileDecryptedTo": "Fitxer desxifrat a {path}",
       "encryptedUploadCompleted": "Pujada xifrada completada: {path}",
       "lock": "Bloqueja la superposició"
+    },
+    "aerocryptProfile": {
+      "enable": "Perfil AeroCrypt (capa xifrada)",
+      "hint": "Xifra aquesta connexió de manera transparent: el plafó doble mostra els noms en clar, les pujades es xifren i les baixades es desxifren. Només es pot llegir des d'AeroFTP amb aquesta contrasenya.",
+      "kindNative": "AeroCrypt (natiu)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Contrasenya de la capa",
+      "passwordStored": "Desada (deixa-ho en blanc per mantenir-la)",
+      "scopeHint": "Els camins Remot i Local indicats a dalt defineixen l'abast xifrat (deixa Remot buit per xifrar tota l'arrel)."
     }
   }
 }

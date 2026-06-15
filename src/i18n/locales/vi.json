@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Đã giải mã tệp tới {path}",
       "encryptedUploadCompleted": "Tải lên đã mã hóa hoàn tất: {path}",
       "lock": "Khóa lớp phủ"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (lớp phủ mã hóa)",
+      "hint": "Mã hóa kết nối này một cách trong suốt: bảng đôi hiển thị tên rõ ràng, tải lên được mã hóa, tải xuống được giải mã. Chỉ đọc được từ AeroFTP với mật khẩu này.",
+      "kindNative": "AeroCrypt (gốc)",
+      "kindRclone": "Rclone Crypt (tương tác)",
+      "passwordPlaceholder": "Mật khẩu lớp phủ",
+      "passwordStored": "Đã lưu (để trống để giữ nguyên)",
+      "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc)."
     }
   }
 }

@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "File didekripsi ke {path}",
       "encryptedUploadCompleted": "Unggahan terenkripsi selesai: {path}",
       "lock": "Kunci overlay"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (lapisan terenkripsi)",
+      "hint": "Enkripsi koneksi ini secara transparan: panel ganda menampilkan nama yang jelas, unggahan dienkripsi, unduhan didekripsi. Hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
+      "kindNative": "AeroCrypt (asli)",
+      "kindRclone": "Rclone Crypt (interoperabilitas)",
+      "passwordPlaceholder": "Kata sandi lapisan",
+      "passwordStored": "Tersimpan (biarkan kosong untuk mempertahankan)",
+      "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root)."
     }
   }
 }

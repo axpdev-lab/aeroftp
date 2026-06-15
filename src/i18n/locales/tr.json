@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Dosya şuraya çözüldü: {path}",
       "encryptedUploadCompleted": "Şifreli yükleme tamamlandı: {path}",
       "lock": "Katmanı kilitle"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (şifreli katman)",
+      "hint": "Bu bağlantıyı şeffaf şekilde şifreler: çift panel okunabilir adları gösterir, yüklemeler şifrelenir, indirmeler şifresi çözülür. Yalnızca bu parolayla AeroFTP üzerinden okunabilir.",
+      "kindNative": "AeroCrypt (yerel)",
+      "kindRclone": "Rclone Crypt (birlikte çalışabilirlik)",
+      "passwordPlaceholder": "Katman parolası",
+      "passwordStored": "Kayıtlı (korumak için boş bırakın)",
+      "scopeHint": "Yukarıdaki Uzak ve Yerel yollar şifreli kapsamı tanımlar (tüm kökü şifrelemek için Uzak'ı boş bırakın)."
     }
   }
 }

@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Ficheiro decifrado para {path}",
       "encryptedUploadCompleted": "Envio cifrado concluído: {path}",
       "lock": "Bloquear sobreposição"
+    },
+    "aerocryptProfile": {
+      "enable": "Perfil AeroCrypt (camada cifrada)",
+      "hint": "Cifre esta ligação de forma transparente: o painel duplo mostra os nomes em claro, os envios são cifrados e as transferências decifradas. Legível apenas a partir do AeroFTP com esta palavra-passe.",
+      "kindNative": "AeroCrypt (nativo)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Palavra-passe da camada",
+      "passwordStored": "Guardada (deixe em branco para manter)",
+      "scopeHint": "Os caminhos Remoto e Local indicados acima definem o âmbito cifrado (deixe o Remoto vazio para cifrar toda a raiz)."
     }
   }
 }

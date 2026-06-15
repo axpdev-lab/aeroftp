@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
-import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -584,6 +584,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // freely). Mirrors profile.persistModeCredentials; only meaningful for
     // profiles whose provider/protocol belongs to a mode group.
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
+    // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
+    const [aeroCryptEnabled, setAeroCryptEnabled] = useState(false);
+    const [aeroCryptKind, setAeroCryptKind] = useState<'aerocrypt' | 'rclone-crypt'>('aerocrypt');
+    const [aeroCryptPassword, setAeroCryptPassword] = useState('');
+    const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
 
     // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
     // `mega-webdav /` (same idempotent call that warms the bridge for the
@@ -834,6 +839,36 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    // P3: the AeroCrypt overlay binding is offered for the same backends the
+    // runtime overlay toolbar button supports (App.tsx usesProviderApi: ftp/ftps
+    // + every non-ftp provider).
+    const overlayEligible = !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
+
+    // P3: build the overlay-binding profile fields + stash the overlay password
+    // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
+    // Always returns explicit values so disabling the toggle on an existing
+    // profile clears the binding. The password is never written to the JSON.
+    const aeroCryptOverlayFields = async (profileId: string, hadStored?: boolean): Promise<Partial<ServerProfile>> => {
+        if (!aeroCryptEnabled || !overlayEligible) {
+            return { aeroCryptOverlay: undefined, hasStoredAeroCryptPassword: false };
+        }
+        let pwStored = !!hadStored;
+        if (aeroCryptPassword && aeroCryptPassword.trim()) {
+            pwStored = await tryStoreCredential(`aerocrypt_overlay_pw_${profileId}`, aeroCryptPassword);
+        }
+        return {
+            aeroCryptOverlay: {
+                enabled: true,
+                kind: aeroCryptKind,
+                remoteScope: quickConnectDirs.remoteDir || '',
+                localScope: quickConnectDirs.localDir || '',
+                filenameEncryption: 'standard',
+                aead: 'auto',
+            },
+            hasStoredAeroCryptPassword: pwStored,
+        };
+    };
+
     // Resolved label of the active target mode (for the "Convert to X"
     // button). Falls back to the protocol string when the active mode
     // cannot be resolved.
@@ -1001,6 +1036,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 );
             }
 
+            const aeroFieldsEdit = await aeroCryptOverlayFields(editingProfileId, prevProfile?.hasStoredAeroCryptPassword);
             const updatedServers = existingServers.map((s: ServerProfile) => {
                 if (s.id === editingProfileId) {
                     return {
@@ -1018,6 +1054,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         persistModeCredentials: persistModeCredentials && inModeGroup,
                         providerId: selectedProviderId || s.providerId || (protocol === 'swift' ? 'blomp' : protocol === 'mega' ? 'mega' : undefined),
                         customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
+                        ...aeroFieldsEdit,
                     };
                 }
                 return s;
@@ -1070,6 +1107,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 );
             }
 
+            const aeroFieldsNew = await aeroCryptOverlayFields(newId);
             const newServer: ServerProfile = {
                 id: newId,
                 name: newName,
@@ -1085,6 +1123,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 persistModeCredentials: persistModeCredentials && inModeGroup,
                 providerId: selectedProviderId || (protocol === 'swift' ? 'blomp' : protocol === 'mega' ? 'mega' : undefined),
                 customIconUrl: customIconForSave,
+                ...aeroFieldsNew,
             };
 
             const newServers = [...existingServers, newServer];
@@ -1269,6 +1308,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
         const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
+        const aeroFields = await aeroCryptOverlayFields(newId);
         // Carry-over from the original profile when present: visual color
         // tag + favicon (sort position is handled by the insert index
         // below). Custom icon URL is already in component state via
@@ -1293,6 +1333,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             // every mode of a provider group points at the same account/storage,
             // so the usage + capacity stats stay valid until the next refresh.
             lastQuota: originalServer?.lastQuota,
+            ...aeroFields,
         };
 
         // Issue #215: when the user switched mode in edit, insert
@@ -1385,6 +1426,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
         const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
+        const aeroFields = await aeroCryptOverlayFields(newId);
         const newServer: ServerProfile = {
             id: newId,
             name: finalName,
@@ -1404,6 +1446,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             // Carry the cached storage quota: a convert stays on the same
             // account/storage, so usage + capacity remain valid (issue #215).
             lastQuota: originalServer.lastQuota,
+            ...aeroFields,
         };
 
         // Replace in slot: remove original, insert new at the same index
@@ -1554,6 +1597,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             localDir: profile.localInitialPath || ''
         });
 
+        // P3: hydrate the AeroCrypt overlay binding into the form. The password
+        // is never prefilled (it lives in the vault under aerocrypt_overlay_pw_<id>).
+        const overlayBinding = profile.aeroCryptOverlay;
+        setAeroCryptEnabled(!!overlayBinding?.enabled);
+        setAeroCryptKind(overlayBinding?.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt');
+        setAeroCryptPassword('');
+
         // Then load password from OS keyring asynchronously (if stored)
         const targetProfileId = profile.id;
         if (!profile.password && profile.hasStoredCredential) {
@@ -1602,6 +1652,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setFaviconForSave(undefined);
         setSaveConnection(false);
         setPersistModeCredentials(false);
+        setAeroCryptEnabled(false);
+        setAeroCryptKind('aerocrypt');
+        setAeroCryptPassword('');
         modeCredentialSnapshotsRef.current = {};
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
@@ -2153,6 +2206,58 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     />
                     {showIcon && renderIconPicker()}
                 </div>
+                {/* P3: AeroCrypt Profile. Bind an encrypted overlay to this
+                    profile so the standard dual-panel renders transparently
+                    decrypted (Filen/MEGA-style). Remote/local scope come from the
+                    paths above. Offered on every provider-API backend. */}
+                {overlayEligible && (
+                    <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-900/20 p-3 space-y-2">
+                        <Checkbox
+                            checked={aeroCryptEnabled}
+                            onChange={setAeroCryptEnabled}
+                            label={t('aerocryptProfile.enable')}
+                            labelClassName="text-sm font-medium"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.hint')}</p>
+                        {aeroCryptEnabled && (
+                            <div className="space-y-2 pt-1">
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAeroCryptKind('aerocrypt')}
+                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'aerocrypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}
+                                    >
+                                        {t('aerocryptProfile.kindNative')}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAeroCryptKind('rclone-crypt')}
+                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'rclone-crypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}
+                                    >
+                                        {t('aerocryptProfile.kindRclone')}
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type={showAeroCryptPassword ? 'text' : 'password'}
+                                        value={aeroCryptPassword}
+                                        onChange={(e) => setAeroCryptPassword(e.target.value)}
+                                        placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
+                                        className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAeroCryptPassword((v) => !v)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                    >
+                                        {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.scopeHint')}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
                 {/* Issue #215: persist credentials for every protocol of this
                     account so switching modes never asks again, even after a
                     restart. Only offered when the active provider/protocol is

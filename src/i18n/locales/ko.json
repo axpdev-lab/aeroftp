@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "파일이 {path}에 복호화되었습니다",
       "encryptedUploadCompleted": "암호화 업로드가 완료되었습니다: {path}",
       "lock": "오버레이 잠금"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt 프로필 (암호화 오버레이)",
+      "hint": "이 연결을 투명하게 암호화합니다. 듀얼 패널에는 알아볼 수 있는 이름이 표시되고, 업로드 시 암호화되며 다운로드 시 복호화됩니다. 이 비밀번호로 AeroFTP에서만 읽을 수 있습니다.",
+      "kindNative": "AeroCrypt (네이티브)",
+      "kindRclone": "Rclone Crypt (상호 운용)",
+      "passwordPlaceholder": "오버레이 비밀번호",
+      "passwordStored": "저장됨 (유지하려면 비워 두세요)",
+      "scopeHint": "위의 원격 및 로컬 경로가 암호화 범위를 정의합니다 (원격을 비워 두면 전체 루트를 암호화합니다)."
     }
   }
 }

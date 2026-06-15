@@ -4800,6 +4800,15 @@
       "fileDecryptedTo": "Ficheiro descifrado en {path}",
       "encryptedUploadCompleted": "Envío cifrado completado: {path}",
       "lock": "Bloquear superposición"
+    },
+    "aerocryptProfile": {
+      "enable": "Perfil AeroCrypt (capa cifrada)",
+      "hint": "Cifra esta conexión de forma transparente: o panel dobre mostra os nomes en claro, os envíos cífranse e as descargas descífranse. Só se pode ler desde AeroFTP con este contrasinal.",
+      "kindNative": "AeroCrypt (nativo)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Contrasinal da capa",
+      "passwordStored": "Gardado (deixa en branco para mantelo)",
+      "scopeHint": "As rutas Remota e Local indicadas arriba definen o ámbito cifrado (deixa Remota baleira para cifrar toda a raíz)."
     }
   }
 }

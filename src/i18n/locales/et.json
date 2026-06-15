@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fail dekrüpteeritud asukohta {path}",
       "encryptedUploadCompleted": "Krüpteeritud üleslaadimine lõpetatud: {path}",
       "lock": "Lukusta kattekiht"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt profiil (krüptitud kihistus)",
+      "hint": "Krüpti see ühendus läbipaistvalt: topeltpaneel kuvab nimed loetavalt, üleslaadimised krüptitakse ja allalaadimised dekrüptitakse. Loetav ainult AeroFTP-st selle parooliga.",
+      "kindNative": "AeroCrypt (natiivne)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Kihistuse parool",
+      "passwordStored": "Salvestatud (säilitamiseks jäta tühjaks)",
+      "scopeHint": "Ülal määratud kaug- ja kohalikud teed määravad krüptitud ulatuse (jäta Kaug tühjaks, et krüptida kogu juur)."
     }
   }
 }

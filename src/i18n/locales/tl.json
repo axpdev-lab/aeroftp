@@ -4800,6 +4800,15 @@
       "fileDecryptedTo": "Na-decrypt ang file sa {path}",
       "encryptedUploadCompleted": "Nakumpleto ang naka-encrypt na upload: {path}",
       "lock": "I-lock ang overlay"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt Profile (naka-encrypt na overlay)",
+      "hint": "I-encrypt ang koneksyong ito nang transparent: ipinapakita ng dual-panel ang malinaw na mga pangalan, naka-encrypt ang mga upload, nade-decrypt ang mga download. Mababasa lamang mula sa AeroFTP gamit ang password na ito.",
+      "kindNative": "AeroCrypt (native)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Password ng overlay",
+      "passwordStored": "Naka-store na (iwanang blangko para panatilihin)",
+      "scopeHint": "Tinutukoy ng mga Remote at Local na path sa itaas ang naka-encrypt na saklaw (iwanang walang laman ang Remote para i-encrypt ang buong root)."
     }
   }
 }

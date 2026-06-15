@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Bestand ontsleuteld naar {path}",
       "encryptedUploadCompleted": "Versleutelde upload voltooid: {path}",
       "lock": "Overlay vergrendelen"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt-profiel (versleutelde overlay)",
+      "hint": "Versleutel deze verbinding transparant: het dubbele paneel toont de namen leesbaar, uploads worden versleuteld en downloads ontsleuteld. Alleen leesbaar vanuit AeroFTP met dit wachtwoord.",
+      "kindNative": "AeroCrypt (native)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Overlaywachtwoord",
+      "passwordStored": "Opgeslagen (laat leeg om te behouden)",
+      "scopeHint": "De bovenstaande externe en lokale paden bepalen het versleutelde bereik (laat Extern leeg om de hele hoofdmap te versleutelen)."
     }
   }
 }

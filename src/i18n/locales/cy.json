@@ -4800,6 +4800,15 @@
       "fileDecryptedTo": "Ffeil wedi'i dadamgryptio i {path}",
       "encryptedUploadCompleted": "Llwytho i fyny amgryptiedig wedi'i gwblhau: {path}",
       "lock": "Cloi'r troshaen"
+    },
+    "aerocryptProfile": {
+      "enable": "Proffil AeroCrypt (troshaen wedi'i hamgryptio)",
+      "hint": "Amgryptiwch y cysylltiad hwn yn dryloyw: mae'r panel deuol yn dangos enwau clir, mae'r llwythi i fyny'n cael eu hamgryptio a'r lawrlwythiadau'n cael eu dadgryptio. Darllenadwy o AeroFTP yn unig gyda'r cyfrinair hwn.",
+      "kindNative": "AeroCrypt (cynhenid)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Cyfrinair y troshaen",
+      "passwordStored": "Wedi'i gadw (gadewch yn wag i'w gadw)",
+      "scopeHint": "Mae'r llwybrau Pell a Lleol uchod yn diffinio'r cwmpas wedi'i amgryptio (gadewch Pell yn wag i amgryptio'r gwreiddyn cyfan)."
     }
   }
 }

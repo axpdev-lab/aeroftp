@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fichier déchiffré vers {path}",
       "encryptedUploadCompleted": "Envoi chiffré terminé : {path}",
       "lock": "Verrouiller la superposition"
+    },
+    "aerocryptProfile": {
+      "enable": "Profil AeroCrypt (superposition chiffrée)",
+      "hint": "Chiffrez cette connexion de façon transparente : le double panneau affiche les noms en clair, les envois sont chiffrés, les téléchargements déchiffrés. Lisible uniquement depuis AeroFTP avec ce mot de passe.",
+      "kindNative": "AeroCrypt (natif)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Mot de passe de la superposition",
+      "passwordStored": "Enregistré (laisser vide pour conserver)",
+      "scopeHint": "Les chemins distant et local indiqués ci-dessus définissent la portée chiffrée (laissez le chemin distant vide pour chiffrer toute la racine)."
     }
   }
 }

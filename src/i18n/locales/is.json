@@ -4800,6 +4800,15 @@
       "fileDecryptedTo": "Skrá afkóðuð í {path}",
       "encryptedUploadCompleted": "Dulkóðaðri upphleðslu lokið: {path}",
       "lock": "Læsa yfirlagi"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt-snið (dulkóðað yfirlag)",
+      "hint": "Dulkóðaðu þessa tengingu á gagnsæjan hátt: tvöfalda spjaldið sýnir nöfnin læsileg, innhleðslur eru dulkóðaðar og niðurhal afkóðað. Aðeins læsilegt úr AeroFTP með þessu lykilorði.",
+      "kindNative": "AeroCrypt (innbyggt)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Lykilorð yfirlags",
+      "passwordStored": "Vistað (skildu eftir autt til að halda)",
+      "scopeHint": "Fjar- og staðbundnu slóðirnar að ofan skilgreina dulkóðaða umfangið (skildu Fjar eftir autt til að dulkóða alla rótina)."
     }
   }
 }

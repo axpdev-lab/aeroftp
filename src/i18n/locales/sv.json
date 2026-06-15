@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Fil dekrypterad till {path}",
       "encryptedUploadCompleted": "Krypterad uppladdning slutförd: {path}",
       "lock": "Lås överlägg"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt-profil (krypterat överlägg)",
+      "hint": "Kryptera den här anslutningen transparent: dubbelpanelen visar klartextnamn, uppladdningar krypteras och nedladdningar dekrypteras. Endast läsbar från AeroFTP med detta lösenord.",
+      "kindNative": "AeroCrypt (inbyggt)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Lösenord för överlägg",
+      "passwordStored": "Sparat (lämna tomt för att behålla)",
+      "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten)."
     }
   }
 }

@@ -4781,6 +4781,15 @@
       "fileDecryptedTo": "Failas iššifruotas į {path}",
       "encryptedUploadCompleted": "Užšifruotas įkėlimas baigtas: {path}",
       "lock": "Užrakinti perdangą"
+    },
+    "aerocryptProfile": {
+      "enable": "AeroCrypt profilis (šifruotas perdangos sluoksnis)",
+      "hint": "Šifruokite šį ryšį skaidriai: dvigubame skydelyje rodomi atviri pavadinimai, įkėlimai šifruojami, atsisiuntimai iššifruojami. Skaitoma tik iš AeroFTP su šiuo slaptažodžiu.",
+      "kindNative": "AeroCrypt (savasis)",
+      "kindRclone": "Rclone Crypt (interop)",
+      "passwordPlaceholder": "Perdangos slaptažodis",
+      "passwordStored": "Įrašytas (palikite tuščią, kad išliktų)",
+      "scopeHint": "Aukščiau nurodyti nuotolinis ir vietinis keliai apibrėžia šifruotą sritį (palikite Nuotolinį tuščią, kad būtų užšifruota visa šaknis)."
     }
   }
 }

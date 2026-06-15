@@ -4781,6 +4781,15 @@
                 "colAction": "Azione"
             },
             "launcherScheduler": "Pianificatore"
+        },
+        "aerocryptProfile": {
+            "enable": "Profilo AeroCrypt (overlay cifrato)",
+            "hint": "Cifra questa connessione in modo trasparente: il dual-panel mostra i nomi in chiaro, gli upload cifrano, i download decifrano. Leggibile solo da AeroFTP con questa password.",
+            "kindNative": "AeroCrypt (nativo)",
+            "kindRclone": "Rclone Crypt (interop)",
+            "passwordPlaceholder": "Password overlay",
+            "passwordStored": "Salvata (lascia vuoto per mantenerla)",
+            "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root)."
         }
     }
 }
