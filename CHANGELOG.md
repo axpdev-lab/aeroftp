@@ -122,6 +122,19 @@ Secondary and experimental. A full-screen dual-pane file manager in the CLI (`ae
 #### Changed
 - **russh upgraded to 0.61.2** (with russh-sftp 2.1.2), clearing the long-deferred SSH advisories (HIGH GHSA-wwx6-x28x-8259 and MEDIUM GHSA-hpv4-5h6f-wqr3 plus the SFTP parsing advisories). The upgrade was gated on an SFTP live test (connect, listing, download, upload, stat, recursive delete including dotfiles, df) that passed byte-intact against a real server, and two suppressions are removed from the audit config.
 
+### AeroFile and Modal UX
+
+#### Added
+- **Rubber-band selection and click-to-deselect in AeroFile**: drag a selection box over the file area to select multiple items in all three views (list, grid, large icons), with Ctrl/Cmd/Shift to extend the selection and edge auto-scroll, and click an empty area to clear the selection. (@EhudKirsh, #270)
+- **AeroImage lossless or lossy labels**: every image edit is marked lossless or lossy with an accurate per-operation and per-format mapping (JPEG and GIF re-encode lossy, PNG/WebP/BMP/TIFF stay lossless), plus a per-format note in the Save dialog. (@EhudKirsh, #270)
+- **Draggable dialogs everywhere**: every single modal can now be moved by dragging its header, so a dialog never blocks the content underneath it.
+- **Guarded close on busy or unsaved modals**: a modal that is running an operation (a transfer or a sync) or holding unsaved edits no longer closes on a stray click outside; closing it asks whether to stop or discard, or to keep working.
+- **Cancel a local AeroSync run**: the AeroSync dialog's local mirror can be stopped mid-run from a Stop control, and the dialog guards its close while a sync is in flight. (extends @rockaut, #332)
+
+#### Changed
+- **Crypt overlay entries are provider-aware**: the AeroCrypt and rclone-crypt overlay open/create entries and the connection-form toggle now appear only on backends where a transparent encryption overlay applies, and are hidden on media-only APIs (Immich, ImageKit, Uploadcare, Cloudinary, Google Photos) and code hosting (GitHub, GitLab) where it does not.
+- **Account chooser readability**: the account picker reuses the lock-screen backdrop so the chosen pattern stays visible in light mode and the account cards stand out, and the My Servers count reads "X / Y" consistently.
+
 ### Windows and Cross-Platform Fixes
 
 #### Fixed
