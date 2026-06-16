@@ -87,6 +87,7 @@ pub struct RcloneCryptKeys {
     pub data_key: [u8; 32],
     pub name_tweak: [u8; 16],
     pub filename_encryption: FilenameEncryption,
+    pub off_suffix: String,
     #[allow(dead_code)] // Used in Phase 4 directory traversal
     pub directory_name_encryption: bool,
 }
@@ -674,6 +675,7 @@ use tokio::sync::Mutex;
 pub struct RcloneCryptVaultInfo {
     pub vault_id: String,
     pub filename_encryption: FilenameEncryption,
+    pub off_suffix: String,
     pub directory_name_encryption: bool,
 }
 
@@ -703,6 +705,7 @@ pub async fn rclone_crypt_unlock(
     password: String,
     salt: Option<String>,
     filename_encryption: Option<String>,
+    suffix: Option<String>,
     directory_name_encryption: Option<bool>,
 ) -> Result<RcloneCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
@@ -716,6 +719,7 @@ pub async fn rclone_crypt_unlock(
         Some("obfuscate") => FilenameEncryption::Obfuscate,
         _ => FilenameEncryption::Standard,
     };
+    let off_suffix = resolve_off_suffix(suffix.as_deref());
     let dne = directory_name_encryption.unwrap_or(true);
 
     let vault_id = uuid::Uuid::new_v4().to_string();
@@ -724,12 +728,14 @@ pub async fn rclone_crypt_unlock(
         data_key,
         name_tweak,
         filename_encryption: fe,
+        off_suffix: off_suffix.clone(),
         directory_name_encryption: dne,
     };
 
     let info = RcloneCryptVaultInfo {
         vault_id: vault_id.clone(),
         filename_encryption: fe,
+        off_suffix,
         directory_name_encryption: dne,
     };
 
@@ -763,7 +769,15 @@ pub async fn rclone_crypt_decrypt_name(
     let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
 
     if keys.filename_encryption == FilenameEncryption::Off {
-        return Ok(encrypted_name);
+        let name = if keys.off_suffix.is_empty() {
+            encrypted_name
+        } else {
+            encrypted_name
+                .strip_suffix(keys.off_suffix.as_str())
+                .unwrap_or(&encrypted_name)
+                .to_string()
+        };
+        return Ok(name);
     }
 
     if keys.filename_encryption == FilenameEncryption::Obfuscate {
@@ -784,7 +798,10 @@ pub async fn rclone_crypt_encrypt_name(
     let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
 
     if keys.filename_encryption == FilenameEncryption::Off {
-        return Ok(plain_name);
+        if keys.off_suffix.is_empty() {
+            return Ok(plain_name);
+        }
+        return Ok(format!("{}{}", plain_name, keys.off_suffix));
     }
 
     if keys.filename_encryption == FilenameEncryption::Obfuscate {

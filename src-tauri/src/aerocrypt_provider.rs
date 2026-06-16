@@ -527,7 +527,9 @@ pub async fn aerocrypt_provider_upload_file(
     vault_id: String,
     local_plaintext_path: String,
     remote_plain_name: Option<String>,
+    overwrite: Option<bool>,
 ) -> Result<String, String> {
+    let overwrite = overwrite.unwrap_or(false);
     validate_path(&local_plaintext_path)?;
     let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_plaintext_path))
         .map_err(|e| format!("Failed to inspect local file: {}", e))?;
@@ -570,6 +572,12 @@ pub async fn aerocrypt_provider_upload_file(
 
     let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
     let remote_encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    if !overwrite && provider.stat(&remote_encrypted_path).await.is_ok() {
+        return Err(format!(
+            "Encrypted target already exists: {}",
+            remote_encrypted_path
+        ));
+    }
     let temp_path = std::env::temp_dir().join(format!(
         "aeroftp_aerocrypt_upload_{}_{}.bin",
         chrono::Utc::now().timestamp_millis(),
@@ -691,7 +699,9 @@ pub async fn aerocrypt_provider_upload_folder(
     vault_id: String,
     local_path: String,
     remote_parent_path: Option<String>,
+    overwrite: Option<bool>,
 ) -> Result<String, String> {
+    let overwrite = overwrite.unwrap_or(false);
     validate_path(&local_path)?;
     let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_path))
         .map_err(|e| format!("Failed to inspect local folder: {}", e))?;
@@ -733,6 +743,9 @@ pub async fn aerocrypt_provider_upload_folder(
             .unwrap_or_else(|_| parent_remote.clone());
         let root_enc_name = encode_name(&master_key, &local_root_name)?;
         let root_remote = join_remote_path(&resolved_parent, &root_enc_name);
+        if !overwrite && provider.stat(&root_remote).await.is_ok() {
+            return Err(format!("Encrypted target already exists: {}", root_remote));
+        }
         let _ = provider.mkdir(&root_remote).await; // best-effort: may already exist
 
         let mut stack: Vec<(std::path::PathBuf, String, usize)> =
@@ -779,6 +792,12 @@ pub async fn aerocrypt_provider_upload_folder(
                     let _ = provider.mkdir(&encoded_remote).await;
                     stack.push((entry_path, encoded_remote, depth + 1));
                 } else if entry_meta.is_file() {
+                    if !overwrite && provider.stat(&encoded_remote).await.is_ok() {
+                        return Err(format!(
+                            "Encrypted target already exists: {}",
+                            encoded_remote
+                        ));
+                    }
                     let plaintext = tokio::fs::read(&entry_path)
                         .await
                         .map_err(|e| format!("Failed to read {}: {}", entry_path.display(), e))?;

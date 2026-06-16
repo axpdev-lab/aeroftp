@@ -1341,7 +1341,7 @@ async fn rclone_crypt_provider_list(
     path: Option<String>,
     plain_path: Option<bool>,
 ) -> Result<RcloneCryptBrowserListResponse, String> {
-    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
@@ -1351,6 +1351,7 @@ async fn rclone_crypt_provider_list(
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
+            keys.off_suffix.clone(),
             keys.directory_name_encryption,
         )
     };
@@ -1359,6 +1360,7 @@ async fn rclone_crypt_provider_list(
         data_key,
         name_tweak,
         filename_encryption: mode,
+        off_suffix,
         directory_name_encryption,
     };
 
@@ -1400,7 +1402,11 @@ async fn rclone_crypt_provider_list(
         }
 
         let (decrypted_name, decrypt_ok) = match mode {
-            rclone_crypt::FilenameEncryption::Off => (entry.name.clone(), true),
+            rclone_crypt::FilenameEncryption::Off => (
+                rclone_overlay_decode_name(&keys, &keys.name_tweak, &entry.name, entry.is_dir)
+                    .unwrap_or_else(|_| entry.name.clone()),
+                true,
+            ),
             rclone_crypt::FilenameEncryption::Standard => {
                 if entry.is_dir && !directory_name_encryption {
                     (entry.name.clone(), true)
@@ -1452,7 +1458,7 @@ async fn rclone_crypt_provider_mkdir(
 ) -> Result<String, String> {
     validate_single_remote_name(&plain_name)?;
 
-    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
@@ -1462,6 +1468,7 @@ async fn rclone_crypt_provider_mkdir(
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
+            keys.off_suffix.clone(),
             keys.directory_name_encryption,
         )
     };
@@ -1470,6 +1477,7 @@ async fn rclone_crypt_provider_mkdir(
         data_key,
         name_tweak,
         filename_encryption: mode,
+        off_suffix,
         directory_name_encryption,
     };
 
@@ -1499,7 +1507,7 @@ async fn rclone_crypt_provider_rename(
 ) -> Result<String, String> {
     validate_single_remote_name(&new_plain_name)?;
 
-    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
@@ -1509,6 +1517,7 @@ async fn rclone_crypt_provider_rename(
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
+            keys.off_suffix.clone(),
             keys.directory_name_encryption,
         )
     };
@@ -1517,6 +1526,7 @@ async fn rclone_crypt_provider_rename(
         data_key,
         name_tweak,
         filename_encryption: mode,
+        off_suffix,
         directory_name_encryption,
     };
 
@@ -1586,7 +1596,9 @@ async fn rclone_crypt_provider_upload_file(
     vault_id: String,
     local_plaintext_path: String,
     remote_plain_name: Option<String>,
+    overwrite: Option<bool>,
 ) -> Result<String, String> {
+    let overwrite = overwrite.unwrap_or(false);
     validate_path(&local_plaintext_path)?;
     let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_plaintext_path))
         .map_err(|e| format!("Failed to inspect local file: {}", e))?;
@@ -1597,7 +1609,7 @@ async fn rclone_crypt_provider_upload_file(
         return Err("Local plaintext path must be a regular file".to_string());
     }
 
-    let (name_key, data_key, name_tweak, mode) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
@@ -1607,6 +1619,7 @@ async fn rclone_crypt_provider_upload_file(
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
+            keys.off_suffix.clone(),
         )
     };
 
@@ -1639,7 +1652,13 @@ async fn rclone_crypt_provider_upload_file(
         .ok_or_else(|| "Cannot determine destination filename".to_string())?;
 
     let encrypted_name = match mode {
-        rclone_crypt::FilenameEncryption::Off => plain_name.clone(),
+        rclone_crypt::FilenameEncryption::Off => {
+            if off_suffix.is_empty() {
+                plain_name.clone()
+            } else {
+                format!("{}{}", plain_name, off_suffix)
+            }
+        }
         rclone_crypt::FilenameEncryption::Standard => {
             rclone_crypt::encrypt_name(&name_key, &name_tweak, &plain_name)
                 .map_err(|e| format!("Filename encryption failed: {}", e))?
@@ -1651,6 +1670,12 @@ async fn rclone_crypt_provider_upload_file(
     };
 
     let remote_encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    if !overwrite && provider.stat(&remote_encrypted_path).await.is_ok() {
+        return Err(format!(
+            "Encrypted target already exists: {}",
+            remote_encrypted_path
+        ));
+    }
     let temp_path = std::env::temp_dir().join(format!(
         "aeroftp_rclonecrypt_upload_{}_{}.bin",
         chrono::Utc::now().timestamp_millis(),
@@ -1691,12 +1716,20 @@ fn rclone_overlay_encode_name(
     plain_name: &str,
     is_dir: bool,
 ) -> Result<String, String> {
-    if !rclone_overlay_name_is_encrypted(keys, is_dir) {
+    if keys.filename_encryption != rclone_crypt::FilenameEncryption::Off
+        && !rclone_overlay_name_is_encrypted(keys, is_dir)
+    {
         return Ok(plain_name.to_string());
     }
 
     match keys.filename_encryption {
-        rclone_crypt::FilenameEncryption::Off => Ok(plain_name.to_string()),
+        rclone_crypt::FilenameEncryption::Off => {
+            if is_dir || keys.off_suffix.is_empty() {
+                Ok(plain_name.to_string())
+            } else {
+                Ok(format!("{}{}", plain_name, keys.off_suffix))
+            }
+        }
         rclone_crypt::FilenameEncryption::Standard => {
             rclone_crypt::encrypt_name(&keys.name_key, dir_iv, plain_name)
         }
@@ -1712,12 +1745,23 @@ fn rclone_overlay_decode_name(
     encoded_name: &str,
     is_dir: bool,
 ) -> Result<String, String> {
-    if !rclone_overlay_name_is_encrypted(keys, is_dir) {
+    if keys.filename_encryption != rclone_crypt::FilenameEncryption::Off
+        && !rclone_overlay_name_is_encrypted(keys, is_dir)
+    {
         return Ok(encoded_name.to_string());
     }
 
     match keys.filename_encryption {
-        rclone_crypt::FilenameEncryption::Off => Ok(encoded_name.to_string()),
+        rclone_crypt::FilenameEncryption::Off => {
+            if is_dir || keys.off_suffix.is_empty() {
+                Ok(encoded_name.to_string())
+            } else {
+                Ok(encoded_name
+                    .strip_suffix(keys.off_suffix.as_str())
+                    .unwrap_or(encoded_name)
+                    .to_string())
+            }
+        }
         rclone_crypt::FilenameEncryption::Standard => {
             rclone_crypt::decrypt_name(&keys.name_key, dir_iv, encoded_name)
         }
@@ -1740,7 +1784,7 @@ async fn rclone_crypt_provider_download_folder(
         .await
         .map_err(|e| format!("Failed to create local destination: {}", e))?;
 
-    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
@@ -1750,6 +1794,7 @@ async fn rclone_crypt_provider_download_folder(
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
+            keys.off_suffix.clone(),
             keys.directory_name_encryption,
         )
     };
@@ -1758,6 +1803,7 @@ async fn rclone_crypt_provider_download_folder(
         data_key,
         name_tweak,
         filename_encryption: mode,
+        off_suffix,
         directory_name_encryption,
     };
 
@@ -1869,7 +1915,9 @@ async fn rclone_crypt_provider_upload_folder(
     vault_id: String,
     local_path: String,
     remote_parent_path: Option<String>,
+    overwrite: Option<bool>,
 ) -> Result<String, String> {
+    let overwrite = overwrite.unwrap_or(false);
     crate::filesystem::validate_path(&local_path)?;
     let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_path))
         .map_err(|e| format!("Failed to inspect local folder: {}", e))?;
@@ -1880,7 +1928,7 @@ async fn rclone_crypt_provider_upload_folder(
         return Err("Local path must be a directory".to_string());
     }
 
-    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
@@ -1890,6 +1938,7 @@ async fn rclone_crypt_provider_upload_folder(
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
+            keys.off_suffix.clone(),
             keys.directory_name_encryption,
         )
     };
@@ -1898,6 +1947,7 @@ async fn rclone_crypt_provider_upload_folder(
         data_key,
         name_tweak,
         filename_encryption: mode,
+        off_suffix,
         directory_name_encryption,
     };
 
@@ -1931,6 +1981,9 @@ async fn rclone_crypt_provider_upload_folder(
         let root_enc_name =
             rclone_overlay_encode_name(&keys, &keys.name_tweak, &local_root_name, true)?;
         let root_remote = join_remote_path(&resolved_parent, &root_enc_name);
+        if !overwrite && provider.stat(&root_remote).await.is_ok() {
+            return Err(format!("Encrypted target already exists: {}", root_remote));
+        }
         let _ = provider.mkdir(&root_remote).await; // best-effort: may already exist
 
         let mut stack: Vec<(std::path::PathBuf, String, usize)> =
@@ -1982,6 +2035,12 @@ async fn rclone_crypt_provider_upload_folder(
                     let _ = provider.mkdir(&encoded_remote).await;
                     stack.push((entry_path, encoded_remote, depth + 1));
                 } else if entry_meta.is_file() {
+                    if !overwrite && provider.stat(&encoded_remote).await.is_ok() {
+                        return Err(format!(
+                            "Encrypted target already exists: {}",
+                            encoded_remote
+                        ));
+                    }
                     let plaintext = tokio::fs::read(&entry_path)
                         .await
                         .map_err(|e| format!("Failed to read {}: {}", entry_path.display(), e))?;
@@ -2026,6 +2085,7 @@ async fn rclone_crypt_provider_create_remote(
     password: String,
     salt: Option<String>,
     filename_encryption: Option<String>,
+    suffix: Option<String>,
     directory_name_encryption: Option<bool>,
     target_subpath: Option<String>,
 ) -> Result<rclone_crypt::RcloneCryptVaultInfo, String> {
@@ -2036,6 +2096,7 @@ async fn rclone_crypt_provider_create_remote(
         Some("obfuscate") => rclone_crypt::FilenameEncryption::Obfuscate,
         _ => rclone_crypt::FilenameEncryption::Standard,
     };
+    let off_suffix = rclone_crypt::resolve_off_suffix(suffix.as_deref());
     let dir_name_enc = directory_name_encryption.unwrap_or(true);
 
     {
@@ -2071,6 +2132,7 @@ async fn rclone_crypt_provider_create_remote(
     let info = rclone_crypt::RcloneCryptVaultInfo {
         vault_id: vault_id.clone(),
         filename_encryption: mode,
+        off_suffix: off_suffix.clone(),
         directory_name_encryption: dir_name_enc,
     };
     let keys = rclone_crypt::RcloneCryptKeys {
@@ -2078,6 +2140,7 @@ async fn rclone_crypt_provider_create_remote(
         data_key,
         name_tweak,
         filename_encryption: mode,
+        off_suffix,
         directory_name_encryption: dir_name_enc,
     };
     rclone_state.vaults.lock().await.insert(vault_id, keys);
@@ -16511,6 +16574,7 @@ mod overlay_helpers_tests {
             data_key,
             name_tweak,
             filename_encryption: rclone_crypt::FilenameEncryption::Standard,
+            off_suffix: rclone_crypt::resolve_off_suffix(None),
             directory_name_encryption: true,
         };
 
@@ -16537,6 +16601,7 @@ mod overlay_helpers_tests {
             data_key,
             name_tweak,
             filename_encryption: rclone_crypt::FilenameEncryption::Standard,
+            off_suffix: rclone_crypt::resolve_off_suffix(None),
             directory_name_encryption: false,
         };
 
@@ -16565,6 +16630,33 @@ mod overlay_helpers_tests {
     }
 
     #[test]
+    fn rclone_overlay_off_mode_applies_file_suffix_only() {
+        let (name_key, data_key, name_tweak) =
+            rclone_crypt::derive_keys_with_tweak("test-password-179", "test-salt-179").unwrap();
+        let keys = rclone_crypt::RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: rclone_crypt::FilenameEncryption::Off,
+            off_suffix: rclone_crypt::resolve_off_suffix(None),
+            directory_name_encryption: true,
+        };
+
+        assert_eq!(
+            rclone_overlay_encode_name(&keys, &keys.name_tweak, "docs", true).unwrap(),
+            "docs"
+        );
+        assert_eq!(
+            rclone_overlay_encode_name(&keys, &keys.name_tweak, "report.txt", false).unwrap(),
+            "report.txt.bin"
+        );
+        assert_eq!(
+            rclone_overlay_decode_name(&keys, &keys.name_tweak, "report.txt.bin", false).unwrap(),
+            "report.txt"
+        );
+    }
+
+    #[test]
     fn rclone_overlay_path_roundtrip_for_address_bar() {
         let (name_key, data_key, name_tweak) =
             rclone_crypt::derive_keys_with_tweak("test-password-179", "test-salt-179").unwrap();
@@ -16573,6 +16665,7 @@ mod overlay_helpers_tests {
             data_key,
             name_tweak,
             filename_encryption: rclone_crypt::FilenameEncryption::Standard,
+            off_suffix: rclone_crypt::resolve_off_suffix(None),
             directory_name_encryption: true,
         };
 

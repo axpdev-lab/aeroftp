@@ -5129,6 +5129,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         | ProviderError::NetworkError(_) => 1,
         ProviderError::NotFound(_) => 2,
         ProviderError::PermissionDenied(_) => 3,
+        ProviderError::TransferFailed(msg) if provider_error_message_looks_not_found(msg) => 2,
         ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
@@ -5141,6 +5142,15 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::IoError(_) => 11,
         ProviderError::Unknown(_) | ProviderError::Other(_) => 99,
     }
+}
+
+fn provider_error_message_looks_not_found(message: &str) -> bool {
+    let msg = message.to_ascii_lowercase();
+    msg.contains("no such file")
+        || msg.contains("not found")
+        || msg.contains("does not exist")
+        || msg.contains("file not exists")
+        || msg.contains("404")
 }
 
 /// Reject a target file/folder name containing a character the active
@@ -38264,6 +38274,7 @@ async fn cmd_crypt_put(
         let mut bytes_plain = 0u64;
         let mut entries_seen = 0usize;
         let mut errors: Vec<String> = Vec::new();
+        let mut immutable_conflicts = 0u64;
 
         while let Some((ldir, rdir, rel, depth)) = stack.pop() {
             if depth >= CRYPT_OVERLAY_MAX_DEPTH {
@@ -38320,6 +38331,11 @@ async fn cmd_crypt_put(
                     let _ = provider.mkdir(&child_remote).await; // best-effort
                     stack.push((ent.path(), child_remote, child_rel, depth + 1));
                 } else if meta.is_file() {
+                    if cli.immutable && provider.stat(&child_remote).await.is_ok() {
+                        immutable_conflicts += 1;
+                        errors.push(format!("{} already exists (--immutable)", child_rel));
+                        continue;
+                    }
                     let plaintext = match std::fs::read(ent.path()) {
                         Ok(d) => d,
                         Err(e) => {
@@ -38370,6 +38386,7 @@ async fn cmd_crypt_put(
                     "status": if errors.is_empty() { "ok" } else { "partial" },
                     "files": files_uploaded,
                     "bytes": bytes_plain,
+                    "immutable_conflicts": immutable_conflicts,
                     "errors": errors,
                 }));
             }
@@ -38387,7 +38404,13 @@ async fn cmd_crypt_put(
                 }
             }
         }
-        return if errors.is_empty() { 0 } else { 4 };
+        return if errors.is_empty() {
+            0
+        } else if immutable_conflicts > 0 && errors.len() as u64 == immutable_conflicts {
+            9
+        } else {
+            4
+        };
     }
 
     // Read local file
@@ -38421,6 +38444,16 @@ async fn cmd_crypt_put(
         }
     };
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
+
+    if cli.immutable && provider.stat(&remote_file).await.is_ok() {
+        print_error(
+            format,
+            &format!("{} already exists (--immutable)", filename),
+            9,
+        );
+        let _ = provider.disconnect().await;
+        return 9;
+    }
 
     // Write encrypted data to tempfile, upload
     let tmp = match tempfile::NamedTempFile::new() {
@@ -38836,6 +38869,16 @@ async fn cmd_rclone_crypt_put(
 
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
     let start = Instant::now();
+
+    if cli.immutable && provider.stat(&remote_file).await.is_ok() {
+        print_error(
+            format,
+            &format!("{} already exists (--immutable)", plain_name),
+            9,
+        );
+        let _ = provider.disconnect().await;
+        return 9;
+    }
 
     let tmp = match NamedTempFile::new() {
         Ok(v) => v,
@@ -40464,6 +40507,47 @@ async fn cmd_check(
     }
 }
 
+fn decrypt_rclone_crypt_rel_path(
+    name_key: &[u8; 32],
+    name_tweak: &[u8; 16],
+    encrypted_rel_path: &str,
+    filename_encryption: &str,
+    off_suffix: &str,
+) -> Result<String, String> {
+    let components: Vec<&str> = encrypted_rel_path.split('/').collect();
+    let last_idx = components.len().saturating_sub(1);
+    let mut decrypted = String::new();
+
+    for (idx, comp) in components.iter().enumerate() {
+        if comp.is_empty() {
+            return Err("empty path component".to_string());
+        }
+
+        let dec_comp = match filename_encryption {
+            "off" => {
+                // Only the leaf carries the suffix; directory names do not.
+                if idx == last_idx && !off_suffix.is_empty() {
+                    comp.strip_suffix(off_suffix).unwrap_or(comp).to_string()
+                } else {
+                    comp.to_string()
+                }
+            }
+            "obfuscate" => ftp_client_gui_lib::rclone_crypt::deobfuscate_name(name_tweak, comp)?,
+            "standard" => {
+                ftp_client_gui_lib::rclone_crypt::decrypt_name(name_key, name_tweak, comp)?
+            }
+            other => return Err(format!("unsupported filename_encryption={}", other)),
+        };
+
+        if !decrypted.is_empty() {
+            decrypted.push('/');
+        }
+        decrypted.push_str(&dec_comp);
+    }
+
+    Ok(decrypted)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_cryptcheck(
     url: &str,
@@ -40483,9 +40567,13 @@ async fn cmd_cryptcheck(
     // With name encryption off, AeroFTP/rclone tag objects with a suffix
     // (default ".bin"); strip it from the leaf before comparing to local.
     let off_suffix = ftp_client_gui_lib::rclone_crypt::resolve_off_suffix(suffix);
-
-    if filename_encryption == "obfuscate" {
-        print_error(format, "filename_encryption=obfuscate is not yet supported (see APPENDIX-S §\"Chiusura finale richiesta\")", 5);
+    let filename_mode = filename_encryption.trim().to_ascii_lowercase();
+    if !matches!(filename_mode.as_str(), "standard" | "obfuscate" | "off") {
+        print_error(
+            format,
+            &format!("unsupported filename_encryption={}", filename_encryption),
+            5,
+        );
         return 5;
     }
 
@@ -40550,38 +40638,13 @@ async fn cmd_cryptcheck(
             continue;
         }
 
-        let components: Vec<&str> = r.rel_path.split('/').collect();
-        let last_idx = components.len().saturating_sub(1);
-        let mut current_dec_dir = String::new();
-        let mut ok = true;
-
-        for (idx, comp) in components.iter().enumerate() {
-            let dec_comp = if filename_encryption == "off" {
-                // Only the leaf carries the suffix; directory names do not.
-                if idx == last_idx && !off_suffix.is_empty() {
-                    comp.strip_suffix(off_suffix.as_str())
-                        .unwrap_or(comp)
-                        .to_string()
-                } else {
-                    comp.to_string()
-                }
-            } else {
-                match ftp_client_gui_lib::rclone_crypt::decrypt_name(&name_key, &name_tweak, comp) {
-                    Ok(n) => n,
-                    Err(_) => {
-                        ok = false;
-                        break;
-                    }
-                }
-            };
-
-            if !current_dec_dir.is_empty() {
-                current_dec_dir.push('/');
-            }
-            current_dec_dir.push_str(&dec_comp);
-        }
-
-        if ok {
+        if let Ok(current_dec_dir) = decrypt_rclone_crypt_rel_path(
+            &name_key,
+            &name_tweak,
+            &r.rel_path,
+            filename_mode.as_str(),
+            &off_suffix,
+        ) {
             decrypted_remotes.insert(current_dec_dir.clone(), r.clone());
         }
     }
@@ -50331,6 +50394,12 @@ mod tests {
             4
         );
         assert_eq!(
+            provider_error_to_exit_code(&ProviderError::TransferFailed(
+                "Failed to read file: No such file: No such file".into()
+            )),
+            2
+        );
+        assert_eq!(
             provider_error_to_exit_code(&ProviderError::AuthenticationFailed("test".into())),
             6
         );
@@ -50339,6 +50408,71 @@ mod tests {
             7
         );
         assert_eq!(provider_error_to_exit_code(&ProviderError::Timeout), 8);
+    }
+
+    #[test]
+    fn rclone_cryptcheck_decodes_standard_relative_paths() {
+        let (name_key, _data_key, name_tweak) =
+            ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak("pass", "salt").unwrap();
+        let enc_dir =
+            ftp_client_gui_lib::rclone_crypt::encrypt_name(&name_key, &name_tweak, "folder")
+                .unwrap();
+        let enc_file =
+            ftp_client_gui_lib::rclone_crypt::encrypt_name(&name_key, &name_tweak, "file.txt")
+                .unwrap();
+        let rel = format!("{}/{}", enc_dir, enc_file);
+
+        assert_eq!(
+            decrypt_rclone_crypt_rel_path(&name_key, &name_tweak, &rel, "standard", "").unwrap(),
+            "folder/file.txt"
+        );
+    }
+
+    #[test]
+    fn rclone_cryptcheck_decodes_obfuscate_relative_paths() {
+        let (name_key, _data_key, name_tweak) =
+            ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak("pass", "salt").unwrap();
+        let enc_dir =
+            ftp_client_gui_lib::rclone_crypt::obfuscate_name(&name_tweak, "folder").unwrap();
+        let enc_file =
+            ftp_client_gui_lib::rclone_crypt::obfuscate_name(&name_tweak, "file.txt").unwrap();
+        let rel = format!("{}/{}", enc_dir, enc_file);
+
+        assert_eq!(
+            decrypt_rclone_crypt_rel_path(&name_key, &name_tweak, &rel, "obfuscate", "").unwrap(),
+            "folder/file.txt"
+        );
+        assert!(decrypt_rclone_crypt_rel_path(
+            &name_key,
+            &name_tweak,
+            "not-obfuscated",
+            "obfuscate",
+            ""
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rclone_cryptcheck_decodes_off_relative_paths() {
+        let (name_key, _data_key, name_tweak) =
+            ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak("pass", "salt").unwrap();
+
+        assert_eq!(
+            decrypt_rclone_crypt_rel_path(
+                &name_key,
+                &name_tweak,
+                "folder/file.txt.bin",
+                "off",
+                ".bin"
+            )
+            .unwrap(),
+            "folder/file.txt"
+        );
+        assert_eq!(
+            decrypt_rclone_crypt_rel_path(&name_key, &name_tweak, "folder/file.txt", "off", "")
+                .unwrap(),
+            "folder/file.txt"
+        );
     }
 
     #[test]
