@@ -470,7 +470,7 @@ jobs:
 
       - name: Upload Linux binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           name: 'AeroFTP ${{ github.ref_name }}'
           body: ${{ steps.changelog.outputs.notes }}
@@ -489,7 +489,7 @@ jobs:
 
       - name: Upload Windows binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'windows'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: |
             src-tauri/target/release/bundle/msi/*.msi
@@ -517,7 +517,7 @@ jobs:
 
       - name: Upload macOS binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: |
             src-tauri/target/release/bundle/dmg/*-beta.dmg
@@ -655,7 +655,7 @@ jobs:
       # tag and `name` simply appends the new files.
       - name: Upload Snap to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           name: 'AeroFTP ${{ github.ref_name }}'
           draft: false
