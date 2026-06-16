@@ -14269,30 +14269,36 @@ fn profiles_tui_pick(
         return Ok(ProfilesTuiOutcome::Quit);
     }
 
-    // Actions in Ehud's order: re-index(#)|List/ls(L)|Tree(T)|Delete(D)|Fav★(F)|
-    // Copy(C)|Rename(R)|Edit(E)|Quit(Q/0). `Fav` carries the user's marker glyph
-    // (★ default, ♥ if chosen) so it matches the rest of the CLI.
+    // Actions in Ehud's column order (#311): re-index(#)|Rename(R)|Edit(E)|Copy(C)|
+    // Delete(D)|Fav★(F)|List/ls(L)|Tree(T)|Quit(Q/0). The leading group mirrors the
+    // profile/My-Servers table columns left-to-right; the trailing group (List,
+    // Tree, Quit) are read-only and reprint nothing. `Fav` carries the user's
+    // marker glyph (★ default, ♥ if chosen) so it matches the rest of the CLI.
     let actions: Vec<(char, String, ProfilesActionTarget)> = vec![
         (
             '#',
             "re-index(#)".to_string(),
             ProfilesActionTarget::Reindex,
         ),
-        ('l', "List/ls(L)".to_string(), ProfilesActionTarget::Many),
-        ('t', "Tree(T)".to_string(), ProfilesActionTarget::Many),
+        ('r', "Rename(R)".to_string(), ProfilesActionTarget::One),
+        ('e', "Edit(E)".to_string(), ProfilesActionTarget::One),
+        ('c', "Copy(C)".to_string(), ProfilesActionTarget::Many),
         ('d', "Delete(D)".to_string(), ProfilesActionTarget::Many),
         (
             'f',
             format!("Fav{}(F)", fav_marker),
             ProfilesActionTarget::Many,
         ),
-        ('c', "Copy(C)".to_string(), ProfilesActionTarget::Many),
-        ('r', "Rename(R)".to_string(), ProfilesActionTarget::One),
-        ('e', "Edit(E)".to_string(), ProfilesActionTarget::One),
+        ('l', "List/ls(L)".to_string(), ProfilesActionTarget::Many),
+        ('t', "Tree(T)".to_string(), ProfilesActionTarget::Many),
         ('q', "Quit(Q/0)".to_string(), ProfilesActionTarget::None),
     ];
     let n = actions.len();
-    let mut selected = 0usize;
+    // Ehud (#311): on entering the TUI, focus the safe option (Quit) by default,
+    // never a consequential one. Re-index is the riskiest action and used to be
+    // the default focus; starting on Quit makes every action opt-in, so a stray
+    // Enter just leaves instead of triggering a re-index. Robust to reordering.
+    let mut selected = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
 
     // Restore the terminal no matter how we leave (early return, panic unwind).
     struct RawGuard;
