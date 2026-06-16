@@ -4383,6 +4383,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt шифриран слој (native): имињата и содржината се шифрирани на овој сервер.",
         "rcloneTitle": "rclone crypt слој (interop): имињата и содржината се шифрирани на овој сервер."
+      },
+      "sidebar": {
+        "filters": "Филтри",
+        "quick": "Брзо",
+        "protocols": "Протоколи",
+        "groups": "Групи",
+        "collapse": "Собери странична лента",
+        "expand": "Прошири странична лента",
+        "moveLeft": "Помести лево",
+        "moveRight": "Помести десно"
       }
     },
     "gitlab": {

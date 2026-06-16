@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt 暗号化オーバーレイ（ネイティブ）：このサーバー上では名前と内容が暗号化されています。",
         "rcloneTitle": "rclone crypt オーバーレイ（相互運用）：このサーバー上では名前と内容が暗号化されています。"
+      },
+      "sidebar": {
+        "filters": "フィルター",
+        "quick": "クイック",
+        "protocols": "プロトコル",
+        "groups": "グループ",
+        "collapse": "サイドバーを折りたたむ",
+        "expand": "サイドバーを展開",
+        "moveLeft": "左に移動",
+        "moveRight": "右に移動"
       }
     },
     "gitlab": {

@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt krypteret overlay (indbygget): navne og indhold er krypteret på denne server.",
         "rcloneTitle": "rclone crypt-overlay (interop): navne og indhold er krypteret på denne server."
+      },
+      "sidebar": {
+        "filters": "Filtre",
+        "quick": "Hurtig",
+        "protocols": "Protokoller",
+        "groups": "Grupper",
+        "collapse": "Skjul sidepanel",
+        "expand": "Udvid sidepanel",
+        "moveLeft": "Flyt til venstre",
+        "moveRight": "Flyt til højre"
       }
     },
     "gitlab": {

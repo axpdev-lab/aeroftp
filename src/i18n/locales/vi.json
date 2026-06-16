@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Lớp phủ mã hóa AeroCrypt (gốc): tên và nội dung được mã hóa trên máy chủ này.",
         "rcloneTitle": "Lớp phủ rclone crypt (tương tác): tên và nội dung được mã hóa trên máy chủ này."
+      },
+      "sidebar": {
+        "filters": "Bộ lọc",
+        "quick": "Nhanh",
+        "protocols": "Giao thức",
+        "groups": "Nhóm",
+        "collapse": "Thu gọn thanh bên",
+        "expand": "Mở rộng thanh bên",
+        "moveLeft": "Di chuyển sang trái",
+        "moveRight": "Di chuyển sang phải"
       }
     },
     "gitlab": {

@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Safu iliyosimbwa ya AeroCrypt (asili): majina na maudhui yamesimbwa kwenye seva hii.",
         "rcloneTitle": "Safu ya rclone crypt (ushirikiano): majina na maudhui yamesimbwa kwenye seva hii."
+      },
+      "sidebar": {
+        "filters": "Vichujio",
+        "quick": "Haraka",
+        "protocols": "Itifaki",
+        "groups": "Vikundi",
+        "collapse": "Kunja utepe wa kando",
+        "expand": "Panua utepe wa kando",
+        "moveLeft": "Sogeza kushoto",
+        "moveRight": "Sogeza kulia"
       }
     },
     "gitlab": {

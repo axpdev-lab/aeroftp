@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt şifreli katman (yerel): adlar ve içerikler bu sunucuda şifrelenir.",
         "rcloneTitle": "rclone crypt katmanı (birlikte çalışabilir): adlar ve içerikler bu sunucuda şifrelenir."
+      },
+      "sidebar": {
+        "filters": "Filtreler",
+        "quick": "Hızlı",
+        "protocols": "Protokoller",
+        "groups": "Gruplar",
+        "collapse": "Kenar çubuğunu daralt",
+        "expand": "Kenar çubuğunu genişlet",
+        "moveLeft": "Sola taşı",
+        "moveRight": "Sağa taşı"
       }
     },
     "gitlab": {

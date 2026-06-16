@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt 암호화 오버레이(네이티브): 이 서버에서 이름과 내용이 암호화됩니다.",
         "rcloneTitle": "rclone crypt 오버레이(상호 운용): 이 서버에서 이름과 내용이 암호화됩니다."
+      },
+      "sidebar": {
+        "filters": "필터",
+        "quick": "빠른 항목",
+        "protocols": "프로토콜",
+        "groups": "그룹",
+        "collapse": "사이드바 접기",
+        "expand": "사이드바 펼치기",
+        "moveLeft": "왼쪽으로 이동",
+        "moveRight": "오른쪽으로 이동"
       }
     },
     "gitlab": {

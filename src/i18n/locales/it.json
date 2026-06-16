@@ -4598,7 +4598,17 @@
                 "totalRow": "Totale",
                 "noData": "Ancora nessun dato per protocollo - connetti almeno un server."
             },
-            "storageVersioning": "Versioni file: {size}"
+            "storageVersioning": "Versioni file: {size}",
+            "sidebar": {
+                "filters": "Filtri",
+                "quick": "Rapidi",
+                "protocols": "Protocolli",
+                "groups": "Gruppi",
+                "collapse": "Comprimi barra laterale",
+                "expand": "Espandi barra laterale",
+                "moveLeft": "Sposta barra a sinistra",
+                "moveRight": "Sposta barra a destra"
+            }
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

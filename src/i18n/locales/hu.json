@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt titkosított réteg (natív): a nevek és a tartalom titkosítva van ezen a kiszolgálón.",
         "rcloneTitle": "rclone crypt réteg (interop): a nevek és a tartalom titkosítva van ezen a kiszolgálón."
+      },
+      "sidebar": {
+        "filters": "Szűrők",
+        "quick": "Gyors",
+        "protocols": "Protokollok",
+        "groups": "Csoportok",
+        "collapse": "Oldalsáv összecsukása",
+        "expand": "Oldalsáv kibontása",
+        "moveLeft": "Oldalsáv balra",
+        "moveRight": "Oldalsáv jobbra"
       }
     },
     "gitlab": {

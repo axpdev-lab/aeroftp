@@ -4383,6 +4383,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt dulkóðað yfirlag (innbyggt): nöfn og innihald eru dulkóðuð á þessum þjóni.",
         "rcloneTitle": "rclone crypt yfirlag (samvirkt): nöfn og innihald eru dulkóðuð á þessum þjóni."
+      },
+      "sidebar": {
+        "filters": "Síur",
+        "quick": "Flýtileiðir",
+        "protocols": "Samskiptareglur",
+        "groups": "Hópar",
+        "collapse": "Fella saman hliðarstiku",
+        "expand": "Stækka hliðarstiku",
+        "moveLeft": "Færa til vinstri",
+        "moveRight": "Færa til hægri"
       }
     },
     "gitlab": {

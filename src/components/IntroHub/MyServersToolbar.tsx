@@ -1,16 +1,11 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, FolderPlus, Folder, ShieldCheck } from 'lucide-react';
+import { LayoutGrid, List, Eye, EyeOff, Activity, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
-import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
+import { MyServersViewMode } from '../../types/catalog';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
-import type { ServerGroup } from '../../utils/serverGroups';
 
 interface MyServersToolbarProps {
-    searchQuery: string;
-    onSearchChange: (query: string) => void;
-    activeFilter: MyServersFilterBy;
-    onFilterChange: (filter: MyServersFilterBy) => void;
     viewMode: MyServersViewMode;
     onViewModeChange: (mode: MyServersViewMode) => void;
     credentialsMasked: boolean;
@@ -19,7 +14,6 @@ interface MyServersToolbarProps {
     onToggleHideUsername: () => void;
     serverCount: number;
     filteredCount: number;
-    chipCounts: Record<MyServersFilterBy, number>;
     onOpenExportImport?: () => void;
     onHealthCheck?: () => void;
     onSpeedTest?: () => void;
@@ -33,25 +27,9 @@ interface MyServersToolbarProps {
     listDensity?: MyServersDensity;
     /** Cycle the row density. Only rendered when in list view. */
     onToggleListDensity?: () => void;
-    /** User-defined server groups (#320), rendered as chips after the static filters. */
-    groups?: ServerGroup[];
-    /** Per-group count of existing members, keyed by group id. */
-    groupCounts?: Record<string, number>;
-    /** Currently selected group id, or null when a static filter chip is active. */
-    activeGroupId?: string | null;
-    /** Select a group chip (mutually exclusive with the static filter chips). */
-    onGroupSelect?: (groupId: string) => void;
-    /** Right-click a group chip (rename/delete menu lives in the panel). */
-    onGroupContextMenu?: (e: React.MouseEvent, groupId: string) => void;
-    /** Create a new group. */
-    onNewGroup?: () => void;
 }
 
 export function MyServersToolbar({
-    searchQuery,
-    onSearchChange,
-    activeFilter,
-    onFilterChange,
     viewMode,
     onViewModeChange,
     credentialsMasked,
@@ -60,7 +38,6 @@ export function MyServersToolbar({
     onToggleHideUsername,
     serverCount,
     filteredCount,
-    chipCounts,
     onOpenExportImport,
     onHealthCheck,
     onSpeedTest,
@@ -69,12 +46,6 @@ export function MyServersToolbar({
     crossProfileSelectionCount = 0,
     listDensity = 'compact',
     onToggleListDensity,
-    groups = [],
-    groupCounts = {},
-    activeGroupId = null,
-    onGroupSelect,
-    onGroupContextMenu,
-    onNewGroup,
 }: MyServersToolbarProps) {
     const t = useTranslation();
     // Cross-Profile button visual states:
@@ -89,91 +60,13 @@ export function MyServersToolbar({
             : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40';
 
     return (
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-            {/* Search bar */}
-            <div className="relative flex-1 min-w-[200px]">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    placeholder={t('introHub.searchServers')}
-                    className="w-full h-9 pl-10 pr-8 text-sm rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/25 transition-colors"
-                />
-                {searchQuery && (
-                    <button
-                        onClick={() => onSearchChange('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                        <X size={14} />
-                    </button>
-                )}
-            </div>
+        <div className="flex items-center gap-2 mb-3">
+            {/* Filtered count label (search + filters now live in the sidebar). */}
+            <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                {filteredCount === serverCount ? serverCount : `${filteredCount} / ${serverCount}`}
+            </span>
 
-            {/* Filter chips with counts. A static chip never reads as active
-                while a group chip (#320) is selected: the two narrowings are
-                mutually exclusive. */}
-            {FILTER_CHIPS.map((chip) => {
-                const count = chipCounts[chip.id] ?? 0;
-                const isActive = activeGroupId === null && activeFilter === chip.id;
-                return (
-                    <button
-                        key={chip.id}
-                        onClick={() => onFilterChange(chip.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                            isActive
-                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700'
-                                : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                    >
-                        {chip.id === 'favorites' && <Star size={10} />}
-                        {chip.id === 'local-bridge' && <HardDrive size={10} />}
-                        {chip.id === 'encrypted' && <ShieldCheck size={10} />}
-                        <span>{t(chip.labelKey)}</span>
-                        <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
-                            isActive ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
-                        }`}>{count}</span>
-                    </button>
-                );
-            })}
-
-            {/* User-defined group chips (#320): a group is a named favourites
-                list. Selecting one is mutually exclusive with the static chips. */}
-            {groups.map((group) => {
-                const isActive = activeGroupId === group.id;
-                const count = groupCounts[group.id] ?? 0;
-                return (
-                    <button
-                        key={group.id}
-                        onClick={() => onGroupSelect?.(group.id)}
-                        onContextMenu={(e) => onGroupContextMenu?.(e, group.id)}
-                        title={t('introHub.group.chipHint')}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                            isActive
-                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700'
-                                : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                    >
-                        <Folder size={10} style={group.color ? { color: group.color } : undefined} />
-                        <span className="max-w-[140px] truncate">{group.name}</span>
-                        <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
-                            isActive ? 'bg-emerald-200/50 dark:bg-emerald-800/40 text-emerald-500 dark:text-emerald-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
-                        }`}>{count}</span>
-                    </button>
-                );
-            })}
-
-            {/* New group (#320) */}
-            {onNewGroup && (
-                <button
-                    onClick={onNewGroup}
-                    title={t('introHub.group.newGroup')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap text-gray-400 dark:text-gray-500 border border-dashed border-gray-300 dark:border-gray-600 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
-                >
-                    <FolderPlus size={12} />
-                    <span>{t('introHub.group.newGroup')}</span>
-                </button>
-            )}
+            <div className="flex-1" />
 
             {/* View mode toggle: show only the inactive view as a single
                 "switch to" button. Two buttons (active highlighted + inactive)

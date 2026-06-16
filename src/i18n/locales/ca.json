@@ -4383,6 +4383,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Capa xifrada AeroCrypt (nativa): els noms i els continguts estan xifrats en aquest servidor.",
         "rcloneTitle": "Capa rclone crypt (interop): els noms i els continguts estan xifrats en aquest servidor."
+      },
+      "sidebar": {
+        "filters": "Filtres",
+        "quick": "Ràpids",
+        "protocols": "Protocols",
+        "groups": "Grups",
+        "collapse": "Replega la barra lateral",
+        "expand": "Desplega la barra lateral",
+        "moveLeft": "Mou la barra a l'esquerra",
+        "moveRight": "Mou la barra a la dreta"
       }
     },
     "gitlab": {

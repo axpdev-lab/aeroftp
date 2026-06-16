@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt krypterat överlägg (inbyggt): namn och innehåll är krypterade på den här servern.",
         "rcloneTitle": "rclone crypt-överlägg (interop): namn och innehåll är krypterade på den här servern."
+      },
+      "sidebar": {
+        "filters": "Filter",
+        "quick": "Snabb",
+        "protocols": "Protokoll",
+        "groups": "Grupper",
+        "collapse": "Fäll ihop sidofältet",
+        "expand": "Expandera sidofältet",
+        "moveLeft": "Flytta åt vänster",
+        "moveRight": "Flytta åt höger"
       }
     },
     "gitlab": {

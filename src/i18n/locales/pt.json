@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Camada cifrada AeroCrypt (nativa): os nomes e os conteúdos estão cifrados neste servidor.",
         "rcloneTitle": "Camada rclone crypt (interop): os nomes e os conteúdos estão cifrados neste servidor."
+      },
+      "sidebar": {
+        "filters": "Filtros",
+        "quick": "Rápidos",
+        "protocols": "Protocolos",
+        "groups": "Grupos",
+        "collapse": "Recolher barra lateral",
+        "expand": "Expandir barra lateral",
+        "moveLeft": "Mover barra para a esquerda",
+        "moveRight": "Mover barra para a direita"
       }
     },
     "gitlab": {

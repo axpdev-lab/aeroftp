@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Szyfrowana nakładka AeroCrypt (natywna): nazwy i zawartość są zaszyfrowane na tym serwerze.",
         "rcloneTitle": "Nakładka rclone crypt (interop): nazwy i zawartość są zaszyfrowane na tym serwerze."
+      },
+      "sidebar": {
+        "filters": "Filtry",
+        "quick": "Szybkie",
+        "protocols": "Protokoły",
+        "groups": "Grupy",
+        "collapse": "Zwiń panel boczny",
+        "expand": "Rozwiń panel boczny",
+        "moveLeft": "Przesuń panel w lewo",
+        "moveRight": "Przesuń panel w prawo"
       }
     },
     "gitlab": {

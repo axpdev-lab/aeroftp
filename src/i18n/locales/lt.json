@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt šifruotas sluoksnis (savasis): pavadinimai ir turinys šiame serveryje yra užšifruoti.",
         "rcloneTitle": "rclone crypt sluoksnis (sąveikus): pavadinimai ir turinys šiame serveryje yra užšifruoti."
+      },
+      "sidebar": {
+        "filters": "Filtrai",
+        "quick": "Greiti",
+        "protocols": "Protokolai",
+        "groups": "Grupės",
+        "collapse": "Suskleisti šoninę juostą",
+        "expand": "Išskleisti šoninę juostą",
+        "moveLeft": "Perkelti į kairę",
+        "moveRight": "Perkelti į dešinę"
       }
     },
     "gitlab": {

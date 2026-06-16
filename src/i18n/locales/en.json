@@ -4581,6 +4581,16 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "No protocol data yet - connect at least one server."
+            },
+            "sidebar": {
+                "filters": "Filters",
+                "quick": "Quick",
+                "protocols": "Protocols",
+                "groups": "Groups",
+                "collapse": "Collapse sidebar",
+                "expand": "Expand sidebar",
+                "moveLeft": "Move sidebar left",
+                "moveRight": "Move sidebar right"
             }
         },
         "iconPicker": {

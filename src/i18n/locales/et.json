@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt krüpteeritud kiht (omakeskne): nimed ja sisu on selles serveris krüpteeritud.",
         "rcloneTitle": "rclone crypt kiht (ühilduv): nimed ja sisu on selles serveris krüpteeritud."
+      },
+      "sidebar": {
+        "filters": "Filtrid",
+        "quick": "Kiired",
+        "protocols": "Protokollid",
+        "groups": "Rühmad",
+        "collapse": "Ahenda külgriba",
+        "expand": "Laienda külgriba",
+        "moveLeft": "Liiguta vasakule",
+        "moveRight": "Liiguta paremale"
       }
     },
     "gitlab": {

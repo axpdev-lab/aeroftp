@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt šifrirani sloj (izvorni): nazivi i sadržaj šifrirani su na ovom poslužitelju.",
         "rcloneTitle": "rclone crypt sloj (interop): nazivi i sadržaj šifrirani su na ovom poslužitelju."
+      },
+      "sidebar": {
+        "filters": "Filtri",
+        "quick": "Brzo",
+        "protocols": "Protokoli",
+        "groups": "Grupe",
+        "collapse": "Sažmi bočnu traku",
+        "expand": "Proširi bočnu traku",
+        "moveLeft": "Pomakni traku ulijevo",
+        "moveRight": "Pomakni traku udesno"
       }
     },
     "gitlab": {

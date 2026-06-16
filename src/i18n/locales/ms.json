@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Lapisan tersulit AeroCrypt (asli): nama dan kandungan disulitkan pada pelayan ini.",
         "rcloneTitle": "Lapisan rclone crypt (interop): nama dan kandungan disulitkan pada pelayan ini."
+      },
+      "sidebar": {
+        "filters": "Penapis",
+        "quick": "Pantas",
+        "protocols": "Protokol",
+        "groups": "Kumpulan",
+        "collapse": "Runtuhkan bar sisi",
+        "expand": "Kembangkan bar sisi",
+        "moveLeft": "Alih ke kiri",
+        "moveRight": "Alih ke kanan"
       }
     },
     "gitlab": {

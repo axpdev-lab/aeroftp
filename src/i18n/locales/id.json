@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Lapisan terenkripsi AeroCrypt (asli): nama dan konten dienkripsi di server ini.",
         "rcloneTitle": "Lapisan rclone crypt (interop): nama dan konten dienkripsi di server ini."
+      },
+      "sidebar": {
+        "filters": "Filter",
+        "quick": "Cepat",
+        "protocols": "Protokol",
+        "groups": "Grup",
+        "collapse": "Ciutkan bilah sisi",
+        "expand": "Perluas bilah sisi",
+        "moveLeft": "Pindahkan ke kiri",
+        "moveRight": "Pindahkan ke kanan"
       }
     },
     "gitlab": {

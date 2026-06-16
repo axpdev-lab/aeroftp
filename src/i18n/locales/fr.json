@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Surcouche chiffrée AeroCrypt (native) : les noms et les contenus sont chiffrés sur ce serveur.",
         "rcloneTitle": "Surcouche rclone crypt (interop) : les noms et les contenus sont chiffrés sur ce serveur."
+      },
+      "sidebar": {
+        "filters": "Filtres",
+        "quick": "Rapides",
+        "protocols": "Protocoles",
+        "groups": "Groupes",
+        "collapse": "Réduire la barre latérale",
+        "expand": "Développer la barre latérale",
+        "moveLeft": "Déplacer la barre à gauche",
+        "moveRight": "Déplacer la barre à droite"
       }
     },
     "gitlab": {

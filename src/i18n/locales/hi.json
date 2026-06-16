@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt एन्क्रिप्टेड ओवरले (नेटिव): इस सर्वर पर नाम और सामग्री एन्क्रिप्टेड हैं।",
         "rcloneTitle": "rclone crypt ओवरले (इंटरऑप): इस सर्वर पर नाम और सामग्री एन्क्रिप्टेड हैं।"
+      },
+      "sidebar": {
+        "filters": "फ़िल्टर",
+        "quick": "त्वरित",
+        "protocols": "प्रोटोकॉल",
+        "groups": "समूह",
+        "collapse": "साइडबार संक्षिप्त करें",
+        "expand": "साइडबार विस्तृत करें",
+        "moveLeft": "बाएँ ले जाएँ",
+        "moveRight": "दाएँ ले जाएँ"
       }
     },
     "gitlab": {

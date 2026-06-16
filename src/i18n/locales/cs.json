@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Šifrovaná vrstva AeroCrypt (nativní): názvy a obsah jsou na tomto serveru šifrovány.",
         "rcloneTitle": "Vrstva rclone crypt (interop): názvy a obsah jsou na tomto serveru šifrovány."
+      },
+      "sidebar": {
+        "filters": "Filtry",
+        "quick": "Rychlé",
+        "protocols": "Protokoly",
+        "groups": "Skupiny",
+        "collapse": "Sbalit postranní panel",
+        "expand": "Rozbalit postranní panel",
+        "moveLeft": "Přesunout panel doleva",
+        "moveRight": "Přesunout panel doprava"
       }
     },
     "gitlab": {

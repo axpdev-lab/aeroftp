@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt versleutelde overlay (native): namen en inhoud zijn versleuteld op deze server.",
         "rcloneTitle": "rclone crypt overlay (interop): namen en inhoud zijn versleuteld op deze server."
+      },
+      "sidebar": {
+        "filters": "Filters",
+        "quick": "Snel",
+        "protocols": "Protocollen",
+        "groups": "Groepen",
+        "collapse": "Zijbalk inklappen",
+        "expand": "Zijbalk uitklappen",
+        "moveLeft": "Zijbalk naar links",
+        "moveRight": "Zijbalk naar rechts"
       }
     },
     "gitlab": {

@@ -4383,6 +4383,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Naka-encrypt na overlay ng AeroCrypt (native): ang mga pangalan at nilalaman ay naka-encrypt sa server na ito.",
         "rcloneTitle": "Overlay ng rclone crypt (interop): ang mga pangalan at nilalaman ay naka-encrypt sa server na ito."
+      },
+      "sidebar": {
+        "filters": "Mga filter",
+        "quick": "Mabilis",
+        "protocols": "Mga protocol",
+        "groups": "Mga grupo",
+        "collapse": "Itago ang sidebar",
+        "expand": "Palawakin ang sidebar",
+        "moveLeft": "Ilipat sa kaliwa",
+        "moveRight": "Ilipat sa kanan"
       }
     },
     "gitlab": {

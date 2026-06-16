@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt verschlüsseltes Overlay (nativ): Namen und Inhalte sind auf diesem Server verschlüsselt.",
         "rcloneTitle": "rclone crypt Overlay (interop): Namen und Inhalte sind auf diesem Server verschlüsselt."
+      },
+      "sidebar": {
+        "filters": "Filter",
+        "quick": "Schnellzugriff",
+        "protocols": "Protokolle",
+        "groups": "Gruppen",
+        "collapse": "Seitenleiste einklappen",
+        "expand": "Seitenleiste ausklappen",
+        "moveLeft": "Seitenleiste nach links",
+        "moveRight": "Seitenleiste nach rechts"
       }
     },
     "gitlab": {

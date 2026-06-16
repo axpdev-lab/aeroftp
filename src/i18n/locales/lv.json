@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt šifrēts pārklājums (vietējais): nosaukumi un saturs šajā serverī ir šifrēti.",
         "rcloneTitle": "rclone crypt pārklājums (savietojams): nosaukumi un saturs šajā serverī ir šifrēti."
+      },
+      "sidebar": {
+        "filters": "Filtri",
+        "quick": "Ātrie",
+        "protocols": "Protokoli",
+        "groups": "Grupas",
+        "collapse": "Sakļaut sānjoslu",
+        "expand": "Izvērst sānjoslu",
+        "moveLeft": "Pārvietot pa kreisi",
+        "moveRight": "Pārvietot pa labi"
       }
     },
     "gitlab": {

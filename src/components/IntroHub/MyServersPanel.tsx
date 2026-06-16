@@ -5,6 +5,7 @@ import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, 
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
+import { MyServersSidebar } from './MyServersSidebar';
 import { ServerCard } from './ServerCard';
 import { MyServersTable } from './MyServersTable';
 import { MyServersTableFooter } from './MyServersTableFooter';
@@ -311,6 +312,16 @@ export function MyServersPanel({
         const stored = localStorage.getItem(VIEW_MODE_KEY);
         return (stored === 'list' ? 'list' : 'grid') as MyServersViewMode;
     });
+    // Filter sidebar (replaces the wrapping chip row): collapse + left/right side
+    // are persisted so the layout stays put across sessions.
+    const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => localStorage.getItem('aeroftp_myservers_sidebar_collapsed') === '1');
+    const [sidebarSide, setSidebarSide] = useState<'left' | 'right'>(() => (localStorage.getItem('aeroftp_myservers_sidebar_side') === 'right' ? 'right' : 'left'));
+    const toggleSidebarCollapsed = React.useCallback(() => {
+        setSidebarCollapsed(prev => { const next = !prev; localStorage.setItem('aeroftp_myservers_sidebar_collapsed', next ? '1' : '0'); return next; });
+    }, []);
+    const toggleSidebarSide = React.useCallback(() => {
+        setSidebarSide(prev => { const next = prev === 'left' ? 'right' : 'left'; localStorage.setItem('aeroftp_myservers_sidebar_side', next); return next; });
+    }, []);
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [hideUsername, setHideUsername] = useState<boolean>(() => {
         return localStorage.getItem('aeroftp_hide_server_username') === '1';
@@ -1311,25 +1322,40 @@ export function MyServersPanel({
         ]);
     }, [t, groups, showContextMenu]);
 
+    const handleStaticFilter = (f: MyServersFilterBy) => {
+        setActiveFilter(f);
+        localStorage.setItem('aeroftp_myservers_filter', f);
+        // Selecting a static filter clears any active group narrowing.
+        setActiveGroupId(null);
+        localStorage.removeItem('aeroftp_myservers_group');
+    };
+    // Filter sidebar (search + Quick/Protocols/Groups). Hidden on the pristine
+    // onboarding screen (no servers) where it would only show zeros.
+    const sidebarEl = servers.length > 0 ? (
+        <MyServersSidebar
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={toggleSidebarCollapsed}
+            side={sidebarSide}
+            onToggleSide={toggleSidebarSide}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            activeFilter={activeFilter}
+            activeGroupId={activeGroupId}
+            onFilterChange={handleStaticFilter}
+            chipCounts={chipCounts}
+            groups={groups}
+            groupCounts={groupCounts}
+            onGroupSelect={selectGroup}
+            onGroupContextMenu={handleGroupContextMenu}
+            onNewGroup={() => setGroupDialog({ id: null, name: '' })}
+        />
+    ) : null;
+
     return (
-        <div className="h-full flex flex-col" onClick={handlePanelBlankClick}>
+        <div className="h-full flex flex-row" onClick={handlePanelBlankClick}>
+            {sidebarSide === 'left' && sidebarEl}
+            <div className={`flex-1 flex flex-col min-w-0 ${servers.length > 0 ? (sidebarSide === 'left' ? 'pl-4' : 'pr-4') : ''}`}>
             <MyServersToolbar
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                activeFilter={activeFilter}
-                onFilterChange={(f: MyServersFilterBy) => {
-                    setActiveFilter(f);
-                    localStorage.setItem('aeroftp_myservers_filter', f);
-                    // Selecting a static chip clears any active group narrowing.
-                    setActiveGroupId(null);
-                    localStorage.removeItem('aeroftp_myservers_group');
-                }}
-                groups={groups}
-                groupCounts={groupCounts}
-                activeGroupId={activeGroupId}
-                onGroupSelect={selectGroup}
-                onGroupContextMenu={handleGroupContextMenu}
-                onNewGroup={() => setGroupDialog({ id: null, name: '' })}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 credentialsMasked={credentialsMasked}
@@ -1338,7 +1364,6 @@ export function MyServersPanel({
                 onToggleHideUsername={toggleHideUsername}
                 serverCount={servers.length}
                 filteredCount={filteredServers.length}
-                chipCounts={chipCounts}
                 onOpenExportImport={onOpenExportImport}
                 onHealthCheck={() => setHealthCheckTarget('all')}
                 onSpeedTest={() => setSpeedTestTarget(undefined)}
@@ -1559,6 +1584,8 @@ export function MyServersPanel({
                     />
                 </div>
             )}
+            </div>
+            {sidebarSide === 'right' && sidebarEl}
 
             {/* Context Menu */}
             {contextMenuState.visible && (

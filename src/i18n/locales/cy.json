@@ -4383,6 +4383,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Troshaen wedi'i hamgryptio AeroCrypt (brodorol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn.",
         "rcloneTitle": "Troshaen rclone crypt (rhyngweithredol): mae enwau a chynnwys wedi'u hamgryptio ar y gweinydd hwn."
+      },
+      "sidebar": {
+        "filters": "Hidlyddion",
+        "quick": "Cyflym",
+        "protocols": "Protocolau",
+        "groups": "Grwpiau",
+        "collapse": "Crebachu'r bar ochr",
+        "expand": "Ehangu'r bar ochr",
+        "moveLeft": "Symud i'r chwith",
+        "moveRight": "Symud i'r dde"
       }
     },
     "gitlab": {

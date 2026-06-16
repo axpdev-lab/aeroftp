@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Šifrirana prekrivna plast AeroCrypt (izvorna): imena in vsebina so na tem strežniku šifrirana.",
         "rcloneTitle": "Prekrivna plast rclone crypt (interop): imena in vsebina so na tem strežniku šifrirana."
+      },
+      "sidebar": {
+        "filters": "Filtri",
+        "quick": "Hitro",
+        "protocols": "Protokoli",
+        "groups": "Skupine",
+        "collapse": "Strni stransko vrstico",
+        "expand": "Razširi stransko vrstico",
+        "moveLeft": "Premakni vrstico levo",
+        "moveRight": "Premakni vrstico desno"
       }
     },
     "gitlab": {

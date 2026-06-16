@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt-salattu peittokerros (natiivi): nimet ja sisältö on salattu tällä palvelimella.",
         "rcloneTitle": "rclone crypt -peittokerros (yhteentoimiva): nimet ja sisältö on salattu tällä palvelimella."
+      },
+      "sidebar": {
+        "filters": "Suodattimet",
+        "quick": "Pikavalinnat",
+        "protocols": "Protokollat",
+        "groups": "Ryhmät",
+        "collapse": "Kutista sivupalkki",
+        "expand": "Laajenna sivupalkki",
+        "moveLeft": "Siirrä vasemmalle",
+        "moveRight": "Siirrä oikealle"
       }
     },
     "gitlab": {

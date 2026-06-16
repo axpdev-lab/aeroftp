@@ -4383,6 +4383,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt zifratutako gainjarpena (jatorrizkoa): izenak eta edukiak zifratuta daude zerbitzari honetan.",
         "rcloneTitle": "rclone crypt gainjarpena (elkarreragingarria): izenak eta edukiak zifratuta daude zerbitzari honetan."
+      },
+      "sidebar": {
+        "filters": "Iragazkiak",
+        "quick": "Bizkorrak",
+        "protocols": "Protokoloak",
+        "groups": "Taldeak",
+        "collapse": "Tolestu alboko barra",
+        "expand": "Zabaldu alboko barra",
+        "moveLeft": "Eraman ezkerrera",
+        "moveRight": "Eraman eskuinera"
       }
     },
     "gitlab": {

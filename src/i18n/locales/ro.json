@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "Strat criptat AeroCrypt (nativ): numele și conținutul sunt criptate pe acest server.",
         "rcloneTitle": "Strat rclone crypt (interop): numele și conținutul sunt criptate pe acest server."
+      },
+      "sidebar": {
+        "filters": "Filtre",
+        "quick": "Rapide",
+        "protocols": "Protocoale",
+        "groups": "Grupuri",
+        "collapse": "Restrânge bara laterală",
+        "expand": "Extinde bara laterală",
+        "moveLeft": "Mută bara la stânga",
+        "moveRight": "Mută bara la dreapta"
       }
     },
     "gitlab": {

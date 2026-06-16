@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt шифровани слој (изворни): имена и садржај су шифровани на овом серверу.",
         "rcloneTitle": "rclone crypt слој (интероп): имена и садржај су шифровани на овом серверу."
+      },
+      "sidebar": {
+        "filters": "Филтери",
+        "quick": "Брзо",
+        "protocols": "Протоколи",
+        "groups": "Групе",
+        "collapse": "Скупи бочну траку",
+        "expand": "Прошири бочну траку",
+        "moveLeft": "Помери траку улево",
+        "moveRight": "Помери траку удесно"
       }
     },
     "gitlab": {

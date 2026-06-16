@@ -4364,6 +4364,16 @@
         "rclone": "rclone crypt",
         "aerocryptTitle": "AeroCrypt 加密叠加层（原生）：此服务器上的名称和内容均已加密。",
         "rcloneTitle": "rclone crypt 叠加层（互通）：此服务器上的名称和内容均已加密。"
+      },
+      "sidebar": {
+        "filters": "筛选",
+        "quick": "快捷",
+        "protocols": "协议",
+        "groups": "分组",
+        "collapse": "折叠侧边栏",
+        "expand": "展开侧边栏",
+        "moveLeft": "向左移动",
+        "moveRight": "向右移动"
       }
     },
     "gitlab": {
