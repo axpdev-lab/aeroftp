@@ -1020,6 +1020,13 @@ const App: React.FC = () => {
   // deferred unlock runs. The phase-2 overlay reload rewrites this entry to the
   // anchored display path (what the path-bar shows), so the log matches the UI.
   const connectListingLogIdRef = useRef<string | null>(null);
+  // True when the connect-time provider listing was SUPPRESSED because the
+  // profile has a confirmed overlay binding: we hide the raw encrypted blobs and
+  // the "/" path during the Argon2id unlock window and let the phase-2 decrypted
+  // reload paint the real names. If the unlock turns out to not happen / fails,
+  // the phase-1 fallback re-lists the raw provider view so the panel is never
+  // stuck empty.
+  const overlaySuppressedRef = useRef(false);
   useEffect(() => {
     if (isConnected || !aeroCryptVaultId) return;
     const vaultId = aeroCryptVaultId;
@@ -4214,6 +4221,28 @@ interface UpdateVerificationInfo {
     ));
   };
 
+  // Cheap, side-effect-free probe of a saved profile's overlay binding, used at
+  // connect time to decide whether to SUPPRESS the raw provider listing (so the
+  // encrypted blobs never flash before the deferred unlock). Mirrors the exact
+  // activation gate of maybeAutoUnlockProfileOverlay (enabled + a stored
+  // password), so we only suppress when the unlock will actually be attempted.
+  // Returns the overlay kind + anchored remote folder, or null.
+  const getProfileOverlayHint = async (
+    savedServerId?: string,
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
+    if (!savedServerId) return null;
+    try {
+      const profiles = await loadSavedServerProfiles();
+      const profile = profiles.find((p) => p.id === savedServerId);
+      const binding = profile?.aeroCryptOverlay;
+      if (!binding?.enabled || !profile?.hasStoredAeroCryptPassword) return null;
+      const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
+      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+    } catch {
+      return null;
+    }
+  };
+
   // P3.3 / P3.3b: when a saved profile carries an encrypted-overlay binding,
   // unlock it automatically right after connect so the standard dual-panel
   // renders transparently decrypted (Filen/MEGA-style), with no modal. The
@@ -4356,6 +4385,13 @@ interface UpdateVerificationInfo {
         // Plain server (no overlay): the connect-time listing path is already
         // correct, so drop the captured id without rewriting it.
         connectListingLogIdRef.current = null;
+        // If we had suppressed the connect listing expecting an overlay that did
+        // not materialise (binding probe matched but unlock failed), reveal the
+        // raw provider view now so the panel is never left empty.
+        if (overlaySuppressedRef.current) {
+          overlaySuppressedRef.current = false;
+          void loadRemoteFiles(undefined, false, true);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -4386,14 +4422,21 @@ interface UpdateVerificationInfo {
         // path (what the path-bar shows), now that the decrypted reload landed.
         // The connect-time log fired with the raw provider path ("/") before the
         // deferred unlock knew the anchor; this realigns the log with the UI.
-        if (reloaded && connectListingLogIdRef.current) {
+        if (reloaded) {
           const anchored = (reloaded as FileListResponse & { display_current_path?: string }).display_current_path || reloaded.current_path;
-          humanLog.updateEntry(connectListingLogIdRef.current, {
-            status: 'success',
-            message: t('activity.listing_complete', { path: anchored, count: String(reloaded.files?.length ?? 0) }),
-          });
+          const count = String(reloaded.files?.length ?? 0);
+          if (connectListingLogIdRef.current) {
+            humanLog.updateEntry(connectListingLogIdRef.current, {
+              status: 'success',
+              message: t('activity.listing_complete', { path: anchored, count }),
+            });
+          } else if (overlaySuppressedRef.current) {
+            // The connect-time listing was suppressed: emit it now, correct.
+            logListingComplete(anchored, reloaded.files?.length ?? 0);
+          }
         }
         connectListingLogIdRef.current = null;
+        overlaySuppressedRef.current = false;
         // T3: settle the live overlay entry to green once decrypted names land.
         if (overlayLogIdRef.current) {
           humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
@@ -13779,9 +13822,26 @@ interface UpdateVerificationInfo {
                       permissions: f.permissions,
                       metadata: f.metadata,
                     }));
-                    setRemoteFiles(files);
+                    // Suppress the raw encrypted listing for a confirmed-overlay
+                    // profile: hide the blobs + "/" path during the Argon2id
+                    // unlock window and let the phase-2 decrypted reload paint the
+                    // real names. Plain profiles render the listing as usual.
+                    const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                    const overlayHint = await getProfileOverlayHint(overlaySavedId);
                     setCurrentRemotePath(response.current_path);
-                    connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
+                    if (overlayHint && overlaySavedId) {
+                      overlaySuppressedRef.current = true;
+                      setRemoteFiles([]);
+                      setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
+                      setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+                      setOverlayDecrypting(true);
+                      connectListingLogIdRef.current = null;
+                    } else {
+                      overlaySuppressedRef.current = false;
+                      setRemoteFiles(files);
+                      connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
+                    }
 
                     let resolvedLocalPath2 = currentLocalPath;
                     if (localInitialPath) {
@@ -13793,17 +13853,14 @@ interface UpdateVerificationInfo {
                       connectedParams,
                       response.current_path,
                       resolvedLocalPath2,
-                      files
+                      overlayHint ? [] : files
                     );
                     // P3.3: defer the AeroCrypt overlay auto-unlock to a post-connect
                     // effect. Running it inline here sees stale React state (the new
                     // session/activeSessionId are not committed yet), so the overlay
                     // reload hit "Not connected"; the effect runs once the connection
                     // state has settled, exactly like the manual Refresh that works.
-                    {
-                      const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                      if (overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
-                    }
+                    if (overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
                     fetchStorageQuota(connectedParams.protocol, connectedParams);
                     // Clear the standalone connect-failure marker (#180 /
                     // 4486730822). Separate signal from health.
@@ -14253,7 +14310,7 @@ interface UpdateVerificationInfo {
                       </div>
                       <input
                         type="text"
-                        value={isConnected ? ((rcloneCryptVaultId || aeroCryptVaultId) ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
+                        value={isConnected ? ((rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
                         onChange={(e) => {
                           if (rcloneCryptVaultId || aeroCryptVaultId) setCurrentRemoteDisplayPath(e.target.value);
                           else setCurrentRemotePath(e.target.value);
@@ -14596,6 +14653,21 @@ interface UpdateVerificationInfo {
                               </tr>
                             );
                           })()}
+                          {/* Decrypting placeholders: while a confirmed overlay
+                              unlocks, the raw listing is suppressed (no encrypted
+                              blobs / no "/" path), so show scrambling rows as the
+                              "decrypting…" signal until phase-2 paints the real
+                              decrypted names. */}
+                          {overlayBadgeDecrypting && sortedRemoteFiles.length === 0 &&
+                            [18, 24, 13, 20].map((len, i) => (
+                              <tr key={`decrypting-row-${i}`} role="row" className="opacity-70 select-none">
+                                <td className="px-4 py-2 flex items-center gap-2">
+                                  {iconProvider.getFileIcon('x', 16).icon}
+                                  <DecryptingText text={'x'.repeat(len)} active delayMs={Math.min(i, 24) * 28} className="text-gray-400" />
+                                </td>
+                                {orderedExtras.map((c) => visibility[c.id] ? renderEmptyExtra(c.id) : null)}
+                              </tr>
+                            ))}
                           {sortedRemoteFiles.map((file, i) => (
                             <tr
                               key={`${file.name}-${i}`}
@@ -14797,6 +14869,20 @@ interface UpdateVerificationInfo {
                           </div>
                           <span className="file-grid-name italic text-gray-500">{t('browser.parentFolder')}</span>
                         </div>
+                        {/* Decrypting placeholders (see list view): scrambling
+                            cards as the "decrypting…" signal while the overlay
+                            unlocks and the raw listing is suppressed. */}
+                        {overlayBadgeDecrypting && sortedRemoteFiles.length === 0 &&
+                          [18, 24, 13, 20].map((len, i) => (
+                            <div key={`decrypting-card-${i}`} className="file-grid-item opacity-70 select-none">
+                              <div className="file-grid-icon">
+                                {iconProvider.getFileIcon('x', 32).icon}
+                              </div>
+                              <span className="file-grid-name text-gray-400">
+                                <DecryptingText text={'x'.repeat(len)} active delayMs={Math.min(i, 24) * 28} />
+                              </span>
+                            </div>
+                          ))}
                         {sortedRemoteFiles.map((file, i) => (
                           <div
                             key={`${file.name}-${i}`}
