@@ -9,6 +9,7 @@ import { PROVIDER_LOGOS } from './ProviderLogos';
 import { buildDiscoverCategories, type DiscoverItem } from './IntroHub/discoverData';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 /**
  * Within each catalog category, surface a curated set of "popular" providers
@@ -181,6 +182,7 @@ function persistCustomIcons(icons: CustomIcon[]) {
 
 export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavicon, onRescan, customIconsOnly }: IconPickerDialogProps) {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [tab, setTab] = useState<Tab>(customIconsOnly ? 'custom' : 'shipped');
     const [search, setSearch] = useState('');
     const [customIcons, setCustomIcons] = useState<CustomIcon[]>(() => loadCustomIcons());
@@ -474,11 +476,12 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
             onClick={onClose}
         >
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[640px] max-w-[92vw] h-[560px] max-h-[90vh] border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <ImageIcon size={18} className="text-blue-500" />
                         <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">

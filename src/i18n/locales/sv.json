@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Detta kommer att skriva över originalfilen",
           "saveSaving": "Sparar...",
           "saveSaved": "Bilden har sparats",
-          "saveFailed": "Det gick inte att spara bilden"
+          "saveFailed": "Det gick inte att spara bilden",
+          "lossless": "Forlustfri",
+          "lossy": "Forlustbehaftad",
+          "losslessHint": "Reversibel: pixlar bevaras exakt nar de sparas i ett forlustfritt format",
+          "lossyHint": "Andrar pixlar: andringen kan inte angras exakt",
+          "formatLosslessNote": "Forlustfritt format: pixlar lagras exakt. Forlustbehaftade redigeringar ovan andrar anda bilden.",
+          "formatLossyNote": "Forlustbehaftat format: omkodning kastar bort en del bilddata, aven forlustfria redigeringar."
         },
         "toggleTransparencyBg": "Genomskinlighetsbakgrund (växla)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = obegränsat. Den lokala speglingsloopen begränsar med den högsta av de två gränserna.",
-        "bandwidthUnlimited": "Obegränsat"
+        "bandwidthUnlimited": "Obegränsat",
+        "stop": "Stoppa",
+        "stopping": "Stoppar...",
+        "resultCancelled": "Synkronisering avbruten"
       },
       "launcherTemplates": "Mallar",
       "launcherMultiPath": "Flera sökvägar",
@@ -4869,8 +4878,8 @@
       "lock": "Lås överlägg"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt-profil (krypterat överlägg)",
-      "hint": "Kryptera den här anslutningen transparent: dubbelpanelen visar klartextnamn, uppladdningar krypteras och nedladdningar dekrypteras. Endast läsbar från AeroFTP med detta lösenord.",
+      "enable": "Crypt (Kryptering)",
+      "hint": "Krypterar denna anslutning transparent: dubbelpanelen visar klartextnamn, uppladdningar krypterar, nedladdningar dekrypterar.",
       "kindNative": "AeroCrypt (inbyggt)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Välj en krypteringstyp för att fortsätta: det finns ingen standard, valet är medvetet.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Krypteringstyp och autentiseringsuppgifter är låsta: detta överlägg innehåller redan krypterad data.",
       "addToExistingWarn": "När du aktiverar ett överlägg på en befintlig profil: alla klartextfiler som redan finns på denna fjärrplats förblir okrypterade och visas som en odekrypterbar blandning. Använd en tom fjärrplats.",
       "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten).",
-      "remotePathLockedNote": "Fjärrsökvägen är låst: den är roten för det krypterade överlägget och kan inte ändras när överlägget innehåller data."
+      "remotePathLockedNote": "Fjärrsökvägen är låst: den är roten för det krypterade överlägget och kan inte ändras när överlägget innehåller data.",
+      "overlaysSection": "Omslag / Overlays",
+      "overlaysActiveBadge": "På",
+      "hintNative": "Inbyggt AeroCrypt-format: läsbart endast från AeroFTP med detta lösenord.",
+      "hintRclone": "Standardformatet rclone crypt: läsbart även av rclone med detta lösenord.",
+      "passwordLabel": "Lösenord",
+      "saltLabel": "Salt (valfritt)"
+    },
+    "modalGuard": {
+      "busyTitle": "Åtgärd pågår",
+      "busyBody": "En åtgärd pågår fortfarande. Stoppa och stäng, eller låt den fortsätta?",
+      "wait": "Låt fortsätta",
+      "stopAndClose": "Stoppa och stäng",
+      "dirtyTitle": "Osparade ändringar",
+      "dirtyBody": "Du har osparade ändringar. Kasta och stäng?",
+      "keepEditing": "Fortsätt redigera",
+      "discardAndClose": "Kasta och stäng"
     }
   }
 }

@@ -534,12 +534,25 @@ impl CredentialStore {
         let key_file = VaultKeyFile::read()?;
         match &key_file.mode {
             VaultKeyMode::LegacyAuto { passphrase } => {
-                info!("Migrating legacy cleartext vault.key to system keyring");
-                store_passphrase_in_keyring(passphrase)?;
-                VaultKeyFile {
-                    mode: VaultKeyMode::AutoKeyring,
+                // Best-effort migration to the OS keyring. On a portable or
+                // locked-down Windows box the keyring can be persistently
+                // unavailable; in that case we must NOT fail closed (issue #334
+                // follow-up) but keep the on-disk LegacyAuto key so the vault
+                // still re-opens on every launch.
+                match store_passphrase_in_keyring(passphrase) {
+                    Ok(()) => {
+                        info!("Migrated on-disk vault.key passphrase to system keyring");
+                        VaultKeyFile {
+                            mode: VaultKeyMode::AutoKeyring,
+                        }
+                        .write()?;
+                    }
+                    Err(e) => {
+                        warn!(
+                            "OS keyring unavailable ({e}); keeping on-disk vault.key (portable/no-keyring mode)"
+                        );
+                    }
                 }
-                .write()?;
 
                 let passphrase = Zeroizing::new(*passphrase);
                 let mut vault_key = crate::crypto::derive_from_passphrase(&passphrase[..]);

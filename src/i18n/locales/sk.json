@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Toto prepíše pôvodný súbor",
           "saveSaving": "Ukladanie...",
           "saveSaved": "Obrázok bol úspešne uložený",
-          "saveFailed": "Nepodarilo sa uložiť obrázok"
+          "saveFailed": "Nepodarilo sa uložiť obrázok",
+          "lossless": "Bezstratovy",
+          "lossy": "Stratovy",
+          "losslessHint": "Vratne: pixely zostanu presne zachovane pri ulozeni do bezstratoveho formatu",
+          "lossyHint": "Meni pixely: zmenu nemozno presne vratit",
+          "formatLosslessNote": "Bezstratovy format: pixely sa ukladaju presne. Stratove upravy vyssie obraz napriek tomu zmenia.",
+          "formatLossyNote": "Stratovy format: opatovne kodovanie zahodi cast obrazovych udajov, aj bezstratove upravy."
         },
         "toggleTransparencyBg": "Pozadie priehľadnosti (prepnúť)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = neobmedzené. Slučka lokálneho zrkadlenia obmedzuje rýchlosť podľa vyššieho z dvoch limitov.",
-        "bandwidthUnlimited": "Neobmedzené"
+        "bandwidthUnlimited": "Neobmedzené",
+        "stop": "Zastaviť",
+        "stopping": "Zastavovanie...",
+        "resultCancelled": "Synchronizácia zrušená"
       },
       "launcherTemplates": "Šablóny",
       "launcherMultiPath": "Viacero ciest",
@@ -4869,8 +4878,8 @@
       "lock": "Uzamknúť vrstvu"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (šifrovaná vrstva)",
-      "hint": "Toto pripojenie sa šifruje transparentne: dvojpanelové zobrazenie ukazuje čitateľné názvy, nahrávania sa šifrujú, sťahovania sa dešifrujú. Čitateľné iba z AeroFTP s týmto heslom.",
+      "enable": "Crypt (Šifrovanie)",
+      "hint": "Transparentne šifruje toto pripojenie: dvojitý panel zobrazuje čitateľné názvy, nahrávania šifrujú, sťahovania dešifrujú.",
       "kindNative": "AeroCrypt (natívny)",
       "kindRclone": "Rclone Crypt (interoperabilita)",
       "chooseKind": "Pokračujte výberom typu šifrovania: žiadna predvolená hodnota neexistuje, voľba je zámerná.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Typ šifrovania a prihlasovacie údaje sú uzamknuté: táto vrstva už obsahuje zašifrované údaje.",
       "addToExistingWarn": "Zapnutím prekrytia pre existujúci profil: akékoľvek súbory v čistom texte, ktoré sú už na tomto vzdialenom úložisku, zostanú nešifrované a zobrazia sa ako nedešifrovateľná zmes. Použite prázdne vzdialené úložisko.",
       "scopeHint": "Vyššie uvedené vzdialené a lokálne cesty určujú šifrovaný rozsah (ponechajte vzdialenú cestu prázdnu na zašifrovanie celého koreňa).",
-      "remotePathLockedNote": "Vzdialená cesta je uzamknutá: je koreňom šifrovaného prekrytia a po uložení dát ju nemožno zmeniť."
+      "remotePathLockedNote": "Vzdialená cesta je uzamknutá: je koreňom šifrovaného prekrytia a po uložení dát ju nemožno zmeniť.",
+      "overlaysSection": "Obaly / Overlaye",
+      "overlaysActiveBadge": "Zapnuté",
+      "hintNative": "Natívny formát AeroCrypt: čitateľný iba z AeroFTP s týmto heslom.",
+      "hintRclone": "Štandardný formát rclone crypt: čitateľný aj cez rclone s týmto heslom.",
+      "passwordLabel": "Heslo",
+      "saltLabel": "Salt (voliteľné)"
+    },
+    "modalGuard": {
+      "busyTitle": "Prebieha operácia",
+      "busyBody": "Operácia stále prebieha. Zastaviť a zavrieť, alebo pokračovať?",
+      "wait": "Pokračovať",
+      "stopAndClose": "Zastaviť a zavrieť",
+      "dirtyTitle": "Neuložené zmeny",
+      "dirtyBody": "Máte neuložené zmeny. Zahodiť a zavrieť?",
+      "keepEditing": "Pokračovať v úpravách",
+      "discardAndClose": "Zahodiť a zavrieť"
     }
   }
 }

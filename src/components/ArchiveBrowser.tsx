@@ -10,6 +10,7 @@ import { Archive, File, Folder, Lock, Download, Eye, X, ChevronRight, ChevronDow
 import { ArchiveEntry, ArchiveType } from '../types';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface ArchiveBrowserProps {
     archivePath: string;
@@ -115,6 +116,7 @@ const TreeRow: React.FC<{
 
 export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, archiveType, isEncrypted, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [entries, setEntries] = useState<ArchiveEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -242,9 +244,9 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Archive size={18} className="text-blue-500 dark:text-blue-400" />
                         <span className="font-medium truncate max-w-[400px]">{archiveName}</span>

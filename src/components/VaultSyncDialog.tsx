@@ -5,10 +5,11 @@ import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { ArrowUp, ArrowDown, Minus, ArrowUpDown, X, AlertTriangle, Folder, Loader2, Check } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { ArrowUpDown, Folder, X, Loader2, ArrowUp, ArrowDown, Minus, AlertTriangle, Check } from 'lucide-react';
 import { formatSize } from '../utils/formatters';
 import { mapVaultError } from './vault/useVaultState';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface VaultSyncDialogProps {
     vaultPath: string;
@@ -48,6 +49,7 @@ type SyncStep = 'select_dir' | 'comparing' | 'review' | 'applying' | 'done';
 
 const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, onClose, onSynced }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [step, setStep] = useState<SyncStep>('select_dir');
     const [localDir, setLocalDir] = useState('');
     const [comparison, setComparison] = useState<VaultSyncComparison | null>(null);
@@ -158,7 +160,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg shadow-xl w-[640px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div {...modalDrag.panelProps} className="bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg shadow-xl w-[640px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-primary)]">
                     <div className="flex items-center gap-2">

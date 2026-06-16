@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Trash2, Database, Search, Calendar, X, AlertTriangle } from 'lucide-react';
 import { getChatStats, clearAllHistory, cleanupHistory, searchHistory, type ChatStats, type SearchResult } from '../../utils/chatHistory';
 import { useTranslation } from '../../i18n';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 /** Parse FTS snippet HTML with <mark> tags into safe React elements */
 function renderFtsSnippet(html: string): React.ReactNode[] {
@@ -32,6 +33,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
     onNavigateToSession,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [stats, setStats] = useState<ChatStats | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -110,13 +112,14 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
         <div
+            {...modalDrag.panelProps}
             role="dialog"
             aria-modal="true"
             aria-label={t('ai.history.manager')}
             className="flex flex-col w-[90%] max-w-2xl max-h-[70vh] rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 rounded-t-lg">
+            <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 rounded-t-lg cursor-grab active:cursor-grabbing">
                 <div className="flex items-center gap-2">
                     <Database size={14} className="text-purple-400" />
                     <span className="text-xs font-medium">{t('ai.history.manager')}</span>

@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Thao tác này sẽ ghi đè lên tệp gốc",
           "saveSaving": "Đang lưu...",
           "saveSaved": "Đã lưu ảnh thành công",
-          "saveFailed": "Không thể lưu ảnh"
+          "saveFailed": "Không thể lưu ảnh",
+          "lossless": "Khong mat du lieu",
+          "lossy": "Mat du lieu",
+          "losslessHint": "Co the dao nguoc: pixel duoc giu nguyen chinh xac khi luu o dinh dang khong mat du lieu",
+          "lossyHint": "Thay doi pixel: khong the hoan tac thay doi mot cach chinh xac",
+          "formatLosslessNote": "Dinh dang khong mat du lieu: pixel duoc luu chinh xac. Cac chinh sua mat du lieu o tren van thay doi hinh anh.",
+          "formatLossyNote": "Dinh dang mat du lieu: viec ma hoa lai loai bo mot so du lieu hinh anh, ke ca cac chinh sua khong mat du lieu."
         },
         "toggleTransparencyBg": "Nền trong suốt (xoay vòng)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = không giới hạn. Vòng lặp sao chép cục bộ điều tiết tốc độ theo giới hạn cao hơn trong hai mức.",
-        "bandwidthUnlimited": "Không giới hạn"
+        "bandwidthUnlimited": "Không giới hạn",
+        "stop": "Dừng",
+        "stopping": "Đang dừng...",
+        "resultCancelled": "Đã hủy đồng bộ"
       },
       "launcherTemplates": "Mẫu",
       "launcherMultiPath": "Nhiều đường dẫn",
@@ -4869,8 +4878,8 @@
       "lock": "Khóa lớp phủ"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (lớp phủ mã hóa)",
-      "hint": "Mã hóa kết nối này một cách trong suốt: bảng đôi hiển thị tên rõ ràng, tải lên được mã hóa, tải xuống được giải mã. Chỉ đọc được từ AeroFTP với mật khẩu này.",
+      "enable": "Crypt (Mã hóa)",
+      "hint": "Mã hóa kết nối này một cách trong suốt: bảng kép hiển thị tên rõ ràng, tải lên mã hóa, tải xuống giải mã.",
       "kindNative": "AeroCrypt (gốc)",
       "kindRclone": "Rclone Crypt (tương tác)",
       "chooseKind": "Chọn một loại mã hóa để tiếp tục: không có mặc định, lựa chọn là có chủ đích.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Loại mã hóa và thông tin đăng nhập đã bị khóa: lớp phủ này đã chứa dữ liệu mã hóa.",
       "addToExistingWarn": "Khi bật lớp phủ trên một hồ sơ hiện có: mọi tập tin văn bản thuần đã có trên máy từ xa này vẫn không được mã hóa và sẽ hiển thị như một hỗn hợp không thể giải mã. Hãy dùng một máy từ xa trống.",
       "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc).",
-      "remotePathLockedNote": "Đường dẫn từ xa bị khóa: đó là gốc của lớp phủ được mã hóa và không thể thay đổi khi lớp phủ đã chứa dữ liệu."
+      "remotePathLockedNote": "Đường dẫn từ xa bị khóa: đó là gốc của lớp phủ được mã hóa và không thể thay đổi khi lớp phủ đã chứa dữ liệu.",
+      "overlaysSection": "Lớp bọc / Overlay",
+      "overlaysActiveBadge": "Bật",
+      "hintNative": "Định dạng AeroCrypt gốc: chỉ đọc được từ AeroFTP với mật khẩu này.",
+      "hintRclone": "Định dạng rclone crypt tiêu chuẩn: cũng đọc được bằng rclone với mật khẩu này.",
+      "passwordLabel": "Mật khẩu",
+      "saltLabel": "Salt (tùy chọn)"
+    },
+    "modalGuard": {
+      "busyTitle": "Đang thực hiện thao tác",
+      "busyBody": "Một thao tác vẫn đang chạy. Dừng và đóng, hay tiếp tục?",
+      "wait": "Tiếp tục",
+      "stopAndClose": "Dừng và đóng",
+      "dirtyTitle": "Thay đổi chưa lưu",
+      "dirtyBody": "Bạn có thay đổi chưa lưu. Bỏ và đóng?",
+      "keepEditing": "Tiếp tục chỉnh sửa",
+      "discardAndClose": "Bỏ và đóng"
     }
   }
 }

@@ -19,6 +19,7 @@ import { formatBytes } from '../utils/formatters';
 import { GitHubReleaseIcon } from './icons/GitHubReleaseIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { Checkbox } from './ui/Checkbox';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface GitHubReleaseBrowserProps {
   isOpen: boolean;
@@ -65,6 +66,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   onError,
 }) => {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
   const [view, setView] = useState<View>('list');
   const [releases, setReleases] = useState<Release[]>([]);
@@ -338,13 +340,15 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
       {/* Dialog */}
       <div
+        {...modalDrag.panelProps}
         className="relative w-full max-w-2xl overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in"
         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-5 py-3 border-b"
+          {...modalDrag.dragHandleProps}
+          className="flex items-center justify-between px-5 py-3 border-b cursor-grab active:cursor-grabbing"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <div className="flex items-center gap-2">

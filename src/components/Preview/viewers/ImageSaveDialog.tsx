@@ -11,8 +11,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { EditState, ImageResult, OUTPUT_FORMATS, buildOperations } from '../types';
+import { EditState, ImageResult, OUTPUT_FORMATS, buildOperations, formatLossKind } from '../types';
 import { useI18n } from '../../../i18n';
+import { useDraggableModal } from '../../../hooks/useDraggableModal';
 
 interface ImageSaveDialogProps {
     isOpen: boolean;
@@ -39,6 +40,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
     isOpen, filePath, fileName, editState, originalDimensions, onSaved, onClose,
 }) => {
     const { t } = useI18n();
+    const modalDrag = useDraggableModal();
 
     // Derive directory and base name from the original file path
     const directory = filePath.substring(0, filePath.lastIndexOf('/'));
@@ -111,33 +113,39 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
             aria-modal="true"
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 p-6 w-[420px] max-w-[90vw] animate-scale-in">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-5">
-                    <h2 className="text-lg font-semibold text-gray-100">
+            <div
+                {...modalDrag.panelProps}
+                className="bg-[var(--color-bg-secondary)] rounded-lg shadow-2xl border border-[var(--color-border)] p-6 w-[420px] max-w-[90vw] animate-scale-in"
+            >
+                {/* Header (drag handle) */}
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between mb-5 cursor-grab active:cursor-grabbing"
+                >
+                    <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
                         {label('saveTitle', 'Save Image')}
                     </h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+                    <button onClick={onClose} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors">
                         <X size={18} />
                     </button>
                 </div>
 
                 {/* Filename */}
                 <div className="flex items-center gap-2 mb-3">
-                    <span className="text-sm text-gray-400 w-20 shrink-0">{label('saveFilename', 'Filename')}</span>
+                    <span className="text-sm text-[var(--color-text-secondary)] w-20 shrink-0">{label('saveFilename', 'Filename')}</span>
                     <input
-                        className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500"
+                        className="flex-1 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
                         value={name}
                         onChange={e => setName(e.target.value)}
                     />
-                    <span className="text-sm text-gray-400">.{format}</span>
+                    <span className="text-sm text-[var(--color-text-secondary)]">.{format}</span>
                 </div>
 
                 {/* Format */}
                 <div className="flex items-center gap-2 mb-3">
-                    <span className="text-sm text-gray-400 w-20 shrink-0">{label('saveFormat', 'Format')}</span>
+                    <span className="text-sm text-[var(--color-text-secondary)] w-20 shrink-0">{label('saveFormat', 'Format')}</span>
                     <select
-                        className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500"
+                        className="flex-1 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
                         value={format}
                         onChange={e => setFormat(e.target.value)}
                     >
@@ -147,21 +155,50 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     </select>
                 </div>
 
+                {/* Lossless / lossy nature of the chosen output format (#270) */}
+                {(() => {
+                    const lossless = formatLossKind(format) === 'lossless';
+                    return (
+                        <div
+                            className={`flex items-start gap-2 mb-3 rounded-lg border px-3 py-2 ${
+                                lossless
+                                    ? 'border-green-500/30 bg-green-500/10'
+                                    : 'border-amber-500/30 bg-amber-500/10'
+                            }`}
+                        >
+                            <span
+                                className={`shrink-0 px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide border ${
+                                    lossless
+                                        ? 'bg-green-500/15 text-green-300 border-green-500/40'
+                                        : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                                }`}
+                            >
+                                {lossless ? label('lossless', 'Lossless') : label('lossy', 'Lossy')}
+                            </span>
+                            <p className="text-xs text-[var(--color-text-secondary)] leading-snug">
+                                {lossless
+                                    ? label('formatLosslessNote', 'Lossless format: pixels are stored exactly. Lossy edits above still change the image.')
+                                    : label('formatLossyNote', 'Lossy format: re-encoding discards some image data, including any lossless edits.')}
+                            </p>
+                        </div>
+                    );
+                })()}
+
                 {/* Quality (JPEG only) */}
                 {format === 'jpg' && (
                     <div className="flex items-center gap-2 mb-3">
-                        <span className="text-sm text-gray-400 w-20 shrink-0">{label('saveQuality', 'Quality')}</span>
+                        <span className="text-sm text-[var(--color-text-secondary)] w-20 shrink-0">{label('saveQuality', 'Quality')}</span>
                         <input
                             type="range" min={1} max={100} value={quality}
                             onChange={e => setQuality(Number(e.target.value))}
                             className="flex-1 accent-blue-500"
                         />
-                        <span className="text-sm text-gray-300 w-8 text-right">{quality}</span>
+                        <span className="text-sm text-[var(--color-text-primary)] w-8 text-right">{quality}</span>
                     </div>
                 )}
 
                 {/* Output dimensions */}
-                <p className="text-sm text-gray-400 mb-5">
+                <p className="text-sm text-[var(--color-text-secondary)] mb-5">
                     {label('saveDimensions', 'Output')}: {outputDims.width} &times; {outputDims.height} px
                 </p>
 
@@ -170,7 +207,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     <button
                         onClick={() => save('copy')}
                         disabled={saving !== null || !name.trim()}
-                        className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     >
                         {saving === 'copy' && <Loader2 size={14} className="animate-spin" />}
                         {saving === 'copy' ? label('saveSaving', 'Saving...') : label('saveAsCopy', 'Save Copy')}
@@ -178,7 +215,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     <button
                         onClick={() => save('replace')}
                         disabled={saving !== null}
-                        className="flex-1 flex items-center justify-center gap-2 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50 text-[var(--color-text-primary)] px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     >
                         {saving === 'replace' && <Loader2 size={14} className="animate-spin" />}
                         {saving === 'replace' ? label('saveSaving', 'Saving...') : label('saveReplace', 'Replace Original')}

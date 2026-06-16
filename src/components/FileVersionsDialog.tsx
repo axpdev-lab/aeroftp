@@ -7,6 +7,7 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { X, Download, RotateCcw, History, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface FileVersion {
   id: string;
@@ -24,6 +25,7 @@ interface Props {
 
 export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: Props) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const [versions, setVersions] = useState<FileVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,11 +86,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
+        {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[520px] max-h-[70vh] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <History size={18} className="text-blue-500" />
             <h3 className="font-semibold text-sm">{t('versions.title') || 'File Versions'}</h3>

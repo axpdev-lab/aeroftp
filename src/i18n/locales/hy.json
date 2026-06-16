@@ -3439,7 +3439,13 @@
           "saveReplaceConfirm": "Սա կվերագրի բնագիր ֆայլը",
           "saveSaving": "Պահպանում...",
           "saveSaved": "Պատկերը հաջողությամբ պահպանվեց",
-          "saveFailed": "Պատկերի պահպանումը ձախողվեց"
+          "saveFailed": "Պատկերի պահպանումը ձախողվեց",
+          "lossless": "Aranc korsti",
+          "lossy": "Korstov",
+          "losslessHint": "Hetadardzeli. piqselnery cshgrit pahpanvum en aranc korsti dzevachapov pahelis",
+          "lossyHint": "Poxum e piqselnery. popoxutyuny hnaravor che cshgrit chexarkel",
+          "formatLosslessNote": "Aranc korsti dzevachap. piqselnery pahvum en cshgrit. Verevi korstov xmbagrumnery mievnuyn e poxum en patkery.",
+          "formatLossyNote": "Korstov dzevachap. verakodavorumy heracnum e patkeri vorosh tvyalner, ayd tvum aranc korsti xmbagrumnery."
         },
         "toggleTransparencyBg": "Թափանցիկության ֆոն (փոխել)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = անսահմանափակ։ Տեղական հայելու ցիկլը սահմանափակում է երկու սահմաններից բարձրի համաձայն։",
-        "bandwidthUnlimited": "Անսահմանափակ"
+        "bandwidthUnlimited": "Անսահմանափակ",
+        "stop": "Կանգնեցնել",
+        "stopping": "Կանգնեցվում է...",
+        "resultCancelled": "Համաժամացումը չեղարկվեց"
       },
       "launcherTemplates": "Կաղապարներ",
       "launcherMultiPath": "Բազմակի ուղիներ",
@@ -4869,8 +4878,8 @@
       "lock": "Կողպել ծածկույթը"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (գաղտնագրված շերտ)",
-      "hint": "Թափանցիկ կերպով գաղտնագրում է այս կապը. երկվահանակը ցույց է տալիս ընթեռնելի անուններ, վերբեռնումները գաղտնագրվում են, ներբեռնումները ապագաղտնագրվում են։ Ընթեռնելի է միայն AeroFTP-ից այս գաղտնաբառով։",
+      "enable": "Crypt (Գաղտնագրում)",
+      "hint": "Թափանցիկ կերպով գաղտնագրում է այս կապը. կրկնակի վահանակը ցույց է տալիս հստակ անունները, վերբեռնումները գաղտնագրում են, ներբեռնումները ապագաղտնագրում։",
       "kindNative": "AeroCrypt (բնիկ)",
       "kindRclone": "Rclone Crypt (փոխգործակցելի)",
       "chooseKind": "Շարունակելու համար ընտրեք գաղտնագրման տեսակ. լռելյայն չկա, ընտրությունը կանխամտածված է։",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Գաղտնագրման տեսակը և մուտքի տվյալները կողպված են. այս շերտն արդեն պարունակում է գաղտնագրված տվյալներ։",
       "addToExistingWarn": "Ծածկույթ միացնելը գոյություն ունեցող պրոֆիլում. այս հեռավորության վրա արդեն առկա ցանկացած պարզ տեքստով ֆայլ մնում է չգաղտնագրված և կցուցադրվի որպես չվերծանվող խառնուրդ։ Օգտագործեք դատարկ հեռավորություն։",
       "scopeHint": "Վերևի հեռավոր և տեղային ուղիները սահմանում են գաղտնագրման շրջանակը (թողեք հեռավորը դատարկ՝ ամբողջ արմատը գաղտնագրելու համար)։",
-      "remotePathLockedNote": "Հեռավոր ուղին կողպված է. այն գաղտնագրված ծածկույթի արմատն է և չի կարող փոխվել, երբ ծածկույթը տվյալներ է պարունակում:"
+      "remotePathLockedNote": "Հեռավոր ուղին կողպված է. այն գաղտնագրված ծածկույթի արմատն է և չի կարող փոխվել, երբ ծածկույթը տվյալներ է պարունակում:",
+      "overlaysSection": "Փաթաթաններ / Overlay-ներ",
+      "overlaysActiveBadge": "Միաց.",
+      "hintNative": "Բնիկ AeroCrypt ձևաչափ. ընթեռնելի է միայն AeroFTP-ից այս գաղտնաբառով։",
+      "hintRclone": "Ստանդարտ rclone crypt ձևաչափ. ընթեռնելի է նաև rclone-ով այս գաղտնաբառով։",
+      "passwordLabel": "Գաղտնաբառ",
+      "saltLabel": "Salt (ընտրովի)"
+    },
+    "modalGuard": {
+      "busyTitle": "Գործողությունն ընթացքի մեջ է",
+      "busyBody": "Գործողությունը դեռ ընթանում է։ Կանգնեցնե՞լ և փակել, թե՞ շարունակել։",
+      "wait": "Շարունակել",
+      "stopAndClose": "Կանգնեցնել և փակել",
+      "dirtyTitle": "Չպահված փոփոխություններ",
+      "dirtyBody": "Ունեք չպահված փոփոխություններ։ Հրաժարվե՞լ և փակել։",
+      "keepEditing": "Շարունակել խմբագրումը",
+      "discardAndClose": "Հրաժարվել և փակել"
     }
   }
 }

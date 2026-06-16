@@ -8,6 +8,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2, Key } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
@@ -34,6 +35,7 @@ interface BreadcrumbItem {
 
 export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose, initialVaultPath }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -159,9 +161,9 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[650px] max-h-[80vh] flex flex-col animate-scale-in">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[650px] max-h-[80vh] flex flex-col animate-scale-in">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Shield size={18} className="text-emerald-400" />
                         <span className="font-medium">

@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Dette vil overskrive originalfilen",
           "saveSaving": "Lagrer...",
           "saveSaved": "Bildet ble lagret",
-          "saveFailed": "Kunne ikke lagre bildet"
+          "saveFailed": "Kunne ikke lagre bildet",
+          "lossless": "Tapsfri",
+          "lossy": "Med tap",
+          "losslessHint": "Reversibel: piksler bevares noyaktig nar de lagres i et tapsfritt format",
+          "lossyHint": "Endrer piksler: endringen kan ikke angres noyaktig",
+          "formatLosslessNote": "Tapsfritt format: piksler lagres noyaktig. Redigeringer med tap ovenfor endrer likevel bildet.",
+          "formatLossyNote": "Format med tap: omkoding forkaster noen bildedata, ogsa tapsfrie redigeringer."
         },
         "toggleTransparencyBg": "Gjennomsiktighetsbakgrunn (veksle)"
       },
@@ -4704,7 +4710,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = ubegrenset. Den lokale speil-løkken begrenser ved å bruke den høyeste av de to grensene.",
-        "bandwidthUnlimited": "Ubegrenset"
+        "bandwidthUnlimited": "Ubegrenset",
+        "stop": "Stopp",
+        "stopping": "Stopper...",
+        "resultCancelled": "Synkronisering avbrutt"
       },
       "launcherTemplates": "Maler",
       "launcherMultiPath": "Flere baner",
@@ -4888,8 +4897,8 @@
       "lock": "Lås overlegg"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt-profil (kryptert overlegg)",
-      "hint": "Krypter denne tilkoblingen transparent: dobbeltpanelet viser klare navn, opplastinger krypteres og nedlastinger dekrypteres. Bare lesbar fra AeroFTP med dette passordet.",
+      "enable": "Crypt (Kryptering)",
+      "hint": "Krypterer denne tilkoblingen transparent: dobbeltpanelet viser klare navn, opplastinger krypterer, nedlastinger dekrypterer.",
       "kindNative": "AeroCrypt (native)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Velg en krypteringstype for å fortsette: det finnes ingen standard, valget er bevisst.",
@@ -4899,7 +4908,23 @@
       "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data.",
       "addToExistingWarn": "Når du aktiverer et overlegg på en eksisterende profil: alle klartekstfiler som allerede finnes på denne eksterne plasseringen forblir ukryptert og vises som en blanding som ikke kan dekrypteres. Bruk en tom ekstern plassering.",
       "scopeHint": "De eksterne og lokale stiene ovenfor definerer det krypterte omfanget (la Ekstern stå tom for å kryptere hele roten).",
-      "remotePathLockedNote": "Ekstern sti er låst: den er roten til det krypterte overlegget og kan ikke endres når overlegget inneholder data."
+      "remotePathLockedNote": "Ekstern sti er låst: den er roten til det krypterte overlegget og kan ikke endres når overlegget inneholder data.",
+      "overlaysSection": "Innpakninger / Overlays",
+      "overlaysActiveBadge": "På",
+      "hintNative": "Native AeroCrypt-format: kan bare leses fra AeroFTP med dette passordet.",
+      "hintRclone": "Standard rclone crypt-format: kan også leses av rclone med dette passordet.",
+      "passwordLabel": "Passord",
+      "saltLabel": "Salt (valgfritt)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operasjon pågår",
+      "busyBody": "En operasjon pågår fortsatt. Stopp og lukk, eller la den fortsette?",
+      "wait": "La fortsette",
+      "stopAndClose": "Stopp og lukk",
+      "dirtyTitle": "Ulagrede endringer",
+      "dirtyBody": "Du har ulagrede endringer. Forkast og lukk?",
+      "keepEditing": "Fortsett redigering",
+      "discardAndClose": "Forkast og lukk"
     }
   }
 }

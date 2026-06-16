@@ -13,6 +13,7 @@ import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForwar
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { Checkbox } from './ui/Checkbox';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'cancel';
 
@@ -63,6 +64,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     onCancel,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [applyToAll, setApplyToAll] = useState(false);
     const [showRename, setShowRename] = useState(false);
     const [newFileName, setNewFileName] = useState('');
@@ -119,9 +121,9 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancel} />
 
             {/* Dialog */}
-            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+            <div {...modalDrag.panelProps} className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <AlertTriangle size={18} className="text-amber-500" />
                         <span className="font-medium text-gray-900 dark:text-gray-100">

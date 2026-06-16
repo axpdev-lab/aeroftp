@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Ito ay mag-o-overwrite sa orihinal na file",
           "saveSaving": "Sine-save...",
           "saveSaved": "Matagumpay na na-save ang larawan",
-          "saveFailed": "Hindi ma-save ang larawan"
+          "saveFailed": "Hindi ma-save ang larawan",
+          "lossless": "Walang lugi",
+          "lossy": "May lugi",
+          "losslessHint": "Naibabalik: tumpak na napapanatili ang mga pixel kapag ini-save sa format na walang lugi",
+          "lossyHint": "Binabago ang mga pixel: hindi tumpak na maibabalik ang pagbabago",
+          "formatLosslessNote": "Format na walang lugi: tumpak na naiimbak ang mga pixel. Binabago pa rin ng mga lossy na pag-edit sa itaas ang larawan.",
+          "formatLossyNote": "Format na may lugi: ang muling pag-encode ay nagtatapon ng ilang data ng larawan, kasama ang mga pag-edit na walang lugi."
         },
         "toggleTransparencyBg": "Background ng transparency (i-cycle)"
       },
@@ -4704,7 +4710,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = walang limitasyon. Ang local mirror loop ay naglilimita gamit ang mas mataas sa dalawang cap.",
-        "bandwidthUnlimited": "Walang limitasyon"
+        "bandwidthUnlimited": "Walang limitasyon",
+        "stop": "Itigil",
+        "stopping": "Ihinihinto...",
+        "resultCancelled": "Kinansela ang sync"
       },
       "launcherTemplates": "Mga template",
       "launcherMultiPath": "Maramihang landas",
@@ -4888,8 +4897,8 @@
       "lock": "I-lock ang overlay"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (naka-encrypt na overlay)",
-      "hint": "I-encrypt ang koneksyong ito nang transparent: ipinapakita ng dual-panel ang malinaw na mga pangalan, naka-encrypt ang mga upload, nade-decrypt ang mga download. Mababasa lamang mula sa AeroFTP gamit ang password na ito.",
+      "enable": "Crypt (Pag-encrypt)",
+      "hint": "Malinaw na ini-encrypt ang koneksyong ito: ipinapakita ng dual-panel ang malilinaw na pangalan, ang mga upload ay nag-e-encrypt, ang mga download ay nagde-decrypt.",
       "kindNative": "AeroCrypt (native)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Pumili ng uri ng pag-encrypt para magpatuloy: walang default, sinasadya ang pagpili.",
@@ -4899,7 +4908,23 @@
       "lockedNote": "Naka-lock ang uri ng pag-encrypt at mga kredensyal: naglalaman na ng naka-encrypt na data ang overlay na ito.",
       "addToExistingWarn": "Kapag nag-enable ng overlay sa isang umiiral na profile: anumang plaintext na file na nasa remote na ito ay mananatiling hindi naka-encrypt at lalabas bilang halong hindi ma-decrypt. Gumamit ng walang lamang remote.",
       "scopeHint": "Tinutukoy ng mga Remote at Local na path sa itaas ang naka-encrypt na saklaw (iwanang walang laman ang Remote para i-encrypt ang buong root).",
-      "remotePathLockedNote": "Naka-lock ang Remote path: ito ang ugat ng naka-encrypt na overlay at hindi mababago kapag may laman nang data ang overlay."
+      "remotePathLockedNote": "Naka-lock ang Remote path: ito ang ugat ng naka-encrypt na overlay at hindi mababago kapag may laman nang data ang overlay.",
+      "overlaysSection": "Mga Wrapper / Overlay",
+      "overlaysActiveBadge": "Naka-on",
+      "hintNative": "Native na format ng AeroCrypt: mababasa lamang mula sa AeroFTP gamit ang password na ito.",
+      "hintRclone": "Standard na format ng rclone crypt: mababasa rin ng rclone gamit ang password na ito.",
+      "passwordLabel": "Password",
+      "saltLabel": "Salt (opsyonal)"
+    },
+    "modalGuard": {
+      "busyTitle": "May isinasagawang operasyon",
+      "busyBody": "May operasyong tumatakbo pa. Ihinto at isara, o hayaang magpatuloy?",
+      "wait": "Hayaang magpatuloy",
+      "stopAndClose": "Ihinto at isara",
+      "dirtyTitle": "Hindi naka-save na mga pagbabago",
+      "dirtyBody": "May hindi naka-save na mga pagbabago. Itapon at isara?",
+      "keepEditing": "Magpatuloy sa pag-edit",
+      "discardAndClose": "Itapon at isara"
     }
   }
 }

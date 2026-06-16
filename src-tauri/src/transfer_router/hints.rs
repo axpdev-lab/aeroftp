@@ -382,12 +382,12 @@ mod tests {
 
     #[test]
     fn detect_webdav_nextcloud_via_preset_id() {
-        // axpbuntu lab Nextcloud: URL is bare (https://cloud.lab.axpdev.it
+        // axpbuntu lab Nextcloud: URL is bare (https://cloud.lab.example.test
         // without /remote.php/dav/files/) but the preset id is `nextcloud`.
         // The preset wins because it travels with the profile.
         let hint = from_provider_type(
             ProviderType::WebDav,
-            Some("https://cloud.lab.axpdev.it"),
+            Some("https://cloud.lab.example.test"),
             Some("nextcloud"),
         );
         assert_eq!(hint, ProviderHint::WebDavNextcloud);
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(
             from_provider_type(
                 ProviderType::WebDav,
-                Some("https://dav.lab.axpdev.it/"),
+                Some("https://dav.lab.example.test/"),
                 None
             ),
             ProviderHint::WebDavVanilla

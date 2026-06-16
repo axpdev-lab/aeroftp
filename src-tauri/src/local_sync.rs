@@ -9,6 +9,7 @@
 #![cfg(feature = "aerorsync")]
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -74,6 +75,21 @@ pub struct LocalSyncEntry {
 
 const MAX_ENTRY_ROWS: usize = 5000;
 
+/// Process-global cancel flag for the local-to-local sync run.
+///
+/// The AeroSync dialog runs at most one local sync at a time, so a single
+/// flag is sufficient. `local_sync_run` clears it on entry; `local_sync_cancel`
+/// raises it, and the walk loop observes it at every file boundary, mirroring
+/// the provider-state cancel flag used by the remote sync path (issue #332).
+static LOCAL_SYNC_CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// Request cancellation of the in-progress `local_sync_run`. Idempotent and
+/// safe to call when no sync is running: the next run clears the flag on entry.
+#[tauri::command]
+pub fn local_sync_cancel() {
+    LOCAL_SYNC_CANCEL.store(true, Ordering::Relaxed);
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LocalSyncReport {
     pub status: String,
@@ -138,6 +154,10 @@ pub async fn local_sync_run(
             .map_err(|e| format!("create destination {}: {}", destination.display(), e))?;
     }
 
+    // Clear any stale cancel request left over from a previous run before we
+    // start walking; the dialog's Stop button / guarded-close raises it again.
+    LOCAL_SYNC_CANCEL.store(false, Ordering::Relaxed);
+
     let exclude_matchers: Vec<globset::GlobMatcher> = request
         .exclude
         .iter()
@@ -174,7 +194,15 @@ pub async fn local_sync_run(
     };
 
     let mut processed: u32 = 0;
+    let mut cancelled = false;
     for entry in walkdir::WalkDir::new(&source).follow_links(false) {
+        // Honour a cancel request at the file boundary: the bytes already
+        // written stay on disk (a partial mirror), and the report status
+        // flips to "cancelled" so the UI can distinguish it from a clean run.
+        if LOCAL_SYNC_CANCEL.load(Ordering::Relaxed) {
+            cancelled = true;
+            break;
+        }
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
@@ -391,7 +419,9 @@ pub async fn local_sync_run(
     } else {
         0.0
     };
-    if report.errors > 0 {
+    if cancelled {
+        report.status = "cancelled".to_string();
+    } else if report.errors > 0 {
         report.status = "partial".to_string();
     }
     Ok(report)

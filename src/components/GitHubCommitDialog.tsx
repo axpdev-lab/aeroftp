@@ -10,6 +10,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GitCommit, X, FileUp, Trash2, AlertTriangle, GitBranch, UserPlus, Users, Plus } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 // ── Co-Author Storage ──────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
   onCancel,
 }) => {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const [message, setMessage] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const [coAuthors, setCoAuthors] = useState<CoAuthor[]>(loadCoAuthors);
@@ -161,6 +163,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
 
       {/* Dialog */}
       <div
+        {...modalDrag.panelProps}
         className="relative w-full max-w-md overflow-hidden rounded-lg border shadow-2xl animate-scale-in"
         style={{
           backgroundColor: 'var(--color-bg-secondary)',
@@ -170,7 +173,8 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-5 py-3 border-b"
+          {...modalDrag.dragHandleProps}
+          className="flex items-center justify-between px-5 py-3 border-b cursor-grab active:cursor-grabbing"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <div className="flex items-center gap-2">

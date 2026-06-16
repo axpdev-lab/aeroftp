@@ -23,6 +23,7 @@ import {
     SyncProfile,
 } from '../../types';
 import { useTranslation } from '../../i18n';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface SyncTemplateDialogProps {
     isOpen: boolean;
@@ -52,6 +53,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     excludePatterns,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import'>('export');
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
@@ -398,11 +400,12 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Sync Template">
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <FileDown size={18} className="text-purple-500" />
                         <h3 className="font-semibold text-sm">{t('syncPanel.templates')}</h3>

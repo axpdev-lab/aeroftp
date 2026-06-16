@@ -15,7 +15,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom } from 'lucide-react';
-import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect } from '../types';
+import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect, buildOperations } from '../types';
 import type { ImageResult } from '../types';
 import { useI18n } from '../../../i18n';
 import { useImagePreviewBg, writeImagePreviewBg, IMAGE_PREVIEW_BG_PRESETS } from '../../../utils/imagePreviewBg';
@@ -25,6 +25,8 @@ import { ImageSaveDialog } from './ImageSaveDialog';
 
 interface ImageViewerProps extends ViewerBaseProps {
     className?: string;
+    /** Reports unsaved AeroImage edits so the host can guard accidental close. */
+    onDirtyChange?: (dirty: boolean) => void;
 }
 
 // Zoom limits
@@ -36,6 +38,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     file,
     onError,
     className = '',
+    onDirtyChange,
 }) => {
     const { t } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -92,6 +95,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         }
         prevSrcRef.current = imageSrc;
     }, [imageSrc]);
+
+    // Report unsaved AeroImage edits up so the preview modal can guard against
+    // an accidental click-outside while the user is mid-edit (#270).
+    useEffect(() => {
+        onDirtyChange?.(editMode && buildOperations(editState).length > 0);
+    }, [editMode, editState, onDirtyChange]);
 
     // Handle image load
     const handleImageLoad = useCallback(() => {
@@ -309,77 +318,77 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     // Render loading state
     if (!imageSrc) {
         return (
-            <div className={`flex items-center justify-center h-full bg-gray-900 ${className}`}>
+            <div className={`flex items-center justify-center h-full bg-black ${className}`}>
                 <div className="text-gray-500">{t('preview.common.noData')}</div>
             </div>
         );
     }
 
     return (
-        <div className={`relative flex flex-col h-full bg-gray-900 ${className}`}>
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-800/80 border-b border-gray-700">
+        <div className={`relative flex flex-col h-full bg-black ${className}`}>
+            {/* Toolbar: theme-aware chrome (the image viewport below stays black) */}
+            <div className="flex items-center justify-between px-4 py-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
                 <div className="flex items-center gap-2">
                     {/* Zoom controls */}
                     <button
                         onClick={zoomOut}
                         disabled={cropMode}
-                        className="p-2 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40"
+                        className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40"
                         title={t('preview.image.zoomOut')}
                     >
-                        <ZoomOut size={18} className="text-gray-400" />
+                        <ZoomOut size={18} className="text-[var(--color-text-secondary)]" />
                     </button>
-                    <span className="text-sm text-gray-400 w-16 text-center font-mono">
+                    <span className="text-sm text-[var(--color-text-secondary)] w-16 text-center font-mono">
                         {Math.round(effectiveZoom * 100)}%
                     </span>
                     <button
                         onClick={zoomIn}
                         disabled={cropMode}
-                        className="p-2 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40"
+                        className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40"
                         title={t('preview.image.zoomIn')}
                     >
-                        <ZoomIn size={18} className="text-gray-400" />
+                        <ZoomIn size={18} className="text-[var(--color-text-secondary)]" />
                     </button>
 
-                    <div className="w-px h-6 bg-gray-700 mx-2" />
+                    <div className="w-px h-6 bg-[var(--color-border)] mx-2" />
 
                     {/* Rotate (view rotation: disabled in edit mode) */}
                     <button
                         onClick={rotate}
                         disabled={editMode}
-                        className="p-2 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40"
+                        className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40"
                         title={t('preview.image.rotate')}
                     >
-                        <RotateCw size={18} className="text-gray-400" />
+                        <RotateCw size={18} className="text-[var(--color-text-secondary)]" />
                     </button>
 
                     {/* Fit toggle */}
                     <button
                         onClick={toggleFit}
                         disabled={cropMode}
-                        className="p-2 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40"
+                        className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40"
                         title={isFitToScreen ? t('preview.image.actualSize') : t('preview.image.fit')}
                     >
                         {isFitToScreen ? (
-                            <Maximize2 size={18} className="text-gray-400" />
+                            <Maximize2 size={18} className="text-[var(--color-text-secondary)]" />
                         ) : (
-                            <Minimize2 size={18} className="text-gray-400" />
+                            <Minimize2 size={18} className="text-[var(--color-text-secondary)]" />
                         )}
                     </button>
 
-                    <div className="w-px h-6 bg-gray-700 mx-2" />
+                    <div className="w-px h-6 bg-[var(--color-border)] mx-2" />
 
                     {/* Color Picker (disabled in edit mode) */}
                     <button
                         onClick={() => { setColorPickMode(p => !p); setPickedColor(null); }}
                         disabled={editMode}
-                        className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-40 ${colorPickMode ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-gray-700 text-gray-400'}`}
+                        className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-40 ${colorPickMode ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'}`}
                         title={colorPickMode ? t('preview.image.cancelPick') : t('preview.image.pickColor')}
                     >
                         <Pipette size={18} />
                         {pickedColor && (
                             <span className="flex items-center gap-1 text-xs font-mono">
-                                <span className="w-4 h-4 rounded border border-gray-600 inline-block" style={{ backgroundColor: pickedColor }} />
+                                <span className="w-4 h-4 rounded border border-[var(--color-border-strong)] inline-block" style={{ backgroundColor: pickedColor }} />
                                 {pickedColor}
                             </span>
                         )}
@@ -390,7 +399,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         synced with Settings > Appearance. */}
                     <button
                         onClick={cyclePreviewBg}
-                        className="p-2 rounded-lg transition-colors hover:bg-gray-700 text-gray-400"
+                        className="p-2 rounded-lg transition-colors hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
                         title={t('preview.image.toggleTransparencyBg')}
                     >
                         <SquareDashedBottom size={18} />
@@ -399,10 +408,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     {/* Edit button (local files only) */}
                     {canEdit && (
                         <>
-                            <div className="w-px h-6 bg-gray-700 mx-2" />
+                            <div className="w-px h-6 bg-[var(--color-border)] mx-2" />
                             <button
                                 onClick={toggleEditMode}
-                                className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 ${editMode ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-gray-700 text-gray-400'}`}
+                                className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 ${editMode ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]'}`}
                                 title={t('preview.image.edit.editImage') || 'Edit Image'}
                             >
                                 {editMode ? <X size={18} /> : <Pencil size={18} />}
@@ -418,7 +427,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
                 {/* Image info */}
                 {metadata && (
-                    <div className="text-xs text-gray-500 font-mono">
+                    <div className="text-xs text-[var(--color-text-tertiary)] font-mono">
                         {metadata.width} × {metadata.height} • {metadata.format}
                     </div>
                 )}

@@ -14,6 +14,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Replace, Plus, Hash, AlertTriangle, X, Check, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 /** A4-10: Validate filename: reject path separators, null bytes, and dot-only names */
 function isValidFilename(name: string): boolean {
@@ -52,6 +53,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
   onClose,
 }) => {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -201,9 +203,9 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Batch Rename">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[80vh] flex flex-col animate-scale-in">
+      <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[560px] max-h-[80vh] flex flex-col animate-scale-in">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <Replace size={18} className="text-blue-500" />
             <span className="font-medium text-gray-900 dark:text-white">

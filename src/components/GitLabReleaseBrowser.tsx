@@ -18,6 +18,7 @@ import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface GitLabReleaseBrowserProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
   isOpen, onClose, onError,
 }) => {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
   const [view, setView] = useState<View>('list');
   const [releases, setReleases] = useState<Release[]>([]);
@@ -262,9 +264,14 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" role="dialog" aria-modal="true" aria-label={t('gitlab.releases') || 'GitLab Releases'}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={view === 'create' ? () => setView('list') : onClose} />
 
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in" style={{ backgroundColor: 'var(--color-bg-secondary)' }} onClick={e => e.stopPropagation()}>
+      <div
+        {...modalDrag.panelProps}
+        className="relative w-full max-w-2xl overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in"
+        style={{ ...modalDrag.panelProps.style, backgroundColor: 'var(--color-bg-secondary)' }}
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3 border-b cursor-grab active:cursor-grabbing" style={{ borderColor: 'var(--color-border)' }}>
           <div className="flex items-center gap-2">
             {view === 'create' ? (
               <button onClick={() => setView('list')} className="p-1 rounded transition-colors hover:opacity-80" style={{ color: 'var(--color-text-secondary)' }}><ArrowLeft size={16} /></button>

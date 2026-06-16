@@ -63,7 +63,7 @@ export function MyServersToolbar({
         <div className="flex items-center gap-2 mb-3">
             {/* Filtered count label (search + filters now live in the sidebar). */}
             <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-                {filteredCount === serverCount ? serverCount : `${filteredCount} / ${serverCount}`}
+                {`${filteredCount} / ${serverCount}`}
             </span>
 
             <div className="flex-1" />

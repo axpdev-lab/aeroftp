@@ -15,6 +15,7 @@ import { RestoreSnapshotResult, SyncSnapshot } from '../../types';
 import { useTranslation } from '../../i18n';
 import { formatSize } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface RollbackDialogProps {
     isOpen: boolean;
@@ -34,6 +35,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     versioningStrategy,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [snapshots, setSnapshots] = useState<SyncSnapshot[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -131,11 +133,12 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Rollback Snapshot">
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Undo2 size={18} className="text-amber-500" />
                         <h3 className="font-semibold text-sm">{t('syncPanel.rollback')}</h3>

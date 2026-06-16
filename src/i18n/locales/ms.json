@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Ini akan menimpa fail asal",
           "saveSaving": "Menyimpan...",
           "saveSaved": "Imej berjaya disimpan",
-          "saveFailed": "Gagal menyimpan imej"
+          "saveFailed": "Gagal menyimpan imej",
+          "lossless": "Tanpa kehilangan",
+          "lossy": "Dengan kehilangan",
+          "losslessHint": "Boleh balik: piksel dikekalkan tepat apabila disimpan ke format tanpa kehilangan",
+          "lossyHint": "Mengubah piksel: perubahan tidak boleh dibuat asal dengan tepat",
+          "formatLosslessNote": "Format tanpa kehilangan: piksel disimpan tepat. Suntingan dengan kehilangan di atas tetap mengubah imej.",
+          "formatLossyNote": "Format dengan kehilangan: pengekodan semula membuang sebahagian data imej, termasuk suntingan tanpa kehilangan."
         },
         "toggleTransparencyBg": "Latar kelutsinaran (kitar)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = tanpa had. Gelung cermin tempatan menghadkan menggunakan yang lebih tinggi daripada kedua-dua had.",
-        "bandwidthUnlimited": "Tanpa had"
+        "bandwidthUnlimited": "Tanpa had",
+        "stop": "Hentikan",
+        "stopping": "Menghentikan...",
+        "resultCancelled": "Penyegerakan dibatalkan"
       },
       "launcherTemplates": "Templat",
       "launcherMultiPath": "Pelbagai Laluan",
@@ -4869,8 +4878,8 @@
       "lock": "Kunci tindanan"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (lapisan tersulit)",
-      "hint": "Sulitkan sambungan ini secara telus: panel dwi memaparkan nama yang jelas, muat naik disulitkan, muat turun dinyahsulit. Hanya boleh dibaca daripada AeroFTP dengan kata laluan ini.",
+      "enable": "Crypt (Penyulitan)",
+      "hint": "Menyulitkan sambungan ini secara telus: panel dwi memaparkan nama jelas, muat naik menyulitkan, muat turun menyahsulit.",
       "kindNative": "AeroCrypt (asli)",
       "kindRclone": "Rclone Crypt (saling kendali)",
       "chooseKind": "Pilih jenis penyulitan untuk meneruskan: tiada lalai, pilihan ini sengaja.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Jenis penyulitan dan kelayakan dikunci: lapisan ini sudah mengandungi data tersulit.",
       "addToExistingWarn": "Mengaktifkan tindihan pada profil sedia ada: sebarang fail teks biasa yang sudah ada pada jauh ini kekal tidak disulitkan dan akan dipaparkan sebagai campuran yang tidak boleh dinyahsulit. Gunakan jauh yang kosong.",
       "scopeHint": "Laluan Jauh dan Tempatan di atas menentukan skop tersulit (biarkan Jauh kosong untuk menyulitkan seluruh root).",
-      "remotePathLockedNote": "Laluan jauh dikunci: ia adalah akar tindihan tersulit dan tidak boleh diubah apabila tindihan mengandungi data."
+      "remotePathLockedNote": "Laluan jauh dikunci: ia adalah akar tindihan tersulit dan tidak boleh diubah apabila tindihan mengandungi data.",
+      "overlaysSection": "Pembalut / Overlay",
+      "overlaysActiveBadge": "Hidup",
+      "hintNative": "Format AeroCrypt asli: hanya boleh dibaca daripada AeroFTP dengan kata laluan ini.",
+      "hintRclone": "Format rclone crypt standard: juga boleh dibaca oleh rclone dengan kata laluan ini.",
+      "passwordLabel": "Kata laluan",
+      "saltLabel": "Salt (pilihan)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operasi sedang berjalan",
+      "busyBody": "Operasi masih berjalan. Hentikan dan tutup, atau biarkan berjalan?",
+      "wait": "Biarkan berjalan",
+      "stopAndClose": "Hentikan dan tutup",
+      "dirtyTitle": "Perubahan belum disimpan",
+      "dirtyBody": "Anda mempunyai perubahan belum disimpan. Buang dan tutup?",
+      "keepEditing": "Teruskan menyunting",
+      "discardAndClose": "Buang dan tutup"
     }
   }
 }

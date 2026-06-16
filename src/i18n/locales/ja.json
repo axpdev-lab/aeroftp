@@ -3411,7 +3411,13 @@
           "saveReplaceConfirm": "元のファイルが上書きされます",
           "saveSaving": "保存中...",
           "saveSaved": "画像を保存しました",
-          "saveFailed": "画像の保存に失敗しました"
+          "saveFailed": "画像の保存に失敗しました",
+          "lossless": "可逆",
+          "lossy": "非可逆",
+          "losslessHint": "可逆: 可逆形式で保存するとピクセルは正確に保持されます",
+          "lossyHint": "ピクセルを変更: この変更は正確には元に戻せません",
+          "formatLosslessNote": "可逆形式: ピクセルは正確に保存されます。上の非可逆編集は画像を変更します。",
+          "formatLossyNote": "非可逆形式: 再エンコードで画像データの一部（可逆編集を含む）が失われます。"
         },
         "toggleTransparencyBg": "透過の背景（切り替え）"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = 無制限。ローカルミラーループは2つの上限のうち高い方を使用して制限します。",
-        "bandwidthUnlimited": "無制限"
+        "bandwidthUnlimited": "無制限",
+        "stop": "停止",
+        "stopping": "停止中...",
+        "resultCancelled": "同期がキャンセルされました"
       },
       "launcherTemplates": "テンプレート",
       "launcherMultiPath": "マルチパス",
@@ -4869,8 +4878,8 @@
       "lock": "オーバーレイをロック"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt プロファイル（暗号化オーバーレイ）",
-      "hint": "この接続を透過的に暗号化します。デュアルパネルには判読可能な名前が表示され、アップロード時に暗号化、ダウンロード時に復号されます。このパスワードを使った AeroFTP からのみ読み取れます。",
+      "enable": "Crypt (暗号化)",
+      "hint": "この接続を透過的に暗号化します。デュアルパネルは平文の名前を表示し、アップロードは暗号化、ダウンロードは復号します。",
       "kindNative": "AeroCrypt（ネイティブ）",
       "kindRclone": "Rclone Crypt（相互運用）",
       "chooseKind": "続行するには暗号化の種類を選択してください。既定はなく、選択は意図的に行います。",
@@ -4880,7 +4889,23 @@
       "lockedNote": "暗号化の種類と認証情報はロックされています。このオーバーレイにはすでに暗号化されたデータがあります。",
       "addToExistingWarn": "既存のプロファイルでオーバーレイを有効にすると、このリモートに既にある平文ファイルは暗号化されないまま残り、復号できない混在状態として表示されます。空のリモートを使用してください。",
       "scopeHint": "上記のリモートとローカルのパスが暗号化の範囲を定義します（リモートを空欄にするとルート全体を暗号化します）。",
-      "remotePathLockedNote": "リモートパスはロックされています。これは暗号化オーバーレイのルートであり、オーバーレイにデータが入ると変更できません。"
+      "remotePathLockedNote": "リモートパスはロックされています。これは暗号化オーバーレイのルートであり、オーバーレイにデータが入ると変更できません。",
+      "overlaysSection": "ラッパー / オーバーレイ",
+      "overlaysActiveBadge": "オン",
+      "hintNative": "ネイティブ AeroCrypt 形式: このパスワードで AeroFTP からのみ読み取れます。",
+      "hintRclone": "標準 rclone crypt 形式: このパスワードで rclone でも読み取れます。",
+      "passwordLabel": "パスワード",
+      "saltLabel": "Salt (任意)"
+    },
+    "modalGuard": {
+      "busyTitle": "操作の実行中",
+      "busyBody": "操作がまだ実行中です。停止して閉じますか、続行しますか？",
+      "wait": "続行",
+      "stopAndClose": "停止して閉じる",
+      "dirtyTitle": "未保存の変更",
+      "dirtyBody": "未保存の変更があります。破棄して閉じますか？",
+      "keepEditing": "編集を続ける",
+      "discardAndClose": "破棄して閉じる"
     }
   }
 }

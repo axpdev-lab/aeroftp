@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Hii itaandika juu ya faili asili",
           "saveSaving": "Inahifadhi...",
           "saveSaved": "Picha imehifadhiwa kwa mafanikio",
-          "saveFailed": "Imeshindwa kuhifadhi picha"
+          "saveFailed": "Imeshindwa kuhifadhi picha",
+          "lossless": "Bila hasara",
+          "lossy": "Yenye hasara",
+          "losslessHint": "Inaweza kutenduliwa: pikseli huhifadhiwa sawasawa zinapohifadhiwa katika muundo bila hasara",
+          "lossyHint": "Hubadilisha pikseli: badiliko haliwezi kutenduliwa kwa usahihi",
+          "formatLosslessNote": "Muundo bila hasara: pikseli huhifadhiwa sawasawa. Mahariri yenye hasara hapo juu bado hubadilisha picha.",
+          "formatLossyNote": "Muundo wenye hasara: kusimba upya hutupa baadhi ya data ya picha, ikijumuisha mahariri bila hasara."
         },
         "toggleTransparencyBg": "Mandharinyuma ya uwazi (zungusha)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = bila kikomo. Mzunguko wa kioo cha ndani hupunguza kasi kwa kutumia kikomo cha juu kati ya viwili.",
-        "bandwidthUnlimited": "Bila kikomo"
+        "bandwidthUnlimited": "Bila kikomo",
+        "stop": "Simamisha",
+        "stopping": "Inasimamisha...",
+        "resultCancelled": "Usawazishaji umeghairiwa"
       },
       "launcherTemplates": "Violezo",
       "launcherMultiPath": "Njia nyingi",
@@ -4869,8 +4878,8 @@
       "lock": "Funga tabaka"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (safu iliyosimbwa)",
-      "hint": "Husimba muunganisho huu kwa uwazi: paneli mbili huonyesha majina yanayosomeka, vipakiwa husimbwa, vipakuliwa husimbuliwa. Husomeka tu kutoka AeroFTP kwa nenosiri hili.",
+      "enable": "Crypt (Usimbaji fiche)",
+      "hint": "Husimba muunganisho huu kwa uwazi: paneli mbili huonyesha majina wazi, vipakizi husimba, vipakuzi hufungua.",
       "kindNative": "AeroCrypt (asilia)",
       "kindRclone": "Rclone Crypt (ushirikiano)",
       "chooseKind": "Chagua aina ya usimbaji ili kuendelea: hakuna chaguo-msingi, uchaguzi ni wa makusudi.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Aina ya usimbaji na stakabadhi zimefungwa: safu hii tayari ina data iliyosimbwa.",
       "addToExistingWarn": "Kuwezesha tabaka kwenye wasifu uliopo: faili zozote za maandishi wazi zilizopo tayari kwenye seva hii za mbali zinabaki bila kusimbwa na zitaonekana kama mchanganyiko usioweza kusimbuliwa. Tumia seva ya mbali tupu.",
       "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima).",
-      "remotePathLockedNote": "Njia ya mbali imefungwa: ndio mzizi wa tabaka lililosimbwa na haiwezi kubadilika mara tabaka linapokuwa na data."
+      "remotePathLockedNote": "Njia ya mbali imefungwa: ndio mzizi wa tabaka lililosimbwa na haiwezi kubadilika mara tabaka linapokuwa na data.",
+      "overlaysSection": "Vifuniko / Overlays",
+      "overlaysActiveBadge": "Imewashwa",
+      "hintNative": "Muundo asili wa AeroCrypt: husomeka tu kutoka AeroFTP kwa nenosiri hili.",
+      "hintRclone": "Muundo wa kawaida wa rclone crypt: husomeka pia na rclone kwa nenosiri hili.",
+      "passwordLabel": "Nenosiri",
+      "saltLabel": "Salt (hiari)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operesheni inaendelea",
+      "busyBody": "Operesheni bado inaendelea. Simamisha na funga, au iendelee?",
+      "wait": "Iendelee",
+      "stopAndClose": "Simamisha na funga",
+      "dirtyTitle": "Mabadiliko hayajahifadhiwa",
+      "dirtyBody": "Una mabadiliko ambayo hayajahifadhiwa. Tupa na funga?",
+      "keepEditing": "Endelea kuhariri",
+      "discardAndClose": "Tupa na funga"
     }
   }
 }

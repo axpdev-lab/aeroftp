@@ -4,6 +4,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Search, Check, Zap, Star } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { AIProviderType, PROVIDER_PRESETS } from '../../types/ai';
 import {
     MARKETPLACE_PROVIDERS, MARKETPLACE_CATEGORIES, FEATURE_LABELS,
@@ -143,6 +144,7 @@ export const ProviderMarketplace: React.FC<ProviderMarketplaceProps> = ({
     addedProviderTypes,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [search, setSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<MarketplaceCategory | 'all'>('all');
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -203,12 +205,13 @@ export const ProviderMarketplace: React.FC<ProviderMarketplaceProps> = ({
         >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <div
+                {...modalDrag.panelProps}
                 className="relative w-full max-w-3xl max-h-[80vh] rounded-lg overflow-hidden
                     bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div>
                         <h2 id="marketplace-title" className="text-lg font-bold text-gray-900 dark:text-gray-100">
                             {t('ai.marketplace.title')}

@@ -678,7 +678,7 @@ mod webdav_config_tests {
         let cfg = ProviderConfig {
             name: "nextcloud".to_string(),
             provider_type: ProviderType::WebDav,
-            host: "https://cloud.lab.axpdev.it".to_string(),
+            host: "https://cloud.lab.example.test".to_string(),
             port: Some(443),
             username: Some("admin".to_string()),
             password: Some("p".to_string()),

@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Dies überschreibt die Originaldatei",
           "saveSaving": "Speichern...",
           "saveSaved": "Bild erfolgreich gespeichert",
-          "saveFailed": "Fehler beim Speichern des Bildes"
+          "saveFailed": "Fehler beim Speichern des Bildes",
+          "lossless": "Verlustfrei",
+          "lossy": "Verlustbehaftet",
+          "losslessHint": "Umkehrbar: Pixel bleiben exakt erhalten, wenn in einem verlustfreien Format gespeichert wird",
+          "lossyHint": "Verandert Pixel: Die Anderung kann nicht exakt ruckgangig gemacht werden",
+          "formatLosslessNote": "Verlustfreies Format: Pixel werden exakt gespeichert. Verlustbehaftete Bearbeitungen oben verandern das Bild dennoch.",
+          "formatLossyNote": "Verlustbehaftetes Format: Beim erneuten Kodieren gehen einige Bilddaten verloren, auch verlustfreie Bearbeitungen."
         },
         "toggleTransparencyBg": "Transparenz-Hintergrund (wechseln)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = unbegrenzt. Die lokale Spiegel-Schleife drosselt anhand der höheren der beiden Obergrenzen.",
-        "bandwidthUnlimited": "Unbegrenzt"
+        "bandwidthUnlimited": "Unbegrenzt",
+        "stop": "Stoppen",
+        "stopping": "Wird gestoppt...",
+        "resultCancelled": "Synchronisierung abgebrochen"
       },
       "launcherTemplates": "Vorlagen",
       "launcherMultiPath": "Mehrere Pfade",
@@ -4869,8 +4878,8 @@
       "lock": "Overlay sperren"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (verschlüsselte Überlagerung)",
-      "hint": "Diese Verbindung transparent verschlüsseln: Die Doppelansicht zeigt Klarnamen, Uploads werden verschlüsselt, Downloads entschlüsselt. Nur aus AeroFTP mit diesem Passwort lesbar.",
+      "enable": "Crypt (Verschlüsselung)",
+      "hint": "Verschlüsselt diese Verbindung transparent: das Doppelpanel zeigt Klarnamen, Uploads werden verschlüsselt, Downloads entschlüsselt.",
       "kindNative": "AeroCrypt (nativ)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Wählen Sie zum Fortfahren einen Verschlüsselungstyp: es gibt keine Vorgabe, die Wahl ist bewusst.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Verschlüsselungstyp und Zugangsdaten sind gesperrt: dieses Overlay enthält bereits verschlüsselte Daten.",
       "addToExistingWarn": "Beim Aktivieren eines Overlays für ein vorhandenes Profil: bereits auf diesem Remote vorhandene Klartextdateien bleiben unverschlüsselt und erscheinen als nicht entschlüsselbare Mischung. Verwenden Sie ein leeres Remote.",
       "scopeHint": "Die oben angegebenen Remote- und lokalen Pfade legen den verschlüsselten Bereich fest (Remote leer lassen, um das gesamte Stammverzeichnis zu verschlüsseln).",
-      "remotePathLockedNote": "Der Remote-Pfad ist gesperrt: er ist die Wurzel des verschlüsselten Overlays und kann nicht geändert werden, sobald das Overlay Daten enthält."
+      "remotePathLockedNote": "Der Remote-Pfad ist gesperrt: er ist die Wurzel des verschlüsselten Overlays und kann nicht geändert werden, sobald das Overlay Daten enthält.",
+      "overlaysSection": "Wrapper / Overlays",
+      "overlaysActiveBadge": "An",
+      "hintNative": "Natives AeroCrypt-Format: nur aus AeroFTP mit diesem Passwort lesbar.",
+      "hintRclone": "Standard-rclone-crypt-Format: auch von rclone mit diesem Passwort lesbar.",
+      "passwordLabel": "Passwort",
+      "saltLabel": "Salt (optional)"
+    },
+    "modalGuard": {
+      "busyTitle": "Vorgang läuft",
+      "busyBody": "Ein Vorgang läuft noch. Anhalten und schließen, oder weiterlaufen lassen?",
+      "wait": "Weiterlaufen lassen",
+      "stopAndClose": "Anhalten und schließen",
+      "dirtyTitle": "Nicht gespeicherte Änderungen",
+      "dirtyBody": "Es gibt nicht gespeicherte Änderungen. Verwerfen und schließen?",
+      "keepEditing": "Weiter bearbeiten",
+      "discardAndClose": "Verwerfen und schließen"
     }
   }
 }

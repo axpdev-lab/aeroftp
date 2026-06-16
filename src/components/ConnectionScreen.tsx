@@ -585,6 +585,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // profiles whose provider/protocol belongs to a mode group.
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
+    // Ehud #276 (17324431): a collapsible "Wrappers / Overlays" parent keeps the Quick
+    // Connect page uncluttered. Collapsed by default, auto-opens when a binding exists.
+    const [overlaysExpanded, setOverlaysExpanded] = useState(false);
     const [aeroCryptEnabled, setAeroCryptEnabled] = useState(false);
     // No default crypt kind: the user must actively pick aerocrypt vs rclone-crypt
     // (Ehud #276, 2026-06-13: both opt-in, no tap-Enter default). null until chosen.
@@ -602,6 +605,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
     // modal. Native AeroCrypt ignores these (config lives in .aeroftp-crypt.json).
     const [aeroCryptSalt, setAeroCryptSalt] = useState('');
+    const [showAeroCryptSalt, setShowAeroCryptSalt] = useState(false);
     const [aeroCryptFilenameEnc, setAeroCryptFilenameEnc] = useState<'standard' | 'obfuscate' | 'off'>('standard');
     const [aeroCryptDirNameEnc, setAeroCryptDirNameEnc] = useState(true);
 
@@ -1635,6 +1639,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // is never prefilled (it lives in the vault under aerocrypt_overlay_pw_<id>).
         const overlayBinding = profile.aeroCryptOverlay;
         setAeroCryptEnabled(!!overlayBinding?.enabled);
+        // Auto-open the overlays section when this profile already carries a binding.
+        setOverlaysExpanded(!!overlayBinding?.enabled);
         // C-EDIT-GUARD: lock kind + credential edits when a binding already exists.
         setOverlayBindingLocked(!!overlayBinding?.enabled);
         // Only seed a kind when a binding already exists; a binding-less profile
@@ -2261,7 +2267,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     decrypted (Filen/MEGA-style). Remote/local scope come from the
                     paths above. Offered on every provider-API backend. */}
                 {overlayEligible && (
-                    <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-900/20 p-3 space-y-2">
+                    <div className="rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                        {/* Ehud #276 (17324431): collapsible "Wrappers / Overlays" parent so
+                            the Quick Connect page stays uncluttered. Crypt is the first
+                            sub-section; future overlays slot in alongside it. */}
+                        <button
+                            type="button"
+                            onClick={() => setOverlaysExpanded((v) => !v)}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                        >
+                            <Shield size={15} className="text-emerald-600 dark:text-emerald-400" />
+                            {t('aerocryptProfile.overlaysSection')}
+                            {aeroCryptEnabled && (
+                                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">{t('aerocryptProfile.overlaysActiveBadge')}</span>
+                            )}
+                            <ChevronDown size={14} className={`ml-auto transition-transform duration-200 ${overlaysExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {overlaysExpanded && (
+                        <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+                        <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-900/20 p-3 space-y-2">
                         <Checkbox
                             checked={aeroCryptEnabled}
                             onChange={setAeroCryptEnabled}
@@ -2271,15 +2295,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.hint')}</p>
                         {aeroCryptEnabled && (
                             <div className="space-y-2 pt-1">
+                                {/* Ehud #276 (17324431): Rclone Crypt on the left, it is the
+                                    older format. AeroCrypt native sits to its right. */}
                                 <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        disabled={overlayFieldsLocked}
-                                        onClick={() => setAeroCryptKind('aerocrypt')}
-                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'aerocrypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'} ${overlayFieldsLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    >
-                                        {t('aerocryptProfile.kindNative')}
-                                    </button>
                                     <button
                                         type="button"
                                         disabled={overlayFieldsLocked}
@@ -2288,41 +2306,70 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     >
                                         {t('aerocryptProfile.kindRclone')}
                                     </button>
+                                    <button
+                                        type="button"
+                                        disabled={overlayFieldsLocked}
+                                        onClick={() => setAeroCryptKind('aerocrypt')}
+                                        className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${aeroCryptKind === 'aerocrypt' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'} ${overlayFieldsLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        {t('aerocryptProfile.kindNative')}
+                                    </button>
                                 </div>
                                 {!aeroCryptKind && (
                                     <p className="text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.chooseKind')}</p>
                                 )}
                                 {aeroCryptKind && (<>
-                                <div className="relative">
-                                    <input
-                                        type={showAeroCryptPassword ? 'text' : 'password'}
-                                        value={aeroCryptPassword}
-                                        disabled={overlayFieldsLocked}
-                                        onChange={(e) => setAeroCryptPassword(e.target.value)}
-                                        placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
-                                        className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAeroCryptPassword((v) => !v)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                                    >
-                                        {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
+                                {/* Ehud #276 (17324431): per-kind interop note. The native
+                                    format is AeroFTP-only; rclone-crypt is the standard rclone
+                                    format and stays decryptable by rclone itself. */}
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {aeroCryptKind === 'rclone-crypt' ? t('aerocryptProfile.hintRclone') : t('aerocryptProfile.hintNative')}
+                                </p>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.passwordLabel')}</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showAeroCryptPassword ? 'text' : 'password'}
+                                            value={aeroCryptPassword}
+                                            disabled={overlayFieldsLocked}
+                                            onChange={(e) => setAeroCryptPassword(e.target.value)}
+                                            placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
+                                            className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAeroCryptPassword((v) => !v)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                        >
+                                            {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
                                 </div>
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
                                     encryption so the bound profile auto-unlocks like native.
                                     Native AeroCrypt reads these from .aeroftp-crypt.json. */}
                                 {aeroCryptKind === 'rclone-crypt' && (
                                     <>
-                                        <input
-                                            type="password"
-                                            value={aeroCryptSalt}
-                                            disabled={overlayFieldsLocked}
-                                            onChange={(e) => setAeroCryptSalt(e.target.value)}
-                                            placeholder={editingProfileId && !aeroCryptSalt ? t('aerocryptProfile.passwordStored') : t('aerocrypt.saltPlaceholder')}
-                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                                        />
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.saltLabel')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showAeroCryptSalt ? 'text' : 'password'}
+                                                    value={aeroCryptSalt}
+                                                    disabled={overlayFieldsLocked}
+                                                    onChange={(e) => setAeroCryptSalt(e.target.value)}
+                                                    placeholder={editingProfileId && !aeroCryptSalt ? t('aerocryptProfile.passwordStored') : t('aerocrypt.saltPlaceholder')}
+                                                    className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAeroCryptSalt((v) => !v)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                                >
+                                                    {showAeroCryptSalt ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                </button>
+                                            </div>
+                                        </div>
                                         <select
                                             value={aeroCryptFilenameEnc}
                                             disabled={overlayFieldsLocked}
@@ -2353,6 +2400,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 </>)}
                                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('aerocryptProfile.scopeHint')}</p>
                             </div>
+                        )}
+                        </div>
+                        </div>
                         )}
                     </div>
                 )}

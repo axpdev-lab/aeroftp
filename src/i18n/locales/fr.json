@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Ceci écrasera le fichier original",
           "saveSaving": "Enregistrement...",
           "saveSaved": "Image enregistrée avec succès",
-          "saveFailed": "Échec de l'enregistrement de l'image"
+          "saveFailed": "Échec de l'enregistrement de l'image",
+          "lossless": "Sans perte",
+          "lossy": "Avec perte",
+          "losslessHint": "Reversible : les pixels sont preserves exactement lors de l'enregistrement dans un format sans perte",
+          "lossyHint": "Modifie les pixels : la modification ne peut pas etre annulee parfaitement",
+          "formatLosslessNote": "Format sans perte : les pixels sont stockes exactement. Les modifications avec perte ci-dessus changent quand meme l'image.",
+          "formatLossyNote": "Format avec perte : le reencodage supprime certaines donnees de l'image, y compris les modifications sans perte."
         },
         "toggleTransparencyBg": "Arrière-plan de transparence (faire défiler)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = illimité. La boucle de miroir local limite selon la plus haute des deux bornes.",
-        "bandwidthUnlimited": "Illimité"
+        "bandwidthUnlimited": "Illimité",
+        "stop": "Arrêter",
+        "stopping": "Arrêt...",
+        "resultCancelled": "Synchronisation annulée"
       },
       "launcherTemplates": "Modèles",
       "launcherMultiPath": "Multi-chemin",
@@ -4869,8 +4878,8 @@
       "lock": "Verrouiller la superposition"
     },
     "aerocryptProfile": {
-      "enable": "Profil AeroCrypt (superposition chiffrée)",
-      "hint": "Chiffrez cette connexion de façon transparente : le double panneau affiche les noms en clair, les envois sont chiffrés, les téléchargements déchiffrés. Lisible uniquement depuis AeroFTP avec ce mot de passe.",
+      "enable": "Crypt (Chiffrement)",
+      "hint": "Chiffre cette connexion de façon transparente : le double panneau affiche les noms en clair, les envois chiffrent, les téléchargements déchiffrent.",
       "kindNative": "AeroCrypt (natif)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Choisissez un type de chiffrement pour continuer : il n'y a pas de valeur par défaut, le choix est délibéré.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Le type de chiffrement et les identifiants sont verrouillés : cette surcouche contient déjà des données chiffrées.",
       "addToExistingWarn": "En activant une surcouche sur un profil existant : les fichiers en clair déjà présents sur ce distant restent non chiffrés et apparaîtront comme un mélange indéchiffrable. Utilisez un distant vide.",
       "scopeHint": "Les chemins distant et local indiqués ci-dessus définissent la portée chiffrée (laissez le chemin distant vide pour chiffrer toute la racine).",
-      "remotePathLockedNote": "Le chemin distant est verrouillé : c'est la racine de la surcouche chiffrée et il ne peut pas changer une fois que la surcouche contient des données."
+      "remotePathLockedNote": "Le chemin distant est verrouillé : c'est la racine de la surcouche chiffrée et il ne peut pas changer une fois que la surcouche contient des données.",
+      "overlaysSection": "Enveloppes / Overlays",
+      "overlaysActiveBadge": "Activé",
+      "hintNative": "Format AeroCrypt natif : lisible uniquement depuis AeroFTP avec ce mot de passe.",
+      "hintRclone": "Format rclone crypt standard : également lisible par rclone avec ce mot de passe.",
+      "passwordLabel": "Mot de passe",
+      "saltLabel": "Salt (facultatif)"
+    },
+    "modalGuard": {
+      "busyTitle": "Opération en cours",
+      "busyBody": "Une opération est en cours. L'arrêter et fermer, ou la laisser continuer ?",
+      "wait": "Laisser continuer",
+      "stopAndClose": "Arrêter et fermer",
+      "dirtyTitle": "Modifications non enregistrées",
+      "dirtyBody": "Vous avez des modifications non enregistrées. Les abandonner et fermer ?",
+      "keepEditing": "Continuer l'édition",
+      "discardAndClose": "Abandonner et fermer"
     }
   }
 }

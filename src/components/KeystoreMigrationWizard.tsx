@@ -10,6 +10,7 @@ import type { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface KeystoreMigrationWizardProps {
     isOpen: boolean;
@@ -89,6 +90,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
     isLightTheme,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [step, setStep] = useState(1);
     const [detected, setDetected] = useState<DetectedData | null>(null);
     const [migrationProgress, setMigrationProgress] = useState(0);
@@ -172,9 +174,9 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
             className={`fixed inset-0 ${bgOverlay} flex items-center justify-center z-50`}
             onClick={e => e.target === e.currentTarget && onSkip()}
         >
-            <div className={`${bgPanel} rounded-lg shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col animate-scale-in`}>
+            <div {...modalDrag.panelProps} className={`${bgPanel} rounded-lg shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col animate-scale-in`}>
                 {/* Header */}
-                <div className={`flex items-center justify-between px-5 py-4 border-b ${borderColor}`}>
+                <div {...modalDrag.dragHandleProps} className={`flex items-center justify-between px-5 py-4 border-b ${borderColor} cursor-grab active:cursor-grabbing`}>
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg">
                             <Shield size={20} />

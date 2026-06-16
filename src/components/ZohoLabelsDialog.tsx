@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Tag, Check, Loader2, Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface ZohoLabel {
   id: string;
@@ -30,6 +31,7 @@ const PRESET_COLORS = [
 
 export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDialogProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const [teamLabels, setTeamLabels] = useState<ZohoLabel[]>([]);
   const [fileLabels, setFileLabels] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -126,12 +128,13 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
+        {...modalDrag.panelProps}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <Tag size={16} className="text-emerald-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">

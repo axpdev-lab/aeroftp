@@ -18,6 +18,7 @@ import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { DuplicateGroup } from '../types/aerofile';
 import { Checkbox } from './ui/Checkbox';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface DuplicateFinderDialogProps {
   isOpen: boolean;
@@ -47,6 +48,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   onDeleteFiles,
 }) => {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
 
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -204,13 +206,14 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
+        {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[700px] max-h-[80vh] flex flex-col animate-scale-in"
         role="dialog"
         aria-label={t('duplicates.title')}
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2 min-w-0">
             <Search size={18} className="text-blue-500 shrink-0" />
             <span className="font-medium text-gray-900 dark:text-white truncate">

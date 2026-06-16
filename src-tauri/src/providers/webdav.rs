@@ -786,7 +786,7 @@ impl WebDavProvider {
     /// re-handshake (RFC 2617 section 3.3). Without this, the first stale
     /// `401` was surfaced as `Session expired` even though the credentials
     /// were still valid: the WebDAV recursive-scan defect reproduced against
-    /// `dav.lab.axpdev.it`. Basic-auth servers never emit a Digest challenge,
+    /// `dav.lab.example.test`. Basic-auth servers never emit a Digest challenge,
     /// so a genuine `401` there still propagates unchanged for the caller to
     /// map.
     async fn send_propfind(
@@ -4147,7 +4147,7 @@ mod tests {
 
     #[test]
     fn router_hint_prefers_provider_id_over_bare_url() {
-        let mut config = test_config("https://cloud.lab.axpdev.it");
+        let mut config = test_config("https://cloud.lab.example.test");
         config.provider_id = Some("nextcloud".to_string());
         let provider = WebDavProvider::new(config).expect("Failed to create WebDavProvider");
 
@@ -4549,13 +4549,13 @@ mod tests {
     #[test]
     fn nextcloud_for_dav_gating() {
         // preset_id = "nextcloud" on a bare hostname is enough.
-        let mut cfg = test_config("https://cloud.lab.axpdev.it");
+        let mut cfg = test_config("https://cloud.lab.example.test");
         cfg.provider_id = Some("nextcloud".to_string());
         let p = WebDavProvider::new(cfg).expect("provider");
         assert!(p.is_nextcloud_for_dav());
 
         // preset_id = "owncloud" also accepted.
-        let mut cfg = test_config("https://cloud.lab.axpdev.it");
+        let mut cfg = test_config("https://cloud.lab.example.test");
         cfg.provider_id = Some("owncloud".to_string());
         let p = WebDavProvider::new(cfg).expect("provider");
         assert!(p.is_nextcloud_for_dav());
@@ -4568,7 +4568,7 @@ mod tests {
             "magentacloud",
             "magentacloud-webdav",
         ] {
-            let mut cfg = test_config("https://cloud.lab.axpdev.it");
+            let mut cfg = test_config("https://cloud.lab.example.test");
             cfg.provider_id = Some(pid.to_string());
             let p = WebDavProvider::new(cfg).expect("provider");
             assert!(
@@ -4625,7 +4625,7 @@ mod tests {
     /// on the single-PUT legacy path.
     #[test]
     fn nextcloud_chunked_advertised_when_provider_id_is_nextcloud() {
-        let mut cfg = test_config("https://cloud.lab.axpdev.it");
+        let mut cfg = test_config("https://cloud.lab.example.test");
         cfg.provider_id = Some("nextcloud".to_string());
         let p = WebDavProvider::new(cfg).expect("provider");
         let hints = p.transfer_optimization_hints();
@@ -4732,7 +4732,7 @@ mod tests {
         assert!(matches!(r, Err(ProviderError::NotSupported(_))));
 
         // Connected + Nextcloud-class: upload_part rejects part_number = 0.
-        let mut cfg = test_config("https://cloud.lab.axpdev.it");
+        let mut cfg = test_config("https://cloud.lab.example.test");
         cfg.provider_id = Some("nextcloud".to_string());
         let mut p = WebDavProvider::new(cfg).expect("provider");
         p.connected = true;
@@ -4754,7 +4754,7 @@ mod tests {
     /// is propagating.
     #[tokio::test]
     async fn nextcloud_abort_swallows_handle_decode_failure() {
-        let mut cfg = test_config("https://cloud.lab.axpdev.it");
+        let mut cfg = test_config("https://cloud.lab.example.test");
         cfg.provider_id = Some("nextcloud".to_string());
         let mut p = WebDavProvider::new(cfg).expect("provider");
         p.connected = true;

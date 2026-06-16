@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Þetta mun skrifa yfir upprunalegu skrána",
           "saveSaving": "Vista...",
           "saveSaved": "Mynd vistuð",
-          "saveFailed": "Ekki tókst að vista mynd"
+          "saveFailed": "Ekki tókst að vista mynd",
+          "lossless": "Taplaust",
+          "lossy": "Med tapi",
+          "losslessHint": "Afturkraeft: pixlar vardveitast nakvaemlega thegar vistad er a taplausu snidi",
+          "lossyHint": "Breytir pixlum: ekki er haegt ad afturkalla breytinguna nakvaemlega",
+          "formatLosslessNote": "Taplaust snid: pixlar eru vistadir nakvaemlega. Tapsbreytingar ad ofan breyta myndinni samt.",
+          "formatLossyNote": "Snid med tapi: endurkodun hendir hluta myndgagna, einnig taplausum breytingum."
         },
         "toggleTransparencyBg": "Bakgrunnur gegnsæis (skipta)"
       },
@@ -4704,7 +4710,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = ótakmarkað. Staðbundna spegillykkjan takmarkar með því að nota hærra af mörkunum tveimur.",
-        "bandwidthUnlimited": "Ótakmarkað"
+        "bandwidthUnlimited": "Ótakmarkað",
+        "stop": "Stöðva",
+        "stopping": "Stöðva...",
+        "resultCancelled": "Samstilling hætt"
       },
       "launcherTemplates": "Sniðmát",
       "launcherMultiPath": "Margar slóðir",
@@ -4888,8 +4897,8 @@
       "lock": "Læsa yfirlagi"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt-snið (dulkóðað yfirlag)",
-      "hint": "Dulkóðaðu þessa tengingu á gagnsæjan hátt: tvöfalda spjaldið sýnir nöfnin læsileg, innhleðslur eru dulkóðaðar og niðurhal afkóðað. Aðeins læsilegt úr AeroFTP með þessu lykilorði.",
+      "enable": "Crypt (Dulkóðun)",
+      "hint": "Dulkóðar þessa tengingu á gegnsæjan hátt: tvöfalda spjaldið sýnir skýr nöfn, innhleðslur dulkóða, niðurhal afkóða.",
       "kindNative": "AeroCrypt (innbyggt)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Veldu dulkóðunartegund til að halda áfram: það er ekkert sjálfgefið, valið er meðvitað.",
@@ -4899,7 +4908,23 @@
       "lockedNote": "Dulkóðunartegund og auðkenni eru læst: þetta yfirlag inniheldur þegar dulkóðuð gögn.",
       "addToExistingWarn": "Þegar yfirlag er virkjað á núverandi sniði: allar ódulkóðaðar skrár sem þegar eru á þessum fjartengda stað haldast ódulkóðaðar og birtast sem óafkóðanleg blanda. Notaðu tóman fjartengdan stað.",
       "scopeHint": "Fjar- og staðbundnu slóðirnar að ofan skilgreina dulkóðaða umfangið (skildu Fjar eftir autt til að dulkóða alla rótina).",
-      "remotePathLockedNote": "Fjarslóðin er læst: hún er rót dulkóðaða yfirlagsins og er ekki hægt að breyta þegar yfirlagið inniheldur gögn."
+      "remotePathLockedNote": "Fjarslóðin er læst: hún er rót dulkóðaða yfirlagsins og er ekki hægt að breyta þegar yfirlagið inniheldur gögn.",
+      "overlaysSection": "Umbúðir / Yfirlög",
+      "overlaysActiveBadge": "Á",
+      "hintNative": "Innbyggt AeroCrypt-snið: aðeins læsilegt úr AeroFTP með þessu lykilorði.",
+      "hintRclone": "Staðlað rclone crypt-snið: einnig læsilegt af rclone með þessu lykilorði.",
+      "passwordLabel": "Lykilorð",
+      "saltLabel": "Salt (valfrjálst)"
+    },
+    "modalGuard": {
+      "busyTitle": "Aðgerð í gangi",
+      "busyBody": "Aðgerð er enn í gangi. Stöðva og loka, eða halda áfram?",
+      "wait": "Halda áfram",
+      "stopAndClose": "Stöðva og loka",
+      "dirtyTitle": "Óvistaðar breytingar",
+      "dirtyBody": "Þú ert með óvistaðar breytingar. Henda og loka?",
+      "keepEditing": "Halda áfram að breyta",
+      "discardAndClose": "Henda og loka"
     }
   }
 }

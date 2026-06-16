@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "원본 파일을 덮어씁니다",
           "saveSaving": "저장 중...",
           "saveSaved": "이미지가 저장되었습니다",
-          "saveFailed": "이미지 저장에 실패했습니다"
+          "saveFailed": "이미지 저장에 실패했습니다",
+          "lossless": "무손실",
+          "lossy": "손실",
+          "losslessHint": "되돌릴 수 있음: 무손실 형식으로 저장하면 픽셀이 정확히 보존됩니다",
+          "lossyHint": "픽셀 변경: 변경 사항을 정확히 되돌릴 수 없습니다",
+          "formatLosslessNote": "무손실 형식: 픽셀이 정확히 저장됩니다. 위의 손실 편집은 여전히 이미지를 변경합니다.",
+          "formatLossyNote": "손실 형식: 다시 인코딩하면 무손실 편집을 포함한 일부 이미지 데이터가 손실됩니다."
         },
         "toggleTransparencyBg": "투명도 배경 (전환)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = 무제한. 로컬 미러 루프는 두 한도 중 더 높은 값을 사용하여 제한합니다.",
-        "bandwidthUnlimited": "무제한"
+        "bandwidthUnlimited": "무제한",
+        "stop": "중지",
+        "stopping": "중지 중...",
+        "resultCancelled": "동기화가 취소되었습니다"
       },
       "launcherTemplates": "템플릿",
       "launcherMultiPath": "다중 경로",
@@ -4869,8 +4878,8 @@
       "lock": "오버레이 잠금"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt 프로필 (암호화 오버레이)",
-      "hint": "이 연결을 투명하게 암호화합니다. 듀얼 패널에는 알아볼 수 있는 이름이 표시되고, 업로드 시 암호화되며 다운로드 시 복호화됩니다. 이 비밀번호로 AeroFTP에서만 읽을 수 있습니다.",
+      "enable": "Crypt (암호화)",
+      "hint": "이 연결을 투명하게 암호화합니다: 이중 패널은 평문 이름을 표시하고, 업로드는 암호화하며, 다운로드는 복호화합니다.",
       "kindNative": "AeroCrypt (네이티브)",
       "kindRclone": "Rclone Crypt (상호 운용)",
       "chooseKind": "계속하려면 암호화 유형을 선택하세요. 기본값이 없으며 선택은 의도적입니다.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "암호화 유형과 자격 증명이 잠겨 있습니다. 이 오버레이에는 이미 암호화된 데이터가 있습니다.",
       "addToExistingWarn": "기존 프로필에 오버레이를 활성화하면, 이 원격에 이미 있는 일반 텍스트 파일은 암호화되지 않은 채로 남아 복호화할 수 없는 혼합 상태로 표시됩니다. 빈 원격을 사용하세요.",
       "scopeHint": "위의 원격 및 로컬 경로가 암호화 범위를 정의합니다 (원격을 비워 두면 전체 루트를 암호화합니다).",
-      "remotePathLockedNote": "원격 경로가 잠겨 있습니다. 이는 암호화된 오버레이의 루트이며 오버레이에 데이터가 있으면 변경할 수 없습니다."
+      "remotePathLockedNote": "원격 경로가 잠겨 있습니다. 이는 암호화된 오버레이의 루트이며 오버레이에 데이터가 있으면 변경할 수 없습니다.",
+      "overlaysSection": "래퍼 / 오버레이",
+      "overlaysActiveBadge": "켜짐",
+      "hintNative": "네이티브 AeroCrypt 형식: 이 비밀번호로 AeroFTP에서만 읽을 수 있습니다.",
+      "hintRclone": "표준 rclone crypt 형식: 이 비밀번호로 rclone에서도 읽을 수 있습니다.",
+      "passwordLabel": "비밀번호",
+      "saltLabel": "Salt (선택)"
+    },
+    "modalGuard": {
+      "busyTitle": "작업 진행 중",
+      "busyBody": "작업이 아직 실행 중입니다. 중지하고 닫을까요, 계속할까요?",
+      "wait": "계속",
+      "stopAndClose": "중지하고 닫기",
+      "dirtyTitle": "저장되지 않은 변경 사항",
+      "dirtyBody": "저장되지 않은 변경 사항이 있습니다. 취소하고 닫을까요?",
+      "keepEditing": "계속 편집",
+      "discardAndClose": "취소하고 닫기"
     }
   }
 }

@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Това ще презапише оригиналния файл",
           "saveSaving": "Запазване...",
           "saveSaved": "Изображението е запазено успешно",
-          "saveFailed": "Неуспешно запазване на изображението"
+          "saveFailed": "Неуспешно запазване на изображението",
+          "lossless": "Bez zaguba",
+          "lossy": "Sus zaguba",
+          "losslessHint": "Obratimo: pikselite se zapazvat tochno pri zapazvane vuv format bez zaguba",
+          "lossyHint": "Promenya pikselite: promyanata ne mozhe da se otmeni tochno",
+          "formatLosslessNote": "Format bez zaguba: pikselite se suhranyavat tochno. Redakciite sus zaguba po-gore vse pak promenyat izobrazhenieto.",
+          "formatLossyNote": "Format sus zaguba: povtornoto kodirane othvurlya chast ot dannite na izobrazhenieto, vklyuchitelno redakciite bez zaguba."
         },
         "toggleTransparencyBg": "Фон за прозрачност (превключване)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = неограничено. Локалният цикъл на огледалото се ограничава според по-високата от двете граници.",
-        "bandwidthUnlimited": "Неограничено"
+        "bandwidthUnlimited": "Неограничено",
+        "stop": "Спри",
+        "stopping": "Спиране...",
+        "resultCancelled": "Синхронизацията е отменена"
       },
       "launcherTemplates": "Шаблони",
       "launcherMultiPath": "Множество пътища",
@@ -4869,8 +4878,8 @@
       "lock": "Заключване на слоя"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt профил (шифрован слой)",
-      "hint": "Шифровайте тази връзка прозрачно: двойният панел показва имената в явен вид, качванията се шифроват, а изтеглянията се дешифроват. Четими само от AeroFTP с тази парола.",
+      "enable": "Crypt (Криптиране)",
+      "hint": "Криптира тази връзка прозрачно: двойният панел показва имената в чист вид, качванията криптират, изтеглянията декриптират.",
       "kindNative": "AeroCrypt (роден)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Изберете тип шифроване, за да продължите: няма стойност по подразбиране, изборът е умишлен.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Типът на шифроване и идентификационните данни са заключени: този слой вече съдържа шифровани данни.",
       "addToExistingWarn": "Активиране на наслагване върху съществуващ профил: всички файлове в обикновен текст, които вече са на този отдалечен сървър, остават нешифровани и ще изглеждат като недешифруема смес. Използвайте празен отдалечен сървър.",
       "scopeHint": "Отдалечените и локалните пътища по-горе определят шифрования обхват (оставете Отдалечен празен, за да шифровате целия корен).",
-      "remotePathLockedNote": "Отдалеченият път е заключен: той е коренът на криптираното наслагване и не може да се променя, след като наслагването съдържа данни."
+      "remotePathLockedNote": "Отдалеченият път е заключен: той е коренът на криптираното наслагване и не може да се променя, след като наслагването съдържа данни.",
+      "overlaysSection": "Обвивки / Overlay-и",
+      "overlaysActiveBadge": "Вкл.",
+      "hintNative": "Собствен формат AeroCrypt: четим само от AeroFTP с тази парола.",
+      "hintRclone": "Стандартен формат rclone crypt: четим и от rclone с тази парола.",
+      "passwordLabel": "Парола",
+      "saltLabel": "Salt (по избор)"
+    },
+    "modalGuard": {
+      "busyTitle": "Операция в ход",
+      "busyBody": "Операция все още се изпълнява. Да се спре и затвори, или да продължи?",
+      "wait": "Продължи",
+      "stopAndClose": "Спри и затвори",
+      "dirtyTitle": "Незапазени промени",
+      "dirtyBody": "Имате незапазени промени. Да се отхвърлят и затвори?",
+      "keepEditing": "Продължи редактирането",
+      "discardAndClose": "Отхвърли и затвори"
     }
   }
 }

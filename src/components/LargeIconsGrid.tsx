@@ -183,6 +183,8 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   return (
     <div
       data-file-card
+      data-file-name={file.name}
+      data-file-index={cardIndex}
       className={cardClasses}
       title={tooltip}
       draggable={file.name !== '..' && !isRenaming}

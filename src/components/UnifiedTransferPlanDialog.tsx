@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Copy, FolderSync, Loader2, X }
 import type { UnifiedTransferPlan } from '../utils/unifiedTransferPlanner';
 import { getEndpointLabel } from '../utils/panelEndpoints';
 import { formatBytes } from '../utils/formatters';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface UnifiedTransferPlanDialogProps {
     plan: UnifiedTransferPlan;
@@ -43,6 +44,7 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
     onExecute,
     onClose,
 }) => {
+    const modalDrag = useDraggableModal();
     const sourceLabel = getEndpointLabel(plan.source);
     const destinationLabel = getEndpointLabel(plan.destination);
     const destructive = plan.destructive;
@@ -57,8 +59,8 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
                 if (event.target === event.currentTarget && !executing) onClose();
             }}
         >
-            <div className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
-                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <div {...modalDrag.panelProps} className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         {plan.mode === 'sync' || plan.mode === 'backup' || plan.mode === 'mirror' || plan.mode === 'bisync' ? (
                             <FolderSync size={18} className="text-blue-500" />

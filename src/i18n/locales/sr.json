@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Ово ће преписати оригинални фајл",
           "saveSaving": "Чување...",
           "saveSaved": "Слика је успешно сачувана",
-          "saveFailed": "Чување слике није успело"
+          "saveFailed": "Чување слике није успело",
+          "lossless": "Bez gubitaka",
+          "lossy": "Sa gubitkom",
+          "losslessHint": "Povratno: pikseli se tacno cuvaju pri cuvanju u formatu bez gubitaka",
+          "lossyHint": "Menja piksele: promena ne moze tacno da se ponisti",
+          "formatLosslessNote": "Format bez gubitaka: pikseli se cuvaju tacno. Izmene sa gubitkom iznad ipak menjaju sliku.",
+          "formatLossyNote": "Format sa gubitkom: ponovno kodiranje odbacuje deo podataka slike, i izmene bez gubitaka."
         },
         "toggleTransparencyBg": "Позадина провидности (кружи)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = неограничено. Петља локалног огледања ограничава брзину користећи већи од два лимита.",
-        "bandwidthUnlimited": "Неограничено"
+        "bandwidthUnlimited": "Неограничено",
+        "stop": "Заустави",
+        "stopping": "Заустављање...",
+        "resultCancelled": "Синхронизација отказана"
       },
       "launcherTemplates": "Шаблони",
       "launcherMultiPath": "Више путања",
@@ -4869,8 +4878,8 @@
       "lock": "Закључај слој"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (шифровани слој)",
-      "hint": "Транспарентно шифрује ову везу: двопанелни приказ показује читљива имена, отпремања се шифрују, преузимања се дешифрују. Читљиво само из AeroFTP-а са овом лозинком.",
+      "enable": "Crypt (Шифровање)",
+      "hint": "Транспарентно шифрује ову везу: двоструки панел приказује јасна имена, отпремања шифрују, преузимања дешифрују.",
       "kindNative": "AeroCrypt (изворни)",
       "kindRclone": "Rclone Crypt (интероперабилност)",
       "chooseKind": "Изаберите тип шифровања да наставите: нема подразумеване вредности, избор је намеран.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Тип шифровања и акредитиви су закључани: овај слој већ садржи шифроване податке.",
       "addToExistingWarn": "Омогућавањем преклапања на постојећем профилу: све датотеке у обичном тексту које већ постоје на овом удаљеном месту остају нешифроване и приказаће се као недешифрабилна мешавина. Користите празно удаљено место.",
       "scopeHint": "Горње удаљене и локалне путање одређују шифровани опсег (оставите удаљену путању празном да шифрујете цео корен).",
-      "remotePathLockedNote": "Удаљена путања је закључана: то је корен шифрованог преклапања и не може се променити када преклапање садржи податке."
+      "remotePathLockedNote": "Удаљена путања је закључана: то је корен шифрованог преклапања и не може се променити када преклапање садржи податке.",
+      "overlaysSection": "Омотачи / Overlay-и",
+      "overlaysActiveBadge": "Укљ.",
+      "hintNative": "Изворни AeroCrypt формат: читљив само из AeroFTP-а са овом лозинком.",
+      "hintRclone": "Стандардни rclone crypt формат: читљив и помоћу rclone са овом лозинком.",
+      "passwordLabel": "Лозинка",
+      "saltLabel": "Salt (опционо)"
+    },
+    "modalGuard": {
+      "busyTitle": "Операција у току",
+      "busyBody": "Операција је још у току. Зауставити и затворити, или наставити?",
+      "wait": "Настави",
+      "stopAndClose": "Заустави и затвори",
+      "dirtyTitle": "Несачуване измене",
+      "dirtyBody": "Имате несачуване измене. Одбацити и затворити?",
+      "keepEditing": "Настави уређивање",
+      "discardAndClose": "Одбаци и затвори"
     }
   }
 }

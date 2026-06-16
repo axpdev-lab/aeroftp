@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Ini akan menimpa file asli",
           "saveSaving": "Menyimpan...",
           "saveSaved": "Gambar berhasil disimpan",
-          "saveFailed": "Gagal menyimpan gambar"
+          "saveFailed": "Gagal menyimpan gambar",
+          "lossless": "Tanpa kehilangan",
+          "lossy": "Dengan kehilangan",
+          "losslessHint": "Dapat dibalik: piksel dipertahankan persis saat disimpan ke format tanpa kehilangan",
+          "lossyHint": "Mengubah piksel: perubahan tidak dapat dibatalkan secara persis",
+          "formatLosslessNote": "Format tanpa kehilangan: piksel disimpan persis. Penyuntingan dengan kehilangan di atas tetap mengubah gambar.",
+          "formatLossyNote": "Format dengan kehilangan: pengodean ulang membuang sebagian data gambar, termasuk penyuntingan tanpa kehilangan."
         },
         "toggleTransparencyBg": "Latar transparansi (ganti)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = tanpa batas. Loop mirror lokal membatasi menggunakan yang lebih tinggi dari kedua batas.",
-        "bandwidthUnlimited": "Tanpa batas"
+        "bandwidthUnlimited": "Tanpa batas",
+        "stop": "Hentikan",
+        "stopping": "Menghentikan...",
+        "resultCancelled": "Sinkronisasi dibatalkan"
       },
       "launcherTemplates": "Templat",
       "launcherMultiPath": "Multi-Jalur",
@@ -4869,8 +4878,8 @@
       "lock": "Kunci overlay"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (lapisan terenkripsi)",
-      "hint": "Enkripsi koneksi ini secara transparan: panel ganda menampilkan nama yang jelas, unggahan dienkripsi, unduhan didekripsi. Hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
+      "enable": "Crypt (Enkripsi)",
+      "hint": "Mengenkripsi koneksi ini secara transparan: panel ganda menampilkan nama yang jelas, unggahan mengenkripsi, unduhan mendekripsi.",
       "kindNative": "AeroCrypt (asli)",
       "kindRclone": "Rclone Crypt (interoperabilitas)",
       "chooseKind": "Pilih jenis enkripsi untuk melanjutkan: tidak ada bawaan, pilihan ini disengaja.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Jenis enkripsi dan kredensial terkunci: lapisan ini sudah berisi data terenkripsi.",
       "addToExistingWarn": "Mengaktifkan overlay pada profil yang sudah ada: berkas teks biasa yang sudah ada di remote ini tetap tidak terenkripsi dan akan tampil sebagai campuran yang tidak dapat didekripsi. Gunakan remote kosong.",
       "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root).",
-      "remotePathLockedNote": "Jalur jarak jauh terkunci: itu adalah akar overlay terenkripsi dan tidak dapat diubah setelah overlay berisi data."
+      "remotePathLockedNote": "Jalur jarak jauh terkunci: itu adalah akar overlay terenkripsi dan tidak dapat diubah setelah overlay berisi data.",
+      "overlaysSection": "Pembungkus / Overlay",
+      "overlaysActiveBadge": "Aktif",
+      "hintNative": "Format AeroCrypt asli: hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
+      "hintRclone": "Format rclone crypt standar: juga dapat dibaca oleh rclone dengan kata sandi ini.",
+      "passwordLabel": "Kata sandi",
+      "saltLabel": "Salt (opsional)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operasi berlangsung",
+      "busyBody": "Sebuah operasi masih berjalan. Hentikan dan tutup, atau biarkan berjalan?",
+      "wait": "Biarkan berjalan",
+      "stopAndClose": "Hentikan dan tutup",
+      "dirtyTitle": "Perubahan belum disimpan",
+      "dirtyBody": "Anda punya perubahan yang belum disimpan. Buang dan tutup?",
+      "keepEditing": "Lanjut menyunting",
+      "discardAndClose": "Buang dan tutup"
     }
   }
 }

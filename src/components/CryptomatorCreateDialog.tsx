@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { X, Lock, Loader2, Shield, Eye, EyeOff } from 'lucide-react';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface CryptomatorCreateDialogProps {
   outputDir: string;
@@ -15,6 +16,7 @@ interface CryptomatorCreateDialogProps {
 
 export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated }: CryptomatorCreateDialogProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const [vaultName, setVaultName] = useState('NewVault');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -57,6 +59,7 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
       onKeyDown={handleKeyDown}
     >
       <div
+        {...modalDrag.panelProps}
         className="w-full max-w-lg rounded-lg shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -64,7 +67,7 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
         aria-label={t('cryptomator.createVault') || 'Create Cryptomator Vault'}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between mb-4 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <Lock size={20} className="text-emerald-500" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">

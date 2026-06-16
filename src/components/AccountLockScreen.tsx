@@ -231,12 +231,13 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
 
     return (
         <div
-            className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-auto"
-            style={{
-                background: 'linear-gradient(135deg, var(--color-bg-primary, #111827) 0%, var(--color-bg-secondary, #1f2937) 100%)',
-                color: 'var(--color-text-primary, #f3f4f6)',
-            }}
+            className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-auto bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100"
         >
+            {/* Background pattern overlay. This screen reuses the lock screen's
+                always-dark backdrop (theme-independent) so the chosen lock
+                pattern stays visible in every theme: a theme-variable gradient
+                turned near-white in light mode and hid the white pattern. The
+                dark backdrop also lets the translucent account cards stand out. */}
             {pattern.svg && (
                 <div className="pointer-events-none absolute inset-0 opacity-[0.05]">
                     <div className="absolute inset-0" style={{ backgroundImage: pattern.svg }} />

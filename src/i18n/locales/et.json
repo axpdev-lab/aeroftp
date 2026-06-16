@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "See kirjutab algse faili üle",
           "saveSaving": "Salvestamine...",
           "saveSaved": "Pilt edukalt salvestatud",
-          "saveFailed": "Pildi salvestamine ebaõnnestus"
+          "saveFailed": "Pildi salvestamine ebaõnnestus",
+          "lossless": "Kadudeta",
+          "lossy": "Kadudega",
+          "losslessHint": "Pooratav: pikslid sailivad tapselt, kui salvestada kadudeta vormingusse",
+          "lossyHint": "Muudab piksleid: muudatust ei saa tapselt tagasi votta",
+          "formatLosslessNote": "Kadudeta vorming: pikslid salvestatakse tapselt. Ulal olevad kadudega muudatused muudavad siiski pilti.",
+          "formatLossyNote": "Kadudega vorming: uuesti kodeerimine kaotab osa pildiandmeid, ka kadudeta muudatused."
         },
         "toggleTransparencyBg": "Läbipaistvuse taust (vaheta)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = piiramatu. Kohaliku peegli tsükkel piirab kahest piirist kõrgema järgi.",
-        "bandwidthUnlimited": "Piiramatu"
+        "bandwidthUnlimited": "Piiramatu",
+        "stop": "Peata",
+        "stopping": "Peatamine...",
+        "resultCancelled": "Sünkroonimine tühistatud"
       },
       "launcherTemplates": "Mallid",
       "launcherMultiPath": "Mitu rada",
@@ -4869,8 +4878,8 @@
       "lock": "Lukusta kattekiht"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt profiil (krüptitud kihistus)",
-      "hint": "Krüpti see ühendus läbipaistvalt: topeltpaneel kuvab nimed loetavalt, üleslaadimised krüptitakse ja allalaadimised dekrüptitakse. Loetav ainult AeroFTP-st selle parooliga.",
+      "enable": "Crypt (Krüptimine)",
+      "hint": "Krüpteerib selle ühenduse läbipaistvalt: kaksikpaneel kuvab selged nimed, üleslaadimised krüpteeritakse, allalaadimised dekrüpteeritakse.",
       "kindNative": "AeroCrypt (natiivne)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Jätkamiseks vali krüpteerimise tüüp: vaikeväärtust pole, valik on teadlik.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Krüptimise tüüp ja mandaadid on lukus: see kiht sisaldab juba krüpteeritud andmeid.",
       "addToExistingWarn": "Ülekatte lubamine olemasoleval profiilil: kõik selles kaugkohas juba olevad lihttekstifailid jäävad krüptimata ja kuvatakse dekrüptimatu seguna. Kasuta tühja kaugkohta.",
       "scopeHint": "Ülal määratud kaug- ja kohalikud teed määravad krüptitud ulatuse (jäta Kaug tühjaks, et krüptida kogu juur).",
-      "remotePathLockedNote": "Kaugtee on lukus: see on krüpteeritud ülekatte juur ja seda ei saa muuta, kui ülekate sisaldab andmeid."
+      "remotePathLockedNote": "Kaugtee on lukus: see on krüpteeritud ülekatte juur ja seda ei saa muuta, kui ülekate sisaldab andmeid.",
+      "overlaysSection": "Ümbrised / Overlay'd",
+      "overlaysActiveBadge": "Sees",
+      "hintNative": "Natiivne AeroCrypt-vorming: loetav ainult AeroFTP-st selle parooliga.",
+      "hintRclone": "Standardne rclone crypt -vorming: loetav ka rclone'iga selle parooliga.",
+      "passwordLabel": "Parool",
+      "saltLabel": "Salt (valikuline)"
+    },
+    "modalGuard": {
+      "busyTitle": "Toiming käib",
+      "busyBody": "Toiming on veel pooleli. Peatada ja sulgeda või lasta jätkata?",
+      "wait": "Lase jätkata",
+      "stopAndClose": "Peata ja sulge",
+      "dirtyTitle": "Salvestamata muudatused",
+      "dirtyBody": "Sul on salvestamata muudatusi. Kas hüljata ja sulgeda?",
+      "keepEditing": "Jätka muutmist",
+      "discardAndClose": "Hülga ja sulge"
     }
   }
 }

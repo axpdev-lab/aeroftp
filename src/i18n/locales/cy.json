@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Bydd hyn yn trosysgrifo'r ffeil wreiddiol",
           "saveSaving": "Yn cadw...",
           "saveSaved": "Delwedd wedi'i chadw'n llwyddiannus",
-          "saveFailed": "Methwyd â chadw'r ddelwedd"
+          "saveFailed": "Methwyd â chadw'r ddelwedd",
+          "lossless": "Di-golled",
+          "lossy": "Colledus",
+          "losslessHint": "Cildroadwy: cedwir picseli yn union wrth gadw mewn fformat di-golled",
+          "lossyHint": "Yn newid picseli: ni ellir dadwneud y newid yn union",
+          "formatLosslessNote": "Fformat di-golled: cedwir picseli yn union. Mae golygiadau colledus uchod yn dal i newid y ddelwedd.",
+          "formatLossyNote": "Fformat colledus: mae ail-amgodio yn taflu rhywfaint o ddata'r ddelwedd, gan gynnwys golygiadau di-golled."
         },
         "toggleTransparencyBg": "Cefndir tryloywder (cylchdroi)"
       },
@@ -4704,7 +4710,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = diderfyn. Mae'r ddolen drych leol yn cyfyngu ar y cyflymder gan ddefnyddio'r uchaf o'r ddau derfyn.",
-        "bandwidthUnlimited": "Diderfyn"
+        "bandwidthUnlimited": "Diderfyn",
+        "stop": "Stopio",
+        "stopping": "Stopio...",
+        "resultCancelled": "Cydweddu wedi ei ganslo"
       },
       "launcherTemplates": "Templedi",
       "launcherMultiPath": "Aml-lwybr",
@@ -4888,8 +4897,8 @@
       "lock": "Cloi'r troshaen"
     },
     "aerocryptProfile": {
-      "enable": "Proffil AeroCrypt (troshaen wedi'i hamgryptio)",
-      "hint": "Amgryptiwch y cysylltiad hwn yn dryloyw: mae'r panel deuol yn dangos enwau clir, mae'r llwythi i fyny'n cael eu hamgryptio a'r lawrlwythiadau'n cael eu dadgryptio. Darllenadwy o AeroFTP yn unig gyda'r cyfrinair hwn.",
+      "enable": "Crypt (Amgryptio)",
+      "hint": "Amgryptio'r cysylltiad hwn yn dryloyw: mae'r panel deuol yn dangos enwau clir, mae llwythi i fyny yn amgryptio, mae llwythi i lawr yn dadgryptio.",
       "kindNative": "AeroCrypt (cynhenid)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Dewiswch fath o amgryptio i barhau: nid oes rhagosodiad, mae'r dewis yn fwriadol.",
@@ -4899,7 +4908,23 @@
       "lockedNote": "Mae'r math o amgryptio a'r manylion wedi'u cloi: mae'r troshaen hon eisoes yn dal data wedi'i amgryptio.",
       "addToExistingWarn": "Wrth alluogi troshaen ar broffil presennol: bydd unrhyw ffeiliau testun plaen sydd eisoes ar y pell hwn yn aros heb eu hamgryptio ac yn ymddangos fel cymysgedd na ellir ei ddatgryptio. Defnyddiwch bell gwag.",
       "scopeHint": "Mae'r llwybrau Pell a Lleol uchod yn diffinio'r cwmpas wedi'i amgryptio (gadewch Pell yn wag i amgryptio'r gwreiddyn cyfan).",
-      "remotePathLockedNote": "Mae'r llwybr pell wedi'i gloi: dyma wraidd y troshaen wedi'i amgryptio ac ni ellir ei newid unwaith y bydd data yn y troshaen."
+      "remotePathLockedNote": "Mae'r llwybr pell wedi'i gloi: dyma wraidd y troshaen wedi'i amgryptio ac ni ellir ei newid unwaith y bydd data yn y troshaen.",
+      "overlaysSection": "Amlenni / Troshaenau",
+      "overlaysActiveBadge": "Ymlaen",
+      "hintNative": "Fformat AeroCrypt brodorol: darllenadwy o AeroFTP yn unig gyda'r cyfrinair hwn.",
+      "hintRclone": "Fformat rclone crypt safonol: darllenadwy gan rclone hefyd gyda'r cyfrinair hwn.",
+      "passwordLabel": "Cyfrinair",
+      "saltLabel": "Salt (dewisol)"
+    },
+    "modalGuard": {
+      "busyTitle": "Gweithrediad ar y gweill",
+      "busyBody": "Mae gweithrediad yn dal i redeg. Ei atal a chau, neu adael iddo barhau?",
+      "wait": "Gadael iddo barhau",
+      "stopAndClose": "Atal a chau",
+      "dirtyTitle": "Newidiadau heb eu cadw",
+      "dirtyBody": "Mae gennych newidiadau heb eu cadw. Eu taflu a chau?",
+      "keepEditing": "Parhau i olygu",
+      "discardAndClose": "Taflu a chau"
     }
   }
 }

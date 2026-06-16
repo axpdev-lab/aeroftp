@@ -7,9 +7,12 @@
 // disconnected entries in the View menu.
 
 import * as React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { CalendarClock, FileDown, FolderSync, History, Layers, RotateCcw, Undo2, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 import { CompareTabContent } from './CompareTabContent';
 import { PlanTabContent } from './PlanTabContent';
 import { SyncTabContent } from './SyncTabContent';
@@ -42,6 +45,19 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     const [showRollback, setShowRollback] = React.useState(false);
     const [showHistory, setShowHistory] = React.useState(false);
     const [showScheduler, setShowScheduler] = React.useState(false);
+    // Lifted from the Sync tab so the close path can guard against losing an
+    // in-progress local sync (issue #332).
+    const [syncRunning, setSyncRunning] = React.useState(false);
+
+    const cancelSync = React.useCallback(() => {
+        invoke('local_sync_cancel').catch(() => { /* no run in flight */ });
+    }, []);
+
+    const guarded = useGuardedClose({
+        guard: syncRunning ? 'busy' : null,
+        onClose,
+        onAbort: cancelSync,
+    });
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
@@ -91,7 +107,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label={t('aerosync.title') || 'AeroSync'}
-            onClick={onClose}
+            onClick={(e) => {
+                if (e.target === e.currentTarget) guarded.requestBackdropClose();
+            }}
         >
             <div
                 {...modalDrag.panelProps}
@@ -137,7 +155,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         )}
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={guarded.requestClose}
                             aria-label={t('common.close') || 'Close'}
                             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                         >
@@ -149,16 +167,21 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                 <div className="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-700">
                     {TAB_ORDER.map((tab) => {
                         const active = activeTab === tab;
+                        // While a local sync runs, lock the user onto the Sync
+                        // tab: leaving it would unmount SyncTabContent and orphan
+                        // the in-flight run (issue #332).
+                        const locked = syncRunning && tab !== 'sync';
                         return (
                             <button
                                 key={tab}
                                 type="button"
-                                onClick={() => setActiveTab(tab)}
+                                onClick={() => { if (!locked) setActiveTab(tab); }}
+                                disabled={locked}
                                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
                                     active
                                         ? 'border-blue-500 text-blue-600 dark:text-blue-300'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700/50'
-                                }`}
+                                } ${locked ? 'opacity-40 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent' : ''}`}
                                 aria-selected={active}
                                 role="tab"
                             >
@@ -239,6 +262,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             initialDestination={context.initialDestination}
                             pairKind={context.pairKind}
                             activeProfileId={context.activeProfileId}
+                            onRunningChange={setSyncRunning}
                         />
                     )}
                 </div>
@@ -281,6 +305,14 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         onClose={() => setShowScheduler(false)}
                     />
                 </>
+            )}
+
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
             )}
         </div>
     );

@@ -14,6 +14,7 @@ import {
 import { PathPair, MultiPathConfig } from '../../types';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 const MAX_PATH_PAIRS = 50;
 
@@ -31,6 +32,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     remotePath,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [pairs, setPairs] = useState<PathPair[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -117,11 +119,12 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Multi-Path Editor">
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <FolderTree size={18} className="text-blue-500" />
                         <h3 className="font-semibold text-sm">{t('syncPanel.multiPath')}</h3>

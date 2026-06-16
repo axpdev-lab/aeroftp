@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Check, Shield } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface PermissionsDialogProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ interface PermissionsDialogProps {
 
 export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, onClose, onSave, fileName, currentPermissions }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [octal, setOctal] = useState('755');
     const [flags, setFlags] = useState({
         owner: { read: true, write: true, execute: true },
@@ -114,8 +116,8 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl w-full max-w-md border border-gray-100 dark:border-gray-700 animate-scale-in">
-                <div className="flex justify-between items-start mb-6">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl w-full max-w-md border border-gray-100 dark:border-gray-700 animate-scale-in">
+                <div {...modalDrag.dragHandleProps} className="flex justify-between items-start mb-6 cursor-grab active:cursor-grabbing">
                     <div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             <Shield className="text-blue-500" size={24} />

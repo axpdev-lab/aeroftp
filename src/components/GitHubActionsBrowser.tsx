@@ -16,6 +16,7 @@ import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
 import { GitHubActionsIcon } from './icons/GitHubActionsIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface WorkflowRun {
   id: number;
@@ -82,6 +83,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
   onClose,
 }) => {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(false);
@@ -161,12 +163,13 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
+        {...modalDrag.panelProps}
         className="relative w-full max-w-2xl max-h-[75vh] overflow-hidden rounded-lg shadow-2xl flex flex-col animate-scale-in"
         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <GitHubActionsIcon size={18} className="text-gray-500 dark:text-gray-400" />
             <span className="font-semibold text-gray-900 dark:text-gray-100">GitHub Actions</span>

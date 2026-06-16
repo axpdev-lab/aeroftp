@@ -17,6 +17,7 @@ import { X, Download, Terminal, Check, AlertTriangle } from 'lucide-react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type { VaultReport } from './useVaultState';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface VaultReceiptProps {
     report: VaultReport;
@@ -73,6 +74,7 @@ async function saveReceipt(defaultName: string, ext: string, content: string): P
 }
 
 export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.ReactElement {
+    const modalDrag = useDraggableModal();
     const [revealed, setRevealed] = useState(0);
     const [saveResult, setSaveResult] = useState<SaveOutcome>(null);
     const termRef = useRef<HTMLDivElement>(null);
@@ -113,8 +115,8 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
 
     return (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 p-4 animate-scale-in">
-            <div className="w-full max-w-2xl max-h-full overflow-auto rounded-lg bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <div {...modalDrag.panelProps} className="w-full max-w-2xl max-h-full overflow-auto rounded-lg bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Terminal size={16} className="text-emerald-500" />
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">

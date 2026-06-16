@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye, Trash2, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { ProviderType } from '../types';
 
@@ -163,6 +164,7 @@ const EXPIRATION_PRESETS = [
 
 export function ShareLinkModal({ path, fileName, providerName, providerType, providerIcon, onClose }: ShareLinkModalProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
   const caps = React.useMemo(() => getShareLinkCapabilities(providerType || ''), [providerType]);
 
@@ -309,6 +311,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
+        {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[480px] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -317,7 +320,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
       >
         {/* Header */}
         <div className="border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between px-4 py-3">
+          <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 cursor-grab active:cursor-grabbing">
             <div className="flex items-center gap-2">
               {providerIcon || <Link2 size={18} className="text-blue-500" />}
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { X, Search, Download, Star, ExternalLink, RefreshCw, Package, Puzzle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface RegistryFile {
     path: string;
@@ -49,6 +50,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     onInstalled,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [activeTab, setActiveTab] = useState<BrowserTab>('browse');
     const [registry, setRegistry] = useState<RegistryEntry[]>([]);
     const [loading, setLoading] = useState(false);
@@ -144,12 +146,13 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
         >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <div
+                {...modalDrag.panelProps}
                 className="relative w-full max-w-3xl max-h-[80vh] rounded-lg overflow-hidden
                     bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-3">
                         <Puzzle size={20} className="text-purple-500" />
                         <div>

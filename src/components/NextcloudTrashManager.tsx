@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize } from '../utils/formatters';
 
@@ -26,6 +27,7 @@ interface NextcloudTrashManagerProps {
 
 export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }: NextcloudTrashManagerProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
   const [items, setItems] = useState<NextcloudTrashItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,6 +156,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
+        {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[640px] max-h-[80vh] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -161,7 +164,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
         aria-label={t('contextMenu.trashTitle')}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-orange-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">

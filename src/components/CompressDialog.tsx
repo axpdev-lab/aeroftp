@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Archive, Lock, Eye, EyeOff, X, File, Folder, Loader2, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes as formatSize } from '../utils/formatters';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import './CompressDialog.css';
 
 type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2';
@@ -97,6 +98,7 @@ function getExtension(format: CompressFormat): string {
 
 export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultName, outputDir, onConfirm, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [format, setFormat] = useState<CompressFormat>('zip');
     const [archiveName, setArchiveName] = useState(defaultName);
     const [compressionLevel, setCompressionLevel] = useState(6);
@@ -154,11 +156,13 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => { if (e.target === e.currentTarget && !compressing) onClose(); }}>
-            <div className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
+            <div
+                {...modalDrag.panelProps}
+                className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
                 style={{ background: 'var(--compress-bg)', border: '1px solid var(--compress-border)', color: 'var(--compress-text)' }}>
 
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: 'var(--compress-border)' }}>
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3.5 border-b cursor-grab active:cursor-grabbing" style={{ borderColor: 'var(--compress-border)' }}>
                     <div className="flex items-center gap-2.5">
                         <Archive size={20} style={{ color: 'var(--compress-accent)' }} />
                         <span className="font-semibold text-base">{t('compress.title') || 'Compress Files'}</span>

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, ShieldCheck, Loader2, AlertTriangle } from 'lucide-react';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 /**
  * 2FA TOTP prompt that appears when a connect attempt to a 2FA-aware
@@ -48,6 +49,7 @@ export function TwoFactorPromptDialog({
     loading = false,
 }: TwoFactorPromptDialogProps) {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [code, setCode] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -90,10 +92,11 @@ export function TwoFactorPromptDialog({
             aria-labelledby="twofa-title"
         >
             <div
+                {...modalDrag.panelProps}
                 className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg shrink-0">
                             <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400" />

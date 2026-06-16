@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "此操作将覆盖原始文件",
           "saveSaving": "正在保存...",
           "saveSaved": "图片保存成功",
-          "saveFailed": "图片保存失败"
+          "saveFailed": "图片保存失败",
+          "lossless": "无损",
+          "lossy": "有损",
+          "losslessHint": "可逆：以无损格式保存时像素被精确保留",
+          "lossyHint": "改变像素：此更改无法被精确撤销",
+          "formatLosslessNote": "无损格式：像素被精确存储。上方的有损编辑仍会改变图像。",
+          "formatLossyNote": "有损格式：重新编码会丢弃部分图像数据，包括无损编辑。"
         },
         "toggleTransparencyBg": "透明背景（循环切换）"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = 无限制。本地镜像循环按两个上限中较高者进行限速。",
-        "bandwidthUnlimited": "无限制"
+        "bandwidthUnlimited": "无限制",
+        "stop": "停止",
+        "stopping": "正在停止...",
+        "resultCancelled": "同步已取消"
       },
       "launcherTemplates": "模板",
       "launcherMultiPath": "多路径",
@@ -4869,8 +4878,8 @@
       "lock": "锁定叠加层"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt 配置文件（加密叠加层）",
-      "hint": "透明地加密此连接：双面板显示可读的名称，上传时加密，下载时解密。仅可在使用此密码的 AeroFTP 中读取。",
+      "enable": "Crypt (加密)",
+      "hint": "透明地加密此连接：双面板显示明文名称，上传时加密，下载时解密。",
       "kindNative": "AeroCrypt（原生）",
       "kindRclone": "Rclone Crypt（互操作）",
       "chooseKind": "请选择一种加密类型以继续：没有默认值，需主动选择。",
@@ -4880,7 +4889,23 @@
       "lockedNote": "加密类型和凭据已锁定：此叠加层已包含加密数据。",
       "addToExistingWarn": "在现有配置上启用叠加层：此远程上已有的任何明文文件仍未加密，并会显示为无法解密的混合内容。请使用空的远程。",
       "scopeHint": "上方的远程和本地路径定义了加密范围（将远程留空以加密整个根目录）。",
-      "remotePathLockedNote": "远程路径已锁定：它是加密叠加层的根目录，叠加层有数据后便无法更改。"
+      "remotePathLockedNote": "远程路径已锁定：它是加密叠加层的根目录，叠加层有数据后便无法更改。",
+      "overlaysSection": "封装 / 叠加层",
+      "overlaysActiveBadge": "开",
+      "hintNative": "原生 AeroCrypt 格式：使用此密码仅可从 AeroFTP 读取。",
+      "hintRclone": "标准 rclone crypt 格式：使用此密码也可由 rclone 读取。",
+      "passwordLabel": "密码",
+      "saltLabel": "Salt (可选)"
+    },
+    "modalGuard": {
+      "busyTitle": "操作进行中",
+      "busyBody": "操作仍在进行。停止并关闭，还是继续？",
+      "wait": "继续",
+      "stopAndClose": "停止并关闭",
+      "dirtyTitle": "未保存的更改",
+      "dirtyBody": "你有未保存的更改。放弃并关闭？",
+      "keepEditing": "继续编辑",
+      "discardAndClose": "放弃并关闭"
     }
   }
 }

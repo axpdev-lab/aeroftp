@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 // FileLu confirmed permanent delete endpoint: api/file/permanent_delete?key=X&file_code=Y
@@ -33,6 +34,7 @@ function formatDeletedAgo(seconds: number | null): string {
 
 export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManagerProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
   const [items, setItems] = useState<DeletedFileEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,10 +115,13 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl mx-4 rounded-lg shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in">
+      <div
+        {...modalDrag.panelProps}
+        className="relative w-full max-w-xl mx-4 rounded-lg shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in"
+      >
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+        {/* Header (drag handle) */}
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-red-500" />
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">

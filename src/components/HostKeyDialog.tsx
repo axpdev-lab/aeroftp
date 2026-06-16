@@ -4,6 +4,7 @@
 import React from 'react';
 import { Fingerprint, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 export interface HostKeyInfo {
     status: 'known' | 'unknown' | 'changed' | 'error';
@@ -30,6 +31,7 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
     onReject,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
 
     if (!visible || !info || (info.status !== 'unknown' && info.status !== 'changed')) return null;
 
@@ -44,12 +46,13 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
             aria-label="Host Key Verification"
         >
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6">
                     {/* Header */}
-                    <div className="flex items-center gap-3 mb-4">
+                    <div {...modalDrag.dragHandleProps} className="flex items-center gap-3 mb-4 cursor-grab active:cursor-grabbing">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                             isChanged
                                 ? 'bg-red-100 dark:bg-red-900/30'

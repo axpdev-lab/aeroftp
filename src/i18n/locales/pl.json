@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Spowoduje to nadpisanie oryginalnego pliku",
           "saveSaving": "Zapisywanie...",
           "saveSaved": "Obraz został zapisany",
-          "saveFailed": "Nie udało się zapisać obrazu"
+          "saveFailed": "Nie udało się zapisać obrazu",
+          "lossless": "Bezstratny",
+          "lossy": "Stratny",
+          "losslessHint": "Odwracalne: piksele sa zachowywane dokladnie przy zapisie w formacie bezstratnym",
+          "lossyHint": "Zmienia piksele: zmiany nie mozna dokladnie cofnac",
+          "formatLosslessNote": "Format bezstratny: piksele sa przechowywane dokladnie. Stratne edycje powyzej i tak zmieniaja obraz.",
+          "formatLossyNote": "Format stratny: ponowne kodowanie odrzuca czesc danych obrazu, takze edycje bezstratne."
         },
         "toggleTransparencyBg": "Tło przezroczystości (przełącz)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = bez ograniczeń. Lokalna pętla lustra ogranicza, używając wyższego z dwóch limitów.",
-        "bandwidthUnlimited": "Bez ograniczeń"
+        "bandwidthUnlimited": "Bez ograniczeń",
+        "stop": "Zatrzymaj",
+        "stopping": "Zatrzymywanie...",
+        "resultCancelled": "Synchronizacja anulowana"
       },
       "launcherTemplates": "Szablony",
       "launcherMultiPath": "Wiele ścieżek",
@@ -4869,8 +4878,8 @@
       "lock": "Zablokuj nakładkę"
     },
     "aerocryptProfile": {
-      "enable": "Profil AeroCrypt (zaszyfrowana nakładka)",
-      "hint": "Szyfruj to połączenie w sposób przejrzysty: podwójny panel pokazuje czytelne nazwy, wysyłane pliki są szyfrowane, a pobierane odszyfrowywane. Czytelne tylko z poziomu AeroFTP przy użyciu tego hasła.",
+      "enable": "Crypt (Szyfrowanie)",
+      "hint": "Szyfruje to połączenie w sposób przezroczysty: panel podwójny pokazuje czytelne nazwy, wysyłki szyfrują, pobierania odszyfrowują.",
       "kindNative": "AeroCrypt (natywny)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Wybierz typ szyfrowania, aby kontynuować: nie ma wartości domyślnej, wybór jest świadomy.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Typ szyfrowania i poświadczenia są zablokowane: ta nakładka zawiera już zaszyfrowane dane.",
       "addToExistingWarn": "Włączenie nakładki w istniejącym profilu: wszelkie pliki tekstem jawnym już obecne w tym zdalnym miejscu pozostają niezaszyfrowane i pojawią się jako nieodszyfrowalna mieszanka. Użyj pustego zdalnego miejsca.",
       "scopeHint": "Powyższe ścieżki zdalna i lokalna definiują zaszyfrowany zakres (pozostaw Zdalną pustą, aby zaszyfrować cały katalog główny).",
-      "remotePathLockedNote": "Ścieżka zdalna jest zablokowana: to katalog główny zaszyfrowanej nakładki i nie można jej zmienić, gdy nakładka zawiera dane."
+      "remotePathLockedNote": "Ścieżka zdalna jest zablokowana: to katalog główny zaszyfrowanej nakładki i nie można jej zmienić, gdy nakładka zawiera dane.",
+      "overlaysSection": "Otoczki / Nakładki",
+      "overlaysActiveBadge": "Wł.",
+      "hintNative": "Natywny format AeroCrypt: czytelny tylko z AeroFTP przy tym haśle.",
+      "hintRclone": "Standardowy format rclone crypt: czytelny także przez rclone przy tym haśle.",
+      "passwordLabel": "Hasło",
+      "saltLabel": "Salt (opcjonalnie)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operacja w toku",
+      "busyBody": "Operacja wciąż trwa. Zatrzymać i zamknąć, czy kontynuować?",
+      "wait": "Kontynuuj",
+      "stopAndClose": "Zatrzymaj i zamknij",
+      "dirtyTitle": "Niezapisane zmiany",
+      "dirtyBody": "Masz niezapisane zmiany. Odrzucić i zamknąć?",
+      "keepEditing": "Kontynuuj edycję",
+      "discardAndClose": "Odrzuć i zamknij"
     }
   }
 }

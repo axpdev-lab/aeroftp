@@ -25,6 +25,9 @@ import { VideoPlayer } from './viewers/VideoPlayer';
 import { PDFViewer } from './viewers/PDFViewer';
 import { TextViewer } from './viewers/TextViewer';
 import { useI18n } from '../../i18n';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 
 export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     isOpen,
@@ -38,6 +41,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     hasPrevious,
 }) => {
     const { t } = useI18n();
+    const modalDrag = useDraggableModal();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     // Opt-in "view as text" for files whose extension is not recognised as a
@@ -45,12 +49,16 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     // notes file) be read as if it were a .txt, on the user's explicit
     // request, without auto-rendering binary blobs (#270 comment 17105085).
     const [forceText, setForceText] = useState(false);
+    // True while AeroImage has unsaved edits: guards an accidental close.
+    const [previewDirty, setPreviewDirty] = useState(false);
+    const guarded = useGuardedClose({ guard: previewDirty ? 'dirty' : null, onClose });
 
     // Reset error + the view-as-text override when the file changes
     useEffect(() => {
         setError(null);
         setIsLoading(false);
         setForceText(false);
+        setPreviewDirty(false);
     }, [file?.name, file?.path]);
 
     // Determine file category. When the user asked to view an otherwise
@@ -65,7 +73,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
         const handleKeyDown = (e: KeyboardEvent) => {
             switch (e.key) {
                 case 'Escape':
-                    onClose();
+                    guarded.requestClose();
                     break;
                 case 'ArrowLeft':
                     if (hasPrevious && onPrevious) onPrevious();
@@ -78,7 +86,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose, onNext, onPrevious, hasNext, hasPrevious]);
+    }, [isOpen, guarded.requestClose, onNext, onPrevious, hasNext, hasPrevious]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -95,9 +103,9 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     // Handle backdrop click
     const handleBackdropClick = useCallback((e: React.MouseEvent) => {
         if (e.target === e.currentTarget) {
-            onClose();
+            guarded.requestBackdropClose();
         }
-    }, [onClose]);
+    }, [guarded]);
 
     // Handle error from viewers
     const handleViewerError = useCallback((errorMsg: string) => {
@@ -111,7 +119,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     const renderViewer = () => {
         switch (category) {
             case 'image':
-                return <ImageViewer file={file} onError={handleViewerError} />;
+                return <ImageViewer file={file} onError={handleViewerError} onDirtyChange={setPreviewDirty} />;
 
             case 'audio':
                 return <AudioPlayer file={file} onError={handleViewerError} />;
@@ -129,18 +137,18 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
             default:
                 return (
-                    <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)]">
                         <div className="text-center">
                             <div className="text-6xl mb-4">📁</div>
                             <div className="text-lg">{t('preview.common.notAvailable')}</div>
-                            <div className="text-sm text-gray-500 mt-2">
+                            <div className="text-sm text-[var(--color-text-tertiary)] mt-2">
                                 {t('preview.common.notSupported')}
                             </div>
                             {/* Let the user read any unrecognised file as plain
                                 text on demand (#270 comment 17105085). */}
                             <button
                                 onClick={() => setForceText(true)}
-                                className="mt-5 flex items-center gap-2 mx-auto px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                                className="mt-5 flex items-center gap-2 mx-auto px-3 py-1.5 bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-primary)] text-sm rounded-lg transition-colors"
                             >
                                 <FileText size={16} />
                                 {t('preview.common.viewAsText') || 'View as text'}
@@ -159,23 +167,32 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
-            {/* Modal Container */}
-            <div className="relative w-[90vw] h-[90vh] max-w-7xl bg-gray-900 rounded-lg border border-gray-700 shadow-2xl flex flex-col overflow-hidden animate-scale-in">
-                {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
+            {/* Modal Container. Chrome (header / footer / frame) follows the
+                active theme via CSS custom properties; the viewer paints its own
+                content area (the image viewport stays black). Draggable by its
+                header like the other modals (useDraggableModal). */}
+            <div
+                {...modalDrag.panelProps}
+                className="relative w-[90vw] h-[90vh] max-w-7xl bg-[var(--color-bg-primary)] rounded-lg border border-[var(--color-border)] shadow-2xl flex flex-col overflow-hidden animate-scale-in"
+            >
+                {/* Header (drag handle) */}
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between px-4 py-3 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] cursor-grab active:cursor-grabbing"
+                >
                     {/* File info */}
                     <div className="flex items-center gap-3">
                         <span className="text-2xl">{getCategoryEmoji(category)}</span>
                         <div>
-                            <h3 className="text-white font-medium truncate max-w-md">
+                            <h3 className="text-[var(--color-text-primary)] font-medium truncate max-w-md">
                                 {file.name}
                             </h3>
-                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
                                 <span>{formatFileSize(file.size)}</span>
                                 {file.isRemote && (
                                     <>
                                         <span>•</span>
-                                        <span className="text-blue-400">{t('preview.common.remote')}</span>
+                                        <span className="text-[var(--color-accent)]">{t('preview.common.remote')}</span>
                                     </>
                                 )}
                             </div>
@@ -190,7 +207,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         {onEdit && file && (isSourceViewable(file.name) || forceText) && (
                             <button
                                 onClick={onEdit}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-primary)] text-sm rounded-lg transition-colors"
                                 title={t('preview.common.edit') || 'Open in editor'}
                             >
                                 <Pencil size={16} />
@@ -202,7 +219,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         {onDownload && (
                             <button
                                 onClick={onDownload}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-sm rounded-lg transition-colors"
                             >
                                 <Download size={16} />
                                 {t('preview.common.download')}
@@ -211,11 +228,11 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
                         {/* Close button */}
                         <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                            onClick={guarded.requestClose}
+                            className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
                             title={t('preview.common.close')}
                         >
-                            <X size={20} className="text-gray-400" />
+                            <X size={20} className="text-[var(--color-text-secondary)]" />
                         </button>
                     </div>
                 </div>
@@ -224,17 +241,17 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                 <div className="flex-1 relative overflow-hidden">
                     {/* Loading overlay */}
                     {isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-primary)]/80 z-10">
                             <div className="flex flex-col items-center gap-3">
                                 <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-gray-400">{t('preview.common.loading')}</span>
+                                <span className="text-[var(--color-text-secondary)]">{t('preview.common.loading')}</span>
                             </div>
                         </div>
                     )}
 
                     {/* Error overlay */}
                     {error && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-primary)]/80 z-10">
                             <div className="flex flex-col items-center gap-3 text-red-400">
                                 <div className="text-4xl">⚠️</div>
                                 <span>{error}</span>
@@ -249,31 +266,39 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                     {hasPrevious && (
                         <button
                             onClick={onPrevious}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-gray-800/80 hover:bg-gray-700 rounded-full transition-colors"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-colors"
                             title={t('preview.common.previous')}
                         >
-                            <ChevronLeft size={24} className="text-white" />
+                            <ChevronLeft size={24} className="text-[var(--color-text-primary)]" />
                         </button>
                     )}
                     {hasNext && (
                         <button
                             onClick={onNext}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-gray-800/80 hover:bg-gray-700 rounded-full transition-colors"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-colors"
                             title={t('preview.common.next')}
                         >
-                            <ChevronRight size={24} className="text-white" />
+                            <ChevronRight size={24} className="text-[var(--color-text-primary)]" />
                         </button>
                     )}
                 </div>
 
                 {/* Footer with keyboard hints */}
-                <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 text-xs text-gray-500 flex justify-center gap-6">
-                    <span><kbd className="px-1.5 py-0.5 bg-gray-700 rounded">ESC</kbd> {t('preview.common.close')}</span>
+                <div className="px-4 py-2 bg-[var(--color-bg-secondary)] border-t border-[var(--color-border)] text-xs text-[var(--color-text-tertiary)] flex justify-center gap-6">
+                    <span><kbd className="px-1.5 py-0.5 bg-[var(--color-bg-tertiary)] rounded">ESC</kbd> {t('preview.common.close')}</span>
                     {(hasNext || hasPrevious) && (
-                        <span><kbd className="px-1.5 py-0.5 bg-gray-700 rounded">←</kbd> <kbd className="px-1.5 py-0.5 bg-gray-700 rounded">→</kbd> {t('preview.common.navigate')}</span>
+                        <span><kbd className="px-1.5 py-0.5 bg-[var(--color-bg-tertiary)] rounded">←</kbd> <kbd className="px-1.5 py-0.5 bg-[var(--color-bg-tertiary)] rounded">→</kbd> {t('preview.common.navigate')}</span>
                     )}
                 </div>
             </div>
+
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
 
             {/* CSS Animation */}
             <style>{`

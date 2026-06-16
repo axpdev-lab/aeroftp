@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Dette vil overskrive den originale fil",
           "saveSaving": "Gemmer...",
           "saveSaved": "Billede gemt",
-          "saveFailed": "Kunne ikke gemme billedet"
+          "saveFailed": "Kunne ikke gemme billedet",
+          "lossless": "Tabsfri",
+          "lossy": "Tabsgivende",
+          "losslessHint": "Reversibel: pixels bevares praecist, nar der gemmes i et tabsfrit format",
+          "lossyHint": "Aendrer pixels: aendringen kan ikke fortrydes praecist",
+          "formatLosslessNote": "Tabsfrit format: pixels gemmes praecist. Tabsgivende redigeringer ovenfor aendrer stadig billedet.",
+          "formatLossyNote": "Tabsgivende format: omkodning kasserer nogle billeddata, ogsa tabsfrie redigeringer."
         },
         "toggleTransparencyBg": "Gennemsigtighedsbaggrund (skift)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = ubegrænset. Den lokale spejlløkke begrænser ved hjælp af den højeste af de to grænser.",
-        "bandwidthUnlimited": "Ubegrænset"
+        "bandwidthUnlimited": "Ubegrænset",
+        "stop": "Stop",
+        "stopping": "Stopper...",
+        "resultCancelled": "Synkronisering annulleret"
       },
       "launcherTemplates": "Skabeloner",
       "launcherMultiPath": "Multi-sti",
@@ -4869,8 +4878,8 @@
       "lock": "Lås overlay"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt-profil (krypteret overlay)",
-      "hint": "Krypter denne forbindelse transparent: dobbeltpanelet viser klare navne, uploads krypteres, downloads dekrypteres. Kun læsbar fra AeroFTP med denne adgangskode.",
+      "enable": "Crypt (Kryptering)",
+      "hint": "Krypterer denne forbindelse transparent: dobbeltpanelet viser klare navne, uploads krypterer, downloads dekrypterer.",
       "kindNative": "AeroCrypt (native)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Vælg en krypteringstype for at fortsætte: der er ingen standard, valget er bevidst.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Krypteringstype og legitimationsoplysninger er låst: dette overlay indeholder allerede krypterede data.",
       "addToExistingWarn": "Når du aktiverer et overlay på en eksisterende profil: alle klartekstfiler, der allerede findes på denne fjernplacering, forbliver ukrypterede og vises som en ikke-dekrypterbar blanding. Brug en tom fjernplacering.",
       "scopeHint": "De eksterne og lokale stier ovenfor definerer det krypterede omfang (lad Ekstern stå tom for at kryptere hele roden).",
-      "remotePathLockedNote": "Fjernstien er låst: den er roden i det krypterede overlay og kan ikke ændres, når overlayet indeholder data."
+      "remotePathLockedNote": "Fjernstien er låst: den er roden i det krypterede overlay og kan ikke ændres, når overlayet indeholder data.",
+      "overlaysSection": "Wrappers / Overlays",
+      "overlaysActiveBadge": "Til",
+      "hintNative": "Native AeroCrypt-format: kan kun læses fra AeroFTP med denne adgangskode.",
+      "hintRclone": "Standard rclone crypt-format: kan også læses af rclone med denne adgangskode.",
+      "passwordLabel": "Adgangskode",
+      "saltLabel": "Salt (valgfrit)"
+    },
+    "modalGuard": {
+      "busyTitle": "Handling i gang",
+      "busyBody": "En handling kører stadig. Stop og luk, eller lad den fortsætte?",
+      "wait": "Lad fortsætte",
+      "stopAndClose": "Stop og luk",
+      "dirtyTitle": "Ugemte ændringer",
+      "dirtyBody": "Du har ugemte ændringer. Kassér og luk?",
+      "keepEditing": "Fortsæt redigering",
+      "discardAndClose": "Kassér og luk"
     }
   }
 }

@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { CheckCircle2, AlertTriangle, RefreshCw, KeyRound, Archive } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 /**
  * Post-import summary modal (F-012 W1 + W2). Replaces the old fire-and-forget
@@ -41,6 +42,7 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
     onClose,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [restarting, setRestarting] = useState(false);
 
     const rekeyed = result.userPartitionsRekeyed ?? 0;
@@ -68,11 +70,12 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
             aria-label={t('settings.keystoreImportComplete')}
         >
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6">
-                    <div className="flex items-center gap-3 mb-4">
+                    <div {...modalDrag.dragHandleProps} className="flex items-center gap-3 mb-4 cursor-grab active:cursor-grabbing">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                             hasWarning ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'
                         }`}>

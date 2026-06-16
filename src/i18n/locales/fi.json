@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Tämä ylikirjoittaa alkuperäisen tiedoston",
           "saveSaving": "Tallennetaan...",
           "saveSaved": "Kuva tallennettu onnistuneesti",
-          "saveFailed": "Kuvan tallentaminen epäonnistui"
+          "saveFailed": "Kuvan tallentaminen epäonnistui",
+          "lossless": "Haviodon",
+          "lossy": "Haviollinen",
+          "losslessHint": "Palautuva: pikselit sailyvat tarkalleen, kun tallennetaan haviottomaan muotoon",
+          "lossyHint": "Muuttaa pikseleita: muutosta ei voi perua tarkalleen",
+          "formatLosslessNote": "Haviotonmuoto: pikselit tallennetaan tarkalleen. Yllaolevat haviolliset muokkaukset muuttavat silti kuvaa.",
+          "formatLossyNote": "Haviollinen muoto: uudelleenkoodaus hylkaa osan kuvatiedoista, myos haviottomat muokkaukset."
         },
         "toggleTransparencyBg": "Läpinäkyvyyden tausta (vaihda)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = rajaton. Paikallinen peilisilmukka rajoittaa kahdesta katosta korkeamman mukaan.",
-        "bandwidthUnlimited": "Rajaton"
+        "bandwidthUnlimited": "Rajaton",
+        "stop": "Pysäytä",
+        "stopping": "Pysäytetään...",
+        "resultCancelled": "Synkronointi peruutettu"
       },
       "launcherTemplates": "Mallit",
       "launcherMultiPath": "Monireitti",
@@ -4869,8 +4878,8 @@
       "lock": "Lukitse peittokerros"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt-profiili (salattu peittokerros)",
-      "hint": "Salaa tämä yhteys läpinäkyvästi: kaksoispaneeli näyttää selkokieliset nimet, lähetykset salataan ja lataukset puretaan. Luettavissa vain AeroFTP:stä tällä salasanalla.",
+      "enable": "Crypt (Salaus)",
+      "hint": "Salaa tämän yhteyden läpinäkyvästi: kaksoispaneeli näyttää selkeät nimet, lähetykset salataan ja lataukset puretaan.",
       "kindNative": "AeroCrypt (natiivi)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Valitse salaustyyppi jatkaaksesi: oletusta ei ole, valinta on tietoinen.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Salaustyyppi ja tunnistetiedot on lukittu: tämä peite sisältää jo salattua dataa.",
       "addToExistingWarn": "Kun otat peittokuvan käyttöön olemassa olevassa profiilissa: kaikki tässä etäkohteessa jo olevat pelkkätekstitiedostot pysyvät salaamattomina ja näkyvät salaamattomana sekoituksena. Käytä tyhjää etäkohdetta.",
       "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren).",
-      "remotePathLockedNote": "Etäpolku on lukittu: se on salatun peitteen juuri eikä sitä voi muuttaa, kun peite sisältää tietoja."
+      "remotePathLockedNote": "Etäpolku on lukittu: se on salatun peitteen juuri eikä sitä voi muuttaa, kun peite sisältää tietoja.",
+      "overlaysSection": "Kääreet / Overlayt",
+      "overlaysActiveBadge": "Päällä",
+      "hintNative": "Natiivi AeroCrypt-muoto: luettavissa vain AeroFTP:stä tällä salasanalla.",
+      "hintRclone": "Vakiomuotoinen rclone crypt: luettavissa myös rclonella tällä salasanalla.",
+      "passwordLabel": "Salasana",
+      "saltLabel": "Salt (valinnainen)"
+    },
+    "modalGuard": {
+      "busyTitle": "Toiminto käynnissä",
+      "busyBody": "Toiminto on yhä käynnissä. Pysäytä ja sulje, vai jatketaanko?",
+      "wait": "Jatka",
+      "stopAndClose": "Pysäytä ja sulje",
+      "dirtyTitle": "Tallentamattomia muutoksia",
+      "dirtyBody": "Sinulla on tallentamattomia muutoksia. Hylätäänkö ja suljetaan?",
+      "keepEditing": "Jatka muokkausta",
+      "discardAndClose": "Hylkää ja sulje"
     }
   }
 }

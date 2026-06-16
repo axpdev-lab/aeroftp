@@ -11,11 +11,12 @@
  * a pure rendering extraction for maintainability.
  */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
   Copy, ArrowRightLeft,
 } from 'lucide-react';
+import { useMarqueeSelection } from '../hooks/useMarqueeSelection';
 import { BreadcrumbBar } from './BreadcrumbBar';
 import { PlacesSidebar } from './PlacesSidebar';
 import { SortField, SortOrder } from './SortableHeader';
@@ -330,6 +331,25 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   };
 
   // Handle file click (selection logic)
+  // Rubber-band (marquee) multi-selection + click-blank-to-deselect (#270).
+  // The hook owns the empty space inside the scroll container; file rows/cards
+  // keep their own click handlers. Disabled in the trash view and while an
+  // inline rename input is focused so it never steals those interactions.
+  const fileScrollRef = useRef<HTMLDivElement>(null);
+  const marquee = useMarqueeSelection({
+    containerRef: fileScrollRef,
+    itemSelector: 'tr[data-file-row], [data-file-card]',
+    selected: selectedFiles,
+    setSelected: setSelectedFiles,
+    setLastIndex: setLastSelectedIndex,
+    onBlankClick: () => {
+      setSelectedFiles(prev => (prev.size === 0 ? prev : new Set()));
+      setLastSelectedIndex(null);
+      setPreviewFile(null);
+    },
+    disabled: isTrashView || inlineRename !== null,
+  });
+
   const handleFileClick = (e: React.MouseEvent, file: LocalFile, index: number) => {
     if (file.name === '..') return;
     setActivePanel('local');
@@ -662,11 +682,28 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             activePanelMarker={sidebarActivePanelMarker}
           />
         )}
-        <div className="flex-1 overflow-auto" onContextMenu={(e) => {
-          const target = e.target as HTMLElement;
-          const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
-          if (!isFileRow) onEmptyContextMenu(e);
-        }}>
+        <div
+          ref={fileScrollRef}
+          className="relative flex-1 overflow-auto"
+          onMouseDown={marquee.onMouseDown}
+          onContextMenu={(e) => {
+            const target = e.target as HTMLElement;
+            const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
+            if (!isFileRow) onEmptyContextMenu(e);
+          }}
+        >
+        {marquee.box && (
+          <div
+            className="pointer-events-none absolute z-10 rounded-[2px] border border-blue-400/80 bg-blue-400/20 dark:border-blue-300/70 dark:bg-blue-300/15"
+            style={{
+              left: marquee.box.left,
+              top: marquee.box.top,
+              width: marquee.box.width,
+              height: marquee.box.height,
+            }}
+            aria-hidden="true"
+          />
+        )}
         {isTrashView ? (
           /* ===================== TRASH VIEW ===================== */
           <div className="flex-1 overflow-auto">
@@ -790,6 +827,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 <tr
                   key={`${file.name}-${i}`}
                   data-file-row
+                  data-file-name={file.name}
+                  data-file-index={i}
                   role="row"
                   aria-selected={selectedFiles.has(file.name)}
                   draggable={file.name !== '..' && inlineRename?.path !== file.path}
@@ -863,6 +902,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               <div
                 key={`${file.name}-${i}`}
                 data-file-card
+                data-file-name={file.name}
+                data-file-index={i}
                 role="row"
                 aria-selected={selectedFiles.has(file.name)}
                 draggable={file.name !== '..' && inlineRename?.path !== file.path}

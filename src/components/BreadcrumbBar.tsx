@@ -29,6 +29,10 @@ interface ChevronDropdownState {
   segmentIndex: number;
   items: SubDirectory[];
   loading: boolean;
+  // Viewport coords of the chevron, so the dropdown can render with
+  // `position: fixed` and escape the breadcrumb nav's `overflow-hidden`
+  // (which otherwise clips an absolutely-positioned dropdown to invisibility).
+  anchor: { top: number; left: number };
 }
 
 function splitPath(path: string): PathSegment[] {
@@ -73,6 +77,9 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   const [editValue, setEditValue] = useState('');
   const [chevronDropdown, setChevronDropdown] = useState<ChevronDropdownState | null>(null);
   const [overflowDropdownOpen, setOverflowDropdownOpen] = useState(false);
+  // Viewport anchor for the overflow ("...") dropdown: same overflow-hidden
+  // escape as the chevron dropdown (render fixed, not absolute).
+  const [overflowAnchor, setOverflowAnchor] = useState<{ top: number; left: number } | null>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -206,7 +213,13 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     // surfaces first-generation subfolders of the current location.
     const parentPath = segments[segmentIndex].fullPath;
 
-    setChevronDropdown({ segmentIndex, items: [], loading: true });
+    // Capture the chevron's viewport position NOW (before any await; the
+    // synthetic event target is not valid after the handler returns) so the
+    // fixed-position dropdown anchors under it.
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const anchor = { top: rect.bottom + 4, left: rect.left };
+
+    setChevronDropdown({ segmentIndex, items: [], loading: true, anchor });
 
     try {
       const files: Array<{ name: string; path: string; is_dir: boolean }> = await invoke('get_local_files', {
@@ -220,11 +233,11 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
       setChevronDropdown((prev) =>
-        prev?.segmentIndex === segmentIndex ? { segmentIndex, items: dirs, loading: false } : prev
+        prev?.segmentIndex === segmentIndex ? { segmentIndex, items: dirs, loading: false, anchor } : prev
       );
     } catch {
       setChevronDropdown((prev) =>
-        prev?.segmentIndex === segmentIndex ? { segmentIndex, items: [], loading: false } : prev
+        prev?.segmentIndex === segmentIndex ? { segmentIndex, items: [], loading: false, anchor } : prev
       );
     }
   }, [chevronDropdown, segments]);
@@ -321,7 +334,11 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             <ChevronRight size={14} className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
             <div className="relative flex-shrink-0" ref={overflowDropdownRef}>
               <button
-                onClick={() => setOverflowDropdownOpen((prev) => !prev)}
+                onClick={(e) => {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setOverflowAnchor({ top: rect.bottom + 4, left: rect.left });
+                  setOverflowDropdownOpen((prev) => !prev);
+                }}
                 className="text-sm px-1 py-0.5 rounded text-gray-500 hover:text-blue-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-blue-400 dark:hover:bg-gray-700/50 transition-colors"
                 title={t('breadcrumb.showAll') || 'Show collapsed segments'}
               >
@@ -330,7 +347,9 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
 
               {/* Overflow dropdown */}
               {overflowDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
+                <div
+                  style={overflowAnchor ? { top: overflowAnchor.top, left: overflowAnchor.left } : undefined}
+                  className="fixed bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
                   {collapsedSegments.map((seg) => {
                     const locked = isAboveMinPath(seg.fullPath);
                     return <button
@@ -378,7 +397,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                 {chevronDropdown?.segmentIndex === realIndex - 1 && (
                   <div
                     ref={chevronDropdownRef}
-                    className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
+                    style={{ top: chevronDropdown.anchor.top, left: chevronDropdown.anchor.left }}
+                    className="fixed bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
                   >
                     {chevronDropdown.loading ? (
                       <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
@@ -456,7 +476,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
               {isOpen && (
                 <div
                   ref={chevronDropdownRef}
-                  className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
+                  style={{ top: chevronDropdown!.anchor.top, left: chevronDropdown!.anchor.left }}
+                  className="fixed bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
                 >
                   {chevronDropdown!.loading ? (
                     <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">

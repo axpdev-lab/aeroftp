@@ -10,7 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ChevronDown, ChevronRight, FolderOpen, Info, Play, AlertTriangle, CheckCircle2, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleStop, FolderOpen, Info, Play, AlertTriangle, Ban, CheckCircle2, Zap } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import type { AeroSyncPairKind } from './types';
 
@@ -19,6 +19,9 @@ interface SyncTabContentProps {
     initialDestination?: string;
     pairKind?: AeroSyncPairKind | null;
     activeProfileId?: string;
+    /** Lifts the in-progress state up so the host dialog can guard its close
+     *  while a sync is running (issue #332). */
+    onRunningChange?: (running: boolean) => void;
 }
 
 // SLICE 4 + CO-4: advanced override for the auto-detected delta gate.
@@ -142,6 +145,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     initialDestination = '',
     pairKind = null,
     activeProfileId,
+    onRunningChange,
 }) => {
     const t = useTranslation();
     const [source, setSource] = useState(initialSource);
@@ -156,6 +160,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     const [downloadLimit, setDownloadLimit] = useState<number>(() => readBandwidthLimit(DOWNLOAD_LIMIT_KEY));
     const [dryRun, setDryRun] = useState(false);
     const [running, setRunning] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
     const [progress, setProgress] = useState<LocalSyncProgress | null>(null);
     const [report, setReport] = useState<LocalSyncReport | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -188,6 +193,14 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     useEffect(() => {
         setDeltaOverride(readDeltaOverride(activeProfileId));
     }, [activeProfileId]);
+
+    // Lift the running state so the host dialog (AeroSyncDialog) can guard
+    // its close while a local sync is in flight (issue #332). On unmount we
+    // report "not running" so the parent guard can never get stuck.
+    useEffect(() => {
+        onRunningChange?.(running);
+    }, [running, onRunningChange]);
+    useEffect(() => () => onRunningChange?.(false), [onRunningChange]);
 
     useEffect(() => {
         let unlisten: UnlistenFn | null = null;
@@ -222,6 +235,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
             return;
         }
         setRunning(true);
+        setCancelling(false);
         try {
             const excludeList = exclude
                 .split(/[\n,]/)
@@ -244,6 +258,19 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
             setError(String(e));
         } finally {
             setRunning(false);
+            setCancelling(false);
+        }
+    };
+
+    // Ask the backend to stop the in-progress run at the next file boundary.
+    // The run resolves on its own with a `cancelled` report; we only flip the
+    // button into a "stopping" state here.
+    const cancelRun = async () => {
+        setCancelling(true);
+        try {
+            await invoke('local_sync_cancel');
+        } catch (e) {
+            console.error(e);
         }
     };
 
@@ -473,13 +500,17 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                     <div className="flex items-center gap-2 mb-2">
                         {report.status === 'ok' ? (
                             <CheckCircle2 size={16} className="text-green-500" />
+                        ) : report.status === 'cancelled' ? (
+                            <Ban size={16} className="text-amber-500" />
                         ) : (
                             <AlertTriangle size={16} className="text-amber-500" />
                         )}
                         <span className="font-semibold text-sm">
                             {report.status === 'ok'
                                 ? t('aerosync.sync.resultOk') || 'Sync completed'
-                                : t('aerosync.sync.resultPartial') || 'Sync completed with errors'}
+                                : report.status === 'cancelled'
+                                    ? t('aerosync.sync.resultCancelled') || 'Sync cancelled'
+                                    : t('aerosync.sync.resultPartial') || 'Sync completed with errors'}
                         </span>
                     </div>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700 dark:text-gray-300">
@@ -590,7 +621,20 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                 </div>
             )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end gap-2 pt-2">
+                {running && (
+                    <button
+                        type="button"
+                        onClick={cancelRun}
+                        disabled={cancelling}
+                        className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                        <CircleStop size={16} />
+                        {cancelling
+                            ? t('aerosync.sync.stopping') || 'Stopping...'
+                            : t('aerosync.sync.stop') || 'Stop'}
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={start}

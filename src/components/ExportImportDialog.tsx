@@ -14,6 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourcePanel } from './BridgeSourcePanel';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
@@ -54,6 +55,7 @@ interface ImportResult {
 
 export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
     // Generic bridge source (the 12 expansion sources routed through BridgeSourcePanel)
     const [bridgeSrc, setBridgeSrc] = useState<BridgeSourceDescriptor | null>(null);
@@ -320,9 +322,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && onClose()}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[480px] max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[480px] max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 cursor-grab active:cursor-grabbing">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                         <Shield size={20} className="text-blue-500" />
                         {mode === 'bridge-import' ? t('settings.bridgeImport')

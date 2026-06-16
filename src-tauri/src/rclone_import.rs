@@ -1936,13 +1936,13 @@ user = t
         // S3 client writes keys.
         let servers = vec![RcloneExportServer {
             name: "minio".to_string(),
-            host: "s3.lab.axpdev.it".to_string(),
+            host: "s3.lab.example.test".to_string(),
             port: 443,
             username: "AKIAEXAMPLE".to_string(),
             protocol: Some("s3".to_string()),
             options: Some(serde_json::json!({
                 "region": "us-east-1",
-                "endpoint": "https://s3.lab.axpdev.it",
+                "endpoint": "https://s3.lab.example.test",
                 "bucket": "aeroftp-test"
             })),
             provider_id: Some("minio".to_string()),
@@ -2043,7 +2043,7 @@ user = t
         // remote could not list or transfer.
         let servers = vec![RcloneExportServer {
             name: "ncloud".to_string(),
-            host: "https://cloud.lab.axpdev.it".to_string(),
+            host: "https://cloud.lab.example.test".to_string(),
             port: 443,
             username: "alice".to_string(),
             protocol: Some("webdav".to_string()),
@@ -2063,7 +2063,7 @@ user = t
             "expected nextcloud vendor:\n{conf}"
         );
         assert!(
-            conf.contains("url = https://cloud.lab.axpdev.it/remote.php/dav/files/alice/"),
+            conf.contains("url = https://cloud.lab.example.test/remote.php/dav/files/alice/"),
             "must synthesise the DAV collection root:\n{conf}"
         );
     }
@@ -2103,7 +2103,7 @@ user = t
         // explicit URL) must be honoured verbatim, never double-appended.
         let servers = vec![RcloneExportServer {
             name: "ncloud".to_string(),
-            host: "https://cloud.lab.axpdev.it".to_string(),
+            host: "https://cloud.lab.example.test".to_string(),
             port: 443,
             username: "alice".to_string(),
             protocol: Some("webdav".to_string()),
@@ -2121,7 +2121,7 @@ user = t
         std::fs::remove_file(&tmp).ok();
 
         assert!(
-            conf.contains("url = https://cloud.lab.axpdev.it/remote.php/dav/files/alice/"),
+            conf.contains("url = https://cloud.lab.example.test/remote.php/dav/files/alice/"),
             "existing DAV path must be kept as-is:\n{conf}"
         );
         assert!(

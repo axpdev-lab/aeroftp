@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Aceasta va suprascrie fișierul original",
           "saveSaving": "Se salvează...",
           "saveSaved": "Imaginea a fost salvată cu succes",
-          "saveFailed": "Salvarea imaginii a eșuat"
+          "saveFailed": "Salvarea imaginii a eșuat",
+          "lossless": "Fara pierderi",
+          "lossy": "Cu pierderi",
+          "losslessHint": "Reversibil: pixelii sunt pastrati exact la salvarea intr-un format fara pierderi",
+          "lossyHint": "Modifica pixelii: modificarea nu poate fi anulata exact",
+          "formatLosslessNote": "Format fara pierderi: pixelii sunt stocati exact. Editarile cu pierderi de mai sus modifica totusi imaginea.",
+          "formatLossyNote": "Format cu pierderi: recodificarea elimina unele date din imagine, inclusiv editarile fara pierderi."
         },
         "toggleTransparencyBg": "Fundal de transparență (comută)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = nelimitat. Bucla de oglindire locală limitează folosind cea mai mare dintre cele două limite.",
-        "bandwidthUnlimited": "Nelimitat"
+        "bandwidthUnlimited": "Nelimitat",
+        "stop": "Oprește",
+        "stopping": "Se oprește...",
+        "resultCancelled": "Sincronizare anulată"
       },
       "launcherTemplates": "Șabloane",
       "launcherMultiPath": "Căi multiple",
@@ -4869,8 +4878,8 @@
       "lock": "Blochează stratul"
     },
     "aerocryptProfile": {
-      "enable": "Profil AeroCrypt (strat criptat)",
-      "hint": "Criptați această conexiune în mod transparent: panoul dublu afișează numele în clar, încărcările sunt criptate, iar descărcările decriptate. Lizibil doar din AeroFTP cu această parolă.",
+      "enable": "Crypt (Criptare)",
+      "hint": "Criptează această conexiune transparent: panoul dublu afișează nume clare, încărcările criptează, descărcările decriptează.",
       "kindNative": "AeroCrypt (nativ)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Alegeți un tip de criptare pentru a continua: nu există o valoare implicită, alegerea este deliberată.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Tipul de criptare și credențialele sunt blocate: acest strat conține deja date criptate.",
       "addToExistingWarn": "La activarea unei suprapuneri pe un profil existent: orice fișiere în text simplu deja prezente pe această locație la distanță rămân necriptate și vor apărea ca un amestec indescifrabil. Folosiți o locație la distanță goală.",
       "scopeHint": "Căile la distanță și locală indicate mai sus definesc domeniul criptat (lăsați câmpul La distanță gol pentru a cripta întreaga rădăcină).",
-      "remotePathLockedNote": "Calea la distanță este blocată: este rădăcina suprapunerii criptate și nu poate fi modificată odată ce suprapunerea conține date."
+      "remotePathLockedNote": "Calea la distanță este blocată: este rădăcina suprapunerii criptate și nu poate fi modificată odată ce suprapunerea conține date.",
+      "overlaysSection": "Învelișuri / Overlay-uri",
+      "overlaysActiveBadge": "Activ",
+      "hintNative": "Format AeroCrypt nativ: lizibil doar din AeroFTP cu această parolă.",
+      "hintRclone": "Format rclone crypt standard: lizibil și de rclone cu această parolă.",
+      "passwordLabel": "Parolă",
+      "saltLabel": "Salt (opțional)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operațiune în curs",
+      "busyBody": "O operațiune este încă în curs. O oprești și închizi, sau continui?",
+      "wait": "Continuă",
+      "stopAndClose": "Oprește și închide",
+      "dirtyTitle": "Modificări nesalvate",
+      "dirtyBody": "Ai modificări nesalvate. Le renunți și închizi?",
+      "keepEditing": "Continuă editarea",
+      "discardAndClose": "Renunță și închide"
     }
   }
 }

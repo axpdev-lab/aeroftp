@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Tas pārrakstīs oriģinālo failu",
           "saveSaving": "Saglabā...",
           "saveSaved": "Attēls veiksmīgi saglabāts",
-          "saveFailed": "Neizdevās saglabāt attēlu"
+          "saveFailed": "Neizdevās saglabāt attēlu",
+          "lossless": "Bez zudumiem",
+          "lossy": "Ar zudumiem",
+          "losslessHint": "Atgriezeniski: pikseli tiek saglabati precizi, ja saglaba formata bez zudumiem",
+          "lossyHint": "Maina pikselus: izmainu nevar precizi atsaukt",
+          "formatLosslessNote": "Formats bez zudumiem: pikseli tiek saglabati precizi. Augstak veiktas izmainas ar zudumiem tomer maina attelu.",
+          "formatLossyNote": "Formats ar zudumiem: parkodesana atmet dalu attela datu, ari izmainas bez zudumiem."
         },
         "toggleTransparencyBg": "Caurspīdīguma fons (pārslēgt)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = neierobežots. Vietējā spoguļa cilpa ierobežo, izmantojot augstāko no abiem ierobežojumiem.",
-        "bandwidthUnlimited": "Neierobežots"
+        "bandwidthUnlimited": "Neierobežots",
+        "stop": "Apturēt",
+        "stopping": "Apturēšana...",
+        "resultCancelled": "Sinhronizācija atcelta"
       },
       "launcherTemplates": "Veidnes",
       "launcherMultiPath": "Vairāki ceļi",
@@ -4869,8 +4878,8 @@
       "lock": "Bloķēt pārklājumu"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt profils (šifrēts pārklājums)",
-      "hint": "Šifrējiet šo savienojumu caurspīdīgi: dubultpanelī redzami atklāti nosaukumi, augšupielādes tiek šifrētas, lejupielādes atšifrētas. Lasāms tikai no AeroFTP ar šo paroli.",
+      "enable": "Crypt (Šifrēšana)",
+      "hint": "Caurspīdīgi šifrē šo savienojumu: dubultais panelis rāda skaidrus nosaukumus, augšupielādes šifrē, lejupielādes atšifrē.",
       "kindNative": "AeroCrypt (vietējais)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Lai turpinātu, izvēlieties šifrēšanas veidu: noklusējuma nav, izvēle ir apzināta.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Šifrēšanas veids un akreditācijas dati ir bloķēti: šis slānis jau satur šifrētus datus.",
       "addToExistingWarn": "Iespējojot pārklājumu esošā profilā: visi vienkārša teksta faili, kas jau ir šajā attālinātajā vietā, paliek nešifrēti un tiks rādīti kā neatšifrējams sajaukums. Izmantojiet tukšu attālināto vietu.",
       "scopeHint": "Iepriekš norādītie attālie un vietējie ceļi nosaka šifrēto tvērumu (atstājiet Attālo tukšu, lai šifrētu visu sakni).",
-      "remotePathLockedNote": "Attālais ceļš ir bloķēts: tas ir šifrētā pārklājuma sakne un to nevar mainīt, kad pārklājumā ir dati."
+      "remotePathLockedNote": "Attālais ceļš ir bloķēts: tas ir šifrētā pārklājuma sakne un to nevar mainīt, kad pārklājumā ir dati.",
+      "overlaysSection": "Apvalki / Pārklājumi",
+      "overlaysActiveBadge": "Ieslēgts",
+      "hintNative": "Vietējais AeroCrypt formāts: lasāms tikai no AeroFTP ar šo paroli.",
+      "hintRclone": "Standarta rclone crypt formāts: lasāms arī ar rclone, izmantojot šo paroli.",
+      "passwordLabel": "Parole",
+      "saltLabel": "Salt (neobligāts)"
+    },
+    "modalGuard": {
+      "busyTitle": "Notiek darbība",
+      "busyBody": "Darbība joprojām notiek. Apturēt un aizvērt, vai turpināt?",
+      "wait": "Turpināt",
+      "stopAndClose": "Apturēt un aizvērt",
+      "dirtyTitle": "Nesaglabātas izmaiņas",
+      "dirtyBody": "Tev ir nesaglabātas izmaiņas. Atmest un aizvērt?",
+      "keepEditing": "Turpināt rediģēšanu",
+      "discardAndClose": "Atmest un aizvērt"
     }
   }
 }

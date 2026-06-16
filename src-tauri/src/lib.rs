@@ -2078,6 +2078,7 @@ async fn rclone_crypt_provider_upload_folder(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn rclone_crypt_provider_create_remote(
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -15470,6 +15471,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             #[cfg(feature = "aerorsync")]
             local_sync::local_sync_run,
+            #[cfg(feature = "aerorsync")]
+            local_sync::local_sync_cancel,
             transfer_queue_scan::transfer_queue_scan_remote_tree,
             app_ready,
             set_close_to_tray,
@@ -16487,9 +16490,9 @@ mod overlay_helpers_tests {
 
         let key = format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap());
         let config = SftpConfig {
-            host: "49.13.171.110".to_string(),
+            host: "203.0.113.10".to_string(),
             port: 22,
-            username: "axpdev".to_string(),
+            username: "tester".to_string(),
             password: None,
             private_key_path: Some(key),
             key_passphrase: None,
@@ -16501,9 +16504,9 @@ mod overlay_helpers_tests {
         p.connect().await.expect("connect");
 
         let (name_key, data_key, name_tweak) =
-            rclone_crypt::derive_keys_with_tweak("aaa01ppp", "").unwrap();
+            rclone_crypt::derive_keys_with_tweak("test-passphrase", "").unwrap();
 
-        let dir = "/home/axpdev/rclone_rename_regression";
+        let dir = "/home/tester/rclone_rename_regression";
         let _ = p.mkdir(dir).await;
 
         // Multi-block plaintext: 200 KiB spans several 64 KiB rclone blocks.

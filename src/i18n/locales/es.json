@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Esto sobrescribirá el archivo original",
           "saveSaving": "Guardando...",
           "saveSaved": "Imagen guardada correctamente",
-          "saveFailed": "Error al guardar la imagen"
+          "saveFailed": "Error al guardar la imagen",
+          "lossless": "Sin perdida",
+          "lossy": "Con perdida",
+          "losslessHint": "Reversible: los pixeles se conservan exactamente al guardar en un formato sin perdida",
+          "lossyHint": "Altera los pixeles: el cambio no se puede deshacer con exactitud",
+          "formatLosslessNote": "Formato sin perdida: los pixeles se almacenan exactamente. Las ediciones con perdida de arriba cambian la imagen igualmente.",
+          "formatLossyNote": "Formato con perdida: la recodificacion descarta parte de los datos de la imagen, incluidas las ediciones sin perdida."
         },
         "toggleTransparencyBg": "Fondo de transparencia (alternar)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = ilimitado. El bucle de espejo local limita usando el mayor de los dos topes.",
-        "bandwidthUnlimited": "Ilimitado"
+        "bandwidthUnlimited": "Ilimitado",
+        "stop": "Detener",
+        "stopping": "Deteniendo...",
+        "resultCancelled": "Sincronización cancelada"
       },
       "launcherTemplates": "Plantillas",
       "launcherMultiPath": "Multi-ruta",
@@ -4869,8 +4878,8 @@
       "lock": "Bloquear superposición"
     },
     "aerocryptProfile": {
-      "enable": "Perfil AeroCrypt (capa cifrada)",
-      "hint": "Cifra esta conexión de forma transparente: el panel doble muestra los nombres en claro, las subidas se cifran y las descargas se descifran. Solo legible desde AeroFTP con esta contraseña.",
+      "enable": "Crypt (Cifrado)",
+      "hint": "Cifra esta conexión de forma transparente: el panel doble muestra los nombres en claro, las subidas cifran y las descargas descifran.",
       "kindNative": "AeroCrypt (nativo)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Elige un tipo de cifrado para continuar: no hay valor predeterminado, la elección es deliberada.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "El tipo de cifrado y las credenciales están bloqueados: esta superposición ya contiene datos cifrados.",
       "addToExistingWarn": "Al activar una superposición en un perfil existente: los archivos en texto plano que ya haya en este remoto permanecen sin cifrar y se mostrarán como una mezcla indescifrable. Usa un remoto vacío.",
       "scopeHint": "Las rutas Remota y Local indicadas arriba definen el ámbito cifrado (deja Remota vacía para cifrar toda la raíz).",
-      "remotePathLockedNote": "La ruta remota está bloqueada: es la raíz de la superposición cifrada y no se puede cambiar una vez que la superposición contiene datos."
+      "remotePathLockedNote": "La ruta remota está bloqueada: es la raíz de la superposición cifrada y no se puede cambiar una vez que la superposición contiene datos.",
+      "overlaysSection": "Envoltorios / Overlays",
+      "overlaysActiveBadge": "Activo",
+      "hintNative": "Formato AeroCrypt nativo: legible solo desde AeroFTP con esta contraseña.",
+      "hintRclone": "Formato rclone crypt estándar: también legible por rclone con esta contraseña.",
+      "passwordLabel": "Contraseña",
+      "saltLabel": "Salt (opcional)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operación en curso",
+      "busyBody": "Hay una operación en curso. ¿Detenerla y cerrar, o seguir?",
+      "wait": "Seguir",
+      "stopAndClose": "Detener y cerrar",
+      "dirtyTitle": "Cambios sin guardar",
+      "dirtyBody": "Tienes cambios sin guardar. ¿Descartarlos y cerrar?",
+      "keepEditing": "Seguir editando",
+      "discardAndClose": "Descartar y cerrar"
     }
   }
 }

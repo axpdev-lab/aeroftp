@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Honek jatorrizko fitxategia gainidatziko du",
           "saveSaving": "Gordetzen...",
           "saveSaved": "Irudia ondo gorde da",
-          "saveFailed": "Ezin izan da irudia gorde"
+          "saveFailed": "Ezin izan da irudia gorde",
+          "lossless": "Galerarik gabe",
+          "lossy": "Galerarekin",
+          "losslessHint": "Itzulgarria: pixelak zehazki gordetzen dira galerarik gabeko formatu batean gordetzean",
+          "lossyHint": "Pixelak aldatzen ditu: aldaketa ezin da zehazki desegin",
+          "formatLosslessNote": "Galerarik gabeko formatua: pixelak zehazki gordetzen dira. Goiko galera-edizioek irudia aldatzen dute hala ere.",
+          "formatLossyNote": "Galeradun formatua: berriro kodetzean irudiaren datu batzuk galtzen dira, baita galerarik gabeko edizioak ere."
         },
         "toggleTransparencyBg": "Gardentasun atzeko planoa (txandakatu)"
       },
@@ -4704,7 +4710,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = mugagabea. Ispilu lokalaren begiztak bi mugen artean handiena erabiliz mugatzen du.",
-        "bandwidthUnlimited": "Mugagabea"
+        "bandwidthUnlimited": "Mugagabea",
+        "stop": "Gelditu",
+        "stopping": "Gelditzen...",
+        "resultCancelled": "Sinkronizazioa bertan behera utzi da"
       },
       "launcherTemplates": "Txantiloiak",
       "launcherMultiPath": "Bide anitz",
@@ -4888,8 +4897,8 @@
       "lock": "Blokeatu gainjartzea"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt profila (zifratutako geruza)",
-      "hint": "Zifratu konexio hau modu gardenean: panel bikoitzak izenak argi erakusten ditu, igoerak zifratu egiten dira eta jaitsierak deszifratu. AeroFTPtik bakarrik irakur daiteke pasahitz honekin.",
+      "enable": "Crypt (Zifratzea)",
+      "hint": "Konexio hau gardenki zifratzen du: panel bikoitzak izen argiak erakusten ditu, igoerek zifratu egiten dute, jaitsierek deszifratu.",
       "kindNative": "AeroCrypt (jatorrizkoa)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Aukeratu zifratze mota bat jarraitzeko: ez dago lehenetsirik, aukera nahita egiten da.",
@@ -4899,7 +4908,23 @@
       "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu.",
       "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu lауneko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
       "scopeHint": "Goian adierazitako Urruneko eta Tokiko bideek zifratutako esparrua zehazten dute (utzi Urrunekoa hutsik erro osoa zifratzeko).",
-      "remotePathLockedNote": "Urruneko bidea blokeatuta dago: zifratutako gainjartzearen erroa da eta ezin da aldatu gainjartzeak datuak dituenean."
+      "remotePathLockedNote": "Urruneko bidea blokeatuta dago: zifratutako gainjartzearen erroa da eta ezin da aldatu gainjartzeak datuak dituenean.",
+      "overlaysSection": "Bilgarriak / Overlay-ak",
+      "overlaysActiveBadge": "Aktibo",
+      "hintNative": "AeroCrypt formatu natiboa: AeroFTP-tik soilik irakur daiteke pasahitz honekin.",
+      "hintRclone": "rclone crypt formatu estandarra: rclone-k ere irakur dezake pasahitz honekin.",
+      "passwordLabel": "Pasahitza",
+      "saltLabel": "Salt (aukerakoa)"
+    },
+    "modalGuard": {
+      "busyTitle": "Eragiketa abian",
+      "busyBody": "Eragiketa bat abian dago. Gelditu eta itxi, edo jarraitzen utzi?",
+      "wait": "Jarraitzen utzi",
+      "stopAndClose": "Gelditu eta itxi",
+      "dirtyTitle": "Gorde gabeko aldaketak",
+      "dirtyBody": "Gorde gabeko aldaketak dituzu. Baztertu eta itxi?",
+      "keepEditing": "Editatzen jarraitu",
+      "discardAndClose": "Baztertu eta itxi"
     }
   }
 }

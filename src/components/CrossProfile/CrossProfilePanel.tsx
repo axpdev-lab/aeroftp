@@ -15,6 +15,8 @@ import { Checkbox } from '../ui/Checkbox';
 import { TransferActionBar } from './TransferActionBar';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 
 const getDefaultRemotePath = (profile: ServerProfile | null): string =>
     profile?.initialPath?.trim() ? profile.initialPath.trim() : '/';
@@ -485,12 +487,19 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
         setPhase('setup');
     };
 
+    // Guarded close: a transfer in progress must not be lost to a stray
+    // click-outside; the backdrop is inert and X/ESC offer wait vs stop.
+    const guarded = useGuardedClose({
+        guard: phase === 'executing' ? 'busy' : null,
+        onClose,
+        onAbort: handleCancel,
+    });
+
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[5vh] bg-black/60 backdrop-blur-sm animate-scale-in"
             onClick={(e) => {
-                // Only close when clicking the overlay itself: not during transfer.
-                if (e.target === e.currentTarget && phase !== 'executing') onClose();
+                if (e.target === e.currentTarget) guarded.requestBackdropClose();
             }}
         >
             <div
@@ -514,7 +523,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                         aria-label={t('transfer.crossProfile.closeAria')}
                     >
@@ -774,6 +783,13 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                     )}
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

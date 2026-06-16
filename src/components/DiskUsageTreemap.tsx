@@ -8,6 +8,7 @@ import { HardDrive, X, ChevronLeft, Loader2, FolderOpen, File, AlertCircle } fro
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { DiskUsageNode } from '../types/aerofile';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -143,6 +144,7 @@ function getPercentage(size: number, total: number): string {
 
 const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -289,13 +291,14 @@ const DiskUsageTreemap: React.FC<DiskUsageTreemapProps> = ({ isOpen, scanPath, o
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[900px] max-h-[85vh] flex flex-col border border-gray-700 animate-scale-in"
                 role="dialog"
                 aria-label={t('diskUsage.title')}
                 aria-modal="true"
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2 min-w-0">
                         <HardDrive size={18} className="text-blue-400 shrink-0" />
                         <span className="font-medium text-sm truncate">

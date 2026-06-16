@@ -32,10 +32,10 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 const S3_PROFILE_ID: &str = "srv_axpbuntu_s3_minio";
-const S3_USERNAME: &str = "aeroftp-admin";
+const S3_USERNAME: &str = "s3-tester";
 const S3_BUCKET: &str = "aeroftp-test";
 const S3_REGION: &str = "us-east-1";
-const S3_ENDPOINT: &str = "https://s3.lab.axpdev.it";
+const S3_ENDPOINT: &str = "https://s3.lab.example.test";
 const S3_REMOTE_MULTIPART: &str = "_dag_validation/multipart_48MiB.bin";
 // 48 MiB fixture so the shaped builder produces >= 3 `UploadPart` nodes when
 // driven through the S3 provider's advertised `preferred_chunk_size` of 16 MiB

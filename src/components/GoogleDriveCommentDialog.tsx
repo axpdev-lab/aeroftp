@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, MessageSquare, Send, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface GoogleDriveCommentDialogProps {
   filePath: string;
@@ -15,6 +16,7 @@ interface GoogleDriveCommentDialogProps {
 
 export function GoogleDriveCommentDialog({ filePath, fileName, onClose }: GoogleDriveCommentDialogProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,12 +54,13 @@ export function GoogleDriveCommentDialog({ filePath, fileName, onClose }: Google
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
+        {...modalDrag.panelProps}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
           <div className="flex items-center gap-2">
             <MessageSquare size={16} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">

@@ -6,6 +6,16 @@
         "direction": "ltr"
     },
     "translations": {
+        "modalGuard": {
+            "busyTitle": "Operation in progress",
+            "busyBody": "An operation is still running. Stop it and close, or keep it running?",
+            "wait": "Keep running",
+            "stopAndClose": "Stop and close",
+            "dirtyTitle": "Unsaved changes",
+            "dirtyBody": "You have unsaved changes. Discard them and close?",
+            "keepEditing": "Keep editing",
+            "discardAndClose": "Discard and close"
+        },
         "about": {
             "active": "Active",
             "aiCredits": "Rust + React 18 + TypeScript",
@@ -2259,7 +2269,13 @@
                     "saveReplaceConfirm": "This will overwrite the original file",
                     "saveSaving": "Saving...",
                     "saveSaved": "Image saved successfully",
-                    "saveFailed": "Failed to save image"
+                    "saveFailed": "Failed to save image",
+                    "lossless": "Lossless",
+                    "lossy": "Lossy",
+                    "losslessHint": "Reversible: pixels are preserved exactly when saved to a lossless format",
+                    "lossyHint": "Alters pixels: the change cannot be perfectly undone",
+                    "formatLosslessNote": "Lossless format: pixels are stored exactly. Lossy edits above still change the image.",
+                    "formatLossyNote": "Lossy format: re-encoding discards some image data, including any lossless edits."
                 }
             },
             "mixer": {
@@ -4780,8 +4796,11 @@
                 "dryRun": "Dry run (preview only)",
                 "running": "Running...",
                 "start": "Start sync",
+                "stop": "Stop",
+                "stopping": "Stopping...",
                 "resultOk": "Sync completed",
                 "resultPartial": "Sync completed with errors",
+                "resultCancelled": "Sync cancelled",
                 "uploaded": "Uploaded",
                 "skipped": "Skipped",
                 "errors": "Errors",
@@ -4869,11 +4888,17 @@
             "verifyPolicyHint": "Post-transfer integrity check applied to each file."
         },
         "aerocryptProfile": {
-            "enable": "AeroCrypt Profile (encrypted overlay)",
-            "hint": "Encrypt this connection transparently: the dual-panel shows clear names, uploads encrypt, downloads decrypt. Readable only from AeroFTP with this password.",
+            "overlaysSection": "Wrappers / Overlays",
+            "overlaysActiveBadge": "On",
+            "enable": "Crypt (Encryption)",
+            "hint": "Encrypt this connection transparently: the dual-panel shows clear names, uploads encrypt, downloads decrypt.",
+            "hintNative": "Native AeroCrypt format: readable only from AeroFTP with this password.",
+            "hintRclone": "Standard rclone crypt format: also readable by rclone with this password.",
             "kindNative": "AeroCrypt (native)",
             "kindRclone": "Rclone Crypt (interop)",
             "chooseKind": "Choose an encryption type to continue: there is no default, the choice is deliberate.",
+            "passwordLabel": "Password",
+            "saltLabel": "Salt (optional)",
             "passwordPlaceholder": "Overlay password",
             "passwordStored": "Stored (leave blank to keep)",
             "immutableWarn": "Encryption type and password are set once and cannot be changed later: the already-encrypted files would become unreadable.",

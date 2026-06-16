@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "To bo prepisalo izvirno datoteko",
           "saveSaving": "Shranjevanje...",
           "saveSaved": "Slika je bila uspešno shranjena",
-          "saveFailed": "Shranjevanje slike ni uspelo"
+          "saveFailed": "Shranjevanje slike ni uspelo",
+          "lossless": "Brez izgub",
+          "lossy": "Z izgubo",
+          "losslessHint": "Povratno: slikovne pike se ohranijo natancno pri shranjevanju v obliki brez izgub",
+          "lossyHint": "Spremeni slikovne pike: spremembe ni mogoce natancno razveljaviti",
+          "formatLosslessNote": "Oblika brez izgub: slikovne pike se shranijo natancno. Zgornja urejanja z izgubo kljub temu spremenijo sliko.",
+          "formatLossyNote": "Oblika z izgubo: ponovno kodiranje zavrze nekaj slikovnih podatkov, tudi urejanja brez izgub."
         },
         "toggleTransparencyBg": "Ozadje prosojnosti (preklopi)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = neomejeno. Zanka lokalnega zrcaljenja omejuje hitrost glede na višjo od obeh meja.",
-        "bandwidthUnlimited": "Neomejeno"
+        "bandwidthUnlimited": "Neomejeno",
+        "stop": "Ustavi",
+        "stopping": "Ustavljanje...",
+        "resultCancelled": "Sinhronizacija preklicana"
       },
       "launcherTemplates": "Predloge",
       "launcherMultiPath": "Več poti",
@@ -4869,8 +4878,8 @@
       "lock": "Zakleni sloj"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (šifrirana plast)",
-      "hint": "To povezavo šifrira pregledno: dvopanelni prikaz kaže razumljiva imena, nalaganja se šifrirajo, prenosi se dešifrirajo. Berljivo samo iz AeroFTP s tem geslom.",
+      "enable": "Crypt (Šifriranje)",
+      "hint": "Pregledno šifrira to povezavo: dvojno podokno prikazuje jasna imena, prenosi v strežnik šifrirajo, prenosi iz strežnika dešifrirajo.",
       "kindNative": "AeroCrypt (izvorni)",
       "kindRclone": "Rclone Crypt (interoperabilnost)",
       "chooseKind": "Za nadaljevanje izberite vrsto šifriranja: privzete vrednosti ni, izbira je premišljena.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Vrsta šifriranja in poverilnice so zaklenjene: ta plast že vsebuje šifrirane podatke.",
       "addToExistingWarn": "Ob omogočanju prekrivanja na obstoječem profilu: vse datoteke z navadnim besedilom, ki so že na tem oddaljenem mestu, ostanejo nešifrirane in se prikažejo kot nedešifrirljiva mešanica. Uporabite prazno oddaljeno mesto.",
       "scopeHint": "Zgornji oddaljeni in lokalni poti določata šifrirani obseg (pustite oddaljeno pot prazno za šifriranje celotnega korena).",
-      "remotePathLockedNote": "Oddaljena pot je zaklenjena: je koren šifriranega prekrivanja in je ni mogoče spremeniti, ko prekrivanje vsebuje podatke."
+      "remotePathLockedNote": "Oddaljena pot je zaklenjena: je koren šifriranega prekrivanja in je ni mogoče spremeniti, ko prekrivanje vsebuje podatke.",
+      "overlaysSection": "Ovoji / Prekrivi",
+      "overlaysActiveBadge": "Vklopljeno",
+      "hintNative": "Izvorni format AeroCrypt: berljiv samo iz AeroFTP s tem geslom.",
+      "hintRclone": "Standardni format rclone crypt: berljiv tudi z rclone s tem geslom.",
+      "passwordLabel": "Geslo",
+      "saltLabel": "Salt (neobvezno)"
+    },
+    "modalGuard": {
+      "busyTitle": "Operacija poteka",
+      "busyBody": "Operacija še poteka. Ustaviti in zapreti ali nadaljevati?",
+      "wait": "Nadaljuj",
+      "stopAndClose": "Ustavi in zapri",
+      "dirtyTitle": "Neshranjene spremembe",
+      "dirtyBody": "Imate neshranjene spremembe. Zavreči in zapreti?",
+      "keepEditing": "Nadaljuj urejanje",
+      "discardAndClose": "Zavrzi in zapri"
     }
   }
 }

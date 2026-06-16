@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { formatSize } from '../../utils/formatters';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 // --- Backend types (from Rust sync_canary_run) ---
 
@@ -60,6 +61,7 @@ export const CanaryResultDialog: React.FC<CanaryResultDialogProps> = ({
     onApprove,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
 
     // Escape to close
     useEffect(() => {
@@ -92,11 +94,12 @@ export const CanaryResultDialog: React.FC<CanaryResultDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label="Canary Sync Results">
             <div
+                {...modalDrag.panelProps}
                 className="bg-[var(--color-bg-primary,#fff)] dark:bg-[var(--color-bg-primary,#1f2937)] rounded-lg shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh] animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <FlaskConical size={18} className="text-amber-500" />
                         <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">

@@ -198,3 +198,69 @@ export function buildOperations(state: EditState): ImageOperation[] {
     if (state.hue !== 0) ops.push({ type: 'HueRotate', degrees: state.hue });
     return ops;
 }
+
+// ─── Lossless / lossy classification (#270, requested by Ehud) ─────────────
+// Two independent dimensions decide whether an edit keeps the picture intact:
+//   1. the operation itself (is it reversible?), and
+//   2. the output container the result is re-encoded into.
+// A "lossless" operation only stays lossless when written to a lossless format;
+// any save to a lossy format re-encodes every pixel and erases that guarantee.
+
+export type LossKind = 'lossless' | 'lossy';
+
+// Output containers, classified for the AeroImage backend (image_edit.rs):
+// JPEG uses a quality-based encoder and GIF quantises truecolour down to a
+// 256-colour palette (both lossy); every other format round-trips pixels
+// exactly through image::save.
+const FORMAT_LOSS: Record<string, LossKind> = {
+    png: 'lossless',
+    webp: 'lossless',
+    bmp: 'lossless',
+    tiff: 'lossless',
+    jpg: 'lossy',
+    jpeg: 'lossy',
+    gif: 'lossy',
+};
+
+/** Lossless/lossy nature of an output container (defaults to lossy when unknown). */
+export function formatLossKind(format: string): LossKind {
+    return FORMAT_LOSS[format.toLowerCase()] ?? 'lossy';
+}
+
+// Individual operations. Geometry permutations (rotate by a right angle, flip)
+// and a colour inversion are bijective, so they preserve every pixel value;
+// resampling (resize) and colour math (brightness/contrast/hue/blur/sharpen/
+// grayscale) clip and round, and cannot be undone exactly. Crop keeps the
+// retained region bit-for-bit and only drops the area the user removed.
+const OPERATION_LOSS: Record<string, LossKind> = {
+    Crop: 'lossless',
+    Rotate90: 'lossless',
+    Rotate180: 'lossless',
+    Rotate270: 'lossless',
+    FlipH: 'lossless',
+    FlipV: 'lossless',
+    Invert: 'lossless',
+    Resize: 'lossy',
+    Brightness: 'lossy',
+    Contrast: 'lossy',
+    HueRotate: 'lossy',
+    Blur: 'lossy',
+    Sharpen: 'lossy',
+    Grayscale: 'lossy',
+};
+
+/** Lossless/lossy nature of a single operation (defaults to lossy when unknown). */
+export function operationLossKind(type: string): LossKind {
+    return OPERATION_LOSS[type] ?? 'lossy';
+}
+
+/** Tally the active lossy/lossless operations for the current edit state. */
+export function activeEditLoss(state: EditState): { lossless: number; lossy: number } {
+    let lossless = 0;
+    let lossy = 0;
+    for (const op of buildOperations(state)) {
+        if (operationLossKind(op.type) === 'lossy') lossy++;
+        else lossless++;
+    }
+    return { lossless, lossy };
+}

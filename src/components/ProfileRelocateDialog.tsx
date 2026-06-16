@@ -11,6 +11,7 @@ import {
     relocateServerProfile,
     type UserMetadata,
 } from '../utils/userPartitions';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 // N4 (discussion #270): pick a destination account and copy/move a saved
 // server profile into its vault partition. The source is always the active
@@ -51,6 +52,7 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
     onDone,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [users, setUsers] = useState<UserMetadata[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -161,10 +163,11 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
             onClick={busy ? undefined : onClose}
         >
             <div
+                {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl w-[420px] max-w-[92vw] border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div {...modalDrag.dragHandleProps} className="flex items-center gap-2 px-5 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     {isMove ? (
                         <Scissors size={18} className="text-amber-500" />
                     ) : (

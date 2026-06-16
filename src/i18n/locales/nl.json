@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Dit overschrijft het originele bestand",
           "saveSaving": "Opslaan...",
           "saveSaved": "Afbeelding opgeslagen",
-          "saveFailed": "Afbeelding opslaan mislukt"
+          "saveFailed": "Afbeelding opslaan mislukt",
+          "lossless": "Verliesvrij",
+          "lossy": "Met verlies",
+          "losslessHint": "Omkeerbaar: pixels blijven exact behouden bij opslaan in een verliesvrij formaat",
+          "lossyHint": "Wijzigt pixels: de wijziging kan niet exact ongedaan worden gemaakt",
+          "formatLosslessNote": "Verliesvrij formaat: pixels worden exact opgeslagen. Bewerkingen met verlies hierboven veranderen de afbeelding alsnog.",
+          "formatLossyNote": "Formaat met verlies: bij hercoderen gaan sommige beeldgegevens verloren, ook verliesvrije bewerkingen."
         },
         "toggleTransparencyBg": "Transparantieachtergrond (wisselen)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = onbeperkt. De lokale mirror-loop beperkt op basis van de hoogste van de twee limieten.",
-        "bandwidthUnlimited": "Onbeperkt"
+        "bandwidthUnlimited": "Onbeperkt",
+        "stop": "Stoppen",
+        "stopping": "Stoppen...",
+        "resultCancelled": "Synchronisatie geannuleerd"
       },
       "launcherTemplates": "Sjablonen",
       "launcherMultiPath": "Meerdere paden",
@@ -4869,8 +4878,8 @@
       "lock": "Overlay vergrendelen"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt-profiel (versleutelde overlay)",
-      "hint": "Versleutel deze verbinding transparant: het dubbele paneel toont de namen leesbaar, uploads worden versleuteld en downloads ontsleuteld. Alleen leesbaar vanuit AeroFTP met dit wachtwoord.",
+      "enable": "Crypt (Versleuteling)",
+      "hint": "Versleutelt deze verbinding transparant: het dubbele paneel toont leesbare namen, uploads versleutelen, downloads ontsleutelen.",
       "kindNative": "AeroCrypt (native)",
       "kindRclone": "Rclone Crypt (interop)",
       "chooseKind": "Kies een versleutelingstype om door te gaan: er is geen standaard, de keuze is bewust.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Versleutelingstype en inloggegevens zijn vergrendeld: deze overlay bevat al versleutelde gegevens.",
       "addToExistingWarn": "Bij het inschakelen van een overlay op een bestaand profiel: bestanden in platte tekst die al op deze externe locatie staan blijven onversleuteld en verschijnen als een niet-ontsleutelbare mix. Gebruik een lege externe locatie.",
       "scopeHint": "De bovenstaande externe en lokale paden bepalen het versleutelde bereik (laat Extern leeg om de hele hoofdmap te versleutelen).",
-      "remotePathLockedNote": "Het externe pad is vergrendeld: het is de hoofdmap van de versleutelde overlay en kan niet worden gewijzigd zodra de overlay gegevens bevat."
+      "remotePathLockedNote": "Het externe pad is vergrendeld: het is de hoofdmap van de versleutelde overlay en kan niet worden gewijzigd zodra de overlay gegevens bevat.",
+      "overlaysSection": "Wrappers / Overlays",
+      "overlaysActiveBadge": "Aan",
+      "hintNative": "Native AeroCrypt-formaat: alleen leesbaar vanuit AeroFTP met dit wachtwoord.",
+      "hintRclone": "Standaard rclone crypt-formaat: ook leesbaar door rclone met dit wachtwoord.",
+      "passwordLabel": "Wachtwoord",
+      "saltLabel": "Salt (optioneel)"
+    },
+    "modalGuard": {
+      "busyTitle": "Bewerking bezig",
+      "busyBody": "Er loopt nog een bewerking. Stoppen en sluiten, of laten doorlopen?",
+      "wait": "Laten doorlopen",
+      "stopAndClose": "Stoppen en sluiten",
+      "dirtyTitle": "Niet-opgeslagen wijzigingen",
+      "dirtyBody": "Je hebt niet-opgeslagen wijzigingen. Verwerpen en sluiten?",
+      "keepEditing": "Verder bewerken",
+      "discardAndClose": "Verwerpen en sluiten"
     }
   }
 }

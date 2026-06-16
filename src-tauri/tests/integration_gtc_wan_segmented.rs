@@ -61,27 +61,27 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 const SFTP_PROFILE_ID: &str = "srv_1778600830336_6pvrx7450";
-const SFTP_HOST: &str = "49.13.171.110";
+const SFTP_HOST: &str = "203.0.113.10";
 const SFTP_PORT: u16 = 22;
-const SFTP_USERNAME: &str = "axpdev";
-const REMOTE_DIR: &str = "/home/axpdev/_gtc_gui_validation";
-const REMOTE_BIG: &str = "/home/axpdev/_gtc_gui_validation/64MiB.bin";
+const SFTP_USERNAME: &str = "tester";
+const REMOTE_DIR: &str = "/home/tester/_gtc_gui_validation";
+const REMOTE_BIG: &str = "/home/tester/_gtc_gui_validation/64MiB.bin";
 const FILE_BYTES: usize = 64 * 1024 * 1024;
 
 // FTP axpbuntu lab (seeded by /var/www/lumo_cms/seed_axpbuntu_lab.rs)
 const FTP_PROFILE_ID: &str = "srv_axpbuntu_ftp_plain";
-const FTP_HOST: &str = "ftp.lab.axpdev.it";
+const FTP_HOST: &str = "ftp.lab.example.test";
 const FTP_PORT: u16 = 21;
-const FTP_USERNAME: &str = "ftplab";
+const FTP_USERNAME: &str = "ftp-tester";
 const FTP_REMOTE_DIR: &str = "/_gtc_gui_validation";
 const FTP_REMOTE_BIG: &str = "/_gtc_gui_validation/64MiB.bin";
 
 // S3 / MinIO axpbuntu lab (seeded by seed_axpbuntu_lab.rs)
 const S3_PROFILE_ID: &str = "srv_axpbuntu_s3_minio";
-const S3_USERNAME: &str = "aeroftp-admin";
+const S3_USERNAME: &str = "s3-tester";
 const S3_BUCKET: &str = "aeroftp-test";
 const S3_REGION: &str = "us-east-1";
-const S3_ENDPOINT: &str = "https://s3.lab.axpdev.it";
+const S3_ENDPOINT: &str = "https://s3.lab.example.test";
 const S3_REMOTE_BIG: &str = "_gtc_gui_validation/64MiB.bin";
 const GTC4_FILE_BYTES: usize = 16 * 1024 * 1024;
 const GTC4_FILES: usize = 4;
@@ -195,7 +195,7 @@ fn sftp_config(creds: LoadedSftpCreds) -> SftpConfig {
         password: creds.password.map(SecretString::from),
         private_key_path: creds.private_key_path,
         key_passphrase: None,
-        initial_path: Some("/home/axpdev".to_string()),
+        initial_path: Some("/home/tester".to_string()),
         timeout_secs: 30,
         // The axpbuntu host fingerprint is already in the user's
         // known_hosts via daily CLI use; flipping this to true keeps

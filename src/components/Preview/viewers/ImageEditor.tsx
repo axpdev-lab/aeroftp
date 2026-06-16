@@ -33,6 +33,7 @@ import {
     INITIAL_EDIT_STATE,
     ImageMetadata,
     PreviewFileData,
+    LossKind,
 } from '../types';
 
 interface ImageEditorProps {
@@ -50,6 +51,33 @@ const ROTATION_CYCLE: readonly (0 | 90 | 180 | 270)[] = [0, 90, 180, 270];
 
 const RESIZE_PRESETS = [50, 75, 150, 200] as const;
 
+// Lossless / lossy badge (#270). Each operation is tagged so the user knows
+// whether it preserves the picture exactly (green) or alters pixels
+// irreversibly (amber). The reading still depends on the chosen output format,
+// which the Save dialog spells out.
+const LossTag: React.FC<{ kind: LossKind }> = ({ kind }) => {
+    const { t } = useI18n();
+    const lossless = kind === 'lossless';
+    return (
+        <span
+            title={
+                lossless
+                    ? t('preview.image.edit.losslessHint') || 'Reversible: pixels are preserved exactly when saved to a lossless format'
+                    : t('preview.image.edit.lossyHint') || 'Alters pixels: the change cannot be perfectly undone'
+            }
+            className={`px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide border ${
+                lossless
+                    ? 'bg-green-500/15 text-green-400 border-green-500/30'
+                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+            }`}
+        >
+            {lossless
+                ? t('preview.image.edit.lossless') || 'Lossless'
+                : t('preview.image.edit.lossy') || 'Lossy'}
+        </span>
+    );
+};
+
 // Reusable slider row
 interface SliderRowProps {
     label: string;
@@ -59,27 +87,29 @@ interface SliderRowProps {
     max: number;
     step: number;
     unit?: string;
+    badge?: React.ReactNode;
     onChange: (v: number) => void;
     onReset: () => void;
 }
 
 const SliderRow: React.FC<SliderRowProps> = React.memo(
-    ({ label, icon, value, min, max, step, unit, onChange, onReset }) => (
+    ({ label, icon, value, min, max, step, unit, badge, onChange, onReset }) => (
         <div className="px-3 py-1.5">
             <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 text-xs text-gray-300">
+                <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-primary)]">
                     {icon}
                     <span>{label}</span>
+                    {badge}
                 </div>
                 <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500 tabular-nums w-10 text-right">
+                    <span className="text-xs text-[var(--color-text-tertiary)] tabular-nums w-10 text-right">
                         {value}
                         {unit ?? ''}
                     </span>
                     {value !== 0 && (
                         <button
                             onClick={onReset}
-                            className="p-0.5 text-gray-500 hover:text-gray-300 rounded"
+                            className="p-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] rounded"
                             title="Reset"
                         >
                             <X size={12} />
@@ -94,7 +124,7 @@ const SliderRow: React.FC<SliderRowProps> = React.memo(
                 step={step}
                 value={value}
                 onChange={(e) => onChange(Number(e.target.value))}
-                className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                className="w-full h-1.5 bg-[var(--color-bg-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--color-accent)]"
             />
         </div>
     )
@@ -110,10 +140,10 @@ interface SectionProps {
 }
 
 const Section: React.FC<SectionProps> = ({ title, expanded, onToggle, children }) => (
-    <div className="border-t border-gray-700">
+    <div className="border-t border-[var(--color-border)]">
         <button
             onClick={onToggle}
-            className="flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50"
+            className="flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
         >
             <span>{title}</span>
             <ChevronRight
@@ -140,7 +170,7 @@ const ToggleBtn: React.FC<ToggleBtnProps> = ({ active, onClick, children, title 
         className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border transition-colors ${
             active
                 ? 'bg-blue-600/20 text-blue-400 border-blue-500/50'
-                : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600'
+                : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]'
         }`}
     >
         {children}
@@ -229,13 +259,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     // ─── Render ───────────────────────────────────────────────────────
 
     return (
-        <div className="w-[280px] bg-gray-800/95 border-l border-gray-700 flex flex-col overflow-y-auto shrink-0 select-none">
+        <div className="w-[280px] bg-[var(--color-bg-secondary)] border-l border-white/10 flex flex-col overflow-y-auto shrink-0 select-none">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-700">
-                <span className="text-sm font-semibold text-gray-200">AeroImage</span>
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--color-border)]">
+                <span className="text-sm font-semibold text-[var(--color-text-primary)]">AeroImage</span>
                 <button
                     onClick={() => onEditStateChange(INITIAL_EDIT_STATE)}
-                    className="p-1 text-gray-400 hover:text-gray-200 rounded hover:bg-gray-700"
+                    className="p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded hover:bg-[var(--color-bg-tertiary)]"
                     title={t('preview.image.edit.resetAll') || 'Reset All'}
                 >
                     <ResetIcon size={16} />
@@ -249,7 +279,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                 onToggle={() => setGeoOpen((p) => !p)}
             >
                 {/* Crop toggle */}
-                <div className="px-3 py-1.5">
+                <div className="px-3 py-1.5 flex items-center gap-2">
                     <ToggleBtn
                         active={cropMode}
                         onClick={() => onCropModeToggle(!cropMode)}
@@ -258,31 +288,35 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <Crop size={14} />
                         <span>{t('preview.image.edit.crop') || 'Crop'}</span>
                     </ToggleBtn>
+                    <LossTag kind="lossless" />
                 </div>
 
                 {/* Rotate */}
                 <div className="px-3 py-1.5">
-                    <div className="text-xs text-gray-400 mb-1.5">
-                        {t('preview.image.edit.rotate') || 'Rotate'}
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-xs text-[var(--color-text-secondary)]">
+                            {t('preview.image.edit.rotate') || 'Rotate'}
+                        </span>
+                        <LossTag kind="lossless" />
                     </div>
                     <div className="flex gap-1.5">
                         <button
                             onClick={handleRotateCCW}
-                            className="flex items-center gap-1 px-2 py-1.5 text-xs bg-gray-700 text-gray-300 rounded border border-gray-600 hover:bg-gray-600"
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
                             title="90° CCW"
                         >
                             <RotateCcw size={14} /> 90°
                         </button>
                         <button
                             onClick={handleRotate180}
-                            className="flex items-center gap-1 px-2 py-1.5 text-xs bg-gray-700 text-gray-300 rounded border border-gray-600 hover:bg-gray-600"
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
                             title="180°"
                         >
                             180°
                         </button>
                         <button
                             onClick={handleRotateCW}
-                            className="flex items-center gap-1 px-2 py-1.5 text-xs bg-gray-700 text-gray-300 rounded border border-gray-600 hover:bg-gray-600"
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
                             title="90° CW"
                         >
                             <RotateCw size={14} /> 90°
@@ -292,8 +326,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
 
                 {/* Flip */}
                 <div className="px-3 py-1.5">
-                    <div className="text-xs text-gray-400 mb-1.5">
-                        {t('preview.image.edit.flip') || 'Flip'}
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-xs text-[var(--color-text-secondary)]">
+                            {t('preview.image.edit.flip') || 'Flip'}
+                        </span>
+                        <LossTag kind="lossless" />
                     </div>
                     <div className="flex gap-1.5">
                         <ToggleBtn
@@ -316,15 +353,18 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                 {/* Resize */}
                 <div className="px-3 py-1.5">
                     <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs text-gray-400">
-                            {t('preview.image.edit.resize') || 'Resize'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-[var(--color-text-secondary)]">
+                                {t('preview.image.edit.resize') || 'Resize'}
+                            </span>
+                            <LossTag kind="lossy" />
+                        </div>
                         <button
                             onClick={() => setLockAspect((p) => !p)}
                             className={`p-1 rounded ${
                                 lockAspect
                                     ? 'text-blue-400 hover:text-blue-300'
-                                    : 'text-gray-500 hover:text-gray-300'
+                                    : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]'
                             }`}
                             title={
                                 lockAspect
@@ -336,21 +376,21 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         </button>
                     </div>
                     <div className="flex items-center gap-2 mb-2">
-                        <label className="text-xs text-gray-500">W</label>
+                        <label className="text-xs text-[var(--color-text-tertiary)]">W</label>
                         <input
                             type="number"
                             min={1}
                             value={currentW}
                             onChange={(e) => handleResizeWidth(Number(e.target.value))}
-                            className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-gray-200"
+                            className="w-20 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-2 py-1 text-sm text-[var(--color-text-primary)]"
                         />
-                        <label className="text-xs text-gray-500">H</label>
+                        <label className="text-xs text-[var(--color-text-tertiary)]">H</label>
                         <input
                             type="number"
                             min={1}
                             value={currentH}
                             onChange={(e) => handleResizeHeight(Number(e.target.value))}
-                            className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-gray-200"
+                            className="w-20 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-2 py-1 text-sm text-[var(--color-text-primary)]"
                         />
                     </div>
                     <div className="flex gap-1.5 flex-wrap">
@@ -358,7 +398,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                             <button
                                 key={pct}
                                 onClick={() => handleResizePreset(pct)}
-                                className="px-2 py-1 text-xs bg-gray-700 text-gray-400 rounded border border-gray-600 hover:bg-gray-600 hover:text-gray-200"
+                                className="px-2 py-1 text-xs bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
                             >
                                 {pct}%
                             </button>
@@ -380,6 +420,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={-100}
                     max={100}
                     step={1}
+                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ brightness: v })}
                     onReset={() => patch({ brightness: 0 })}
                 />
@@ -390,6 +431,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={-100}
                     max={100}
                     step={1}
+                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ contrast: v })}
                     onReset={() => patch({ contrast: 0 })}
                 />
@@ -401,6 +443,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     max={180}
                     step={1}
                     unit="°"
+                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ hue: v })}
                     onReset={() => patch({ hue: 0 })}
                 />
@@ -419,6 +462,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={0}
                     max={10}
                     step={0.1}
+                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ blur: v })}
                     onReset={() => patch({ blur: 0 })}
                 />
@@ -429,32 +473,39 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={0}
                     max={10}
                     step={0.1}
+                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ sharpen: v })}
                     onReset={() => patch({ sharpen: 0 })}
                 />
                 {editState.sharpen > 0 && (
-                    <div className="px-3 text-[10px] text-gray-500 italic">
+                    <div className="px-3 text-[10px] text-[var(--color-text-tertiary)] italic">
                         {t('preview.image.edit.sharpenNote') || 'Applied on save'}
                     </div>
                 )}
-                <div className="px-3 py-1.5 flex gap-1.5">
-                    <ToggleBtn
-                        active={editState.grayscale}
-                        onClick={() => patch({ grayscale: !editState.grayscale })}
-                    >
-                        {t('preview.image.edit.grayscale') || 'Grayscale'}
-                    </ToggleBtn>
-                    <ToggleBtn
-                        active={editState.invert}
-                        onClick={() => patch({ invert: !editState.invert })}
-                    >
-                        {t('preview.image.edit.invert') || 'Invert'}
-                    </ToggleBtn>
+                <div className="px-3 py-1.5 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                        <ToggleBtn
+                            active={editState.grayscale}
+                            onClick={() => patch({ grayscale: !editState.grayscale })}
+                        >
+                            {t('preview.image.edit.grayscale') || 'Grayscale'}
+                        </ToggleBtn>
+                        <LossTag kind="lossy" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <ToggleBtn
+                            active={editState.invert}
+                            onClick={() => patch({ invert: !editState.invert })}
+                        >
+                            {t('preview.image.edit.invert') || 'Invert'}
+                        </ToggleBtn>
+                        <LossTag kind="lossless" />
+                    </div>
                 </div>
             </Section>
 
             {/* ─── Save Button ───────────────────────────────────────── */}
-            <div className="mt-auto border-t border-gray-700 p-3">
+            <div className="mt-auto border-t border-[var(--color-border)] p-3">
                 <button
                     onClick={onSaveRequest}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded transition-colors"

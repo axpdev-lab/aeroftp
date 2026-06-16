@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "ეს გადაეწერება ორიგინალ ფაილს",
           "saveSaving": "შენახვა...",
           "saveSaved": "სურათი წარმატებით შეინახა",
-          "saveFailed": "სურათის შენახვა ვერ მოხერხდა"
+          "saveFailed": "სურათის შენახვა ვერ მოხერხდა",
+          "lossless": "Udanakargo",
+          "lossy": "Danakargit",
+          "losslessHint": "Sheqcevadi: piqselebi zustad narchundeba udanakargo formatshi shenakhvisas",
+          "lossyHint": "Cvlis piqselebs: cvlilebis zustad gauqmeba sheudzlebelia",
+          "formatLosslessNote": "Udanakargo formati: piqselebi zustad inakheba. Zemot mititebuli danakargiani redaqtirebebi mainc cvlis surats.",
+          "formatLossyNote": "Danakargiani formati: khelakhali kodireba ashorebs suratis zogiert monacems, mat shoris udanakargo redaqtirebebs."
         },
         "toggleTransparencyBg": "გამჭვირვალობის ფონი (გადართვა)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = შეუზღუდავი. ლოკალური სარკის ციკლი ზღუდავს ორი ლიმიტიდან უფრო მაღლის გამოყენებით.",
-        "bandwidthUnlimited": "შეუზღუდავი"
+        "bandwidthUnlimited": "შეუზღუდავი",
+        "stop": "შეჩერება",
+        "stopping": "ჩერდება...",
+        "resultCancelled": "სინქრონიზაცია გაუქმდა"
       },
       "launcherTemplates": "შაბლონები",
       "launcherMultiPath": "მრავალი გზა",
@@ -4869,8 +4878,8 @@
       "lock": "გადაფარვის ჩაკეტვა"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (დაშიფრული შრე)",
-      "hint": "ამ კავშირს გამჭვირვალედ შიფრავს: ორმაგი პანელი აჩვენებს წაკითხვად სახელებს, ატვირთვები იშიფრება, ჩამოტვირთვები იშიფრება უკან. წაკითხვადია მხოლოდ AeroFTP-დან ამ პაროლით.",
+      "enable": "Crypt (დაშიფვრა)",
+      "hint": "ამ კავშირს გამჭვირვალედ შიფრავს: ორმაგი პანელი აჩვენებს გასაგებ სახელებს, ატვირთვები შიფრავს, ჩამოტვირთვები შიფრავს უკან.",
       "kindNative": "AeroCrypt (მშობლიური)",
       "kindRclone": "Rclone Crypt (თავსებადობა)",
       "chooseKind": "გასაგრძელებლად აირჩიეთ დაშიფვრის ტიპი: ნაგულისხმევი არ არსებობს, არჩევანი შეგნებულია.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "დაშიფვრის ტიპი და ავტორიზაციის მონაცემები ჩაკეტილია: ეს ფენა უკვე შეიცავს დაშიფრულ მონაცემებს.",
       "addToExistingWarn": "ფენის ჩართვა არსებულ პროფილზე: ამ დისტანციურ მისამართზე უკვე არსებული ნებისმიერი ღია ტექსტის ფაილი დაუშიფრავი რჩება და გამოჩნდება როგორც გაუშიფრავი ნაზავი. გამოიყენეთ ცარიელი დისტანციური მისამართი.",
       "scopeHint": "ზემოთ მითითებული დისტანციური და ლოკალური ბილიკები განსაზღვრავს დაშიფრულ არეალს (დატოვეთ დისტანციური ცარიელი მთელი ფესვის დასაშიფრად).",
-      "remotePathLockedNote": "დისტანციური გზა ჩაკეტილია: ეს არის დაშიფრული ფენის ფესვი და ვერ შეიცვლება, როცა ფენა მონაცემებს შეიცავს."
+      "remotePathLockedNote": "დისტანციური გზა ჩაკეტილია: ეს არის დაშიფრული ფენის ფესვი და ვერ შეიცვლება, როცა ფენა მონაცემებს შეიცავს.",
+      "overlaysSection": "გარსები / Overlay-ები",
+      "overlaysActiveBadge": "ჩართ.",
+      "hintNative": "მშობლიური AeroCrypt ფორმატი: წაკითხვადია მხოლოდ AeroFTP-დან ამ პაროლით.",
+      "hintRclone": "სტანდარტული rclone crypt ფორმატი: წაკითხვადია rclone-ითაც ამ პაროლით.",
+      "passwordLabel": "პაროლი",
+      "saltLabel": "Salt (არასავალდებულო)"
+    },
+    "modalGuard": {
+      "busyTitle": "მიმდინარეობს ოპერაცია",
+      "busyBody": "ოპერაცია ჯერ კიდევ მიმდინარეობს. გავაჩერო და დავხურო, თუ გავაგრძელო?",
+      "wait": "გაგრძელება",
+      "stopAndClose": "გაჩერება და დახურვა",
+      "dirtyTitle": "შეუნახავი ცვლილებები",
+      "dirtyBody": "გაქვთ შეუნახავი ცვლილებები. გავაუქმო და დავხურო?",
+      "keepEditing": "რედაქტირების გაგრძელება",
+      "discardAndClose": "გაუქმება და დახურვა"
     }
   }
 }

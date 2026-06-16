@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { Shield, Copy, Check, X, AlertCircle } from 'lucide-react';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface TotpSetupProps {
     isOpen: boolean;
@@ -15,6 +16,7 @@ interface TotpSetupProps {
 
 export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [step, setStep] = useState<'generate' | 'verify'>('generate');
     const [secret, setSecret] = useState('');
     const [uri, setUri] = useState('');
@@ -114,12 +116,13 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
         >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
             <div
+                {...modalDrag.panelProps}
                 ref={dialogRef}
                 tabIndex={-1}
                 className="relative w-full max-w-md rounded-lg overflow-hidden bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xl p-6 outline-none animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between mb-4">
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between mb-4 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Shield size={20} className="text-green-400" />
                         <h3 id="totp-setup-title" className="font-bold text-gray-900 dark:text-gray-100">

@@ -3446,7 +3446,13 @@
           "saveReplaceConfirm": "Bu orijinal dosyanın üzerine yazacaktır",
           "saveSaving": "Kaydediliyor...",
           "saveSaved": "Resim başarıyla kaydedildi",
-          "saveFailed": "Resim kaydedilemedi"
+          "saveFailed": "Resim kaydedilemedi",
+          "lossless": "Kayipsiz",
+          "lossy": "Kayipli",
+          "losslessHint": "Geri alinabilir: kayipsiz bir bicimde kaydedildiginde pikseller tam olarak korunur",
+          "lossyHint": "Pikselleri degistirir: degisiklik tam olarak geri alinamaz",
+          "formatLosslessNote": "Kayipsiz bicim: pikseller tam olarak saklanir. Yukaridaki kayipli duzenlemeler yine de goruntuyu degistirir.",
+          "formatLossyNote": "Kayipli bicim: yeniden kodlama bazi goruntu verilerini, kayipsiz duzenlemeler dahil, atar."
         },
         "toggleTransparencyBg": "Saydamlık arka planı (değiştir)"
       },
@@ -4685,7 +4691,10 @@
         "bandwidthUpload": "Upload KB/s",
         "bandwidthDownload": "Download KB/s",
         "bandwidthHint": "0 = sınırsız. Yerel yansıtma döngüsü iki sınırdan yüksek olanı kullanarak hızı kısıtlar.",
-        "bandwidthUnlimited": "Sınırsız"
+        "bandwidthUnlimited": "Sınırsız",
+        "stop": "Durdur",
+        "stopping": "Durduruluyor...",
+        "resultCancelled": "Senkronizasyon iptal edildi"
       },
       "launcherTemplates": "Şablonlar",
       "launcherMultiPath": "Çoklu yol",
@@ -4869,8 +4878,8 @@
       "lock": "Katmanı kilitle"
     },
     "aerocryptProfile": {
-      "enable": "AeroCrypt Profile (şifreli katman)",
-      "hint": "Bu bağlantıyı şeffaf şekilde şifreler: çift panel okunabilir adları gösterir, yüklemeler şifrelenir, indirmeler şifresi çözülür. Yalnızca bu parolayla AeroFTP üzerinden okunabilir.",
+      "enable": "Crypt (Şifreleme)",
+      "hint": "Bu bağlantıyı şeffaf biçimde şifreler: çift panel adları açık gösterir, yüklemeler şifreler, indirmeler şifre çözer.",
       "kindNative": "AeroCrypt (yerel)",
       "kindRclone": "Rclone Crypt (birlikte çalışabilirlik)",
       "chooseKind": "Devam etmek için bir şifreleme türü seçin: varsayılan yoktur, seçim bilinçlidir.",
@@ -4880,7 +4889,23 @@
       "lockedNote": "Şifreleme türü ve kimlik bilgileri kilitli: bu katman zaten şifrelenmiş veri içeriyor.",
       "addToExistingWarn": "Mevcut bir profilde yerpaçma etkinleştirildiğinde: bu uzak konumda zaten bulunan düz metin dosyaları şifrelenmemiş kalır ve şifresi çözülemeyen bir karışım olarak görünür. Boş bir uzak konum kullanın.",
       "scopeHint": "Yukarıdaki Uzak ve Yerel yollar şifreli kapsamı tanımlar (tüm kökü şifrelemek için Uzak'ı boş bırakın).",
-      "remotePathLockedNote": "Uzak yol kilitli: şifreli yer paçmanın köküdür ve yer paçma veri içerdiğinde değiştirilemez."
+      "remotePathLockedNote": "Uzak yol kilitli: şifreli yer paçmanın köküdür ve yer paçma veri içerdiğinde değiştirilemez.",
+      "overlaysSection": "Sarmalayıcılar / Katmanlar",
+      "overlaysActiveBadge": "Açık",
+      "hintNative": "Yerel AeroCrypt biçimi: bu parolayla yalnızca AeroFTP'den okunabilir.",
+      "hintRclone": "Standart rclone crypt biçimi: bu parolayla rclone tarafından da okunabilir.",
+      "passwordLabel": "Parola",
+      "saltLabel": "Salt (isteğe bağlı)"
+    },
+    "modalGuard": {
+      "busyTitle": "İşlem sürüyor",
+      "busyBody": "Bir işlem hâlâ sürüyor. Durdurup kapat, yoksa devam mı etsin?",
+      "wait": "Devam et",
+      "stopAndClose": "Durdur ve kapat",
+      "dirtyTitle": "Kaydedilmemiş değişiklikler",
+      "dirtyBody": "Kaydedilmemiş değişiklikleriniz var. Atıp kapat?",
+      "keepEditing": "Düzenlemeye devam et",
+      "discardAndClose": "At ve kapat"
     }
   }
 }
