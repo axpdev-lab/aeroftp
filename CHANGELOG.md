@@ -7,80 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.5] - 2026-06-16
 
-### Error Correction, Encrypted Overlay, Archives, SSH Hardening and Windows Fixes
+### Two Encryption Pillars: AeroCrypt Overlay and AeroVault v4, plus an Interactive CLI, Server Groups and Hardening
 
-### AeroVault v4 ECC (T-AEROVAULT-ECC) — Reed-Solomon error-correction wrapper, Phase 3+4 close
+This release stands on two encryption pillars. AeroCrypt is the workhorse: a native client-side encrypted overlay that turns any server, protocol or provider into a very high security, zero-knowledge vault, browsed in the very same dual panel as a normal server (rclone crypt rides the same surface as the labelled interop lane). AeroVault v4 is the second pillar: the v3 container plus Reed-Solomon error correction, so an encrypted vault not only stays private but survives bit-rot and partial corruption. Around the two, the CLI grows a full-screen interactive file manager and an inline interactive profiles menu, saved profiles can be organised into named groups, file versioning lands for Filen and MEGAcmd, and a wave of Windows and cross-platform fixes from the community is folded in.
 
-Full engine (P1 stub + P2 real 10+2 RS on ciphertext with v2 fixed-grid ~20% overhead, per-shard cksums, all-or-nothing repair gate) + surfaces + docs. "v3 + ECC = v4" forward-compat (non-critical extension); ECC runs **last** in the 4-wrappers pipeline (compression → chunking → crypt → ECC) per Ehud Kirsh #272/#276 design.
+### AeroCrypt: Native Encrypted Overlay (turn any backend into a vault)
+
+AeroCrypt is the workhorse of the release: it turns any server, protocol or provider into a very high security vault. Client-side encryption wraps the storage backend so the remote bucket only ever holds ciphertext and obfuscated names, while the decrypted view is browsed exactly like a normal server in the standard dual panel. On a provider that already encrypts at rest this is genuine double encryption keyed only by you, and on one that offers nothing of its own it still becomes zero-knowledge. rclone-crypt stays beside it as the labelled interop lane, and there is no default cipher: you actively choose AeroCrypt or rclone-crypt.
 
 #### Added
-- Real Reed-Solomon (reed-solomon-erasure 6) on the concatenated live-block stream (P2-09 v2 payload: AVEC magic + version 2, fixed S grid K=10/P=2, clamped 4KiB-1MiB, 16B per-shard BLAKE3 cksum for erasures incl. parity). Overhead proven ~20.1% on 300KB incompressible single-chunk vault (was ~200% v1). 
-- `compute_error_correction_shards` / `reconstruct_from_error_correction`, `scrub_vault`, `repair_vault` (scrub+RS+re-verify all cipher_hash or untouched+rollback).
-- Tauri: `vault_v3_scrub`, `vault_v3_repair` (+ dry-run).
-- CLI: `aeroftp-cli vault create --error-correction` (alias `--ec`), `vault info` (has_ecc + ecc object), `vault scrub <path>`, `vault repair <path> [--dry-run]`. Text + --json, honest reports ("X checked", "repaired R of D", "vault left untouched").
-- GUI: VaultCreate ECC toggle (experimental), VaultBrowse conditional amber "Scrub ECC"/rose "Repair ECC" (hasEcc || experimental), draggable modals (useDraggableModal, full dark:/rounded-xl/app template), success msgs + honest summaries.
-- P3-03: VaultReport + receipt (GUI mini-terminal + export .txt/.json) now include `ecc_shards_generated`, `ecc_bytes_protected`, `ecc_overhead_pct`, `ecc_repair_events` (populated on every ECC seal).
-- P3-05: i18n keys for all new ECC UI strings (handlers, modals, buttons, hints, results); wired via t() (en.json + fallbacks).
-- P3-06: CLI vault help/man-page polished (top-level + Create/Scrub/Repair docs) with v2 grid, 20%, safety gate, returns, 4-wrappers/ECC-last, appendix refs.
-- P2-HARD: repair safety (re-verify every block vs cipher_hash before persist; write lock; scrub checked count; honest CLI msgs); 22 tests incl. p2_repair_recovers_despite_corrupt_parity_shard, p2_repair_refuses_when_damage_exceeds_redundancy, p2_09_overhead_bounded, stress multi-damage.
+- **Native AeroCrypt overlay (format AECR)**: per-file encrypted blobs with deterministically encrypted names, so an encrypted scope stays listable, navigable and syncable object by object. Content is AES-256-GCM-SIV under a per-file random data key that is wrapped with AES-256-KW under an Argon2id (128 MiB, t=4, p=4) master key, and filenames use AES-256-SIV. At rest the bucket holds only obfuscated names and ciphertext. (@EhudKirsh, #272, #276)
+- **Shared crypto codec**: the audited cipher core is extracted from the AeroVault v3 engine into one shared module, so the AeroVault container and the AeroCrypt overlay run on a single implementation and a single audit pass instead of two parallel cipher stacks. (#276)
+- **Folder-tree traversal** for the native overlay, so an encrypted directory tree is walked and rendered with decrypted names at every level.
+- **Native GUI unlock modal** and **dual-panel integration**: unlock an overlay from a styled window, after which the standard local-and-remote dual panel renders the decrypted overlay with full parity to a normal server (list, navigate, get, put), reaching feature parity with the existing CLI `crypt` subcommand.
+- **AeroCrypt Profile (per-profile binding)**: bind an overlay to a saved server profile so it auto-unlocks on connect, with a toggle in the connection form, per-session binding that survives a profile switch or reconnect, and edit-mode guards that lock the binding so it cannot be silently changed.
+- **UX polish**: rclone-crypt auto-unlock, a decrypt animation, a stateful path-bar badge showing the active encrypted scope, long-encrypted-name wrapping in the status box, and the overlay anchored at the configured remote folder rather than the live working directory.
+- **i18n**: the native AeroCrypt strings are translated across all 47 locales.
 
 #### Changed
-- aerovault_v3 engine: ECC payload bumped to v2 (pre-release, no migration); DamagedChunk module-private; reconstruct sig cleaned; save/rebuild paths updated.
-- Receipt surfaces (VaultReceipt, telemetry render) + CLI receipt paths now surface ECC telemetry when present.
-- GUI modals remain 100% template-faithful (no creep).
+- **Naming**: the rclone-format overlay is now labelled "Rclone Crypt" and the "AeroCrypt" name is reserved for the native format, so the two encrypted lanes are unambiguous in the UI.
+
+#### Fixed / Hardened (AECR v3 pre-release audit)
+A five-reviewer pre-release audit of the overlay codec closed two live data-loss and downgrade classes, and the format was bumped to v3:
+- **Per-file length binding**: every content block binds its block index AND the total block count as AAD, and the total count is also carried authenticated in the file header. Silent truncation (dropped tail or whole blocks) and append (trailing bytes or extra blocks) now fail closed instead of returning short or padded plaintext.
+- **Key-bound config MAC**: the `.aeroftp-crypt.json` config carries an HKDF-SHA256 MAC bound to the master key (over version, block size, the Argon2 profile and the salt). A tampered or downgraded config is rejected on unlock, and a wrong password now gives a clean error instead of an empty listing.
+- **Init refuses to clobber**: `crypt init` will not overwrite an existing overlay config unless `--force` is passed, because re-initialising rotates the salt and would orphan every file already in the overlay.
+- **Empty crypt password rejected**, and the decrypted plaintext download is written atomically.
+- **Legacy formats are read-only**: existing v1 and v2 overlays keep decrypting transparently, but every new object is written as v3, so a stale or downgraded config can never produce weaker ciphertext.
+
+### AeroVault v4 (v3 + Error Correction): Reed-Solomon Self-Healing Vaults
+
+The second pillar of the release. AeroVault v4 is the audited v3 container plus a Reed-Solomon error-correction wrapper, so a vault survives bit-rot and partial corruption, not just eavesdropping. "v3 + EC = v4" is a forward-compatible, non-critical extension, and EC runs last in the four-wrapper pipeline (compression, chunking, crypt, EC) per the Ehud Kirsh #272/#276 design.
+
+#### Added
+- Real Reed-Solomon (reed-solomon-erasure 6, 10+2) on the concatenated live-block stream, with a fixed-grid v2 payload (AVEC magic, K=10 / P=2, clamped 4 KiB to 1 MiB shards, 16-byte per-shard BLAKE3 checksums for erasure including parity). Overhead is about 20% on incompressible data, down from about 200% in the v1 one-block-one-shard layout.
+- `scrub_vault` / `repair_vault` with an all-or-nothing repair gate (every block is re-verified against its `cipher_hash` before persist; otherwise the vault is left untouched and rolled back).
+- Tauri commands `vault_v3_scrub` and `vault_v3_repair` (with dry-run).
+- CLI: `vault create --error-correction` (alias `--ec`), `vault info` (has_ecc plus an ecc object), `vault scrub <path>`, `vault repair <path> [--dry-run]`, all with text and `--json` output and honest reports.
+- GUI: a VaultCreate ECC toggle (experimental), conditional Scrub and Repair actions in VaultBrowse, draggable modals, and ECC telemetry in VaultReport and the receipt (shards generated, bytes protected, overhead, repair events).
+- i18n keys for all new ECC UI strings across the locales.
 
 #### Fixed / Hardened
-- CLAUDE-AV-ECC-01 (repair trusted unverified RS) closed by all-or-nothing gate + regression tests.
-- v1 one-block-one-shard overhead explosion fixed by v2 grid (P2-09).
-- Latent repair truncation misalignment fixed (fixed-len zero-pad buffers).
+- The repair path no longer trusts unverified reconstruction (CLAUDE-AV-ECC-01), closed by the all-or-nothing gate plus regression tests.
+- The v1 overhead explosion is fixed by the v2 grid, and a latent repair truncation misalignment is fixed with fixed-length zero-pad buffers.
 
-#### Docs / Close
-- APPENDIX-AEROVAULT-V4-ECC/ (design docs + audit) kept in sync; task tracking in the AUDIT todotree.
-- Phase 4: ROADMAP/SECURITY/SPEC/CLI-GUIDE notes + this CHANGELOG entry (credit Ehud Kirsh + T-AEROVAULT-ECC).
-- T-AEROVAULT-ECC item closed.
+#### Security and quality audit (2026-06-11)
+A post-implementation audit of the full v4 EC surface (vault and AeroSync) by four independent reviewers. All CRITICAL, HIGH and MEDIUM findings were fixed:
+- **Sidecar parsers hardened** against untrusted-remote input: `ErrorCorrectionPayload::from_bytes` uses checked arithmetic and bounds before allocating (closing a remote DoS via overflow/OOM), `AeroSyncEcSidecar::from_bytes` bounds the segment count before allocating, and remote sidecar reads are size-capped.
+- **AeroSync correctness**: compare always excludes the EC sidecars (no longer treating them as orphan data), remote-delete removes the paired sidecar, and the engine surfaces `ec_verify_failed` so an unrepairable download is not reported healthy.
+- **sync-doctor EC cost estimate** now uses real v2 grid geometry (it was under-reporting small-file sidecars by up to about 600x).
+- Cleanups: dead code removed, generation telemetry wired, `reed-solomon-erasure` pinned to 6.0.0, and 9 codec/estimate tests added including the overflow regression.
 
-#### Security & quality audit (2026-06-11)
-Post-implementation audit of the full v4 EC surface (vault + AeroSync), 4 independent reviewers. All CRITICAL/HIGH/MEDIUM fixed on the branch:
-- **Sidecar parsers hardened** against untrusted-remote input: `ErrorCorrectionPayload::from_bytes` uses checked arithmetic + bound-before-alloc (closes a remote DoS via overflow/OOM); `AeroSyncEcSidecar::from_bytes` bounds the segment count before allocating; remote sidecar reads are size-capped.
-- **AeroSync `.aerorec` correctness**: GUI compare always excludes `*.aerorec` (no longer deletes/re-syncs sidecars as orphans/data); GUI remote-delete removes the paired sidecar; engine surfaces `ec_verify_failed` so an unrepairable download is not reported healthy.
-- **sync-doctor EC cost estimate** now uses real v2 grid geometry (was under-reporting small-file sidecars by up to ~600x).
-- Cleanups: removed dead `sync_sidecar_status_for_bytes` trio + blanket `allow(dead_code)`; wired generation telemetry; pinned `reed-solomon-erasure = "=6.0.0"`; +9 direct codec/estimate tests (incl. the overflow regression).
-- Full report: `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/AUDIT-2026-06-11_security-performance-quality.md`.
+#### Unified `.aerocorrect` sidecar and windowed streaming (2026-06-12)
+The two detached parity formats are unified into one `.aerocorrect` format (magic AEROCORR), per Ehud Kirsh's #276 request for a single error-correction sidecar usable on any file:
+- **Vault**: the old `.aerovault.rec` recovery file is retired, the sidecar carries three fixed segments (header, manifest, data windows) bound by the container's content SHA-256, and the authenticated repair re-verify is preserved, so a foreign or stale sidecar can only make a repair fail, never overwrite.
+- **AeroSync**: the sidecar becomes content-bound and windowed. Large files are tiled into 64 MiB windows (one Reed-Solomon parity segment each), generation, verification and repair stream one window at a time, repair rebuilds each window into a temp file and replaces the original atomically only if the whole repaired stream hashes back to the expected value, and the per-file cap becomes a configurable 1 GiB default.
+- **Self-healing (format v2)**: a lightly corrupted sidecar still recovers, because the locator directory is triplicated and per-copy checksummed and a rotted shard is routed around by the per-shard erasure instead of rejecting the whole sidecar.
 
-#### Unified `.aerocorrect` sidecar + windowed streaming (2026-06-12)
-The two detached parity formats are now ONE `.aerocorrect` format (magic `AEROCORR`), per Ehud Kirsh's #276 request for a single error-correction sidecar usable on any file:
-- **Vault**: the `.aerovault.rec` `RecoveryFile` is retired; the sidecar carries three fixed segments (header, manifest, data windows), bound by the container's content SHA-256 instead of the vault salt. The authenticated repair re-verify (header MAC / manifest `cipher_hash` before persist) is preserved, so a foreign or stale sidecar can only make a repair fail, never overwrite.
-- **AeroSync**: the `.aerorec` format becomes `.aerocorrect`, content-bound, and **windowed**. Large files are tiled into 64 MiB windows (one Reed-Solomon parity segment each); generation, verification and repair stream one window at a time, so peak memory is bounded by the window, not by the file. Repair rebuilds each window into a temp file and replaces the original atomically only if the whole repaired stream hashes back to the expected value. The 256 MiB per-file cap becomes a configurable 1 GiB default.
-- **Surface**: CLI help, the sync-doctor cost estimate, the GUI compare exclusion glob and paired-sidecar delete, and the three sidecar strings across 47 locales follow the unified extension.
-- **Gate / evidence**: `cargo test --lib` 2223/0 (incl. window tiling, windowed estimate equality, per-window repair, streaming-equals-in-memory, all-or-nothing on an unrecoverable window), `--bin aeroftp-cli` 219/0, clippy lib+bin `--tests` clean, fmt/audit/typecheck/257 frontend tests/47 locales all green. Live (real CLI): vault corrupt then repair extracts byte-identical; a 130 MiB AeroSync upload writes a 3-window `.aerocorrect`; the 130 MiB verify-on-download stays byte-identical at about 70 MB peak RSS.
-
-All via shared lib (GUI+CLI+tests), --profile for remote (vault local direct), Co-Authored trailers, 22/22 `cargo test --lib aerovault_v3` baseline+interleaved, AGENTS.md followed.
-
-(@Grok 4.3 + prior handoff work; design anchor Ehud Kirsh discussions #272/#276, issue #162)
-
-### Per-Account Privacy and Manage Users Localization
+### AeroSync Error Correction Control
 
 #### Added
-- **Per-account password (optional)**: when more than one person uses AeroFTP on the same device, you can give an account its own password so others cannot open it from the account switcher. Your saved servers and keys are always encrypted; an account password additionally isolates that account from the other local accounts on this device. It stays entirely optional, and the zero-password default is unchanged. Manage Users now explains this choice inline.
+- **Error-correction control in the Plan tab**, with the `.aerocorrect` (AERC1) EC sidecars wired into the sync pipeline and a default-on for the Backup preset.
+- **EC sidecar cost estimate in sync-doctor**, and EC sidecars deleted together with remote sync deletes so they are never left orphaned.
+
+### Interactive CLI TUI, alpha preview (rev 1.0.3-alpha)
+
+Secondary and experimental. A full-screen dual-pane file manager in the CLI (`aeroftp tui`) shipped as an early alpha preview, so the community can try it and send wishes before it is built out further. It already offers a GUI-style My Servers IntroHub (health dot, on-demand quota refresh, favourite toggle), a 50/50 dual-pane browser with cross get/put, a command palette, file-manager table stakes (sort, filter, select, view, edit), a live transfer queue with resumable downloads, and saved-server group management (#320). Feedback and feature requests are welcome.
+
+### Interactive profiles Shell
+
+#### Added
+- **`profiles -i` inline action menu**: a single-key inline action bar (re-index, favourite, connect, edit, delete, quit) replaces the separate full-screen view. (@EhudKirsh, #311)
+- **`refresh` command** in the interactive profiles loop. (@EhudKirsh, #266)
+- **Group rename and delete** from the interactive shell, and server groups mirrored in the profiles view. (#320)
 
 #### Changed
-- **Manage Users panel fully localized**: every label, button, confirmation and the avatar editor in the Manage Users panel are now translated across all 47 locales (previously English-only).
+- **Reorder reprint split into old and new index columns** for an unambiguous diff. (@EhudKirsh, #270)
 
-### AeroCrypt Encrypted Overlay
-
-#### Added
-- **Native AeroCrypt overlay** bound to a saved server profile: client-side encryption (AES-256-GCM-SIV content, AES-256-SIV deterministic names, Argon2id) that turns any provider into zero-knowledge storage, with a clearly labelled rclone-crypt interop lane beside it. It is opt-in with no default cipher (you actively pick AeroCrypt or rclone-crypt), and the standard dual-panel renders decrypted names transparently with full GUI parity to the existing CLI `crypt` subcommand. At rest the bucket holds only ciphertext names and content. (@EhudKirsh, #276)
-
-### CLI Archives
+### Server Groups
 
 #### Added
-- **`compress` and `extract`** for zip, 7z, tar, tar.gz, tar.xz and tar.bz2 (plus rar extract), with an AES-256 `--password` for zip and 7z, compression-level control and a format override. Local-only and scriptable with `--json`.
+- **Organise saved profiles into named groups** on My Servers, in the FlashFXP-style Site Manager spirit. Groups are stored in the encrypted per-user vault, shown as chips with live counts, populated via add-to-group from the right-click menu, renamed and deleted from the chips, and membership is carried across convert and duplicate. The same groups are mirrored in the CLI profiles view and the TUI. (@timint, #320)
 
-### AeroVault v3 Usability and Interactive profiles Menu
+### File Versioning
 
 #### Added
-- **`profiles -i` inline action menu**: the interactive profiles selector gains a single-key inline action bar (re-index, favourite, connect, edit, delete, quit) instead of a separate full-screen view. (@EhudKirsh, #311)
-- **AeroVault v3 usability**: the latest beta-feedback items for the vault flow. (@EhudKirsh)
+- **Filen and MEGAcmd-over-WebDAV file versioning** (list, get, restore), with a versioning-bytes segment added to the storage-quota bar. (@EhudKirsh, #270)
+- **CLI `versions` group**, plus versioning bytes reported in `df`. (@EhudKirsh, #270)
+
+### Quick Connect and Connection Improvements
+
+#### Added
+- **Opt-in credential persistence per protocol**: persist a profile's credentials for every protocol of one account across restarts, opt-in and per-mode, which unblocks multi-tab use of providers like MEGA and pCloud. (@EhudKirsh, #215)
+- **Per-mode credentials retained** when switching provider tabs, and the Create-Account and Generate-Password links kept visible across mode tabs. (@EhudKirsh, #215)
+- **Docs link to docs.aeroftp.app** on every Quick Connect page. (@EhudKirsh, #270)
+- **Custom icon picker** on every Quick Connect page. (@EhudKirsh, #270)
+- **Unified MEGA Quick Connect page** with a MEGAcmd Fetch-URL button that auto-fills the WebDAV bridge endpoint. (@EhudKirsh, #215)
+
+#### Fixed
+- **OneDrive Get-credentials URL** now points to the App Registrations list blade. (@EhudKirsh, #270)
+- **4shared Get-credentials link** opens reliably. (@EhudKirsh, #270)
+
+### CLI Extras
+
+#### Added
+- **`compress` and `extract`** for zip, 7z, tar, tar.gz, tar.xz and tar.bz2 (plus rar extract), with an AES-256 `--password` for zip and 7z, compression-level control, a format override, and `--json`. A zip entry is stored instead of deflated when deflate would not shrink it. (@EhudKirsh, #276)
+- **`tree` depth reporting** with a labelled layer ruler and legend so 0-based depth is unambiguous, plus a `layers` field in JSON. (@EhudKirsh, #270)
+- **Benchmark many-small-files axis** (`--file-count` / `--file-size`) reporting files/sec and per-file latency for upload, list, stat, download and delete. (@EhudKirsh, #277)
+- **`--strict` / `AEROFTP_STRICT` safety mode**.
+- **CLI ECC scrub/repair and the `--ec` flag** (covered under AeroVault v4 ECC above).
 
 ### Security
 
@@ -97,7 +132,10 @@ All via shared lib (GUI+CLI+tests), --profile for remote (vault local direct), C
 - **FTP recursive delete includes dotfiles**: hidden files are no longer left behind, which previously could make a recursive delete fail on a non-empty directory.
 
 #### Contributors
-[<img src="https://github.com/rockaut.png?size=48" width="48" height="48" alt="@rockaut" />](https://github.com/rockaut) [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+
+Thanks to the people who shaped this release:
+
+[<img src="https://github.com/rockaut.png?size=48" width="48" height="48" alt="@rockaut" />](https://github.com/rockaut) [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh) [<img src="https://github.com/timint.png?size=48" width="48" height="48" alt="@timint" />](https://github.com/timint)
 
 ## [4.0.4] - 2026-06-07
 
