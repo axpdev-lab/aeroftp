@@ -264,11 +264,11 @@ The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-serv
 
 | Category | Limit | Examples |
 |----------|-------|----------|
-| ReadOnly | 60/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info`, `aeroftp_head`, `aeroftp_tail`, `aeroftp_tree`, `aeroftp_hashsum`, `aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe` |
-| Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed` |
+| ReadOnly | 60/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info`, `aeroftp_head`, `aeroftp_tail`, `aeroftp_tree`, `aeroftp_hashsum`, `aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`, `aeroftp_benchmark`, `aeroftp_debug_snapshot`, `aeroftp_debug_run_test`, `aeroftp_correct_verify` |
+| Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed`, `aeroftp_correct_gen`, `aeroftp_correct_repair` |
 | Destructive | 10/min | `aeroftp_delete`, `aeroftp_delete_many`, `aeroftp_cleanup` |
 
-### Available Tools (39 canonical, v3.8.0)
+### Available Tools (35+ canonical)
 
 The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a matching `remote_*` alias for callers that prefer the cross-profile naming convention.
 
@@ -304,6 +304,12 @@ The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a ma
 | `aeroftp_delete` | Destructive | Delete a remote file or directory |
 | `aeroftp_delete_many` | Destructive | Batch delete with caps + configurable backoff |
 | `aeroftp_cleanup` | Destructive | BFS scan for orphan `.aerotmp` partial-transfer files (dry-run by default) |
+| `aeroftp_benchmark` | ReadOnly | Run the community benchmark suite against a saved profile and return the schema-v1 JSON report |
+| `aeroftp_debug_snapshot` | ReadOnly | Static diagnostic snapshot for triage (host/runtime info plus the last N redacted lines of `aeroftp.log`) |
+| `aeroftp_debug_run_test` | ReadOnly | Execute one self-contained diagnostic probe (e.g. `known_hosts`) and return its result |
+| `aeroftp_correct_verify` | ReadOnly | Verify a local file against its `.aerocorrect` sidecar (never mutates the file) |
+| `aeroftp_correct_gen` | Mutative | Generate a detached `.aerocorrect` Reed-Solomon recovery sidecar for a local file (par2-style) |
+| `aeroftp_correct_repair` | Mutative | Repair a corrupted local file in place from its `.aerocorrect` sidecar (atomic, all-or-nothing) |
 
 ### MCP Resources
 

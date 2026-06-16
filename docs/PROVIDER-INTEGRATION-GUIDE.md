@@ -5,7 +5,7 @@
 > **For storage providers and integrators**: this is the only public reference of its kind in the file-client space: a complete blueprint that lets a new cloud or self-hosted storage service ship a first-class native integration in AeroFTP without reverse-engineering the codebase. If you run a storage service and want a dedicated provider entry (instead of a generic preset), this guide is the contract. We're already collaborating with one provider on a native integration using exactly this document; we welcome more. Reach out via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues) and we'll review the API together.
 
 **Version**: 3.7
-**Last Updated**: 2026-05-02
+**Last Updated**: 2026-06-16
 **Codebase**: `src-tauri/src/providers/`
 
 ---
@@ -45,7 +45,7 @@
 
 ## 1. Architecture Overview
 
-AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All 25 storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and 19 cloud APIs.
+AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and the cloud APIs. The `ProviderType` enum currently exposes 33 variants (FTP, FTPS, SFTP, WebDAV, S3, AeroCloud, plus the native cloud and media providers listed below).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -75,14 +75,18 @@ src-tauri/src/providers/
 ├── sftp.rs                 # SFTP: russh (connection/listing/download) + ssh2/SCP (upload)
 ├── webdav.rs               # WebDAV with HTTP Digest/Basic auth
 ├── s3.rs                   # S3 + AWS SigV4 signing
+├── swift.rs                # OpenStack Swift (Blomp, etc.)
 ├── google_drive.rs         # Google Drive API v3
 ├── dropbox.rs              # Dropbox API v2
 ├── onedrive.rs             # Microsoft Graph API
 ├── mega.rs                 # MEGA.nz (E2E encrypted)
+├── mega_native.rs          # MEGA native client helpers
+├── mega_crypto.rs          # MEGA AES key/attribute crypto
+├── mega_df.rs              # MEGA disk-full / quota helpers
 ├── box_provider.rs         # Box API v2
 ├── pcloud.rs               # pCloud API
 ├── azure.rs                # Azure Blob Storage
-├── filen.rs                # Filen.io (E2E encrypted)
+├── filen/                  # Filen.io (E2E encrypted, module dir)
 ├── fourshared.rs           # 4shared (OAuth 1.0)
 ├── zoho_workdrive.rs       # Zoho WorkDrive API
 ├── internxt.rs             # Internxt Drive (E2E encrypted)
@@ -93,6 +97,12 @@ src-tauri/src/providers/
 ├── drime_cloud.rs          # Drime Cloud API
 ├── opendrive.rs            # OpenDrive REST API
 ├── yandex_disk.rs          # Yandex Disk REST API
+├── b2.rs                   # Backblaze B2 native API
+├── imagekit.rs             # ImageKit media API
+├── cloudinary.rs           # Cloudinary media API
+├── uploadcare.rs           # Uploadcare media API
+├── github/                 # GitHub provider (module dir)
+├── gitlab/                 # GitLab provider (module dir)
 ├── immich.rs               # Immich photo management API
 └── google_photos.rs        # Google Photos (standby - scope removed)
 ```
@@ -105,6 +115,7 @@ src-tauri/src/providers/
 | SFTP | `sftp.rs` | ~1,200 | User/Pass/Key | SSH (hybrid: russh + ssh2/SCP) |
 | WebDAV | `webdav.rs` | ~1,450 | HTTP Basic/Digest | HTTPS |
 | S3 | `s3.rs` | ~2,200 | AWS SigV4 | HTTPS |
+| Swift | `swift.rs` | - | OpenStack Keystone | REST |
 | Google Drive | `google_drive.rs` | ~2,050 | OAuth2 PKCE | REST |
 | Dropbox | `dropbox.rs` | ~1,500 | OAuth2 PKCE | REST |
 | OneDrive | `onedrive.rs` | ~1,400 | OAuth2 PKCE | REST (Graph) |
@@ -119,10 +130,16 @@ src-tauri/src/providers/
 | kDrive | `kdrive.rs` | ~1,300 | Bearer Token | REST |
 | Jottacloud | `jottacloud.rs` | ~1,650 | Login Token | REST (XML) |
 | FileLu | `filelu.rs` | ~1,500 | API Key | REST |
-| Koofr | `koofr.rs` | ~1,750 | OAuth2 PKCE | REST |
+| Koofr | `koofr.rs` | ~1,750 | App Password (HTTP Basic) or OAuth2 Bearer | REST |
 | Drime Cloud | `drime_cloud.rs` | ~1,600 | Bearer Token | REST |
 | OpenDrive | `opendrive.rs` | ~1,211 | Session login (user/pass) | REST |
 | Yandex Disk | `yandex_disk.rs` | ~1,237 | OAuth2 token (`Authorization: OAuth`) | REST |
+| Backblaze B2 | `b2.rs` | - | B2 native (account auth) | REST |
+| ImageKit | `imagekit.rs` | - | API Key (Basic) | REST |
+| Cloudinary | `cloudinary.rs` | - | API Key/Secret | REST |
+| Uploadcare | `uploadcare.rs` | - | API Key/Secret | REST |
+| GitHub | `github/` | - | Token / PEM (GitHub App) | REST |
+| GitLab | `gitlab/` | - | Token | REST |
 | Immich | `immich.rs` | ~1,427 | API Key (`x-api-key`) | REST |
 | Google Photos | `google_photos.rs` | ~870 | OAuth2 PKCE | REST (standby) |
 
@@ -130,7 +147,7 @@ src-tauri/src/providers/
 
 ## 2. StorageProvider Trait
 
-The unified trait defined in `mod.rs` provides **20 required methods** and **30+ optional methods** with default implementations that return `ProviderError::NotSupported`.
+The unified trait defined in `mod.rs` provides ~20 required methods and 30+ optional methods with default implementations that return `ProviderError::NotSupported`. The trait carries `#[allow(dead_code)]` because some optional methods are part of a planned API surface not yet wired to a UI.
 
 ### Required Methods
 
@@ -141,6 +158,8 @@ pub trait StorageProvider: Send + Sync {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
     fn provider_type(&self) -> ProviderType;
     fn display_name(&self) -> String;
+    // Optional: authenticated account email/username after connect (default None)
+    fn account_email(&self) -> Option<String> { None }
 
     // Lifecycle
     async fn connect(&mut self) -> Result<(), ProviderError>;
@@ -182,16 +201,21 @@ Providers opt-in to additional features by overriding paired `supports_*()` + me
 
 | Capability | Check Method | Action Method | Providers |
 |-----------|-------------|---------------|-----------|
+| Hard delete (purge trash) | - | `delete_permanent()` (default `Ok(false)`) | most cloud providers with trash |
 | File permissions | `supports_chmod()` | `chmod()` | SFTP |
 | Symlinks | `supports_symlinks()` | - | SFTP |
-| Server-side copy | `supports_server_copy()` | `server_copy()` | S3 |
-| Share links | `supports_share_links()` | `create_share_link()` | Google, Dropbox, OneDrive, Box, Zoho |
-| Storage quota | - | `storage_info()` | Google, Dropbox, OneDrive, Box, pCloud, Zoho |
+| Server-side copy | `supports_server_copy()` / `supports_server_side_copy()` | `server_copy()` / `server_side_copy()` | S3, B2, Azure, Box, Dropbox, GoogleDrive, OneDrive, pCloud, kDrive, Koofr, MEGA, WebDAV, FileLu, Yandex, Zoho, ImageKit, drime_cloud |
+| Multipart upload | - | `begin_multipart_upload()` / `upload_part()` / `complete_multipart_upload()` / `abort_multipart_upload()` | S3, B2 |
+| Share links | `supports_share_links()` (+ `share_link_capabilities()`) | `create_share_link()` / `list_share_links()` / `remove_share_link()` | Google, Dropbox, OneDrive, Box, Zoho, ... |
+| Import from link | `supports_import_link()` | `import_link()` | (provider-specific) |
+| Storage quota | - | `storage_info()` | Google, Dropbox, OneDrive, Box, pCloud, Zoho, ... |
+| Disk usage | - | `disk_usage()` | (provider-specific) |
+| Remote search | `supports_find()` | `find()` | Google, Dropbox, OneDrive, Box, Zoho, 4shared, Yandex |
 | Resume transfer | `supports_resume()` | `resume_download()` / `resume_upload()` | FTP, SFTP, Koofr |
-| File versions | `supports_versions()` | `list_versions()` / `download_version()` | Google, OneDrive, Box, Zoho |
+| File versions | `supports_versions()` | `list_versions()` / `download_version()` / `restore_version()` | Google, OneDrive, Box, Zoho |
 | File locking | `supports_locking()` | `lock_file()` / `unlock_file()` | WebDAV |
 | Thumbnails | `supports_thumbnails()` | `get_thumbnail()` | Google, Dropbox, OneDrive, Box |
-| Permissions | `supports_permissions()` | `list_permissions()` / `add_permission()` | Google, Box |
+| Permissions | `supports_permissions()` | `list_permissions()` / `add_permission()` / `remove_permission()` | Google, Box |
 | Checksums | `supports_checksum()` | `checksum()` | S3 |
 | Remote URL upload | `supports_remote_upload()` | `remote_upload()` | FileLu |
 | Change tracking | `supports_change_tracking()` | `get_change_token()` / `list_changes()` | Google |
@@ -213,9 +237,17 @@ pub struct RemoteEntry {
     pub permissions: Option<String>,  // Unix-style "rwxr-xr-x"
     pub owner: Option<String>,
     pub group: Option<String>,
-    pub is_symlink: Option<bool>,
-    pub symlink_target: Option<String>,
+    pub is_symlink: bool,
+    pub link_target: Option<String>,
+    pub mime_type: Option<String>,
+    pub metadata: std::collections::HashMap<String, String>,
 }
+```
+
+> `RemoteEntry` derives `Default`, so new providers can build entries with
+> `RemoteEntry { name, path, is_dir, size, ..Default::default() }`.
+
+```rust
 ```
 
 ### ProviderError
@@ -235,15 +267,42 @@ pub enum ProviderError {
     PermissionDenied(String),
     #[error("Path already exists: {0}")]
     AlreadyExists(String),
-    #[error("Transfer failed: {0}")]
-    TransferFailed(String),
+    #[error("Directory not empty: {0}")]
+    DirectoryNotEmpty(String),
+    #[error("Invalid path: {0}")]
+    InvalidPath(String),
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
     #[error("Operation not supported: {0}")]
     NotSupported(String),
+    #[error("Transfer cancelled")]
+    Cancelled,
+    #[error("Transfer failed: {0}")]
+    TransferFailed(String),
     #[error("Timeout")]
     Timeout,
     #[error("Network error: {0}")]
     NetworkError(String),
-    #[error("Other error: {0}")]
+    #[error("Parse error: {0}")]
+    ParseError(String),
+    #[error("Server error: {0}")]
+    ServerError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+    /// Transport torn down by the peer after a successful connect+auth
+    /// (server idle reaper, NAT eviction). Distinct from ConnectionFailed
+    /// (connect-time) and NotConnected (pre-connect). Caller may attempt a
+    /// silent reconnect + replay.
+    #[error("Connection lost: {0}")]
+    ConnectionLost(String),
+    /// Target name contains a character forbidden by the provider's backend
+    /// (rclone restricted-character tables). Caught before the name reaches
+    /// the provider API; wording is stable for GUI localization.
+    #[error("Restricted character {ch_display} is not allowed by {provider}")]
+    RestrictedChar { ch_display: String, provider: String },
+    #[error("Unknown error: {0}")]
+    Unknown(String),
+    #[error("{0}")]
     Other(String),
 }
 
@@ -253,7 +312,13 @@ impl ProviderError {
             ProviderError::Timeout
             | ProviderError::NetworkError(_)
             | ProviderError::NotConnected
+            | ProviderError::ConnectionLost(_)
         )
+    }
+
+    /// True when the live session was torn down mid-flight by the peer.
+    pub fn is_connection_lost(&self) -> bool {
+        matches!(self, ProviderError::ConnectionLost(_))
     }
 }
 ```
@@ -282,7 +347,7 @@ impl ProviderFactory {
                     "Use oauth2_start_auth + oauth2_connect commands".into()
                 ))
             }
-            // ... all 22 variants handled
+            // ... all ProviderType variants handled
         }
     }
 }
@@ -295,8 +360,10 @@ impl ProviderFactory {
 ### 3.1 OAuth2 PKCE
 
 **File**: `oauth2.rs` (~1,050 lines)
-**Providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Koofr, Yandex Disk
+**Providers** (the `OAuthProvider` enum): Google Drive, Google Photos, Dropbox, OneDrive, Yandex Disk, Box, pCloud, Zoho WorkDrive
 **Crate**: `oauth2 = "5"` with PKCE S256
+
+> Note: Koofr is **not** an `OAuthProvider`. Its primary auth is an App Password over HTTP Basic (it can also accept an OAuth2 Bearer token, but the dedicated PKCE flow in `oauth2.rs` does not cover it).
 
 #### Flow
 
@@ -400,8 +467,8 @@ pub fn is_expired(&self) -> bool {
 | Box | `account.box.com/api/oauth2/authorize` | `api.box.com/oauth2/token` | `http://127.0.0.1:{port}/callback` | No scopes needed |
 | pCloud | `my.pcloud.com/oauth2/authorize` | `api.pcloud.com/oauth2_token` | `http://localhost:{port}/callback` | EU: `eapi.pcloud.com` |
 | Zoho | `accounts.zoho.{tld}/oauth/v2/auth` | `accounts.zoho.{tld}/oauth/v2/token` | `http://127.0.0.1:{port}/callback` | 9 regional TLDs, 8 scopes, `prompt=consent` |
-| Koofr | `app.koofr.net/oauth2/authorize` | `app.koofr.net/oauth2/token` | `http://127.0.0.1:{port}/callback` | No scopes needed |
 | Yandex Disk | `oauth.yandex.com/authorize` | `oauth.yandex.com/token` | `http://127.0.0.1:{port}/callback` | API calls use `Authorization: OAuth {token}` rather than `Bearer` |
+| Google Photos | `accounts.google.com/o/oauth2/v2/auth` | `oauth2.googleapis.com/token` | `http://127.0.0.1:{port}/callback` | standby - scope removed |
 
 #### Callback Server
 
@@ -591,13 +658,15 @@ let response = self.client.get(&url)
     .send().await?;
 ```
 
-| Provider | Header | Config Field |
-|----------|--------|-------------|
-| FileLu | `X-API-Key: {key}` | `api_key: SecretString` |
-| Yandex Disk | `Authorization: OAuth {token}` | `oauth_token: SecretString` |
-| kDrive | `Authorization: Bearer {token}` | `api_token: SecretString` |
-| Jottacloud | `Authorization: Bearer {token}` | `login_token: SecretString` |
-| Drime Cloud | `Authorization: Bearer {token}` | `api_token: SecretString` |
+| Provider | Header | Secret Storage |
+|----------|--------|----------------|
+| FileLu | `X-API-Key: {key}` | `SecretString` |
+| Yandex Disk | `Authorization: OAuth {token}` | `SecretString` (stored as `access_token`) |
+| kDrive | `Authorization: Bearer {token}` | `SecretString` (stored as `access_token`) |
+| Jottacloud | `Authorization: Bearer {token}` | `SecretString` |
+| Drime Cloud | `Authorization: Bearer {token}` | `SecretString` |
+
+> Concrete field names vary per provider; all sensitive values are wrapped in `secrecy::SecretString`. Check the provider's `Config`/state struct for the exact field name.
 
 ### 3.6 HTTP Digest Authentication
 
@@ -1701,7 +1770,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 ## Acknowledgments
 
-This guide documents patterns developed across 35+ releases and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across 25 storage backends, with new patterns added as new providers join the catalog.
+This guide documents patterns developed across 35+ releases and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across the full provider catalog (33 `ProviderType` variants), with new patterns added as new providers join the catalog.
 
 ---
 

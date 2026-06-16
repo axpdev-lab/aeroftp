@@ -1,6 +1,6 @@
 # AeroAgent - AI-Powered File Management
 
-AeroAgent is AeroFTP's integrated AI assistant with **68 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
+AeroAgent is AeroFTP's integrated AI assistant with **50+ agent tools (35+ exposed over MCP)** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
 
 > Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
 
@@ -37,7 +37,7 @@ AeroAgent works with **24 AI providers** - choose your preferred model:
 
 ## Tool Categories
 
-The 68 tools span eight categories. Each tool carries a danger level (read-only / medium / high); every medium or high tool requires explicit user approval before it runs.
+The 50+ agent tools span eight categories (the per-category rows below count each `aeroftp_*` and `remote_*` alias separately, so they tally higher than the distinct-tool figure). Each tool carries a danger level (read-only / medium / high); every medium or high tool requires explicit user approval before it runs.
 
 ### Remote operations (21 tools)
 List, read, stat, search, upload, download, create directories, rename, edit, delete, hash, head/tail, tree, and check quota on any saved server. These route through the `StorageProvider` trait, so they behave identically across all 7 transport protocols and 25+ native provider integrations.
@@ -168,12 +168,12 @@ Validated with real-world file operations (create, read, edit, upload, server co
 
 > Full provider compatibility matrix and test results: [docs.aeroftp.app/aeroagent/providers](https://docs.aeroftp.app/aeroagent/providers)
 
-## Complete Tool List (68 tools)
+## Complete Tool List (50+ agent tools, 35+ exposed over MCP)
 
 <details>
 <summary>Click to expand</summary>
 
-Counts distinct capabilities. Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability; 42 of these capabilities are exposed over the MCP server.
+The rows below enumerate each tool name, including aliases. Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability, so listing every alias tallies higher than the distinct-tool figure; 35+ canonical `aeroftp_*` capabilities are exposed over the MCP server.
 
 **Remote operations (21)**
 

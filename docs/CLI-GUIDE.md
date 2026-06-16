@@ -1,14 +1,14 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v4.0.2 (June 2026) - last reviewed 5 June 2026
+> **Version reference**: v4.0.5 (June 2026) - last reviewed 16 June 2026
 > **License**: GPL-3.0
 
 ---
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), local archives (`compress`/`extract`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
 
 ### Direct URL Protocols
 
@@ -1020,6 +1020,9 @@ Jobs are persisted in SQLite (`~/.config/aeroftp/jobs.db`).
 # Initialize encrypted overlay on a remote directory
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt init _ /encrypted
 
+# Re-initialize over an existing overlay (DESTRUCTIVE: orphans existing files)
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt init _ /encrypted --force
+
 # Upload a file with encryption (content + filename encrypted)
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt put ./secret.pdf _ /encrypted
 
@@ -1039,7 +1042,9 @@ AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get secret.pdf 
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get photos _ /encrypted . -r
 ```
 
-Encryption: new overlays use AES-256-GCM-SIV (content, 64KB blocks) with a per-file key wrapped by AES-256-KW, AES-256-SIV (filenames), and Argon2id (key derivation); legacy overlays (plain AES-256-GCM) stay readable. The cloud provider never sees file names or content.
+`crypt init` refuses to run when an overlay config (`.aeroftp-crypt.json`) already exists at the target, because re-init rotates the salt and would permanently orphan every file already encrypted under the old overlay. It exits with code 9 ("already exists") and prints a hint. Pass `--force` to overwrite intentionally (DESTRUCTIVE).
+
+Encryption: new overlays are written as **AECR v3**. Content is AES-256-GCM-SIV (RFC 8452, 64KB blocks) under a per-file random data key wrapped with AES-256-KW (RFC 3394); filenames are encrypted with AES-256-SIV; the master key is derived with Argon2id (128 MiB / t=4 / p=4) and subkeys via HKDF-SHA256. Each content block binds its index and the total block count (length-binding), and the overlay config carries a key-bound HKDF-SHA256 MAC so its parameters cannot be tampered with. Legacy overlays (v2 GCM-SIV, v1 plain AES-256-GCM) stay readable but are never written. The cloud provider never sees file names or content.
 
 ### vault - AeroVault Encrypted Container
 
@@ -1164,6 +1169,29 @@ AEROFTP_CRYPT_PASSWORD=MySecret AEROFTP_CRYPT_PASSWORD2=Salt \
 ```
 
 Drop-in compatible with the format produced by [`rclone crypt`](https://rclone.org/crypt/), so a file uploaded here can be read back with `rclone` and vice versa. Separate from the `crypt` subcommand above (which is the AeroFTP-native overlay): use `rclone-crypt` when the bucket must remain interoperable with the rclone toolchain, use `crypt` for AeroFTP-only flows.
+
+### compress / extract - Local Archives
+
+```bash
+# Create an archive (format inferred from the output extension)
+aeroftp-cli compress backup.zip ./docs ./photos
+
+# Force a format and tune the compression level (0-9)
+aeroftp-cli compress backup.tar.gz ./src --archive-format tar.gz -l 9
+
+# AES-256 encrypted zip / 7z (also AEROFTP_ARCHIVE_PASSWORD)
+aeroftp-cli compress secret.7z ./private -p "secret"
+
+# Extract an archive into the current directory (or a target dir)
+aeroftp-cli extract backup.zip ./restored
+
+# Extract an encrypted archive
+aeroftp-cli extract secret.7z ./out -p "secret"
+```
+
+Local-only archive operations (no connection). Supported formats: `zip`, `7z`, `tar`, `tar.gz` (alias `tgz`), `tar.xz` (alias `txz`), `tar.bz2` (alias `tbz2`), and `rar` (extract only). The format is inferred from the file extension unless `--archive-format` is given. Only `zip` and `7z` accept an AES-256 `--password`; the tar family is unencrypted. `--level`/`-l` (0-9, default 6; 0 = store) applies to zip and the tar.gz/tar.xz/tar.bz2 families; 7z uses a fixed LZMA2 preset and ignores it. `extract` honors `--subfolder` to unpack into a directory named after the archive.
+
+> **ZIP store-if-larger**: when deflate would not shrink a given file (already-compressed payloads such as JPEG, MP4, or zip), `compress` stores that ZIP entry uncompressed instead of inflating it. This is a per-entry decision inside the ZIP container and does not change the framing of the tar.gz / tar.xz / tar.bz2 formats.
 
 ### batch - Execute Script
 

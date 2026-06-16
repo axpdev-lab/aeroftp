@@ -13,7 +13,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 ### Design Goals
 
 1. **Zero-interaction default**: Credentials save and load automatically without any user prompt
-2. **Cross-platform reliability**: No dependency on OS keyring services (gnome-keyring, Windows Credential Manager, macOS Keychain)
+2. **Cross-platform reliability**: The default mode stores the high-entropy passphrase in the OS keyring (gnome-keyring, Windows Credential Manager, macOS Keychain) with a robust file-based fallback, so a missing or broken keyring never blocks startup
 3. **Optional master password**: Users who want extra protection can enable a master password at any time
 4. **Simple architecture**: One code path, no fallback chains, no health probes
 5. **Complete coverage** (v1.9.0): No sensitive data in localStorage - everything encrypted in vault
@@ -35,16 +35,19 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 
 ### Two Modes
 
-| Mode | vault.key contains | User interaction | Use case |
-|------|-------------------|------------------|----------|
-| **Auto** (default) | Passphrase in cleartext | None - fully transparent | Most users |
-| **Master** (optional) | Passphrase encrypted with user password | Enter password on app start | Security-conscious users |
+| Mode | vault.key marker | Where the passphrase lives | User interaction | Use case |
+|------|------------------|----------------------------|------------------|----------|
+| **Auto / keyring** (default, mode `0x02`) | Mode marker only | OS keyring (gnome-keyring / Windows Credential Manager / macOS Keychain) | None - fully transparent | Most users |
+| **Legacy auto** (mode `0x00`, read-only fallback) | Passphrase in cleartext inside vault.key | vault.key file | None - fully transparent | Vaults created before the keyring default |
+| **Master** (optional, mode `0x01`) | Passphrase encrypted with user password | vault.key file (AES-GCM under an Argon2id KEK) | Enter password on app start | Security-conscious users |
 
 ### Security Model
 
-**Auto mode** relies on OS file permissions for protection:
+**Auto / keyring mode** (default) stores the passphrase in the OS keyring; vault.key on disk holds only a mode marker and is protected by file permissions:
 - Unix: `chmod 0o600` (owner read/write only)
 - Windows: `icacls` ACL restricting access to current user
+
+**Legacy auto mode** (the older `0x00` format, still readable) keeps the cleartext passphrase inside vault.key, protected only by the same file permissions.
 
 **Master mode** adds cryptographic protection:
 - User password → Argon2id (128 MiB, t=4, p=4) → 256-bit KEK
@@ -57,15 +60,28 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 
 ## vault.key Binary Format
 
-### Auto Mode (76 bytes)
+### Auto / Keyring Mode (12 bytes, current default)
 
 ```
 Offset  Size  Field        Description
 ──────  ────  ─────        ───────────
 0       8     MAGIC        "AEROVKEY" (ASCII)
 8       1     VERSION      0x02
-9       1     MODE         0x00 = auto
-10      64    PASSPHRASE   64 bytes from CSPRNG (rand::thread_rng)
+9       1     MODE         0x02 = auto-keyring
+10      2     PADDING      Reserved (zeroes)
+```
+
+The 64-byte CSPRNG passphrase is stored in the OS keyring under a fixed service/account; vault.key holds only the mode marker.
+
+### Legacy Auto Mode (76 bytes, read-only fallback)
+
+```
+Offset  Size  Field        Description
+──────  ────  ─────        ───────────
+0       8     MAGIC        "AEROVKEY" (ASCII)
+8       1     VERSION      0x02
+9       1     MODE         0x00 = legacy-auto (cleartext passphrase)
+10      64    PASSPHRASE   64 bytes from CSPRNG
 74      2     PADDING      Reserved (zeroes)
 ```
 
@@ -170,7 +186,7 @@ App start
   → init_credential_store()
   → vault.key NOT found
   → Generate 64-byte CSPRNG passphrase
-  → Write vault.key (auto mode, 76 bytes)
+  → Store passphrase in OS keyring; write vault.key (auto-keyring mode, 12 bytes, marker only)
   → Set file permissions (0o600 / ACL)
   → Create empty vault.db
   → HKDF(passphrase) → vault key
@@ -181,13 +197,13 @@ Frontend: credentials ready, no LockScreen
 Header: Shield icon → "Set Master Password" tooltip
 ```
 
-### Subsequent Launch (auto mode)
+### Subsequent Launch (auto / keyring mode)
 
 ```
 App start
   → init_credential_store()
-  → vault.key exists, mode = 0x00 (auto)
-  → Read passphrase from vault.key
+  → vault.key exists, mode = 0x02 (auto-keyring); 0x00 (legacy-auto) handled the same way
+  → Read passphrase from OS keyring (or from vault.key for legacy-auto)
   → HKDF(passphrase) → vault key
   → Open vault.db, cache vault key
   → Return "OK"
@@ -224,7 +240,7 @@ LockScreen dismissed, credentials available.
 ```
 User clicks Shield icon → MasterPasswordSetupDialog
   → enable_master_password(password, timeout_seconds)
-  → Read vault.key (auto mode) → extract passphrase
+  → Resolve current passphrase (from OS keyring or legacy-auto vault.key)
   → Generate random salt (32 bytes) + nonce (12 bytes)
   → Argon2id(password, salt) → KEK
   → AES-GCM encrypt(KEK, nonce, passphrase) → encrypted_passphrase
@@ -241,7 +257,9 @@ Settings → Security → Remove Master Password
   → Read vault.key (master mode)
   → Argon2id(password, salt) → KEK
   → Decrypt passphrase
-  → Rewrite vault.key in auto mode (76 bytes, cleartext passphrase)
+  → Try to store passphrase in OS keyring → vault.key auto-keyring mode (12 bytes)
+  → If the keyring write fails, fall back to legacy-auto vault.key (76 bytes, cleartext)
+    so disabling never leaves the user stuck in master mode (issue #333)
 ```
 
 ### Change Master Password
@@ -308,10 +326,11 @@ Activity updated on:
 
 | Primitive | Library | Usage |
 |-----------|---------|-------|
-| AES-256-GCM | `aes-gcm 0.10` | vault.db per-entry encryption, vault.key passphrase encryption |
+| AES-256-GCM | `aes-gcm 0.10` | vault.db per-entry encryption, vault.key passphrase encryption (master mode) |
 | Argon2id | `argon2 0.5` | Master password → KEK derivation |
 | HKDF-SHA256 | `hkdf 0.12` + `sha2 0.10` | Passphrase → vault key derivation |
 | CSPRNG | `rand 0.8` | Passphrase generation, nonce generation, salt generation |
+| OS keyring | `keyring 3` | Default-mode passphrase storage in gnome-keyring / Windows Credential Manager / macOS Keychain |
 
 ---
 

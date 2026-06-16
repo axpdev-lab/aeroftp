@@ -41,7 +41,7 @@ AeroFTP implements credential isolation at the architecture level, not as an add
 
 ### The Vault
 
-All server credentials - passwords, API keys, OAuth access tokens, OAuth refresh tokens, and client secrets - are stored in an encrypted vault (`vault.db`) using AES-256-GCM with keys derived via Argon2id (128 MiB memory, 4 iterations, 4 lanes). The vault is a single encrypted file in the user's configuration directory, protected by either an auto-generated 512-bit passphrase (default) or a user-chosen master password.
+All server credentials - passwords, API keys, OAuth access tokens, OAuth refresh tokens, and client secrets - are stored in an encrypted vault (`vault.db`) using AES-256-GCM with per-entry random nonces. The data-encryption key is derived via HKDF-SHA256 from a high-entropy passphrase. The vault is a single encrypted file in the user's configuration directory, protected by either an auto-generated 512-bit passphrase held in the OS keyring (default) or a user-chosen master password. In master-password mode the passphrase is itself sealed with Argon2id (128 MiB memory, 4 iterations, 4 lanes) plus AES-256-GCM.
 
 The vault is not a wrapper around the OS keystore. It is a self-contained encrypted database that works identically across Linux, macOS, and Windows.
 

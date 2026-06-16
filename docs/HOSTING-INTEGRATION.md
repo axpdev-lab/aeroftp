@@ -53,7 +53,7 @@ The encryption password is processed through Argon2id with the following paramet
 |-----------|-------|
 | Algorithm | Argon2id |
 | Memory | 128 MiB |
-| Iterations | 3 |
+| Iterations | 4 |
 | Parallelism | 4 |
 | Output length | 32 bytes |
 | Salt | 32 random bytes |
@@ -159,7 +159,7 @@ def generate_aeroftp_profile(servers, password):
     key = hash_secret_raw(
         secret=password.encode('utf-8'),
         salt=bytes(salt),
-        time_cost=3,
+        time_cost=4,
         memory_cost=131072,  # 128 MiB
         parallelism=4,
         hash_len=32,
@@ -222,7 +222,7 @@ async function generateAeroftpProfile(servers, password) {
     type: argon2.argon2id,
     salt: salt,
     memoryCost: 131072,  // 128 MiB
-    timeCost: 3,
+    timeCost: 4,
     parallelism: 4,
     hashLength: 32,
     raw: true

@@ -68,7 +68,7 @@ place. To move data between families, extract from one and re-add to the other
 - `AEROVAULT2` v3 chunk AAD = `b"AeroVault v2 chunk aad v3"` (25) + file_id (16) +
   chunk_count (4) + chunk_index (4) = **49 bytes**.
 - `AEROVAULT2` v2 (legacy) chunk AAD = 4-byte chunk index only.
-- `AEROVAULT3` block AAD = `b"AeroVault v3 block"` + block_index (u64) + 32-byte
-  keyed-blake3 chunk id.
+- `AEROVAULT3` block AAD = `b"AeroVault v3 block"` + block_index (u64 LE) + the
+  128-bit keyed-BLAKE3 chunk id as its 32-character hex string.
 
 _Last updated: 2026-06-03 (dual-independent audit remediation)._

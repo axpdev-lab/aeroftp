@@ -1,6 +1,6 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 12 June 2026
+> Last Updated: 16 June 2026
 > Version: v4.0.5
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
@@ -555,7 +555,7 @@ The remote-facing tools route through the `StorageProvider` trait, so they behav
 | Medium | `remote_upload`, `upload_files`, `upload_many`, `remote_download`, `download_files`, `remote_mkdir`, `remote_rename`, `remote_edit`, `remote_touch`, `remote_speed`, `transfer`, `transfer_tree`, `cross_profile_transfer` |
 | High | `remote_delete`, `remote_delete_many`, `remote_dedupe`, `remote_cleanup`, `server_exec` |
 
-See the full 68-tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categories-68-tools) below.
+See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categories-50-agent-tools-35-exposed-over-mcp) below.
 
 ### AI Features
 
@@ -620,7 +620,7 @@ See the full 68-tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-ca
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (68 tools)
+### AeroAgent Tool Categories (50+ agent tools, 35+ exposed over MCP)
 
 | Category | Tools | Danger |
 |----------|-------|--------|
@@ -633,7 +633,7 @@ See the full 68-tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-ca
 | Knowledge & memory (3) | `rag_index`, `rag_search`, `agent_memory_write` | read-only / medium |
 | App & server control (6) | `app_info`, `set_theme`, `vault_peek`, `preview_edit`, `agent_connect`, `server_exec` | safe / read-only / high |
 
-> Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability; the 68 figure counts distinct capabilities, not alias names. 42 of them are exposed over the MCP server.
+> Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability, so the per-category rows above count every alias name and tally higher than the distinct-tool figure. 35+ canonical capabilities are exposed over the MCP server.
 
 ---
 

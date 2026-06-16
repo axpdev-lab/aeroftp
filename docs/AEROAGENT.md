@@ -111,12 +111,14 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | `local_tree` | medium | Recursive directory tree (max depth 10) |
 | `preview_edit` | safe | Preview find/replace without applying |
 
-### Batch Transfer (2 tools)
+### Batch Transfer (4 tools)
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
+| `generate_transfer_plan` | safe | Build a reviewable upload/download plan before executing any transfer |
 | `upload_files` | medium | Upload multiple local files to remote |
 | `download_files` | medium | Download multiple remote files to local |
+| `sync_preview` | medium | Preview sync differences between a local and a remote directory |
 
 ### Archive Operations (2 tools)
 
@@ -147,13 +149,14 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | `app_info` | safe | Get app state, connection info, version |
 | `sync_control` | medium | Start/stop/status AeroSync service |
 
-### Clipboard (3 tools)
+### Clipboard (2 tools)
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
 | `clipboard_read` | medium | Read text from system clipboard |
 | `clipboard_write` | medium | Write text to system clipboard |
-| `clipboard_read_image` | medium | Read clipboard image as RGBA (used as multimodal-paste fallback on WebKitGTK Linux where the standard `clipboardData.items` doesn't expose images) |
+
+> A separate `clipboard_read_image` Tauri command reads a clipboard image as RGBA. It is invoked directly by the chat UI as a multimodal-paste fallback on WebKitGTK Linux (where the standard `clipboardData.items` doesn't expose images), not exposed to the AI model as an agent tool.
 
 ### Agent Memory (1 tool)
 
@@ -161,12 +164,13 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | ---- | ------ | ----------- |
 | `agent_memory_write` | medium | Save persistent note (convention/preference/issue/pattern) |
 
-### Server Management (2 tools)
+### Server Management (3 tools)
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
 | `server_list_saved` | safe | List saved server profiles (no passwords exposed) |
 | `server_exec` | high | Execute operation on saved server (ls/cat/get/put/mkdir/rm/mv/stat/find/df) |
+| `cross_profile_transfer` | high | Copy files directly between two saved server profiles (recursive, skip-existing, dry-run) |
 
 ### Shell Execution (1 tool)
 
@@ -183,8 +187,8 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | Level | Behavior | Count |
 | ----- | -------- | ----- |
 | **safe** | Auto-execute without user confirmation | 14 tools |
-| **medium** | Show approval modal, user must confirm | 28 tools |
-| **high** | Explicit confirmation with danger warning | 6 tools |
+| **medium** | Show approval modal, user must confirm | 33 tools |
+| **high** | Explicit confirmation with danger warning | 5 tools |
 
 ### Path Validation
 
@@ -226,7 +230,7 @@ This means `local_read("a.txt")` and `local_read("b.txt")` execute simultaneousl
 
 ### Multi-Step Execution
 
-AeroAgent supports autonomous multi-step workflows (up to 10 steps by default, 50 in Extreme Mode):
+AeroAgent supports autonomous multi-step workflows. The step ceiling is driven by the selected Agent Mode (Safe 5, Normal 10, Expert 25, Extreme 50):
 
 1. User sends prompt
 2. AI responds with tool calls
@@ -290,7 +294,7 @@ The system prompt is dynamically composed from:
 
 ## AI Provider Support
 
-### 19 Providers
+### 24 Providers
 
 | Provider | Tool Format | Streaming | Vision | Thinking |
 | -------- | ----------- | --------- | ------ | -------- |
@@ -309,6 +313,11 @@ The system prompt is dynamically composed from:
 | Cerebras | native | SSE | - | - |
 | SambaNova | native | SSE | - | - |
 | Fireworks AI | native | SSE | - | - |
+| Nvidia (NIM) | native | SSE | - | - |
+| Z.AI (GLM) | native | SSE | - | - |
+| Hyperbolic | native | SSE | - | - |
+| Novita | native | SSE | - | - |
+| Yi (01.AI) | native | SSE | - | - |
 | Kimi | native | SSE | - | - |
 | Qwen | native | SSE | - | - |
 | DeepSeek | native | SSE | - | DeepSeek-R1 |
@@ -426,12 +435,21 @@ MCP server mode exposes the AeroAgent tool catalog as standard MCP endpoints, en
 
 ---
 
-## Extreme Mode
+## Agent Modes
 
-Available only in Cyber theme. Auto-approves all tool calls for fully autonomous execution:
+AeroAgent runs in one of four escalating modes, each raising the autonomous step ceiling:
+
+| Mode | Step limit | Behavior |
+| ---- | ---------- | -------- |
+| Safe | 5 | Default safety, approval modals for medium/high tools |
+| Normal | 10 | Standard autonomous operation |
+| Expert | 25 | Extended autonomy for longer tasks |
+| Extreme | 50 | Auto-approves all tool calls, fully autonomous |
+
+Extreme Mode is gated to the Cyber and True Dark themes. When active:
 
 - No confirmation modals
-- 50-step limit (vs 10 default)
+- 50-step limit
 - Circuit breaker on consecutive errors
 - Visual indicator in chat header
 

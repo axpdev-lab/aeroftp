@@ -75,7 +75,7 @@ Plain FTP connections display a prominent insecure warning badge. WebDAV support
 
 ### AI Tool Security
 
-AeroAgent (68 tools) operates under backend-enforced security controls:
+AeroAgent (50+ tools) operates under backend-enforced security controls:
 
 - **Grant system**: Mutative tools require a cryptographic grant verified by the Rust backend
 - **Native OS confirmation**: Grant approval triggers an operating system dialog that cannot be bypassed by web frontend compromise or prompt injection

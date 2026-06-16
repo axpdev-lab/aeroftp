@@ -320,7 +320,7 @@ aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
 ### Security
 
 - Credentials are never in command arguments, environment, stdout, or AI model context
-- Shell denylist blocks 35 dangerous command patterns even with `--auto-approve all`
+- Shell denylist blocks 34 dangerous command patterns even with `--auto-approve all`
 - Path validation blocks traversal, null bytes, and sensitive paths (`~/.ssh/`, vault files)
 - The agent cannot read the vault database directly - path validator blocks it
 

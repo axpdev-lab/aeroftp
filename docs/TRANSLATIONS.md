@@ -116,7 +116,7 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 
 ---
 
-## Translation Keys (2320)
+## Translation Keys (4400+)
 
 Translations are organized by 36+ namespaces:
 
@@ -174,7 +174,7 @@ src/i18n/
 ├── I18nContext.tsx        # Provider, hooks, getNestedValue
 ├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (47)
 └── locales/
-    ├── en.json           # English (base, 2320 keys)
+    ├── en.json           # English (base, 4400+ keys)
     ├── it.json           # Italian (manually translated)
     ├── ...               # 44 more languages
     └── zh.json           # Chinese

@@ -115,7 +115,7 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 - **AeroCloud Selective Sync**
   Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization.
 - **Agent Orchestration v2**
-  Mutative remote operations with grant model on top of the existing 39-tool MCP server.
+  Mutative remote operations with grant model on top of the existing 35+ tool MCP server.
 - **AeroVault v2 Enhancements**
   Cross-platform migration, multi-device sync integration, key rotation.
 - **S3 Storage Class Management**
@@ -503,7 +503,7 @@ The lane view above is what most users want. The tables below are kept for users
 
 | Feature | Description |
 |---------|-------------|
-| **MCP Server** | Native Model Context Protocol server via `aeroftp-cli mcp`. 16 curated tools across all 22 protocols (later expanded to 39 in v3.7.0), connection pooling, rate limiting, audit logging, 5 resources, 4 prompt templates. Works with Claude Desktop, Cursor, Windsurf, Claude Code via the [`axpdev-lab.aeroftp-mcp`](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp) extension. 2,800+ lines, async stdio, JSON-RPC 2.0 compliant. |
+| **MCP Server** | Native Model Context Protocol server via `aeroftp-cli mcp`. 16 curated tools across all 22 protocols (later expanded to 35+ canonical tools), connection pooling, rate limiting, audit logging, 5 resources, 4 prompt templates. Works with Claude Desktop, Cursor, Windsurf, Claude Code via the [`axpdev-lab.aeroftp-mcp`](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp) extension. 2,800+ lines, async stdio, JSON-RPC 2.0 compliant. |
 | **Cross-profile transfer panel** | Dedicated toolbar button for cloud-to-cloud transfers. Floating panel with real-time queue, progress bars, and plan/execute/done transitions. |
 | **CLI `transfer` command** | Cross-profile copy between two vault-backed profiles with dry-run, recursive mode, and `--skip-existing` for backup flows. |
 | **CLI doctor workflows** | `sync-doctor` and `transfer-doctor` preflight commands with structured checks, risk summaries, and `suggested_next_command` for agent automation. |

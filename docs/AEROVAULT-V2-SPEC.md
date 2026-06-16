@@ -70,7 +70,7 @@ The header is a fixed-size structure at offset 0. All multi-byte integers are **
 | Offset | Size (bytes) | Field | Description |
 |--------|-------------|-------|-------------|
 | 0 | 10 | `magic` | ASCII `AEROVAULT2` |
-| 10 | 1 | `version` | Format version (`0x02`) |
+| 10 | 1 | `version` | Format version byte: `3` (current, hardened per-chunk AAD) or `2` (legacy, read-only) |
 | 11 | 1 | `flags` | Bit field (see 3.2) |
 | 12 | 32 | `salt` | Argon2id salt (random) |
 | 44 | 40 | `wrapped_master_key` | AES-KW wrapped master key |
@@ -270,14 +270,15 @@ Each entry's chunks are stored contiguously starting at the entry's `offset`.
 Each chunk is encrypted as:
 
 ```
-nonce (12 bytes, random) || AES-256-GCM-SIV(key=master_key, nonce, aad=chunk_index_le32, plaintext)
+nonce (12 bytes, random) || AES-256-GCM-SIV(key=master_key, nonce, aad=chunk_aad, plaintext)
 ```
 
 - **Nonce**: 12 random bytes (OsRng)
-- **AAD**: Chunk index as 4-byte little-endian u32
+- **AAD (version byte 3, current)**: `b"AeroVault v2 chunk aad v3"` (25 bytes) + `file_id` (16 bytes) + `chunk_count` (LE u32, 4 bytes) + `chunk_index` (LE u32, 4 bytes) = 49 bytes
+- **AAD (version byte 2, legacy read-only)**: chunk index as 4-byte little-endian u32 only
 - **Tag**: 16 bytes (appended by AEAD)
 
-The AAD binding prevents chunk reordering attacks: a chunk encrypted at index 0 cannot be placed at index 5 without authentication failure.
+The version-3 AAD binds file id, chunk count, and chunk index together (the CRYPTO-01 hardening), preventing chunk reordering, truncation, and cross-file splicing: a chunk encrypted at index 0 cannot be placed at index 5, in a different file, or in a file with a different chunk count without authentication failure.
 
 ### 6.3 Cascade Mode (AES-256-GCM-SIV + ChaCha20-Poly1305)
 
@@ -285,13 +286,15 @@ When cascade mode is enabled (flag bit 0), each chunk undergoes double encryptio
 
 **Layer 1 - AES-256-GCM-SIV** (same as standard mode):
 ```
-inner = nonce_aes (12) || AES-GCM-SIV(master_key, nonce_aes, aad=chunk_index, plaintext)
+inner = nonce_aes (12) || AES-GCM-SIV(master_key, nonce_aes, aad=chunk_aad, plaintext)
 ```
 
 **Layer 2 - ChaCha20-Poly1305**:
 ```
-outer = nonce_chacha (12) || ChaCha20-Poly1305(chacha_key, nonce_chacha, aad=chunk_index, inner)
+outer = nonce_chacha (12) || ChaCha20-Poly1305(chacha_key, nonce_chacha, aad=chunk_aad, inner)
 ```
+
+Both layers use the same `chunk_aad` described in 6.2 (the 49-byte version-3 AAD for current vaults, the 4-byte index for legacy v2).
 
 The `chacha_key` is derived from `master_key` via HKDF (see 4.3).
 
@@ -337,7 +340,7 @@ The last chunk of a file may be smaller than `chunk_size`.
 6. Wrap `master_key` with `kek_master` via AES-256-KW
 7. Wrap `mac_key` with `kek_mac` via AES-256-KW
 8. Build header with magic, version, flags, salt, wrapped keys, chunk size
-9. Compute HMAC-SHA512 of header bytes 0..128 using `mac_key`
+9. Compute HMAC-SHA512 over all 512 header bytes (with the MAC field at 448..512 zeroed) using `mac_key`
 10. Create empty manifest, encrypt with AES-SIV using `master_key`
 11. Write: header (512) + manifest_len (4) + encrypted_manifest
 
@@ -446,7 +449,7 @@ HMAC-SHA512 protects the header against modification. An attacker cannot:
 
 - Change the salt (would change derived keys, but MAC would mismatch)
 - Replace wrapped keys (MAC covers the wrapped key bytes)
-- Alter flags or chunk size (MAC covers bytes 0..128)
+- Alter flags or chunk size (MAC covers all 512 header bytes, including the reserved region)
 
 ### 8.4 Key Separation
 
@@ -690,7 +693,7 @@ AeroVault actions are available in the file manager context menu:
 
 ```
 MAGIC                = "AEROVAULT2" (10 bytes)
-VERSION              = 0x02
+VERSION              = 3       (current; LEGACY_VERSION = 2, read-only)
 HEADER_SIZE          = 512
 SALT_SIZE            = 32
 WRAPPED_KEY_SIZE     = 40  (32-byte key + 8-byte AES-KW overhead)
@@ -726,27 +729,31 @@ Hex: 41 45 52 4F 56 41 55 4C 54 32
 
 ```
 00-09:  magic           AEROVAULT2
-0A:     version         02
+0A:     version         03 (current) or 02 (legacy read-only)
 0B:     flags           00 (standard) or 01 (cascade)
 0C-2B:  salt            32 random bytes
 2C-53:  wrapped_master  40 bytes (AES-KW)
 54-7B:  wrapped_mac     40 bytes (AES-KW)
 7C-7F:  chunk_size      00 00 01 00 (65536 LE)
-80-BF:  header_mac      64 bytes (HMAC-SHA512 over 00-7F)
-C0-1FF: reserved        320 zero bytes
+80-1BF: reserved        320 zero bytes
+1C0-1FF: header_mac     64 bytes (HMAC-SHA512 over all 512 bytes with 1C0-1FF zeroed)
 ```
 
-### 13.3 AAD for Chunk Index 0
+### 13.3 AAD for Chunk Index 0 (version byte 3, current)
 
 ```
-Hex: 00 00 00 00    (uint32 LE)
+"AeroVault v2 chunk aad v3" || file_id (16) || chunk_count (LE u32) || 00 00 00 00
 ```
 
-### 13.4 AAD for Chunk Index 42
+For a legacy version-2 vault the AAD is the 4-byte chunk index alone: `00 00 00 00`.
+
+### 13.4 AAD for Chunk Index 42 (version byte 3, current)
 
 ```
-Hex: 2a 00 00 00    (uint32 LE)
+"AeroVault v2 chunk aad v3" || file_id (16) || chunk_count (LE u32) || 2a 00 00 00
 ```
+
+For a legacy version-2 vault the AAD is the 4-byte chunk index alone: `2a 00 00 00`.
 
 ---
 
@@ -762,7 +769,7 @@ Hex: 2a 00 00 00    (uint32 LE)
 
 | Language | Implementation | Status |
 |----------|---------------|--------|
-| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.3.4) |
+| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.4.2) |
 | **Rust** | [AeroFTP Desktop](https://github.com/axpdev-lab/aeroftp) (GUI integration) | Production |
 | **Java** | [AeroFTP Mobile](https://github.com/axpdev-lab/aeroftp-mobile) `VaultPlugin.java` | Production |
 

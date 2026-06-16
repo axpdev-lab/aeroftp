@@ -118,9 +118,9 @@ The pipeline runs automatically when a tag matching `v*` is pushed.
 
 | Platform | Runner | Artifacts |
 |----------|--------|-----------|
-| Linux | `ubuntu-22.04` | `.deb`, `.rpm`, `.AppImage`, `.snap` |
-| Windows | `windows-latest` | `.msi`, `.exe` (NSIS) |
-| macOS | `macos-latest` | `.dmg` |
+| Linux | `ubuntu-22.04` (snap on `ubuntu-24.04`) | `.deb`, `.rpm`, `.AppImage`, `.snap` |
+| Windows | `windows-latest` | `.msi`, `.exe` (NSIS), portable `.zip` |
+| macOS | `macos-14` | `.dmg` (Apple Silicon + Intel, two builds) |
 
 ### Distribution
 
