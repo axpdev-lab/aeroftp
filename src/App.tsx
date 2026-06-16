@@ -1014,6 +1014,12 @@ const App: React.FC = () => {
   // Activity-log entry id for the live "Opening encrypted overlay" -> green
   // "Encrypted overlay unlocked" phase, finalized by the phase-2 reload effect.
   const overlayLogIdRef = useRef<string | null>(null);
+  // Activity-log entry id of the connect-time "Directory listing ... completed"
+  // line. For an overlay-bound profile the connect-time listing logs the raw
+  // provider path ("/"), because the overlay anchor is only known once the
+  // deferred unlock runs. The phase-2 overlay reload rewrites this entry to the
+  // anchored display path (what the path-bar shows), so the log matches the UI.
+  const connectListingLogIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (isConnected || !aeroCryptVaultId) return;
     const vaultId = aeroCryptVaultId;
@@ -4347,6 +4353,9 @@ interface UpdateVerificationInfo {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
         setPendingOverlayUnlock(null);
+        // Plain server (no overlay): the connect-time listing path is already
+        // correct, so drop the captured id without rewriting it.
+        connectListingLogIdRef.current = null;
       }
     })();
     return () => { cancelled = true; };
@@ -4373,6 +4382,18 @@ interface UpdateVerificationInfo {
           await new Promise((res) => setTimeout(res, 1500));
           reloaded = await loadRemoteFiles();
         }
+        // Rewrite the connect-time listing line to the overlay-anchored display
+        // path (what the path-bar shows), now that the decrypted reload landed.
+        // The connect-time log fired with the raw provider path ("/") before the
+        // deferred unlock knew the anchor; this realigns the log with the UI.
+        if (reloaded && connectListingLogIdRef.current) {
+          const anchored = (reloaded as FileListResponse & { display_current_path?: string }).display_current_path || reloaded.current_path;
+          humanLog.updateEntry(connectListingLogIdRef.current, {
+            status: 'success',
+            message: t('activity.listing_complete', { path: anchored, count: String(reloaded.files?.length ?? 0) }),
+          });
+        }
+        connectListingLogIdRef.current = null;
         // T3: settle the live overlay entry to green once decrypted names land.
         if (overlayLogIdRef.current) {
           humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
@@ -5227,9 +5248,8 @@ interface UpdateVerificationInfo {
     }
   };
 
-  const logListingComplete = (path: string, count: number) => {
+  const logListingComplete = (path: string, count: number): string =>
     humanLog.logRaw('activity.listing_complete', 'INFO', { path, count: String(count) }, 'success');
-  };
 
   // SEC-P1-06: TOFU host key check: returns true if key is accepted or already known
   const checkSftpHostKey = async (host: string, port: number): Promise<boolean> => {
@@ -5603,7 +5623,7 @@ interface UpdateVerificationInfo {
         logger.debug('[connectToFtp] Converted files:', files.length);
         setRemoteFiles(files);
         setCurrentRemotePath(response.current_path);
-        logListingComplete(response.current_path, files.length);
+        connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
 
         // Navigate to initial local directory if specified
         if (quickConnectDirs.localDir) {
@@ -13761,7 +13781,7 @@ interface UpdateVerificationInfo {
                     }));
                     setRemoteFiles(files);
                     setCurrentRemotePath(response.current_path);
-                    logListingComplete(response.current_path, files.length);
+                    connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
 
                     let resolvedLocalPath2 = currentLocalPath;
                     if (localInitialPath) {
