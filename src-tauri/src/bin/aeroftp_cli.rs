@@ -14244,9 +14244,11 @@ enum ProfilesActionTarget {
 /// which `profiles -i` has already printed in full above (with headers and the
 /// favourite column). It shows a compact, width-adaptive action bar on a couple
 /// of lines, lets the user pick an action either with a single key or by moving
-/// the highlight (Left/Right, Up/Down, Tab/Shift+Tab, PageUp/PageDown, all
-/// wrapping at the ends) and Enter, then prompts on one line for the target
-/// profile(s)/index, which are typed just like `rclone config`. It returns the
+/// the highlight (Left/Right, Up/Down, Tab/Shift+Tab and PageUp/PageDown all
+/// step one option and wrap at the ends; Home/End jump to first/last) and Enter,
+/// then prompts on one line for the target profile(s)/index, which are typed
+/// just like `rclone config`. The chosen option stays highlighted while the
+/// target is typed. It returns the
 /// equivalent line-mode command (e.g. `d 3 4`) so the existing, tested action
 /// handlers do the actual work; the menu never mutates the vault itself. Raw
 /// mode and the cursor are always restored, even on error.
@@ -14312,7 +14314,7 @@ fn profiles_tui_pick(
     // a live resize reflows it.
     let layout = |cols: usize| -> Vec<(Vec<usize>, usize)> {
         let budget = cols.max(20).saturating_sub(1).max(8);
-        let sep = 3usize; // " | "
+        let sep = 1usize; // "|" (Ehud's compact demo format, no surrounding spaces)
         let mut lines: Vec<(Vec<usize>, usize)> = Vec::new();
         let mut cur: Vec<usize> = Vec::new();
         let mut width = 1usize; // leading space
@@ -14349,17 +14351,16 @@ fn profiles_tui_pick(
     let mut err = std::io::stderr();
     let _ = queue!(err, cursor::Hide);
 
-    let mut prev_widths: Vec<usize> = Vec::new();
-    let chosen: Option<usize> = loop {
+    // Render the action bar in place: rewind over every physical row the
+    // previous render occupied at the current width (so a live resize that
+    // reflowed the old bar onto extra rows is fully cleared), clear downward,
+    // then print every option with `sel` highlighted, leaving everything above
+    // (the table) untouched. Records the new line widths for the next rewind.
+    let draw_bar = |err: &mut std::io::Stderr, sel: usize, prev: &mut Vec<usize>| {
         let cols = terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
         let lines = layout(cols);
-
-        // Redraw in place: rewind over every physical row the previous render
-        // occupies at the current width (so a live resize that reflowed the old
-        // bar onto extra rows is fully cleared), then clear downward, leaving
-        // everything printed above (the table) untouched.
-        if !prev_widths.is_empty() {
-            let rows = rows_used(&prev_widths, cols);
+        if !prev.is_empty() {
+            let rows = rows_used(prev, cols);
             let _ = queue!(err, cursor::MoveToColumn(0));
             if rows > 1 {
                 let _ = queue!(err, cursor::MoveUp((rows - 1) as u16));
@@ -14373,11 +14374,11 @@ fn profiles_tui_pick(
                     let _ = queue!(
                         err,
                         SetForegroundColor(Color::DarkGrey),
-                        Print(" | "),
+                        Print("|"),
                         ResetColor
                     );
                 }
-                if ai == selected {
+                if ai == sel {
                     let _ = queue!(
                         err,
                         SetAttribute(Attribute::Reverse),
@@ -14393,7 +14394,12 @@ fn profiles_tui_pick(
                 let _ = queue!(err, Print("\r\n"));
             }
         }
-        prev_widths = lines.iter().map(|(_, w)| *w).collect();
+        *prev = lines.iter().map(|(_, w)| *w).collect();
+    };
+
+    let mut prev_widths: Vec<usize> = Vec::new();
+    let chosen: Option<usize> = loop {
+        draw_bar(&mut err, selected, &mut prev_widths);
         let _ = err.flush();
 
         match event::read()? {
@@ -14402,10 +14408,18 @@ fn profiles_tui_pick(
                     break None;
                 }
                 KeyCode::Enter => break Some(selected),
-                KeyCode::Right | KeyCode::Down | KeyCode::Tab => selected = (selected + 1) % n,
-                KeyCode::Left | KeyCode::Up | KeyCode::BackTab => selected = (selected + n - 1) % n,
-                KeyCode::PageDown | KeyCode::End => selected = n - 1,
-                KeyCode::PageUp | KeyCode::Home => selected = 0,
+                // Arrows, Tab and PageUp/PageDown all step the highlight one
+                // option at a time and wrap at the ends (Ehud: PageUp/PageDown
+                // should behave like the rest, with Home/End jumping to first
+                // and last).
+                KeyCode::Right | KeyCode::Down | KeyCode::Tab | KeyCode::PageDown => {
+                    selected = (selected + 1) % n
+                }
+                KeyCode::Left | KeyCode::Up | KeyCode::BackTab | KeyCode::PageUp => {
+                    selected = (selected + n - 1) % n
+                }
+                KeyCode::Home => selected = 0,
+                KeyCode::End => selected = n - 1,
                 KeyCode::Char(c) => {
                     let lc = c.to_ascii_lowercase();
                     if let Some(idx) = actions.iter().position(|(k, _, _)| *k == lc) {
@@ -14420,25 +14434,34 @@ fn profiles_tui_pick(
         }
     };
 
-    // Wipe the action bar so the table above is all that remains, then leave raw
-    // mode for the cooked-mode line read that follows.
-    let cols = terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
-    let rows = rows_used(&prev_widths, cols);
-    let _ = queue!(err, cursor::MoveToColumn(0));
-    if rows > 1 {
-        let _ = queue!(err, cursor::MoveUp((rows - 1) as u16));
+    // For a real action keep the bar on screen with the chosen option still
+    // highlighted (Ehud: the highlight should stay so it's obvious which option
+    // was picked), then drop to a fresh line for the typed target. For a plain
+    // quit, wipe the bar so only the table above remains.
+    let action_idx = chosen.filter(|&idx| !matches!(actions[idx].2, ProfilesActionTarget::None));
+    match action_idx {
+        Some(idx) => {
+            draw_bar(&mut err, idx, &mut prev_widths);
+            let _ = queue!(err, Print("\r\n"));
+            let _ = err.flush();
+        }
+        None => {
+            let cols = terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
+            let rows = rows_used(&prev_widths, cols);
+            let _ = queue!(err, cursor::MoveToColumn(0));
+            if rows > 1 {
+                let _ = queue!(err, cursor::MoveUp((rows - 1) as u16));
+            }
+            let _ = queue!(err, Clear(ClearType::FromCursorDown));
+            let _ = err.flush();
+        }
     }
-    let _ = queue!(err, Clear(ClearType::FromCursorDown));
-    let _ = err.flush();
     drop(guard);
 
-    let Some(idx) = chosen else {
+    let Some(idx) = action_idx else {
         return Ok(ProfilesTuiOutcome::Quit);
     };
     let (key, _, target) = &actions[idx];
-    if matches!(target, ProfilesActionTarget::None) {
-        return Ok(ProfilesTuiOutcome::Quit);
-    }
 
     // Second step: the action is picked, the target is typed (Ehud's model).
     let prompt = match target {
