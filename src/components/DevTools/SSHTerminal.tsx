@@ -344,7 +344,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightWhite: '#f4f9ff',
         },
     },
-    'redlava': {
+    'redhorse': {
         name: 'Red Lava',
         colors: {
             background: '#120406',
@@ -373,7 +373,7 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
     },
 };
 
-const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber', 'true-dark', 'green', 'ice', 'redlava'];
+const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber', 'true-dark', 'green', 'ice', 'redhorse'];
 
 // Map app themes to matching terminal themes
 const APP_THEME_TO_TERMINAL: Record<string, string> = {
@@ -384,7 +384,7 @@ const APP_THEME_TO_TERMINAL: Record<string, string> = {
     'cyber': 'cyber',
     'green': 'green',
     'ice': 'ice',
-    'redlava': 'redlava',
+    'redhorse': 'redhorse',
 };
 
 // ============ Tab State ============

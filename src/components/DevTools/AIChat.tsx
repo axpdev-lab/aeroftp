@@ -504,6 +504,26 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 sidebarInactive: 'text-[#6b8a78] hover:bg-green-500/10 hover:text-[#e8f5ec]',
                 modelSelected: 'bg-green-900/30',
             };
+            case 'redhorse': return {
+                bg: 'bg-[#111111]', bgSecondary: 'bg-[#0a0a0a]', bgSecondaryHalf: 'bg-[#0a0a0a]/60',
+                bgSecondaryHover: 'hover:bg-red-500/10', bgHalf: 'bg-[#111111]/80',
+                border: 'border-white/10', borderSolid: 'border-white/15',
+                text: 'text-white', textSecondary: 'text-[#f1d6d8]', textMuted: 'text-[#b08488]',
+                textHover: 'hover:text-white',
+                btn: 'text-[#b08488] hover:text-white hover:bg-red-500/10',
+                userMsg: 'bg-red-950/40 text-[#f1d6d8] border border-red-500/30',
+                userMsgMeta: 'text-red-400/60',
+                assistantMsg: 'bg-[#0a0a0a]/80 text-white',
+                prose: 'prose prose-invert prose-sm',
+                gradient: 'from-[#0a0a0a]',
+                inputBg: 'bg-[#0a0a0a] border-white/15', inputText: 'text-white placeholder-[#b08488]',
+                dropdown: 'bg-[#0a0a0a] border-white/15 shadow-xl shadow-black/40',
+                dropdownItem: 'hover:bg-red-500/10', dropdownText: 'text-white',
+                sidebarBg: 'border-white/10 bg-[#0a0a0a]/30',
+                sidebarActive: 'bg-red-500/20 text-red-300',
+                sidebarInactive: 'text-[#b08488] hover:bg-red-500/10 hover:text-[#f1d6d8]',
+                modelSelected: 'bg-red-900/30',
+            };
             default: return { // dark
                 bg: 'bg-gray-900', bgSecondary: 'bg-gray-800', bgSecondaryHalf: 'bg-gray-800/50',
                 bgSecondaryHover: 'hover:bg-gray-700', bgHalf: 'bg-gray-800/80',

@@ -200,7 +200,7 @@ const iceTheme = {
 };
 
 // Red Lava theme: molten lava red on near-black
-const redlavaTheme = {
+const redhorseTheme = {
     base: 'vs-dark' as const,
     inherit: true,
     rules: [
@@ -234,7 +234,7 @@ const redlavaTheme = {
     },
 };
 
-type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redlava';
+type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redhorse';
 
 interface CodeEditorProps {
     file: PreviewFile | null;
@@ -288,7 +288,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         monaco.editor.defineTheme('truedark', truedarkTheme);
         monaco.editor.defineTheme('green', greenTheme);
         monaco.editor.defineTheme('ice', iceTheme);
-        monaco.editor.defineTheme('redlava', redlavaTheme);
+        monaco.editor.defineTheme('redhorse', redhorseTheme as any);
         monaco.editor.setTheme(theme);
 
         if (file) {

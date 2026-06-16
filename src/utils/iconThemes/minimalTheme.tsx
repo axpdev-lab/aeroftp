@@ -18,7 +18,7 @@ import { AeroFtpFileIcon } from '../../components/icons/AeroFtpFileIcon';
 import { AeroFtpKeystoreIcon } from '../../components/icons/AeroFtpKeystoreIcon';
 import type { IconThemeProvider, FileIconResult } from './types';
 
-export type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redlava';
+export type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse';
 
 const THEME_ACCENT: Record<EffectiveTheme, string> = {
     light: 'text-gray-500',
@@ -28,7 +28,7 @@ const THEME_ACCENT: Record<EffectiveTheme, string> = {
     cyber: 'text-emerald-400',
     green: 'text-green-400',
     ice: 'text-sky-500',
-    redlava: 'text-red-500',
+    redhorse: 'text-red-500',
 };
 
 const THEME_FOLDER_ACCENT: Record<EffectiveTheme, string> = {
@@ -39,7 +39,7 @@ const THEME_FOLDER_ACCENT: Record<EffectiveTheme, string> = {
     cyber: 'text-emerald-300',
     green: 'text-green-300',
     ice: 'text-sky-400',
-    redlava: 'text-red-400',
+    redhorse: 'text-red-400',
 };
 
 const extIconMap: Record<string, React.ElementType> = {

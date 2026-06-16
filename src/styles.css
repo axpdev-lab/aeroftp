@@ -1777,28 +1777,28 @@ html.ice::-webkit-scrollbar-thumb:hover {
    Molten lava red on near-black, dark theme
    ====================================== */
 
-html.redlava {
+html.redhorse {
   /* Near-black so the brilliant lava red pops */
-  --rl-bg: #120406;
-  --rl-bg-dark: #0a0203;
-  --rl-bg-highlight: #20070a;
+  --rl-bg: #111111;
+  --rl-bg-dark: #000000;
+  --rl-bg-highlight: #1a1a1a;
   /* Crisp white text, NOT pink - red stays reserved for accents */
   --rl-fg: #ffffff;
   --rl-fg-secondary: #f1d6d8;
   --rl-fg-muted: #b08488;
-  /* MEGA-style brilliant crimson red */
-  --rl-accent: #db282e;
-  --rl-accent-hover: #f23b41;
-  /* Status bar: slightly darker red than the titlebar for depth */
-  --rl-chrome-dim: #c2242a;
-  --rl-blood: #b01f24;
-  --rl-shield-yellow: #ffcd00;
+  /* Ferrari style crimson red */
+  --rl-accent: #E32636;
+  --rl-accent-hover: #FF2800;
+  /* Status bar/Dashboard: carbon fiber base */
+  --rl-chrome-dim: #131313;
+  --rl-blood: #8B0000;
+  --rl-shield-yellow: #FCE300;
   --rl-amber: #f59e0b;
-  --rl-border: rgba(219, 40, 46, 0.34);
+  --rl-border: rgba(255, 255, 255, 0.1);
 }
 
 /* Red Lava - Override dark mode colors */
-html.redlava.dark {
+html.redhorse.dark {
   --color-bg-primary: var(--rl-bg);
   --color-bg-secondary: var(--rl-bg-dark);
   --color-bg-tertiary: var(--rl-bg-highlight);
@@ -1811,128 +1811,152 @@ html.redlava.dark {
 }
 
 /* Red Lava specific styling */
-html.redlava .dark\:bg-gray-900 {
+html.redhorse .dark\:bg-gray-900 {
   background-color: var(--rl-bg-dark) !important;
 }
 
-html.redlava .dark\:bg-gray-800 {
+html.redhorse .dark\:bg-gray-800 {
   background-color: var(--rl-bg) !important;
 }
 
-html.redlava .dark\:bg-gray-700 {
+html.redhorse .dark\:bg-gray-700 {
   background-color: var(--rl-bg-highlight) !important;
 }
 
-html.redlava .dark\:border-gray-700,
-html.redlava .dark\:border-gray-600 {
+html.redhorse .dark\:border-gray-700,
+html.redhorse .dark\:border-gray-600 {
   border-color: var(--rl-border) !important;
 }
 
-html.redlava .dark\:text-gray-100,
-html.redlava .dark\:text-white {
+html.redhorse .dark\:text-gray-100,
+html.redhorse .dark\:text-white {
   color: var(--rl-fg) !important;
 }
 
-html.redlava .dark\:text-gray-400,
-html.redlava .dark\:text-gray-300 {
+html.redhorse .dark\:text-gray-400,
+html.redhorse .dark\:text-gray-300 {
   color: var(--rl-fg-secondary) !important;
 }
 
 /* Red Lava accents - remap blue to lava red */
-html.redlava .text-blue-500,
-html.redlava .dark\:text-blue-400 {
+html.redhorse .text-blue-500,
+html.redhorse .dark\:text-blue-400 {
   color: var(--rl-accent) !important;
 }
 
-html.redlava .bg-blue-500,
-html.redlava .dark\:bg-blue-600 {
+html.redhorse .bg-blue-500,
+html.redhorse .dark\:bg-blue-600 {
   background-color: var(--rl-accent) !important;
 }
 
-html.redlava .bg-blue-500:hover,
-html.redlava .hover\:bg-blue-600:hover {
+html.redhorse .bg-blue-500:hover,
+html.redhorse .hover\:bg-blue-600:hover {
   background-color: var(--rl-accent-hover) !important;
 }
 
 /* Red Lava folder icons - molten amber */
-html.redlava .text-yellow-500 {
+html.redhorse .text-yellow-500 {
   color: var(--rl-shield-yellow) !important;
 }
 
 /* Red Lava success/error colors */
-html.redlava .text-green-500,
-html.redlava .text-green-600 {
+html.redhorse .text-green-500,
+html.redhorse .text-green-600 {
   color: #16a34a !important;
 }
 
-html.redlava .text-red-500,
-html.redlava .text-red-600 {
+html.redhorse .text-red-500,
+html.redhorse .text-red-600 {
   color: var(--rl-accent-hover) !important;
 }
 
 /* Red Lava gradient override for header */
-html.redlava .dark\:from-gray-900 {
+html.redhorse .dark\:from-gray-900 {
   --tw-gradient-from: var(--rl-bg-dark) !important;
 }
 
-html.redlava .dark\:to-gray-800 {
+html.redhorse .dark\:to-gray-800 {
   --tw-gradient-to: var(--rl-bg) !important;
 }
 
 /* Red Lava scrollbar */
-html.redlava::-webkit-scrollbar-track {
+html.redhorse::-webkit-scrollbar-track {
   background: var(--rl-bg-dark);
 }
 
-html.redlava::-webkit-scrollbar-thumb {
+html.redhorse::-webkit-scrollbar-thumb {
   background: var(--rl-blood);
 }
 
-html.redlava::-webkit-scrollbar-thumb:hover {
+html.redhorse::-webkit-scrollbar-thumb:hover {
   background: var(--rl-accent);
 }
 
-/* Red Lava: glowing-red chrome - titlebar + status bar are the
-   molten "crust", the panels/cards stay dark like cooled rock.
-   White text for contrast on the red surfaces. */
-html.redlava .aero-titlebar {
-  background-color: var(--rl-accent) !important;
-  border-color: var(--rl-accent-hover) !important;
+/* Red Horse: glowing-red chrome - titlebar + status bar are the
+   carbon fiber "dashboard", the panels/cards stay dark.
+   White text for contrast on the surfaces. */
+/* Carbon-fiber weave: reserved for the upper bands (IntroHub tab strip,
+   session tab strip) and the status bar. The titlebar gets its own
+   gradient below so the weave does not read as repeated chrome. */
+html.redhorse .panel-header,
+html.redhorse .aero-tabstrip,
+html.redhorse [role="status"][aria-label="Status bar"] {
+  background-color: var(--rl-chrome-dim) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath fill='rgba(255,255,255,0.026)' d='M0 0h4v4H0zm4 4h4v4H4z'/%3E%3Cpath fill='rgba(0,0,0,0.09)' d='M4 0h4v4H4zM0 4h4v4H0z'/%3E%3C/svg%3E") !important;
+  border-color: var(--rl-border) !important;
   color: #ffffff !important;
 }
 
-html.redlava [role="status"][aria-label="Status bar"] {
-  background-color: var(--rl-chrome-dim) !important;
+/* Titlebar: subtle gradient from black down to dark gray (no carbon
+   fiber pattern, which is now reserved for the tab strips/status bar). */
+html.redhorse .aero-titlebar {
+  background-color: #000000 !important;
+  background-image: linear-gradient(180deg, #050505 0%, #1c1c1c 100%) !important;
   border-color: var(--rl-accent) !important;
   color: #ffffff !important;
+}
+
+/* Keep the Ferrari red accent line only directly under the titlebar
+   and directly above the status bar; every other chrome border stays
+   the neutral tenue gray (--rl-border). */
+html.redhorse .aero-titlebar,
+html.redhorse [role="status"][aria-label="Status bar"] {
+  border-color: var(--rl-accent) !important;
 }
 
 /* Every titlebar icon goes white on the red crust for contrast,
    including the support heart (which is text-blue-500, otherwise
    remapped to red-on-red) and the master-password padlock (muted
    tertiary/emerald, otherwise low-contrast). */
-html.redlava .aero-titlebar svg,
-html.redlava .aero-titlebar .text-blue-500,
-html.redlava .aero-titlebar .text-emerald-500,
-html.redlava .aero-titlebar .text-emerald-400,
-html.redlava .aero-titlebar [class*="text-[var(--color-text-primary)]"],
-html.redlava .aero-titlebar [class*="text-[var(--color-text-secondary)]"],
-html.redlava .aero-titlebar [class*="text-[var(--color-text-tertiary)]"],
-html.redlava [role="status"][aria-label="Status bar"],
-html.redlava [role="status"][aria-label="Status bar"] .dark\:text-gray-400,
-html.redlava [role="status"][aria-label="Status bar"] .dark\:text-gray-300,
-html.redlava [role="status"][aria-label="Status bar"] .text-gray-500,
-html.redlava [role="status"][aria-label="Status bar"] .text-gray-600 {
+html.redhorse .aero-titlebar svg,
+html.redhorse .aero-titlebar .text-blue-500,
+html.redhorse .aero-titlebar .text-emerald-500,
+html.redhorse .aero-titlebar .text-emerald-400,
+html.redhorse .aero-titlebar [class*="text-[var(--color-text-primary)]"],
+html.redhorse .aero-titlebar [class*="text-[var(--color-text-secondary)]"],
+html.redhorse .aero-titlebar [class*="text-[var(--color-text-tertiary)]"],
+html.redhorse [role="status"][aria-label="Status bar"],
+html.redhorse [role="status"][aria-label="Status bar"] .dark\:text-gray-400,
+html.redhorse [role="status"][aria-label="Status bar"] .dark\:text-gray-300,
+html.redhorse [role="status"][aria-label="Status bar"] .text-gray-500,
+html.redhorse [role="status"][aria-label="Status bar"] .text-gray-600 {
   color: #ffffff !important;
 }
 
+/* File-list rows (remote/local panels): keep the per-row separator
+   fainter than the structural chrome borders so the dense list of rows
+   does not read as a heavy grid. */
+html.redhorse .aero-file-row {
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
 /* Keep titlebar hover/separators legible on the red bodywork */
-html.redlava .aero-titlebar .hover\:bg-\[var\(--color-bg-tertiary\)\]:hover {
+html.redhorse .aero-titlebar .hover\:bg-\[var\(--color-bg-tertiary\)\]:hover {
   background-color: rgba(0, 0, 0, 0.22) !important;
 }
 
-html.redlava .aero-titlebar .bg-\[var\(--color-border\)\],
-html.redlava [role="status"][aria-label="Status bar"] .dark\:border-gray-700 {
+html.redhorse .aero-titlebar .bg-\[var\(--color-border\)\],
+html.redhorse [role="status"][aria-label="Status bar"] .dark\:border-gray-700 {
   background-color: rgba(255, 255, 255, 0.28) !important;
   border-color: rgba(255, 255, 255, 0.28) !important;
 }
@@ -1987,14 +2011,14 @@ html.cyber .tool-approval-bubble {
 }
 
 /* Red Lava: lava red */
-html.redlava .tool-approval-allow {
+html.redhorse .tool-approval-allow {
   background-color: var(--rl-accent);
   color: #fff;
 }
-html.redlava .tool-approval-allow:hover {
+html.redhorse .tool-approval-allow:hover {
   background-color: var(--rl-accent-hover);
 }
-html.redlava .tool-approval-bubble {
+html.redhorse .tool-approval-bubble {
   border-color: var(--rl-border) !important;
 }
 

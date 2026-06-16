@@ -330,6 +330,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         : appTheme === 'tokyo' ? '/icons/AeroFTP_simbol_color_tokio_120x120.png'
         : appTheme === 'cyber' ? '/icons/AeroFTP_simbol_color_cyber_120x120.png'
         : appTheme === 'green' ? '/icons/AeroFTP_simbol_color_cyber_120x120.png'
+        : appTheme === 'redhorse' ? '/icons/AeroFTP_simbol_white_120x120.png'
         : '/icons/AeroFTP_simbol_color_dark_120x120.png';
 
     const activityCls = hasActivity ? 'animate-pulse' : '';

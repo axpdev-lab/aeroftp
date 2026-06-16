@@ -153,6 +153,15 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
                 dropdownItemText: 'text-[#6b8a78]',
                 sparkle: 'text-green-400',
             };
+            case 'redhorse': return {
+                headerBg: 'bg-[#0a0a0a]/60 border-white/10',
+                textLabel: 'text-[#f1d6d8]',
+                btn: 'text-[#b08488] hover:text-white hover:bg-red-500/10',
+                dropdown: 'bg-[#0a0a0a] border-white/15 shadow-xl shadow-black/40',
+                dropdownItem: 'hover:bg-red-500/10',
+                dropdownItemText: 'text-[#b08488]',
+                sparkle: 'text-[#FF2800]',
+            };
             default: return { // dark
                 headerBg: 'bg-gray-800/50 border-gray-700/50',
                 textLabel: 'text-gray-300',

@@ -22,7 +22,7 @@ interface DevToolsV2Props {
     onSaveFile?: (content: string, file: PreviewFile) => Promise<void>;
     onClearFile?: () => void;
     /** Monaco editor theme */
-    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redlava';
+    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redhorse';
     /** App-level theme for DevTools panel styling */
     appTheme?: EffectiveTheme;
     /** SSH connection info for remote shell (when connected to SFTP) */
@@ -294,6 +294,18 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                 text: 'text-[#6b8a78]',
                 divider: 'bg-green-900/40',
                 panelHeader: 'bg-[#081410]/50 border-green-900/40',
+            };
+            case 'redhorse': return {
+                panel: 'bg-[#111111] text-white',
+                toolbar: 'bg-[#0a0a0a] border-white/10',
+                border: 'border-white/10',
+                resizeHandle: 'bg-[#1a1a1a] hover:bg-[#E32636]',
+                resizeBar: 'bg-white/10 group-hover:bg-[#FF2800]',
+                buttonInactive: 'text-[#b08488] hover:text-white hover:bg-red-500/10',
+                buttonHover: 'hover:bg-red-500/10',
+                text: 'text-[#b08488]',
+                divider: 'bg-white/10',
+                panelHeader: 'bg-[#0a0a0a]/50 border-white/10',
             };
             default: return { // dark
                 panel: 'bg-gray-900 text-gray-100',

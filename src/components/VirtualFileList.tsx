@@ -103,7 +103,7 @@ function VirtualRow({ index, style, files, listProps }: RowComponentProps<RowExt
             <div
                 style={style}
                 role="row"
-                className={`flex items-center ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'} border-b border-gray-100 dark:border-gray-700`}
+                className={`aero-file-row flex items-center ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'} border-b border-gray-100 dark:border-gray-700`}
                 onDoubleClick={() => !disabled && listProps.onNavigateUp()}
             >
                 <div className="flex-1 min-w-0 px-4 py-1 flex items-center gap-2 text-gray-500">
@@ -150,7 +150,7 @@ function VirtualRow({ index, style, files, listProps }: RowComponentProps<RowExt
             onClick={(e) => listProps.onFileClick(e, file, fileIndex)}
             onDoubleClick={() => listProps.onFileDoubleClick(file)}
             onContextMenu={(e) => listProps.onContextMenu(e, file)}
-            className={`flex items-center cursor-pointer transition-colors border-b border-gray-100 dark:border-gray-700 ${
+            className={`aero-file-row flex items-center cursor-pointer transition-colors border-b border-gray-100 dark:border-gray-700 ${
                 isDropTarget
                     ? 'bg-green-100 dark:bg-green-900/40 ring-2 ring-green-500'
                     : isSelected

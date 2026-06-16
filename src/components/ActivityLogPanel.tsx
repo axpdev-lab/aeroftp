@@ -31,7 +31,7 @@ import { useTranslation } from '../i18n';
 // Theme Types
 // ============================================================================
 
-type LogTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redlava';
+type LogTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse';
 
 // ============================================================================
 // Icon Mapping - Lucide icons for operations
@@ -371,7 +371,7 @@ const BASE_THEMES = {
     },
 };
 
-// truedark + green + ice + redlava inherit visual semantics from
+// truedark + green + ice + redhorse inherit visual semantics from
 // dark/cyber/light respectively. They get their distinct chrome from
 // CSS overrides on the html element.
 const THEMES: Record<LogTheme, typeof BASE_THEMES.dark> = {
@@ -379,7 +379,7 @@ const THEMES: Record<LogTheme, typeof BASE_THEMES.dark> = {
     truedark: BASE_THEMES.dark,
     green: BASE_THEMES.cyber,
     ice: BASE_THEMES.light,
-    redlava: BASE_THEMES.cyber,
+    redhorse: BASE_THEMES.cyber,
 };
 
 // ============================================================================
