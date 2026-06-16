@@ -128,18 +128,24 @@ export function MyServersSidebar({
         );
     }
 
-    const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    // Render helpers (plain functions, NOT inline components): defining a
+    // component inside the body gives it a new identity every render, so React
+    // remounts the rows on each filter change. That made the clicked row flash
+    // and swallow the first click (needed two clicks to filter). Calling these
+    // as functions inlines the JSX and keeps the elements stable.
+    const renderSectionLabel = (text: string) => (
         <div className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {children}
+            {text}
         </div>
     );
 
-    const FilterRow = ({ id }: { id: MyServersFilterBy }) => {
+    const renderFilterRow = (id: MyServersFilterBy) => {
         const Icon = FILTER_ICON[id];
         const active = filterActive(id);
         const count = chipCounts[id] ?? 0;
         return (
             <button
+                key={id}
                 onClick={() => onFilterChange(id)}
                 className={`flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
                     active
@@ -199,13 +205,13 @@ export function MyServersSidebar({
 
             {/* Scrollable filter list */}
             <div className="flex-1 overflow-y-auto px-1.5 pb-2">
-                <SectionLabel>{t('introHub.sidebar.quick')}</SectionLabel>
-                {QUICK_IDS.map((id) => <FilterRow key={id} id={id} />)}
+                {renderSectionLabel(t('introHub.sidebar.quick'))}
+                {QUICK_IDS.map(renderFilterRow)}
 
-                <SectionLabel>{t('introHub.sidebar.protocols')}</SectionLabel>
-                {PROTOCOL_IDS.map((id) => <FilterRow key={id} id={id} />)}
+                {renderSectionLabel(t('introHub.sidebar.protocols'))}
+                {PROTOCOL_IDS.map(renderFilterRow)}
 
-                <SectionLabel>{t('introHub.sidebar.groups')}</SectionLabel>
+                {renderSectionLabel(t('introHub.sidebar.groups'))}
                 {groups.map((group) => {
                     const active = activeGroupId === group.id;
                     const count = groupCounts[group.id] ?? 0;
