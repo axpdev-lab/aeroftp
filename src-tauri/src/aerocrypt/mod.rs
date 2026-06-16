@@ -39,6 +39,21 @@ const ARGON2_MEM_KIB: u32 = 128 * 1024;
 const ARGON2_TIME: u32 = 4;
 const ARGON2_LANES: u32 = 4;
 
+/// Argon2id memory cost (KiB) of the shared profile. Exposed so consumers can
+/// bind the KDF parameters into authenticated metadata (e.g. the overlay config
+/// MAC) without re-hardcoding them.
+pub fn argon2_mem_kib() -> u32 {
+    ARGON2_MEM_KIB
+}
+/// Argon2id time cost (passes) of the shared profile.
+pub fn argon2_time() -> u32 {
+    ARGON2_TIME
+}
+/// Argon2id parallelism (lanes) of the shared profile.
+pub fn argon2_lanes() -> u32 {
+    ARGON2_LANES
+}
+
 /// Fill an `N`-byte array from the OS CSPRNG.
 pub fn random_array<const N: usize>() -> [u8; N] {
     let mut out = [0u8; N];

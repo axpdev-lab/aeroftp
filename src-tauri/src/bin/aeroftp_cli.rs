@@ -3831,6 +3831,11 @@ enum CryptCommands {
         /// Encryption password (or will prompt interactively)
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
+        /// Overwrite an existing overlay config at the target. DESTRUCTIVE:
+        /// rotates the salt, making every file already in the overlay
+        /// permanently undecryptable.
+        #[arg(long)]
+        force: bool,
     },
     /// List files in an encrypted overlay (decrypted names)
     Ls {
@@ -37856,31 +37861,69 @@ async fn cmd_crypt_init(
     url: &str,
     path: &str,
     password: &str,
+    force: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerocrypt::overlay;
-    // New overlays are created as AECR v2 on the shared engine. Validate the
-    // password by deriving the master key before touching the remote.
-    let salt = overlay::random_salt_v2();
-    let cfg = overlay::OverlayConfig::V2 { salt };
-    if let Err(e) = overlay::derive_master_key(&cfg, password) {
-        print_error(format, &format!("Invalid password: {}", e), 6);
-        return 6;
-    }
+    // New overlays are created as AECR v3 (length-bound content + key-bound
+    // config MAC). Derive the master key first so we can both validate the
+    // password and bind the config MAC.
+    let salt = overlay::random_salt_v3();
+    let cfg = overlay::OverlayConfig::V3 {
+        salt,
+        mac: [0u8; 32],
+    };
+    let master_key = match overlay::derive_master_key(&cfg, password) {
+        Ok(k) => k,
+        Err(e) => {
+            print_error(format, &format!("Invalid password: {}", e), 6);
+            return 6;
+        }
+    };
+    let config_json = match overlay::init_config_v3(&salt, &master_key) {
+        Ok(j) => j,
+        Err(e) => {
+            print_error(format, &format!("Failed to build crypt config: {}", e), 5);
+            return 5;
+        }
+    };
+
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
-
-    let config_json = overlay::init_config_v2(&salt);
     let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
 
-    // Write config to tempfile, upload
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), &config_json).unwrap();
+    // C4: never silently clobber an existing overlay. Re-init rotates the salt,
+    // which permanently orphans every file already encrypted under it.
+    if !force && provider.size(&config_path).await.is_ok() {
+        print_error(
+            format,
+            &format!(
+                "an AeroCrypt overlay already exists at {} (existing files would become \
+                 permanently undecryptable). Re-run with --force to overwrite.",
+                base_path
+            ),
+            9,
+        );
+        return 9;
+    }
+
+    // Stage the config to a tempfile, then upload.
+    let tmp = match tempfile::NamedTempFile::new() {
+        Ok(t) => t,
+        Err(e) => {
+            print_error(format, &format!("Failed to create temp file: {}", e), 11);
+            return 11;
+        }
+    };
+    if let Err(e) = std::fs::write(tmp.path(), &config_json) {
+        print_error(format, &format!("Failed to stage crypt config: {}", e), 11);
+        return 11;
+    }
 
     match provider
         .upload(&tmp.path().to_string_lossy(), &config_path, None)
@@ -37947,6 +37990,10 @@ async fn cmd_crypt_ls(
             return 6;
         }
     };
+    if let Err(e) = overlay::verify_config_mac(&cfg, &master_key) {
+        print_error(format, &format!("Crypt unlock failed: {}", e), 6);
+        return 6;
+    }
 
     if recursive {
         // Walk the encrypted tree (depth-bounded like the rclone-crypt overlay),
@@ -38125,6 +38172,10 @@ async fn cmd_crypt_put(
             return 6;
         }
     };
+    if let Err(e) = overlay::verify_config_mac(&cfg, &master_key) {
+        print_error(format, &format!("Crypt unlock failed: {}", e), 6);
+        return 6;
+    }
     let start = Instant::now();
 
     // Directory upload: encrypt and mirror the whole local tree under the
@@ -38343,8 +38394,21 @@ async fn cmd_crypt_put(
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
 
     // Write encrypted data to tempfile, upload
-    let tmp = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(tmp.path(), &ciphertext).unwrap();
+    let tmp = match tempfile::NamedTempFile::new() {
+        Ok(t) => t,
+        Err(e) => {
+            print_error(format, &format!("Failed to create temp file: {}", e), 11);
+            return 11;
+        }
+    };
+    if let Err(e) = std::fs::write(tmp.path(), &ciphertext) {
+        print_error(
+            format,
+            &format!("Failed to stage encrypted file: {}", e),
+            11,
+        );
+        return 11;
+    }
 
     match provider
         .upload(&tmp.path().to_string_lossy(), &remote_file, None)
@@ -38414,6 +38478,10 @@ async fn cmd_crypt_get(
             return 6;
         }
     };
+    if let Err(e) = overlay::verify_config_mac(&cfg, &master_key) {
+        print_error(format, &format!("Crypt unlock failed: {}", e), 6);
+        return 6;
+    }
     let start = Instant::now();
 
     if recursive {
@@ -48810,6 +48878,7 @@ async fn main() {
                     url,
                     path,
                     password,
+                    force,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
                     if pw.is_empty() {
@@ -48821,7 +48890,7 @@ async fn main() {
                         } else {
                             url.as_str()
                         };
-                        cmd_crypt_init(u, path, &pw, &cli, format).await
+                        cmd_crypt_init(u, path, &pw, *force, &cli, format).await
                     }
                 }
                 CryptCommands::Ls {
@@ -48831,12 +48900,17 @@ async fn main() {
                     password,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                        "_"
+                    if pw.is_empty() {
+                        print_error(format, "Password required for crypt ls", 5);
+                        5
                     } else {
-                        url.as_str()
-                    };
-                    cmd_crypt_ls(u, path, &pw, *recursive, &cli, format).await
+                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                            "_"
+                        } else {
+                            url.as_str()
+                        };
+                        cmd_crypt_ls(u, path, &pw, *recursive, &cli, format).await
+                    }
                 }
                 CryptCommands::Put {
                     local,
@@ -48846,12 +48920,17 @@ async fn main() {
                     password,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                        "_"
+                    if pw.is_empty() {
+                        print_error(format, "Password required for crypt put", 5);
+                        5
                     } else {
-                        url.as_str()
-                    };
-                    cmd_crypt_put(u, local, remote, &pw, *recursive, &cli, format).await
+                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                            "_"
+                        } else {
+                            url.as_str()
+                        };
+                        cmd_crypt_put(u, local, remote, &pw, *recursive, &cli, format).await
+                    }
                 }
                 CryptCommands::Get {
                     remote,
@@ -48862,12 +48941,17 @@ async fn main() {
                     password,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                        "_"
+                    if pw.is_empty() {
+                        print_error(format, "Password required for crypt get", 5);
+                        5
                     } else {
-                        url.as_str()
-                    };
-                    cmd_crypt_get(u, remote, path, local, &pw, *recursive, &cli, format).await
+                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                            "_"
+                        } else {
+                            url.as_str()
+                        };
+                        cmd_crypt_get(u, remote, path, local, &pw, *recursive, &cli, format).await
+                    }
                 }
             }
         }

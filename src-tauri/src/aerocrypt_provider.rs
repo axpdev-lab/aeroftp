@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 use tauri::State;
 use tokio::sync::Mutex;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::aerocrypt::overlay::{self, OverlayConfig};
 use crate::aerocrypt::{names, KEY_SIZE};
@@ -39,6 +39,23 @@ use crate::{join_remote_path, sanitize_local_name, validate_single_remote_name};
 /// Config file written at the root of an overlay; holds the version + salt the
 /// master key is derived from. Skipped from every listing and never decrypted.
 const CONFIG_NAME: &str = ".aeroftp-crypt.json";
+
+/// Hard cap on the overlay config read from the (untrusted) remote, so a hostile
+/// remote cannot serve a multi-GB "config" and OOM the backend before parsing.
+const CONFIG_MAX_BYTES: u64 = 1024 * 1024;
+
+/// Derive the overlay master key off the async executor (Argon2id 128 MiB / t4
+/// is CPU/memory heavy and must not block a Tokio worker).
+async fn derive_master_key_async(
+    config: &OverlayConfig,
+    password: &str,
+) -> Result<[u8; KEY_SIZE], String> {
+    let cfg = config.clone();
+    let pw = Zeroizing::new(password.to_string());
+    tokio::task::spawn_blocking(move || overlay::derive_master_key(&cfg, &pw))
+        .await
+        .map_err(|e| format!("Key derivation task failed: {e}"))?
+}
 
 /// Maximum directory recursion depth for folder transfers. Matches the
 /// rclone-crypt overlay (`RCLONE_OVERLAY_MAX_DEPTH`) and the CLI
@@ -193,11 +210,13 @@ fn decode_path(master_key: &[u8; KEY_SIZE], encrypted_path: &str) -> String {
 /// Unlock a native AeroCrypt overlay for the session.
 ///
 /// `config_json`:
-/// - `Some(json)` — an existing overlay; parse it and derive the master key
-///   (the caller reads it from the remote via [`aerocrypt_provider_read_config`]).
-/// - `None` — prepare a fresh overlay: generate a v2 salt + config and derive
-///   the key. The returned `config_json` is what the caller persists on the
-///   remote (e.g. via [`aerocrypt_provider_create_remote`]).
+/// - `Some(json)` — an existing overlay; parse it, derive the master key, and
+///   verify the key-bound config MAC (v3), so a tampered `version`/`salt` or a
+///   wrong password fails closed (the caller reads the config from the remote
+///   via [`aerocrypt_provider_read_config`]).
+/// - `None` — prepare a fresh overlay: generate a v3 salt + key-bound config and
+///   derive the key. The returned `config_json` is what the caller persists on
+///   the remote (e.g. via [`aerocrypt_provider_create_remote`]).
 #[tauri::command]
 pub async fn aerocrypt_unlock(
     state: State<'_, AeroCryptState>,
@@ -205,18 +224,28 @@ pub async fn aerocrypt_unlock(
     config_json: Option<String>,
 ) -> Result<AeroCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
+    let pw = secrecy::ExposeSecret::expose_secret(&secret_pwd);
 
-    let (config, config_json_out) = match config_json {
-        Some(json) => (overlay::parse_config(&json)?, json),
+    let (config, master_key, config_json_out) = match config_json {
+        Some(json) => {
+            let config = overlay::parse_config(&json)?;
+            let master_key = derive_master_key_async(&config, pw).await?;
+            // F1: reject a wrong password or a tampered version/salt before use.
+            overlay::verify_config_mac(&config, &master_key)?;
+            (config, master_key, json)
+        }
         None => {
-            let salt = overlay::random_salt_v2();
-            let json = overlay::init_config_v2(&salt);
-            (OverlayConfig::V2 { salt }, json)
+            let salt = overlay::random_salt_v3();
+            let tmp = OverlayConfig::V3 {
+                salt,
+                mac: [0u8; 32],
+            };
+            let master_key = derive_master_key_async(&tmp, pw).await?;
+            let json = overlay::init_config_v3(&salt, &master_key)?;
+            let config = overlay::parse_config(&json)?;
+            (config, master_key, json)
         }
     };
-
-    let master_key =
-        overlay::derive_master_key(&config, secrecy::ExposeSecret::expose_secret(&secret_pwd))?;
     let version = config.version();
 
     let vault_id = uuid::Uuid::new_v4().to_string();
@@ -289,8 +318,22 @@ pub async fn aerocrypt_provider_read_config(
         cwd,
         config_path
     );
+    // Cap the size before buffering: the config is attacker-controlled (it lives
+    // on the remote) and a hostile remote must not be able to OOM us with a giant
+    // "config". A real overlay config is well under a kilobyte.
+    if let Ok(sz) = provider.size(&config_path).await {
+        if sz > CONFIG_MAX_BYTES {
+            return Err(format!(
+                "crypt config at {} is implausibly large ({} bytes); refusing to read",
+                config_path, sz
+            ));
+        }
+    }
     match provider.download_to_bytes(&config_path).await {
         Ok(bytes) => {
+            if bytes.len() as u64 > CONFIG_MAX_BYTES {
+                return Err("crypt config exceeds the maximum allowed size".to_string());
+            }
             log::debug!("[aerocrypt][read_config] FOUND config at {:?}", config_path);
             Ok(Some(String::from_utf8_lossy(&bytes).to_string()))
         }
@@ -455,11 +498,24 @@ pub async fn aerocrypt_provider_download_file(
     if let Some(parent) = std::path::Path::new(&output_path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    tokio::fs::write(&output_path, &plaintext)
-        .await
-        .map_err(|e| format!("Failed to write output file: {}", e))?;
+    write_plaintext_atomic(&output_path, &plaintext).await?;
 
     Ok(output_path)
+}
+
+/// Write decrypted plaintext atomically: stage to a sibling `.aerotmp` file then
+/// rename over the target, so an interrupted decrypt never leaves a partial or
+/// 0-byte plaintext file (matches the app's atomic-download convention).
+async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(), String> {
+    let tmp = format!("{}.aerotmp", output_path);
+    tokio::fs::write(&tmp, plaintext)
+        .await
+        .map_err(|e| format!("Failed to write output file: {}", e))?;
+    if let Err(e) = tokio::fs::rename(&tmp, output_path).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(format!("Failed to finalize output file: {}", e));
+    }
+    Ok(())
 }
 
 /// Encrypt a local file and upload it under an obfuscated name in the current
@@ -609,9 +665,7 @@ pub async fn aerocrypt_provider_download_folder(
                     .map_err(|e| format!("Failed to download {}: {}", remote_child, e))?;
                 let plaintext = overlay::decrypt_data(&master_key, &encrypted_blob)
                     .map_err(|e| format!("Decrypt failed for {}: {}", plain_name, e))?;
-                tokio::fs::write(&local_target, &plaintext)
-                    .await
-                    .map_err(|e| format!("Failed to write {}: {}", local_target, e))?;
+                write_plaintext_atomic(&local_target, &plaintext).await?;
                 files_done += 1;
             }
         }
@@ -763,21 +817,30 @@ pub async fn aerocrypt_provider_upload_folder(
 }
 
 /// Bootstrap a brand-new native AeroCrypt overlay on the connected provider:
-/// generate a fresh v2 config, derive the key, write `.aeroftp-crypt.json` at
-/// the (optional) sub-path, and register the unlocked vault.
+/// generate a fresh v3 (key-bound) config, derive the key, write
+/// `.aeroftp-crypt.json` at the (optional) sub-path, and register the unlocked
+/// vault. Refuses to overwrite an existing overlay unless `force` is set, because
+/// re-initializing rotates the salt and would orphan every existing file.
 #[tauri::command]
 pub async fn aerocrypt_provider_create_remote(
     provider_state: State<'_, ProviderState>,
     aerocrypt_state: State<'_, AeroCryptState>,
     password: String,
     target_subpath: Option<String>,
+    force: Option<bool>,
 ) -> Result<AeroCryptVaultInfo, String> {
     let secret_pwd = secrecy::SecretString::from(password);
-    let salt = overlay::random_salt_v2();
-    let config = OverlayConfig::V2 { salt };
-    let config_json = overlay::init_config_v2(&salt);
+    let force = force.unwrap_or(false);
+    let salt = overlay::random_salt_v3();
+    let tmp_cfg = OverlayConfig::V3 {
+        salt,
+        mac: [0u8; 32],
+    };
     let master_key =
-        overlay::derive_master_key(&config, secrecy::ExposeSecret::expose_secret(&secret_pwd))?;
+        derive_master_key_async(&tmp_cfg, secrecy::ExposeSecret::expose_secret(&secret_pwd))
+            .await?;
+    let config_json = overlay::init_config_v3(&salt, &master_key)?;
+    let config = overlay::parse_config(&config_json)?;
 
     {
         let mut provider_lock = provider_state.provider.lock().await;
@@ -807,6 +870,16 @@ pub async fn aerocrypt_provider_create_remote(
 
             let base = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
             let config_path = join_remote_path(&base, CONFIG_NAME);
+            // C4: never silently clobber an existing overlay. Re-init rotates the
+            // salt, which permanently orphans every file already encrypted here.
+            if !force && provider.size(&config_path).await.is_ok() {
+                return Err(format!(
+                    "an AeroCrypt overlay already exists at {}; refusing to re-initialize \
+                     (existing files would become permanently undecryptable). \
+                     Pass force=true to overwrite.",
+                    base
+                ));
+            }
             log::debug!(
                 "[aerocrypt][create_remote] after cd: base(pwd)={:?} writing config to {:?}",
                 base,
@@ -904,8 +977,17 @@ mod tests {
 
     #[test]
     fn file_round_trip_through_codec() {
-        let cfg = OverlayConfig::V2 { salt: [9u8; 32] };
-        let master = overlay::derive_master_key(&cfg, "pw").unwrap();
+        let salt = [9u8; 32];
+        let master = overlay::derive_master_key(
+            &OverlayConfig::V3 {
+                salt,
+                mac: [0u8; 32],
+            },
+            "pw",
+        )
+        .unwrap();
+        let json = overlay::init_config_v3(&salt, &master).unwrap();
+        let cfg = overlay::parse_config(&json).unwrap();
         let plaintext = b"AeroCrypt provider round trip".repeat(4096);
         let blob = overlay::encrypt_data(&cfg, &master, &plaintext).unwrap();
         assert_eq!(overlay::decrypt_data(&master, &blob).unwrap(), plaintext);
