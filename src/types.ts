@@ -142,6 +142,41 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
   return type === "ftp" || type === "ftps";
 };
 
+// Backends where a transparent encryption overlay (AeroCrypt / rclone-crypt)
+// does NOT apply and must NOT be offered. These accept only specific content
+// or impose their own path/object model, so writing encrypted blobs through
+// them is confusing at best and corrupts/rejects uploads at worst:
+//  - Media-only APIs (images/video, transformations, flat or media-library
+//    layout): Immich, ImageKit, Uploadcare, Cloudinary, Google Photos.
+//  - Code / release hosting (repos, not arbitrary file storage): GitHub, GitLab.
+// Google Photos is already excluded by isNonFtpProvider (OAuth media), but is
+// listed for clarity. Everything else that uses a provider backend supports
+// arbitrary file CRUD, so the overlay applies.
+const CRYPT_OVERLAY_INCOMPATIBLE: ReadonlySet<string> = new Set([
+  "immich",
+  "imagekit",
+  "uploadcare",
+  "cloudinary",
+  "googlephotos",
+  "github",
+  "gitlab",
+]);
+
+// True when a transparent crypt overlay can be offered for this protocol.
+// Used by both the runtime context-menu entries and the connection-form
+// overlay toggle so the two surfaces stay consistent (provider-aware: the
+// overlay only shows where it is actually usable).
+export const providerSupportsCryptOverlay = (
+  type?: ProviderType | string | null,
+): boolean => {
+  if (!type) return false;
+  if (type === "ftp" || type === "ftps") return true;
+  return (
+    isNonFtpProvider(type as ProviderType) &&
+    !CRYPT_OVERLAY_INCOMPATIBLE.has(type)
+  );
+};
+
 // First-class native-API provider protocols. A saved profile with one of
 // these protocols is authoritative: the connect path must NOT override it
 // from a registry preset. Some providers expose BOTH a native API protocol

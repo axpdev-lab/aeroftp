@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
-import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -858,10 +858,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    // P3: the AeroCrypt overlay binding is offered for the same backends the
-    // runtime overlay toolbar button supports (App.tsx usesProviderApi: ftp/ftps
-    // + every non-ftp provider).
-    const overlayEligible = !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
+    // P3: the AeroCrypt overlay binding is offered only on backends where a
+    // transparent crypt overlay actually applies (shared predicate with the
+    // runtime context-menu entries in App.tsx). Media-only and repo APIs are
+    // excluded: an encrypted overlay there is confusing and corrupts uploads.
+    const overlayEligible = providerSupportsCryptOverlay(protocol);
     // C-EDIT-GUARD: kind + credential fields are read-only when editing a profile
     // that already carries an overlay binding (its remote holds keyed blobs).
     const overlayFieldsLocked = overlayBindingLocked && !!editingProfileId;

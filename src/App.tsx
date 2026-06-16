@@ -13,7 +13,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, providerSupportsCryptOverlay, supportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -12143,9 +12143,11 @@ interface UpdateVerificationInfo {
         action: () => loadRemoteFiles(),
       },
       // Encrypted overlay open/create (folder-scoped): replaces the removed
-      // toolbar buttons. Provider-API backends only, and only when no overlay
-      // is already active (the lit path-bar badge handles lock/detach).
-      ...(usesProviderApi(currentProtocol as ProviderType) && !aeroCryptVaultId && !rcloneCryptVaultId ? [
+      // toolbar buttons. Only on backends where a transparent crypt overlay
+      // actually applies (not media-only / repo APIs), and only when no overlay
+      // is already active (the lit path-bar badge handles lock/detach: opening a
+      // second overlay on an active panel would conflict).
+      ...(providerSupportsCryptOverlay(currentProtocol) && !aeroCryptVaultId && !rcloneCryptVaultId ? [
         {
           label: `${t('aerocryptNative.title')} (${t('aerocryptNative.recommended')})`,
           icon: <OverlayIcon size={14} className="text-emerald-500" />,
