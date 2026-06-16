@@ -7274,6 +7274,26 @@ impl Drop for ArchiveTempFile {
     }
 }
 
+/// Decide whether a ZIP entry should be stored rather than deflated, so that
+/// incompressible data never gets larger from compression (#276, store-if-larger).
+/// Returns true when a deflate pass at `level` would not shrink `data`.
+fn zip_entry_should_store(data: &[u8], level: i64) -> bool {
+    use std::io::Write;
+    if level <= 0 || data.is_empty() {
+        return level <= 0; // level 0 = store everything; empty data is a no-op either way
+    }
+    let lvl = level.clamp(1, 9) as u32;
+    let mut enc = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(lvl));
+    if enc.write_all(data).is_err() {
+        return false;
+    }
+    match enc.finish() {
+        // Store only when deflate fails to make the payload smaller.
+        Ok(compressed) => compressed.len() >= data.len(),
+        Err(_) => false,
+    }
+}
+
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
 async fn compress_files(
@@ -7323,21 +7343,30 @@ async fn compress_files(
                 .ok_or("Invalid file name")?
                 .to_string_lossy();
 
-            if let Some(ref pwd) = secret_password {
-                zip.start_file(
-                    file_name.to_string(),
-                    base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
-                )
-                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-            } else {
-                zip.start_file(file_name.to_string(), base_options)
-                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-            }
-
             let mut f = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
             let mut buffer = Vec::new();
             f.read_to_end(&mut buffer)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
+
+            // store-if-larger: don't let deflate inflate an incompressible file.
+            let entry_options = if zip_entry_should_store(&buffer, level) {
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored)
+            } else {
+                SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated)
+                    .compression_level(Some(level))
+            };
+
+            if let Some(ref pwd) = secret_password {
+                zip.start_file(
+                    file_name.to_string(),
+                    entry_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+                )
+                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+            } else {
+                zip.start_file(file_name.to_string(), entry_options)
+                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+            }
             zip.write_all(&buffer)
                 .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
         } else if path.is_dir() {
@@ -7360,23 +7389,33 @@ async fn compress_files(
                 }
 
                 if metadata.is_file() {
-                    if let Some(ref pwd) = secret_password {
-                        zip.start_file(
-                            relative_path.to_string_lossy().to_string(),
-                            base_options
-                                .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
-                        )
-                        .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-                    } else {
-                        zip.start_file(relative_path.to_string_lossy().to_string(), base_options)
-                            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-                    }
-
                     let mut f = File::open(entry_path)
                         .map_err(|e| format!("Failed to open file: {}", e))?;
                     let mut buffer = Vec::new();
                     f.read_to_end(&mut buffer)
                         .map_err(|e| format!("Failed to read file: {}", e))?;
+
+                    // store-if-larger: don't let deflate inflate an incompressible file.
+                    let entry_options = if zip_entry_should_store(&buffer, level) {
+                        SimpleFileOptions::default()
+                            .compression_method(zip::CompressionMethod::Stored)
+                    } else {
+                        SimpleFileOptions::default()
+                            .compression_method(zip::CompressionMethod::Deflated)
+                            .compression_level(Some(level))
+                    };
+
+                    if let Some(ref pwd) = secret_password {
+                        zip.start_file(
+                            relative_path.to_string_lossy().to_string(),
+                            entry_options
+                                .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+                        )
+                        .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                    } else {
+                        zip.start_file(relative_path.to_string_lossy().to_string(), entry_options)
+                            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                    }
                     zip.write_all(&buffer)
                         .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
                 } else if metadata.is_dir() && entry_path != path {
@@ -16273,6 +16312,95 @@ mod window_size_heal_tests {
             MAIN_MIN_INNER_H
         ));
         assert!(!restored_size_is_degenerate(1540.0, 1050.0));
+    }
+}
+
+#[cfg(test)]
+mod compress_store_tests {
+    use super::*;
+
+    /// Deterministic incompressible bytes (LCG), so deflate cannot shrink them.
+    fn incompressible(n: usize, mut x: u64) -> Vec<u8> {
+        (0..n)
+            .map(|_| {
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (x >> 33) as u8
+            })
+            .collect()
+    }
+
+    #[test]
+    fn store_decision_rejects_deflate_expansion() {
+        // Highly compressible: deflate wins, do not store.
+        assert!(!zip_entry_should_store(&vec![0u8; 20_000], 6));
+        // Incompressible: deflate cannot help, store instead of expanding.
+        assert!(zip_entry_should_store(
+            &incompressible(20_000, 0x1234_5678),
+            6
+        ));
+        // Level 0 means store everything.
+        assert!(zip_entry_should_store(&vec![0u8; 20_000], 0));
+        // Empty payload at a real level is a no-op (no expansion to avoid).
+        assert!(!zip_entry_should_store(&[], 6));
+    }
+
+    #[tokio::test]
+    async fn compress_files_stores_incompressible_deflates_compressible() {
+        use std::io::Read;
+        let dir = tempfile::tempdir().unwrap();
+        let inc = incompressible(100_000, 0x9e37_79b9);
+        let cmp = vec![b'A'; 100_000];
+        let inc_path = dir.path().join("random.bin");
+        let cmp_path = dir.path().join("zeros.txt");
+        std::fs::write(&inc_path, &inc).unwrap();
+        std::fs::write(&cmp_path, &cmp).unwrap();
+        let out = dir.path().join("out.zip");
+
+        compress_files(
+            vec![
+                inc_path.to_string_lossy().to_string(),
+                cmp_path.to_string_lossy().to_string(),
+            ],
+            out.to_string_lossy().to_string(),
+            None,
+            Some(6),
+        )
+        .await
+        .expect("compress");
+
+        let f = std::fs::File::open(&out).unwrap();
+        let mut zip = zip::ZipArchive::new(f).unwrap();
+        let (mut saw_stored, mut saw_deflated) = (false, false);
+        for i in 0..zip.len() {
+            let mut e = zip.by_index(i).unwrap();
+            let name = e.name().to_string();
+            if name.contains("random") {
+                assert_eq!(
+                    e.compression(),
+                    zip::CompressionMethod::Stored,
+                    "incompressible entry must be stored, not expanded"
+                );
+                saw_stored = true;
+                let mut buf = Vec::new();
+                e.read_to_end(&mut buf).unwrap();
+                assert_eq!(buf, inc, "stored entry must round-trip byte-identical");
+            } else if name.contains("zeros") {
+                assert_eq!(
+                    e.compression(),
+                    zip::CompressionMethod::Deflated,
+                    "compressible entry must still deflate"
+                );
+                saw_deflated = true;
+            }
+        }
+        assert!(saw_stored && saw_deflated, "both entries must be present");
+        // The stored entry must not have inflated the payload.
+        assert!(
+            std::fs::metadata(&out).unwrap().len() < (inc.len() + cmp.len()) as u64,
+            "archive must not be larger than the raw inputs"
+        );
     }
 }
 
