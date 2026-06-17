@@ -1766,11 +1766,20 @@ enum Commands {
         /// profile from the global --profile.
         #[arg(long, value_name = "PROFILES")]
         compare: Option<String>,
-        /// Interactively pick the profiles to compare from a checklist of saved
-        /// servers, then run the comparison. Reuses the current benchmark
-        /// options (level, --file-count, ...). Requires an interactive terminal.
+        /// Interactively type the profiles to compare: prints a numbered list of
+        /// saved servers, then reads names and/or index numbers (space
+        /// separated) from a prompt. Reuses the current benchmark options
+        /// (level, --file-count, ...). For a full-screen checklist use --tui
+        /// instead. Requires an interactive terminal.
         #[arg(long, short = 'i')]
         interactive: bool,
+        /// Pick the profiles to compare from a full-screen checklist (tick the
+        /// servers with Space/v, navigate with arrows or Tab, run with Enter).
+        /// Reuses the current benchmark options (level, --file-count, ...).
+        /// For inline name/index typing use -i instead. Requires an
+        /// interactive terminal.
+        #[arg(long)]
+        tui: bool,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -32122,12 +32131,14 @@ fn print_benchmark_table(
 }
 
 /// Run the same benchmark workload across several saved profiles and print a
-/// combined comparison. Selectors come either from `--compare` (comma list) or
-/// from the interactive checklist when `interactive` is set.
+/// combined comparison. Selectors come from one of three sources: `--compare`
+/// (comma list), the inline name/index prompt when `interactive` is set, or the
+/// full-screen checklist when `tui` is set.
 #[allow(clippy::too_many_arguments)]
 async fn cmd_benchmark_compare(
     compare: Option<&str>,
     interactive: bool,
+    tui: bool,
     level: BenchmarkLevel,
     sizes_override: Option<&str>,
     runs_override: Option<u32>,
@@ -32161,13 +32172,27 @@ async fn cmd_benchmark_compare(
         return 5;
     }
 
-    // Resolve which profiles to run.
-    let mut idxs: Vec<usize> = if interactive {
+    // Resolve which profiles to run from one of three sources: the full-screen
+    // checklist (--tui), the inline name/index prompt (-i), or the --compare
+    // comma list. --tui wins if both flags are passed.
+    let mut idxs: Vec<usize> = if tui {
+        if !std::io::stdin().is_terminal() {
+            print_error(format, "benchmark --tui needs an interactive terminal", 5);
+            return 5;
+        }
+        match benchmark_pick_profiles(&profiles) {
+            Ok(v) => v,
+            Err(e) => {
+                print_error(format, &format!("selection error: {}", e), 5);
+                return 5;
+            }
+        }
+    } else if interactive {
         if !std::io::stdin().is_terminal() {
             print_error(format, "benchmark -i needs an interactive terminal", 5);
             return 5;
         }
-        match benchmark_pick_profiles(&profiles) {
+        match benchmark_pick_profiles_inline(&profiles) {
             Ok(v) => v,
             Err(e) => {
                 print_error(format, &format!("selection error: {}", e), 5);
@@ -32372,9 +32397,73 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
     }
 }
 
+/// Inline profile picker for `benchmark -i`: print a numbered list of saved
+/// servers, then read a single line of space-separated names and/or index
+/// numbers and resolve each token via `resolve_profile_selector`. Empty input
+/// (or EOF) cancels. Re-prompts a few times when a token cannot be resolved.
+/// Multi-word profile names should be selected by their index number.
+fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
+    use std::io::Write;
+
+    let color_on = use_color();
+    let mut err = std::io::stderr();
+    writeln!(err, "{}", paint_bold("Saved profiles:", color_on))?;
+    for (i, p) in profiles.iter().enumerate() {
+        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+        let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+        writeln!(err, "  {:>2}. {:<10} {}", i + 1, proto, name)?;
+    }
+
+    for attempt in 0..3 {
+        write!(
+            err,
+            "{}",
+            paint_dim(
+                "Enter profiles to compare (names or numbers, space separated; empty to cancel): ",
+                color_on
+            )
+        )?;
+        err.flush()?;
+
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line)? == 0 {
+            // EOF: treat as cancel.
+            return Ok(Vec::new());
+        }
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut out = Vec::new();
+        let mut errors = Vec::new();
+        for tok in &tokens {
+            match resolve_profile_selector(profiles, tok) {
+                Ok(idx) => out.push(idx),
+                Err(e) => errors.push(format!("'{}': {}", tok, e)),
+            }
+        }
+        if errors.is_empty() {
+            return Ok(out);
+        }
+        for e in &errors {
+            writeln!(err, "  {}", e)?;
+        }
+        if attempt < 2 {
+            writeln!(err, "Please try again (multi-word names: use the index number).")?;
+        }
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "could not resolve the selected profiles",
+    ))
+}
+
 /// Interactive checklist to pick which saved profiles to benchmark. Raw-mode,
-/// single-key: Up/Down move, Space toggles, a/n select all/none, Enter runs,
-/// q/Esc cancels. Returns the indices of the checked profiles.
+/// single-key: arrows or Tab/Shift+Tab move, Space toggles, v/Insert tick,
+/// Delete/Backspace untick, a/n select all/none, Enter runs, q/Esc cancels.
+/// Returns the indices of the checked profiles.
 fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
     use crossterm::{
         cursor,
@@ -32472,7 +32561,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             err,
             "{}",
             paint_dim(
-                "[Space] toggle  [Up/Down] move  [PgUp/PgDn] page  [a] all  [n] none  [Enter] run  [q] cancel",
+                "[Space] toggle  [v/Ins] tick  [Del/Bksp] untick  [Tab] move  [a] all  [n] none  [Enter] run  [q] cancel",
                 color_on
             )
         )?;
@@ -32480,13 +32569,15 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
 
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Up | KeyCode::Char('k') => pos = (pos + n - 1) % n,
+                KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => pos = (pos + n - 1) % n,
                 KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => pos = (pos + 1) % n,
                 KeyCode::PageUp => pos = pos.saturating_sub(visible),
                 KeyCode::PageDown => pos = (pos + visible).min(n - 1),
                 KeyCode::Home => pos = 0,
                 KeyCode::End => pos = n - 1,
                 KeyCode::Char(' ') => checked[pos] = !checked[pos],
+                KeyCode::Char('v') | KeyCode::Char('V') | KeyCode::Insert => checked[pos] = true,
+                KeyCode::Delete | KeyCode::Backspace => checked[pos] = false,
                 KeyCode::Char('a') | KeyCode::Char('A') => {
                     checked.iter_mut().for_each(|c| *c = true)
                 }
@@ -48453,11 +48544,13 @@ async fn main() {
             file_size,
             compare,
             interactive,
+            tui,
         } => {
-            if *interactive || compare.is_some() {
+            if *interactive || *tui || compare.is_some() {
                 cmd_benchmark_compare(
                     compare.as_deref(),
                     *interactive,
+                    *tui,
                     *level,
                     sizes.as_deref(),
                     *runs,
