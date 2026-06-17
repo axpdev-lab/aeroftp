@@ -32455,7 +32455,10 @@ fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Re
             writeln!(err, "  {}", e)?;
         }
         if attempt < 2 {
-            writeln!(err, "Please try again (multi-word names: use the index number).")?;
+            writeln!(
+                err,
+                "Please try again (multi-word names: use the index number)."
+            )?;
         }
     }
 
