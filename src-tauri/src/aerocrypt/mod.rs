@@ -19,6 +19,7 @@
 use aes_gcm_siv::aead::{Aead, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use aes_kw::Kek;
+#[cfg(not(feature = "test-vectors"))]
 use rand::RngCore;
 
 pub mod names;
@@ -55,9 +56,51 @@ pub fn argon2_lanes() -> u32 {
 }
 
 /// Fill an `N`-byte array from the OS CSPRNG.
+#[cfg(not(feature = "test-vectors"))]
 pub fn random_array<const N: usize>() -> [u8; N] {
     let mut out = [0u8; N];
     rand::rngs::OsRng.fill_bytes(&mut out);
+    out
+}
+
+// --- Deterministic test-vector mode (feature `test-vectors`) -----------------
+//
+// Mirror of the `aerovault` crate's deterministic generator. The seed string
+// and per-call fill rule MUST stay byte-identical to the crate's copy
+// (aerovault/src/aerocrypt.rs) or the AEROVAULT3 cross-impl golden diverges.
+// Never enabled in a production build.
+#[cfg(feature = "test-vectors")]
+const TEST_VECTOR_SEED: &[u8] = b"AEROVAULT3 test-vectors v1";
+
+#[cfg(feature = "test-vectors")]
+thread_local! {
+    static TEST_VECTOR_COUNTER: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Rewind the deterministic test-vector stream to its start. Only present under
+/// the `test-vectors` feature.
+#[cfg(feature = "test-vectors")]
+pub fn reset_test_vectors() {
+    TEST_VECTOR_COUNTER.with(|c| c.set(0));
+}
+
+#[cfg(feature = "test-vectors")]
+pub fn random_array<const N: usize>() -> [u8; N] {
+    let mut out = [0u8; N];
+    let mut off = 0usize;
+    while off < N {
+        let ctr = TEST_VECTOR_COUNTER.with(|c| {
+            let v = c.get();
+            c.set(v + 1);
+            v
+        });
+        let mut input = TEST_VECTOR_SEED.to_vec();
+        input.extend_from_slice(&ctr.to_le_bytes());
+        let block = blake3::hash(&input);
+        let take = core::cmp::min(32, N - off);
+        out[off..off + take].copy_from_slice(&block.as_bytes()[..take]);
+        off += take;
+    }
     out
 }
 

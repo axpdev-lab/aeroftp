@@ -848,8 +848,16 @@ enum EntryKindV3 {
     Directory,
 }
 
+#[cfg(not(feature = "test-vectors"))]
 fn now_iso() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Fixed timestamp under the `test-vectors` feature so the AEROVAULT3 cross-impl
+/// golden is reproducible. MUST match the `aerovault` crate's test-vector value.
+#[cfg(feature = "test-vectors")]
+fn now_iso() -> String {
+    "2026-06-17T00:00:00Z".to_string()
 }
 
 fn read_u64(data: &[u8], offset: usize) -> u64 {
@@ -3430,6 +3438,69 @@ mod tests {
     };
 
     use super::*;
+
+    /// T5 cross-impl byte-compat (app side). Under the `test-vectors` seam, build
+    /// the SAME fixed tree as the `aerovault` crate's
+    /// `tests/aerovault3_cross_impl_v3.rs` and assert the container's BLAKE3
+    /// equals the shared golden. Identical hash here and in the crate means the
+    /// app and the crate write AEROVAULT3 byte-for-byte identically, so a
+    /// container made by either opens in the other. Keep this hash in lockstep
+    /// with the crate golden (regenerate both together on a deliberate change).
+    #[cfg(feature = "test-vectors")]
+    #[test]
+    fn aerovault3_cross_impl_golden_matches_crate() {
+        const FIXTURE_PW: &str = "aerovault-fixture-pw";
+        const GOLDEN_BLAKE3: &str =
+            "756dc2112d2492fa6ac4fe3a943058bd4ed7ccf5492b23a830ddabb059c6d570";
+
+        let mut big = Vec::with_capacity(300_000);
+        while big.len() < 300_000 {
+            big.extend_from_slice(b"AeroVault v3 cross-impl big-file pattern block. ");
+        }
+        big.truncate(300_000);
+        let tree: Vec<(&str, Vec<u8>)> = vec![
+            ("readme.txt", b"AeroVault v3 cross-impl fixture\n".to_vec()),
+            ("data/small.bin", vec![0xA5u8; 1000]),
+            ("data/big.bin", big),
+        ];
+
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        let mut sources: Vec<(PathBuf, String)> = Vec::new();
+        for (rel, bytes) in &tree {
+            let abs = src.join(rel);
+            std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            std::fs::write(&abs, bytes).unwrap();
+            sources.push((abs, rel.to_string()));
+        }
+        let vp = tmp.path().join("golden.aerovault");
+
+        // Re-open before each mutating op, exactly as the Tauri command layer
+        // does (open -> mutate -> save per command). open_vault draws no
+        // randomness, so the deterministic stream is unchanged; this just keeps
+        // the per-command staleness guard happy, matching production flow.
+        crate::aerocrypt::reset_test_vectors();
+        create_empty_vault(&vp, FIXTURE_PW, DEFAULT_ZSTD_LEVEL, None, 0).unwrap();
+        {
+            let mut vault = open_vault(&vp, FIXTURE_PW).unwrap();
+            create_directory_in_manifest(&mut vault.manifest, "emptydir").unwrap();
+            save_open_vault(&mut vault).unwrap();
+        }
+        {
+            let mut vault = open_vault(&vp, FIXTURE_PW).unwrap();
+            append_sources_batched(&mut vault, &sources).unwrap();
+            save_open_vault(&mut vault).unwrap();
+        }
+
+        let bytes = std::fs::read(&vp).unwrap();
+        let got = blake3::hash(&bytes).to_hex().to_string();
+        assert_eq!(
+            got,
+            GOLDEN_BLAKE3,
+            "app AEROVAULT3 bytes diverge from the aerovault crate golden ({} bytes)",
+            bytes.len()
+        );
+    }
 
     // --- Vault `.aerocorrect` sidecar helpers ---
     // The on-disk format round-trip / corruption / binding is covered in
