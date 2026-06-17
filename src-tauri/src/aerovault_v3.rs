@@ -28,6 +28,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -2726,24 +2727,17 @@ fn extract_all_entries(vault: &OpenVaultV3, dest_root: &Path) -> Result<u64, Str
     Ok(files_written)
 }
 
-fn info_from_manifest(manifest: &VaultManifestV3) -> VaultV3Info {
-    let file_count = manifest
-        .entries
-        .iter()
-        .filter(|entry| !entry.is_dir)
-        .count();
-    let logical_chunks: usize = manifest
-        .entries
-        .iter()
-        .map(|entry| entry.chunks.len())
-        .sum();
+/// Build the handler-facing `VaultV3Info` from the crate's vault summary,
+/// preserving the JSON shape the frontend consumes. T7 convergence: the crate
+/// now owns the manifest, so the info is derived from `VaultV3::summary`.
+fn info_from_summary(summary: &aerovault::v3::VaultSummaryV3) -> VaultV3Info {
     VaultV3Info {
-        version: VERSION,
-        file_count,
-        chunk_count: manifest.chunks.len(),
-        dedup_chunks: logical_chunks.saturating_sub(manifest.chunks.len()),
-        compression_level: manifest_zstd_level(manifest),
-        files: manifest
+        version: summary.version,
+        file_count: summary.file_count,
+        chunk_count: summary.chunk_count,
+        dedup_chunks: summary.dedup_chunks,
+        compression_level: summary.compression_level,
+        files: summary
             .entries
             .iter()
             .map(|entry| VaultV3FileInfo {
@@ -2751,27 +2745,68 @@ fn info_from_manifest(manifest: &VaultManifestV3) -> VaultV3Info {
                 size: entry.size,
                 is_dir: entry.is_dir,
                 modified: entry.modified.clone(),
-                chunk_count: entry.chunks.len(),
+                chunk_count: entry.chunk_count,
             })
             .collect(),
         report: None,
     }
 }
 
-/// Algorithm chain for the receipt, derived from the manifest wrappers.
-fn algorithm_chain(m: &VaultManifestV3) -> Vec<String> {
-    let w = &m.wrappers;
-    let line = |name: &str, s: &AlgorithmSpec| {
-        format!("{name}:{} v{}", s.algorithm_id, s.algorithm_version)
-    };
-    vec![
-        line("packing", &w.packing),
-        line("chunking", &w.chunking),
-        line("chunk_id", &w.chunk_id),
-        line("compression", &w.compression),
-        line("crypt", &w.crypt),
-        line("cipher_hash", &w.cipher_hash),
-    ]
+/// zstd compression level -> the profile label shown on the technical receipt.
+fn level_to_profile(level: i32) -> &'static str {
+    match level {
+        3 => "fast",
+        19 => "archive",
+        _ => "balanced",
+    }
+}
+
+/// Apply a `fast`/`balanced`/`archive` compression profile to crate create
+/// options. `balanced`/empty/none keep the crate's default zstd level.
+fn apply_profile_level(
+    opts: aerovault::v3::CreateOptionsV3,
+    profile: Option<&str>,
+) -> Result<aerovault::v3::CreateOptionsV3, String> {
+    Ok(match profile {
+        Some("fast") => opts.with_zstd_level(3),
+        Some("archive") => opts.with_zstd_level(19),
+        Some("balanced") | None | Some("") => opts,
+        Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
+    })
+}
+
+/// Forwards the crate's content-pipeline telemetry into a shared [`VaultReport`].
+/// Attached to an opened crate vault via `set_telemetry_sink`; the handler keeps
+/// the `Arc` to read the populated report back after the blocking op. Poison is
+/// recovered (a sink panic must not poison subsequent receipts).
+struct ReportSink(Arc<Mutex<VaultReport>>);
+
+impl ReportSink {
+    fn with<R>(&self, f: impl FnOnce(&mut VaultReport) -> R) -> R {
+        let mut guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        f(&mut guard)
+    }
+}
+
+impl aerovault::v3::VaultTelemetrySink for ReportSink {
+    fn on_chunk(&mut self, is_new: bool, plaintext: u64, compressed: u64, encrypted: u64) {
+        self.with(|r| r.on_chunk(is_new, plaintext, compressed, encrypted));
+    }
+    fn on_file(&mut self, packed: bool) {
+        self.with(|r| r.on_file(packed));
+    }
+    fn on_pack(&mut self) {
+        self.with(|r| r.on_pack());
+    }
+    fn set_cdc(&mut self, min: usize, avg: usize, max: usize) {
+        self.with(|r| r.set_cdc(min, avg, max));
+    }
+    fn set_error_correction(&mut self, shards: u64, bytes_protected: u64, overhead_pct: f64) {
+        self.with(|r| r.set_error_correction_protection(shards, bytes_protected, overhead_pct));
+    }
+    fn step(&mut self, message: &str) {
+        self.with(|r| r.step(message));
+    }
 }
 
 #[tauri::command]
@@ -2780,20 +2815,17 @@ pub async fn vault_v3_create(
     password: String,
     compression_profile: Option<String>,
 ) -> Result<String, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let level = match compression_profile.as_deref() {
-        Some("fast") => 3,
-        Some("archive") => 19,
-        Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
-        Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
-    };
-    create_empty_vault(
-        Path::new(&vault_path),
-        &password,
-        level,
-        None,
-        ERROR_CORRECTION_DEFAULT_PCT,
+    let opts = apply_profile_level(
+        aerovault::v3::CreateOptionsV3::new(&vault_path, &password),
+        compression_profile.as_deref(),
     )?;
+    let vp = vault_path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vp))?;
+        aerovault::v3::VaultV3::create(&opts)
+    })
+    .await
+    .map_err(|e| format!("vault create task failed: {e}"))??;
     Ok(vault_path)
 }
 
@@ -2812,25 +2844,23 @@ pub async fn vault_v3_create_with_error_correction(
     placement: Option<String>,
     error_correction_pct: Option<u32>,
 ) -> Result<String, String> {
-    let level = match profile.as_deref() {
-        Some("fast") => 3,
-        Some("archive") => 19,
-        Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
-        Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
-    };
+    let opts = apply_profile_level(
+        aerovault::v3::CreateOptionsV3::new(&vault_path, &password),
+        profile.as_deref(),
+    )?;
     let placement = match placement.as_deref() {
-        None | Some("") => RecoveryPlacement::Embedded,
-        Some(p) => RecoveryPlacement::parse(p)?,
+        None | Some("") => aerovault::v3::RecoveryPlacement::Embedded,
+        Some(p) => aerovault::v3::RecoveryPlacement::parse(p)?,
     };
     // QR-style overhead level (#276): default 20% reproduces the original K=10/P=2 grid.
     let pct = error_correction_pct.unwrap_or(ERROR_CORRECTION_DEFAULT_PCT);
-    create_empty_vault(
-        Path::new(&vault_path),
-        &password,
-        level,
-        Some(placement),
-        pct,
-    )?;
+    let vp = vault_path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vp))?;
+        aerovault::v3::VaultV3::create_with_error_correction(&opts, placement, pct)
+    })
+    .await
+    .map_err(|e| format!("vault create task failed: {e}"))??;
     Ok(vault_path)
 }
 
@@ -2843,8 +2873,12 @@ pub async fn vault_v3_export_parity(
     password: String,
     out_path: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let out = out_path.as_deref().map(Path::new);
-    let res = export_parity(Path::new(&vault_path), &password, out)?;
+    let res = tokio::task::spawn_blocking(move || {
+        let out = out_path.as_deref().map(Path::new);
+        aerovault::v3::VaultV3::export_parity(Path::new(&vault_path), &password, out)
+    })
+    .await
+    .map_err(|e| format!("export parity task failed: {e}"))??;
     Ok(serde_json::json!({
         "path": res.path.to_string_lossy(),
         "shards": res.shards,
@@ -2866,7 +2900,12 @@ pub async fn vault_v3_strip_parity(
     password: String,
     force: bool,
 ) -> Result<serde_json::Value, String> {
-    let res = strip_parity(Path::new(&vault_path), &password, force)?;
+    let res = tokio::task::spawn_blocking(move || {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        aerovault::v3::VaultV3::strip_parity(Path::new(&vault_path), &password, force)
+    })
+    .await
+    .map_err(|e| format!("strip parity task failed: {e}"))??;
     Ok(serde_json::json!({
         "stripped": true,
         "sidecar_present": res.sidecar_present,
@@ -2880,40 +2919,36 @@ pub async fn vault_v3_strip_parity(
 /// scrub/repair when either source is present.
 #[tauri::command]
 pub async fn vault_v3_recovery_status(path: String) -> Result<serde_json::Value, String> {
-    let embedded = vault_v3_has_error_correction(path.clone())
-        .await
-        .unwrap_or(false);
-    let detached = default_sidecar_path(Path::new(&path)).exists();
-    // The detached sidecar additionally reports which GAP-4 metadata regions it
-    // protects (locator + 1024-byte header), so the GUI can show that detached
-    // recovery covers the header, not just the data blocks.
-    let (manifest_parity, header_parity) = sidecar_parity_flags(Path::new(&path));
+    // Header-only read: embedded extension presence + detached sidecar surfaces
+    // (the sidecar additionally reports the GAP-4 metadata regions it protects:
+    // locator + 1024-byte header), so the GUI can show detached recovery covers
+    // the header, not just the data blocks.
+    let status = aerovault::v3::VaultV3::recovery_status(Path::new(&path))?;
     Ok(serde_json::json!({
-        "embedded": embedded,
-        "detached": detached,
-        "any": embedded || detached,
-        "manifest_parity": manifest_parity,
-        "header_parity": header_parity,
+        "embedded": status.embedded,
+        "detached": status.detached,
+        "any": status.any,
+        "manifest_parity": status.manifest_parity,
+        "header_parity": status.header_parity,
     }))
 }
 
 #[tauri::command]
 pub async fn vault_v3_open(vault_path: String, password: String) -> Result<VaultV3Info, String> {
-    let vault = open_vault(vault_path, &password)?;
-    Ok(info_from_manifest(&vault.manifest))
+    let summary = tokio::task::spawn_blocking(
+        move || -> Result<aerovault::v3::VaultSummaryV3, String> {
+            let vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+            Ok(aerovault::v3::VaultV3::summary(&vault))
+        },
+    )
+    .await
+    .map_err(|e| format!("vault open task failed: {e}"))??;
+    Ok(info_from_summary(&summary))
 }
 
 #[tauri::command]
 pub async fn is_vault_v3(path: String) -> Result<bool, String> {
-    let mut file = match std::fs::File::open(path) {
-        Ok(file) => file,
-        Err(_) => return Ok(false),
-    };
-    let mut buf = [0u8; 11];
-    if file.read_exact(&mut buf).is_err() {
-        return Ok(false);
-    }
-    Ok(&buf[..10] == MAGIC && buf[10] == VERSION)
+    Ok(aerovault::v3::VaultV3::is_vault_v3(&path))
 }
 
 /// Lightweight check for the presence of the Error Correction (error-correction) extension.
@@ -2925,33 +2960,7 @@ pub async fn is_vault_v3(path: String) -> Result<bool, String> {
 /// in the extension directory.
 #[tauri::command]
 pub async fn vault_v3_has_error_correction(path: String) -> Result<bool, String> {
-    let mut file = std::fs::File::open(&path)
-        .map_err(|e| format!("Open vault for Error Correction check: {e}"))?;
-
-    let mut header_bytes = [0u8; HEADER_SIZE];
-    file.read_exact(&mut header_bytes)
-        .map_err(|e| format!("Read header for Error Correction check: {e}"))?;
-
-    let header = VaultHeaderV3::from_bytes(&header_bytes)?;
-
-    if header.extension_dir_len == 0 {
-        return Ok(false);
-    }
-
-    let extension_json = read_capped(
-        &mut file,
-        header.extension_dir_offset,
-        header.extension_dir_len,
-        MAX_EXTENSION_DIR_SIZE,
-        "extension directory (has_error_correction)",
-    )?;
-
-    let extensions: Vec<ExtensionEntryV3> = serde_json::from_slice(&extension_json)
-        .map_err(|e| format!("Extension directory parse (has_error_correction): {e}"))?;
-
-    Ok(extensions
-        .iter()
-        .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID))
+    aerovault::v3::VaultV3::has_error_correction(Path::new(&path))
 }
 
 #[tauri::command]
@@ -2960,38 +2969,45 @@ pub async fn vault_v3_scrub(
     password: String,
     parity_path: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let vault = open_vault(&vault_path, &password)?;
-    let checked = vault.manifest.chunks.len();
-    let damaged = scrub_vault(&vault);
-    // Pre-flight: report which parity source a repair would draw from. An
-    // explicitly named source that fails is a hard error; an absent default
-    // source reports "none".
-    let explicit = parity_path.as_deref().map(Path::new);
-    let parity_source = match resolve_parity_source(&vault, explicit) {
-        Ok((_, s)) => s,
-        Err(e) => {
-            if explicit.is_some() {
-                return Err(e);
-            }
-            ParitySource::None
-        }
-    };
-    let list: Vec<_> = damaged
-        .into_iter()
-        .map(|d| {
-            serde_json::json!({
-                "id": d.record.id,
-                "on_disk_start": d.on_disk_start,
-                "on_disk_len": d.on_disk_len,
-                "cipher_hash": d.record.cipher_hash,
-            })
+    let (checked, list, parity_source) =
+        tokio::task::spawn_blocking(move || -> Result<(usize, Vec<serde_json::Value>, &'static str), String> {
+            let vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+            let checked = aerovault::v3::VaultV3::summary(&vault).chunk_count;
+            let damaged = aerovault::v3::VaultV3::scrub(&vault);
+            // Pre-flight: report which parity source a repair would draw from. An
+            // explicitly named source that fails is a hard error; an absent default
+            // source reports "none".
+            let explicit = parity_path.as_deref().map(Path::new);
+            let parity_source = match aerovault::v3::VaultV3::resolve_parity_source(&vault, explicit) {
+                Ok(s) => s,
+                Err(e) => {
+                    if explicit.is_some() {
+                        return Err(e);
+                    }
+                    aerovault::v3::ParitySource::None
+                }
+            };
+            let list: Vec<_> = damaged
+                .into_iter()
+                .map(|d| {
+                    serde_json::json!({
+                        "id": d.record.id,
+                        "on_disk_start": d.on_disk_start,
+                        "on_disk_len": d.on_disk_len,
+                        "cipher_hash": d.record.cipher_hash,
+                    })
+                })
+                .collect();
+            Ok((checked, list, parity_source.as_str()))
         })
-        .collect();
+        .await
+        .map_err(|e| format!("vault scrub task failed: {e}"))??;
+    let count = list.len();
     Ok(serde_json::json!({
         "damaged": list,
-        "count": list.len(),
+        "count": count,
         "checked": checked,
-        "parity_source": parity_source.as_str(),
+        "parity_source": parity_source,
     }))
 }
 
@@ -3002,23 +3018,29 @@ pub async fn vault_v3_repair(
     dry_run: bool,
     parity_path: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    // A real repair mutates and atomically re-seals the vault, so take the same
-    // write lock the other mutating ops use to keep a concurrent add/delete from
-    // racing the rewrite. Dry-run is read-only and needs no lock.
-    let _lock = if dry_run {
-        None
-    } else {
-        Some(acquire_vault_write_lock(Path::new(&vault_path))?)
-    };
-    let mut vault = open_vault(&vault_path, &password)?;
-    let damaged = scrub_vault(&vault).len();
-    let explicit = parity_path.as_deref().map(Path::new);
-    let (repaired, source) = repair_vault(&mut vault, dry_run, explicit)?;
+    let (repaired, damaged, source) =
+        tokio::task::spawn_blocking(move || -> Result<(usize, usize, &'static str), String> {
+            // A real repair mutates and atomically re-seals the vault, so take the
+            // same write lock the other mutating ops use to keep a concurrent
+            // add/delete from racing the rewrite. Dry-run is read-only, no lock.
+            let _lock = if dry_run {
+                None
+            } else {
+                Some(acquire_vault_write_lock(Path::new(&vault_path))?)
+            };
+            let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+            let damaged = aerovault::v3::VaultV3::scrub(&vault).len();
+            let explicit = parity_path.as_deref().map(Path::new);
+            let (repaired, source) = aerovault::v3::VaultV3::repair(&mut vault, dry_run, explicit)?;
+            Ok((repaired, damaged, source.as_str()))
+        })
+        .await
+        .map_err(|e| format!("vault repair task failed: {e}"))??;
     Ok(serde_json::json!({
         "repaired": repaired,
         "damaged": damaged,
         "dry_run": dry_run,
-        "parity_source": source.as_str(),
+        "parity_source": source,
     }))
 }
 
@@ -3118,34 +3140,44 @@ pub async fn vault_v3_add_files(
         sources.push((path, name));
     }
     preflight_vault_memory_guard(Path::new(&vault_path), &sources)?;
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    vault.report = VaultReport::new("add_files", VERSION);
-    vault
-        .report
-        .set_profile(match manifest_zstd_level(&vault.manifest) {
-            3 => "fast",
-            19 => "archive",
-            _ => "balanced",
-        });
-    vault
-        .report
-        .set_algorithms(algorithm_chain(&vault.manifest));
-    append_sources_batched(&mut vault, &sources)?;
-    vault.report.step("seal: rebuild manifest + atomic write");
-    save_open_vault(&mut vault)?;
-    vault.report.finish(started.elapsed().as_millis() as u64);
-    let (np, dh, ratio) = (
-        vault.report.new_physical_chunks,
-        vault.report.dedup_hits,
-        vault.report.compression_ratio_pct,
-    );
-    vault.report.step(format!(
-        "done: {np} new physical chunk(s), {dh} dedup hit(s), {ratio:.1}% compressed"
-    ));
+    let report = Arc::new(Mutex::new(VaultReport::new("add_files", 3)));
+    let report_for_task = report.clone();
+    let summary = tokio::task::spawn_blocking(
+        move || -> Result<aerovault::v3::VaultSummaryV3, String> {
+            let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+            let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+            // Receipt header: profile + algorithm chain of the vault being added to.
+            let pre = aerovault::v3::VaultV3::summary(&vault);
+            {
+                let mut r = report_for_task.lock().unwrap_or_else(|e| e.into_inner());
+                r.set_profile(level_to_profile(pre.compression_level));
+                r.set_algorithms(pre.algorithms.clone());
+            }
+            // The crate emits scan/pack/chunk/file/cdc + Error-Correction events.
+            vault.set_telemetry_sink(Box::new(ReportSink(report_for_task.clone())));
+            aerovault::v3::VaultV3::add_files(&mut vault, &sources)?;
+            Ok(aerovault::v3::VaultV3::summary(&vault))
+        },
+    )
+    .await
+    .map_err(|e| format!("vault add task failed: {e}"))??;
 
-    let mut info = info_from_manifest(&vault.manifest);
-    info.report = Some(vault.report.clone());
+    let mut info = info_from_summary(&summary);
+    // Handler-level receipt events: seal step, total timing, done summary.
+    {
+        let mut r = report.lock().unwrap_or_else(|e| e.into_inner());
+        r.step("seal: rebuild manifest + atomic write");
+        r.finish(started.elapsed().as_millis() as u64);
+        let (np, dh, ratio) = (
+            r.new_physical_chunks,
+            r.dedup_hits,
+            r.compression_ratio_pct,
+        );
+        r.step(format!(
+            "done: {np} new physical chunk(s), {dh} dedup hit(s), {ratio:.1}% compressed"
+        ));
+        info.report = Some(r.clone());
+    }
     Ok(info)
 }
 
@@ -3156,23 +3188,23 @@ pub async fn vault_v3_add_files_to_dir(
     file_paths: Vec<String>,
     target_dir: String,
 ) -> Result<serde_json::Value, String> {
-    let target_dir = normalize_vault_relative_path(&target_dir)?;
-    let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
-    for file_path in &file_paths {
-        let path = PathBuf::from(file_path);
-        let name = safe_entry_name(&path)?;
-        sources.push((path, join_vault_path(&target_dir, &name)));
-    }
-    preflight_vault_memory_guard(Path::new(&vault_path), &sources)?;
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    create_directory_in_manifest(&mut vault.manifest, &target_dir)?;
-    let added = sources.len();
-    append_sources_batched(&mut vault, &sources)?;
-    save_open_vault(&mut vault)?;
+    let paths: Vec<PathBuf> = file_paths.iter().map(PathBuf::from).collect();
+    // The guard only reads each source's on-disk size; the entry name is unused.
+    let guard_sources: Vec<(PathBuf, String)> =
+        paths.iter().map(|p| (p.clone(), String::new())).collect();
+    preflight_vault_memory_guard(Path::new(&vault_path), &guard_sources)?;
+    let added = paths.len();
+    let total = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::add_files_to_dir(&mut vault, &paths, &target_dir)?;
+        Ok(aerovault::v3::VaultV3::summary(&vault).entries.len())
+    })
+    .await
+    .map_err(|e| format!("vault add task failed: {e}"))??;
     Ok(serde_json::json!({
         "added": added,
-        "total": vault.manifest.entries.len()
+        "total": total
     }))
 }
 
@@ -3182,13 +3214,17 @@ pub async fn vault_v3_create_directory(
     password: String,
     dir_name: String,
 ) -> Result<serde_json::Value, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    let created = create_directory_in_manifest(&mut vault.manifest, &dir_name)?;
-    save_open_vault(&mut vault)?;
+    let dir = normalize_vault_relative_path(&dir_name)?;
+    let created = tokio::task::spawn_blocking(move || -> Result<bool, String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::create_directory(&mut vault, &dir_name)
+    })
+    .await
+    .map_err(|e| format!("vault mkdir task failed: {e}"))??;
     Ok(serde_json::json!({
         "created": created,
-        "dir": normalize_vault_relative_path(&dir_name)?
+        "dir": dir
     }))
 }
 
@@ -3198,13 +3234,18 @@ pub async fn vault_v3_delete_entry(
     password: String,
     entry_name: String,
 ) -> Result<serde_json::Value, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    delete_entries_from_manifest(&mut vault, std::slice::from_ref(&entry_name), false)?;
-    save_open_vault(&mut vault)?;
+    let deleted = normalize_vault_relative_path(&entry_name)?;
+    let remaining = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::delete_entry(&mut vault, &entry_name)?;
+        Ok(aerovault::v3::VaultV3::summary(&vault).entries.len())
+    })
+    .await
+    .map_err(|e| format!("vault delete task failed: {e}"))??;
     Ok(serde_json::json!({
-        "deleted": normalize_vault_relative_path(&entry_name)?,
-        "remaining": vault.manifest.entries.len()
+        "deleted": deleted,
+        "remaining": remaining
     }))
 }
 
@@ -3215,13 +3256,17 @@ pub async fn vault_v3_delete_entries(
     entry_names: Vec<String>,
     recursive: bool,
 ) -> Result<serde_json::Value, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    let removed = delete_entries_from_manifest(&mut vault, &entry_names, recursive)?;
-    save_open_vault(&mut vault)?;
+    let (removed, remaining) = tokio::task::spawn_blocking(move || -> Result<(usize, usize), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        let removed = aerovault::v3::VaultV3::delete_entries(&mut vault, &entry_names, recursive)?;
+        Ok((removed, aerovault::v3::VaultV3::summary(&vault).entries.len()))
+    })
+    .await
+    .map_err(|e| format!("vault delete task failed: {e}"))??;
     Ok(serde_json::json!({
         "removed": removed,
-        "remaining": vault.manifest.entries.len()
+        "remaining": remaining
     }))
 }
 
@@ -3232,14 +3277,19 @@ pub async fn vault_v3_move_entry(
     from: String,
     to: String,
 ) -> Result<serde_json::Value, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    move_entry_in_manifest(&mut vault, &from, &to)?;
-    save_open_vault(&mut vault)?;
+    let from_n = normalize_vault_relative_path(&from)?;
+    let to_n = normalize_vault_relative_path(&to)?;
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::move_entry(&mut vault, &from, &to)
+    })
+    .await
+    .map_err(|e| format!("vault move task failed: {e}"))??;
     Ok(serde_json::json!({
         "moved": true,
-        "from": normalize_vault_relative_path(&from)?,
-        "to": normalize_vault_relative_path(&to)?
+        "from": from_n,
+        "to": to_n
     }))
 }
 
@@ -3250,20 +3300,24 @@ pub async fn vault_v3_rename_entry(
     current_name: String,
     new_name: String,
 ) -> Result<serde_json::Value, String> {
-    let current_name = normalize_vault_relative_path(&current_name)?;
-    let new_name = normalize_leaf_name(&new_name)?;
-    let destination = if let Some(parent) = path_parent(&current_name) {
-        join_vault_path(parent, &new_name)
-    } else {
-        new_name.clone()
+    // Resolve the echoed from/to here; the crate's rename_entry re-derives them
+    // identically (normalize current + leaf, rejoin under the same parent).
+    let from = normalize_vault_relative_path(&current_name)?;
+    let leaf = normalize_leaf_name(&new_name)?;
+    let destination = match path_parent(&from) {
+        Some(parent) => join_vault_path(parent, &leaf),
+        None => leaf.clone(),
     };
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    move_entry_in_manifest(&mut vault, &current_name, &destination)?;
-    save_open_vault(&mut vault)?;
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::rename_entry(&mut vault, &current_name, &new_name)
+    })
+    .await
+    .map_err(|e| format!("vault rename task failed: {e}"))??;
     Ok(serde_json::json!({
         "renamed": true,
-        "from": current_name,
+        "from": from,
         "to": destination
     }))
 }
@@ -3275,14 +3329,19 @@ pub async fn vault_v3_copy_entry(
     from: String,
     to: String,
 ) -> Result<serde_json::Value, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    copy_entry_in_manifest(&mut vault, &from, &to)?;
-    save_open_vault(&mut vault)?;
+    let from_n = normalize_vault_relative_path(&from)?;
+    let to_n = normalize_vault_relative_path(&to)?;
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::copy_entry(&mut vault, &from, &to)
+    })
+    .await
+    .map_err(|e| format!("vault copy task failed: {e}"))??;
     Ok(serde_json::json!({
         "copied": true,
-        "from": normalize_vault_relative_path(&from)?,
-        "to": normalize_vault_relative_path(&to)?
+        "from": from_n,
+        "to": to_n
     }))
 }
 
@@ -3292,10 +3351,13 @@ pub async fn vault_v3_change_password(
     old_password: String,
     new_password: String,
 ) -> Result<String, String> {
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &old_password)?;
-    change_password_in_place(&mut vault, &new_password)?;
-    save_open_vault(&mut vault)?;
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = aerovault::v3::VaultV3::open(&vault_path, &old_password)?;
+        aerovault::v3::VaultV3::change_password(&mut vault, &new_password)
+    })
+    .await
+    .map_err(|e| format!("vault change-password task failed: {e}"))??;
     Ok("Password changed successfully".to_string())
 }
 
@@ -3309,92 +3371,31 @@ pub async fn vault_v3_add_directory(
 ) -> Result<serde_json::Value, String> {
     use tauri::Emitter;
 
-    let source = Path::new(&source_dir)
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve directory: {e}"))?;
-    if !source.is_dir() {
-        return Err(format!("Not a directory: {source_dir}"));
-    }
+    let (added_files, added_dirs) = tokio::task::spawn_blocking(
+        move || -> Result<(usize, usize), String> {
+            let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+            let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+            aerovault::v3::VaultV3::add_directory(
+                &mut vault,
+                Path::new(&source_dir),
+                target_prefix.as_deref(),
+            )
+        },
+    )
+    .await
+    .map_err(|e| format!("vault add directory task failed: {e}"))??;
 
-    struct DirEntry {
-        rel_path: String,
-        is_dir: bool,
-        abs_path: PathBuf,
-        depth: usize,
-    }
-
-    let normalized_prefix = target_prefix
-        .as_deref()
-        .map(|prefix| prefix.trim_matches('/'))
-        .filter(|prefix| !prefix.is_empty())
-        .map(normalize_vault_relative_path)
-        .transpose()?;
-
-    let mut all_entries: Vec<DirEntry> = Vec::new();
-    for entry in walkdir::WalkDir::new(&source)
-        .follow_links(false)
-        .max_depth(100)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.path() == source {
-            continue;
-        }
-        if all_entries.len() >= 500_000 {
-            return Err("Directory exceeds maximum entry limit (500000)".to_string());
-        }
-
-        let rel_path = entry
-            .path()
-            .strip_prefix(&source)
-            .map_err(|_| "Failed to compute relative path".to_string())?
-            .to_string_lossy()
-            .replace('\\', "/");
-        let full_rel = if let Some(prefix) = &normalized_prefix {
-            join_vault_path(prefix, &rel_path)
-        } else {
-            rel_path
-        };
-        let full_rel = normalize_vault_relative_path(&full_rel)?;
-
-        all_entries.push(DirEntry {
-            rel_path: full_rel,
-            is_dir: entry.file_type().is_dir(),
-            abs_path: entry.path().to_path_buf(),
-            depth: entry.depth(),
-        });
-    }
-
-    let mut dirs: Vec<&DirEntry> = all_entries.iter().filter(|entry| entry.is_dir).collect();
-    let files: Vec<&DirEntry> = all_entries.iter().filter(|entry| !entry.is_dir).collect();
-    dirs.sort_by_key(|entry| entry.depth);
-
-    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
-    let mut vault = open_vault(&vault_path, &password)?;
-    let mut added_dirs = 0usize;
-    for dir_entry in dirs {
-        if create_directory_in_manifest(&mut vault.manifest, &dir_entry.rel_path)? {
-            added_dirs += 1;
-        }
-    }
-
-    let total_files = files.len();
-    let sources: Vec<(PathBuf, String)> = files
-        .iter()
-        .map(|f| (f.abs_path.clone(), f.rel_path.clone()))
-        .collect();
-    append_sources_batched(&mut vault, &sources)?;
-    let added_files = total_files;
+    // Single completion tick: the crate walk runs in the blocking worker with no
+    // per-file progress, so emit the final count once it returns.
     let _ = app.emit(
         "vault-add-progress",
         serde_json::json!({
             "current": added_files,
-            "total": total_files,
+            "total": added_files,
             "current_file": ""
         }),
     );
 
-    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "added_files": added_files,
         "added_dirs": added_dirs,
@@ -3409,8 +3410,12 @@ pub async fn vault_v3_extract_entry(
     entry_name: String,
     dest_path: String,
 ) -> Result<String, String> {
-    let vault = open_vault(vault_path, &password)?;
-    let extracted = extract_entry(&vault, &entry_name, Path::new(&dest_path))?;
+    let extracted = tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
+        let vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::extract_entry(&vault, &entry_name, Path::new(&dest_path))
+    })
+    .await
+    .map_err(|e| format!("vault extract task failed: {e}"))??;
     Ok(extracted.to_string_lossy().to_string())
 }
 
@@ -3422,8 +3427,12 @@ pub async fn vault_v3_extract_all(
     password: String,
     dest_path: String,
 ) -> Result<u64, String> {
-    let vault = open_vault(vault_path, &password)?;
-    extract_all_entries(&vault, Path::new(&dest_path))
+    tokio::task::spawn_blocking(move || -> Result<u64, String> {
+        let vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
+        aerovault::v3::VaultV3::extract_all(&vault, Path::new(&dest_path))
+    })
+    .await
+    .map_err(|e| format!("vault extract task failed: {e}"))?
 }
 
 #[tauri::command]
