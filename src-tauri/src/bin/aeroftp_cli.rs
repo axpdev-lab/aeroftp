@@ -1759,6 +1759,18 @@ enum Commands {
         /// capped at 5 GiB.
         #[arg(long, value_name = "SIZE", default_value = "64K")]
         file_size: String,
+        /// Compare several saved profiles in one run: comma or space separated
+        /// selectors (names, indices or ids, e.g. "S3 Blackblaze,S3 Storj").
+        /// Each profile runs the same workload, then the CLI prints a combined
+        /// comparison table. Without this flag, benchmark runs the single
+        /// profile from the global --profile.
+        #[arg(long, value_name = "PROFILES")]
+        compare: Option<String>,
+        /// Interactively pick the profiles to compare from a checklist of saved
+        /// servers, then run the comparison. Reuses the current benchmark
+        /// options (level, --file-count, ...). Requires an interactive terminal.
+        #[arg(long, short = 'i')]
+        interactive: bool,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -17909,6 +17921,18 @@ fn resolve_url_or_profile(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(ProviderConfig, String), i32> {
+    resolve_url_or_profile_with(url, cli, cli.profile.as_deref(), format)
+}
+
+/// Like `resolve_url_or_profile` but with an explicit profile-name override.
+/// Used by multi-profile benchmark compare, where `--profile` stays unset and
+/// each profile is resolved by name in turn.
+fn resolve_url_or_profile_with(
+    url: &str,
+    cli: &Cli,
+    profile_override: Option<&str>,
+    format: OutputFormat,
+) -> Result<(ProviderConfig, String), i32> {
     // UX-002: Reject ambiguous invocations where both --profile and a URL are given
     if cli.profile.is_some() && url.contains("://") {
         print_error(
@@ -17919,9 +17943,9 @@ fn resolve_url_or_profile(
         return Err(5);
     }
 
-    // If --profile is set, the "url" field is actually the first positional arg (path)
-    // But if we have a profile, we ignore the url and use the profile
-    if let Some(ref profile_name) = cli.profile {
+    // If a profile is selected, the "url" field is actually the first positional
+    // arg (path); we ignore the url and use the profile.
+    if let Some(profile_name) = profile_override {
         return profile_to_provider_config(profile_name, cli, format);
     }
 
@@ -18973,9 +18997,21 @@ async fn create_and_connect(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    // Check if --profile points to an OAuth provider - handle separately
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format).await
+}
+
+/// Like `create_and_connect` but with an explicit profile-name override instead
+/// of relying on the global `--profile`. Used by multi-profile benchmark
+/// compare, which connects each profile by name while `--profile` stays unset.
+async fn create_and_connect_with(
+    url: &str,
+    cli: &Cli,
+    profile_override: Option<&str>,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
-    if let Some(ref profile_name) = cli.profile {
+    if let Some(profile_name) = profile_override {
         if let Ok(store) = open_vault(cli) {
             if let Ok(profiles) = load_active_user_profiles(cli, &store) {
                 {
@@ -18996,7 +19032,7 @@ async fn create_and_connect(
                         } else {
                             let by_id = profiles.iter().find(|p| {
                                 p.get("id").and_then(|v| v.as_str()).unwrap_or("")
-                                    == profile_name.as_str()
+                                    == profile_name
                             });
                             if by_id.is_some() {
                                 by_id.cloned()
@@ -19069,7 +19105,7 @@ async fn create_and_connect(
         }
     }
 
-    let (config, path) = resolve_url_or_profile(url, cli, format)?;
+    let (config, path) = resolve_url_or_profile_with(url, cli, profile_override, format)?;
 
     dump_connection_info(cli, &config);
 
@@ -31297,13 +31333,19 @@ async fn cmd_benchmark(
     pre_delete: bool,
     file_count: Option<u32>,
     file_size: &str,
+    // Multi-profile compare mode: when `out` is Some, the built report is pushed
+    // into the shared sink (labelled with `compare_label`) and the per-profile
+    // file write and text printing are skipped, leaving the caller to render a
+    // combined comparison. None for an ordinary single-profile run.
+    compare_label: Option<&str>,
+    out: Option<&std::cell::RefCell<Vec<(String, BenchmarkReport)>>>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
     let profile_timeout_secs = profile_timeout_override
         .map(|v| v.clamp(60, 86_400))
         .unwrap_or(BENCHMARK_TOTAL_TIMEOUT_SECS);
-    if cli.profile.is_none() {
+    if cli.profile.is_none() && compare_label.is_none() {
         print_error(
             format,
             "benchmark requires a saved profile via --profile <name>",
@@ -31354,10 +31396,14 @@ async fn cmd_benchmark(
         );
     }
 
-    let (mut provider, initial_path) = match create_and_connect("_", cli, format).await {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    // In compare mode the profile to connect comes from `compare_label`, not
+    // the global --profile (which stays unset across the whole compare run).
+    let profile_for_connect = compare_label.or(cli.profile.as_deref());
+    let (mut provider, initial_path) =
+        match create_and_connect_with("_", cli, profile_for_connect, format).await {
+            Ok(v) => v,
+            Err(code) => return code,
+        };
     let protocol = provider.provider_type().to_string();
 
     let report_id = uuid::Uuid::new_v4().to_string();
@@ -31894,14 +31940,6 @@ async fn cmd_benchmark(
         return 99;
     }
 
-    if let Some(path) = report_path {
-        if let Err(e) = std::fs::write(path, &serialized) {
-            eprintln!("warning: could not write report to {}: {}", path, e);
-        } else if !cli.quiet && matches!(format, OutputFormat::Text) {
-            eprintln!("report written to {}", path);
-        }
-    }
-
     let exit_code = if early_abort || !report.summary.errors.is_empty() {
         if results_have_fatal(&report.results) {
             4
@@ -31911,6 +31949,25 @@ async fn cmd_benchmark(
     } else {
         0
     };
+
+    // Multi-profile compare: hand the report to the caller's sink instead of
+    // writing a per-profile file or printing a standalone report. The caller
+    // renders the combined comparison once every profile has run.
+    if let Some(sink) = out {
+        let label = compare_label
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| protocol.clone());
+        sink.borrow_mut().push((label, report));
+        return exit_code;
+    }
+
+    if let Some(path) = report_path {
+        if let Err(e) = std::fs::write(path, &serialized) {
+            eprintln!("warning: could not write report to {}: {}", path, e);
+        } else if !cli.quiet && matches!(format, OutputFormat::Text) {
+            eprintln!("report written to {}", path);
+        }
+    }
 
     match format {
         OutputFormat::Json => print_json(&report),
@@ -32063,6 +32120,335 @@ fn print_benchmark_table(
     for row in rows {
         println!("  {}", fmt_row(row));
     }
+}
+
+/// Run the same benchmark workload across several saved profiles and print a
+/// combined comparison. Selectors come either from `--compare` (comma list) or
+/// from the interactive checklist when `interactive` is set.
+#[allow(clippy::too_many_arguments)]
+async fn cmd_benchmark_compare(
+    compare: Option<&str>,
+    interactive: bool,
+    level: BenchmarkLevel,
+    sizes_override: Option<&str>,
+    runs_override: Option<u32>,
+    operations_override: Option<&str>,
+    consent_publish: bool,
+    anonymize_extra: bool,
+    profile_timeout_override: Option<u64>,
+    test_root_prefix_override: Option<&str>,
+    pre_delete: bool,
+    file_count: Option<u32>,
+    file_size: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("cannot open vault: {}", e), 5);
+            return 5;
+        }
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("cannot load profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    if profiles.is_empty() {
+        print_error(format, "no saved profiles to benchmark", 5);
+        return 5;
+    }
+
+    // Resolve which profiles to run.
+    let mut idxs: Vec<usize> = if interactive {
+        if !std::io::stdin().is_terminal() {
+            print_error(format, "benchmark -i needs an interactive terminal", 5);
+            return 5;
+        }
+        match benchmark_pick_profiles(&profiles) {
+            Ok(v) => v,
+            Err(e) => {
+                print_error(format, &format!("selection error: {}", e), 5);
+                return 5;
+            }
+        }
+    } else {
+        let raw = compare.unwrap_or("");
+        let mut out = Vec::new();
+        for sel in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            match resolve_profile_selector(&profiles, sel) {
+                Ok(i) => out.push(i),
+                Err(e) => {
+                    print_error(format, &format!("--compare '{}': {}", sel, e), 5);
+                    return 5;
+                }
+            }
+        }
+        out
+    };
+
+    // Dedupe while preserving order.
+    let mut seen = std::collections::HashSet::new();
+    idxs.retain(|i| seen.insert(*i));
+    if idxs.is_empty() {
+        if !cli.quiet {
+            eprintln!("No profiles selected; nothing to compare.");
+        }
+        return 0;
+    }
+    if idxs.len() < 2 && !cli.quiet && matches!(format, OutputFormat::Text) {
+        eprintln!("note: comparing a single profile; pick 2 or more for a side-by-side.");
+    }
+
+    let sink: std::cell::RefCell<Vec<(String, BenchmarkReport)>> =
+        std::cell::RefCell::new(Vec::new());
+    let mut failed: Vec<String> = Vec::new();
+    let mut worst = 0i32;
+
+    for &i in &idxs {
+        let name = profiles[i]
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unnamed")
+            .to_string();
+        if !cli.quiet && matches!(format, OutputFormat::Text) {
+            println!();
+            println!("{}", paint_bold(&format!("=== {} ===", name), use_color()));
+        }
+        let before = sink.borrow().len();
+        let code = cmd_benchmark(
+            level,
+            sizes_override,
+            runs_override,
+            operations_override,
+            consent_publish,
+            anonymize_extra,
+            None,
+            profile_timeout_override,
+            test_root_prefix_override,
+            pre_delete,
+            file_count,
+            file_size,
+            Some(name.as_str()),
+            Some(&sink),
+            cli,
+            format,
+        )
+        .await;
+        if sink.borrow().len() == before {
+            failed.push(name);
+        }
+        worst = worst.max(code);
+    }
+
+    let entries = sink.into_inner();
+
+    match format {
+        OutputFormat::Json => {
+            let reports: Vec<&BenchmarkReport> = entries.iter().map(|(_, r)| r).collect();
+            let combined = match serde_json::to_string_pretty(&reports) {
+                Ok(s) => s,
+                Err(e) => {
+                    print_error(format, &format!("could not serialize reports: {}", e), 99);
+                    return 99;
+                }
+            };
+            let combined = benchmark_sanitize(combined);
+            if let Err(e) = benchmark_sanitization_sweep(&combined) {
+                print_error(
+                    format,
+                    &format!("comparison report failed sanitization sweep: {}", e),
+                    99,
+                );
+                return 99;
+            }
+            println!("{}", combined);
+        }
+        OutputFormat::Text => {
+            if !cli.quiet {
+                for (label, report) in &entries {
+                    println!();
+                    println!("{}", paint_bold(&format!("Profile: {}", label), use_color()));
+                    print_benchmark_text_report(report);
+                }
+                print_benchmark_comparison(&entries, use_color());
+                if !failed.is_empty() {
+                    println!();
+                    println!("Skipped (failed to benchmark): {}", failed.join(", "));
+                }
+            }
+        }
+    }
+
+    worst
+}
+
+/// Render the cross-profile comparison: one row per profile, columns per
+/// operation. Many-small-files ops compare files/s, single-file ops compare
+/// Mbps. Both headlined "higher is better".
+fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: bool) {
+    if entries.len() < 2 {
+        return;
+    }
+
+    let many_ops = ["upload-all", "list-dir", "stat-all", "download-all", "delete-all"];
+    let has_many = entries
+        .iter()
+        .any(|(_, r)| r.results.iter().any(|x| x.files_per_second.is_some()));
+    if has_many {
+        let mut headers: Vec<&str> = vec!["profile"];
+        headers.extend_from_slice(&many_ops);
+        let mut aligns = vec![true];
+        aligns.extend(many_ops.iter().map(|_| false));
+        let rows: Vec<Vec<String>> = entries
+            .iter()
+            .map(|(name, r)| {
+                let mut row = vec![name.clone()];
+                for op in many_ops {
+                    let cell = r
+                        .results
+                        .iter()
+                        .find(|x| x.operation == op)
+                        .and_then(|x| x.files_per_second)
+                        .map(|f| format!("{:.1}", f))
+                        .unwrap_or_else(|| "-".to_string());
+                    row.push(cell);
+                }
+                row
+            })
+            .collect();
+        println!();
+        print_benchmark_table(
+            "Comparison: many small files (files/s, higher is better)",
+            &headers,
+            &aligns,
+            &rows,
+            color_on,
+        );
+    }
+
+    let single_ops = ["upload", "download"];
+    let has_single = entries.iter().any(|(_, r)| {
+        r.results
+            .iter()
+            .any(|x| x.files_per_second.is_none() && x.throughput_mbps.is_some())
+    });
+    if has_single {
+        let headers = ["profile", "upload Mbps", "download Mbps"];
+        let aligns = [true, false, false];
+        let rows: Vec<Vec<String>> = entries
+            .iter()
+            .map(|(name, r)| {
+                let cell = |op: &str| {
+                    r.results
+                        .iter()
+                        .find(|x| x.operation == op && x.files_per_second.is_none())
+                        .and_then(|x| x.throughput_mbps.as_ref())
+                        .map(|t| format!("{:.2}", t.p50))
+                        .unwrap_or_else(|| "-".to_string())
+                };
+                vec![name.clone(), cell(single_ops[0]), cell(single_ops[1])]
+            })
+            .collect();
+        println!();
+        print_benchmark_table(
+            "Comparison: single-file throughput (Mbps p50, higher is better)",
+            &headers,
+            &aligns,
+            &rows,
+            color_on,
+        );
+    }
+}
+
+/// Interactive checklist to pick which saved profiles to benchmark. Raw-mode,
+/// single-key: Up/Down move, Space toggles, a/n select all/none, Enter runs,
+/// q/Esc cancels. Returns the indices of the checked profiles.
+fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
+    use crossterm::{
+        cursor,
+        event::{self, Event, KeyCode, KeyEventKind},
+        queue, terminal,
+    };
+    use std::io::Write;
+
+    let n = profiles.len();
+    let color_on = use_color();
+    let mut checked = vec![false; n];
+    let mut pos = 0usize;
+
+    let label_of = |i: usize| -> String {
+        let name = profiles[i]
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unnamed");
+        let proto = profiles[i]
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        format!("{:<8} {}", proto, name)
+    };
+
+    struct RawGuard;
+    impl Drop for RawGuard {
+        fn drop(&mut self) {
+            let _ = terminal::disable_raw_mode();
+            let mut err = std::io::stderr();
+            let _ = crossterm::queue!(err, crossterm::cursor::Show);
+            let _ = err.flush();
+        }
+    }
+
+    terminal::enable_raw_mode()?;
+    let _guard = RawGuard;
+    let mut err = std::io::stderr();
+    let _ = queue!(err, cursor::Hide);
+
+    let mut drawn: u16 = 0;
+    let result = loop {
+        if drawn > 0 {
+            queue!(err, cursor::MoveUp(drawn))?;
+        }
+        let header =
+            "Pick profiles to compare:  [Space] toggle  [Up/Down] move  [a] all  [n] none  [Enter] run  [q] cancel";
+        queue!(err, terminal::Clear(terminal::ClearType::CurrentLine))?;
+        write!(err, "{}\r\n", paint_bold(header, color_on))?;
+        for (i, &is_checked) in checked.iter().enumerate() {
+            queue!(err, terminal::Clear(terminal::ClearType::CurrentLine))?;
+            let mark = if is_checked { "[x]" } else { "[ ]" };
+            let pointer = if i == pos { ">" } else { " " };
+            let line = format!("{} {} {}", pointer, mark, label_of(i));
+            let line = if i == pos {
+                paint_bold(&line, color_on)
+            } else {
+                line
+            };
+            write!(err, "{}\r\n", line)?;
+        }
+        drawn = (n + 1) as u16;
+        err.flush()?;
+
+        match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => pos = (pos + n - 1) % n,
+                KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => pos = (pos + 1) % n,
+                KeyCode::Char(' ') => checked[pos] = !checked[pos],
+                KeyCode::Char('a') | KeyCode::Char('A') => checked.iter_mut().for_each(|c| *c = true),
+                KeyCode::Char('n') | KeyCode::Char('N') => {
+                    checked.iter_mut().for_each(|c| *c = false)
+                }
+                KeyCode::Enter => break (0..n).filter(|&i| checked[i]).collect::<Vec<usize>>(),
+                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break Vec::new(),
+                _ => {}
+            },
+            _ => {}
+        }
+    };
+    drop(_guard);
+    Ok(result)
 }
 
 fn print_benchmark_publish_block(serialized: &str) {
@@ -48012,24 +48398,49 @@ async fn main() {
             pre_delete,
             file_count,
             file_size,
+            compare,
+            interactive,
         } => {
-            cmd_benchmark(
-                *level,
-                sizes.as_deref(),
-                *runs,
-                operations.as_deref(),
-                *consent_publish,
-                *anonymize_extra,
-                report.as_deref(),
-                *profile_timeout,
-                test_root_prefix.as_deref(),
-                *pre_delete,
-                *file_count,
-                file_size,
-                &cli,
-                format,
-            )
-            .await
+            if *interactive || compare.is_some() {
+                cmd_benchmark_compare(
+                    compare.as_deref(),
+                    *interactive,
+                    *level,
+                    sizes.as_deref(),
+                    *runs,
+                    operations.as_deref(),
+                    *consent_publish,
+                    *anonymize_extra,
+                    *profile_timeout,
+                    test_root_prefix.as_deref(),
+                    *pre_delete,
+                    *file_count,
+                    file_size,
+                    &cli,
+                    format,
+                )
+                .await
+            } else {
+                cmd_benchmark(
+                    *level,
+                    sizes.as_deref(),
+                    *runs,
+                    operations.as_deref(),
+                    *consent_publish,
+                    *anonymize_extra,
+                    report.as_deref(),
+                    *profile_timeout,
+                    test_root_prefix.as_deref(),
+                    *pre_delete,
+                    *file_count,
+                    file_size,
+                    None,
+                    None,
+                    &cli,
+                    format,
+                )
+                .await
+            }
         }
         Commands::Cleanup {
             url,
