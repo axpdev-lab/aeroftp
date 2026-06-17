@@ -4631,7 +4631,7 @@ pub fn should_skip_file_download(
 
 /// Check if a file should be skipped during folder upload based on the file_exists_action setting.
 /// Used for upload: source is local filesystem, destination is remote.
-fn should_skip_file_upload(
+pub(crate) fn should_skip_file_upload(
     action: &str,
     local_meta: &std::fs::Metadata,
     remote_size: u64,
@@ -4677,7 +4677,7 @@ struct FtpDownloadScanResult {
     cancelled: bool,
 }
 
-fn parse_remote_modified_datetime(
+pub(crate) fn parse_remote_modified_datetime(
     remote_modified: Option<&str>,
 ) -> Option<chrono::DateTime<chrono::Utc>> {
     let modified_str = remote_modified?;

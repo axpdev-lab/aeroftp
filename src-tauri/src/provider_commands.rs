@@ -1949,7 +1949,7 @@ pub async fn provider_download_folder(
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
-    #[allow(unused_variables)] file_exists_action: Option<String>,
+    file_exists_action: Option<String>,
     max_concurrent: Option<u32>,
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
@@ -2002,7 +2002,7 @@ pub async fn provider_upload_folder(
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,
-    #[allow(unused_variables)] file_exists_action: Option<String>,
+    file_exists_action: Option<String>,
     max_concurrent: Option<u32>,
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
@@ -2034,6 +2034,7 @@ pub async fn provider_upload_folder(
         &state,
         &local_path,
         &remote_path,
+        file_exists_action,
         runtime_settings,
         commit_message,
     )
@@ -2547,9 +2548,12 @@ async fn provider_upload_folder_inner(
     state: &State<'_, ProviderState>,
     local_path: &str,
     remote_path: &str,
+    file_exists_action: Option<String>,
     runtime_settings: ResolvedTransferSettings,
     commit_message: Option<String>,
 ) -> Result<String, String> {
+    let file_exists_action = file_exists_action.unwrap_or_default();
+
     let cancel_token = state.reset_cancel_state().await;
 
     let folder_name = std::path::Path::new(local_path)
@@ -2764,6 +2768,103 @@ async fn provider_upload_folder_inner(
         }
     }
 
+    let mut files_skipped = 0u32;
+    if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+        let mut remote_index: std::collections::HashMap<
+            String,
+            (u64, Option<chrono::DateTime<chrono::Utc>>),
+        > = std::collections::HashMap::new();
+        let mut remote_dirs = Vec::with_capacity(dirs_to_create.len() + 1);
+        remote_dirs.push(remote_path.to_string());
+        remote_dirs.extend(dirs_to_create.iter().cloned());
+        remote_dirs.sort();
+        remote_dirs.dedup();
+
+        {
+            let mut provider_lock = state.provider.lock().await;
+            let provider = provider_lock
+                .as_mut()
+                .ok_or("Not connected to any provider")?;
+
+            for remote_dir in &remote_dirs {
+                if provider_transfer_cancelled(state) {
+                    let _ = app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "cancelled".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: folder_name.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(
+                                "Upload cancelled before remote conflict scan".to_string(),
+                            ),
+                            progress: None,
+                            path: Some(remote_path.to_string()),
+                            delta_stats: None,
+                            fallback_reason: None,
+                        },
+                    );
+                    return Ok("Upload cancelled before remote conflict scan".to_string());
+                }
+
+                match provider.list(remote_dir).await {
+                    Ok(entries) => {
+                        for entry in entries.into_iter().filter(|entry| !entry.is_dir) {
+                            let fallback_path =
+                                format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
+                            let modified =
+                                crate::parse_remote_modified_datetime(entry.modified.as_deref());
+                            remote_index.insert(fallback_path.clone(), (entry.size, modified));
+                            if entry.path != fallback_path {
+                                remote_index.insert(entry.path, (entry.size, modified));
+                            }
+                        }
+                    }
+                    Err(error) => warn!(
+                        "Failed to list provider directory {} before conflict scan: {}",
+                        remote_dir, error
+                    ),
+                }
+            }
+        }
+
+        transfer_entries.retain(|entry| {
+            let Some(&(remote_size, remote_modified)) = remote_index.get(&entry.remote_path) else {
+                return true;
+            };
+            let Ok(local_meta) = std::fs::metadata(&entry.local_path) else {
+                return true;
+            };
+            if !crate::should_skip_file_upload(
+                &file_exists_action,
+                &local_meta,
+                remote_size,
+                remote_modified,
+            ) {
+                return true;
+            }
+
+            files_skipped += 1;
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "file_skip".to_string(),
+                    transfer_id: entry.id.clone(),
+                    filename: entry.display_name.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("Skipped (identical): {}", entry.display_name)),
+                    progress: None,
+                    path: Some(entry.remote_path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            false
+        });
+    }
+
+    let total_files_for_progress = transfer_entries.len() as u32;
+
     let batch = TransferBatch {
         id: transfer_id.clone(),
         display_name: folder_name.clone(),
@@ -2780,7 +2881,6 @@ async fn provider_upload_folder_inner(
     let progress_transfer_id = transfer_id.clone();
     let progress_folder_name = folder_name.clone();
     let progress_remote_path = remote_path.to_string();
-    let total_files_for_progress = total_files_discovered;
     let progress_observer: ProgressObserver = Arc::new(move |snapshot| {
         let processed = snapshot.completed + snapshot.failed + snapshot.skipped;
         let percentage = if total_files_for_progress > 0 {
@@ -2857,8 +2957,8 @@ async fn provider_upload_folder_inner(
         )
     } else {
         format!(
-            "Uploaded {} files, {} errors",
-            files_uploaded, files_errored
+            "Uploaded {} files, {} skipped, {} errors",
+            files_uploaded, files_skipped, files_errored
         )
     };
 

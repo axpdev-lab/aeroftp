@@ -10020,18 +10020,22 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
     out
 }
 
+enum SortOverride {
+    NoOverride,
+    Clear,
+    Sort(ProfileSort),
+}
+
 /// Parse `--sort=<col>[:asc|desc]`. `manual`/`index` clears the sort (vault
-/// order). Returns `Ok(None)` for "no override", `Ok(Some(None))` for an
-/// explicit clear, `Ok(Some(Some(_)))` for a real sort, `Err` for malformed.
-#[allow(clippy::option_option)]
-fn parse_sort_override(raw: &str) -> Result<Option<Option<ProfileSort>>, String> {
+/// order), an empty value leaves the persisted vault sort untouched.
+fn parse_sort_override(raw: &str) -> Result<SortOverride, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Ok(None);
+        return Ok(SortOverride::NoOverride);
     }
     let lower = trimmed.to_ascii_lowercase();
     if lower == "manual" || lower == "none" {
-        return Ok(Some(None));
+        return Ok(SortOverride::Clear);
     }
     let (col_part, dir_part) = match trimmed.split_once(':') {
         Some((c, d)) => (c, Some(d)),
@@ -10043,14 +10047,14 @@ fn parse_sort_override(raw: &str) -> Result<Option<Option<ProfileSort>>, String>
         return Err(format!("column `{}` is not sortable", col_part));
     }
     if matches!(col, ProfileColId::Index) {
-        return Ok(Some(None));
+        return Ok(SortOverride::Clear);
     }
     let dir = match dir_part.map(|d| d.trim().to_ascii_lowercase()).as_deref() {
         None | Some("") | Some("asc") => ProfileSortDir::Asc,
         Some("desc") => ProfileSortDir::Desc,
         Some(other) => return Err(format!("invalid sort direction `{}`", other)),
     };
-    Ok(Some(Some(ProfileSort { col, dir })))
+    Ok(SortOverride::Sort(ProfileSort { col, dir }))
 }
 
 /// A column selection that may be the literal `*` / `all` wildcard.
@@ -12672,8 +12676,9 @@ fn render_profiles_text(
     // Apply --sort override.
     if let Some(raw) = overrides.sort.as_deref() {
         match parse_sort_override(raw) {
-            Ok(Some(opt)) => settings.sort = opt,
-            Ok(None) => {} // empty string: leave vault sort
+            Ok(SortOverride::Sort(sort)) => settings.sort = Some(sort),
+            Ok(SortOverride::Clear) => settings.sort = None,
+            Ok(SortOverride::NoOverride) => {} // empty string: leave vault sort
             Err(e) => {
                 eprintln!(
                     "Warning: invalid --sort value ({}). Falling back to vault sort.",
@@ -44368,13 +44373,22 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
     use ftp_client_gui_lib::ai::AIToolDefinition;
     use serde_json::json;
 
-    // Helper to build a tool definition with JSON Schema parameters
+    // Helper to build a tool definition with JSON Schema parameters.
     macro_rules! tool {
-        ($name:expr, $desc:expr, { $($pname:expr => ($ptype:expr, $pdesc:expr, $req:expr)),* $(,)? }) => {
+        ($name:expr, $desc:expr, {}) => {
+            AIToolDefinition {
+                name: $name.to_string(),
+                description: $desc.to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                }),
+            }
+        };
+        ($name:expr, $desc:expr, { $($pname:expr => ($ptype:expr, $pdesc:expr, $req:expr)),+ $(,)? }) => {
             {
-                #[allow(unused_mut)]
                 let mut props = serde_json::Map::new();
-                #[allow(unused_mut)]
                 let mut required: Vec<serde_json::Value> = Vec::new();
                 $(
                     let mut prop = serde_json::Map::new();
@@ -44389,7 +44403,7 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
                     if $req {
                         required.push(json!($pname));
                     }
-                )*
+                )+
                 AIToolDefinition {
                     name: $name.to_string(),
                     description: $desc.to_string(),

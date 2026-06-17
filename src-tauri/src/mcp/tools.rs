@@ -520,7 +520,6 @@ fn aggregate_by_top_level(
 ///
 /// Returns `None` on non-Linux (no reliable equivalent) and on read errors
 /// so the response can omit the field rather than lie.
-#[allow(unused_variables)]
 fn detect_binary_deleted() -> Option<bool> {
     #[cfg(target_os = "linux")]
     {
