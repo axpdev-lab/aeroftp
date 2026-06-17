@@ -280,6 +280,10 @@ gtk = "0.18"
 [features]
 default = ["aerorsync", "local-stt"]
 custom-protocol = ["tauri/custom-protocol"]
+# Test-only: deterministic CSPRNG + frozen timestamp for the AEROVAULT3
+# cross-impl byte-compat golden shared with the `aerovault` crate (T5). The
+# generator below MUST stay byte-identical to the crate's copy. Never default.
+test-vectors = []
 
 # aerorsync: AeroFTP's native Rust implementation of the rsync wire
 # protocol 31 (in-tree since PR-T11, default-on). Turns on the
