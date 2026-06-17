@@ -32543,7 +32543,8 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
         )?;
         for (off, &is_checked) in checked[top..end].iter().enumerate() {
             let i = top + off;
-            let mark = if is_checked { "[x]" } else { "[ ]" };
+            // Ehud (#277): a checkmark reads better than an x for "selected".
+            let mark = if is_checked { "[✓]" } else { "[ ]" };
             let pointer = if i == pos { ">" } else { " " };
             let line = format!("{} {} {:>2}. {}", pointer, mark, i + 1, label_of(i));
             let line = if i == pos {
