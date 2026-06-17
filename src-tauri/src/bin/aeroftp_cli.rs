@@ -19031,8 +19031,7 @@ async fn create_and_connect_with(
                             exact.cloned()
                         } else {
                             let by_id = profiles.iter().find(|p| {
-                                p.get("id").and_then(|v| v.as_str()).unwrap_or("")
-                                    == profile_name
+                                p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name
                             });
                             if by_id.is_some() {
                                 by_id.cloned()
@@ -32271,7 +32270,10 @@ async fn cmd_benchmark_compare(
             if !cli.quiet {
                 for (label, report) in &entries {
                     println!();
-                    println!("{}", paint_bold(&format!("Profile: {}", label), use_color()));
+                    println!(
+                        "{}",
+                        paint_bold(&format!("Profile: {}", label), use_color())
+                    );
                     print_benchmark_text_report(report);
                 }
                 print_benchmark_comparison(&entries, use_color());
@@ -32294,7 +32296,13 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
         return;
     }
 
-    let many_ops = ["upload-all", "list-dir", "stat-all", "download-all", "delete-all"];
+    let many_ops = [
+        "upload-all",
+        "list-dir",
+        "stat-all",
+        "download-all",
+        "delete-all",
+    ];
     let has_many = entries
         .iter()
         .any(|(_, r)| r.results.iter().any(|x| x.files_per_second.is_some()));
@@ -32429,8 +32437,16 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
         let end = (top + visible).min(n);
         let selected = checked.iter().filter(|&&c| c).count();
 
-        queue!(err, terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0))?;
-        write!(err, "{}\r\n\r\n", paint_bold("Pick profiles to compare", color_on))?;
+        queue!(
+            err,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0)
+        )?;
+        write!(
+            err,
+            "{}\r\n\r\n",
+            paint_bold("Pick profiles to compare", color_on)
+        )?;
         for (off, &is_checked) in checked[top..end].iter().enumerate() {
             let i = top + off;
             let mark = if is_checked { "[x]" } else { "[ ]" };
@@ -32471,7 +32487,9 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
                 KeyCode::Home => pos = 0,
                 KeyCode::End => pos = n - 1,
                 KeyCode::Char(' ') => checked[pos] = !checked[pos],
-                KeyCode::Char('a') | KeyCode::Char('A') => checked.iter_mut().for_each(|c| *c = true),
+                KeyCode::Char('a') | KeyCode::Char('A') => {
+                    checked.iter_mut().for_each(|c| *c = true)
+                }
                 KeyCode::Char('n') | KeyCode::Char('N') => {
                     checked.iter_mut().for_each(|c| *c = false)
                 }
