@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.0.6" date="2026-06-17">
+      <description>
+        <p>AeroVault Crate Convergence. AeroFTP's AEROVAULT3 vault engine now lives entirely in the published aerovault crate (0.6.0 on crates.io): the real AEROVAULT3 container (1024-byte header, content-defined chunking, per-chunk zstd, deduplication, packing) and its revision 4 Reed-Solomon error correction are a single audited implementation, shared byte-for-byte between the desktop app and the standalone CLI. The app's vault commands are now thin wrappers over the crate, around four thousand lines of duplicated cryptography removed, with a cross-implementation fixture pinning the two to identical bytes so any vault opens in either. AEROVAULT3 design and the unified error-correction direction were driven by Ehud Kirsh (@EhudKirsh, #162, #276).</p>
+        <p>Fixes and polish: folder uploads to cloud providers now honor the skip and overwrite policy instead of silently ignoring it, so re-uploading a tree no longer re-sends unchanged files (audit fix). The full-screen benchmark profile picker marks selected rows with a checkmark for clearer feedback (#277, @EhudKirsh). 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.0.5" date="2026-06-16">
       <description>
         <p>Error Correction, Encrypted Overlay, Archives, SSH Hardening and Windows Fixes. AeroVault v4 adds a Reed-Solomon self-healing error-correction layer that scrubs a vault for damage and repairs it from embedded parity, leaving the vault byte-for-byte untouched when damage exceeds the recoverable budget (design anchor @EhudKirsh, #276). A new AeroCrypt encrypted overlay binds native client-side encryption (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id) to a saved server profile alongside a labelled rclone-crypt interop lane, opt-in with no default cipher and full GUI parity to the CLI. The CLI gains compress and extract for zip, 7z and the tar family with optional AES-256 passwords, the interactive profiles selector gets an inline action menu (#311, @EhudKirsh), and AeroVault v3 usability picks up the latest beta feedback (@EhudKirsh).</p>

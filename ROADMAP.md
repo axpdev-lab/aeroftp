@@ -17,6 +17,10 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟢 Just Shipped
 
+- **AeroVault crate convergence** (v4.0.6)
+  The AEROVAULT3 vault engine and its revision 4 Reed-Solomon error correction now live entirely in the published `aerovault` crate ([0.6.0 on crates.io](https://crates.io/crates/aerovault)): one audited implementation, shared byte-for-byte between the desktop app and the standalone CLI, with a cross-implementation fixture pinning the two to identical bytes so a vault made by either opens in the other. The app's vault commands became thin wrappers over the crate, around four thousand three hundred lines of duplicated cryptography removed. AEROVAULT3 design and the unified error-correction direction were driven by **Ehud Kirsh** ([#162](https://github.com/axpdev-lab/aeroftp/issues/162), [#276](https://github.com/axpdev-lab/aeroftp/discussions/276)). Also: cloud folder uploads now honor the skip and overwrite policy, and the benchmark profile picker marks selected rows with a checkmark ([#277](https://github.com/axpdev-lab/aeroftp/discussions/277), Ehud Kirsh).
+- **AeroVault v4 error correction and the AeroCrypt encrypted overlay** (v4.0.5)
+  AeroVault v4 adds a Reed-Solomon self-healing layer that scrubs a vault for damage and repairs it from embedded parity, leaving the vault byte-for-byte untouched when damage exceeds the recoverable budget (design anchor **Ehud Kirsh**, [#276](https://github.com/axpdev-lab/aeroftp/discussions/276)). AeroCrypt is a first-class native encrypted overlay (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id) bound to a saved server profile, alongside a labelled rclone-crypt interop lane, opt-in with no default cipher and full GUI parity to the CLI. Plus CLI `compress`/`extract` for zip, 7z and tar with optional AES-256 passwords, the inline profiles action menu ([#311](https://github.com/axpdev-lab/aeroftp/issues/311), Ehud Kirsh), russh 0.61.2, and sync-cancel, master-password and Windows-portable fixes ([#332](https://github.com/axpdev-lab/aeroftp/issues/332), [#333](https://github.com/axpdev-lab/aeroftp/issues/333), [#334](https://github.com/axpdev-lab/aeroftp/issues/334), rockaut).
 - **Reversible restricted-filename encoding, CLI polish and stability** (v4.0.4)
   Filenames containing characters a provider rejects now round-trip transparently on Box, Dropbox, Jottacloud and OpenDrive: control characters and each provider's reserved set are encoded with the rclone-compatible reversible scheme and decoded back on listing, so a name like `a:b` is preserved instead of failing silently ([#272](https://github.com/axpdev-lab/aeroftp/issues/272), [#266](https://github.com/axpdev-lab/aeroftp/issues/266), Ehud Kirsh). The interactive CLI absorbs the next wishlist wave ([#270](https://github.com/axpdev-lab/aeroftp/issues/270)): compact `u3`/`3u` user-switch and a visual diff on profile reorder. Stability: a tray badge update off the GTK main thread could corrupt the GLib heap on suspend/resume (fixed by marshalling onto the main thread), the macOS Tahoe main window now self-heals a poisoned zero size ([#290](https://github.com/axpdev-lab/aeroftp/issues/290), alexhorner), and an OAuth reconnect reuses the saved per-profile token instead of re-running the browser flow.
 - **Cross-machine keystore portability and agent-facing polish** (v4.0.2)
@@ -84,11 +88,21 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Native filesystem watcher (inotify, FSEvents, ReadDirectoryChangesW), anti-loop cooldown, NDJSON output.
 - **MEGA Native crypto canonical layout**
   Interop fix so AeroFTP-uploaded files open correctly in MEGA Web, MEGA Mobile, and megajs.
+- **Universal File Versioning**
+  A single Versions dialog browses, downloads and restores prior file versions across the providers that expose them (Google Drive, Dropbox, OneDrive, Box, kDrive, pCloud, Drime, B2, S3, Koofr, Zoho WorkDrive, WebDAV and more), routed automatically through the StorageProvider trait.
+- **S3 storage class management**
+  Set the storage class on upload, change it in place via server-side copy, kick off a Glacier or Deep Archive restore, and read the tier back as a coloured badge in the file browser.
+- **Azure Blob tier management**
+  Set Hot, Cool, Cold or Archive on upload and rehydrate archived blobs.
+- **AeroCloud selective sync**
+  Folder-level exclusion through a checkbox tree, `.aeroignore` glob patterns, and per-direction bandwidth limits (KB/s, 0 = unlimited).
+- **Cipher-strength badges**
+  My Servers, Discover and the protocol selector show `128-bit`/`256-bit` lock badges instead of the old ambiguous `E2E`/`🔒` framing, aligning OAuth, API and overlay profiles on one visual grammar.
 
 ### 🟡 In Flight
 
-- **AeroVault v4 — ECC layer**
-  Reed-Solomon / Parchive-style redundancy applied to the encrypted chunks produced by AeroVault v3, on top of the extension directory and payload region already reserved by v3. A v3 vault opened by a v4-aware reader is byte-equivalent to "v4 with ECC turned off" (forward-compat contract pinned in the v3 spec). Tracked as `T-AEROVAULT-ECC` in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4.
+- **P2P peer transfer (AeroShare)**
+  Direct device-to-device transfers over an iroh-based peer connection (QUIC with hole-punching), no server in the middle: a send-file flow with progress, presence, and a received-files inbox. Nearing a first usable cut.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
 
@@ -110,18 +124,10 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Seven services beyond Immich and Google Photos.
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
-- **Universal File Versioning**
-  Unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud).
-- **AeroCloud Selective Sync**
-  Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization.
 - **Agent Orchestration v2**
   Mutative remote operations with grant model on top of the existing 35+ tool MCP server.
 - **AeroVault v2 Enhancements**
   Cross-platform migration, multi-device sync integration, key rotation.
-- **S3 Storage Class Management**
-  Set storage class on upload, change in-place, Glacier restore workflow, tier badges.
-- **Azure Blob Tier Management**
-  Hot, Cool, Cold, and Archive tiers with rehydration workflow.
 
 ### ⚪ On the Horizon
 
@@ -135,28 +141,14 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Decentralized storage integration (NLnet grant submitted).
 - **Tor Support**
   Anonymous file transfers via Tor hidden services (NLnet grant submitted).
-- **ChaCha20 / XChaCha20 cipher family**
-  Battery-efficient symmetric encryption option for mobile, exposed on desktop too for parity. Reference points: Kopia (ChaCha, zstd, BLAKE3) and Restic (zstd). Benchmark phase before pinning the default.
 - **Biometric Unlock**
   Fingerprint and face unlock for the encrypted vault (Touch ID, Windows Hello).
-- **Encryption-strength badges refresh**
-  Replace the current `E2E` and `🔒` badges across My Servers, Discover Services, and ProtocolSelector with cipher-strength labels (`128-bit 🔐` / `256-bit 🔐`). Removes the misleading "End-to-End Encryption" framing on overlays where there is no destination decryption, and aligns OAuth providers with the same visual grammar as API providers.
+- **ChaCha20 / XChaCha20 as a selectable vault cipher**
+  Promote the existing ChaCha20-Poly1305 cascade and Cyber Tools algorithm to a first-class, user-selectable content cipher for the vault (battery-efficient on mobile). Benchmark phase before pinning a default.
 - **Per-protocol comparison page in docs**
   Qualitative API vs WebDAV trade-offs, complementing Health Check and Speed Test.
-- **Topbar nav restructure**
-  Dedicated 3-cluster layout (page-nav, utility, window controls).
-- **Custom favicon picker: manual reorder and sort toggle**
-  User-uploaded library with explicit ordering and a sort toggle.
-- **Icon size enlarge or Appearance slider**
-  Bigger provider icons, or a user-adjustable size in Appearance.
 - **Keyboard accessibility: Tab forward unstuck**
   Enter and Space activation already shipped; Tab traversal still pending.
-- **AeroSync ↔ aeroftp-cli script export/import**
-  `.ps1` and `.sh` with auto-detected shebang.
-- **Top-right overlays: keep titlebar drag-region active**
-  While modals are open, the titlebar should remain draggable so the window can be moved or split-screened.
-- **Right-click "Open with default app"**
-  `.aerovault`, `.aeroftp`, and `.aeroftp-keystore` open inside AeroFTP. `.ps1` and `.sh` open in AeroTools terminal. Everything else uses the OS default.
 
 ---
 
@@ -201,6 +193,24 @@ If you spot a bug, want a small feature, or want to nominate a provider for nati
 ## Detailed Release History
 
 The lane view above is what most users want. The tables below are kept for users who want to see exactly which feature landed in which release.
+
+### v4.0.6
+
+| Feature | Description |
+|---------|-------------|
+| **AeroVault crate convergence** | The AEROVAULT3 vault engine and its revision 4 Reed-Solomon error correction move out of the app into the published `aerovault` crate (0.6.0 on crates.io): one audited implementation shared byte-for-byte between the desktop app and the standalone CLI, with a cross-implementation fixture pinning the two to identical bytes. The app's vault commands become thin wrappers over the crate (~4,300 lines of duplicated cryptography removed). AEROVAULT3 design and the unified `.aerocorrect` direction were driven by Ehud Kirsh (#162, #276). |
+| **Folder upload honors skip/overwrite (audit)** | Folder uploads to cloud providers accepted a skip/overwrite policy but silently ignored it; re-uploading a tree now skips unchanged files as configured, with the skipped count reported. Found by an independent CLI audit. |
+| **Benchmark picker checkmark (#277)** | The full-screen benchmark profile picker marks selected rows with a checkmark `[✓]` instead of `[x]`. (@EhudKirsh, #277) |
+
+### v4.0.5
+
+| Feature | Description |
+|---------|-------------|
+| **AeroVault v4 error correction (#276)** | A Reed-Solomon self-healing layer scrubs a vault for damage and repairs it from embedded or detached parity, leaving the vault byte-for-byte untouched when damage exceeds the recoverable budget. Embedded, detached `.aerocorrect` sidecar, or both; a plain rev. 3 reader still opens a rev. 4 vault. Design anchor @EhudKirsh, #276. |
+| **AeroCrypt encrypted overlay** | A first-class native encrypted overlay (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id) bound to a saved server profile, alongside a labelled rclone-crypt interop lane. Opt-in, no default cipher, full GUI parity to the CLI. |
+| **CLI compress / extract** | `aeroftp-cli compress` and `extract` for zip, 7z and the tar family, with optional AES-256 passwords. |
+| **Inline profiles action menu (#311)** | The interactive `profiles -i` selector gains an inline action menu. (@EhudKirsh, #311) |
+| **SSH upgrade and stability fixes** | russh upgraded to 0.61.2 (clears the deferred advisories, byte-intact SFTP live test); sync cancel actually aborts the in-progress transfer (#332, @rockaut); master-password removal falls back to a permission-protected on-disk key when the OS keyring is unavailable (#333, @rockaut); the Windows portable build initializes its vault and persists profiles without the credential manager (#334, @rockaut). |
 
 ### v4.0.4
 

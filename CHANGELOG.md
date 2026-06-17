@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.6] - 2026-06-17
+
+### AeroVault Crate Convergence
+
+AeroFTP's AEROVAULT3 vault engine and its revision 4 Reed-Solomon error correction now live entirely in the published `aerovault` crate, so the desktop app, the standalone CLI and any third-party Rust project all run a single audited implementation instead of parallel copies. The app keeps only thin command wrappers over the crate, and the container format is now defined and tested in one place.
+
+#### Changed
+- **AeroVault engine moved into the `aerovault` crate (0.6.0 on crates.io)**: the full AEROVAULT3 container (1024-byte header, gear content-defined chunking, per-chunk zstd, keyed-BLAKE3 deduplication, small-file packing, authenticated manifest) and revision 4 Reed-Solomon error correction are now owned by the crate. The app's `vault_v3_*` commands became thin wrappers over it, removing about four thousand three hundred lines of duplicated cryptography. A cross-implementation fixture pins the app and the crate to byte-for-byte identical containers, so a vault created by either side opens and extracts in the other and existing vaults are unaffected. AEROVAULT3 design and the unified `.aerocorrect` direction were driven by Ehud Kirsh. (@EhudKirsh, #162, #276)
+- **Benchmark profile picker uses a checkmark**: the full-screen benchmark profile picker marks selected rows with `[✓]` instead of `[x]`. (@EhudKirsh, #277)
+
+#### Fixed
+- **Folder uploads honor the skip and overwrite policy**: uploading a folder to a cloud provider accepted a file-exists policy but silently ignored it, so re-uploading a tree re-sent unchanged files. The policy is now applied per file and the skipped count is reported. Found by an independent CLI security audit.
+
+#### Contributors
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+
 ## [4.0.5] - 2026-06-16
 
 ### Two Encryption Pillars: AeroCrypt Overlay and AeroVault v4, plus an Interactive CLI, Server Groups and Hardening
