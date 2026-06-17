@@ -34,10 +34,6 @@ pub(crate) mod sidecar;
 pub(crate) const ERROR_CORRECTION_PAYLOAD_MAGIC: &[u8; 4] = b"AVEC";
 pub(crate) const ERROR_CORRECTION_PAYLOAD_VERSION: u16 = 2;
 
-/// Reed-Solomon group geometry. K data + P parity per group => P/K == 20% overhead,
-/// tolerating up to P erased shards (data or parity) per group.
-pub(crate) const ERROR_CORRECTION_DATA_SHARDS: usize = 10;
-pub(crate) const ERROR_CORRECTION_PARITY_SHARDS: usize = 2;
 /// Shard-size grid bounds. For small payloads S = ceil(L/K) yields a single full group
 /// (exactly P/K overhead); ERROR_CORRECTION_MIN_SHARD keeps micro-payload shards sane and
 /// ERROR_CORRECTION_MAX_SHARD bounds shard granularity and per-shard recovery cost.
@@ -67,12 +63,6 @@ pub(crate) fn error_correction_grid(pct: u32) -> (usize, usize) {
     // K = round(P*100 / pct), at least 2 so every group keeps real data slots.
     let k = (((p * 100) + pct / 2) / pct).max(2);
     (k as usize, p as usize)
-}
-
-/// The (K, P) grid to use from a recorded overhead percentage (or the default for
-/// payloads created before the percentage knob existed).
-pub(crate) fn manifest_error_correction_grid(error_correction_pct: Option<u32>) -> (usize, usize) {
-    error_correction_grid(error_correction_pct.unwrap_or(ERROR_CORRECTION_DEFAULT_PCT))
 }
 
 /// 16-byte rot-detection checksum for one shard.
@@ -239,24 +229,8 @@ impl ErrorCorrectionPayload {
 }
 
 /// Compute the Error Correction payload (v2 fixed-grid format) for the concatenated
-/// protected stream.
-///
-/// Returns (serialized_payload, shards_generated, bytes_protected, overhead_pct).
-/// shards_generated = total (data+parity) shards in the v2 grid.
-/// bytes_protected = L (sum of protected block sizes).
-/// overhead_pct uses the actual serialized Error Correction payload size
-/// (header+checksums+parity data) vs protected.
-/// Empty input -> (vec![], 0, 0, 0.0).
-pub(crate) fn compute_error_correction_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
-    compute_error_correction_shards_grid(
-        data_blocks,
-        ERROR_CORRECTION_DATA_SHARDS,
-        ERROR_CORRECTION_PARITY_SHARDS,
-    )
-}
-
-/// As `compute_error_correction_shards`, with an explicit (K data, P parity) group so
-/// the QR-style overhead level (#276) is honored. The grid is recorded in the AVEC
+/// protected stream, with an explicit (K data, P parity) group so the QR-style
+/// overhead level (#276) is honored. The grid is recorded in the AVEC
 /// payload header, so reconstruction reads K/P back from the payload regardless of the
 /// level the protected data was created with.
 pub(crate) fn compute_error_correction_shards_grid(
@@ -348,16 +322,6 @@ pub(crate) fn compute_error_correction_shards_grid(
         0.0
     };
     (payload, total_shards, protected, overhead)
-}
-
-/// Compute the AVEC parity for a single fixed metadata region, treating it as one
-/// block. An empty region yields an empty payload.
-pub(crate) fn compute_metadata_parity(region: &[u8], k: usize, p: usize) -> Vec<u8> {
-    if region.is_empty() {
-        return Vec::new();
-    }
-    let (payload, _shards, _prot, _ov) = compute_error_correction_shards_grid(&[region], k, p);
-    payload
 }
 
 /// Reconstruct damaged bytes in the protected block stream using the v2 Error
@@ -765,9 +729,12 @@ mod tests {
 
     #[test]
     fn metadata_parity_empty_and_single_region() {
-        assert!(compute_metadata_parity(&[], 10, 2).is_empty());
+        // `compute_metadata_parity` was a thin wrapper over the single-block grid
+        // path (removed in T7); exercise that path directly.
+        let (empty, _, _, _) = compute_error_correction_shards_grid(&[&[][..]], 10, 2);
+        assert!(empty.is_empty());
         let region = sample(8_000);
-        let parity = compute_metadata_parity(&region, 10, 2);
+        let (parity, _s, _p, _o) = compute_error_correction_shards_grid(&[&region], 10, 2);
         assert!(!parity.is_empty());
         let mut damaged = region.clone();
         damaged[1234] ^= 0xFF;

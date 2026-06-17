@@ -62,8 +62,8 @@ pub struct VaultReport {
     pub attribution: String,
 
     // P3-03: Error Correction (error-correction wrapper, last in 4-wrappers pipeline) telemetry.
-    // Populated for v3+ Error Correction enabled vaults on seal (create/add paths that trigger
-    // compute_error_correction_shards in save_open_vault). Optional so v1/v2 and non-ECC v3
+    // Populated for v3+ Error Correction enabled vaults on seal (create/add paths that
+    // recompute parity in the crate's vault seal). Optional so v1/v2 and non-ECC v3
     // remain unchanged. "shards generated" = total data+parity shards in the v2 grid;
     // "bytes protected" = concatenated live block stream length (incl u64 prefixes);
     // overhead % measured on the actual serialized Error Correction payload bytes (header+cksums+parity).
