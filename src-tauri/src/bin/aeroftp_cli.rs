@@ -32371,7 +32371,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
     use crossterm::{
         cursor,
         event::{self, Event, KeyCode, KeyEventKind},
-        queue, terminal,
+        execute, queue, terminal,
     };
     use std::io::Write;
 
@@ -32379,6 +32379,10 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
     let color_on = use_color();
     let mut checked = vec![false; n];
     let mut pos = 0usize;
+    // First visible row of the scrolling viewport. The profile list can be far
+    // taller than the terminal, so we render a window and scroll it rather than
+    // printing every row (which would overflow and duplicate on redraw).
+    let mut top = 0usize;
 
     let label_of = |i: usize| -> String {
         let name = profiles[i]
@@ -32389,38 +32393,49 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             .get("protocol")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        format!("{:<8} {}", proto, name)
+        format!("{:<10} {}", proto, name)
     };
 
-    struct RawGuard;
-    impl Drop for RawGuard {
+    // Restore the main screen and the cursor no matter how we leave.
+    struct Guard;
+    impl Drop for Guard {
         fn drop(&mut self) {
-            let _ = terminal::disable_raw_mode();
             let mut err = std::io::stderr();
-            let _ = crossterm::queue!(err, crossterm::cursor::Show);
+            let _ = crossterm::execute!(
+                err,
+                crossterm::terminal::LeaveAlternateScreen,
+                crossterm::cursor::Show
+            );
+            let _ = crossterm::terminal::disable_raw_mode();
             let _ = err.flush();
         }
     }
 
-    terminal::enable_raw_mode()?;
-    let _guard = RawGuard;
     let mut err = std::io::stderr();
-    let _ = queue!(err, cursor::Hide);
+    terminal::enable_raw_mode()?;
+    execute!(err, terminal::EnterAlternateScreen, cursor::Hide)?;
+    let _guard = Guard;
 
-    let mut drawn: u16 = 0;
     let result = loop {
-        if drawn > 0 {
-            queue!(err, cursor::MoveUp(drawn))?;
+        let (_cols, rows) = terminal::size().unwrap_or((80, 24));
+        // Reserve 2 rows for the title block and 2 for the footer.
+        let visible = (rows.saturating_sub(4)).max(1) as usize;
+        if pos < top {
+            top = pos;
         }
-        let header =
-            "Pick profiles to compare:  [Space] toggle  [Up/Down] move  [a] all  [n] none  [Enter] run  [q] cancel";
-        queue!(err, terminal::Clear(terminal::ClearType::CurrentLine))?;
-        write!(err, "{}\r\n", paint_bold(header, color_on))?;
-        for (i, &is_checked) in checked.iter().enumerate() {
-            queue!(err, terminal::Clear(terminal::ClearType::CurrentLine))?;
+        if pos >= top + visible {
+            top = pos + 1 - visible;
+        }
+        let end = (top + visible).min(n);
+        let selected = checked.iter().filter(|&&c| c).count();
+
+        queue!(err, terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0))?;
+        write!(err, "{}\r\n\r\n", paint_bold("Pick profiles to compare", color_on))?;
+        for (off, &is_checked) in checked[top..end].iter().enumerate() {
+            let i = top + off;
             let mark = if is_checked { "[x]" } else { "[ ]" };
             let pointer = if i == pos { ">" } else { " " };
-            let line = format!("{} {} {}", pointer, mark, label_of(i));
+            let line = format!("{} {} {:>2}. {}", pointer, mark, i + 1, label_of(i));
             let line = if i == pos {
                 paint_bold(&line, color_on)
             } else {
@@ -32428,13 +32443,33 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             };
             write!(err, "{}\r\n", line)?;
         }
-        drawn = (n + 1) as u16;
+        queue!(err, cursor::MoveTo(0, rows.saturating_sub(2)))?;
+        write!(
+            err,
+            "{}\r\n",
+            paint_dim(
+                &format!("{}-{} of {}   {} selected", top + 1, end, n, selected),
+                color_on
+            )
+        )?;
+        write!(
+            err,
+            "{}",
+            paint_dim(
+                "[Space] toggle  [Up/Down] move  [PgUp/PgDn] page  [a] all  [n] none  [Enter] run  [q] cancel",
+                color_on
+            )
+        )?;
         err.flush()?;
 
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                 KeyCode::Up | KeyCode::Char('k') => pos = (pos + n - 1) % n,
                 KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => pos = (pos + 1) % n,
+                KeyCode::PageUp => pos = pos.saturating_sub(visible),
+                KeyCode::PageDown => pos = (pos + visible).min(n - 1),
+                KeyCode::Home => pos = 0,
+                KeyCode::End => pos = n - 1,
                 KeyCode::Char(' ') => checked[pos] = !checked[pos],
                 KeyCode::Char('a') | KeyCode::Char('A') => checked.iter_mut().for_each(|c| *c = true),
                 KeyCode::Char('n') | KeyCode::Char('N') => {
