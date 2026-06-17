@@ -31932,6 +31932,7 @@ fn results_have_fatal(results: &[BenchmarkResult]) -> bool {
 }
 
 fn print_benchmark_text_report(report: &BenchmarkReport) {
+    let color_on = use_color();
     println!(
         "Benchmark complete: level={:?} runs={} bytes={} duration={}ms",
         report.level,
@@ -31939,39 +31940,128 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
         format_size(report.summary.total_bytes_transferred),
         report.summary.total_duration_ms
     );
-    println!();
-    for r in &report.results {
-        // Many-files batch ops lead with files/sec (the headline for that axis);
-        // single-file ops keep showing raw throughput in Mbps.
-        let trailing = match (r.files_per_second, &r.throughput_mbps) {
-            (Some(fps), Some(t)) => format!(
-                "{:8.1} files/s  {:7.2} Mbps p50, {:7.2} Mbps p95",
-                fps, t.p50, t.p95
-            ),
-            (Some(fps), None) => format!("{:8.1} files/s", fps),
-            (None, Some(t)) => format!("{:7.2} Mbps p50, {:7.2} Mbps p95", t.p50, t.p95),
-            (None, None) => "n/a".into(),
-        };
-        println!(
-            "  {:>12} {:>10}  {:>4} runs  latency p50={:6.1}ms p95={:6.1}ms  {}",
-            r.operation,
-            if r.payload_size_bytes == 0 {
-                "-".into()
-            } else {
-                format_size(r.payload_size_bytes)
-            },
-            r.runs,
-            r.latency_ms.p50,
-            r.latency_ms.p95,
-            trailing
+
+    let size_cell = |r: &BenchmarkResult| {
+        if r.payload_size_bytes == 0 {
+            "-".to_string()
+        } else {
+            format_size(r.payload_size_bytes)
+        }
+    };
+    let mbps_cell = |r: &BenchmarkResult| match &r.throughput_mbps {
+        Some(t) => format!("{:.2} / {:.2}", t.p50, t.p95),
+        None => "-".to_string(),
+    };
+
+    // Single-file ops report throughput (Mbps); many-small-files ops report
+    // files/s. Render them as two separate tables so the two axes never blur.
+    let single: Vec<&BenchmarkResult> = report
+        .results
+        .iter()
+        .filter(|r| r.files_per_second.is_none())
+        .collect();
+    let many: Vec<&BenchmarkResult> = report
+        .results
+        .iter()
+        .filter(|r| r.files_per_second.is_some())
+        .collect();
+
+    if !single.is_empty() {
+        println!();
+        let rows: Vec<Vec<String>> = single
+            .iter()
+            .map(|&r| {
+                vec![
+                    r.operation.clone(),
+                    size_cell(r),
+                    r.runs.to_string(),
+                    format!("{:.1}ms", r.latency_ms.p50),
+                    format!("{:.1}ms", r.latency_ms.p95),
+                    mbps_cell(r),
+                ]
+            })
+            .collect();
+        print_benchmark_table(
+            "Single-file throughput (Mbps p50/p95, higher is better)",
+            &["operation", "size", "runs", "p50", "p95", "Mbps"],
+            &[true, false, false, false, false, false],
+            &rows,
+            color_on,
         );
     }
+
+    if !many.is_empty() {
+        println!();
+        let rows: Vec<Vec<String>> = many
+            .iter()
+            .map(|&r| {
+                vec![
+                    r.operation.clone(),
+                    size_cell(r),
+                    r.runs.to_string(),
+                    format!("{:.1}ms", r.latency_ms.p50),
+                    format!("{:.1}ms", r.latency_ms.p95),
+                    format!("{:.1}", r.files_per_second.unwrap_or(0.0)),
+                    mbps_cell(r),
+                ]
+            })
+            .collect();
+        print_benchmark_table(
+            "Many small files (files/s, higher is better)",
+            &["operation", "size", "runs", "p50", "p95", "files/s", "Mbps"],
+            &[true, false, false, false, false, false, false],
+            &rows,
+            color_on,
+        );
+    }
+
     if !report.summary.errors.is_empty() {
         println!();
         println!("Errors / warnings ({}):", report.summary.errors.len());
         for e in &report.summary.errors {
             println!("  - {}", e);
         }
+    }
+}
+
+/// Render one benchmark section as an aligned table in the CLI house style:
+/// a bold title, a dim header row plus a `─` rule, then plain data rows.
+/// `left[i]` picks left vs right alignment for column `i`.
+fn print_benchmark_table(
+    title: &str,
+    headers: &[&str],
+    left: &[bool],
+    rows: &[Vec<String>],
+    color_on: bool,
+) {
+    let ncol = headers.len();
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
+    for row in rows {
+        for (i, cell) in row.iter().enumerate() {
+            widths[i] = widths[i].max(cell.chars().count());
+        }
+    }
+    let gap = "  ";
+    let total: usize = widths.iter().sum::<usize>() + gap.len() * ncol.saturating_sub(1);
+    let fmt_row = |cells: &[String]| -> String {
+        (0..ncol)
+            .map(|i| {
+                let w = widths[i];
+                if left[i] {
+                    format!("{:<w$}", cells[i], w = w)
+                } else {
+                    format!("{:>w$}", cells[i], w = w)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(gap)
+    };
+    let header_cells: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
+    println!("{}", paint_bold(title, color_on));
+    println!("  {}", paint_dim(&fmt_row(&header_cells), color_on));
+    println!("  {}", paint_dim(&"\u{2500}".repeat(total), color_on));
+    for row in rows {
+        println!("  {}", fmt_row(row));
     }
 }
 
