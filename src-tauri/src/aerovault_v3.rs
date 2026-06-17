@@ -21,7 +21,7 @@ use crate::error_correction::{
 };
 use crate::vault_telemetry::VaultReport;
 use hmac::{Hmac, Mac};
-use secrecy::zeroize::Zeroize;
+use secrecy::zeroize::{Zeroize, Zeroizing};
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 use std::collections::{BTreeMap, HashSet};
@@ -389,16 +389,22 @@ fn collect_live_block_refs(vault: &OpenVaultV3) -> Vec<&[u8]> {
         .manifest
         .chunks
         .values()
-        .map(|rec| (rec.data_offset as usize, 8 + rec.block_len as usize))
+        .map(|rec| (rec.data_offset as usize, rec.block_len as usize))
         .collect();
     ranges.sort_by_key(|(off, _)| *off);
     ranges
         .into_iter()
-        .map(|(start, full_len)| {
-            if start + full_len <= vault.data.len() {
-                &vault.data[start..start + full_len]
-            } else {
-                &[] as &[u8]
+        .map(|(start, block_len)| {
+            // Every add is checked: a corrupted manifest can drive data_offset or
+            // block_len near usize::MAX. An out-of-range block contributes an empty
+            // slice instead of panicking. Repair re-verifies each block, so a
+            // dropped range can only make repair fail, never corrupt good data.
+            let end = block_len
+                .checked_add(8)
+                .and_then(|full| start.checked_add(full));
+            match end {
+                Some(end) if end <= vault.data.len() => &vault.data[start..end],
+                _ => &[] as &[u8],
             }
         })
         .collect()
@@ -620,27 +626,45 @@ fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
 
     for rec in chunks {
         let start = rec.data_offset as usize;
-        if start + 8 > vault.data.len() {
-            // Truncated block - definitely damaged
-            damaged.push(DamagedChunk {
-                record: rec.clone(),
-                on_disk_start: rec.data_offset,
-                on_disk_len: 8,
-            });
-            continue;
-        }
+        // A corrupted length prefix can drive data_offset (or the stored block
+        // length below) near usize::MAX; every offset add is checked so a hostile
+        // manifest is reported as damaged instead of panicking on overflow
+        // (CLAUDE-AV-ECC unchecked-add hardening).
+        let len_end = match start.checked_add(8) {
+            Some(end) if end <= vault.data.len() => end,
+            _ => {
+                // Truncated or out-of-range block - definitely damaged
+                damaged.push(DamagedChunk {
+                    record: rec.clone(),
+                    on_disk_start: rec.data_offset,
+                    on_disk_len: 8,
+                });
+                continue;
+            }
+        };
 
         let stored_len =
-            u64::from_le_bytes(vault.data[start..start + 8].try_into().expect("slice")) as usize;
+            u64::from_le_bytes(vault.data[start..len_end].try_into().expect("slice")) as usize;
 
-        let block_start = start + 8;
-        let block_end = block_start + stored_len;
+        let block_start = len_end;
+        let block_end = block_start.checked_add(stored_len);
+        // `8 + stored_len` is reported even on the damaged path, so compute it
+        // saturating: a corrupted prefix can drive stored_len near usize::MAX.
+        let on_disk_len = (stored_len as u64).saturating_add(8);
 
-        if block_end > vault.data.len() || stored_len != rec.block_len as usize {
+        let Some(block_end) = block_end.filter(|&end| end <= vault.data.len()) else {
             damaged.push(DamagedChunk {
                 record: rec.clone(),
                 on_disk_start: rec.data_offset,
-                on_disk_len: (8 + stored_len) as u64,
+                on_disk_len,
+            });
+            continue;
+        };
+        if stored_len != rec.block_len as usize {
+            damaged.push(DamagedChunk {
+                record: rec.clone(),
+                on_disk_start: rec.data_offset,
+                on_disk_len,
             });
             continue;
         }
@@ -652,7 +676,7 @@ fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
             damaged.push(DamagedChunk {
                 record: rec.clone(),
                 on_disk_start: rec.data_offset,
-                on_disk_len: (8 + stored_len) as u64,
+                on_disk_len,
             });
         }
     }
@@ -1745,6 +1769,9 @@ fn change_password_in_place(vault: &mut OpenVaultV3, new_password: &str) -> Resu
     let salt = random_array::<SALT_SIZE>();
     let mut base_kek = derive_base_kek(new_password, &salt)?;
     let (kek_master, kek_mac) = derive_keks(&base_kek)?;
+    // Wipe the transient KEKs on every exit path, including the `?` returns below.
+    let kek_master = Zeroizing::new(kek_master);
+    let kek_mac = Zeroizing::new(kek_mac);
     base_kek.zeroize();
     vault.header.salt = salt;
     vault.header.wrapped_master_key = wrap_key(&kek_master, &vault.master_key)?;
@@ -1995,6 +2022,9 @@ fn create_empty_vault(
     let salt = random_array::<SALT_SIZE>();
     let mut base_kek = derive_base_kek(password, &salt)?;
     let (kek_master, kek_mac) = derive_keks(&base_kek)?;
+    // Wipe the transient KEKs on every exit path, including the `?` returns below.
+    let kek_master = Zeroizing::new(kek_master);
+    let kek_mac = Zeroizing::new(kek_mac);
     base_kek.zeroize();
 
     let mut master_key = random_array::<KEY_SIZE>();
@@ -2125,6 +2155,9 @@ fn open_header_bytes(header_bytes: &[u8], password: &str) -> Result<UnlockedHead
     let header = VaultHeaderV3::from_bytes(header_bytes)?;
     let mut base_kek = derive_base_kek(password, &header.salt)?;
     let (kek_master, kek_mac) = derive_keks(&base_kek)?;
+    // Wipe the transient KEKs on every exit path, including the `?` returns below.
+    let kek_master = Zeroizing::new(kek_master);
+    let kek_mac = Zeroizing::new(kek_mac);
     base_kek.zeroize();
     let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
     header.verify_mac(&mac_key)?;
@@ -2475,9 +2508,14 @@ fn save_open_vault(vault: &mut OpenVaultV3) -> Result<(), String> {
             .iter()
             .map(|rec| {
                 let start = rec.data_offset as usize;
-                let full_len = 8 + rec.block_len as usize;
-                if start + full_len <= vault.data.len() {
-                    &vault.data[start..start + full_len]
+                // Checked offset arithmetic: never panic on a manifest whose
+                // data_offset/block_len is near usize::MAX (defense-in-depth, even
+                // though the manifest is authenticated).
+                let end = (rec.block_len as usize)
+                    .checked_add(8)
+                    .and_then(|full| start.checked_add(full));
+                if let Some(end) = end.filter(|&e| e <= vault.data.len()) {
+                    &vault.data[start..end]
                 } else {
                     &[] as &[u8]
                 }
