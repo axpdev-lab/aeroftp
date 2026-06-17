@@ -748,11 +748,16 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     const [s3AdvancedUnlocked, setS3AdvancedUnlocked] = useState(false);
     const [showS3AdvancedWarning, setShowS3AdvancedWarning] = useState(false);
     const [showS3SessionToken, setShowS3SessionToken] = useState(false);
+    // SSH auth section open state. Must stay at the top level (not inside the
+    // `protocol === 'sftp'` branch) so the hook count is stable when the user
+    // edits a saved profile and switches protocol, otherwise React throws
+    // "Rendered fewer hooks than expected" (minified error #300). See #336.
+    const [sshOpen, setSshOpen] = useState(
+        !!(options.private_key_path || options.key_passphrase) || selectedProviderId === 'sourceforge'
+    );
 
     if (protocol === 'sftp') {
         const isSourceForge = selectedProviderId === 'sourceforge';
-        const hasKeyConfig = !!(options.private_key_path || options.key_passphrase);
-        const [sshOpen, setSshOpen] = useState(hasKeyConfig || isSourceForge);
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 {/* Collapsible SSH Auth header */}
