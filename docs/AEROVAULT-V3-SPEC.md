@@ -1,8 +1,8 @@
 # AeroVault v3 Format Specification
 
-**Version**: Draft 0.1
-**Status**: Implementation draft
-**Date**: 2026-05-11
+**Version**: 1.0
+**Status**: Published - shipped in AeroFTP v3.8.0; the standalone [`aerovault`](https://crates.io/crates/aerovault) crate fully migrated to v3 as of 0.6.0 (earlier crate releases shipped v2 while v3 lived in the AeroFTP repo pending migration)
+**Date**: 2026-05-11 (published 2026-06-03)
 **Authors**: axpdev-lab
 
 > **Roadmap attribution.** The wrapper-stack design this format implements (the wrapper-versus-step taxonomy, the corrected AES-256-GCM-SIV avalanche framing, algorithm versioning as a forward-compatibility clause, the small-file-packing model and the chunking trade analysis) is a sustained community design contribution by **Ehud Kirsh** in the AeroFTP [COMMUNITY ROADMAP thread (issue #162)](https://github.com/axpdev-lab/aeroftp/issues/162). The conversation shaped both the v3 architecture and this specification.

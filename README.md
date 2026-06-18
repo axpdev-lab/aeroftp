@@ -403,7 +403,7 @@ Backends that advertise none of these degrade honestly to the classic single-str
 [![Crates.io](https://img.shields.io/crates/v/aerovault)](https://crates.io/crates/aerovault)
 [![docs.rs](https://docs.rs/aerovault/badge.svg)](https://docs.rs/aerovault)
 
-Create, manage, and browse encrypted containers that protect your files with a security stack that exceeds industry standards. The encryption engine is published as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io for use in any Rust project.
+Create, manage, and browse encrypted containers that protect your files with a security stack that exceeds industry standards. The encryption engine is published as the standalone [`aerovault`](https://github.com/axpdev-lab/aerovault) crate ([crates.io](https://crates.io/crates/aerovault) · [docs.rs](https://docs.rs/aerovault)) for use in any Rust project.
 
 **AeroVault v2 (.aerovault containers)**
 
@@ -419,9 +419,9 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 > **Open format**: The `.aerovault` binary format is fully documented in the [AeroVault v2 Specification](docs/AEROVAULT-V2-SPEC.md) with implementation guides for Rust, Java, Python, Go, C, and JavaScript.
 
-**AeroVault v3 (Beta, v3.8.0)**
+**AeroVault v3 (content-addressed, Archive tier)**
 
-A draft container format that ships alongside v2 and is opt-in via the Beta tier in the create dialog. v2 remains the default in the GUI and there is no automatic v2 → v3 migration; the full lifecycle is scriptable from the CLI for every format (`aeroftp-cli vault create/add/info/extract`, `--vault-version v1|v2|v3` with header auto-detect, `--cascade` for the v2 paranoid mode, `--receipt` for the technical telemetry).
+A content-addressed, deduplicating container that ships alongside v2 and is selectable as the **Archive** security level in the create dialog. v2 remains the default in the GUI and there is no automatic v2 → v3 migration; the full lifecycle is scriptable from the CLI for every format (`aeroftp-cli vault create/add/info/extract`, `--vault-version v1|v2|v3` with header auto-detect, `--cascade` for the v2 paranoid mode, `--receipt` for the technical telemetry). The reader/writer is shared with the standalone [`aerovault` crate](https://github.com/axpdev-lab/aerovault) ([crates.io](https://crates.io/crates/aerovault)).
 
 | Component | Algorithm | Details |
 | --------- | --------- | ------- |
