@@ -3084,6 +3084,12 @@ enum CorrectCommands {
         /// Sidecar path (default: `<file>.aerocorrect`)
         #[arg(long)]
         parity: Option<String>,
+        /// Authenticity anchor: a 64-char hex SHA-256 of the KNOWN-GOOD content. A bare
+        /// repair reconstructs toward whatever the sidecar declares (integrity only); with
+        /// this flag a sidecar declaring a different content hash is refused before any
+        /// write, so a planted sidecar cannot drive the repair toward attacker content.
+        #[arg(long = "expect-sha256")]
+        expect_sha256: Option<String>,
     },
 }
 
@@ -5299,8 +5305,16 @@ fn cmd_correct(command: &CorrectCommands, format: OutputFormat) -> i32 {
                 }
             }
         }
-        CorrectCommands::Repair { path, parity } => {
-            match error_correction::correct_repair(path, parity.as_deref()) {
+        CorrectCommands::Repair {
+            path,
+            parity,
+            expect_sha256,
+        } => {
+            match error_correction::correct_repair_anchored(
+                path,
+                parity.as_deref(),
+                expect_sha256.as_deref(),
+            ) {
                 Ok(report) => {
                     match format {
                         OutputFormat::Json => print_json(&report),

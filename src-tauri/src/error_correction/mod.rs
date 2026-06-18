@@ -586,17 +586,39 @@ pub fn correct_verify(file: &str, parity: Option<&str>) -> Result<CorrectVerifyR
 
 /// Repair `file` in place from its `.aerocorrect` sidecar (atomic, all-or-nothing). A file
 /// already intact is reported as `verified` (no write). `parity` overrides the default path.
+///
+/// This is an INTEGRITY repair: it reconstructs toward the content hash the sidecar
+/// declares. To additionally assert AUTHENTICITY (that the recovered content is the one
+/// you expect, not whatever a planted sidecar declares), use [`correct_repair_anchored`]
+/// with an out-of-band good SHA-256 (audit M3).
 pub fn correct_repair(file: &str, parity: Option<&str>) -> Result<CorrectRepairReport, String> {
+    correct_repair_anchored(file, parity, None)
+}
+
+/// Like [`correct_repair`], but when `expect_sha256` (a 64-char hex SHA-256) is given it
+/// anchors authenticity: a sidecar whose declared content hash differs from the expected
+/// hash is refused before any write (audit M3). This is what the CLI `--expect-sha256`
+/// flag and the MCP tool's `expect_sha256` argument wire into.
+pub fn correct_repair_anchored(
+    file: &str,
+    parity: Option<&str>,
+    expect_sha256: Option<&str>,
+) -> Result<CorrectRepairReport, String> {
     let path = Path::new(file);
     let rel = rel_name(file);
     let sidecar_path = parity
         .map(|s| s.to_string())
         .unwrap_or_else(|| sidecar::aerocorrect_sidecar_path(file));
+    let anchor = match expect_sha256 {
+        Some(hex) => Some(parse_sha256_hex(hex)?),
+        None => None,
+    };
     let (status, repaired, recovered_shards) =
         match aerosync::verify_repair_standalone_file_streamed(
             &rel,
             path,
             Path::new(&sidecar_path),
+            anchor.as_ref(),
         )? {
             aerosync::SyncEcRepairResult::Verified => ("verified".to_string(), false, 0u64),
             aerosync::SyncEcRepairResult::Repaired { recovered_shards } => {
@@ -610,6 +632,24 @@ pub fn correct_repair(file: &str, parity: Option<&str>) -> Result<CorrectRepairR
         repaired,
         recovered_shards,
     })
+}
+
+/// Parse a 64-char hex SHA-256 into 32 bytes, failing closed on malformed input.
+fn parse_sha256_hex(hex: &str) -> Result<[u8; 32], String> {
+    let hex = hex.trim();
+    if hex.len() != 64 {
+        return Err(format!(
+            "expected SHA-256 must be 64 hex chars, got {}",
+            hex.len()
+        ));
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        let s = &hex[i * 2..i * 2 + 2];
+        *byte = u8::from_str_radix(s, 16)
+            .map_err(|_| "expected SHA-256 is not valid hex".to_string())?;
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -886,5 +926,45 @@ mod tests {
             b_bytes,
             "B untouched after failed repair"
         );
+    }
+
+    /// Audit M3 (app surface): the authenticity anchor refuses a sidecar whose declared
+    /// content hash differs from the caller's out-of-band expected hash, before any write;
+    /// the correct anchor repairs byte-identically; a malformed hash is rejected. Mirrors
+    /// the crate test so the shipped CLI/MCP `expect_sha256` path is covered.
+    #[test]
+    fn correct_repair_anchored_refuses_mismatched_expected_hash() {
+        use sha2::{Digest, Sha256};
+        let dir = tempfile::tempdir().unwrap();
+        let original = sample(40_000);
+        let file = write_file(dir.path(), "doc.bin", &original);
+        correct_generate(&file, 25, None).unwrap();
+
+        // Corrupt within the parity budget so a bare repair would otherwise succeed.
+        let mut bytes = original.clone();
+        for b in bytes.iter_mut().take(500).skip(50) {
+            *b ^= 0xFF;
+        }
+        std::fs::write(&file, &bytes).unwrap();
+
+        // A wrong anchored hash refuses before any write; the file stays corrupt.
+        let before = std::fs::read(&file).unwrap();
+        let wrong = "0".repeat(64);
+        assert!(correct_repair_anchored(&file, None, Some(&wrong)).is_err());
+        assert_eq!(std::fs::read(&file).unwrap(), before, "no write on anchor mismatch");
+
+        // Malformed expected hashes are rejected (length + non-hex).
+        assert!(correct_repair_anchored(&file, None, Some("deadbeef")).is_err());
+        assert!(correct_repair_anchored(&file, None, Some(&"z".repeat(64))).is_err());
+
+        // The correct anchored hash (the original content) repairs byte-identically.
+        let good: String = {
+            let mut h = Sha256::new();
+            h.update(&original);
+            h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+        };
+        let r = correct_repair_anchored(&file, None, Some(&good)).unwrap();
+        assert!(r.repaired && r.status == "repaired");
+        assert_eq!(std::fs::read(&file).unwrap(), original, "byte-identical repair");
     }
 }

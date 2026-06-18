@@ -583,14 +583,27 @@ pub(crate) fn verify_standalone_file_streamed(
 /// Repair a standalone file from its own `.aerocorrect` sidecar (atomic, all-or-nothing).
 /// The sidecar's stored `content_sha256` is the expected good hash; parity is
 /// read window-by-window by `verify_repair_sync_file_streamed`.
+///
+/// Trust model (audit M3): a bare standalone repair reconstructs toward WHATEVER the
+/// sidecar declares (integrity, not authenticity). Pass `expect_sha256` (an out-of-band
+/// good hash) to anchor authenticity: a sidecar whose declared hash differs is refused
+/// before any write.
 pub(crate) fn verify_repair_standalone_file_streamed(
     rel_path: &str,
     path: &Path,
     sidecar_path: &Path,
+    expect_sha256: Option<&[u8; 32]>,
 ) -> Result<SyncEcRepairResult, String> {
     let reader = AeroCorrectSidecarReader::open(sidecar_path)?;
     let expected = reader.content_sha256;
     drop(reader);
+    if let Some(anchor) = expect_sha256 {
+        if anchor != &expected {
+            return Err(format!(
+                "Standalone EC sidecar for {rel_path} declares a content hash that does not match the expected (anchored) hash; refusing repair"
+            ));
+        }
+    }
     verify_repair_sync_file_streamed(rel_path, &expected, path, sidecar_path)
 }
 
