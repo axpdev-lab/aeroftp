@@ -54,7 +54,7 @@ A five-reviewer pre-release audit of the overlay codec closed two live data-loss
 
 ### AeroVault v4 (v3 + Error Correction): Reed-Solomon Self-Healing Vaults
 
-The second pillar of the release. AeroVault v4 is the audited v3 container plus a Reed-Solomon error-correction wrapper, so a vault survives bit-rot and partial corruption, not just eavesdropping. "v3 + EC = v4" is a forward-compatible, non-critical extension, and EC runs last in the four-wrapper pipeline (compression, chunking, crypt, EC) per the Ehud Kirsh #272/#276 design.
+The second pillar of the release. AeroVault v4 is the audited v3 container plus a Reed-Solomon error-correction wrapper, so a vault survives bit-rot and partial corruption, not just eavesdropping. "v3 + EC = v4" is a forward-compatible, non-critical extension, and EC runs last in the four-wrapper pipeline (chunking, compression, crypt, EC) per the Ehud Kirsh #272/#276 design.
 
 #### Added
 - Real Reed-Solomon (reed-solomon-erasure 6, 10+2) on the concatenated live-block stream, with a fixed-grid v2 payload (AVEC magic, K=10 / P=2, clamped 4 KiB to 1 MiB shards, 16-byte per-shard BLAKE3 checksums for erasure including parity). Overhead is about 20% on incompressible data, down from about 200% in the v1 one-block-one-shard layout.

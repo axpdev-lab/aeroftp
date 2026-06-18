@@ -33,7 +33,7 @@ Examples of steps:
 
 | Step | Belongs to | Role |
 |---|---|---|
-| Small-file packing (tape-archiving) | compression / chunking | concatenate small files so the chunker and compressor see a wide stream |
+| Small-file packing (tape-archiving) | chunking / compression | concatenate small files so the chunker and compressor see a wide stream |
 | RNG / nonce generation | encryption | produce the per-chunk nonce |
 | Content-defined boundary detection | chunking | decide where one chunk ends and the next begins |
 | Deduplication (index step) | chunking | use chunk ids to decide which chunks already exist at the destination |
@@ -114,7 +114,7 @@ profile), the lever is the chunk size, not the wrapper order (see below).
 
 ### Small-file packing comes first
 
-Compression and chunking are both more effective the more data they can look
+Chunking and compression are both more effective the more data they can look
 at. The first step is therefore to concatenate small files into a wider
 stream, historically called tape-archiving. AeroFTP calls it
 **small-file packing** in the internal architecture and "tape-archiving
@@ -232,7 +232,7 @@ sweet spot).
 ## Error correction (AeroVault v4 / dedicated track)
 
 Error correction is the fourth wrapper. It is structurally different from the
-other three: compression, chunking and encryption transform the data;
+other three: chunking, compression and encryption transform the data;
 error correction adds parity *alongside* it, so `v3 + Error Correction = v4` and a v3
 reader simply skips the parity it does not understand.
 
