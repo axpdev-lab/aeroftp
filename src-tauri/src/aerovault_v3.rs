@@ -264,8 +264,12 @@ fn acquire_vault_write_lock(vault_path: &Path) -> Result<VaultWriteLock, String>
                             reclaimed = true;
                         } else {
                             // A live writer recreated the lock between our check and the
-                            // rename: put it back, do not steal it.
-                            let _ = std::fs::rename(&aside, &lock_path);
+                            // rename: put it back, do not steal it. If the put-back fails
+                            // (the path was recreated again in the meantime), drop our
+                            // aside copy so no `.reclaim.<pid>` orphan is left behind.
+                            if std::fs::rename(&aside, &lock_path).is_err() {
+                                let _ = std::fs::remove_file(&aside);
+                            }
                         }
                     }
                     continue;
