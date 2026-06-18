@@ -236,16 +236,38 @@ fn acquire_vault_write_lock(vault_path: &Path) -> Result<VaultWriteLock, String>
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                // Reclaim a lock orphaned by a crashed writer (its RAII Drop never
-                // ran) so a dead seal does not block the next writer ~30s then
-                // hard-error until manual cleanup (audit M9). Only reclaim when the
-                // recorded owner is provably gone; re-check immediately before the
-                // remove to shrink the race with a writer that just recreated it.
-                // Auto-reclaim at most once per acquire so live contention still
-                // falls through to the bounded busy-wait below.
-                if !reclaimed && lock_is_stale(&lock_path) && lock_is_stale(&lock_path) {
-                    let _ = std::fs::remove_file(&lock_path);
-                    reclaimed = true;
+                // Reclaim a lock orphaned by a crashed writer (its RAII Drop never ran)
+                // so a dead seal does not block the next writer ~30s then hard-error
+                // until manual cleanup (audit M9). Reclaim ATOMICALLY by renaming the
+                // stale lock aside rather than unconditionally removing it: an unlinked
+                // path could already be a fresh lock a live writer just recreated, so a
+                // bare remove can clobber a live lock (controaudit TOCTOU). rename is
+                // atomic, so only one racing writer moves a given source; we then confirm
+                // the moved file really was the dead-owner lock (and drop it) or, if a
+                // live writer had recreated it in between, restore it and fall through to
+                // the wait. create_new (O_EXCL) below is the single-writer gate and
+                // assert_vault_generation_current is the final data-integrity backstop
+                // for any residual race. Reclaim at most once per acquire so live
+                // contention still falls through to the bounded busy-wait below.
+                if !reclaimed && lock_is_stale(&lock_path) {
+                    let aside = lock_path.with_file_name(format!(
+                        "{}.reclaim.{}",
+                        lock_path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        std::process::id()
+                    ));
+                    if std::fs::rename(&lock_path, &aside).is_ok() {
+                        if lock_is_stale(&aside) {
+                            let _ = std::fs::remove_file(&aside);
+                            reclaimed = true;
+                        } else {
+                            // A live writer recreated the lock between our check and the
+                            // rename: put it back, do not steal it.
+                            let _ = std::fs::rename(&aside, &lock_path);
+                        }
+                    }
                     continue;
                 }
                 if started.elapsed() > Duration::from_secs(30) {
