@@ -27,6 +27,7 @@ import { useCardLayout } from '../../hooks/useCardLayout';
 import { useStorageThresholds } from '../../hooks/useStorageThresholds';
 import { useMyServersDensity } from '../../hooks/useMyServersDensity';
 import { useMyServersColumns } from '../../hooks/useMyServersColumns';
+import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favoriteServers';
@@ -640,6 +641,12 @@ export function MyServersPanel({
     // global `aeroftp-settings-changed` event.
     const cardLayout = useCardLayout();
     const tableColumns = useMyServersColumns(cardLayout);
+
+    // Grid column count derived from the *container* width (not the viewport),
+    // so it tracks the space actually available once the filter sidebar is
+    // open. Clamped to 3..9: cards stay wider on a small window and never
+    // stretch past 9 columns on a wide display (#: My Servers grid density).
+    const [gridCols, attachGridRef] = useResponsiveColumns({ min: 3, max: 9, ideal: 210, gap: 12 });
 
     // Drag & reorder: works in any view (full list, search, or filter chip).
     // dragIdx/overIdx hold real indices into the full `servers` array: when
@@ -1331,7 +1338,15 @@ export function MyServersPanel({
     };
     // Filter sidebar (search + Quick/Protocols/Groups). Hidden on the pristine
     // onboarding screen (no servers) where it would only show zeros.
+    // The whole My Servers tab sits inside IntroHub's `p-6` content box. Left
+    // as a plain flex child, the sidebar's divider was inset by that 24px frame
+    // on every side, so it neither reached the top/bottom of the card nor sat
+    // flush against its edge. Bleed it back through the padding (negative top
+    // margin + a matching height overshoot, and a negative inline-start margin)
+    // so the divider spans the full height and the sidebar reads as card chrome.
+    const sidebarBleed = `-mt-6 ${sidebarSide === 'left' ? '-ml-6' : '-mr-6'}`;
     const sidebarEl = servers.length > 0 ? (
+        <div className={`flex shrink-0 ${sidebarBleed}`} style={{ height: 'calc(100% + 3rem)' }}>
         <MyServersSidebar
             collapsed={sidebarCollapsed}
             onToggleCollapsed={toggleSidebarCollapsed}
@@ -1349,6 +1364,7 @@ export function MyServersPanel({
             onGroupContextMenu={handleGroupContextMenu}
             onNewGroup={() => setGroupDialog({ id: null, name: '' })}
         />
+        </div>
     ) : null;
 
     return (
@@ -1443,8 +1459,9 @@ export function MyServersPanel({
                     }}
                 >
                     <div
-                        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 p-1"
-                        style={{ contain: 'layout style' }}
+                        ref={attachGridRef}
+                        className="grid gap-3 p-1"
+                        style={{ contain: 'layout style', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
                     >
                         {canDrag && dragIdx !== null && (
                             <div
