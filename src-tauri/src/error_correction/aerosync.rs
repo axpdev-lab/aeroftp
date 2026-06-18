@@ -414,15 +414,25 @@ pub(crate) fn verify_repair_sync_file(
         // tmp is dropped (removed) here; the original file is byte-for-byte untouched.
         return Err("AeroSync EC repair failed post-repair SHA-256 verification".to_string());
     }
+    // Release the read handle on the target before persisting. On Windows, renaming the
+    // repaired temp onto a file that still has a live read handle fails with
+    // ERROR_ACCESS_DENIED (os error 5) (audit M1). The repair loop above is the only
+    // reader of `src`, so the handle is safe to drop here.
+    drop(src);
     // Preserve the original file's permissions across the atomic replace.
     if let Ok(meta) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(tmp.path(), meta.permissions());
     }
+    // On a persist failure, recover the NamedTempFile from the error and delete it so a
+    // decrypted-plaintext `.tmp*` is never left beside the target (audit M1 plaintext-at-rest).
     tmp.persist(path).map_err(|e| {
-        format!(
-            "persist repaired AeroSync EC target {}: {e}",
-            path.display()
-        )
+        let msg = format!(
+            "persist repaired AeroSync EC target {}: {}",
+            path.display(),
+            e.error
+        );
+        let _ = e.file.close();
+        msg
     })?;
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
 }
@@ -504,14 +514,24 @@ pub(crate) fn verify_repair_sync_file_streamed(
         // tmp is dropped (removed) here; the original file is byte-for-byte untouched.
         return Err("AeroSync EC repair failed post-repair SHA-256 verification".to_string());
     }
+    // Release the read handle on the target before persisting. On Windows, renaming the
+    // repaired temp onto a file that still has a live read handle fails with
+    // ERROR_ACCESS_DENIED (os error 5) (audit M1). The repair loop above is the only
+    // reader of `src`, so the handle is safe to drop here.
+    drop(src);
     if let Ok(meta) = std::fs::metadata(path) {
         let _ = std::fs::set_permissions(tmp.path(), meta.permissions());
     }
+    // On a persist failure, recover the NamedTempFile from the error and delete it so a
+    // decrypted-plaintext `.tmp*` is never left beside the target (audit M1 plaintext-at-rest).
     tmp.persist(path).map_err(|e| {
-        format!(
-            "persist repaired AeroSync EC target {}: {e}",
-            path.display()
-        )
+        let msg = format!(
+            "persist repaired AeroSync EC target {}: {}",
+            path.display(),
+            e.error
+        );
+        let _ = e.file.close();
+        msg
     })?;
     Ok(SyncEcRepairResult::Repaired { recovered_shards })
 }
@@ -912,6 +932,62 @@ mod tests {
             data,
             "byte-identical recovery from a parity-rotted sidecar"
         );
+    }
+
+    /// Audit M1 regression (app copy): the target read handle used to be held across
+    /// `persist`, which on Windows failed the rename (os error 5) and left a
+    /// decrypted-plaintext `.tmp*` beside the target. After the fix, both the in-memory
+    /// and on-disk-sidecar repair paths must restore the bytes and leave no temp artifact.
+    #[test]
+    fn repair_restores_and_leaves_no_temp_artifact() {
+        let window = 40_000u64;
+        let data = sample_data(135_000);
+        for streamed in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("payload.bin");
+            std::fs::write(&path, &data).unwrap();
+
+            let generated = match generate_sync_sidecar_for_file_capped_windowed(
+                "rel",
+                &path,
+                20,
+                AEROSYNC_EC_MAX_FILE_SIZE,
+                0,
+                window,
+            )
+            .unwrap()
+            {
+                SyncEcGenerateResult::Generated(g) => g,
+                other => panic!("should generate, got {other:?}"),
+            };
+            let sidecar_path = dir.path().join("payload.bin.aerocorrect");
+            std::fs::write(&sidecar_path, &generated.sidecar_bytes).unwrap();
+
+            let mut corrupt = data.clone();
+            corrupt[5_000] ^= 0xAA;
+            corrupt[100_000] ^= 0xBB;
+            std::fs::write(&path, &corrupt).unwrap();
+
+            let result = if streamed {
+                verify_repair_sync_file_streamed("rel", &generated.file_sha256, &path, &sidecar_path)
+            } else {
+                verify_repair_sync_file("rel", &generated.file_sha256, &path, &generated.sidecar_bytes)
+            }
+            .expect("repair should succeed on every OS");
+            assert!(matches!(result, SyncEcRepairResult::Repaired { .. }));
+            assert_eq!(std::fs::read(&path).unwrap(), data, "repair must restore bytes");
+
+            let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n != "payload.bin" && n != "payload.bin.aerocorrect")
+                .collect();
+            assert!(
+                leftovers.is_empty(),
+                "repair (streamed={streamed}) must not leave a temp artifact, found: {leftovers:?}"
+            );
+        }
     }
 
     #[test]
