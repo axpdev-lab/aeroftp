@@ -1067,6 +1067,12 @@ enum CacheMode {
     Full,
 }
 
+// These helpers are consumed only by the FUSE mount filesystem (`cmd_mount`,
+// gated to Unix); the `CacheMode` enum itself is cross-platform (it is a clap
+// arg + a `MountKnobs` field). On the Windows build the mount path is compiled
+// out, so the methods read as dead there while staying live on Unix. Allowed
+// rather than cfg-gated to keep the Unix code path untouched.
+#[allow(dead_code)]
 impl CacheMode {
     /// Returns the `(attr_timeout, dir_cache_time, cache_ttl)` triple
     /// for this mode. `fallback` is the value derived from the legacy
@@ -7113,6 +7119,12 @@ fn parse_retry_sleep(s: &str) -> std::time::Duration {
 /// bump; they are stored on `AeroFuseFs` and exposed via accessors so
 /// the watcher / adaptive-ramp code can pick them up without another
 /// CLI surface change.
+// Built cross-platform by the `mount` handler, but its fields are read only by
+// the FUSE filesystem (`cmd_mount`, Unix). On Windows `cmd_mount_windows` ignores
+// the knobs (`let _ = mount_knobs`), so the fields read as never-read on that
+// build while staying live on Unix. Allowed rather than cfg-gated to keep the
+// Unix code path untouched.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 struct MountKnobs {
     cache_poll_interval: Option<Duration>,
