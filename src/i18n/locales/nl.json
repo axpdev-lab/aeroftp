@@ -261,7 +261,7 @@
       "totpSecretHelp": "Sla je 2FA-geheim één keer op. AeroFTP genereert automatisch de 6-cijferige code bij elke herverbinding, net als een authenticator-app.",
       "filenApiKey": "Filen CLI API-sleutel (optioneel)",
       "filenApiKeyPlaceholder": "API-sleutel uit de Filen CLI",
-      "filenApiKeyHelp": "Plak de API-sleutel uit uw Filen CLI-profiel om de 2FA-code bij elke herverbinding over te slaan. Het accountwachtwoord blijft vereist: het ontsleutelt uw bestanden end-to-end.",
+      "filenApiKeyHelp": "Plak de API-sleutel uit uw Filen CLI-profiel om de 2FA-code bij elke herverbinding over te slaan. Het accountwachtwoord is nog steeds vereist: het ontsleutelt uw bestanden end-to-end. Eenmaal opgeslagen wordt de sleutel versleuteld in de kluis bewaard en hier niet meer getoond (net als uw 2FA-geheim); AeroFTP hergebruikt hem automatisch. Laat bij het bewerken leeg om de opgeslagen sleutel te behouden.",
       "manualTotalStorage": "Totale opslag (handmatig)",
       "manualTotalStoragePlaceholder": "bijv. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Optioneel. Abonnement- of accountlimiet voor backends zonder quota-API (FTP, S3, WebDAV) of die alleen gebruikte ruimte rapporteren (Backblaze B2). Het eigen totaal van de provider heeft altijd voorrang.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Experimentele provider",
       "unstableBody": "{provider} is nog niet stabiel en de service is mogelijk niet beschikbaar. De verbinding kan mislukken zonder dat het uw schuld is.",
       "persistModeCredentials": "Onthoud inloggegevens voor elk protocol van dit account",
-      "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit."
+      "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit.",
+      "filenApiKeyStored": "Er is al een sleutel opgeslagen in de kluis. Laat leeg om hem te behouden, of plak een nieuwe om hem te vervangen."
     },
     "browser": {
       "remote": "Extern",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "2FA 시크릿을 한 번만 저장하세요. AeroFTP는 인증 앱과 동일하게 재연결할 때마다 6자리 코드를 자동으로 생성합니다.",
       "filenApiKey": "Filen CLI API 키 (선택 사항)",
       "filenApiKeyPlaceholder": "Filen CLI의 API 키",
-      "filenApiKeyHelp": "Filen CLI 프로필의 API 키를 붙여넣으면 재연결할 때마다 2FA 코드 입력을 건너뛸 수 있습니다. 계정 비밀번호는 여전히 필요합니다: 파일을 종단 간으로 복호화합니다.",
+      "filenApiKeyHelp": "재연결할 때마다 2FA 코드를 건너뛰려면 Filen CLI 프로필의 API 키를 붙여넣으세요. 계정 비밀번호는 여전히 필요합니다: 파일을 종단 간 복호화합니다. 저장하면 키는 볼트에 암호화되어 저장되며 여기에 다시 표시되지 않습니다(2FA 비밀과 동일). AeroFTP가 자동으로 재사용합니다. 편집 시 저장된 키를 유지하려면 비워 두세요.",
       "manualTotalStorage": "전체 저장 용량 (수동)",
       "manualTotalStoragePlaceholder": "예: 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "선택 사항. 할당량 API가 없는 백엔드(FTP, S3, WebDAV)나 사용 용량만 보고하는 백엔드(Backblaze B2)를 위한 요금제/계정 한도입니다. 공급자가 제공하는 전체 용량이 항상 우선합니다.",
@@ -278,7 +278,8 @@
       "unstableTitle": "실험적 제공업체",
       "unstableBody": "{provider}은(는) 아직 안정적이지 않으며 서비스를 사용할 수 없을 수 있습니다. 사용자의 잘못이 아니어도 연결이 실패할 수 있습니다.",
       "persistModeCredentials": "이 계정의 각 프로토콜에 대한 자격 증명 기억하기",
-      "persistModeCredentialsHint": "계정당 프로필 하나: 각 프로토콜의 자격 증명(API, WebDAV, S3, ...)을 저장해 두어 모드를 전환해도 다시 묻지 않으며, 다시 시작한 후에도 마찬가지입니다. 볼트에 암호화되어 저장됩니다. 기본값은 꺼짐입니다."
+      "persistModeCredentialsHint": "계정당 프로필 하나: 각 프로토콜의 자격 증명(API, WebDAV, S3, ...)을 저장해 두어 모드를 전환해도 다시 묻지 않으며, 다시 시작한 후에도 마찬가지입니다. 볼트에 암호화되어 저장됩니다. 기본값은 꺼짐입니다.",
+      "filenApiKeyStored": "키가 이미 볼트에 저장되어 있습니다. 유지하려면 비워 두고, 교체하려면 새 키를 붙여넣으세요."
     },
     "browser": {
       "remote": "원격",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "API kľúč Filen CLI (voliteľné)",
       "filenApiKeyPlaceholder": "API kľúč z Filen CLI",
-      "filenApiKeyHelp": "Vložte API kľúč z profilu Filen CLI, aby ste pri každom opätovnom pripojení preskočili kód 2FA. Heslo k účtu je stále potrebné: dešifruje vaše súbory koncovo.",
+      "filenApiKeyHelp": "Vložte API kľúč zo svojho profilu Filen CLI, aby ste pri každom opätovnom pripojení preskočili 2FA kód. Heslo k účtu je stále potrebné: dešifruje vaše súbory end-to-end. Po uložení sa kľúč uchováva šifrovaný v trezore a tu sa už znova nezobrazuje (rovnako ako vaše 2FA tajomstvo); AeroFTP ho automaticky znova použije. Pri úprave ponechajte prázdne, aby ste zachovali uložený kľúč.",
       "manualTotalStorage": "Celkové úložisko (ručne)",
       "manualTotalStoragePlaceholder": "napr. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Voliteľné. Limit plánu alebo účtu pre backendy bez API kvóty (FTP, S3, WebDAV) alebo ktoré hlásia len využité miesto (Backblaze B2). Celkový objem od poskytovateľa má vždy prednosť.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Experimentálny poskytovateľ",
       "unstableBody": "{provider} zatiaľ nie je stabilný a služba môže byť nedostupná. Pripojenie môže zlyhať bez vášho zavinenia.",
       "persistModeCredentials": "Zapamätať si prihlasovacie údaje pre každý protokol tohto účtu",
-      "persistModeCredentialsHint": "Jeden profil na účet: uchováva prihlasovacie údaje každého protokolu (API, WebDAV, S3, ...), takže prepnutie režimu sa už nepýta, ani po reštarte. Uložené šifrovane v trezore. Predvolene vypnuté."
+      "persistModeCredentialsHint": "Jeden profil na účet: uchováva prihlasovacie údaje každého protokolu (API, WebDAV, S3, ...), takže prepnutie režimu sa už nepýta, ani po reštarte. Uložené šifrovane v trezore. Predvolene vypnuté.",
+      "filenApiKeyStored": "Kľúč je už uložený v trezore. Ponechajte prázdne, aby ste ho zachovali, alebo vložte nový, aby ste ho nahradili."
     },
     "browser": {
       "remote": "Vzdialený",

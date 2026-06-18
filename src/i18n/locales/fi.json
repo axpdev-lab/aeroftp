@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API-avain (valinnainen)",
       "filenApiKeyPlaceholder": "API-avain Filen CLI:stä",
-      "filenApiKeyHelp": "Liitä API-avain Filen CLI -profiilistasi ohittaaksesi 2FA-koodin jokaisella uudelleenyhdistämisellä. Tilin salasana vaaditaan edelleen: se purkaa tiedostojesi salauksen päästä päähän.",
+      "filenApiKeyHelp": "Liitä Filen CLI -profiilisi API-avain ohittaaksesi 2FA-koodin joka uudelleenyhdistämisellä. Tilin salasana vaaditaan edelleen: se purkaa tiedostojesi salauksen päästä päähän. Tallennuksen jälkeen avain säilytetään salattuna holvissa eikä sitä näytetä enää tässä (kuten 2FA-salaisuuttasi); AeroFTP käyttää sitä automaattisesti uudelleen. Jätä muokattaessa tyhjäksi säilyttääksesi tallennetun avaimen.",
       "manualTotalStorage": "Tallennustila yhteensä (manuaalinen)",
       "manualTotalStoragePlaceholder": "esim. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Valinnainen. Paketti- tai tilirajan arvo taustajärjestelmille, joilla ei ole quota API:a (FTP, S3, WebDAV) tai jotka raportoivat vain käytetyn tilan (Backblaze B2). Palveluntarjoajan oma kokonaisarvo on aina ensisijainen.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Kokeellinen palveluntarjoaja",
       "unstableBody": "{provider} ei ole vielä vakaa, ja palvelu voi olla poissa käytöstä. Yhteys voi epäonnistua ilman sinun syytäsi.",
       "persistModeCredentials": "Muista jokaisen tämän tilin protokollan tunnistetiedot",
-      "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä."
+      "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä.",
+      "filenApiKeyStored": "Avain on jo tallennettu holviin. Jätä tyhjäksi säilyttääksesi sen tai liitä uusi korvataksesi sen."
     },
     "browser": {
       "remote": "Etä",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Cheie API Filen CLI (opțional)",
       "filenApiKeyPlaceholder": "Cheie API din Filen CLI",
-      "filenApiKeyHelp": "Lipiți cheia API din profilul dvs. Filen CLI pentru a omite codul 2FA la fiecare reconectare. Parola contului este în continuare necesară: ea decriptează fișierele dvs. cap la cap.",
+      "filenApiKeyHelp": "Lipiți cheia API din profilul dvs. Filen CLI pentru a sări peste codul 2FA la fiecare reconectare. Parola contului este în continuare necesară: decriptează fișierele dvs. cap la cap. După salvare, cheia este stocată criptat în seif și nu mai este afișată aici (la fel ca secretul 2FA); AeroFTP o reutilizează automat. La editare, lăsați gol pentru a păstra cheia salvată.",
       "manualTotalStorage": "Spațiu total (manual)",
       "manualTotalStoragePlaceholder": "ex.: 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opțional. Limita planului/contului pentru backend-uri fără API de cotă (FTP, S3, WebDAV) sau care raportează doar spațiul folosit (Backblaze B2). Totalul raportat de furnizor are întotdeauna prioritate.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Furnizor experimental",
       "unstableBody": "{provider} nu este încă stabil, iar serviciul ar putea fi indisponibil. Conexiunea poate eșua fără să fie vina ta.",
       "persistModeCredentials": "Reține datele de autentificare pentru fiecare protocol al acestui cont",
-      "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit."
+      "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit.",
+      "filenApiKeyStored": "O cheie este deja salvată în seif. Lăsați gol pentru a o păstra sau lipiți una nouă pentru a o înlocui."
     },
     "browser": {
       "remote": "La distanță",

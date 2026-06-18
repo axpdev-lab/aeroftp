@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API raktas (pasirinktinai)",
       "filenApiKeyPlaceholder": "API raktas iš Filen CLI",
-      "filenApiKeyHelp": "Įklijuokite API raktą iš savo Filen CLI profilio, kad praleistumėte 2FA kodą kiekvieną kartą iš naujo prisijungdami. Paskyros slaptažodis vis tiek būtinas: jis iššifruoja jūsų failus nuo galo iki galo.",
+      "filenApiKeyHelp": "Įklijuokite API raktą iš savo Filen CLI profilio, kad kiekvieną kartą iš naujo prisijungdami praleistumėte 2FA kodą. Paskyros slaptažodis vis tiek būtinas: jis iššifruoja jūsų failus visapusiškai. Išsaugojus raktas saugomas užšifruotas saugykloje ir čia daugiau nerodomas (kaip ir jūsų 2FA paslaptis); AeroFTP jį automatiškai naudoja pakartotinai. Redaguodami palikite tuščią, kad išlaikytumėte išsaugotą raktą.",
       "manualTotalStorage": "Bendra saugykla (rankiniu būdu)",
       "manualTotalStoragePlaceholder": "pvz. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Neprivaloma. Plano arba paskyros riba vidinėms sistemoms be kvotos API (FTP, S3, WebDAV) arba kurios praneša tik naudojamą vietą (Backblaze B2). Tiekėjo paties pateiktas bendras dydis visada turi pirmenybę.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimentinis tiekėjas",
       "unstableBody": "{provider} dar nėra stabilus ir paslauga gali būti nepasiekiama. Ryšys gali nepavykti ne dėl jūsų kaltės.",
       "persistModeCredentials": "Įsiminti kiekvieno šios paskyros protokolo prisijungimo duomenis",
-      "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta."
+      "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta.",
+      "filenApiKeyStored": "Raktas jau išsaugotas saugykloje. Palikite tuščią, kad jį išlaikytumėte, arba įklijuokite naują, kad jį pakeistumėte."
     },
     "browser": {
       "remote": "Nuotolinis",

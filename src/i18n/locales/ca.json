@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Clau API de Filen CLI (opcional)",
       "filenApiKeyPlaceholder": "Clau API del Filen CLI",
-      "filenApiKeyHelp": "Enganxa la clau API del teu perfil del Filen CLI per ometre el codi 2FA cada cop que et tornis a connectar. La contrasenya del compte continua sent necessària: desxifra els teus fitxers d'extrem a extrem.",
+      "filenApiKeyHelp": "Enganxeu la clau API del vostre perfil de Filen CLI per ometre el codi 2FA a cada reconnexió. La contrasenya del compte encara és necessària: desxifra els vostres fitxers d'extrem a extrem. Un cop desada, la clau es desa xifrada al cofre i ja no es torna a mostrar aquí (com el secret 2FA); AeroFTP la reutilitza automàticament. En editar, deixeu-ho en blanc per conservar la clau desada.",
       "manualTotalStorage": "Emmagatzematge total (manual)",
       "manualTotalStoragePlaceholder": "p. ex. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opcional. Límit del pla o compte per a backends sense quota API (FTP, S3, WebDAV) o que només informen de l'espai utilitzat (Backblaze B2). El total propi del proveïdor sempre té prioritat.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Proveïdor experimental",
       "unstableBody": "{provider} encara no és estable i és possible que el servei no estigui disponible. La connexió pot fallar sense que sigui culpa teva.",
       "persistModeCredentials": "Recorda les credencials per a cada protocol d'aquest compte",
-      "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte."
+      "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte.",
+      "filenApiKeyStored": "Ja hi ha una clau desada al cofre. Deixeu-ho en blanc per conservar-la, o enganxeu-ne una de nova per substituir-la."
     },
     "browser": {
       "remote": "Remot",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "API Key ng Filen CLI (opsyonal)",
       "filenApiKeyPlaceholder": "API key mula sa Filen CLI",
-      "filenApiKeyHelp": "I-paste ang API key mula sa iyong profile ng Filen CLI upang laktawan ang 2FA code sa bawat muling pagkonekta. Kailangan pa rin ang password ng account: nagde-decrypt ito ng iyong mga file nang end-to-end.",
+      "filenApiKeyHelp": "I-paste ang API key mula sa iyong Filen CLI profile upang laktawan ang 2FA code sa bawat muling pagkonekta. Kailangan pa rin ang password ng account: dinidekrypt nito ang iyong mga file nang end-to-end. Kapag na-save na, ang susi ay iniimbak nang naka-encrypt sa vault at hindi na muling ipinapakita rito (tulad ng iyong 2FA secret); awtomatikong ginagamit itong muli ng AeroFTP. Kapag nag-eedit, iwanang blangko upang panatilihin ang naka-save na susi.",
       "manualTotalStorage": "Kabuuang storage (manu-mano)",
       "manualTotalStoragePlaceholder": "hal. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opsyonal. Limitasyon ng plan o account para sa mga backend na walang quota API (FTP, S3, WebDAV) o nag-uulat lamang ng nagamit na espasyo (Backblaze B2). Ang sariling kabuuan ng provider ang palaging mauuna.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimental na provider",
       "unstableBody": "Hindi pa stable ang {provider} at maaaring hindi available ang serbisyo. Maaaring mabigo ang koneksyon nang hindi mo kasalanan.",
       "persistModeCredentials": "Tandaan ang mga kredensyal para sa bawat protocol ng account na ito",
-      "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default."
+      "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default.",
+      "filenApiKeyStored": "May naka-save nang susi sa vault. Iwanang blangko upang panatilihin ito, o mag-paste ng bago upang palitan ito."
     },
     "browser": {
       "remote": "Remote",

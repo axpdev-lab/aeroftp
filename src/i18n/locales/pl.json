@@ -261,7 +261,7 @@
       "totpSecretHelp": "Zapisz swój sekret 2FA raz. AeroFTP automatycznie wygeneruje 6-cyfrowy kod przy każdym ponownym połączeniu, tak jak aplikacja uwierzytelniająca.",
       "filenApiKey": "Klucz API Filen CLI (opcjonalnie)",
       "filenApiKeyPlaceholder": "Klucz API z Filen CLI",
-      "filenApiKeyHelp": "Wklej klucz API z profilu Filen CLI, aby pomijać kod 2FA przy każdym ponownym połączeniu. Hasło konta jest nadal wymagane: odszyfrowuje ono Twoje pliki od końca do końca.",
+      "filenApiKeyHelp": "Wklej klucz API ze swojego profilu Filen CLI, aby pomijać kod 2FA przy każdym ponownym połączeniu. Hasło konta jest nadal wymagane: odszyfrowuje ono Twoje pliki od końca do końca. Po zapisaniu klucz jest przechowywany zaszyfrowany w sejfie i nie jest już tutaj wyświetlany (podobnie jak sekret 2FA); AeroFTP używa go automatycznie ponownie. Podczas edycji pozostaw puste, aby zachować zapisany klucz.",
       "manualTotalStorage": "Łączna pojemność (ręcznie)",
       "manualTotalStoragePlaceholder": "np. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opcjonalne. Limit planu lub konta dla backendów bez API limitu (FTP, S3, WebDAV) lub zgłaszających tylko zajęte miejsce (Backblaze B2). Całkowita pojemność podana przez dostawcę zawsze ma pierwszeństwo.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Dostawca eksperymentalny",
       "unstableBody": "{provider} nie jest jeszcze stabilny, a usługa może być niedostępna. Połączenie może się nie powieść nie z Twojej winy.",
       "persistModeCredentials": "Zapamiętaj poświadczenia dla każdego protokołu tego konta",
-      "persistModeCredentialsHint": "Jeden profil na konto: przechowuje poświadczenia każdego protokołu (API, WebDAV, S3, ...), więc przełączanie trybu już o nie nie pyta, nawet po ponownym uruchomieniu. Przechowywane zaszyfrowane w sejfie. Domyślnie wyłączone."
+      "persistModeCredentialsHint": "Jeden profil na konto: przechowuje poświadczenia każdego protokołu (API, WebDAV, S3, ...), więc przełączanie trybu już o nie nie pyta, nawet po ponownym uruchomieniu. Przechowywane zaszyfrowane w sejfie. Domyślnie wyłączone.",
+      "filenApiKeyStored": "Klucz jest już zapisany w sejfie. Pozostaw puste, aby go zachować, lub wklej nowy, aby go zastąpić."
     },
     "browser": {
       "remote": "Zdalny",

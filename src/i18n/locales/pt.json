@@ -261,7 +261,7 @@
       "totpSecretHelp": "Salve seu segredo 2FA uma única vez. O AeroFTP gerará o código de 6 dígitos automaticamente a cada reconexão, como faz um aplicativo autenticador.",
       "filenApiKey": "Chave API do Filen CLI (opcional)",
       "filenApiKeyPlaceholder": "Chave API do Filen CLI",
-      "filenApiKeyHelp": "Cole a chave API do seu perfil do Filen CLI para ignorar o código 2FA a cada nova ligação. A palavra-passe da conta continua a ser necessária: ela descriptografa os seus ficheiros de ponta a ponta.",
+      "filenApiKeyHelp": "Cole a chave API do seu perfil Filen CLI para ignorar o código 2FA a cada reconexão. A palavra-passe da conta continua a ser necessária: descifra os seus ficheiros de ponta a ponta. Uma vez guardada, a chave é armazenada cifrada no cofre e não é mostrada aqui novamente (como o seu segredo 2FA); o AeroFTP reutiliza-a automaticamente. Ao editar, deixe em branco para manter a chave guardada.",
       "manualTotalStorage": "Armazenamento total (manual)",
       "manualTotalStoragePlaceholder": "ex.: 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opcional. Limite do plano/conta para backends sem API de quota (FTP, S3, WebDAV) ou que informam apenas o espaço usado (Backblaze B2). O total do próprio provedor sempre tem prioridade.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Provedor experimental",
       "unstableBody": "{provider} ainda não é estável e o serviço pode estar indisponível. A conexão pode falhar sem que a culpa seja sua.",
       "persistModeCredentials": "Lembrar as credenciais para cada protocolo desta conta",
-      "persistModeCredentialsHint": "Um perfil por conta: mantém guardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que mudar de modo não as peça novamente, mesmo após reiniciar. Armazenado encriptado no cofre. Desativado por predefinição."
+      "persistModeCredentialsHint": "Um perfil por conta: mantém guardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que mudar de modo não as peça novamente, mesmo após reiniciar. Armazenado encriptado no cofre. Desativado por predefinição.",
+      "filenApiKeyStored": "Já existe uma chave guardada no cofre. Deixe em branco para a manter, ou cole uma nova para a substituir."
     },
     "browser": {
       "remote": "Remoto",

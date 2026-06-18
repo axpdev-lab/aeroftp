@@ -261,7 +261,7 @@
       "totpSecretHelp": "2FA シークレットを一度保存してください。AeroFTP は認証アプリと同じように、再接続のたびに 6 桁のコードを自動生成します。",
       "filenApiKey": "Filen CLI API キー (省略可)",
       "filenApiKeyPlaceholder": "Filen CLI の API キー",
-      "filenApiKeyHelp": "Filen CLI プロファイルの API キーを貼り付けると、再接続のたびに 2FA コードの入力を省略できます。アカウントのパスワードは引き続き必要です。ファイルをエンドツーエンドで復号します。",
+      "filenApiKeyHelp": "再接続のたびに2FAコードをスキップするには、Filen CLIプロファイルのAPIキーを貼り付けてください。アカウントのパスワードは引き続き必要です：ファイルをエンドツーエンドで復号します。保存後、キーは暗号化されてボールトに保存され、ここには二度と表示されません（2FAシークレットと同様）。AeroFTPが自動的に再利用します。編集時は、保存済みのキーを保持するには空欄のままにしてください。",
       "manualTotalStorage": "合計ストレージ (手動)",
       "manualTotalStoragePlaceholder": "例: 10 GB、500 GB、2 TB",
       "manualTotalStorageHint": "任意。クォータ API がないバックエンド (FTP、S3、WebDAV)、または使用容量のみを報告するバックエンド (Backblaze B2) 向けのプラン/アカウント上限です。プロバイダー自身の合計値が常に優先されます。",
@@ -278,7 +278,8 @@
       "unstableTitle": "実験的なプロバイダー",
       "unstableBody": "{provider} はまだ安定しておらず、サービスを利用できない場合があります。お客様に問題がなくても接続に失敗することがあります。",
       "persistModeCredentials": "このアカウントの各プロトコルの認証情報を記憶する",
-      "persistModeCredentialsHint": "アカウントごとに1つのプロファイル: 各プロトコルの認証情報 (API、WebDAV、S3、...) を保存しておくため、モードを切り替えても再入力を求められません。再起動後も同様です。ボールトに暗号化して保存されます。デフォルトはオフです。"
+      "persistModeCredentialsHint": "アカウントごとに1つのプロファイル: 各プロトコルの認証情報 (API、WebDAV、S3、...) を保存しておくため、モードを切り替えても再入力を求められません。再起動後も同様です。ボールトに暗号化して保存されます。デフォルトはオフです。",
+      "filenApiKeyStored": "キーはすでにボールトに保存されています。保持する場合は空欄のままにし、置き換える場合は新しいキーを貼り付けてください。"
     },
     "browser": {
       "remote": "リモート",

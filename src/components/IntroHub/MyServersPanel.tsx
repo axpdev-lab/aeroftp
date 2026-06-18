@@ -382,7 +382,13 @@ export function MyServersPanel({
             } catch { /* vault unreachable: keep localStorage view */ }
         })();
         return () => { cancelled = true; };
-    }, []);
+        // Re-sync on every `lastUpdate` bump, not just on mount: a Convert /
+        // Save-as-new in ConnectionScreen moves the ⭐ to a NEW profile id via
+        // carryFavoriteServer (vault write) and then bumps lastUpdate. Without
+        // this dependency the in-memory Set kept the OLD id, so the star
+        // vanished from the converted row even though the quota stayed (it
+        // lives on the reloaded profile). Issue #215, Ehud.
+    }, [lastUpdate]);
     // Server groups (#320): the named generalisation of favourites. Same vault
     // storage pattern (key `config_server_groups`), boot synchronously from
     // localStorage, reconcile from the vault below.
@@ -408,7 +414,9 @@ export function MyServersPanel({
             } catch { /* vault unreachable: keep localStorage view */ }
         })();
         return () => { cancelled = true; };
-    }, []);
+        // Same staleness fix as favourites above: carryServerGroups moves group
+        // membership to the converted profile id, so re-read on lastUpdate.
+    }, [lastUpdate]);
     const persistGroups = useCallback((next: ServerGroup[]) => {
         setGroups(next);
         saveServerGroups(next).catch(() => {

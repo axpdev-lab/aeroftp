@@ -261,7 +261,7 @@
       "totpSecretHelp": "Enregistrez votre secret 2FA une seule fois. AeroFTP générera le code à 6 chiffres automatiquement à chaque reconnexion, comme une application d'authentification.",
       "filenApiKey": "Clé API Filen CLI (facultatif)",
       "filenApiKeyPlaceholder": "Clé API de la Filen CLI",
-      "filenApiKeyHelp": "Collez la clé API de votre profil Filen CLI pour ignorer le code 2FA à chaque reconnexion. Le mot de passe du compte reste nécessaire : il déchiffre vos fichiers de bout en bout.",
+      "filenApiKeyHelp": "Collez la clé API de votre profil Filen CLI pour ignorer le code 2FA à chaque reconnexion. Le mot de passe du compte reste requis : il déchiffre vos fichiers de bout en bout. Une fois enregistrée, la clé est stockée chiffrée dans le coffre et n'est plus affichée ici (comme votre secret 2FA) ; AeroFTP la réutilise automatiquement. Lors de la modification, laissez vide pour conserver la clé enregistrée.",
       "manualTotalStorage": "Stockage total (manuel)",
       "manualTotalStoragePlaceholder": "ex. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Facultatif. Limite du forfait ou du compte pour les backends sans quota API (FTP, S3, WebDAV) ou qui ne signalent que l'espace utilisé (Backblaze B2). Le total propre du fournisseur a toujours priorité.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Fournisseur expérimental",
       "unstableBody": "{provider} n'est pas encore stable et le service peut être indisponible. La connexion peut échouer sans que ce soit de votre faute.",
       "persistModeCredentials": "Mémoriser les identifiants pour chaque protocole de ce compte",
-      "persistModeCredentialsHint": "Un profil par compte : conserve les identifiants de chaque protocole (API, WebDAV, S3, ...) afin que changer de mode ne les redemande plus, même après un redémarrage. Stocké chiffré dans le coffre. Désactivé par défaut."
+      "persistModeCredentialsHint": "Un profil par compte : conserve les identifiants de chaque protocole (API, WebDAV, S3, ...) afin que changer de mode ne les redemande plus, même après un redémarrage. Stocké chiffré dans le coffre. Désactivé par défaut.",
+      "filenApiKeyStored": "Une clé est déjà enregistrée dans le coffre. Laissez vide pour la conserver, ou collez-en une nouvelle pour la remplacer."
     },
     "browser": {
       "remote": "Distant",

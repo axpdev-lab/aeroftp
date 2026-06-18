@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API gakoa (aukerakoa)",
       "filenApiKeyPlaceholder": "Filen CLI-ko API gakoa",
-      "filenApiKeyHelp": "Itsatsi zure Filen CLI profileko API gakoa, berriz konektatzen zaren bakoitzean 2FA kodea saltatzeko. Kontuaren pasahitza beharrezkoa da oraindik: zure fitxategiak muturretik muturrera deszifratzen ditu.",
+      "filenApiKeyHelp": "Itsatsi zure Filen CLI profileko API gakoa berriz konektatzean 2FA kodea saltatzeko. Kontuaren pasahitza beharrezkoa da oraindik: zure fitxategiak muturretik muturrera deszifratzen ditu. Behin gordeta, gakoa kutxan zifratuta gordetzen da eta ez da hemen berriz erakusten (zure 2FA sekretua bezala); AeroFTP-k automatikoki berrerabiltzen du. Editatzean, utzi hutsik gordetako gakoa mantentzeko.",
       "manualTotalStorage": "Biltegiratze osoa (eskuz)",
       "manualTotalStoragePlaceholder": "adib. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Aukerakoa. Plan edo kontuaren muga quota API-rik ez duten backend-entzat (FTP, S3, WebDAV) edo erabilitako espazioa soilik jakinarazten dutenentzat (Backblaze B2). Hornitzailearen guztizkoak beti du lehentasuna.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Hornitzaile esperimentala",
       "unstableBody": "{provider} oraindik ez da egonkorra eta zerbitzua eskuragarri ez egotea gerta daiteke. Konexioak huts egin dezake zure errurik gabe.",
       "persistModeCredentials": "Gogoratu kontu honetako protokolo bakoitzaren kredentzialak",
-      "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta."
+      "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta.",
+      "filenApiKeyStored": "Gako bat dagoeneko gordeta dago kutxan. Utzi hutsik mantentzeko, edo itsatsi berri bat ordezkatzeko."
     },
     "browser": {
       "remote": "Urrunekoa",

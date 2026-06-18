@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API-võti (valikuline)",
       "filenApiKeyPlaceholder": "API-võti Filen CLI-st",
-      "filenApiKeyHelp": "Kleepige API-võti oma Filen CLI profiilist, et jätta iga taasühendamise korral 2FA-kood vahele. Konto parool on endiselt vajalik: see dekrüpteerib teie failid otsast lõpuni.",
+      "filenApiKeyHelp": "Kleepige oma Filen CLI profiili API-võti, et jätta iga taasühendamisel 2FA-kood vahele. Konto parool on endiselt vajalik: see dekrüpteerib teie failid otsast otsani. Pärast salvestamist hoitakse võtit hoidlas krüpteeritult ja seda siin enam ei kuvata (nagu teie 2FA saladust); AeroFTP kasutab seda automaatselt uuesti. Redigeerimisel jätke salvestatud võtme säilitamiseks tühjaks.",
       "manualTotalStorage": "Salvestusruum kokku (käsitsi)",
       "manualTotalStoragePlaceholder": "nt 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Valikuline. Paketi või konto piir backendide jaoks, millel pole quota API-t (FTP, S3, WebDAV) või mis raporteerivad ainult kasutatud ruumi (Backblaze B2). Teenusepakkuja enda kogusumma on alati ülimuslik.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimentaalne teenusepakkuja",
       "unstableBody": "{provider} ei ole veel stabiilne ja teenus võib olla kättesaamatu. Ühendus võib ebaõnnestuda ilma teie süüta.",
       "persistModeCredentials": "Jäta meelde selle konto iga protokolli mandaadid",
-      "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas."
+      "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas.",
+      "filenApiKeyStored": "Võti on hoidlas juba salvestatud. Selle säilitamiseks jätke tühjaks või kleepige asendamiseks uus."
     },
     "browser": {
       "remote": "Kaugserver",

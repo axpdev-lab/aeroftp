@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "API klíč Filen CLI (volitelné)",
       "filenApiKeyPlaceholder": "API klíč z Filen CLI",
-      "filenApiKeyHelp": "Vložte API klíč z profilu Filen CLI, abyste přeskočili kód 2FA při každém opětovném připojení. Heslo k účtu je stále vyžadováno: dešifruje vaše soubory koncově.",
+      "filenApiKeyHelp": "Vložte API klíč ze svého profilu Filen CLI, abyste při každém opětovném připojení přeskočili 2FA kód. Heslo k účtu je stále vyžadováno: dešifruje vaše soubory end-to-end. Po uložení je klíč uložen šifrovaně v trezoru a zde se již znovu nezobrazuje (stejně jako 2FA tajemství); AeroFTP jej automaticky znovu použije. Při úpravě ponechte prázdné pro zachování uloženého klíče.",
       "manualTotalStorage": "Celkové úložiště (ručně)",
       "manualTotalStoragePlaceholder": "např. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Volitelné. Limit tarifu nebo účtu pro backendy bez quota API (FTP, S3, WebDAV) nebo takové, které hlásí pouze využité místo (Backblaze B2). Vlastní celková hodnota poskytovatele má vždy přednost.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Experimentální poskytovatel",
       "unstableBody": "{provider} zatím není stabilní a služba může být nedostupná. Připojení může selhat bez vašeho zavinění.",
       "persistModeCredentials": "Zapamatovat přihlašovací údaje pro každý protokol tohoto účtu",
-      "persistModeCredentialsHint": "Jeden profil na účet: uchová přihlašovací údaje každého protokolu (API, WebDAV, S3, ...), takže přepnutí režimu se už nezeptá, ani po restartu. Uloženo šifrovaně v trezoru. Ve výchozím nastavení vypnuto."
+      "persistModeCredentialsHint": "Jeden profil na účet: uchová přihlašovací údaje každého protokolu (API, WebDAV, S3, ...), takže přepnutí režimu se už nezeptá, ani po restartu. Uloženo šifrovaně v trezoru. Ve výchozím nastavení vypnuto.",
+      "filenApiKeyStored": "Klíč je již uložen v trezoru. Ponechte prázdné pro jeho zachování, nebo vložte nový pro nahrazení."
     },
     "browser": {
       "remote": "Vzdálený",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "2FA gizli anahtarınızı bir kez kaydedin. AeroFTP, bir kimlik doğrulayıcı uygulama gibi her yeniden bağlanmada 6 haneli kodu otomatik olarak üretir.",
       "filenApiKey": "Filen CLI API anahtarı (isteğe bağlı)",
       "filenApiKeyPlaceholder": "Filen CLI'den API anahtarı",
-      "filenApiKeyHelp": "Her yeniden bağlanışta 2FA kodunu atlamak için Filen CLI profilinizdeki API anahtarını yapıştırın. Hesap parolası yine de gereklidir: dosyalarınızın uçtan uca şifresini çözer.",
+      "filenApiKeyHelp": "Her yeniden bağlanışta 2FA kodunu atlamak için Filen CLI profilinizdeki API anahtarını yapıştırın. Hesap parolası hâlâ gereklidir: dosyalarınızı uçtan uca çözer. Kaydedildikten sonra anahtar kasada şifreli olarak saklanır ve burada tekrar gösterilmez (2FA gizli anahtarınız gibi); AeroFTP onu otomatik olarak yeniden kullanır. Düzenlerken kayıtlı anahtarı korumak için boş bırakın.",
       "manualTotalStorage": "Toplam depolama (manuel)",
       "manualTotalStoragePlaceholder": "ör. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "İsteğe bağlı. Kota API'si olmayan (FTP, S3, WebDAV) veya yalnızca kullanılan alanı bildiren (Backblaze B2) arka uçlar için plan veya hesap sınırı. Sağlayıcının kendi toplam değeri her zaman önceliklidir.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Deneysel sağlayıcı",
       "unstableBody": "{provider} henüz kararlı değil ve hizmet kullanılamayabilir. Bağlantı, sizin bir hatanız olmadan başarısız olabilir.",
       "persistModeCredentials": "Bu hesabın her protokolü için kimlik bilgilerini hatırla",
-      "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı."
+      "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı.",
+      "filenApiKeyStored": "Kasada zaten bir anahtar kayıtlı. Korumak için boş bırakın veya değiştirmek için yenisini yapıştırın."
     },
     "browser": {
       "remote": "Uzak",

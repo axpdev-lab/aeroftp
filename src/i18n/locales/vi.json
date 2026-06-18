@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Khóa API Filen CLI (tùy chọn)",
       "filenApiKeyPlaceholder": "Khóa API từ Filen CLI",
-      "filenApiKeyHelp": "Dán khóa API từ hồ sơ Filen CLI của bạn để bỏ qua mã 2FA mỗi lần kết nối lại. Mật khẩu tài khoản vẫn bắt buộc: nó giải mã các tệp của bạn theo phương thức đầu cuối.",
+      "filenApiKeyHelp": "Dán khóa API từ hồ sơ Filen CLI của bạn để bỏ qua mã 2FA mỗi lần kết nối lại. Vẫn cần mật khẩu tài khoản: nó giải mã các tệp của bạn từ đầu đến cuối. Sau khi lưu, khóa được lưu trữ mã hóa trong kho và không hiển thị lại ở đây (giống như bí mật 2FA của bạn); AeroFTP tự động sử dụng lại. Khi chỉnh sửa, để trống để giữ khóa đã lưu.",
       "manualTotalStorage": "Tổng dung lượng (thủ công)",
       "manualTotalStoragePlaceholder": "vd. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Tùy chọn. Giới hạn gói hoặc tài khoản cho các backend không có API hạn ngạch (FTP, S3, WebDAV) hoặc chỉ báo cáo dung lượng đã dùng (Backblaze B2). Tổng dung lượng do nhà cung cấp báo luôn được ưu tiên.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Nhà cung cấp thử nghiệm",
       "unstableBody": "{provider} chưa ổn định và dịch vụ có thể không khả dụng. Kết nối có thể thất bại mà không phải do lỗi của bạn.",
       "persistModeCredentials": "Ghi nhớ thông tin đăng nhập cho mọi giao thức của tài khoản này",
-      "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt."
+      "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt.",
+      "filenApiKeyStored": "Một khóa đã được lưu trong kho. Để trống để giữ lại, hoặc dán khóa mới để thay thế."
     },
     "browser": {
       "remote": "Từ xa",

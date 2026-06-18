@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Clave API de Filen CLI (opcional)",
       "filenApiKeyPlaceholder": "Clave API do Filen CLI",
-      "filenApiKeyHelp": "Pega a clave API do teu perfil do Filen CLI para omitir o código 2FA en cada reconexión. O contrasinal da conta segue sendo necesario: descifra os teus ficheiros de extremo a extremo.",
+      "filenApiKeyHelp": "Pegue a clave API do seu perfil de Filen CLI para omitir o código 2FA en cada reconexión. O contrasinal da conta segue sendo necesario: descifra os seus ficheiros de extremo a extremo. Unha vez gardada, a clave almacénase cifrada no cofre e xa non se mostra aquí (como o seu segredo 2FA); AeroFTP reutilízaa automaticamente. Ao editar, deixe en branco para conservar a clave gardada.",
       "manualTotalStorage": "Almacenamento total (manual)",
       "manualTotalStoragePlaceholder": "p. ex. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opcional. Límite do plan ou conta para backends sen quota API (FTP, S3, WebDAV) ou que só informan do espazo usado (Backblaze B2). O total propio do provedor sempre ten prioridade.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Provedor experimental",
       "unstableBody": "{provider} aínda non é estable e o servizo pode non estar dispoñible. A conexión pode fallar sen que sexa culpa túa.",
       "persistModeCredentials": "Lembrar as credenciais para cada protocolo desta conta",
-      "persistModeCredentialsHint": "Un perfil por conta: mantén gardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo non as volva pedir, mesmo tras reiniciar. Gárdase cifrado no vault. Desactivado de forma predeterminada."
+      "persistModeCredentialsHint": "Un perfil por conta: mantén gardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo non as volva pedir, mesmo tras reiniciar. Gárdase cifrado no vault. Desactivado de forma predeterminada.",
+      "filenApiKeyStored": "Xa hai unha clave gardada no cofre. Deixe en branco para conservala, ou pegue unha nova para substituíla."
     },
     "browser": {
       "remote": "Remoto",
