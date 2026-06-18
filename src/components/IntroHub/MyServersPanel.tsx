@@ -1370,7 +1370,10 @@ export function MyServersPanel({
     return (
         <div className="h-full flex flex-row" onClick={handlePanelBlankClick}>
             {sidebarSide === 'left' && sidebarEl}
-            <div className={`flex-1 flex flex-col min-w-0 ${servers.length > 0 ? (sidebarSide === 'left' ? 'pl-4' : 'pr-4') : ''}`}>
+            {/* The sidebar bleeds flush to the card edge on its side, so the
+                content gets a matching pl-6/pr-6 there to mirror IntroHub's p-6
+                frame on the opposite side, keeping the grid gutters symmetric. */}
+            <div className={`flex-1 flex flex-col min-w-0 ${servers.length > 0 ? (sidebarSide === 'left' ? 'pl-6' : 'pr-6') : ''}`}>
             <MyServersToolbar
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
@@ -1448,7 +1451,7 @@ export function MyServersPanel({
             ) : viewMode === 'grid' ? (
                 <div
                     ref={scrollContainerRef}
-                    className="flex-1 overflow-y-auto pr-3 custom-scroll-area"
+                    className="flex-1 overflow-y-auto custom-scroll-area"
                     style={{ willChange: 'scroll-position', transform: 'translateZ(0)' }}
                     onWheelCapture={(e) => {
                         if (dragIdx === null) return;
