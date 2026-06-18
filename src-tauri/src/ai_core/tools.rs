@@ -1711,7 +1711,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "type": "object",
                 "properties": {
                     "file": {"type": "string", "description": "Path to the local file to repair."},
-                    "parity": {"type": "string", "description": "Optional sidecar path override. Default <file>.aerocorrect."}
+                    "parity": {"type": "string", "description": "Optional sidecar path override. Default <file>.aerocorrect."},
+                    "expect_sha256": {"type": "string", "description": "Optional 64-char hex SHA-256 authenticity anchor of the known-good content. A bare repair reconstructs toward whatever the sidecar declares (integrity only); with this set, a sidecar declaring a different content hash is refused before any write."}
                 },
                 "required": ["file"],
             }),

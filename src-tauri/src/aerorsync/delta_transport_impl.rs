@@ -2019,7 +2019,12 @@ mod tests {
     async fn write_atomic_preserves_mtime_when_requested() {
         let dir = fresh_tempdir();
         let target = dir.path().join("mtime.bin");
-        let remote_mtime = (1_700_000_123_i64, Some(987_654_321_i32));
+        // 100ns-aligned nanoseconds: NTFS stores time as 100ns FILETIME ticks, so a value
+        // that is not a multiple of 100 (e.g. 987_654_321) is floored on Windows and the
+        // exact round-trip assertion below would be platform-dependent. A 100ns-aligned
+        // value round-trips exactly on NTFS (100ns) and ext4 (1ns) alike, so this still
+        // verifies mtime preservation without asserting unportable sub-100ns precision.
+        let remote_mtime = (1_700_000_123_i64, Some(987_654_300_i32));
 
         write_atomic_chunked(&target, b"NEW", 4096, None, None, Some(remote_mtime))
             .await

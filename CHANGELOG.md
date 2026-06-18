@@ -54,7 +54,7 @@ A five-reviewer pre-release audit of the overlay codec closed two live data-loss
 
 ### AeroVault v4 (v3 + Error Correction): Reed-Solomon Self-Healing Vaults
 
-The second pillar of the release. AeroVault v4 is the audited v3 container plus a Reed-Solomon error-correction wrapper, so a vault survives bit-rot and partial corruption, not just eavesdropping. "v3 + EC = v4" is a forward-compatible, non-critical extension, and EC runs last in the four-wrapper pipeline (compression, chunking, crypt, EC) per the Ehud Kirsh #272/#276 design.
+The second pillar of the release. AeroVault v4 is the audited v3 container plus a Reed-Solomon error-correction wrapper, so a vault survives bit-rot and partial corruption, not just eavesdropping. "v3 + EC = v4" is a forward-compatible, non-critical extension, and EC runs last in the four-wrapper pipeline (chunking, compression, crypt, EC) per the Ehud Kirsh #272/#276 design.
 
 #### Added
 - Real Reed-Solomon (reed-solomon-erasure 6, 10+2) on the concatenated live-block stream, with a fixed-grid v2 payload (AVEC magic, K=10 / P=2, clamped 4 KiB to 1 MiB shards, 16-byte per-shard BLAKE3 checksums for erasure including parity). Overhead is about 20% on incompressible data, down from about 200% in the v1 one-block-one-shard layout.
@@ -749,7 +749,7 @@ A UI polish patch on top of v3.8.0: two new application themes, a toolbar contra
 
 A large release across three fronts: the AeroVault v3 wrapper stack gets real small-file packing and a behind-the-scenes technical receipt, the native AeroRsync engine ships streaming and enabled by default, and the AeroFile dual panel grows endpoint-aware unification. It also lands the v3.8.0 wishlist batch and the CLI profile-management fixes from issues #194, #195, #196 and #180.
 
-The AeroVault wrapper-stack design (the `compression -> chunking -> crypt -> error-correction` pipeline, the wrapper-vs-step taxonomy, the corrected AES-256-GCM-SIV avalanche framing, algorithm versioning as a forward-compat clause, and the small-file-packing model) is a sustained community design contribution by **Ehud Kirsh** in the COMMUNITY ROADMAP thread ([#162](https://github.com/axpdev-lab/aeroftp/issues/162)). The wrapper-stack hardening and telemetry land in commits `406e273c` (engine), `abad0cba` (receipt UI plus 47-language i18n) and `ed01fbe3` (CLI `vault` subcommand documentation). Credit is inline in every receipt and in the architecture primer.
+The AeroVault wrapper-stack design (the `chunking -> compression -> crypt -> error-correction` pipeline, the wrapper-vs-step taxonomy, the corrected AES-256-GCM-SIV avalanche framing, algorithm versioning as a forward-compat clause, and the small-file-packing model) is a sustained community design contribution by **Ehud Kirsh** in the COMMUNITY ROADMAP thread ([#162](https://github.com/axpdev-lab/aeroftp/issues/162)). The wrapper-stack hardening and telemetry land in commits `406e273c` (engine), `abad0cba` (receipt UI plus 47-language i18n) and `ed01fbe3` (CLI `vault` subcommand documentation). Credit is inline in every receipt and in the architecture primer.
 
 ### AeroRsync Native Streaming, Session Reuse, Default ON, and Local-to-Local Sync
 

@@ -77,7 +77,11 @@ pub async fn correct_verify(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, To
 /// Repair a local file in place from its `.aerocorrect` sidecar (atomic,
 /// all-or-nothing; an already-intact file is reported `verified` with no write).
 ///
-/// Args: `file` (required), `parity` (optional sidecar path override).
+/// Args: `file` (required), `parity` (optional sidecar path override),
+/// `expect_sha256` (optional 64-char hex authenticity anchor). A bare repair
+/// reconstructs toward whatever the sidecar declares (integrity only); with
+/// `expect_sha256` a sidecar declaring a different content hash is refused before any
+/// write, so a planted sidecar cannot drive the repair toward attacker content (M3).
 pub async fn correct_repair(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let base = ctx.context_local_path();
     let file = resolve_local_path(&get_str(args, "file")?, base);
@@ -90,9 +94,14 @@ pub async fn correct_repair(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, To
         }
         None => None,
     };
+    let expect_sha256 = get_str_opt(args, "expect_sha256");
 
     let report = tokio::task::spawn_blocking(move || {
-        crate::error_correction::correct_repair(&file, parity.as_deref())
+        crate::error_correction::correct_repair_anchored(
+            &file,
+            parity.as_deref(),
+            expect_sha256.as_deref(),
+        )
     })
     .await
     .map_err(|e| ToolError::Exec(e.to_string()))?

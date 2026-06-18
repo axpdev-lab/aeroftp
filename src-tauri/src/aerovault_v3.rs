@@ -131,6 +131,83 @@ fn lock_path_for(vault_path: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(format!(".{name}.lock")))
 }
 
+/// True if a process with `pid` is currently running. Conservative: when the
+/// answer is uncertain (e.g. the OS refuses to report) it returns `true`, so a
+/// live writer's lock is never mistaken for stale and reclaimed (audit M9).
+#[cfg(unix)]
+fn process_is_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    // kill(pid, 0): 0 -> alive; EPERM -> exists but not ours (alive); ESRCH -> dead.
+    let r = unsafe { libc::kill(pid as i32, 0) };
+    if r == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(windows)]
+fn process_is_alive(pid: u32) -> bool {
+    // Minimal kernel32 FFI (no extra `windows` crate features): open the process
+    // with the least privilege and read its exit code. STILL_ACTIVE (259) means it
+    // is still running. A failed open with ERROR_ACCESS_DENIED means the process
+    // exists but is protected -> treat as alive (never reclaim).
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const STILL_ACTIVE: u32 = 259;
+    const ERROR_ACCESS_DENIED: u32 = 5;
+    type Handle = isize;
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
+        fn GetExitCodeProcess(handle: Handle, code: *mut u32) -> i32;
+        fn CloseHandle(handle: Handle) -> i32;
+        fn GetLastError() -> u32;
+    }
+    if pid == 0 {
+        return false;
+    }
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle == 0 {
+            return GetLastError() == ERROR_ACCESS_DENIED;
+        }
+        let mut code: u32 = 0;
+        let ok = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        ok && code == STILL_ACTIVE
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn process_is_alive(_pid: u32) -> bool {
+    true // conservative: unknown platform never reclaims a lock
+}
+
+/// Best-effort read of the pid recorded in `pid=<n> created_at=<t>`.
+fn lock_recorded_pid(lock_path: &Path) -> Option<u32> {
+    let content = std::fs::read_to_string(lock_path).ok()?;
+    content
+        .split_whitespace()
+        .find_map(|tok| tok.strip_prefix("pid="))
+        .and_then(|v| v.parse::<u32>().ok())
+}
+
+/// A lock is stale only when its recorded owner process is provably gone (crash
+/// before `Drop` ran). When the pid is unreadable (e.g. a crash truncated the
+/// write) fall back to a generous age bound that no real seal approaches, so a
+/// legitimate in-progress seal is never reclaimed (audit M9).
+fn lock_is_stale(lock_path: &Path) -> bool {
+    match lock_recorded_pid(lock_path) {
+        Some(pid) => pid != std::process::id() && !process_is_alive(pid),
+        None => std::fs::metadata(lock_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .map(|age| age > Duration::from_secs(600))
+            .unwrap_or(false),
+    }
+}
+
 fn acquire_vault_write_lock(vault_path: &Path) -> Result<VaultWriteLock, String> {
     let lock_path = lock_path_for(vault_path)?;
     if let Some(parent) = lock_path.parent() {
@@ -138,6 +215,7 @@ fn acquire_vault_write_lock(vault_path: &Path) -> Result<VaultWriteLock, String>
     }
 
     let started = Instant::now();
+    let mut reclaimed = false;
     loop {
         match OpenOptions::new()
             .write(true)
@@ -158,6 +236,44 @@ fn acquire_vault_write_lock(vault_path: &Path) -> Result<VaultWriteLock, String>
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Reclaim a lock orphaned by a crashed writer (its RAII Drop never ran)
+                // so a dead seal does not block the next writer ~30s then hard-error
+                // until manual cleanup (audit M9). Reclaim ATOMICALLY by renaming the
+                // stale lock aside rather than unconditionally removing it: an unlinked
+                // path could already be a fresh lock a live writer just recreated, so a
+                // bare remove can clobber a live lock (controaudit TOCTOU). rename is
+                // atomic, so only one racing writer moves a given source; we then confirm
+                // the moved file really was the dead-owner lock (and drop it) or, if a
+                // live writer had recreated it in between, restore it and fall through to
+                // the wait. create_new (O_EXCL) below is the single-writer gate and
+                // assert_vault_generation_current is the final data-integrity backstop
+                // for any residual race. Reclaim at most once per acquire so live
+                // contention still falls through to the bounded busy-wait below.
+                if !reclaimed && lock_is_stale(&lock_path) {
+                    let aside = lock_path.with_file_name(format!(
+                        "{}.reclaim.{}",
+                        lock_path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        std::process::id()
+                    ));
+                    if std::fs::rename(&lock_path, &aside).is_ok() {
+                        if lock_is_stale(&aside) {
+                            let _ = std::fs::remove_file(&aside);
+                            reclaimed = true;
+                        } else {
+                            // A live writer recreated the lock between our check and the
+                            // rename: put it back, do not steal it. If the put-back fails
+                            // (the path was recreated again in the meantime), drop our
+                            // aside copy so no `.reclaim.<pid>` orphan is left behind.
+                            if std::fs::rename(&aside, &lock_path).is_err() {
+                                let _ = std::fs::remove_file(&aside);
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if started.elapsed() > Duration::from_secs(30) {
                     return Err(format!(
                         "AeroVault v3 write lock is busy: {}",
@@ -897,7 +1013,7 @@ pub async fn vault_v3_security_info(path: Option<String>) -> serde_json::Value {
             "archive": 19
         },
         "compatibility": "v4 is expected to read v3 directly; v3 skips unknown non-critical extensions",
-        "error_correction_support": "stub (Phase 1): vault_v3_create_with_error_correction emits non-critical 'error-correction.reed-solomon' entry; real RS shards in Phase 2. See T-AEROVAULT-ECC (#272)"
+        "error_correction_support": "live: detached Reed-Solomon (.aerocorrect) parity with create/scrub/repair/export-parity, detached-sidecar refresh, and embedded/detached/both placements; reconstruction is re-verified against authenticated material (all-or-nothing). See AEROVAULT-V3-SPEC and #272."
     });
 
     if let Some(p) = path {
@@ -1025,5 +1141,49 @@ mod tests {
         }
         // ...and is removed on drop.
         assert!(!lock_path_for(&vault).unwrap().exists());
+    }
+
+    /// Audit M9: a lock orphaned by a crashed writer (its Drop never ran) names a
+    /// dead pid; the next writer must reclaim it instead of blocking ~30s and then
+    /// hard-erroring until manual cleanup.
+    #[test]
+    fn stale_lock_with_dead_pid_is_reclaimed() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("v.aerovault");
+        std::fs::write(&vault, b"placeholder").unwrap();
+        let lock_path = lock_path_for(&vault).unwrap();
+
+        // Plant a stale lock naming pid 0 (never a live process -> provably dead).
+        std::fs::write(&lock_path, b"pid=0 created_at=2000-01-01T00:00:00Z\n").unwrap();
+        assert!(lock_is_stale(&lock_path), "pid=0 lock must read as stale");
+
+        // Acquire must reclaim quickly (well under the 30s busy timeout) and hold it.
+        let started = Instant::now();
+        let lock = acquire_vault_write_lock(&vault).expect("stale lock should be reclaimed");
+        assert!(started.elapsed() < Duration::from_secs(5), "reclaim must be prompt");
+        assert!(lock_path.exists());
+        drop(lock);
+        assert!(!lock_path.exists());
+    }
+
+    /// A lock owned by a LIVE process (this test process) must NOT be treated as
+    /// stale, so a genuine in-progress seal is never stolen.
+    #[test]
+    fn live_owner_lock_is_not_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("v.aerovault");
+        std::fs::write(&vault, b"placeholder").unwrap();
+        let lock_path = lock_path_for(&vault).unwrap();
+        std::fs::write(
+            &lock_path,
+            format!("pid={} created_at=2000-01-01T00:00:00Z\n", std::process::id()),
+        )
+        .unwrap();
+        assert!(
+            !lock_is_stale(&lock_path),
+            "a live owner's lock must never be reclaimed"
+        );
+        assert!(process_is_alive(std::process::id()));
+        assert!(!process_is_alive(0));
     }
 }

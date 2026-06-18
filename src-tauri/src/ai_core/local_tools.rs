@@ -35,7 +35,12 @@ use crate::ai_core::tools::{ToolCtx, ToolError};
 /// - path relativo + base assente: ritornato invariato (cwd del processo).
 pub(crate) fn resolve_local_path(path: &str, base: Option<&str>) -> String {
     let p = std::path::Path::new(path);
-    if p.is_absolute() {
+    // A POSIX-rooted path ("/home/...") is absolute for this tool on every OS. On Windows
+    // `Path::is_absolute()` is false for a leading-slash path (it expects `C:\...` or a UNC
+    // prefix), which would otherwise re-base an already-rooted path against `base`. Treat a
+    // leading `/` as absolute too so a model-emitted rooted path resolves identically on
+    // Windows and Unix.
+    if p.is_absolute() || path.starts_with('/') {
         return path.to_string();
     }
     // Tilde expansion: applies whether or not a base is provided.
