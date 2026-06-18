@@ -21,7 +21,7 @@
 | Reachable from | Error-Correction vaults only (`create --error-correction`); inert for v1/v2 and v3 without Error Correction |
 
 The Error Correction wrapper is the fourth wrapper in the AeroVault pipeline
-(`compression -> chunking -> crypt -> Error Correction`), per discussions #272/#276. It
+(`chunking -> compression -> crypt -> Error Correction`), per discussions #272/#276. It
 protects the concatenated live-block stream of an encrypted vault with a fixed
 Reed-Solomon 10+2 grid (~20% overhead). `reed-solomon-erasure` was selected
 because:

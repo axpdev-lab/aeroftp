@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Academic attribution. The wrapper / step taxonomy and the
-/// compression -> chunking -> crypt -> error-correction pipeline that this
+/// chunking -> compression -> crypt -> error-correction pipeline that this
 /// report describes were formalized as a design contribution by Ehud Kirsh
 /// (GitHub @EhudKirsh) in AeroFTP issue #162. Carried in every receipt so the
 /// exported artifact credits the model, not just the implementation.
