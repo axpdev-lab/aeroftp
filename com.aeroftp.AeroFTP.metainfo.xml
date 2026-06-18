@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.0.7" date="2026-06-18">
+      <description>
+        <p>AeroVault Security Audit Hardening and Error-Correction Convergence. AeroVault passed an independent dual blind security audit (Claude Opus 4.8 and Codex GPT-5) with full remediation and a two-round adversarial controaudit, closing every finding (1 High, 1 Medium, 3 Low, 4 Info, 0 Critical, grade A) and verifying each fix on both the crate and the app. An interrupted vault seal no longer leaves a stale lock or a plaintext temp behind, vault extraction refuses to follow a planted directory junction out of the destination, bare correct repair gains an out-of-band SHA-256 authenticity anchor, and a forged extension directory is rejected at open. The kill-cleanup gap was surfaced by Ehud Kirsh's V3 Beta test pass (@EhudKirsh, #2).</p>
+        <p>The standalone error-correction engine (.aerocorrect and AeroSync) is now a single audited implementation in the published aerovault crate (0.6.2): the app's forked copy of about three thousand five hundred lines is removed and replaced by a thin re-export, with a cross-implementation golden keeping the bytes identical. The My Servers grid gains container-aware columns, a full-height sidebar divider and symmetric gutters. 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.0.6" date="2026-06-17">
       <description>
         <p>AeroVault Crate Convergence. AeroFTP's AEROVAULT3 vault engine now lives entirely in the published aerovault crate (0.6.0 on crates.io): the real AEROVAULT3 container (1024-byte header, content-defined chunking, per-chunk zstd, deduplication, packing) and its revision 4 Reed-Solomon error correction are a single audited implementation, shared byte-for-byte between the desktop app and the standalone CLI. The app's vault commands are now thin wrappers over the crate, around four thousand lines of duplicated cryptography removed, with a cross-implementation fixture pinning the two to identical bytes so any vault opens in either. AEROVAULT3 design and the unified error-correction direction were driven by Ehud Kirsh (@EhudKirsh, #162, #276).</p>

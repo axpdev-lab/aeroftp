@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.7] - 2026-06-18
+
+### AeroVault Security Audit Hardening and Error-Correction Convergence
+
+AeroVault went through an independent dual blind security audit (Claude Opus 4.8 and Codex GPT-5) followed by full remediation and a two-round adversarial controaudit that closed every finding (1 High, 1 Medium, 3 Low, 4 Info, 0 Critical, grade A). In the same pass the error-correction engine became a single audited implementation living in the published `aerovault` crate (0.6.2) instead of a copy forked into the app, and the My Servers grid got a pair of layout fixes.
+
+#### Fixed
+- **No leftover temp or lock after an interrupted vault seal**: killing a vault operation mid-seal used to leave a 56-byte `.aerovault.lock` that blocked the next writer and an 8 GB `.aerovault-v3-XXXX` plaintext temp beside the target. The container now writes through an auto-deleting temp on the error path, the standalone repair scrubs its temp on the persist-error branch (M1), and a lock orphaned by a crashed run is auto-reclaimed once its recorded owner PID is provably dead, via an atomic rename-aside (M9). (@EhudKirsh, #2)
+- **AeroVault extract blocks reparse-point escape**: extracting a vault could follow a pre-planted intermediate Windows directory junction out of the destination, writing decrypted plaintext into a sibling directory. Each path component is now created refusing to follow a pre-existing reparse point, and the canonical parent is checked to stay inside the destination root (M2).
+- **`correct repair` honors an authenticity anchor**: a bare repair reconstructed toward whatever hash the sidecar declared, so a planted same-length sidecar could drive it to attacker content. A new `--expect-sha256` anchor refuses a sidecar that declares a different hash before any byte is written, on the CLI, the library and the MCP tool (M3).
+- **AeroVault rejects a forged extension directory at open**: the header MAC covered the extension-directory offset and length but not its JSON bytes, so a forged directory is now rejected at open, before any recovery uses it (M4).
+- **AI local tools resolve absolute POSIX paths on Windows**: a `/`-rooted path was treated as relative on Windows and re-based under the tool working directory; a leading `/` is now treated as absolute on every operating system.
+- **IntroHub layout**: the My Servers grid now uses container-aware column counts (3 to 9) with a full-height sidebar divider, symmetric grid gutters, and aligned toolbar and cards.
+
+#### Changed
+- **Error correction converged onto the `aerovault` crate (0.6.2)**: the app's forked standalone `.aerocorrect` and AeroSync error-correction engine (about 3,500 lines) is removed and replaced by a logic-free re-export of the crate, so the `.aerocorrect` format has a single audited implementation shared by the desktop app, the CLI and any Rust consumer. A cross-implementation golden keeps the bytes byte-for-byte identical (M7).
+- **Accurate AeroVault error-correction capability string**: the app reported error correction as a Phase 1 stub while shipping live Reed-Solomon error correction; the capability string now reflects the real RS engine (M5).
+
+#### Security
+- **AeroVault dual blind security audit, grade A**: an independent dual blind audit (Claude Opus 4.8 and Codex GPT-5) plus full remediation and a two-round adversarial controaudit closed 1 High, 1 Medium, 3 Low and 4 Info findings with zero Critical and zero open findings, verified on both the crate and the app. The kill-cleanup pair (M1 and M9) was surfaced by Ehud Kirsh's V3 Beta test pass. (@EhudKirsh, #2)
+
+#### Contributors
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+
 ## [4.0.6] - 2026-06-17
 
 ### AeroVault Crate Convergence

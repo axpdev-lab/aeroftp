@@ -1,5 +1,5 @@
 name: aeroftp
-version: '4.0.6'
+version: '4.0.7'
 summary: Modern Multi-Protocol File Transfer & Cloud Client for Humans and Agents
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
