@@ -946,11 +946,20 @@ mod tests {
         }
     }
 
-    /// Verifies the core forced-termination technique used by `cancel()`:
+    /// Verifies the core forced-termination fast path used by `cancel()` on Unix:
     /// a cloned `TcpStream` shares the same fd as the owned one, and
-    /// `shutdown(Shutdown::Both)` from any thread unblocks a blocking read
-    /// on the other handle. Without this property, `cancel()` would not be
-    /// able to break a libssh2 read stuck inside the worker.
+    /// `shutdown(Shutdown::Both)` from any thread immediately unblocks a blocking
+    /// read on the other handle, so `cancel()` breaks a libssh2 read stuck inside
+    /// the worker without waiting for a timeout.
+    ///
+    /// Unix-only: Winsock `shutdown()` does not reliably wake a concurrent blocking
+    /// `recv()` on another thread, so this instant-unblock property does not hold on
+    /// Windows. There, cancellation still works but is bounded by the worker's socket
+    /// read timeout (`set_read_timeout(io_timeout_ms)`): the blocked read returns on
+    /// timeout and the loop then observes the cancel flag. A prompt Windows unblock
+    /// would need `CancelIoEx` / closing the socket; that is a responsiveness
+    /// enhancement, not a correctness gap, so this fast-path test is gated to Unix.
+    #[cfg(unix)]
     #[test]
     fn tcp_shutdown_from_other_thread_unblocks_read() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
