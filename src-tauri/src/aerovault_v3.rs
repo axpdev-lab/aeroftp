@@ -1160,7 +1160,10 @@ mod tests {
         // Acquire must reclaim quickly (well under the 30s busy timeout) and hold it.
         let started = Instant::now();
         let lock = acquire_vault_write_lock(&vault).expect("stale lock should be reclaimed");
-        assert!(started.elapsed() < Duration::from_secs(5), "reclaim must be prompt");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "reclaim must be prompt"
+        );
         assert!(lock_path.exists());
         drop(lock);
         assert!(!lock_path.exists());
@@ -1176,7 +1179,10 @@ mod tests {
         let lock_path = lock_path_for(&vault).unwrap();
         std::fs::write(
             &lock_path,
-            format!("pid={} created_at=2000-01-01T00:00:00Z\n", std::process::id()),
+            format!(
+                "pid={} created_at=2000-01-01T00:00:00Z\n",
+                std::process::id()
+            ),
         )
         .unwrap();
         assert!(

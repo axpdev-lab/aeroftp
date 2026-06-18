@@ -16,12 +16,12 @@
 //! Not in scope here: the AeroCrypt overlay (`crate::aerocrypt`) is a separate codec/product
 //! and is untouched by this convergence.
 
+pub use aerovault::error_correction::{
+    ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
+};
 pub use aerovault::{
     correct_generate, correct_repair, correct_repair_anchored, correct_verify,
     CorrectGenerateReport, CorrectRepairReport, CorrectVerifyReport,
-};
-pub use aerovault::error_correction::{
-    ERROR_CORRECTION_DEFAULT_PCT, ERROR_CORRECTION_MAX_PCT, ERROR_CORRECTION_MIN_PCT,
 };
 
 /// AeroSync windowed-sidecar error-correction API, re-exported from the crate's
