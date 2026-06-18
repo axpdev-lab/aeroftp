@@ -261,7 +261,7 @@
       "totpSecretHelp": "保存您的 2FA 密钥一次。AeroFTP 将在每次重新连接时自动生成 6 位代码，就像身份验证器应用一样。",
       "filenApiKey": "Filen CLI API 密钥（可选）",
       "filenApiKeyPlaceholder": "来自 Filen CLI 的 API 密钥",
-      "filenApiKeyHelp": "粘贴 Filen CLI 配置文件中的 API 密钥，即可在每次重新连接时跳过 2FA 验证码。仍需要账户密码：它会端到端解密您的文件。",
+      "filenApiKeyHelp": "粘贴来自 Filen CLI 配置文件的 API 密钥，以便每次重新连接时跳过 2FA 代码。仍需要账户密码：它会端到端解密您的文件。保存后，密钥将加密存储在保险库中，并且不会再在此处显示（与您的 2FA 密钥相同）；AeroFTP 会自动重复使用它。编辑时留空以保留已保存的密钥。",
       "manualTotalStorage": "总存储空间（手动）",
       "manualTotalStoragePlaceholder": "例如 10 GB、500 GB、2 TB",
       "manualTotalStorageHint": "可选。适用于没有配额 API 的后端（FTP、S3、WebDAV），或仅报告已用空间的后端（Backblaze B2）的套餐或账户上限。提供商自身的总量始终优先。",
@@ -278,7 +278,8 @@
       "unstableTitle": "实验性服务商",
       "unstableBody": "{provider} 尚不稳定，服务可能不可用。连接可能会失败，这并非您的过错。",
       "persistModeCredentials": "记住此账户每个协议的凭据",
-      "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。"
+      "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。",
+      "filenApiKeyStored": "保险库中已保存了一个密钥。留空以保留它，或粘贴一个新密钥以替换。"
     },
     "browser": {
       "remote": "远程",

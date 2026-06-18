@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Ufunguo wa API wa Filen CLI (hiari)",
       "filenApiKeyPlaceholder": "Ufunguo wa API kutoka Filen CLI",
-      "filenApiKeyHelp": "Bandika ufunguo wa API kutoka wasifu wako wa Filen CLI ili kuruka msimbo wa 2FA kila unapounganisha tena. Nenosiri la akaunti bado linahitajika: linafichua faili zako kutoka mwanzo hadi mwisho.",
+      "filenApiKeyHelp": "Bandika ufunguo wa API kutoka kwa wasifu wako wa Filen CLI ili kuruka msimbo wa 2FA kila unapounganisha tena. Nenosiri la akaunti bado linahitajika: hufungua faili zako kwa siri kutoka mwanzo hadi mwisho. Mara baada ya kuhifadhiwa, ufunguo huhifadhiwa ukiwa umesimbwa kwenye chumba cha hazina na hauonyeshwi tena hapa (kama siri yako ya 2FA); AeroFTP huutumia tena kiotomatiki. Unapohariri, acha tupu ili kuhifadhi ufunguo uliohifadhiwa.",
       "manualTotalStorage": "Hifadhi jumla (mwenyewe)",
       "manualTotalStoragePlaceholder": "mf. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Si lazima. Kikomo cha mpango au akaunti kwa backend zisizo na API ya kiwango (FTP, S3, WebDAV) au zinazoripoti tu nafasi iliyotumika (Backblaze B2). Jumla ya mtoa huduma daima inapewa kipaumbele.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Mtoa huduma wa majaribio",
       "unstableBody": "{provider} bado si thabiti na huduma huenda isipatikane. Muunganisho unaweza kushindwa bila kosa lako.",
       "persistModeCredentials": "Kumbuka kitambulisho cha kila itifaki ya akaunti hii",
-      "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi."
+      "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi.",
+      "filenApiKeyStored": "Ufunguo tayari umehifadhiwa kwenye chumba cha hazina. Acha tupu ili kuuhifadhi, au bandika mpya ili kuubadilisha."
     },
     "browser": {
       "remote": "Mbali",

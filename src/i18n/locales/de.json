@@ -261,7 +261,7 @@
       "totpSecretHelp": "Speichern Sie Ihr 2FA-Geheimnis einmal. AeroFTP generiert den 6-stelligen Code bei jeder erneuten Verbindung automatisch, wie eine Authentifizierungs-App.",
       "filenApiKey": "Filen CLI API-Schlüssel (optional)",
       "filenApiKeyPlaceholder": "API-Schlüssel aus der Filen CLI",
-      "filenApiKeyHelp": "Fügen Sie den API-Schlüssel aus Ihrem Filen CLI-Profil ein, um den 2FA-Code bei jeder erneuten Verbindung zu überspringen. Das Kontopasswort wird weiterhin benötigt: Es entschlüsselt Ihre Dateien Ende-zu-Ende.",
+      "filenApiKeyHelp": "Fügen Sie den API-Schlüssel aus Ihrem Filen-CLI-Profil ein, um den 2FA-Code bei jeder erneuten Verbindung zu überspringen. Das Kontopasswort ist weiterhin erforderlich: Es entschlüsselt Ihre Dateien Ende-zu-Ende. Nach dem Speichern wird der Schlüssel verschlüsselt im Tresor abgelegt und hier nicht mehr angezeigt (wie Ihr 2FA-Geheimnis); AeroFTP verwendet ihn automatisch wieder. Lassen Sie das Feld beim Bearbeiten leer, um den gespeicherten Schlüssel beizubehalten.",
       "manualTotalStorage": "Gesamtspeicher (manuell)",
       "manualTotalStoragePlaceholder": "z. B. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Optional. Tarif- oder Kontolimit für Backends ohne quota API (FTP, S3, WebDAV) oder die nur den belegten Speicher melden (Backblaze B2). Der vom Anbieter gemeldete Gesamtwert hat immer Vorrang.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Experimenteller Anbieter",
       "unstableBody": "{provider} ist noch nicht stabil und der Dienst ist möglicherweise nicht verfügbar. Die Verbindung kann ohne Ihr Verschulden fehlschlagen.",
       "persistModeCredentials": "Anmeldedaten für jedes Protokoll dieses Kontos merken",
-      "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus."
+      "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus.",
+      "filenApiKeyStored": "Ein Schlüssel ist bereits im Tresor gespeichert. Leer lassen, um ihn beizubehalten, oder einen neuen einfügen, um ihn zu ersetzen."
     },
     "browser": {
       "remote": "Remote",

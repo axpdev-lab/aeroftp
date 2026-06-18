@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "API ključ za Filen CLI (neobavezno)",
       "filenApiKeyPlaceholder": "API ključ iz Filen CLI-ja",
-      "filenApiKeyHelp": "Zalijepite API ključ iz svog Filen CLI profila kako biste preskočili 2FA kôd pri svakom ponovnom povezivanju. Lozinka računa i dalje je potrebna: ona dešifrira vaše datoteke s kraja na kraj.",
+      "filenApiKeyHelp": "Zalijepite API ključ iz svog Filen CLI profila kako biste preskočili 2FA kod pri svakom ponovnom povezivanju. Lozinka računa i dalje je potrebna: ona dešifrira vaše datoteke od kraja do kraja. Nakon spremanja, ključ se pohranjuje šifriran u trezoru i više se ovdje ne prikazuje (poput vaše 2FA tajne); AeroFTP ga automatski ponovno koristi. Pri uređivanju ostavite prazno da biste zadržali spremljeni ključ.",
       "manualTotalStorage": "Ukupna pohrana (ručno)",
       "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Neobavezno. Ograničenje plana ili računa za pozadinske sustave bez quota API-ja (FTP, S3, WebDAV) ili one koji prijavljuju samo iskorišteni prostor (Backblaze B2). Vlastiti ukupni iznos pružatelja uvijek ima prednost.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimentalni pružatelj",
       "unstableBody": "{provider} još nije stabilan i usluga možda nije dostupna. Povezivanje može propasti bez vaše krivnje.",
       "persistModeCredentials": "Zapamti vjerodajnice za svaki protokol ovog računa",
-      "persistModeCredentialsHint": "Jedan profil po računu: čuva vjerodajnice svakog protokola (API, WebDAV, S3, ...) spremljene pa promjena načina više ne pita, čak i nakon ponovnog pokretanja. Pohranjeno šifrirano u trezoru. Prema zadanim postavkama isključeno."
+      "persistModeCredentialsHint": "Jedan profil po računu: čuva vjerodajnice svakog protokola (API, WebDAV, S3, ...) spremljene pa promjena načina više ne pita, čak i nakon ponovnog pokretanja. Pohranjeno šifrirano u trezoru. Prema zadanim postavkama isključeno.",
+      "filenApiKeyStored": "Ključ je već spremljen u trezoru. Ostavite prazno da biste ga zadržali ili zalijepite novi da biste ga zamijenili."
     },
     "browser": {
       "remote": "Udaljeno",

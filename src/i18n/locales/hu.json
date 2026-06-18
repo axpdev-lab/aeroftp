@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API-kulcs (opcionális)",
       "filenApiKeyPlaceholder": "API-kulcs a Filen CLI-ből",
-      "filenApiKeyHelp": "Illessze be az API-kulcsot a Filen CLI profiljából, hogy minden újracsatlakozáskor kihagyhassa a 2FA-kódot. A fiók jelszava továbbra is szükséges: ez visszafejti a fájljait végponttól végpontig.",
+      "filenApiKeyHelp": "Illessze be a Filen CLI profilja API-kulcsát, hogy minden újracsatlakozáskor kihagyja a 2FA kódot. A fiók jelszava továbbra is szükséges: ez fejti vissza a fájljait végpontok között. Mentés után a kulcs titkosítva tárolódik a széfben, és itt többé nem jelenik meg (mint a 2FA titka); az AeroFTP automatikusan újra felhasználja. Szerkesztéskor hagyja üresen a mentett kulcs megtartásához.",
       "manualTotalStorage": "Teljes tárhely (kézi)",
       "manualTotalStoragePlaceholder": "pl. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Választható. Csomag- vagy fiókkorlát olyan háttérrendszerekhez, amelyeknek nincs kvóta API-ja (FTP, S3, WebDAV), vagy csak a használt helyet jelentik (Backblaze B2). A szolgáltató saját összértéke mindig elsőbbséget élvez.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Kísérleti szolgáltató",
       "unstableBody": "A(z) {provider} még nem stabil, és a szolgáltatás elérhetetlen lehet. A kapcsolat a te hibádon kívül is meghiúsulhat.",
       "persistModeCredentials": "Jegyezze meg a hitelesítő adatokat a fiók minden protokolljához",
-      "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva."
+      "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva.",
+      "filenApiKeyStored": "Egy kulcs már el van mentve a széfben. Hagyja üresen a megtartásához, vagy illesszen be egy újat a cseréjéhez."
     },
     "browser": {
       "remote": "Távoli",

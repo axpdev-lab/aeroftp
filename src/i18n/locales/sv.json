@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API-nyckel (valfritt)",
       "filenApiKeyPlaceholder": "API-nyckel från Filen CLI",
-      "filenApiKeyHelp": "Klistra in API-nyckeln från din Filen CLI-profil för att hoppa över 2FA-koden vid varje återanslutning. Kontolösenordet krävs fortfarande: det dekrypterar dina filer från ände till ände.",
+      "filenApiKeyHelp": "Klistra in API-nyckeln från din Filen CLI-profil för att hoppa över 2FA-koden vid varje återanslutning. Kontolösenordet krävs fortfarande: det dekrypterar dina filer från början till slut. När den är sparad lagras nyckeln krypterad i valvet och visas inte längre här (precis som din 2FA-hemlighet); AeroFTP återanvänder den automatiskt. Lämna tomt vid redigering för att behålla den sparade nyckeln.",
       "manualTotalStorage": "Total lagring (manuell)",
       "manualTotalStoragePlaceholder": "t.ex. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Valfritt. Plan- eller kontogräns för backends utan kvot-API (FTP, S3, WebDAV) eller som endast rapporterar använt utrymme (Backblaze B2). Leverantörens egen totalsumma har alltid företräde.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Experimentell leverantör",
       "unstableBody": "{provider} är inte stabil ännu och tjänsten kan vara otillgänglig. Anslutningen kan misslyckas utan att det är ditt fel.",
       "persistModeCredentials": "Kom ihåg autentiseringsuppgifter för varje protokoll på detta konto",
-      "persistModeCredentialsHint": "En profil per konto: behåller varje protokolls autentiseringsuppgifter (API, WebDAV, S3, ...) sparade så att byte av läge inte frågar igen, även efter en omstart. Lagras krypterat i valvet. Av som standard."
+      "persistModeCredentialsHint": "En profil per konto: behåller varje protokolls autentiseringsuppgifter (API, WebDAV, S3, ...) sparade så att byte av läge inte frågar igen, även efter en omstart. Lagras krypterat i valvet. Av som standard.",
+      "filenApiKeyStored": "En nyckel är redan sparad i valvet. Lämna tomt för att behålla den, eller klistra in en ny för att ersätta den."
     },
     "browser": {
       "remote": "Fjärr",

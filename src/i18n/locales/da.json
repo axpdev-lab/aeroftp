@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API-nøgle (valgfri)",
       "filenApiKeyPlaceholder": "API-nøgle fra Filen CLI",
-      "filenApiKeyHelp": "Indsæt API-nøglen fra din Filen CLI-profil for at springe 2FA-koden over ved hver gentilslutning. Kontoadgangskoden er stadig påkrævet: den dekrypterer dine filer ende-til-ende.",
+      "filenApiKeyHelp": "Indsæt API-nøglen fra din Filen CLI-profil for at springe 2FA-koden over ved hver gentilslutning. Kontoadgangskoden er stadig påkrævet: den dekrypterer dine filer end-to-end. Når nøglen er gemt, opbevares den krypteret i boksen og vises ikke længere her (ligesom din 2FA-hemmelighed); AeroFTP genbruger den automatisk. Lad feltet være tomt ved redigering for at beholde den gemte nøgle.",
       "manualTotalStorage": "Samlet lagerplads (manuelt)",
       "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Valgfrit. Plan- eller kontogrænse for backends uden quota API (FTP, S3, WebDAV) eller som kun rapporterer brugt plads (Backblaze B2). Udbyderens eget samlede tal har altid forrang.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimentel udbyder",
       "unstableBody": "{provider} er endnu ikke stabil, og tjenesten er muligvis utilgængelig. Forbindelsen kan mislykkes, uden at det er din skyld.",
       "persistModeCredentials": "Husk legitimationsoplysninger for hver protokol på denne konto",
-      "persistModeCredentialsHint": "Én profil pr. konto: gemmer hver protokols legitimationsoplysninger (API, WebDAV, S3, ...), så skift af tilstand ikke spørger igen, selv efter en genstart. Gemmes krypteret i vaulten. Slået fra som standard."
+      "persistModeCredentialsHint": "Én profil pr. konto: gemmer hver protokols legitimationsoplysninger (API, WebDAV, S3, ...), så skift af tilstand ikke spørger igen, selv efter en genstart. Gemmes krypteret i vaulten. Slået fra som standard.",
+      "filenApiKeyStored": "En nøgle er allerede gemt i boksen. Lad feltet være tomt for at beholde den, eller indsæt en ny for at erstatte den."
     },
     "browser": {
       "remote": "Ekstern",

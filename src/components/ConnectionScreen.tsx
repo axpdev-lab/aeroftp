@@ -584,6 +584,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // freely). Mirrors profile.persistModeCredentials; only meaningful for
     // profiles whose provider/protocol belongs to a mode group.
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
+    // Issue #215 (Ehud): when editing a saved Filen profile that already has a
+    // CLI API key in the vault, the field renders empty by design (the key is a
+    // long-lived secret, never re-shown). Track the stored flag so the form can
+    // tell the user a key is saved instead of looking like it "disappeared".
+    const [editingHasStoredFilenKey, setEditingHasStoredFilenKey] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     // Ehud #276 (17324431): a collapsible "Wrappers / Overlays" parent keeps the Quick
     // Connect page uncluttered. Collapsed by default, auto-opens when a binding exists.
@@ -827,6 +832,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         () => !!protocol && !!findActiveModeGroup(activeProviderId, protocol),
         [activeProviderId, protocol],
     );
+
+    // Issue #215 (Ehud): hide the opt-in for groups whose modes share one
+    // credential set (Koofr, OpenDrive). There is nothing to remember per
+    // protocol because both surfaces use the same email + password, already
+    // saved with the profile. With the checkbox hidden, `persistModeCredentials`
+    // stays at its default (false) for new profiles, so no per-mode snapshots
+    // are written; the save logic continues to key off `inModeGroup`.
+    const showPersistCheckbox = useMemo(() => {
+        if (!protocol) return false;
+        const group = findActiveModeGroup(activeProviderId, protocol);
+        return !!group && !group.sharedCredentials;
+    }, [activeProviderId, protocol]);
 
     // The stash key of the currently-active mode, matching the oldKey/newKey
     // convention in handleProtocolChange (providerId, else protocol).
@@ -1372,6 +1389,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             // every mode of a provider group points at the same account/storage,
             // so the usage + capacity stats stay valid until the next refresh.
             lastQuota: originalServer?.lastQuota,
+            // Keep the per-protocol credential opt-in on the duplicate too, so
+            // the checkbox state survives Save-as-new (issue #215, Ehud).
+            persistModeCredentials: persistModeCredentials && inModeGroup,
             ...aeroFields,
         };
 
@@ -1388,6 +1408,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             newServers.push(newServer);
         }
         await storeSavedServerProfiles(newServers).catch(() => { });
+        // Persist the duplicate's own per-mode credential snapshots (issue
+        // #215): the original keeps its own, so this only writes the new id.
+        await syncPersistedModeCredentials(newId);
         // On a mode switch the copy is the same account, so carry the ⭐
         // favourite flag onto it too (issue #215). Keep the original starred as
         // well (removeOld=false): a duplicate leaves both rows in the list.
@@ -1485,6 +1508,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             // Carry the cached storage quota: a convert stays on the same
             // account/storage, so usage + capacity remain valid (issue #215).
             lastQuota: originalServer.lastQuota,
+            // Carry the per-protocol credential opt-in across the convert
+            // (issue #215, Ehud): the checkbox stayed ticked, so the converted
+            // profile must keep remembering every protocol's credentials
+            // instead of silently dropping the flag.
+            persistModeCredentials: persistModeCredentials && inModeGroup,
             ...aeroFields,
         };
 
@@ -1492,6 +1520,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
         await storeSavedServerProfiles(newServers).catch(() => { });
+        // Migrate the persisted per-mode credential snapshots from the old id
+        // to the converted one (or clear them when the opt-in is off), so a
+        // later mode switch on the converted profile restores without asking.
+        await syncPersistedModeCredentials(newId);
+        if (newId !== originalServer.id) {
+            await deleteModeCredentials(originalServer.id);
+        }
         // Move the ⭐ favourite flag from the deleted original to the new
         // profile (issue #215): convert replaces in place, so remove the old id.
         await carryFavoriteServer(originalServer.id, newId, true);
@@ -1511,6 +1546,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     label: t('connection.undo'),
                     onClick: async () => {
                         await storeSavedServerProfiles(snapshotServers).catch(() => { });
+                        // Drop the converted profile's per-mode credential
+                        // snapshots so the discarded new id leaves nothing in
+                        // the vault (issue #215).
+                        await deleteModeCredentials(newId);
                         // Reverse the favourite move so the restored original
                         // keeps its ⭐ and the discarded new id doesn't dangle.
                         await carryFavoriteServer(newId, originalServer.id, true);
@@ -1548,6 +1587,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Drop any per-mode credential snapshots from a previous edit (#215).
         modeCredentialSnapshotsRef.current = {};
         setPersistModeCredentials(!!profile.persistModeCredentials);
+        setEditingHasStoredFilenKey(!!profile.hasStoredFilenApiKey);
         setEditingProfileId(profile.id);
         editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
@@ -1988,11 +2028,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const getUsernamePlaceholder = () => {
+        // A selected preset's own field placeholder wins over the protocol
+        // default: the Filen Desktop local WebDAV bridge declares "admin"
+        // (issue #215), which the generic WebDAV/opendrive default below would
+        // otherwise mask, hiding from the user that AeroFTP tries "admin".
+        const usernameField = selectedProvider?.fields?.find((f) => f.key === 'username');
+        if (usernameField?.placeholder) return usernameField.placeholder;
         if (protocol === 's3') return 'AKIAIOSFODNN7EXAMPLE';
         if (protocol === 'azure') return 'aeroftp2026';
         if (protocol === 'opendrive' || protocol === 'webdav') return 'email@example.com';
-        const usernameField = selectedProvider?.fields?.find((f) => f.key === 'username');
-        if (usernameField?.placeholder) return usernameField.placeholder;
         if ((usernameField?.label || '').toLowerCase().includes('email')) return 'email@example.com';
         return t('connection.usernamePlaceholder');
     };
@@ -2411,7 +2455,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     account so switching modes never asks again, even after a
                     restart. Only offered when the active provider/protocol is
                     part of a mode group (Filen, MEGA, OpenDrive, Koofr, ...). */}
-                {inModeGroup && (
+                {showPersistCheckbox && (
                     <div>
                         <Checkbox
                             checked={persistModeCredentials}
@@ -3561,18 +3605,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="space-y-2 mt-1">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">Authentication</label>
 
-                                            {/* Mode buttons: locked when editing a saved connection */}
+                                            {/* Mode buttons. Issue #215: switching auth method on a
+                                                saved GitHub profile is allowed in edit. The handler
+                                                clears the password so the operator supplies the new
+                                                method's credential (PAT / App .pem / device-flow
+                                                token) before saving; the active button stays
+                                                non-clickable. */}
                                             <div className="flex gap-1.5">
                                                 {(['authorize', 'pat', 'app'] as const).map((mode) => {
                                                     const isActive = connectionParams.options?.githubAuthMode === mode;
-                                                    const isLocked = !!editingProfileId;
                                                     return (
                                                     <button
                                                         key={mode}
                                                         type="button"
-                                                        disabled={(isLocked && !isActive) || isActive}
+                                                        disabled={isActive}
                                                         onClick={() => {
-                                                            if (isLocked || isActive) return;
+                                                            if (isActive) return;
                                                             onConnectionParamsChange({
                                                                 ...connectionParams,
                                                                 password: '',
@@ -3582,9 +3630,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         className={`flex-1 px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
                                                             isActive
                                                                 ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
-                                                                : isLocked
-                                                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed opacity-40'
-                                                                    : 'border-gray-600 text-gray-400 hover:border-gray-400'
+                                                                : 'border-gray-600 text-gray-400 hover:border-gray-400'
                                                         }`}
                                                     >
                                                         {mode === 'authorize' && 'Authorize'}
@@ -4266,6 +4312,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showFilenApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
+                                            {editingProfileId && editingHasStoredFilenKey && !connectionParams.options?.filen_api_key && (
+                                                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                                                    <Check size={13} />
+                                                    {t('connection.filenApiKeyStored')}
+                                                </p>
+                                            )}
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.filenApiKeyHelp')}</p>
                                         </div>
 
@@ -4665,13 +4717,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div className="grid grid-cols-2 gap-2">
                                                 {(['native', 'megacmd'] as const).map((mode) => {
                                                     const isActive = megaMode === mode;
-                                                    const isLocked = !!editingProfileId;
+                                                    // Issue #215 (Ehud): native <-> MEGAcmd is a sub-mode of
+                                                    // the same MEGA account on the same `mega` protocol (only
+                                                    // `options.mega_mode` differs), so it can be switched and
+                                                    // saved in place even while editing a saved profile. The
+                                                    // previous edit-lock left the non-active button greyed out,
+                                                    // so an existing MEGAcmd profile could never switch to
+                                                    // Native API (and vice versa).
                                                     return (
                                                         <button
                                                             key={mode}
                                                             type="button"
-                                                            disabled={isLocked && !isActive}
-                                                            onClick={() => !isLocked && onConnectionParamsChange({
+                                                            onClick={() => onConnectionParamsChange({
                                                                 ...connectionParams,
                                                                 options: {
                                                                     ...connectionParams.options,
@@ -4679,11 +4736,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 },
                                                             })}
                                                             className={`rounded-lg border px-3 py-3 text-left transition-colors ${
-                                                                isLocked && !isActive
-                                                                    ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-gray-700'
-                                                                    : isActive
-                                                                        ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
-                                                                        : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
+                                                                isActive
+                                                                    ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
+                                                                    : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
                                                             }`}
                                                         >
                                                             <div className="text-sm font-medium">
@@ -5243,13 +5298,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {(['webdav', 'api'] as const).map((mode) => {
                                                         const isActive = (connectionParams.options?.infinicloud_mode || 'webdav') === mode;
-                                                        const isLocked = !!editingProfileId;
+                                                        // Issue #215: InfiniCloud WebDAV <-> API is the same
+                                                        // account reached two ways, like MEGA native/MEGAcmd, so
+                                                        // it can be switched and saved in place while editing.
+                                                        // The previous edit-lock left a saved profile stuck on
+                                                        // whichever mode it was created with.
                                                         return (
                                                             <button
                                                                 key={mode}
                                                                 type="button"
-                                                                disabled={isLocked && !isActive}
-                                                                onClick={() => !isLocked && onConnectionParamsChange({
+                                                                onClick={() => onConnectionParamsChange({
                                                                     ...connectionParams,
                                                                     options: {
                                                                         ...connectionParams.options,
@@ -5258,11 +5316,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                     },
                                                                 })}
                                                                 className={`rounded-lg border px-3 py-3 text-left transition-colors ${
-                                                                    isLocked && !isActive
-                                                                        ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-gray-700'
-                                                                        : isActive
-                                                                            ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-300'
-                                                                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-500/60'
+                                                                    isActive
+                                                                        ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                                                                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-500/60'
                                                                 }`}
                                                             >
                                                                 <div className="text-sm font-medium">

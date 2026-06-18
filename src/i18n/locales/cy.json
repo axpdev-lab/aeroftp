@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Allwedd API Filen CLI (dewisol)",
       "filenApiKeyPlaceholder": "Allwedd API o'r Filen CLI",
-      "filenApiKeyHelp": "Gludwch yr allwedd API o'ch proffil Filen CLI i hepgor y cod 2FA bob tro y byddwch yn ailgysylltu. Mae angen cyfrinair y cyfrif o hyd: mae'n datgryptio eich ffeiliau o ben i ben.",
+      "filenApiKeyHelp": "Gludwch yr allwedd API o'ch proffil Filen CLI i hepgor y cod 2FA bob tro y byddwch yn ailgysylltu. Mae angen cyfrinair y cyfrif o hyd: mae'n dadgryptio'ch ffeiliau o ben i ben. Ar ôl ei chadw, mae'r allwedd yn cael ei storio wedi'i hamgryptio yn y gell ac ni chaiff ei dangos yma eto (fel eich cyfrinach 2FA); mae AeroFTP yn ei hailddefnyddio'n awtomatig. Wrth olygu, gadewch yn wag i gadw'r allwedd a gadwyd.",
       "manualTotalStorage": "Cyfanswm storfa (â llaw)",
       "manualTotalStoragePlaceholder": "e.e. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Dewisol. Cap cynllun neu gyfrif ar gyfer ôl-bennau heb quota API (FTP, S3, WebDAV) neu rai sy'n adrodd am ofod a ddefnyddiwyd yn unig (Backblaze B2). Mae cyfanswm y darparwr ei hun bob amser yn cael blaenoriaeth.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Darparwr arbrofol",
       "unstableBody": "Nid yw {provider} yn sefydlog eto a gall y gwasanaeth fod yn anhygyrch. Gall y cysylltiad fethu heb fai arnoch chi.",
       "persistModeCredentials": "Cofio'r manylion ar gyfer pob protocol o'r cyfrif hwn",
-      "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn."
+      "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn.",
+      "filenApiKeyStored": "Mae allwedd eisoes wedi'i chadw yn y gell. Gadewch yn wag i'w chadw, neu gludwch un newydd i'w disodli."
     },
     "browser": {
       "remote": "Pell",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "API ključ za Filen CLI (neobvezno)",
       "filenApiKeyPlaceholder": "API ključ iz Filen CLI",
-      "filenApiKeyHelp": "Prilepite API ključ iz svojega profila Filen CLI, da pri vsaki ponovni povezavi preskočite kodo 2FA. Geslo računa je še vedno potrebno: dešifrira vaše datoteke od konca do konca.",
+      "filenApiKeyHelp": "Prilepite API ključ iz svojega profila Filen CLI, da pri vsaki ponovni povezavi preskočite kodo 2FA. Geslo računa je še vedno potrebno: dešifrira vaše datoteke od konca do konca. Ko je shranjen, je ključ shranjen šifriran v trezorju in tukaj ni več prikazan (tako kot vaša skrivnost 2FA); AeroFTP ga samodejno znova uporabi. Pri urejanju pustite prazno, da obdržite shranjeni ključ.",
       "manualTotalStorage": "Skupna shramba (ročno)",
       "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Izbirno. Omejitev paketa ali računa za zaledja brez API-ja za kvoto (FTP, S3, WebDAV) ali ki sporočajo le porabljen prostor (Backblaze B2). Skupna vrednost ponudnika ima vedno prednost.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimentalni ponudnik",
       "unstableBody": "{provider} še ni stabilen in storitev morda ni na voljo. Povezava lahko spodleti brez vaše krivde.",
       "persistModeCredentials": "Zapomni si poverilnice za vsak protokol tega računa",
-      "persistModeCredentialsHint": "En profil na račun: ohrani shranjene poverilnice vsakega protokola (API, WebDAV, S3, ...), tako da preklop načina ne sprašuje več, tudi po ponovnem zagonu. Shranjeno šifrirano v trezorju. Privzeto izklopljeno."
+      "persistModeCredentialsHint": "En profil na račun: ohrani shranjene poverilnice vsakega protokola (API, WebDAV, S3, ...), tako da preklop načina ne sprašuje več, tudi po ponovnem zagonu. Shranjeno šifrirano v trezorju. Privzeto izklopljeno.",
+      "filenApiKeyStored": "Ključ je že shranjen v trezorju. Pustite prazno, da ga obdržite, ali prilepite novega, da ga zamenjate."
     },
     "browser": {
       "remote": "Oddaljeno",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API-lykill (valfrjálst)",
       "filenApiKeyPlaceholder": "API-lykill úr Filen CLI",
-      "filenApiKeyHelp": "Límdu API-lykilinn úr Filen CLI sniðinu þínu til að sleppa 2FA kóðanum í hvert sinn sem þú tengist aftur. Lykilorð reikningsins er enn nauðsynlegt: það afkóðar skrárnar þínar enda á milli.",
+      "filenApiKeyHelp": "Límdu API-lykilinn úr Filen CLI sniðinu þínu til að sleppa 2FA-kóðanum við hverja endurtengingu. Lykilorð reikningsins er enn nauðsynlegt: það afkóðar skrárnar þínar enda á milli. Þegar hann hefur verið vistaður er lykillinn geymdur dulkóðaður í hvelfingunni og er ekki sýndur hér aftur (eins og 2FA-leyndarmálið þitt); AeroFTP endurnýtir hann sjálfkrafa. Skildu eftir autt við breytingu til að halda vistaða lyklinum.",
       "manualTotalStorage": "Heildargeymsla (handvirkt)",
       "manualTotalStoragePlaceholder": "t.d. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Valfrjálst. Áskriftar- eða reikningsmörk fyrir bakenda án kvóta-API (FTP, S3, WebDAV) eða sem tilkynna aðeins notað pláss (Backblaze B2). Heildartala þjónustuveitunnar hefur alltaf forgang.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Tilraunaþjónustuaðili",
       "unstableBody": "{provider} er ekki enn stöðugur og þjónustan gæti verið ótiltæk. Tengingin getur mistekist án þess að það sé þér að kenna.",
       "persistModeCredentials": "Muna auðkenni fyrir hverja samskiptareglu þessa reiknings",
-      "persistModeCredentialsHint": "Ein snið á reikning: heldur auðkennum hverrar samskiptareglu (API, WebDAV, S3, ...) vistuðum svo að skipta um ham spyr ekki aftur, jafnvel eftir endurræsingu. Geymt dulkóðað í hvelfingunni. Sjálfgefið slökkt."
+      "persistModeCredentialsHint": "Ein snið á reikning: heldur auðkennum hverrar samskiptareglu (API, WebDAV, S3, ...) vistuðum svo að skipta um ham spyr ekki aftur, jafnvel eftir endurræsingu. Geymt dulkóðað í hvelfingunni. Sjálfgefið slökkt.",
+      "filenApiKeyStored": "Lykill er þegar vistaður í hvelfingunni. Skildu eftir autt til að halda honum, eða límdu nýjan til að skipta honum út."
     },
     "browser": {
       "remote": "Fjartengdur",

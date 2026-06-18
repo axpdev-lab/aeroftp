@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Filen CLI API atslēga (neobligāta)",
       "filenApiKeyPlaceholder": "API atslēga no Filen CLI",
-      "filenApiKeyHelp": "Ielīmējiet API atslēgu no sava Filen CLI profila, lai katrā atkārtotā savienojuma izveidē izlaistu 2FA kodu. Konta parole joprojām ir nepieciešama: tā atšifrē jūsu failus no gala līdz galam.",
+      "filenApiKeyHelp": "Ielīmējiet API atslēgu no sava Filen CLI profila, lai izlaistu 2FA kodu katrā atkārtotā savienojumā. Konta parole joprojām ir nepieciešama: tā atšifrē jūsu failus pilnībā. Pēc saglabāšanas atslēga tiek glabāta šifrēta glabātavā un šeit vairs netiek rādīta (tāpat kā jūsu 2FA noslēpums); AeroFTP to automātiski izmanto atkārtoti. Rediģējot atstājiet tukšu, lai saglabātu saglabāto atslēgu.",
       "manualTotalStorage": "Kopējā krātuve (manuāli)",
       "manualTotalStoragePlaceholder": "piem. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Neobligāti. Plāna vai konta ierobežojums aizmugursistēmām bez kvotas API (FTP, S3, WebDAV) vai kas ziņo tikai par izmantoto vietu (Backblaze B2). Pakalpojuma sniedzēja paša kopējam apjomam vienmēr ir prioritāte.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Eksperimentāls pakalpojumu sniedzējs",
       "unstableBody": "{provider} vēl nav stabils, un pakalpojums var nebūt pieejams. Savienojums var neizdoties ne jūsu vainas dēļ.",
       "persistModeCredentials": "Atcerēties akreditācijas datus katram šī konta protokolam",
-      "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts."
+      "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts.",
+      "filenApiKeyStored": "Atslēga jau ir saglabāta glabātavā. Atstājiet tukšu, lai to saglabātu, vai ielīmējiet jaunu, lai to aizstātu."
     },
     "browser": {
       "remote": "Attālināts",

@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Kunci API Filen CLI (pilihan)",
       "filenApiKeyPlaceholder": "Kunci API daripada Filen CLI",
-      "filenApiKeyHelp": "Tampal kunci API daripada profil Filen CLI anda untuk melangkau kod 2FA pada setiap sambungan semula. Kata laluan akaun masih diperlukan: ia menyahsulit fail anda hujung ke hujung.",
+      "filenApiKeyHelp": "Tampal kunci API daripada profil Filen CLI anda untuk melangkau kod 2FA pada setiap sambungan semula. Kata laluan akaun masih diperlukan: ia menyahsulit fail anda secara hujung ke hujung. Setelah disimpan, kunci disimpan tersulit dalam bilik kebal dan tidak ditunjukkan lagi di sini (seperti rahsia 2FA anda); AeroFTP menggunakannya semula secara automatik. Semasa menyunting, biarkan kosong untuk mengekalkan kunci yang disimpan.",
       "manualTotalStorage": "Jumlah storan (manual)",
       "manualTotalStoragePlaceholder": "cth. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Pilihan. Had pelan atau akaun untuk bahagian belakang tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang digunakan (Backblaze B2). Jumlah milik penyedia sendiri sentiasa diutamakan.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Penyedia eksperimen",
       "unstableBody": "{provider} belum stabil dan perkhidmatan mungkin tidak tersedia. Sambungan boleh gagal bukan kerana kesalahan anda.",
       "persistModeCredentials": "Ingat kelayakan untuk setiap protokol akaun ini",
-      "persistModeCredentialsHint": "Satu profil setiap akaun: menyimpan kelayakan setiap protokol (API, WebDAV, S3, ...) supaya menukar mod tidak bertanya lagi, walaupun selepas dimulakan semula. Disimpan tersulit dalam bilik kebal. Dimatikan secara lalai."
+      "persistModeCredentialsHint": "Satu profil setiap akaun: menyimpan kelayakan setiap protokol (API, WebDAV, S3, ...) supaya menukar mod tidak bertanya lagi, walaupun selepas dimulakan semula. Disimpan tersulit dalam bilik kebal. Dimatikan secara lalai.",
+      "filenApiKeyStored": "Kunci sudah disimpan dalam bilik kebal. Biarkan kosong untuk mengekalkannya, atau tampal yang baharu untuk menggantikannya."
     },
     "browser": {
       "remote": "Jauh",

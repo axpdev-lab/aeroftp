@@ -261,7 +261,7 @@
       "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
       "filenApiKey": "Kunci API Filen CLI (opsional)",
       "filenApiKeyPlaceholder": "Kunci API dari Filen CLI",
-      "filenApiKeyHelp": "Tempel kunci API dari profil Filen CLI Anda untuk melewati kode 2FA setiap kali menyambung ulang. Kata sandi akun tetap diperlukan: kata sandi ini mendekripsi file Anda secara menyeluruh.",
+      "filenApiKeyHelp": "Tempel kunci API dari profil Filen CLI Anda untuk melewati kode 2FA setiap kali menyambung kembali. Kata sandi akun tetap diperlukan: ia mendekripsi file Anda secara end-to-end. Setelah disimpan, kunci disimpan terenkripsi di brankas dan tidak ditampilkan lagi di sini (seperti rahasia 2FA Anda); AeroFTP menggunakannya kembali secara otomatis. Saat mengedit, biarkan kosong untuk mempertahankan kunci yang tersimpan.",
       "manualTotalStorage": "Total penyimpanan (manual)",
       "manualTotalStoragePlaceholder": "mis. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Opsional. Batas paket atau akun untuk backend tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang terpakai (Backblaze B2). Total milik penyedia selalu diutamakan.",
@@ -278,7 +278,8 @@
       "unstableTitle": "Penyedia eksperimental",
       "unstableBody": "{provider} belum stabil dan layanan mungkin tidak tersedia. Koneksi bisa gagal bukan karena kesalahan Anda.",
       "persistModeCredentials": "Ingat kredensial untuk setiap protokol akun ini",
-      "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default."
+      "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default.",
+      "filenApiKeyStored": "Kunci sudah disimpan di brankas. Biarkan kosong untuk mempertahankannya, atau tempel yang baru untuk menggantinya."
     },
     "browser": {
       "remote": "Jarak Jauh",

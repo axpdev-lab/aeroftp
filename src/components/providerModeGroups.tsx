@@ -78,6 +78,15 @@ export interface ProviderModeGroup {
      *  Quick Connect OpenDrive API showed "via WebDAV"). Set this to a
      *  neutral line; the protocol is already obvious from the MODES chips. */
     headerDescription?: string;
+    /** When true, every mode in the group authenticates with the SAME
+     *  credential set (e.g. Koofr / OpenDrive: the Native API and WebDAV
+     *  surfaces both take the same email + app password). In that case the
+     *  "Remember credentials for every protocol" opt-in is meaningless —
+     *  there is a single credential set, already saved with the profile —
+     *  so the checkbox is hidden (issue #215, Ehud). Leave unset for groups
+     *  whose modes have structurally different credentials (Filen API key vs
+     *  WebDAV user/pass, MEGA email/pass vs S4 access keys). */
+    sharedCredentials?: boolean;
 }
 
 export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
@@ -173,6 +182,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     },
     {
         id: 'opendrive',
+        // Native API and WebDAV both use the same username + password, so the
+        // per-protocol credential opt-in is hidden (#215).
+        sharedCredentials: true,
         headerLabel: 'OpenDrive Modes',
         // WebDAV preset carries the description/Docs link/logo; show the
         // plain "OpenDrive" name so the Native API tab is not mislabeled
@@ -206,6 +218,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     },
     {
         id: 'koofr',
+        // Native API and WebDAV both use the same email + app password, so the
+        // per-protocol credential opt-in is hidden (#215).
+        sharedCredentials: true,
         headerLabel: 'Koofr Modes',
         // Single registry entry 'koofr' (the WebDAV preset) carries the
         // canonical Koofr identity + Docs link; use it for both tabs so
