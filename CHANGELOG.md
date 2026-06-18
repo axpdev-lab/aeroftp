@@ -25,6 +25,7 @@ AeroVault went through an independent dual blind security audit (Claude Opus 4.8
 
 #### Security
 - **AeroVault dual blind security audit, grade A**: an independent dual blind audit (Claude Opus 4.8 and Codex GPT-5) plus full remediation and a two-round adversarial controaudit closed 1 High, 1 Medium, 3 Low and 4 Info findings with zero Critical and zero open findings, verified on both the crate and the app. The kill-cleanup pair (M1 and M9) was surfaced by Ehud Kirsh's V3 Beta test pass. (@EhudKirsh, #2)
+- **DOMPurify updated to 3.4.11**: clears a Dependabot advisory (GHSA-cmwh-pvxp-8882, `ALLOWED_ATTR` pollution via `setConfig`). A precautionary transitive bump; the affected configuration path is not exercised by AeroFTP.
 
 #### Contributors
 
