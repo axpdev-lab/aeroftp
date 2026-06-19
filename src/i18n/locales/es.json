@@ -4568,7 +4568,8 @@
       "loading": "Cargando...",
       "emptyFolder": "Carpeta vacía",
       "nameNotDecrypted": "nombre no descifrado",
-      "download": "Descargar"
+      "download": "Descargar",
+      "serverHashGated": "Suma de comprobación del lado del servidor no disponible con una capa cifrada activa (calcularía el hash del texto cifrado, no de tu archivo)."
     },
     "b2": {
       "hidden": {

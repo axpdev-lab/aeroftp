@@ -4587,7 +4587,8 @@
       "loading": "Cargando...",
       "emptyFolder": "Cartafol baleiro",
       "nameNotDecrypted": "nome non descifrado",
-      "download": "Descargar"
+      "download": "Descargar",
+      "serverHashGated": "Suma de comprobación no servidor non dispoñible cunha capa cifrada activa (calcularía o hash do texto cifrado, non do teu ficheiro)."
     },
     "b2": {
       "hidden": {

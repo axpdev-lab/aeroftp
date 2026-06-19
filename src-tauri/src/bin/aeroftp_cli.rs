@@ -9746,6 +9746,33 @@ fn e2e_bits(proto: &str) -> Option<u16> {
     }
 }
 
+/// True when the saved profile carries an enabled crypt overlay binding —
+/// native AeroCrypt OR interop rclone-crypt, at equal grade. Mirrors
+/// `getServerCryptOverlay` in `src/types.ts`.
+fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
+    profile
+        .get("aeroCryptOverlay")
+        .and_then(|ov| ov.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Profile-aware protocol class. A profile with an enabled crypt overlay (either
+/// kind) classifies as "Crypt", a shared family regardless of transport — the
+/// native/interop distinction is cosmetic, not a class. Mirrors
+/// `getProfileProtocolClass` in `src/types.ts`. Falls back to the transport
+/// class otherwise.
+fn profile_protocol_class(profile: &serde_json::Value) -> &'static str {
+    if profile_has_crypt_overlay(profile) {
+        return "Crypt";
+    }
+    let proto = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    protocol_class(proto)
+}
+
 /// Render the protocol class label exactly as the GUI table shows it for sort
 /// purposes (Type column). Matches `badgeSortLabel` in `MyServersTable.tsx`.
 fn badge_sort_label(profile: &serde_json::Value) -> String {
@@ -9757,7 +9784,7 @@ fn badge_sort_label(profile: &serde_json::Value) -> String {
         .get("providerId")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let class = protocol_class(proto);
+    let class = profile_protocol_class(profile);
     if provider_id == "felicloud" {
         return "API OCS".to_string();
     }
@@ -9780,7 +9807,7 @@ fn badge_display_label(profile: &serde_json::Value) -> String {
         .get("protocol")
         .and_then(|v| v.as_str())
         .unwrap_or("ftp");
-    match (protocol_class(proto), e2e_bits(proto)) {
+    match (profile_protocol_class(profile), e2e_bits(proto)) {
         ("E2E", Some(bits)) => format!("E2E{}", bits),
         (other, _) => other.to_string(),
     }

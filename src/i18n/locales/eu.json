@@ -4587,7 +4587,8 @@
       "loading": "Kargatzen...",
       "emptyFolder": "Karpeta hutsa",
       "nameNotDecrypted": "izena ez da deszifratu",
-      "download": "Deskargatu"
+      "download": "Deskargatu",
+      "serverHashGated": "Zerbitzariko kontrol-batura ez dago erabilgarri zifratutako geruza aktibo dagoenean (testu zifratuaren hash-a egingo luke, ez zure fitxategiarena)."
     },
     "b2": {
       "hidden": {

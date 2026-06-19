@@ -166,6 +166,16 @@ function getServerSearchText(server: ServerProfile): string {
         searchTokens.push('api ocs', 'ocs');
     }
 
+    // Crypt-overlay profiles are searchable by "crypt"/"encrypted" and by kind,
+    // while STILL matching their transport tokens above (an S3-backed crypt
+    // profile is found by both "s3" and "crypt"). The transport class is kept
+    // for search even though the display class is "Crypt".
+    const cryptKind = getServerCryptOverlay(server);
+    if (cryptKind) {
+        searchTokens.push('crypt', 'encrypted', 'overlay');
+        searchTokens.push(cryptKind === 'aerocrypt' ? 'aerocrypt' : 'rclone crypt');
+    }
+
     return searchTokens
         .filter((value): value is string => !!value)
         .join(' ')

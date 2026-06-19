@@ -4568,7 +4568,8 @@
       "loading": "Učitavanje...",
       "emptyFolder": "Prazna fascikla",
       "nameNotDecrypted": "naziv nije dešifrovan",
-      "download": "Preuzmi"
+      "download": "Preuzmi",
+      "serverHashGated": "Контролни збир на страни сервера није доступан док је активан шифровани слој (хешовао би шифровани текст, а не вашу датотеку)."
     },
     "b2": {
       "hidden": {

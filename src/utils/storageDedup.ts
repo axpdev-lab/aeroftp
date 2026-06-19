@@ -22,7 +22,7 @@ import {
     ServerProfile,
     ProviderType,
     ProtocolClass,
-    getProtocolClass,
+    getProfileProtocolClass,
 } from '../types';
 
 const OAUTH_PROTOCOLS: ReadonlyArray<ProviderType> = [
@@ -298,8 +298,10 @@ export const aggregateByDedupKey = (servers: ServerProfile[]): DedupAggregate =>
 
     for (const server of servers) {
         const key = getStorageDedupKey(server);
-        const proto = (server.protocol || 'ftp') as ProviderType;
-        const cls = getProtocolClass(proto);
+        // Profile-aware: crypt-overlay profiles group under the shared "Crypt"
+        // family in the breakdown (the quota dedup key is unaffected — it still
+        // keys off the underlying backend host/bucket).
+        const cls = getProfileProtocolClass(server);
         classProfileCount.set(cls, (classProfileCount.get(cls) || 0) + 1);
         const ks = classBucketKeys.get(cls) || new Set<string>();
         ks.add(key);

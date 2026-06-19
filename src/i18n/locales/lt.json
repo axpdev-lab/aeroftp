@@ -4568,7 +4568,8 @@
       "loading": "Įkeliama...",
       "emptyFolder": "Tuščias aplankas",
       "nameNotDecrypted": "vardas neiššifruotas",
-      "download": "Atsisiųsti"
+      "download": "Atsisiųsti",
+      "serverHashGated": "Serverio pusės kontrolinė suma negalima, kai aktyvus šifruotas sluoksnis (ji apskaičiuotų šifruoto teksto maišą, o ne jūsų failo)."
     },
     "b2": {
       "hidden": {

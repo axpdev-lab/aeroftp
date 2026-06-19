@@ -4568,7 +4568,8 @@
       "loading": "Laden...",
       "emptyFolder": "Lege map",
       "nameNotDecrypted": "naam niet ontsleuteld",
-      "download": "Downloaden"
+      "download": "Downloaden",
+      "serverHashGated": "Controlesom aan serverzijde niet beschikbaar terwijl een versleutelde overlay actief is (deze zou de cijfertekst hashen, niet uw bestand)."
     },
     "b2": {
       "hidden": {

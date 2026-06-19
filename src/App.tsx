@@ -4178,6 +4178,16 @@ interface UpdateVerificationInfo {
     if (aeroCryptVaultId) return { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' };
     return null;
   };
+  // P3.4/P3.5 single source of truth: true when the ACTIVE panel is inside an
+  // unlocked crypt overlay scope (either kind, at equal grade). Both the action
+  // gating (share-link, server-side checksum) and the transparent transfer
+  // routing derive from this SAME predicate, so the path-bar "encrypted" badge
+  // and the actual behaviour can never diverge (a badge that lies about scope
+  // is a data-exposure bug). In the shipped architecture the overlay is anchored
+  // at its bound remote scope and the backend stays there, so "active overlay"
+  // == "within the bound scope"; this helper is the seam a future navigate-out
+  // model would refine.
+  const isCryptOverlayActive = (): boolean => activeCryptOverlay() !== null;
 
   // Per-session overlay binding. Each connected tab remembers its own overlay so
   // switching/reconnecting to it restores ITS decrypted view (the single global
@@ -10845,7 +10855,9 @@ interface UpdateVerificationInfo {
     // the ciphertext blobs (scrambled names, encrypted bytes), so they are
     // misleading: a share link would hand out unreadable data, a server hash
     // would not match the plaintext. Disable them in the menu (P3.5 gating).
-    const cryptOverlayActive = !!(aeroCryptVaultId || rcloneCryptVaultId);
+    // Uses the single session-scoped predicate so the gate matches the path-bar
+    // badge and the transfer routing (both kinds, native + interop).
+    const cryptOverlayActive = isCryptOverlayActive();
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
@@ -12860,7 +12872,18 @@ interface UpdateVerificationInfo {
               if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
-                if (propertiesDialog.isRemote) {
+                if (propertiesDialog.isRemote && isCryptOverlayActive()) {
+                  // P3.5 gating: under an active crypt overlay (native or
+                  // interop) the server stores ciphertext, so a server-side
+                  // digest would hash the encrypted blob, NOT the plaintext the
+                  // user sees. Refuse it honestly rather than return a hash that
+                  // silently fails every integrity check against the real file.
+                  notify.error(
+                    t('toast.checksumFailed'),
+                    t('aerocrypt.serverHashGated'),
+                  );
+                  setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
+                } else if (propertiesDialog.isRemote) {
                   // Server-side only: provider_checksum never downloads the
                   // file. One call returns every digest the backend exposes
                   // cheaply (S3 md5, B2 sha1, SFTP sha256, Drive/OneDrive/Box

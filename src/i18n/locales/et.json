@@ -4568,7 +4568,8 @@
       "loading": "Laadimine...",
       "emptyFolder": "Tühi kaust",
       "nameNotDecrypted": "nime ei dekrüpteeritud",
-      "download": "Lae alla"
+      "download": "Lae alla",
+      "serverHashGated": "Serveripoolne kontrollsumma pole saadaval, kui krüpteeritud kiht on aktiivne (see räsiks šifreeritud teksti, mitte teie faili)."
     },
     "b2": {
       "hidden": {

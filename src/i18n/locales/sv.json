@@ -4568,7 +4568,8 @@
       "loading": "Laddar...",
       "emptyFolder": "Tom mapp",
       "nameNotDecrypted": "namn ej dekrypterat",
-      "download": "Ladda ner"
+      "download": "Ladda ner",
+      "serverHashGated": "Kontrollsumma på serversidan är inte tillgänglig när ett krypterat överlägg är aktivt (den skulle hasha chiffertexten, inte din fil)."
     },
     "b2": {
       "hidden": {

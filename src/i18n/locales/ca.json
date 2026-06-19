@@ -4587,7 +4587,8 @@
       "loading": "Carregant...",
       "emptyFolder": "Carpeta buida",
       "nameNotDecrypted": "nom no desxifrat",
-      "download": "Descarrega"
+      "download": "Descarrega",
+      "serverHashGated": "Suma de verificació al servidor no disponible amb una capa xifrada activa (calcularia el hash del text xifrat, no del vostre fitxer)."
     },
     "b2": {
       "hidden": {

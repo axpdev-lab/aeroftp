@@ -4568,7 +4568,8 @@
       "loading": "Wird geladen...",
       "emptyFolder": "Leerer Ordner",
       "nameNotDecrypted": "Name nicht entschlüsselt",
-      "download": "Herunterladen"
+      "download": "Herunterladen",
+      "serverHashGated": "Serverseitige Prüfsumme nicht verfügbar, während ein verschlüsseltes Overlay aktiv ist (sie würde den Chiffretext hashen, nicht Ihre Datei)."
     },
     "b2": {
       "hidden": {

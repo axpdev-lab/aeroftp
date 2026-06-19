@@ -4568,7 +4568,8 @@
       "loading": "Carregando...",
       "emptyFolder": "Pasta vazia",
       "nameNotDecrypted": "nome não descriptografado",
-      "download": "Baixar"
+      "download": "Baixar",
+      "serverHashGated": "Soma de verificação no servidor indisponível enquanto uma sobreposição cifrada está ativa (calcularia o hash do texto cifrado, não do seu ficheiro)."
     },
     "b2": {
       "hidden": {

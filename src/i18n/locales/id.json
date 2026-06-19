@@ -4568,7 +4568,8 @@
       "loading": "Memuat...",
       "emptyFolder": "Folder kosong",
       "nameNotDecrypted": "nama tidak didekripsi",
-      "download": "Unduh"
+      "download": "Unduh",
+      "serverHashGated": "Checksum sisi server tidak tersedia saat overlay terenkripsi aktif (akan menghash ciphertext, bukan berkas Anda)."
     },
     "b2": {
       "hidden": {

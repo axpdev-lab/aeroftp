@@ -4568,7 +4568,8 @@
       "loading": "Ładowanie...",
       "emptyFolder": "Pusty folder",
       "nameNotDecrypted": "nazwa nieodszyfrowana",
-      "download": "Pobierz"
+      "download": "Pobierz",
+      "serverHashGated": "Suma kontrolna po stronie serwera niedostępna, gdy aktywna jest zaszyfrowana nakładka (obliczyłaby skrót szyfrogramu, a nie Twojego pliku)."
     },
     "b2": {
       "hidden": {

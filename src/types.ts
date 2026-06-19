@@ -78,7 +78,10 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
 };
 
 // Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure)
-export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud";
+// "Crypt" is a profile-level class (not a transport): a saved profile with an
+// enabled crypt overlay reads as "Crypt" regardless of its backend. See
+// getProfileProtocolClass.
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt";
 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
@@ -656,6 +659,21 @@ export const getServerCryptOverlay = (
 ): CryptOverlayKind | null => {
   const ov = server.aeroCryptOverlay;
   return ov?.enabled ? ov.kind : null;
+};
+
+// Profile-aware protocol class. A saved profile with an enabled crypt overlay
+// — native AeroCrypt OR interop rclone-crypt, at equal grade — classifies as
+// "Crypt", a single shared family regardless of the transport underneath. This
+// mirrors the card badge, which REPLACES the transport badge with the crypt
+// identity for overlay profiles; the native/interop distinction lives in the
+// badge color + cipher label, NOT in the class. Falls back to the transport
+// class when no overlay is bound. Use this (not getProtocolClass) wherever a
+// SAVED PROFILE is being classified for display/sort/grouping.
+export const getProfileProtocolClass = (
+  server: Pick<ServerProfile, "protocol" | "aeroCryptOverlay">,
+): ProtocolClass => {
+  if (getServerCryptOverlay(server) !== null) return "Crypt";
+  return getProtocolClass((server.protocol || "ftp") as ProviderType);
 };
 
 // Session status for multi-tab management

@@ -4587,7 +4587,8 @@
       "loading": "Yn llwytho...",
       "emptyFolder": "Ffolder gwag",
       "nameNotDecrypted": "enw heb ei ddadgryptio",
-      "download": "Lawrlwytho"
+      "download": "Lawrlwytho",
+      "serverHashGated": "Nid yw swm gwirio ochr-gweinydd ar gael tra bo haen wedi'i hamgryptio'n weithredol (byddai'n stwnsio'r testun wedi'i amgryptio, nid eich ffeil)."
     },
     "b2": {
       "hidden": {

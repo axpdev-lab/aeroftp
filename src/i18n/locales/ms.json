@@ -4568,7 +4568,8 @@
       "loading": "Memuatkan...",
       "emptyFolder": "Folder kosong",
       "nameNotDecrypted": "nama tidak dinyahsulitkan",
-      "download": "Muat turun"
+      "download": "Muat turun",
+      "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda)."
     },
     "b2": {
       "hidden": {

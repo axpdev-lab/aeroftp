@@ -4568,7 +4568,8 @@
       "loading": "Načítava sa...",
       "emptyFolder": "Prázdny priečinok",
       "nameNotDecrypted": "názov nedešifrovaný",
-      "download": "Stiahnuť"
+      "download": "Stiahnuť",
+      "serverHashGated": "Kontrolný súčet na strane servera nie je dostupný, kým je aktívna šifrovaná vrstva (vypočítal by hash šifrovaného textu, nie vášho súboru)."
     },
     "b2": {
       "hidden": {

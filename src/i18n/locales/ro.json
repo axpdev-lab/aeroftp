@@ -4568,7 +4568,8 @@
       "loading": "Se încarcă...",
       "emptyFolder": "Folder gol",
       "nameNotDecrypted": "nume nedecriptat",
-      "download": "Descarcă"
+      "download": "Descarcă",
+      "serverHashGated": "Suma de control pe server indisponibilă cât timp este activ un strat criptat (ar genera hash-ul textului cifrat, nu al fișierului dvs.)."
     },
     "b2": {
       "hidden": {

@@ -4568,7 +4568,8 @@
       "loading": "Yükleniyor...",
       "emptyFolder": "Boş klasör",
       "nameNotDecrypted": "ad şifresi çözülmedi",
-      "download": "İndir"
+      "download": "İndir",
+      "serverHashGated": "Şifreli yer paylaşımı etkinken sunucu tarafı sağlama toplamı kullanılamaz (dosyanızı değil şifreli metni özetler)."
     },
     "b2": {
       "hidden": {

@@ -4568,7 +4568,8 @@
       "loading": "Ielādē...",
       "emptyFolder": "Tukša mape",
       "nameNotDecrypted": "nosaukums nav atšifrēts",
-      "download": "Lejupielādēt"
+      "download": "Lejupielādēt",
+      "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu)."
     },
     "b2": {
       "hidden": {
