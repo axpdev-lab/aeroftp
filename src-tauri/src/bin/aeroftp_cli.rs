@@ -65,6 +65,9 @@ use axum::{
 };
 use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use ftp_client_gui_lib::local_bridge::{
+    bridge_kind_for_provider_id, probe_bridge_blocking, BridgeUiState,
+};
 use ftp_client_gui_lib::profile_loader::{
     apply_profile_options, apply_s3_profile_defaults, S3_ENDPOINT_SOURCE_META_KEY,
     S3_PATH_STYLE_SOURCE_META_KEY, S3_PROVIDER_ID_META_KEY, S3_REGION_SOURCE_META_KEY,
@@ -2341,6 +2344,13 @@ enum Commands {
         /// interactive prompt (`g <selector> <group>`) or the GUI.
         #[arg(long, value_name = "NAME")]
         group: Option<String>,
+
+        /// Probe the local helper-app bridges (Filen Desktop / MEGAcmd) and
+        /// print a status line per bridge profile after the table. Off by
+        /// default: probing the loopback ports adds a small latency, so the
+        /// plain listing stays instant. Mirrors the GUI's 🔴/🟠/🟢 detector.
+        #[arg(long)]
+        health: bool,
     },
     /// Manage local AeroFTP user partitions
     ///
@@ -9525,6 +9535,9 @@ struct ProfilesViewOverrides {
     /// Restrict the listing to profiles in this group (case-insensitive name),
     /// the CLI analogue of the GUI group filter chip (#320).
     group: Option<String>,
+    /// Probe the local-bridge helper apps and print a status line per bridge
+    /// profile after the table (#215 follow-up; opt-in due to probe latency).
+    health: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -12628,6 +12641,61 @@ fn build_profile_views(
         .collect()
 }
 
+/// Probe the local-bridge helper apps for every bridge profile and print a
+/// 🔴/🟠/🟢 status line per profile (opt-in `--health`, #215 follow-up). Mirrors
+/// the GUI detector. Output goes to stderr (like the Tip/summary) so it never
+/// pollutes a piped table. `sorted` is the already-ordered `(orig_idx, profile)`
+/// list, so the printed index matches the table's `#` column.
+fn print_bridge_health_section(sorted: &[(usize, serde_json::Value)], color_on: bool) {
+    let targets: Vec<(usize, String, &'static str, Option<u16>)> = sorted
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (_, p))| {
+            let pid = p.get("providerId").and_then(|v| v.as_str()).unwrap_or("");
+            let kind = bridge_kind_for_provider_id(pid)?;
+            let name = p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(unnamed)")
+                .to_string();
+            let port = p
+                .get("port")
+                .and_then(|v| v.as_u64())
+                .and_then(|n| u16::try_from(n).ok());
+            Some((i + 1, name, kind, port))
+        })
+        .collect();
+    if targets.is_empty() {
+        eprintln!("\nBridge health: no local-bridge profiles (Filen Desktop / MEGAcmd) in this list.");
+        return;
+    }
+    eprintln!("\nBridge health:");
+    for (idx, name, kind, port) in &targets {
+        // Blocking probe: render_profiles_text runs inside `#[tokio::main]`, so a
+        // nested async runtime would panic. probe_bridge_blocking uses std::net.
+        let (tone, label) = match probe_bridge_blocking(kind, *port) {
+            Ok(s) => match s.ui_state() {
+                BridgeUiState::Green => {
+                    (Tone::Ok, format!("active (127.0.0.1:{})", s.port))
+                }
+                BridgeUiState::Amber => (
+                    Tone::Warn,
+                    format!("installed but not responding (127.0.0.1:{})", s.port),
+                ),
+                BridgeUiState::Red => (Tone::Critical, "not installed".to_string()),
+            },
+            Err(e) => (Tone::Warn, format!("unknown: {}", e)),
+        };
+        eprintln!(
+            "  {} {:>2}  {:<28}  {}",
+            paint_tone("\u{25CF}", tone, color_on),
+            idx,
+            name,
+            label
+        );
+    }
+}
+
 fn render_profiles_text(
     cli: &Cli,
     store: &CredentialStore,
@@ -13206,6 +13274,10 @@ fn render_profiles_text(
         );
     }
 
+    if overrides.health {
+        print_bridge_health_section(&sorted, color_on);
+    }
+
     if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
         return interactive_profiles_loop(cli, store, ordered, overrides);
@@ -13234,6 +13306,9 @@ fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
     if let Some(g) = &ov.group {
         args.push(format!("--group={}", g));
     }
+    if ov.health {
+        args.push("--health".to_string());
+    }
     args
 }
 
@@ -13244,8 +13319,15 @@ fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
 /// for bit-identical output.
 fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
     if use_color() {
-        // ESC[2J clears the screen, ESC[H homes the cursor.
-        eprint!("\x1b[2J\x1b[H");
+        // ESC[2J clears the visible screen, ESC[3J also clears the scrollback
+        // buffer, ESC[H homes the cursor. Without ESC[3J most terminals
+        // (Alacritty, pwsh, Windows Terminal) keep every previous table in
+        // scrollback, so repeated refreshes appear to "stack" and scroll back,
+        // while WezTerm wiped them: the result was inconsistent across
+        // terminals (#341). ESC[3J is the xterm scrollback-clear, supported by
+        // every modern terminal, so the refresh now behaves the same way
+        // everywhere: one clean table per refresh.
+        eprint!("\x1b[2J\x1b[3J\x1b[H");
         let _ = std::io::Write::flush(&mut std::io::stderr());
     }
     let args = profiles_view_args(ov);
@@ -49473,6 +49555,7 @@ async fn main() {
             breakdown,
             interactive,
             group,
+            health,
         } => list_vault_profiles(
             &cli,
             format,
@@ -49483,6 +49566,7 @@ async fn main() {
                 breakdown: *breakdown,
                 interactive: *interactive,
                 group: group.clone(),
+                health: *health,
             },
         ),
         Commands::Users { command } => cmd_users(&cli, command, format),
@@ -50840,6 +50924,7 @@ mod tests {
                 breakdown: false,
                 interactive: false,
                 group: None,
+                health: false,
             },
         }
     }
@@ -53668,6 +53753,7 @@ mod tests {
             breakdown: false,
             interactive: true,
             group: None,
+            health: false,
         };
         assert_eq!(profiles_view_args(&plain), vec!["profiles".to_string()]);
         // `interactive` must NOT leak into the refresh args.
@@ -53681,6 +53767,7 @@ mod tests {
             breakdown: true,
             interactive: true,
             group: Some("Production".to_string()),
+            health: true,
         };
         assert_eq!(
             profiles_view_args(&full),
@@ -53691,6 +53778,7 @@ mod tests {
                 "--show=name".to_string(),
                 "--breakdown".to_string(),
                 "--group=Production".to_string(),
+                "--health".to_string(),
             ]
         );
     }
