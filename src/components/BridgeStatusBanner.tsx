@@ -25,9 +25,11 @@ interface BridgeStatusBannerProps {
     port?: number;
     /** Reports the confidently-not-installed state so the parent can disable Save. */
     onSaveBlockedChange?: (blocked: boolean) => void;
-    /** Reports the current 🔴/🟠/🟢 state so the parent can collapse the setup
-     *  box once the bridge is active (#215 follow-up, idea D). */
-    onUiStateChange?: (state: BridgeUiState) => void;
+    /** Reports the SETTLED 🔴/🟠/🟢 state so the parent can collapse the setup
+     *  box once the bridge is active (#215 follow-up, idea D). `undefined` while
+     *  the first probe is still in flight, so the setup box does not flash open
+     *  during the "Checking…" moment and then collapse when it resolves to 🟢. */
+    onUiStateChange?: (state: BridgeUiState | undefined) => void;
 }
 
 /** Friendly helper-app name per bridge kind. */
@@ -76,10 +78,14 @@ export const BridgeStatusBanner: React.FC<BridgeStatusBannerProps> = ({
     }, [saveBlocked, onSaveBlockedChange]);
     useEffect(() => () => onSaveBlockedChange?.(false), [onSaveBlockedChange]);
 
-    // Report the dot state upward (drives the collapsible setup box, idea D).
+    // Report the SETTLED dot state upward (drives the collapsible setup box,
+    // idea D). While the first probe is loading, report undefined so the box
+    // does not flash open during "Checking…" and then collapse on 🟢. Reset to
+    // undefined on unmount so a stale state never leaks to the next tab.
     useEffect(() => {
-        onUiStateChange?.(uiState);
-    }, [uiState, onUiStateChange]);
+        onUiStateChange?.(loading ? undefined : uiState);
+    }, [loading, uiState, onUiStateChange]);
+    useEffect(() => () => onUiStateChange?.(undefined), [onUiStateChange]);
 
     // translate-or-fallback so the banner works before i18n keys exist.
     const tr = (key: string, fallback: string, vars?: Record<string, string | number>) => {

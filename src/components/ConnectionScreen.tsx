@@ -637,6 +637,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Active local-bridge 🔴/🟠/🟢 state (idea D): collapses the "Setup … first"
     // box once the bridge is active. undefined for non-bridge providers.
     const [bridgeUiState, setBridgeUiState] = useState<'red' | 'amber' | 'green' | undefined>(undefined);
+    // Whether the active mode is a local-bridge mode (Filen Desktop / MEGAcmd),
+    // computed synchronously so the collapsible setup box knows at mount and does
+    // not flash open before an effect reports it (#215 idea D flash fix).
+    const activeBridgeKind = (() => {
+        const pid = selectedProviderId || connectionParams.providerId;
+        const g = findActiveModeGroup(pid, protocol);
+        return g ? findActiveMode(g, pid, protocol)?.bridgeKind : undefined;
+    })();
+    const isBridgeMode = !!activeBridgeKind;
 
     // When re-opening dropdown with a protocol already selected, clear the selection.
     // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
@@ -5365,6 +5374,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 title="Setup MEGAcmd first"
                                                 tone="red"
                                                 bridgeState={bridgeUiState}
+                                                isBridge
                                             >
                                                 <ol className="list-decimal list-inside space-y-1">
                                                     {(selectedProvider?.setupInstructions || []).map((step) => (
@@ -5436,6 +5446,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 title={t('protocol.setupSteps', { provider: selectedProvider.name })}
                                                 tone="amber"
                                                 bridgeState={bridgeUiState}
+                                                isBridge={isBridgeMode}
                                             >
                                                 <ol className="list-decimal list-inside space-y-1">
                                                     {selectedProvider.setupInstructions.map((step) => (
