@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
@@ -12,6 +13,13 @@ import { guardedUnlisten } from '../../hooks/useTauriListener';
 
 /** Where Error Correction parity lives relative to the vault container. */
 export type RecoveryPlacement = 'embedded' | 'detached' | 'both';
+
+/** Byte-level progress of a vault compress+encrypt operation (AeroProgress). */
+export interface VaultProgress {
+    percentage: number;
+    transferred: number;
+    total: number;
+}
 
 // --- Error mapping ---
 
@@ -282,6 +290,8 @@ export interface VaultState {
 
     // Loading / feedback
     loading: boolean;
+    /** Byte-level progress of the current compress+encrypt op (AeroProgress). */
+    vaultProgress: VaultProgress | null;
     error: string | null;
     setError: (err: string | null) => void;
     success: string | null;
@@ -455,6 +465,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
     // Behind-the-scenes technical receipt of the last create/add operation
     const [lastReport, setLastReport] = useState<VaultReport | null>(null);
+    // Byte-level progress of the current compress+encrypt op (AeroProgress).
+    const [vaultProgress, setVaultProgress] = useState<VaultProgress | null>(null);
 
     // Security state
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
@@ -1272,6 +1284,18 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }));
     }, [initialFolderPath]);
 
+    // Byte-level vault progress (compress + encrypt) for every add/create op.
+    useEffect(() => {
+        return guardedUnlisten(listen<VaultProgress>('vault_progress', (event) => {
+            setVaultProgress(event.payload);
+        }));
+    }, []);
+
+    // Clear the progress bar once the operation finishes.
+    useEffect(() => {
+        if (!loading) setVaultProgress(null);
+    }, [loading]);
+
     // Scan folder on mount if initialFolderPath is provided
     useEffect(() => {
         if (initialFolderPath) {
@@ -1385,6 +1409,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         description, setDescription,
         showPassword, setShowPassword,
         loading,
+        vaultProgress,
         error, setError,
         success, setSuccess,
         lastReport,

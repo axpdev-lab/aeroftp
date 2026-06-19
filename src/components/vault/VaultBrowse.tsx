@@ -10,6 +10,7 @@ import { VaultState, securityLevels, IconProvider } from './useVaultState';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { formatSize } from '../../utils/formatters';
+import { TransferProgressBar } from '../TransferProgressBar';
 
 interface VaultBrowseProps {
     state: VaultState;
@@ -49,6 +50,15 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
     return (
         <>
+            {state.loading && state.vaultProgress && (
+                <div className="px-4 pt-2">
+                    <TransferProgressBar percentage={state.vaultProgress.percentage} size="lg" />
+                    <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400 tabular-nums mt-1">
+                        <span>{formatSize(state.vaultProgress.transferred)} / {formatSize(state.vaultProgress.total)}</span>
+                        <span>{state.vaultProgress.percentage}%</span>
+                    </div>
+                </div>
+            )}
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                 <button onClick={state.handleAddFiles} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">

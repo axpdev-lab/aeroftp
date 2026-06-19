@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen } from 'lucide-react';
+import { TransferProgressBar } from '../TransferProgressBar';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
@@ -275,6 +276,16 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                             className="bg-blue-500 h-1.5 rounded-full transition-all"
                             style={{ width: `${state.folderProgress.total > 0 ? (state.folderProgress.current / state.folderProgress.total) * 100 : 0}%` }}
                         />
+                    </div>
+                </div>
+            )}
+
+            {state.loading && state.vaultProgress && (
+                <div className="mt-3 space-y-1">
+                    <TransferProgressBar percentage={state.vaultProgress.percentage} size="lg" />
+                    <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                        <span>{formatSize(state.vaultProgress.transferred)} / {formatSize(state.vaultProgress.total)}</span>
+                        <span>{state.vaultProgress.percentage}%</span>
                     </div>
                 </div>
             )}
