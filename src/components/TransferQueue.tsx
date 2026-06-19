@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap, AlertTriangle, Play } from 'lucide-react';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, formatSpeed } from '../utils/formatters';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
 import {
@@ -32,6 +32,8 @@ export interface TransferItem {
     status: TransferStatus;
     type: TransferType;
     progress?: number;
+    /** Live transfer speed in bytes/sec for the active file (per-item, real). */
+    speedBps?: number;
     error?: string;
     startTime?: number;
     endTime?: number;
@@ -518,6 +520,13 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 {formatBytes(item.size)}
                             </span>
 
+                            {/* Per-file live speed (real, only while transferring) */}
+                            {item.status === 'transferring' && item.speedBps !== undefined && item.speedBps > 0 && (
+                                <span className="w-16 text-right tabular-nums text-cyan-600 dark:text-cyan-400 shrink-0 hidden sm:inline">
+                                    {formatSpeed(item.speedBps)}
+                                </span>
+                            )}
+
                             {/* Progress bar (transferring) or Time/Error (else) */}
                             {item.status === 'transferring' && item.progress !== undefined ? (
                                 <span className="w-28 flex items-center gap-1.5 shrink-0">
@@ -709,6 +718,9 @@ export const useTransferQueue = () => {
                     status,
                     progress,
                     error,
+                    // Speed is only meaningful while transferring; setProgress sets it.
+                    // Any other transition (start/complete/fail) clears the stale value.
+                    speedBps: undefined,
                     endTime: status === 'completed' || status === 'error' ? Date.now() : item.endTime
                 }
                 : item
@@ -716,7 +728,14 @@ export const useTransferQueue = () => {
     };
 
     const startTransfer = (id: string) => updateStatus(id, 'transferring', 0);
-    const setProgress = (id: string, progress: number) => updateStatus(id, 'transferring', progress);
+    // Per-item live progress: carries the real per-file byte speed alongside the
+    // percentage so the Transfer Queue panel can show speed, not just a bar.
+    const setProgress = (id: string, progress: number, speedBps?: number) =>
+        setItems(prev => prev.map(item =>
+            item.id === id
+                ? { ...item, status: 'transferring' as TransferStatus, progress, speedBps, error: undefined }
+                : item
+        ));
     const completeTransfer = (id: string) => updateStatus(id, 'completed', 100);
     const failTransfer = (id: string, error: string) => updateStatus(id, 'error', undefined, error);
 

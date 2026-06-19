@@ -36,6 +36,23 @@ interface TransferBatchStartedEvent {
   total: number;
 }
 
+/** Real aggregate byte snapshot emitted by the DAG batch orchestrator
+ *  (`transfer_dag_batch.rs` -> `AppHandleSink::emit_batch_progress`) for every
+ *  GUI folder/batch transfer. `bytes_transferred` counts the full size of each
+ *  COMPLETED file; in-flight partials live in the per-file lanes. Cross-profile
+ *  uses a NoopSink, so this never fires for the panel-rendered S2S path. There
+ *  is intentionally no id field: only one batch feeds the floating toast at a
+ *  time, so the unkeyed snapshot is unambiguous for it. */
+interface BatchProgressSnapshot {
+  completed: number;
+  skipped: number;
+  failed: number;
+  active: number;
+  total: number;
+  bytes_transferred: number;
+  bytes_total: number;
+}
+
 interface UseTransferEventsOptions {
   t: (key: string, params?: Record<string, string | number>) => string;
   activityLog: ActivityLogContextValue;
@@ -91,6 +108,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const toastReservedLaneSlots = useRef(0);
   // Rolling aggregate-speed samples (bytes/sec) for the collapsible speed graph.
   const toastSpeedHistory = useRef<number[]>([]);
+  // Latest real aggregate byte totals for the active batch toast, from the
+  // `transfer_batch_progress` snapshot. Drives an honest byte-based aggregate
+  // ETA (completed-file bytes from here + in-flight lane partials, over the
+  // summed instantaneous lane speed). Null until the first snapshot arrives.
+  const toastBatchBytesRef = useRef<{ total: number; completed: number } | null>(null);
 
   useEffect(() => {
     const joinPath = (base: string, name: string): string => {
@@ -273,9 +295,21 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
       toastLaneCleanupTimers.current.clear();
       toastSpeedHistory.current = [];
+      toastBatchBytesRef.current = null;
       optRef.current.onTransferStart?.();
       optRef.current.setActiveTransfer(batchSummary);
       dispatchTransferToast({ summary: batchSummary });
+    });
+
+    // Real aggregate bytes for the active folder/batch toast. Stored unkeyed
+    // (one batch feeds the toast at a time); used to compute the byte-based
+    // aggregate ETA. Cross-profile uses a NoopSink so this never fires for it.
+    const unlistenBatchProgress = listen<BatchProgressSnapshot>('transfer_batch_progress', (event) => {
+      const snap = event.payload;
+      if (!snap || !activeToastBatchId.current) return;
+      // Only meaningful while an aggregate (folder/batch) toast is showing.
+      if (!toastSummaryRef.current?.total_files) return;
+      toastBatchBytesRef.current = { total: snap.bytes_total, completed: snap.bytes_transferred };
     });
 
     const unlisten = listen<TransferEvent>('transfer_event', (event) => {
@@ -368,6 +402,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
         toastSpeedHistory.current = [];
+        toastBatchBytesRef.current = null;
         if (toastSummaryRef.current) {
           setActiveTransfer(toastSummaryRef.current);
           dispatchTransferToast({ summary: toastSummaryRef.current });
@@ -555,7 +590,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
             if (!data.progress.total_files) {
               const fileQueueId = transferIdToQueueId.current.get(data.transfer_id);
               if (fileQueueId) {
-                transferQueue.setProgress(fileQueueId, data.progress.percentage);
+                transferQueue.setProgress(fileQueueId, data.progress.percentage, data.progress.speed_bps);
               }
             }
             // Signal App that a transfer is active (boolean only: no frequent re-renders)
@@ -564,14 +599,28 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           if (data.progress.total_files) {
             // Aggregate speed from active lanes (more reliable than single-file lastFileSpeedRef)
             let aggregatedSpeed = lastFileSpeedRef.current;
+            let inFlightBytes = 0;
             if (toastLanesRef.current.size > 0) {
               let laneSpeedSum = 0;
               for (const lane of toastLanesRef.current.values()) {
-                if (lane.state === 'active' || !lane.state) laneSpeedSum += lane.speed_bps;
+                if (lane.state === 'active' || !lane.state) {
+                  laneSpeedSum += lane.speed_bps;
+                  inFlightBytes += lane.transferred;
+                }
               }
               if (laneSpeedSum > 0) aggregatedSpeed = laneSpeedSum;
             }
-            toastSummaryRef.current = { ...data.progress, speed_bps: aggregatedSpeed };
+            // Honest byte-based aggregate ETA: real remaining bytes
+            // (total - completed-file bytes - in-flight lane partials) over the
+            // summed instantaneous lane speed. Falls back to the backend value
+            // (0) until the first batch-bytes snapshot and a non-zero speed.
+            let aggregatedEta = data.progress.eta_seconds;
+            const batchBytes = toastBatchBytesRef.current;
+            if (batchBytes && batchBytes.total > 0 && aggregatedSpeed > 0) {
+              const remaining = Math.max(0, batchBytes.total - batchBytes.completed - inFlightBytes);
+              aggregatedEta = Math.round(remaining / aggregatedSpeed);
+            }
+            toastSummaryRef.current = { ...data.progress, speed_bps: aggregatedSpeed, eta_seconds: aggregatedEta };
             emitToastState();
           } else {
             const batchId = tryResolveToastBatchId(data.transfer_id);
@@ -647,6 +696,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           toastReservedLaneSlots.current = 0;
           for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
           toastLaneCleanupTimers.current.clear();
+          toastBatchBytesRef.current = null;
           clearToastTimer.current = null;
         }, 500);
 
@@ -711,6 +761,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastReservedLaneSlots.current = 0;
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
+        toastBatchBytesRef.current = null;
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
@@ -752,6 +803,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastReservedLaneSlots.current = 0;
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
+        toastBatchBytesRef.current = null;
 
         const cancelledMsg = t('transfer.cancelledByUser');
 
@@ -876,6 +928,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     });
     const disposeUnlisten = guardedUnlisten(unlisten);
     const disposeBatchStarted = guardedUnlisten(unlistenBatchStarted);
+    const disposeBatchProgress = guardedUnlisten(unlistenBatchProgress);
 
     return () => {
       // Clear the debounced toast dismiss so it cannot fire after unmount
@@ -888,6 +941,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       toastLaneCleanupTimers.current.clear();
       disposeUnlisten();
       disposeBatchStarted();
+      disposeBatchProgress();
     };
   // Subscribe once, never re-subscribe. All mutable values accessed via optRef.current.
   // eslint-disable-next-line react-hooks/exhaustive-deps
