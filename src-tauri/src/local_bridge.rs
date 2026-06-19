@@ -135,7 +135,11 @@ fn which_on_path(cmd: &str) -> bool {
     let exe_names: Vec<String> = {
         #[cfg(windows)]
         {
-            vec![format!("{}.exe", cmd), format!("{}.bat", cmd), cmd.to_string()]
+            vec![
+                format!("{}.exe", cmd),
+                format!("{}.bat", cmd),
+                cmd.to_string(),
+            ]
         }
         #[cfg(not(windows))]
         {
@@ -179,10 +183,7 @@ fn filen_desktop_installed() -> Option<bool> {
         if let Ok(home) = std::env::var("HOME") {
             candidates.push(format!("{}/.local/bin/filen", home));
             candidates.push(format!("{}/Applications/Filen.AppImage", home));
-            candidates.push(format!(
-                "{}/.local/share/flatpak/app/io.filen.Filen",
-                home
-            ));
+            candidates.push(format!("{}/.local/share/flatpak/app/io.filen.Filen", home));
         }
         candidates.push("/var/lib/flatpak/app/io.filen.Filen".into());
     }
@@ -261,10 +262,22 @@ mod tests {
 
     #[test]
     fn provider_id_maps_to_bridge_kind() {
-        assert_eq!(bridge_kind_for_provider_id("filen-desktop-webdav"), Some("filen-webdav"));
-        assert_eq!(bridge_kind_for_provider_id("filen-desktop-s3"), Some("filen-s3"));
-        assert_eq!(bridge_kind_for_provider_id("megacmd-webdav"), Some("megacmd-webdav"));
-        assert_eq!(bridge_kind_for_provider_id("megacmd"), Some("megacmd-webdav"));
+        assert_eq!(
+            bridge_kind_for_provider_id("filen-desktop-webdav"),
+            Some("filen-webdav")
+        );
+        assert_eq!(
+            bridge_kind_for_provider_id("filen-desktop-s3"),
+            Some("filen-s3")
+        );
+        assert_eq!(
+            bridge_kind_for_provider_id("megacmd-webdav"),
+            Some("megacmd-webdav")
+        );
+        assert_eq!(
+            bridge_kind_for_provider_id("megacmd"),
+            Some("megacmd-webdav")
+        );
         assert_eq!(bridge_kind_for_provider_id("s3"), None);
         assert_eq!(bridge_kind_for_provider_id("filen"), None);
     }
@@ -292,7 +305,9 @@ mod tests {
     async fn closed_port_reports_inactive() {
         // Port 1 is reserved/unused on every supported OS, so this never races a
         // real bridge.
-        let s = bridge_status("megacmd-webdav".into(), Some(1)).await.unwrap();
+        let s = bridge_status("megacmd-webdav".into(), Some(1))
+            .await
+            .unwrap();
         assert!(!s.active);
         assert_eq!(s.port, 1);
     }

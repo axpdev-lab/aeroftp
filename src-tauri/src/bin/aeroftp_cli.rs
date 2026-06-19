@@ -12666,7 +12666,9 @@ fn print_bridge_health_section(sorted: &[(usize, serde_json::Value)], color_on: 
         })
         .collect();
     if targets.is_empty() {
-        eprintln!("\nBridge health: no local-bridge profiles (Filen Desktop / MEGAcmd) in this list.");
+        eprintln!(
+            "\nBridge health: no local-bridge profiles (Filen Desktop / MEGAcmd) in this list."
+        );
         return;
     }
     eprintln!("\nBridge health:");
@@ -12675,9 +12677,7 @@ fn print_bridge_health_section(sorted: &[(usize, serde_json::Value)], color_on: 
         // nested async runtime would panic. probe_bridge_blocking uses std::net.
         let (tone, label) = match probe_bridge_blocking(kind, *port) {
             Ok(s) => match s.ui_state() {
-                BridgeUiState::Green => {
-                    (Tone::Ok, format!("active (127.0.0.1:{})", s.port))
-                }
+                BridgeUiState::Green => (Tone::Ok, format!("active (127.0.0.1:{})", s.port)),
                 BridgeUiState::Amber => (
                     Tone::Warn,
                     format!("installed but not responding (127.0.0.1:{})", s.port),
