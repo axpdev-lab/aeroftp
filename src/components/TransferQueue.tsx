@@ -229,6 +229,166 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
     );
 };
 
+// ============ Memoized Queue Row ============
+// Extracted and memoized so a per-tick progress update (setItems re-creating
+// the items array) re-renders ONLY the row whose item object actually changed:
+// unchanged items keep their reference through setItems' map, so React.memo
+// skips them instead of reconciling all (up to 200) rows every tick. The action
+// callbacks are intentionally excluded from the comparator: every queue
+// mutation uses a functional setState, so a stale callback identity still
+// operates on the latest state. `t` is useCallback-memoized on the language, so
+// it only changes identity on a language switch, which then re-renders the rows.
+interface QueueItemRowProps {
+    item: TransferItem;
+    realIndex: number;
+    t: ReturnType<typeof useTranslation>;
+    onContextMenu: (e: React.MouseEvent, item: TransferItem) => void;
+    onStartItem?: (id: string) => void;
+    onRetryItem?: (id: string) => void;
+    onRemoveItem?: (id: string) => void;
+}
+
+const QueueItemRow = React.memo<QueueItemRowProps>(({
+    item, realIndex, t, onContextMenu, onStartItem, onRetryItem, onRemoveItem,
+}) => {
+    return (
+        <div
+            className={`group flex items-center gap-2 px-2 py-1 rounded transition-all duration-300 ${item.status === 'transferring'
+                ? 'bg-cyan-900/20 border-l-2 border-cyan-400'
+                : item.status === 'error'
+                    ? 'bg-red-900/20'
+                    : item.status === 'completed'
+                        ? 'text-gray-500'
+                        : 'text-gray-500 dark:text-gray-400'
+                }`}
+            style={{
+                animation: item.status === 'transferring' ? 'pulse 2s infinite' : 'none'
+            }}
+            onContextMenu={(e) => onContextMenu(e, item)}
+        >
+            {/* Line Number */}
+            <span className="text-gray-400 dark:text-gray-600 w-6 text-right shrink-0">
+                {String(realIndex + 1).padStart(3, '0')}
+            </span>
+
+            {/* Type Icon */}
+            {item.isFolder
+                ? <Folder size={10} className={item.type === 'upload' ? 'text-cyan-500 shrink-0' : 'text-orange-500 shrink-0'} />
+                : item.type === 'upload'
+                    ? <Upload size={10} className="text-cyan-500 shrink-0" />
+                    : <Download size={10} className="text-orange-500 shrink-0" />
+            }
+
+            {/* Status Icon */}
+            <StatusIcon status={item.status} />
+
+            {/* Filename: truncate from start to always show extension */}
+            <span className={`flex-1 overflow-hidden ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}
+                title={item.filename}
+            >
+                <span className="block" style={{ direction: 'rtl', textAlign: 'left', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    <bdi>{item.filename}</bdi>
+                </span>
+            </span>
+
+            {/* Folder file count badge */}
+            {item.isFolder && item.totalFiles !== undefined && item.totalFiles > 0 && (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${item.status === 'completed'
+                    ? 'bg-green-900/50 text-green-400'
+                    : item.status === 'transferring'
+                        ? 'bg-cyan-900/50 text-cyan-400'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    }`}>
+                    {item.completedFiles || 0}/{item.totalFiles}
+                </span>
+            )}
+
+            {/* Size */}
+            <span className="text-gray-400 dark:text-gray-600 shrink-0">
+                {formatBytes(item.size)}
+            </span>
+
+            {/* Per-file live speed (real, only while transferring) */}
+            {item.status === 'transferring' && item.speedBps !== undefined && item.speedBps > 0 && (
+                <span className="w-16 text-right tabular-nums text-cyan-600 dark:text-cyan-400 shrink-0 hidden sm:inline">
+                    {formatSpeed(item.speedBps)}
+                </span>
+            )}
+
+            {/* Progress bar (transferring) or Time/Error (else) */}
+            {item.status === 'transferring' && item.progress !== undefined ? (
+                <span className="w-28 flex items-center gap-1.5 shrink-0">
+                    <span className="flex-1 min-w-0">
+                        <TransferProgressBar percentage={item.progress} size="sm" />
+                    </span>
+                    <span className="w-9 text-right tabular-nums text-gray-500 dark:text-gray-400">{item.progress}%</span>
+                </span>
+            ) : (
+                <span className={`w-14 text-right shrink-0 ${item.status === 'error' ? 'text-red-500 dark:text-red-400 cursor-help' : 'text-gray-500'}`}
+                    title={item.status === 'error' && item.error ? item.error : undefined}
+                >
+                    {item.status === 'completed' && item.startTime && item.endTime
+                        ? formatTime(item.endTime - item.startTime)
+                        : item.status === 'error'
+                            ? t('transfer.fail')
+                            : '-'}
+                </span>
+            )}
+
+            {/* Inline action buttons: hover only */}
+            <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        const dir = item.type === 'upload' ? 'UPLOAD' : 'DOWNLOAD';
+                        const st = item.status.toUpperCase();
+                        const sz = item.size > 0 ? formatBytes(item.size) : '0 B';
+                        const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
+                        const err = item.error ? ` [${item.error}]` : '';
+                        navigator.clipboard.writeText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`);
+                    }}
+                    className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                    title={t('transfer.copy')}
+                >
+                    <Copy size={10} />
+                </button>
+                {item.status === 'staged' && onStartItem && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onStartItem(item.id); }}
+                        className="p-0.5 text-amber-500 hover:text-amber-400 transition-colors"
+                        title={t('transfer.start')}
+                    >
+                        <Play size={10} />
+                    </button>
+                )}
+                {item.status === 'error' && onRetryItem && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
+                        className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-cyan-500 dark:hover:text-cyan-400 transition-colors"
+                        title={t('transfer.retry')}
+                    >
+                        <RotateCcw size={10} />
+                    </button>
+                )}
+                {item.status !== 'transferring' && onRemoveItem && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
+                        className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                        title={t('transfer.remove')}
+                    >
+                        <X size={10} />
+                    </button>
+                )}
+            </span>
+        </div>
+    );
+}, (prev, next) =>
+    prev.item === next.item
+    && prev.realIndex === next.realIndex
+    && prev.t === next.t
+);
+QueueItemRow.displayName = 'QueueItemRow';
+
 // ============ Main TransferQueue Component ============
 export const TransferQueue: React.FC<TransferQueueProps> = ({
     items,
@@ -463,136 +623,16 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     {(items.length > 200 ? items.slice(-200) : items).map((item, index) => {
                         const realIndex = items.length > 200 ? items.length - 200 + index : index;
                         return (
-                        <div
-                            key={item.id}
-                            className={`group flex items-center gap-2 px-2 py-1 rounded transition-all duration-300 ${item.status === 'transferring'
-                                ? 'bg-cyan-900/20 border-l-2 border-cyan-400'
-                                : item.status === 'error'
-                                    ? 'bg-red-900/20'
-                                    : item.status === 'completed'
-                                        ? 'text-gray-500'
-                                        : 'text-gray-500 dark:text-gray-400'
-                                }`}
-                            style={{
-                                animation: item.status === 'transferring' ? 'pulse 2s infinite' : 'none'
-                            }}
-                            onContextMenu={(e) => handleContextMenu(e, item)}
-                        >
-                            {/* Line Number */}
-                            <span className="text-gray-400 dark:text-gray-600 w-6 text-right shrink-0">
-                                {String(realIndex + 1).padStart(3, '0')}
-                            </span>
-
-                            {/* Type Icon */}
-                            {item.isFolder
-                                ? <Folder size={10} className={item.type === 'upload' ? 'text-cyan-500 shrink-0' : 'text-orange-500 shrink-0'} />
-                                : item.type === 'upload'
-                                    ? <Upload size={10} className="text-cyan-500 shrink-0" />
-                                    : <Download size={10} className="text-orange-500 shrink-0" />
-                            }
-
-                            {/* Status Icon */}
-                            <StatusIcon status={item.status} />
-
-                            {/* Filename: truncate from start to always show extension */}
-                            <span className={`flex-1 overflow-hidden ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}
-                                title={item.filename}
-                            >
-                                <span className="block" style={{ direction: 'rtl', textAlign: 'left', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                    <bdi>{item.filename}</bdi>
-                                </span>
-                            </span>
-
-                            {/* Folder file count badge */}
-                            {item.isFolder && item.totalFiles !== undefined && item.totalFiles > 0 && (
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${item.status === 'completed'
-                                    ? 'bg-green-900/50 text-green-400'
-                                    : item.status === 'transferring'
-                                        ? 'bg-cyan-900/50 text-cyan-400'
-                                        : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                                    }`}>
-                                    {item.completedFiles || 0}/{item.totalFiles}
-                                </span>
-                            )}
-
-                            {/* Size */}
-                            <span className="text-gray-400 dark:text-gray-600 shrink-0">
-                                {formatBytes(item.size)}
-                            </span>
-
-                            {/* Per-file live speed (real, only while transferring) */}
-                            {item.status === 'transferring' && item.speedBps !== undefined && item.speedBps > 0 && (
-                                <span className="w-16 text-right tabular-nums text-cyan-600 dark:text-cyan-400 shrink-0 hidden sm:inline">
-                                    {formatSpeed(item.speedBps)}
-                                </span>
-                            )}
-
-                            {/* Progress bar (transferring) or Time/Error (else) */}
-                            {item.status === 'transferring' && item.progress !== undefined ? (
-                                <span className="w-28 flex items-center gap-1.5 shrink-0">
-                                    <span className="flex-1 min-w-0">
-                                        <TransferProgressBar percentage={item.progress} size="sm" />
-                                    </span>
-                                    <span className="w-9 text-right tabular-nums text-gray-500 dark:text-gray-400">{item.progress}%</span>
-                                </span>
-                            ) : (
-                                <span className={`w-14 text-right shrink-0 ${item.status === 'error' ? 'text-red-500 dark:text-red-400 cursor-help' : 'text-gray-500'}`}
-                                    title={item.status === 'error' && item.error ? item.error : undefined}
-                                >
-                                    {item.status === 'completed' && item.startTime && item.endTime
-                                        ? formatTime(item.endTime - item.startTime)
-                                        : item.status === 'error'
-                                            ? t('transfer.fail')
-                                            : '-'}
-                                </span>
-                            )}
-
-                            {/* Inline action buttons: hover only */}
-                            <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const dir = item.type === 'upload' ? 'UPLOAD' : 'DOWNLOAD';
-                                        const st = item.status.toUpperCase();
-                                        const sz = item.size > 0 ? formatBytes(item.size) : '0 B';
-                                        const time = item.startTime && item.endTime ? ` ${((item.endTime - item.startTime) / 1000).toFixed(1)}s` : '';
-                                        const err = item.error ? ` [${item.error}]` : '';
-                                        navigator.clipboard.writeText(`${dir} ${st} ${item.filename} ${sz}${time}${err}`);
-                                    }}
-                                    className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
-                                    title={t('transfer.copy')}
-                                >
-                                    <Copy size={10} />
-                                </button>
-                                {item.status === 'staged' && onStartItem && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); onStartItem(item.id); }}
-                                        className="p-0.5 text-amber-500 hover:text-amber-400 transition-colors"
-                                        title={t('transfer.start')}
-                                    >
-                                        <Play size={10} />
-                                    </button>
-                                )}
-                                {item.status === 'error' && onRetryItem && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
-                                        className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-cyan-500 dark:hover:text-cyan-400 transition-colors"
-                                        title={t('transfer.retry')}
-                                    >
-                                        <RotateCcw size={10} />
-                                    </button>
-                                )}
-                                {item.status !== 'transferring' && onRemoveItem && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); onRemoveItem(item.id); }}
-                                        className="p-0.5 text-gray-400 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                                        title={t('transfer.remove')}
-                                    >
-                                        <X size={10} />
-                                    </button>
-                                )}
-                            </span>
-                        </div>
+                            <QueueItemRow
+                                key={item.id}
+                                item={item}
+                                realIndex={realIndex}
+                                t={t}
+                                onContextMenu={handleContextMenu}
+                                onStartItem={onStartItem}
+                                onRetryItem={onRetryItem}
+                                onRemoveItem={onRemoveItem}
+                            />
                         );
                     })}
                 </div>
