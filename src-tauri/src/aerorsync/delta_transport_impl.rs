@@ -239,11 +239,29 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
-        self.download_inner(remote_path, local_path).await
+        self.download_inner(remote_path, local_path, None).await
+    }
+
+    async fn download_with_progress(
+        &self,
+        remote_path: &str,
+        local_path: &Path,
+        progress: Option<crate::delta_transport::DeltaProgressSink>,
+    ) -> Result<RsyncStats, RsyncError> {
+        self.download_inner(remote_path, local_path, progress).await
     }
 
     async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
-        self.upload_inner(local_path, remote_path).await
+        self.upload_inner(local_path, remote_path, None).await
+    }
+
+    async fn upload_with_progress(
+        &self,
+        local_path: &Path,
+        remote_path: &str,
+        progress: Option<crate::delta_transport::DeltaProgressSink>,
+    ) -> Result<RsyncStats, RsyncError> {
+        self.upload_inner(local_path, remote_path, progress).await
     }
 
     /// P3-T01 W3.2(b2): open a session-reuse batch backed by russh.
@@ -283,6 +301,7 @@ impl AerorsyncDeltaTransport {
         &self,
         local_path: &Path,
         remote_path: &str,
+        progress: Option<crate::delta_transport::DeltaProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
         let cancel = CancelHandle::inert();
         let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
@@ -297,6 +316,7 @@ impl AerorsyncDeltaTransport {
                 remote_path,
                 self.min_file_size,
                 preamble_profile,
+                progress,
             )
             .await
         } else {
@@ -308,6 +328,7 @@ impl AerorsyncDeltaTransport {
                 remote_path,
                 self.min_file_size,
                 preamble_profile,
+                progress,
             )
             .await
         }
@@ -335,6 +356,7 @@ async fn do_upload<T>(
     remote_path: &str,
     min_file_size: u64,
     preamble_profile: PreambleProfile,
+    progress: Option<crate::delta_transport::DeltaProgressSink>,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -376,8 +398,9 @@ where
 
     let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
-    let mut driver =
-        AerorsyncDriver::new(transport, cancel).with_preamble_profile(preamble_profile);
+    let mut driver = AerorsyncDriver::new(transport, cancel)
+        .with_preamble_profile(preamble_profile)
+        .with_progress_sink(progress);
     let adapter = CurrentDeltaSyncBridge::new();
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
@@ -426,6 +449,7 @@ impl AerorsyncDeltaTransport {
         &self,
         remote_path: &str,
         local_path: &Path,
+        progress: Option<crate::delta_transport::DeltaProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
         let cancel = CancelHandle::inert();
         let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
@@ -433,10 +457,26 @@ impl AerorsyncDeltaTransport {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
                 .map_err(|e| map_native_error_to_rsync(e, false))?;
-            do_download(transport, cancel, remote_path, local_path, preamble_profile).await
+            do_download(
+                transport,
+                cancel,
+                remote_path,
+                local_path,
+                preamble_profile,
+                progress,
+            )
+            .await
         } else {
             let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
-            do_download(transport, cancel, remote_path, local_path, preamble_profile).await
+            do_download(
+                transport,
+                cancel,
+                remote_path,
+                local_path,
+                preamble_profile,
+                progress,
+            )
+            .await
         }
     }
 }
@@ -474,6 +514,7 @@ async fn do_download<T>(
     remote_path: &str,
     local_path: &Path,
     preamble_profile: PreambleProfile,
+    progress: Option<crate::delta_transport::DeltaProgressSink>,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -559,8 +600,9 @@ where
                 ),
             })?;
 
-    let mut driver =
-        AerorsyncDriver::new(transport, cancel).with_preamble_profile(preamble_profile);
+    let mut driver = AerorsyncDriver::new(transport, cancel)
+        .with_preamble_profile(preamble_profile)
+        .with_progress_sink(progress);
     let adapter = CurrentDeltaSyncBridge::new();
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
@@ -795,6 +837,7 @@ impl DeltaBatch for AerorsyncBatch {
             remote_path,
             self.min_file_size,
             preamble_profile.clone(),
+            None,
         )
         .await;
         if let Err(ref e) = first {
@@ -831,6 +874,7 @@ impl DeltaBatch for AerorsyncBatch {
                     remote_path,
                     self.min_file_size,
                     preamble_profile,
+                    None,
                 )
                 .await?
             }
@@ -862,6 +906,7 @@ impl DeltaBatch for AerorsyncBatch {
             remote_path,
             local_path,
             preamble_profile.clone(),
+            None,
         )
         .await;
         if let Err(ref e) = first {
@@ -894,6 +939,7 @@ impl DeltaBatch for AerorsyncBatch {
                     remote_path,
                     local_path,
                     preamble_profile,
+                    None,
                 )
                 .await?
             }

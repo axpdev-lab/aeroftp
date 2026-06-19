@@ -32,6 +32,19 @@ use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats
 use async_trait::async_trait;
 use std::path::Path;
 
+/// Optional per-byte progress callback for an interactive (GUI) delta transfer.
+///
+/// Called with `(transferred_wire_bytes, total_hint)` as the transfer makes
+/// network progress: for upload `total_hint` is the full delta payload size
+/// (so the bar fills accurately); for download it is the remote file size hint
+/// (wire bytes may be fewer than the file on a real delta hit, so the bar can
+/// under-fill and complete at reconstruction). It is threaded ONLY from the GUI
+/// command path; AeroSync and the CLI pass `None`, so the driver hot path is
+/// unchanged for them (a single `is_none()` check per chunk). The driver
+/// throttles calls, so the boxed closure (which emits the GUI `transfer_event`)
+/// fires at most ~1% of total movement.
+pub type DeltaProgressSink = Box<dyn FnMut(u64, u64) + Send>;
+
 /// Transport abstraction over any delta-capable sync mechanism.
 ///
 /// Implementations must be `Send + Sync` because a single instance is shared
@@ -63,6 +76,33 @@ pub trait DeltaTransport: Send + Sync {
 
     /// Upload `local_path` to `remote_path` with delta semantics.
     async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError>;
+
+    /// Download with an optional per-byte progress sink. The default ignores
+    /// the sink and delegates to [`download`](Self::download); only transports
+    /// that can report progress (the native rsync driver) override it. The GUI
+    /// command path calls this variant; AeroSync, the CLI, and every other
+    /// caller keep using [`download`](Self::download) and are unaffected.
+    async fn download_with_progress(
+        &self,
+        remote_path: &str,
+        local_path: &Path,
+        progress: Option<DeltaProgressSink>,
+    ) -> Result<RsyncStats, RsyncError> {
+        let _ = progress;
+        self.download(remote_path, local_path).await
+    }
+
+    /// Upload with an optional per-byte progress sink. See
+    /// [`download_with_progress`](Self::download_with_progress).
+    async fn upload_with_progress(
+        &self,
+        local_path: &Path,
+        remote_path: &str,
+        progress: Option<DeltaProgressSink>,
+    ) -> Result<RsyncStats, RsyncError> {
+        let _ = progress;
+        self.upload(local_path, remote_path).await
+    }
 
     /// Begin a session-reuse batch.
     ///

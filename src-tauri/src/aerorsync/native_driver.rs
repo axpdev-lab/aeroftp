@@ -498,6 +498,16 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// `#[cfg(all(test, feature = "aerorsync"))]` live lane. Do not wire
     /// it into any product-facing code path.
     remote_command_flavor: RemoteCommandFlavor,
+
+    /// Fix A: optional GUI progress sink. When set (only on the interactive
+    /// command path), the driver reports wire bytes during the network phase
+    /// via [`report_wire_progress`](Self::report_wire_progress). `None` for
+    /// AeroSync and the CLI, so their hot path stays a single `is_none()`
+    /// check per chunk. See `docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN`.
+    progress_sink: Option<crate::delta_transport::DeltaProgressSink>,
+    /// Throttle cursor for `report_wire_progress`: the last `transferred`
+    /// value the sink was actually called with.
+    last_progress_report: u64,
 }
 
 impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
@@ -538,6 +548,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             summary_seed: Vec::new(),
             download_clean_eof_noop: false,
             remote_command_flavor: RemoteCommandFlavor::WrapperParity,
+            progress_sink: None,
+            last_progress_report: 0,
         }
     }
 
@@ -549,6 +561,41 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     pub fn with_preamble_profile(mut self, profile: PreambleProfile) -> Self {
         self.preamble_profile = profile;
         self
+    }
+
+    /// Fix A: attach an optional GUI progress sink. Only the interactive
+    /// command path opts in; AeroSync and the CLI never call this, so their
+    /// transfers keep `progress_sink = None` and pay no per-chunk cost.
+    pub fn with_progress_sink(
+        mut self,
+        sink: Option<crate::delta_transport::DeltaProgressSink>,
+    ) -> Self {
+        self.progress_sink = sink;
+        self
+    }
+
+    /// Report `transferred` wire bytes (out of `total`, a hint) to the GUI
+    /// progress sink, throttled so the boxed closure (and the `transfer_event`
+    /// IPC it emits) fires at most ~1% of total movement, plus the final byte.
+    /// A no-op when no sink is attached (AeroSync / CLI): a single `is_none()`
+    /// branch, no time syscall, nothing allocated in the hot loop.
+    fn report_wire_progress(&mut self, transferred: u64, total: u64) {
+        if self.progress_sink.is_none() {
+            return;
+        }
+        let step = if total > 0 {
+            (total / 100).max(256 * 1024)
+        } else {
+            256 * 1024
+        };
+        let final_tick = total > 0 && transferred >= total;
+        if !final_tick && transferred < self.last_progress_report.saturating_add(step) {
+            return;
+        }
+        self.last_progress_report = transferred;
+        if let Some(sink) = self.progress_sink.as_mut() {
+            sink(transferred, total);
+        }
     }
 
     pub fn cancel_handle(&self) -> CancelHandle {
@@ -1282,6 +1329,36 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
+    /// Size of each MSG_DATA frame on the GUI progress-aware delta send. Small
+    /// enough to tick the bar smoothly, well under `MSG_DATA_MAX`; russh
+    /// re-chunks to SSH packet size on the wire regardless, so the only cost is
+    /// one 4-byte mux header per frame (negligible on a multi-MB delta).
+    const PROGRESS_CHUNK: usize = 1024 * 1024;
+
+    /// Send the upload delta `payload`, reporting wire-byte progress as it goes.
+    ///
+    /// With no progress sink attached (AeroSync / CLI) this is exactly
+    /// [`write_data_frame`](Self::write_data_frame): a single frame for
+    /// `<= 16 MiB`, Fix B chunking above that, byte-identical to before. With a
+    /// sink (the GUI command path) it splits the payload into `PROGRESS_CHUNK`
+    /// frames and reports the running wire bytes after each, so the flagship
+    /// progress bar fills during the actual network send instead of jumping to
+    /// 100% at the end.
+    async fn write_delta_with_progress(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
+        if self.progress_sink.is_none() {
+            return self.write_data_frame(payload).await;
+        }
+        let total = payload.len() as u64;
+        let mut sent = 0u64;
+        self.last_progress_report = 0;
+        for chunk in payload.chunks(Self::PROGRESS_CHUNK) {
+            self.write_one_data_frame(chunk).await?;
+            sent += chunk.len() as u64;
+            self.report_wire_progress(sent, total);
+        }
+        Ok(())
+    }
+
     /// Drive the `MuxStreamReader` until a `MSG_DATA` frame pops out.
     /// Non-terminal OOB frames are routed to `bridge`; the first
     /// terminal OOB bails with a typed error (and is also forwarded to
@@ -2007,7 +2084,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
         self.committed = true;
         self.emitted_delta_ops = wire_ops;
-        self.write_data_frame(&payload).await?;
+        // Fix A: report wire-byte progress to the GUI sink (if any) as the
+        // delta payload streams out. Byte-identical to write_data_frame when
+        // no sink is attached (AeroSync / CLI).
+        self.write_delta_with_progress(&payload).await?;
 
         self.phase = AerorsyncSessionPhase::DeltaSent;
         Ok(())
@@ -2086,7 +2166,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 }
             }
             match self.next_data_frame(bridge).await {
-                Ok(payload) => buf.extend_from_slice(&payload),
+                Ok(payload) => {
+                    buf.extend_from_slice(&payload);
+                    // Fix A: report wire-byte download progress to the GUI sink
+                    // (no-op without one). received_raw_bytes is the compressed
+                    // delta on the wire; on a real delta hit it is fewer bytes
+                    // than the file, so the bar under-fills and completes at
+                    // reconstruction (the end card shows the delta savings).
+                    let received = self.received_raw_bytes;
+                    let total_hint = self
+                        .file_list
+                        .first()
+                        .map(|e| e.size.max(0) as u64)
+                        .unwrap_or(0);
+                    self.report_wire_progress(received, total_hint);
+                }
                 Err(e) if Self::is_download_clean_eof_noop(&e) => {
                     // A clean "remote closed (exit 0)" terminates a
                     // complete full/delta stream the loop-top decode
@@ -2223,7 +2317,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 }
             }
             match self.next_data_frame(bridge).await {
-                Ok(payload) => buf.extend_from_slice(&payload),
+                Ok(payload) => {
+                    buf.extend_from_slice(&payload);
+                    // Fix A: report wire-byte download progress to the GUI sink
+                    // (no-op without one). received_raw_bytes is the compressed
+                    // delta on the wire; on a real delta hit it is fewer bytes
+                    // than the file, so the bar under-fills and completes at
+                    // reconstruction (the end card shows the delta savings).
+                    let received = self.received_raw_bytes;
+                    let total_hint = self
+                        .file_list
+                        .first()
+                        .map(|e| e.size.max(0) as u64)
+                        .unwrap_or(0);
+                    self.report_wire_progress(received, total_hint);
+                }
                 Err(e) if Self::is_download_clean_eof_noop(&e) => {
                     // A clean "remote closed (exit 0)" terminates a
                     // complete full/delta stream the loop-top decode
@@ -3609,6 +3717,72 @@ mod tests {
             f.concat(),
             big,
             "frames must reassemble to the original payload"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_delta_with_progress_reports_monotonic_wire_bytes() {
+        // Fix A: with a progress sink attached, the upload delta send splits the
+        // payload into PROGRESS_CHUNK frames and reports monotonically
+        // increasing wire bytes, ending exactly at the payload size, and the
+        // frames still reassemble to the original. Without a sink it stays one
+        // logical payload (covered by the chunking test above).
+        use crate::aerorsync::real_wire::{MuxPoll, MuxStreamReader};
+        use std::sync::{Arc, Mutex};
+
+        let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_for_sink = calls.clone();
+        let sink: crate::delta_transport::DeltaProgressSink =
+            Box::new(move |transferred, total| {
+                calls_for_sink.lock().unwrap().push((transferred, total));
+            });
+
+        let transport = mock_transport_with_raw_inbound(Vec::new());
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport).with_progress_sink(Some(sink));
+        d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/big.bin"))
+            .await
+            .expect("raw stream opens");
+
+        let total = AerorsyncDriver::<MockRemoteShellTransport>::PROGRESS_CHUNK * 3 + 512 * 1024;
+        let payload: Vec<u8> = (0..total).map(|i| (i % 251) as u8).collect();
+        d.write_delta_with_progress(&payload)
+            .await
+            .expect("delta send with progress");
+
+        let reports = calls.lock().unwrap().clone();
+        assert!(!reports.is_empty(), "sink must fire at least once");
+        assert_eq!(
+            reports.last().unwrap().0,
+            total as u64,
+            "final report must equal the full payload size"
+        );
+        assert!(
+            reports.iter().all(|&(_, t)| t == total as u64),
+            "reported total must stay the payload size"
+        );
+        assert!(
+            reports.windows(2).all(|w| w[0].0 <= w[1].0),
+            "reported wire bytes must be monotonically non-decreasing"
+        );
+
+        let outbound = {
+            let guard = last_raw_outbound.lock().unwrap();
+            guard.as_ref().expect("raw stream opened").clone()
+        };
+        let bytes = outbound.lock().unwrap().clone();
+        let mut reader = MuxStreamReader::new();
+        reader.feed(&bytes);
+        let mut frames = Vec::new();
+        while let Some(res) = reader.poll_frame() {
+            if let MuxPoll::Data(p) = res.expect("well-formed mux frame") {
+                frames.push(p);
+            }
+        }
+        assert_eq!(
+            frames.concat(),
+            payload,
+            "progress-chunked frames must reassemble to the original payload"
         );
     }
 

@@ -285,6 +285,7 @@ pub async fn transfer_with_delta(
     local_path: &Path,
     remote_path: &str,
     session_key: &str,
+    progress: Option<crate::delta_transport::DeltaProgressSink>,
 ) -> Result<DeltaSyncResult, String> {
     // Step 1: probe remote capability (cached per session, typed error path).
     let capability = match probe_capability_cached(transport, session_key).await {
@@ -305,10 +306,20 @@ pub async fn transfer_with_delta(
         )));
     }
 
-    // Step 3: run the transfer through the trait.
+    // Step 3: run the transfer through the trait. The optional progress sink
+    // is moved into whichever direction runs (mutually exclusive); transports
+    // that cannot report progress ignore it via the trait default.
     let outcome = match direction {
-        SyncDirection::Upload => transport.upload(local_path, remote_path).await,
-        SyncDirection::Download => transport.download(remote_path, local_path).await,
+        SyncDirection::Upload => {
+            transport
+                .upload_with_progress(local_path, remote_path, progress)
+                .await
+        }
+        SyncDirection::Download => {
+            transport
+                .download_with_progress(remote_path, local_path, progress)
+                .await
+        }
     };
 
     match outcome {
@@ -375,9 +386,17 @@ pub async fn try_delta_transfer_with_transport(
     local_path: &Path,
     remote_path: &str,
     session_key: &str,
+    progress: Option<crate::delta_transport::DeltaProgressSink>,
 ) -> Option<DeltaSyncResult> {
-    let result =
-        transfer_with_delta(transport, direction, local_path, remote_path, session_key).await;
+    let result = transfer_with_delta(
+        transport,
+        direction,
+        local_path,
+        remote_path,
+        session_key,
+        progress,
+    )
+    .await;
 
     match result {
         Ok(r) => Some(r),
@@ -475,6 +494,20 @@ pub async fn try_delta_transfer(
     local_path: &Path,
     remote_path: &str,
 ) -> Option<DeltaSyncResult> {
+    try_delta_transfer_with_progress(provider, direction, local_path, remote_path, None).await
+}
+
+/// Like [`try_delta_transfer`], but threads an optional GUI progress sink down
+/// to the native driver so the interactive command path can render a live bar.
+/// AeroSync, the CLI, and cross-profile keep calling [`try_delta_transfer`]
+/// (which passes `None`), so their behavior is unchanged.
+pub async fn try_delta_transfer_with_progress(
+    provider: &mut dyn crate::providers::StorageProvider,
+    direction: SyncDirection,
+    local_path: &Path,
+    remote_path: &str,
+    progress: Option<crate::delta_transport::DeltaProgressSink>,
+) -> Option<DeltaSyncResult> {
     // Only SFTP is delta-eligible in Fase 1. Downcasting via `as_any_mut()` keeps
     // the generic trait intact: we don't need a new `delta_transport_context()`
     // contract on every provider implementation.
@@ -500,6 +533,7 @@ pub async fn try_delta_transfer(
         local_path,
         remote_path,
         &session_key,
+        progress,
     )
     .await
 }
@@ -741,6 +775,7 @@ mod tests {
             Path::new("/tmp/nope"),
             "/remote/nope",
             "test-hard-rejection",
+            None,
         )
         .await
         .expect("must succeed: hard rejection is a typed result, not an Err");
@@ -816,6 +851,7 @@ mod tests {
             Path::new("/tmp/nope"),
             "/remote/nope",
             "test-no-handle",
+            None,
         )
         .await
         .expect("must succeed with fallback");

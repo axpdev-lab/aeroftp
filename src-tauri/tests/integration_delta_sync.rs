@@ -771,6 +771,7 @@ mod mock_transport_coverage {
             Path::new("/tmp/never-touched"),
             "/remote/never-touched",
             "mock-session-hard",
+            None,
         )
         .await
         .expect("wrapper must always return Some()");
@@ -819,6 +820,7 @@ mod mock_transport_coverage {
             Path::new("/tmp/never-touched"),
             "/remote/never-touched",
             "mock-session-probe-fail",
+            None,
         )
         .await
         .expect("wrapper must always return Some()");
@@ -869,6 +871,7 @@ mod mock_transport_coverage {
             Path::new("/tmp/irrelevant"),
             "/remote/irrelevant",
             "mock-session-happy",
+            None,
         )
         .await
         .expect("wrapper must always return Some()");

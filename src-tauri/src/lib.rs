@@ -2367,6 +2367,71 @@ pub struct TransferEvent {
     pub fallback_reason: Option<String>,
 }
 
+/// Fix A: build a GUI progress sink for the interactive native-delta path.
+///
+/// Emits the same `transfer_event { event_type: "progress" }` shape the classic
+/// transfer path emits, keyed by the same `transfer_id`, so AeroProgress renders
+/// a delta transfer identically (no frontend change). `transferred` / `total`
+/// are wire bytes: for upload `total` is the full delta payload (the bar fills
+/// accurately); for download it is the remote file size hint, so on a real delta
+/// hit the bar under-fills and the final `complete` event takes it to 100%.
+/// Speed and ETA are derived from wire bytes over elapsed time, exactly like the
+/// classic callback. The driver throttles calls (~1% steps), so this closure and
+/// its IPC emit fire sparingly. Only the GUI command path passes one of these;
+/// AeroSync and the CLI pass `None`.
+pub(crate) fn make_delta_progress_sink(
+    app: tauri::AppHandle,
+    transfer_id: String,
+    filename: String,
+    direction: &'static str,
+) -> crate::delta_transport::DeltaProgressSink {
+    use tauri::Emitter;
+    let start = std::time::Instant::now();
+    Box::new(move |transferred: u64, total: u64| {
+        let percentage = if total > 0 {
+            ((transferred as f64 / total as f64) * 100.0).min(100.0) as u8
+        } else {
+            0
+        };
+        let elapsed = start.elapsed().as_secs_f64();
+        let speed_bps = if elapsed > 0.1 {
+            (transferred as f64 / elapsed) as u64
+        } else {
+            0
+        };
+        let eta_seconds = if speed_bps > 0 && transferred < total {
+            ((total - transferred) as f64 / speed_bps as f64) as u32
+        } else {
+            0
+        };
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: filename.clone(),
+                direction: direction.to_string(),
+                message: None,
+                progress: Some(TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    transferred,
+                    total,
+                    percentage,
+                    speed_bps,
+                    eta_seconds,
+                    direction: direction.to_string(),
+                    total_files: None,
+                    path: None,
+                }),
+                path: None,
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+    })
+}
+
 // ============ Local File Info ============
 
 #[derive(Serialize)]
@@ -3906,11 +3971,17 @@ async fn upload_file(
                 {
                     let local_path_buf = std::path::PathBuf::from(&params.local_path);
                     if delta_sync_rsync::gui_delta_enabled() && params.use_delta {
-                        if let Some(result) = delta_sync_rsync::try_delta_transfer(
+                        if let Some(result) = delta_sync_rsync::try_delta_transfer_with_progress(
                             provider.as_mut(),
                             delta_sync_rsync::SyncDirection::Upload,
                             &local_path_buf,
                             &params.remote_path,
+                            Some(crate::make_delta_progress_sink(
+                                app.clone(),
+                                transfer_id.clone(),
+                                filename.clone(),
+                                "upload",
+                            )),
                         )
                         .await
                         {

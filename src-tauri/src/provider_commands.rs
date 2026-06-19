@@ -1627,11 +1627,17 @@ pub async fn provider_download_file(
     {
         if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
-            if let Some(result) = crate::delta_sync_rsync::try_delta_transfer(
+            if let Some(result) = crate::delta_sync_rsync::try_delta_transfer_with_progress(
                 provider.as_mut(),
                 crate::delta_sync_rsync::SyncDirection::Download,
                 &local_path_buf,
                 &remote_path,
+                Some(crate::make_delta_progress_sink(
+                    app.clone(),
+                    transfer_id.clone(),
+                    filename.clone(),
+                    "download",
+                )),
             )
             .await
             {
@@ -3091,11 +3097,17 @@ pub async fn provider_upload_file(
     {
         if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
-            if let Some(delta_result) = crate::delta_sync_rsync::try_delta_transfer(
+            if let Some(delta_result) = crate::delta_sync_rsync::try_delta_transfer_with_progress(
                 provider.as_mut(),
                 crate::delta_sync_rsync::SyncDirection::Upload,
                 &local_path_buf,
                 &remote_path,
+                Some(crate::make_delta_progress_sink(
+                    app.clone(),
+                    transfer_id.clone(),
+                    filename.clone(),
+                    "upload",
+                )),
             )
             .await
             {
