@@ -509,6 +509,32 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 //   - Connection logic (connectToFtp ~200 lines)
 //   - Cloud sync events (~98 lines)
 // ============================================================================
+
+// CWP-20B (navigate-out scope): plaintext-absolute scope predicate shared by
+// the path-bar badge and (later) the transfer routing, so the two can never
+// diverge. Both `scope` (binding.remoteScope) and `displayPath`
+// (currentRemoteDisplayPath = the backend's decode_path of pwd) are
+// plaintext-absolute, which is the only sound comparison (current_path is
+// ciphertext). FAIL-CLOSED: returns true ("inside / encrypted") unless we are
+// CONFIDENTLY outside, so a normalization mismatch can only cause a visible
+// decrypt error, never silent plaintext exposure.
+// Spec: docs/dev/roadmap/APPENDIX-CRYPTO-WRAPPER-PROFILES/tasks/CWP-20B-navigate-out-scope.md
+const normCryptScope = (s?: string | null): string => {
+  const t = (s || '').trim();
+  if (!t || t === '/') return ''; // empty / root => whole remote is the scope
+  return '/' + t.replace(/^\/+|\/+$/g, '');
+};
+const isWithinCryptScope = (
+  scope: string | undefined | null,
+  displayPath: string | null | undefined,
+): boolean => {
+  const s = normCryptScope(scope);
+  if (s === '') return true; // whole-remote scope (== legacy anchored session)
+  if (displayPath == null) return true; // unknown path => fail closed
+  const p = '/' + String(displayPath).replace(/^\/+|\/+$/g, '');
+  return p === s || p.startsWith(s + '/');
+};
+
 const App: React.FC = () => {
   // Mouse Back button (button code 3) → synthetic Escape, so any open
   // modal / dialog / dropdown closes via its existing Esc handler. See
@@ -3273,8 +3299,21 @@ interface UpdateVerificationInfo {
   const overlayBadgeKind = sessions.find((s) => s.id === activeSessionId)?.cryptOverlayKind ?? null;
   const overlayVaultLit = cryptOverlayOwnerMatchesActive && !!(rcloneCryptVaultId || aeroCryptVaultId);
   const overlayBadgeDecrypting = overlayAnimActive && overlayDecrypting;
-  const overlayBadgeState: 'decrypting' | 'active' | 'locked' =
-    overlayBadgeDecrypting ? 'decrypting' : overlayVaultLit ? 'active' : 'locked';
+  // CWP-20B: the active tab's bound plaintext scope ('' = whole remote) and
+  // whether the current decrypted path is inside it. SAME predicate the routing
+  // gate will use, so the badge can never claim "encrypted" where an op runs in
+  // the clear (or vice-versa). In the legacy anchored architecture the path is
+  // always within scope, so 'outside' only becomes reachable once cross-boundary
+  // navigation (B3) lands; wiring it now keeps badge and routing on one check.
+  const activeBoundRemoteScope =
+    sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope ?? '';
+  const overlayInScope = isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
+  const overlayBadgeState: 'decrypting' | 'active' | 'outside' | 'locked' =
+    overlayBadgeDecrypting
+      ? 'decrypting'
+      : overlayVaultLit
+        ? (overlayInScope ? 'active' : 'outside')
+        : 'locked';
 
   const toggleActiveCryptOverlay = () => {
     const sess = sessions.find((s) => s.id === activeSessionId);
@@ -4141,6 +4180,15 @@ interface UpdateVerificationInfo {
     setCurrentRemotePath(response.current_path);
     setCurrentRemoteDisplayPath(response.display_current_path || response.current_path);
     setSelectedRemoteFiles(new Set());
+    // CWP-20B coordinate probe (debug-gated): confirm the exact normalization of
+    // current_path (ciphertext-absolute) vs display_current_path (plaintext-
+    // absolute) so isWithinCryptScope keys off the right one. Enable debug mode
+    // and navigate in/out of a bound crypt scope to read these.
+    logger.debug('[CWP-20B scope]', {
+      current_path: response.current_path,
+      display_current_path: response.display_current_path,
+      boundScope: sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope,
+    });
   };
 
   const loadRcloneCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
@@ -4208,13 +4256,16 @@ interface UpdateVerificationInfo {
     ));
   };
   // Overlay UNLOCKED: store the live vault + keep the capability kind.
+  // `remoteScope` (CWP-20B) is the plaintext-absolute bound folder ('' = whole
+  // remote); carried per-session so the scope-aware badge/routing stay isolated.
   const bindSessionCryptOverlay = (
     match: { savedServerId?: string; sessionId?: string },
     vaultId: string,
     kind: 'rclone-crypt' | 'aerocrypt',
+    remoteScope?: string,
   ) => {
     setSessions((prev) => prev.map((s) =>
-      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind }, cryptOverlayKind: kind } : s,
+      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind, remoteScope: normCryptScope(remoteScope) }, cryptOverlayKind: kind } : s,
     ));
   };
   // Overlay LOCKED: drop the live vault but KEEP the capability kind so the badge
@@ -4316,7 +4367,7 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setAeroCryptVaultId(null);
             setRcloneCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt');
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt', overlayScope);
             return { vaultId: info.vault_id, prefix: 'rclone_crypt_provider' };
           }
         } else {
@@ -4327,7 +4378,7 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt');
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt', overlayScope);
             return { vaultId: info.vault_id, prefix: 'aerocrypt_provider' };
           }
         }
@@ -14391,19 +14442,29 @@ interface UpdateVerificationInfo {
                         ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 border-emerald-500/30'
                         : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 border-blue-500/30';
                       const greyCls = 'bg-gray-400/15 text-gray-400 border-gray-400/30';
+                      // CWP-20B 'outside': overlay unlocked but the current path is
+                      // outside its bound scope, i.e. this folder is plaintext.
+                      // Amber dim distinguishes it from 'locked' (vault locked).
+                      const outsideCls = 'bg-amber-500/15 text-amber-500 border-amber-500/30';
                       const stateCls = overlayBadgeState === 'active'
                         ? `${litCls} cursor-pointer`
                         : overlayBadgeState === 'decrypting'
                           ? `${greyCls} animate-pulse cursor-wait`
-                          : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
+                          : overlayBadgeState === 'outside'
+                            ? `${outsideCls} hover:bg-amber-500/25 cursor-pointer`
+                            : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
                       const iconCls = overlayBadgeState === 'active'
                         ? (isAero ? 'text-emerald-400' : 'text-blue-400')
-                        : 'text-gray-400';
+                        : overlayBadgeState === 'outside'
+                          ? 'text-amber-500'
+                          : 'text-gray-400';
                       const title = overlayBadgeState === 'active'
                         ? `${label} · ${t('aerocrypt.lock')}`
                         : overlayBadgeState === 'decrypting'
                           ? `${label} · …`
-                          : `${label} · ${t('aerocrypt.unlock')}`;
+                          : overlayBadgeState === 'outside'
+                            ? `${label} · ${t('aerocrypt.outsideScope')}`
+                            : `${label} · ${t('aerocrypt.unlock')}`;
                       return (
                         <button
                           type="button"

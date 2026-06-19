@@ -721,7 +721,11 @@ export interface FtpSession {
   // hold its own overlay independently. Stored here so switching/reconnecting to
   // a tab restores ITS overlay (the global vault-id mirror alone cannot, because
   // it only ever reflects one tab at a time).
-  cryptOverlay?: { vaultId: string; kind: 'rclone-crypt' | 'aerocrypt' } | null;
+  // `remoteScope` (CWP-20B): the plaintext-absolute folder the overlay is bound
+  // to (empty/undefined => whole remote). Carried per-session so the scope-aware
+  // path-bar badge and transfer routing can tell inside-scope (decrypted) from
+  // outside-scope (plaintext) without leaking one tab's scope into another.
+  cryptOverlay?: { vaultId: string; kind: 'rclone-crypt' | 'aerocrypt'; remoteScope?: string } | null;
   // Persistent overlay CAPABILITY of this tab (the saved profile's overlay kind),
   // set the moment an overlay tab connects and kept across lock/unlock so the
   // path-bar badge can render as a stateful toggle: grey while decrypting/locked,

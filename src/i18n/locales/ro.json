@@ -4569,7 +4569,8 @@
       "emptyFolder": "Folder gol",
       "nameNotDecrypted": "nume nedecriptat",
       "download": "Descarcă",
-      "serverHashGated": "Suma de control pe server indisponibilă cât timp este activ un strat criptat (ar genera hash-ul textului cifrat, nu al fișierului dvs.)."
+      "serverHashGated": "Suma de control pe server indisponibilă cât timp este activ un strat criptat (ar genera hash-ul textului cifrat, nu al fișierului dvs.).",
+      "outsideScope": "În afara zonei criptate (fișierele de aici nu sunt criptate)"
     },
     "b2": {
       "hidden": {

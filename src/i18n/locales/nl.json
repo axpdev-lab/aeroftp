@@ -4569,7 +4569,8 @@
       "emptyFolder": "Lege map",
       "nameNotDecrypted": "naam niet ontsleuteld",
       "download": "Downloaden",
-      "serverHashGated": "Controlesom aan serverzijde niet beschikbaar terwijl een versleutelde overlay actief is (deze zou de cijfertekst hashen, niet uw bestand)."
+      "serverHashGated": "Controlesom aan serverzijde niet beschikbaar terwijl een versleutelde overlay actief is (deze zou de cijfertekst hashen, niet uw bestand).",
+      "outsideScope": "Buiten het versleutelde gebied (bestanden hier zijn niet versleuteld)"
     },
     "b2": {
       "hidden": {

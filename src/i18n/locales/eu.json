@@ -4588,7 +4588,8 @@
       "emptyFolder": "Karpeta hutsa",
       "nameNotDecrypted": "izena ez da deszifratu",
       "download": "Deskargatu",
-      "serverHashGated": "Zerbitzariko kontrol-batura ez dago erabilgarri zifratutako geruza aktibo dagoenean (testu zifratuaren hash-a egingo luke, ez zure fitxategiarena)."
+      "serverHashGated": "Zerbitzariko kontrol-batura ez dago erabilgarri zifratutako geruza aktibo dagoenean (testu zifratuaren hash-a egingo luke, ez zure fitxategiarena).",
+      "outsideScope": "Zifratutako eremutik kanpo (hemengo fitxategiak ez daude zifratuta)"
     },
     "b2": {
       "hidden": {

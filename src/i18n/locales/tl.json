@@ -4588,7 +4588,8 @@
       "emptyFolder": "Walang laman na folder",
       "nameNotDecrypted": "hindi na-decrypt ang pangalan",
       "download": "I-download",
-      "serverHashGated": "Hindi available ang server-side checksum habang aktibo ang naka-encrypt na overlay (iha-hash nito ang ciphertext, hindi ang file mo)."
+      "serverHashGated": "Hindi available ang server-side checksum habang aktibo ang naka-encrypt na overlay (iha-hash nito ang ciphertext, hindi ang file mo).",
+      "outsideScope": "Labas sa naka-encrypt na lugar (hindi naka-encrypt ang mga file dito)"
     },
     "b2": {
       "hidden": {

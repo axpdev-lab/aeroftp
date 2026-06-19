@@ -4569,7 +4569,8 @@
       "emptyFolder": "Boş klasör",
       "nameNotDecrypted": "ad şifresi çözülmedi",
       "download": "İndir",
-      "serverHashGated": "Şifreli yer paylaşımı etkinken sunucu tarafı sağlama toplamı kullanılamaz (dosyanızı değil şifreli metni özetler)."
+      "serverHashGated": "Şifreli yer paylaşımı etkinken sunucu tarafı sağlama toplamı kullanılamaz (dosyanızı değil şifreli metni özetler).",
+      "outsideScope": "Şifreli alanın dışında (buradaki dosyalar şifreli değil)"
     },
     "b2": {
       "hidden": {

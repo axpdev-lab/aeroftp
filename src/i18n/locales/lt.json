@@ -4569,7 +4569,8 @@
       "emptyFolder": "Tuščias aplankas",
       "nameNotDecrypted": "vardas neiššifruotas",
       "download": "Atsisiųsti",
-      "serverHashGated": "Serverio pusės kontrolinė suma negalima, kai aktyvus šifruotas sluoksnis (ji apskaičiuotų šifruoto teksto maišą, o ne jūsų failo)."
+      "serverHashGated": "Serverio pusės kontrolinė suma negalima, kai aktyvus šifruotas sluoksnis (ji apskaičiuotų šifruoto teksto maišą, o ne jūsų failo).",
+      "outsideScope": "Už šifruotos srities (failai čia nešifruoti)"
     },
     "b2": {
       "hidden": {

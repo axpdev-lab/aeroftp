@@ -4569,7 +4569,8 @@
       "emptyFolder": "Pasta vazia",
       "nameNotDecrypted": "nome não descriptografado",
       "download": "Baixar",
-      "serverHashGated": "Soma de verificação no servidor indisponível enquanto uma sobreposição cifrada está ativa (calcularia o hash do texto cifrado, não do seu ficheiro)."
+      "serverHashGated": "Soma de verificação no servidor indisponível enquanto uma sobreposição cifrada está ativa (calcularia o hash do texto cifrado, não do seu ficheiro).",
+      "outsideScope": "Fora da área cifrada (os ficheiros aqui não estão cifrados)"
     },
     "b2": {
       "hidden": {

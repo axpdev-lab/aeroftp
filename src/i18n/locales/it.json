@@ -3153,7 +3153,8 @@
             "emptyFolder": "Cartella vuota",
             "nameNotDecrypted": "nome non decifrato",
             "download": "Scarica",
-            "serverHashGated": "Checksum lato server non disponibile con un overlay cifrato attivo (calcolerebbe l'hash del testo cifrato, non del tuo file)."
+            "serverHashGated": "Checksum lato server non disponibile con un overlay cifrato attivo (calcolerebbe l'hash del testo cifrato, non del tuo file).",
+            "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",

@@ -4569,7 +4569,8 @@
       "emptyFolder": "Pusty folder",
       "nameNotDecrypted": "nazwa nieodszyfrowana",
       "download": "Pobierz",
-      "serverHashGated": "Suma kontrolna po stronie serwera niedostępna, gdy aktywna jest zaszyfrowana nakładka (obliczyłaby skrót szyfrogramu, a nie Twojego pliku)."
+      "serverHashGated": "Suma kontrolna po stronie serwera niedostępna, gdy aktywna jest zaszyfrowana nakładka (obliczyłaby skrót szyfrogramu, a nie Twojego pliku).",
+      "outsideScope": "Poza obszarem zaszyfrowanym (pliki tutaj nie są zaszyfrowane)"
     },
     "b2": {
       "hidden": {

@@ -4569,7 +4569,8 @@
       "emptyFolder": "Leerer Ordner",
       "nameNotDecrypted": "Name nicht entschlüsselt",
       "download": "Herunterladen",
-      "serverHashGated": "Serverseitige Prüfsumme nicht verfügbar, während ein verschlüsseltes Overlay aktiv ist (sie würde den Chiffretext hashen, nicht Ihre Datei)."
+      "serverHashGated": "Serverseitige Prüfsumme nicht verfügbar, während ein verschlüsseltes Overlay aktiv ist (sie würde den Chiffretext hashen, nicht Ihre Datei).",
+      "outsideScope": "Außerhalb des verschlüsselten Bereichs (Dateien hier sind nicht verschlüsselt)"
     },
     "b2": {
       "hidden": {

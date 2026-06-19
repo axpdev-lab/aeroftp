@@ -4588,7 +4588,8 @@
       "emptyFolder": "Carpeta buida",
       "nameNotDecrypted": "nom no desxifrat",
       "download": "Descarrega",
-      "serverHashGated": "Suma de verificació al servidor no disponible amb una capa xifrada activa (calcularia el hash del text xifrat, no del vostre fitxer)."
+      "serverHashGated": "Suma de verificació al servidor no disponible amb una capa xifrada activa (calcularia el hash del text xifrat, no del vostre fitxer).",
+      "outsideScope": "Fora de la zona xifrada (els fitxers d'aquí no estan xifrats)"
     },
     "b2": {
       "hidden": {

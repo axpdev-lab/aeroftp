@@ -4569,7 +4569,8 @@
       "emptyFolder": "Folder kosong",
       "nameNotDecrypted": "nama tidak dinyahsulitkan",
       "download": "Muat turun",
-      "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda)."
+      "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda).",
+      "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)"
     },
     "b2": {
       "hidden": {

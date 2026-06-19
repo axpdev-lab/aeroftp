@@ -4569,7 +4569,8 @@
       "emptyFolder": "Prazna mapa",
       "nameNotDecrypted": "ime ni dešifrirano",
       "download": "Prenesi",
-      "serverHashGated": "Kontrolna vsota na strani strežnika ni na voljo, ko je aktivna šifrirana plast (zgostila bi šifrirano besedilo, ne vaše datoteke)."
+      "serverHashGated": "Kontrolna vsota na strani strežnika ni na voljo, ko je aktivna šifrirana plast (zgostila bi šifrirano besedilo, ne vaše datoteke).",
+      "outsideScope": "Zunaj šifriranega območja (datoteke tukaj niso šifrirane)"
     },
     "b2": {
       "hidden": {

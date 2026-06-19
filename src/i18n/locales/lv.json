@@ -4569,7 +4569,8 @@
       "emptyFolder": "Tukša mape",
       "nameNotDecrypted": "nosaukums nav atšifrēts",
       "download": "Lejupielādēt",
-      "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu)."
+      "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu).",
+      "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)"
     },
     "b2": {
       "hidden": {
