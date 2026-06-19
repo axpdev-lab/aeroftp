@@ -344,11 +344,17 @@ struct ReportSink {
     progress: Option<VaultProgressEmitter>,
 }
 
-/// Live GUI progress for a long vault op: accumulates the plaintext bytes seen
-/// by `on_chunk` (compression + encryption run on the same chunk stream) and
-/// emits a throttled `vault_progress` event, one per integer percent.
+/// Progress callback for a long vault op: `(percent 0..=100, bytes done, bytes
+/// total)`. The GUI passes a closure that emits a `vault_progress` Tauri event;
+/// the CLI passes one that drives an `indicatif` bar (Ehud #5: progress in both
+/// GUI and CLI). Boxed `FnMut + Send` so it can cross into `spawn_blocking`.
+pub type VaultProgressFn = Box<dyn FnMut(i64, u64, u64) + Send>;
+
+/// Live progress for a long vault op: accumulates the plaintext bytes seen by
+/// `on_chunk` (compression + encryption run on the same chunk stream) and
+/// invokes the callback at most once per integer percent.
 struct VaultProgressEmitter {
-    app: tauri::AppHandle,
+    cb: VaultProgressFn,
     total: u64,
     acc: u64,
     last_pct: i64,
@@ -370,10 +376,7 @@ impl aerovault::v3::VaultTelemetrySink for ReportSink {
             let pct = done.saturating_mul(100).checked_div(p.total).unwrap_or(0) as i64;
             if pct != p.last_pct {
                 p.last_pct = pct;
-                let _ = p.app.emit(
-                    "vault_progress",
-                    serde_json::json!({ "percentage": pct, "transferred": done, "total": p.total }),
-                );
+                (p.cb)(pct, done, p.total);
             }
         }
     }
@@ -721,12 +724,36 @@ pub async fn vault_v3_add_files(
 
 /// Shared body for the public command (which forwards the injected `AppHandle`
 /// so the GUI gets live progress) and internal callers like the AeroCrypt
-/// overlay path (which pass `None`, no progress channel).
+/// overlay path (which pass `None`, no progress channel). The `AppHandle` is
+/// adapted into the generic progress callback consumed by
+/// [`vault_v3_add_files_with_progress`].
 pub async fn vault_v3_add_files_inner(
     vault_path: String,
     password: String,
     file_paths: Vec<String>,
     app: Option<tauri::AppHandle>,
+) -> Result<VaultV3Info, String> {
+    let progress: Option<VaultProgressFn> = app.map(|app| {
+        let cb: VaultProgressFn = Box::new(move |pct, done, total| {
+            let _ = app.emit(
+                "vault_progress",
+                serde_json::json!({ "percentage": pct, "transferred": done, "total": total }),
+            );
+        });
+        cb
+    });
+    vault_v3_add_files_with_progress(vault_path, password, file_paths, progress).await
+}
+
+/// Add files to a v3 vault with an optional progress callback. The CLI passes an
+/// `indicatif`-driven closure here directly (Ehud #5: CLI progress for the long
+/// compress+encrypt pass); the GUI reaches it through
+/// [`vault_v3_add_files_inner`] with an event-emitting closure.
+pub async fn vault_v3_add_files_with_progress(
+    vault_path: String,
+    password: String,
+    file_paths: Vec<String>,
+    progress: Option<VaultProgressFn>,
 ) -> Result<VaultV3Info, String> {
     let started = Instant::now();
     let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
@@ -759,8 +786,8 @@ pub async fn vault_v3_add_files_inner(
             // The crate emits scan/pack/chunk/file/cdc + Error-Correction events.
             vault.set_telemetry_sink(Box::new(ReportSink {
                 report: report_for_task.clone(),
-                progress: app.map(|app| VaultProgressEmitter {
-                    app,
+                progress: progress.map(|cb| VaultProgressEmitter {
+                    cb,
                     total: total_bytes,
                     acc: 0,
                     last_pct: -1,

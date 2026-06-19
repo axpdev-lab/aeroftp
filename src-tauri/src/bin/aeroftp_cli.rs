@@ -48975,15 +48975,34 @@ async fn main() {
                         resolve_ver(vault_version)
                     };
                     if ver == "v3" {
-                        match aerovault_v3::vault_v3_add_files_inner(
+                        // Ehud #5: live progress for the long compress+encrypt pass.
+                        // create_progress_bar is hidden when output is not a TTY
+                        // (e.g. --json piped) or NO_COLOR is set, so it never dirties
+                        // machine-readable output. Drawn to stderr.
+                        let total_bytes: u64 = files
+                            .iter()
+                            .map(|f| std::fs::metadata(f).map(|m| m.len()).unwrap_or(0))
+                            .sum();
+                        let pb = create_progress_bar(
+                            "AeroVault: compress + encrypt",
+                            total_bytes.max(1),
+                        );
+                        let pb_cb = pb.clone();
+                        let progress: Option<aerovault_v3::VaultProgressFn> =
+                            Some(Box::new(move |_pct, done, total| {
+                                pb_cb.set_length(total.max(1));
+                                pb_cb.set_position(done);
+                            }));
+                        match aerovault_v3::vault_v3_add_files_with_progress(
                             path.clone(),
                             pw,
                             files.clone(),
-                            None,
+                            progress,
                         )
                         .await
                         {
                             Ok(info) => {
+                                pb.finish_and_clear();
                                 let mut code = 0;
                                 if let Some(rep) = &info.report {
                                     // Behind-the-scenes log to stderr
@@ -49026,6 +49045,7 @@ async fn main() {
                                 code
                             }
                             Err(e) => {
+                                pb.finish_and_clear();
                                 print_error(format, &e, 4);
                                 4
                             }
