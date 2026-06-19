@@ -44,6 +44,7 @@ interface TransferBatchStartedEvent {
  *  is intentionally no id field: only one batch feeds the floating toast at a
  *  time, so the unkeyed snapshot is unambiguous for it. */
 interface BatchProgressSnapshot {
+  batch_id: string;
   completed: number;
   skipped: number;
   failed: number;
@@ -307,6 +308,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     const unlistenBatchProgress = listen<BatchProgressSnapshot>('transfer_batch_progress', (event) => {
       const snap = event.payload;
       if (!snap || !activeToastBatchId.current) return;
+      // Reject a snapshot from a different (e.g. concurrent or just-finished)
+      // batch: the event is unkeyed at the channel level, so correlate on the
+      // batch_id the backend now stamps onto it.
+      if (snap.batch_id && snap.batch_id !== activeToastBatchId.current) return;
       // Only meaningful while an aggregate (folder/batch) toast is showing.
       if (!toastSummaryRef.current?.total_files) return;
       toastBatchBytesRef.current = { total: snap.bytes_total, completed: snap.bytes_transferred };

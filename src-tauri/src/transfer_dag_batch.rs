@@ -88,13 +88,14 @@ where
     };
 
     sink.emit_batch_started(serde_json::json!({
-        "batch_id": id,
+        "batch_id": id.clone(),
         "display_name": display_name,
         "direction": direction,
         "total": total,
     }));
 
     let progress = Arc::new(Mutex::new(BatchProgressSnapshot {
+        batch_id: id,
         total,
         bytes_total: entries.iter().map(|entry| entry.size).sum(),
         ..BatchProgressSnapshot::default()

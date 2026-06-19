@@ -15,6 +15,9 @@
  */
 export const formatBytes = (bytes: number | null): string => {
     if (bytes === null || bytes === 0) return '0 B';
+    // Guard non-finite / negative inputs (e.g. a malformed server-reported size
+    // reaching speed/ETA math) so the display never shows "NaN B" / "Infinity EB".
+    if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
     const i = Math.min(
@@ -71,6 +74,7 @@ export const formatSpeed = (bps: number): string => formatBytes(bps) + '/s';
  * Format estimated time remaining
  */
 export const formatETA = (seconds: number): string => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0s';
     if (seconds < 60) return `${Math.round(seconds)}s`;
     if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
     return `${Math.round(seconds / 3600)}h`;

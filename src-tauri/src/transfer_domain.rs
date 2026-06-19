@@ -83,6 +83,11 @@ pub struct TransferEntry {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BatchProgressSnapshot {
+    /// Identifies the batch this snapshot belongs to, so a frontend consuming
+    /// the unkeyed `transfer_batch_progress` event can reject a snapshot that
+    /// does not match the toast it is currently showing (concurrent batches).
+    #[serde(default)]
+    pub batch_id: String,
     pub completed: u32,
     pub skipped: u32,
     pub failed: u32,

@@ -200,6 +200,12 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const isUpload = summary.direction === 'upload';
     const isFolderTransfer = summary.total_files != null && summary.total_files > 0;
     const isIndeterminate = !isFolderTransfer && summary.total <= 0;
+    // Clamp the displayed percentage: the bar fill clamps internally, but the
+    // numeric badge prints the raw event value, so guard against a stray >100
+    // or non-finite value reaching the header text.
+    const headerPct = Number.isFinite(summary.percentage)
+        ? Math.max(0, Math.min(100, Math.round(summary.percentage)))
+        : 0;
     const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
     const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
     const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
@@ -243,7 +249,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                         </div>
                         <div className="flex items-center gap-0.5 shrink-0">
                             <span className={`text-base font-semibold tabular-nums mr-1 ${styles.title}`}>
-                                {isIndeterminate ? '...' : `${summary.percentage}%`}
+                                {isIndeterminate ? '...' : `${headerPct}%`}
                             </span>
                             {onOpenPanel && (
                                 <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title="Open transfer queue">
@@ -320,7 +326,9 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
     const displayName = summary.path
         ? truncatePath(summary.path, 28)
         : summary.filename;
-    const pct = summary.percentage;
+    const pct = Number.isFinite(summary.percentage)
+        ? Math.max(0, Math.min(100, Math.round(summary.percentage)))
+        : 0;
 
     // Auto-dismiss safety: 100% for 3s collapses the chip
     useEffect(() => {

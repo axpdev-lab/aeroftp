@@ -21,6 +21,9 @@ interface SpeedGraphProps {
     height?: number;
     /** Max samples to display (default: 60 = ~30s at 500ms intervals) */
     maxSamples?: number;
+    /** When false, skip the canvas redraw (graph is collapsed but still mounted
+     *  for the expand animation). Defaults to true for standalone use. */
+    active?: boolean;
 }
 
 /** Theme colors for the graph */
@@ -122,6 +125,7 @@ export const SpeedGraph: React.FC<SpeedGraphProps> = ({
     theme,
     height = 64,
     maxSamples = 60,
+    active = true,
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -137,6 +141,9 @@ export const SpeedGraph: React.FC<SpeedGraphProps> = ({
     }, [speedHistory]);
 
     useEffect(() => {
+        // Collapsed: stay mounted (the wrapper animates max-height) but skip the
+        // full canvas redraw on every speed sample the user cannot see.
+        if (!active) return;
         const canvas = canvasRef.current;
         const container = containerRef.current;
         if (!canvas || !container) return;
@@ -227,7 +234,7 @@ export const SpeedGraph: React.FC<SpeedGraphProps> = ({
         ctx.fillStyle = colors.fillTop;
         ctx.fill();
 
-    }, [speedHistory, theme, height, maxSamples]);
+    }, [speedHistory, theme, height, maxSamples, active]);
 
     const colors = getGraphColors(theme);
 

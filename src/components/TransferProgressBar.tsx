@@ -231,6 +231,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
                         <SpeedGraph
                             speedHistory={speedHistory}
                             theme={resolvedTheme}
+                            active={graphExpanded}
                         />
                     </div>
                 </>
