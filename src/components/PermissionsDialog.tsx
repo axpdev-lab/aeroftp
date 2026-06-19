@@ -116,7 +116,7 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl w-full max-w-md border border-gray-100 dark:border-gray-700 animate-scale-in">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl w-full max-w-md border border-gray-100 dark:border-gray-700 animate-scale-in">
                 <div {...modalDrag.dragHandleProps} className="flex justify-between items-start mb-6 cursor-grab active:cursor-grabbing">
                     <div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">

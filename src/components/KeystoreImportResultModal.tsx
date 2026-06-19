@@ -71,7 +71,7 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
         >
             <div
                 {...modalDrag.panelProps}
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden animate-scale-in"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-6">

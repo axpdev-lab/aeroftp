@@ -226,11 +226,11 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
 
     return (
         <div
-            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-xl border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
+            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-lg border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
             <div className="flex items-start gap-3">
-                <div className={`mt-0.5 rounded-xl p-2 ${styles.panel} ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
+                <div className={`mt-0.5 rounded-lg p-2 ${styles.panel} ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
                     {isFolderTransfer
                         ? <Folder size={18} className={isUpload ? 'text-cyan-400' : 'text-orange-400'} />
                         : summary.direction === 'download'

@@ -1533,7 +1533,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                 {/* Insecure certificate confirmation modal */}
                 {showInsecureCertModal && (
                     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowInsecureCertModal(false)} role="dialog" aria-modal="true" aria-label="Insecure Certificate Warning">
-                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
                             <div className="p-6">
                                 <div className="flex items-center gap-3 mb-4">
                                     <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
