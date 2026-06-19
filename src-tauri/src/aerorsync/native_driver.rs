@@ -1199,8 +1199,15 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// Wrap `payload` in a `MSG_DATA` mux frame and write it to the raw
-    /// stream. Rejects payloads larger than the 24-bit length field.
+    /// Max `MSG_DATA` payload that fits the rsync multiplexed 24-bit length
+    /// field (16 MiB - 1). A single logical payload larger than this is split
+    /// across consecutive frames by [`write_data_frame`].
+    const MSG_DATA_MAX: usize = 0x00FF_FFFF;
+
+    /// Wrap `payload` in a single `MSG_DATA` mux frame and write it to the raw
+    /// stream. `payload` must be `<= MSG_DATA_MAX`; the guard is a defensive
+    /// safety net since the only callers ([`write_data_frame`] and the
+    /// progress-aware delta send) already chunk to that bound.
     ///
     /// Z.4.3.f6: the header (4 B) and payload were previously emitted as
     /// two separate `write_bytes` calls, which russh turns into two
@@ -1222,8 +1229,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// agree to as a single logical mux frame on the wire. This is also
     /// strictly fewer round-trips so it is a small efficiency win on
     /// the happy path.
-    async fn write_data_frame(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
-        if payload.len() > 0x00FF_FFFF {
+    async fn write_one_data_frame(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
+        if payload.len() > Self::MSG_DATA_MAX {
             return Err(AerorsyncError::invalid_frame(format!(
                 "MSG_DATA payload {} exceeds 24-bit length field",
                 payload.len()
@@ -1244,6 +1251,34 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         frame.extend_from_slice(payload);
         stream.write_bytes(&frame).await?;
         self.sent_data_bytes += payload.len() as u64;
+        Ok(())
+    }
+
+    /// Write a logical `MSG_DATA` payload, splitting it across consecutive mux
+    /// frames when it exceeds the 24-bit length field.
+    ///
+    /// The common case (`payload.len() <= MSG_DATA_MAX`, i.e. <= 16 MiB) sends
+    /// exactly one frame, byte-identical to the pre-chunking driver. A larger
+    /// logical payload (e.g. the full compressed delta of a multi-hundred-MB
+    /// brand-new file) is split into `<= MSG_DATA_MAX` frames. This is
+    /// wire-safe: `MuxStreamReader` pops one `Data` frame at a time and every
+    /// driver receive loop concatenates consecutive `Data` payloads before
+    /// decoding, so N frames reassemble into the original logical payload.
+    /// Each frame keeps its header+payload coalesced (the russh single-packet
+    /// invariant documented on [`write_one_data_frame`]).
+    ///
+    /// Before this, an oversized payload was rejected with `InvalidFrame`,
+    /// which the fallback classifier treats as a hard rejection with no classic
+    /// fallback, so a brand-new upload larger than ~16 MiB failed outright.
+    /// Chunking removes that failure at its source; the `InvalidFrame` guard on
+    /// [`write_one_data_frame`] remains as an unreachable safety net.
+    async fn write_data_frame(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
+        if payload.len() <= Self::MSG_DATA_MAX {
+            return self.write_one_data_frame(payload).await;
+        }
+        for chunk in payload.chunks(Self::MSG_DATA_MAX) {
+            self.write_one_data_frame(chunk).await?;
+        }
         Ok(())
     }
 
@@ -3503,6 +3538,77 @@ mod tests {
             &outbound[suffix_start..suffix_start + expected_tail.len()],
             expected_tail.as_slice(),
             "mux-wrapped file list tail mismatch (entry + terminator + NDX_FLIST_EOF coalesced)"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_data_frame_chunks_oversized_payload_wire_safely() {
+        // Fix B regression (APPENDIX-AERORSYNC-DELTA-REDESIGN): a logical
+        // MSG_DATA payload larger than the 24-bit mux length field must be
+        // split into <= MSG_DATA_MAX frames whose concatenation reassembles to
+        // the original. At or below the bound it must still go out as a single
+        // frame, byte-identical to the pre-chunking driver. Before this an
+        // oversized payload was rejected with InvalidFrame, failing every
+        // brand-new upload larger than ~16 MiB outright (classic fallback
+        // suppressed = data loss).
+        use crate::aerorsync::real_wire::{MuxPoll, MuxStreamReader};
+
+        const MAX: usize = AerorsyncDriver::<MockRemoteShellTransport>::MSG_DATA_MAX;
+
+        async fn data_frames_for(payload: &[u8]) -> Vec<Vec<u8>> {
+            let transport = mock_transport_with_raw_inbound(Vec::new());
+            let last_raw_outbound = transport.last_raw_outbound.clone();
+            let mut d = make_driver(transport);
+            d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/big.bin"))
+                .await
+                .expect("raw stream opens");
+            d.write_data_frame(payload).await.expect("write_data_frame");
+            let outbound = {
+                let guard = last_raw_outbound.lock().unwrap();
+                guard.as_ref().expect("raw stream was opened").clone()
+            };
+            let bytes = outbound.lock().unwrap().clone();
+            // Reassemble through the same reader the receiver uses: it pops one
+            // Data frame at a time, exactly as the driver receive loops do.
+            let mut reader = MuxStreamReader::new();
+            reader.feed(&bytes);
+            let mut frames = Vec::new();
+            while let Some(res) = reader.poll_frame() {
+                match res.expect("well-formed mux frame") {
+                    MuxPoll::Data(p) => frames.push(p),
+                    other => panic!("expected MSG_DATA frame, got {other:?}"),
+                }
+            }
+            frames
+        }
+
+        // Below the bound: one frame, identical bytes.
+        let small = vec![0xABu8; 4096];
+        let f = data_frames_for(&small).await;
+        assert_eq!(f.len(), 1, "<= MSG_DATA_MAX must be a single frame");
+        assert_eq!(f[0], small);
+
+        // Exactly at the bound: still a single frame.
+        let at = vec![0x5Au8; MAX];
+        let f = data_frames_for(&at).await;
+        assert_eq!(f.len(), 1, "== MSG_DATA_MAX must be a single frame");
+        assert_eq!(f[0].len(), MAX);
+
+        // Over the bound: 2*MAX + 12345 -> three frames, each <= MAX,
+        // reassembling to the original. The positional byte pattern proves the
+        // frames stay in order.
+        let big_len = MAX * 2 + 12_345;
+        let big: Vec<u8> = (0..big_len).map(|i| (i % 251) as u8).collect();
+        let f = data_frames_for(&big).await;
+        assert_eq!(f.len(), 3, "2*MAX + 12345 must be three frames");
+        assert!(
+            f.iter().all(|fr| !fr.is_empty() && fr.len() <= MAX),
+            "every frame must fit the 24-bit length field"
+        );
+        assert_eq!(
+            f.concat(),
+            big,
+            "frames must reassemble to the original payload"
         );
     }
 
