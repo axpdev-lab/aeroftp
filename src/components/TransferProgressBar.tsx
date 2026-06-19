@@ -141,7 +141,10 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     }, [slideAnimation]);
 
     const colors = getThemeGradient(resolvedTheme, tone);
-    const clampedPct = Math.max(0, Math.min(100, percentage));
+    const clampedPct = Math.max(0, Math.min(100, Number.isFinite(percentage) ? percentage : 0));
+    // Width stays fractional for a smooth fill; the printed label is rounded to
+    // a whole percent so a file-count ratio never shows as "73.3333%".
+    const pctLabel = Math.round(clampedPct);
     const hasDetails = filename || speedBps !== undefined || etaSeconds !== undefined;
     const hasBatch = currentFile !== undefined && totalFiles !== undefined;
     const hasBytes = transferredBytes !== undefined && totalBytes !== undefined;
@@ -184,7 +187,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
                             <span> · {formatETA(etaSeconds)}</span>
                         )}
                         {!hasBytes && !hasBatch && speedBps === undefined && (
-                            <span>{clampedPct}%</span>
+                            <span>{pctLabel}%</span>
                         )}
                     </span>
                 </div>
@@ -211,7 +214,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
             {hasBatch && !hasDetails && (
                 <div className="flex justify-between text-[10px] mt-0.5">
                     <span className="tpb-batch-label">{currentFile}/{totalFiles}</span>
-                    <span className="tpb-pct-label">{clampedPct}%</span>
+                    <span className="tpb-pct-label">{pctLabel}%</span>
                 </div>
             )}
 

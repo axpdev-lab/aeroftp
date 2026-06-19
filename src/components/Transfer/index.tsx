@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, Folder, X, Minus, Maximize2 } from 'lucide-react';
+import { Download, Upload, Folder, X, Minus, Maximize2, Lock } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
 import { TransferProgressBar } from '../TransferProgressBar';
@@ -206,6 +206,10 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const headerPct = Number.isFinite(summary.percentage)
         ? Math.max(0, Math.min(100, Math.round(summary.percentage)))
         : 0;
+    // Lock the card while a transfer is in flight (owner request): no full
+    // dismiss until 100%, only minimize-to-chip, so the user never loses track
+    // of an active transfer. Unlocks (shows the close button) at completion.
+    const isTransferring = headerPct < 100;
     const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
     const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
     const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
@@ -259,9 +263,18 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                             <button onClick={onMinimize} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title="Minimize">
                                 <Minus size={14} />
                             </button>
-                            <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title="Dismiss">
-                                <X size={14} />
-                            </button>
+                            {/* Locked during transfer (no full dismiss until 100%):
+                                only minimize is allowed, so an in-flight transfer
+                                can never be lost. The close button returns at 100%. */}
+                            {isTransferring ? (
+                                <span className={`p-1 ${styles.subtitle}`} title="Locked until complete">
+                                    <Lock size={13} />
+                                </span>
+                            ) : (
+                                <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title="Dismiss">
+                                    <X size={14} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -372,13 +385,21 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
                         ? '...'
                         : `${pct}%`}
             </span>
-            <button
-                onClick={(e) => { e.stopPropagation(); onCancel(); }}
-                className={`shrink-0 p-0.5 rounded-full transition-colors ${styles.cancel}`}
-                title="Dismiss"
-            >
-                <X size={12} />
-            </button>
+            {/* Locked until 100%: no dismiss while transferring (click the chip
+                to reopen the full card instead). */}
+            {pct < 100 ? (
+                <span className={`shrink-0 p-0.5 ${styles.subtitle}`} title="Locked until complete">
+                    <Lock size={11} />
+                </span>
+            ) : (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                    className={`shrink-0 p-0.5 rounded-full transition-colors ${styles.cancel}`}
+                    title="Dismiss"
+                >
+                    <X size={12} />
+                </button>
+            )}
         </div>
     );
 };

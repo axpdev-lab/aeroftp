@@ -1625,7 +1625,7 @@ pub async fn provider_download_file(
     // `sync::perform_download` in the sync_tree path.
     let mut delta_fallback_reason: Option<String> = None;
     {
-        if use_delta.unwrap_or(true) {
+        if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
             if let Some(result) = crate::delta_sync_rsync::try_delta_transfer(
                 provider.as_mut(),
@@ -3089,7 +3089,7 @@ pub async fn provider_upload_file(
     // `hard_error` must not silently fall back to the classic path.
     let mut delta_fallback_reason: Option<String> = None;
     {
-        if use_delta.unwrap_or(true) {
+        if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
             if let Some(delta_result) = crate::delta_sync_rsync::try_delta_transfer(
                 provider.as_mut(),

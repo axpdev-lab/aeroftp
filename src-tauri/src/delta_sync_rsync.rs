@@ -38,6 +38,28 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
 use tokio::time::timeout;
 
+/// Master switch for the aerorsync native-delta transport on the INTERACTIVE
+/// GUI transfer commands (provider download/upload, FTP-family single-file
+/// upload, editor save). Returns `false` while it is turned OFF.
+///
+/// Turned OFF on 2026-06-19 while AeroProgress is validated: the native rsync
+/// delta driver emits no per-byte progress events (so the flagship progress bar
+/// shows nothing on SFTP/provider transfers) and rejects an upload MSG_DATA
+/// payload larger than the 24-bit length field (~16 MiB) with the classic
+/// fallback suppressed (large uploads fail outright). With this OFF the GUI uses
+/// the classic streaming transfer, which emits real progress and handles large
+/// files. AeroSync and the CLI use their own delta path (`sync.rs`) and are NOT
+/// gated by this. Re-enable once the delta redesign lands (progress emission +
+/// MSG_DATA chunking): see docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN.
+///
+/// Implemented as a function (not a `const`) so the GUI call sites read as a
+/// normal runtime gate and stay free of the const-folding `overly_complex_bool_expr`
+/// clippy lint; flipping the body to `true` re-enables every gated site at once.
+#[inline]
+pub fn gui_delta_enabled() -> bool {
+    false
+}
+
 /// Max length of a fallback/hard-error message surfaced outside the adapter.
 /// rsync stderr can be verbose (thousands of chars for repeated warnings);
 /// a generous but bounded cap keeps the MCP `errors[]` array manageable.

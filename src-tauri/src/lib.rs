@@ -3905,7 +3905,7 @@ async fn upload_file(
                 // `sync::perform_upload`.
                 {
                     let local_path_buf = std::path::PathBuf::from(&params.local_path);
-                    if params.use_delta {
+                    if delta_sync_rsync::gui_delta_enabled() && params.use_delta {
                         if let Some(result) = delta_sync_rsync::try_delta_transfer(
                             provider.as_mut(),
                             delta_sync_rsync::SyncDirection::Upload,
@@ -8821,14 +8821,18 @@ async fn save_remote_file(
             // ship only the changed bytes instead of the full content.
             // try_delta_transfer returns None for non-SFTP providers, so the
             // classic upload is the natural fallback.
-            if let Some(delta) = crate::delta_sync_rsync::try_delta_transfer(
-                provider.as_mut(),
-                crate::delta_sync_rsync::SyncDirection::Upload,
-                &temp_path,
-                &path,
-            )
-            .await
-            {
+            let delta_attempt = if crate::delta_sync_rsync::gui_delta_enabled() {
+                crate::delta_sync_rsync::try_delta_transfer(
+                    provider.as_mut(),
+                    crate::delta_sync_rsync::SyncDirection::Upload,
+                    &temp_path,
+                    &path,
+                )
+                .await
+            } else {
+                None
+            };
+            if let Some(delta) = delta_attempt {
                 if delta.used_delta {
                     let _ = tokio::fs::remove_file(&temp_path).await;
                     return Ok(());

@@ -433,12 +433,12 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     }, []);
 
     // Single-pass counting instead of 6 separate .filter() calls: O(n) vs O(6n)
-    const { completedCount, errorCount, transferringCount, pendingCount, stagedCount, primaryType } = useMemo(() => {
-        let completed = 0, error = 0, transferring = 0, pending = 0, staged = 0, uploads = 0;
+    const { completedCount, errorCount, transferringCount, pendingCount, stagedCount, primaryType, transferringProgressSum } = useMemo(() => {
+        let completed = 0, error = 0, transferring = 0, pending = 0, staged = 0, uploads = 0, progressSum = 0;
         for (const item of items) {
             if (item.status === 'completed') completed++;
             else if (item.status === 'error') error++;
-            else if (item.status === 'transferring') transferring++;
+            else if (item.status === 'transferring') { transferring++; progressSum += Math.max(0, Math.min(100, item.progress ?? 0)) / 100; }
             else if (item.status === 'pending') pending++;
             else if (item.status === 'staged') staged++;
             if (item.type === 'upload') uploads++;
@@ -449,9 +449,31 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
             transferringCount: transferring,
             pendingCount: pending,
             stagedCount: staged,
+            transferringProgressSum: progressSum,
             primaryType: (uploads >= items.length - uploads ? 'upload' : 'download') as TransferType
         };
     }, [items]);
+
+    // Wave-scoped aggregate: the footer bar reflects the CURRENT transfer wave,
+    // not the lifetime queue (owner: "l'avanzamento tiene conto di tutta la
+    // queue"). Capture the finished count at each idle->active transition, so a
+    // new wave starts the bar from 0 instead of inheriting old completed items,
+    // and a finished wave stays at 100% (the baseline is not bumped on completion).
+    const finishedCount = completedCount + errorCount;
+    const activeCount = transferringCount + pendingCount + stagedCount;
+    const waveBaselineRef = useRef(0);
+    const prevActiveRef = useRef(0);
+    useEffect(() => {
+        if (items.length === 0) { waveBaselineRef.current = 0; prevActiveRef.current = 0; return; }
+        if (prevActiveRef.current === 0 && activeCount > 0) {
+            waveBaselineRef.current = finishedCount;
+        }
+        prevActiveRef.current = activeCount;
+    }, [items.length, activeCount, finishedCount]);
+    const waveBaseline = Math.min(waveBaselineRef.current, finishedCount);
+    const waveTotal = Math.max(0, items.length - waveBaseline);
+    const waveDone = Math.max(0, finishedCount - waveBaseline) + transferringProgressSum;
+    const wavePercentage = waveTotal > 0 ? Math.max(0, Math.min(100, (waveDone / waveTotal) * 100)) : 0;
 
     // Only render if visible AND has items
     if (!isVisible || items.length === 0) return null;
@@ -640,9 +662,9 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                 {/* Footer: aggregate progress bar (AeroProgress: was a 1px file-count strip) */}
                 <div className="px-3 py-2 border-t border-gray-200/60 dark:border-gray-700/60">
                     <TransferProgressBar
-                        percentage={items.length > 0 ? (completedCount / items.length) * 100 : 0}
-                        currentFile={completedCount}
-                        totalFiles={items.length}
+                        percentage={wavePercentage}
+                        currentFile={Math.round(waveDone)}
+                        totalFiles={waveTotal}
                         size="md"
                         variant={transferringCount > 0 ? 'gradient' : 'default'}
                         animated={transferringCount > 0}
