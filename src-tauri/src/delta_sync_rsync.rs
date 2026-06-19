@@ -40,24 +40,24 @@ use tokio::time::timeout;
 
 /// Master switch for the aerorsync native-delta transport on the INTERACTIVE
 /// GUI transfer commands (provider download/upload, FTP-family single-file
-/// upload, editor save). Returns `false` while it is turned OFF.
+/// upload, editor save).
 ///
-/// Turned OFF on 2026-06-19 while AeroProgress is validated: the native rsync
-/// delta driver emits no per-byte progress events (so the flagship progress bar
-/// shows nothing on SFTP/provider transfers) and rejects an upload MSG_DATA
-/// payload larger than the 24-bit length field (~16 MiB) with the classic
-/// fallback suppressed (large uploads fail outright). With this OFF the GUI uses
-/// the classic streaming transfer, which emits real progress and handles large
-/// files. AeroSync and the CLI use their own delta path (`sync.rs`) and are NOT
-/// gated by this. Re-enable once the delta redesign lands (progress emission +
-/// MSG_DATA chunking): see docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN.
+/// Re-enabled 2026-06-19 after the delta redesign landed
+/// (docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN): the native driver now
+/// emits wire-byte progress on the interactive path (Fix A, so the flagship bar
+/// fills with real speed/ETA) and chunks oversized MSG_DATA payloads instead of
+/// hard-failing (Fix B, so uploads larger than ~16 MiB complete). It had been
+/// turned OFF earlier the same day precisely because the driver showed no
+/// progress and failed large uploads. AeroSync and the CLI use their own delta
+/// path (`sync.rs`) and are NOT gated by this switch.
 ///
 /// Implemented as a function (not a `const`) so the GUI call sites read as a
 /// normal runtime gate and stay free of the const-folding `overly_complex_bool_expr`
-/// clippy lint; flipping the body to `true` re-enables every gated site at once.
+/// clippy lint; flipping the body toggles every gated site at once (revert to
+/// `false` to fall back to the classic streaming transfer).
 #[inline]
 pub fn gui_delta_enabled() -> bool {
-    false
+    true
 }
 
 /// Max length of a fallback/hard-error message surfaced outside the adapter.
