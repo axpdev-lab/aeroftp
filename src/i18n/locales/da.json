@@ -2861,7 +2861,12 @@
       "extractedAll": "Udpakkede {count} fil(er) til {path}",
       "dropFilesHint": "Træk filer eller mapper hertil, eller brug knapperne nedenfor",
       "itemSingular": "element",
-      "itemPlural": "elementer"
+      "itemPlural": "elementer",
+      "reportExported": "Vault-rapport gemt til {path}",
+      "reportCopied": "Vault-rapport kopieret til udklipsholderen",
+      "exportReportHint": "Eksportér en komplet teknisk rapport: vault-metadata, kryptering, fejlkorrektion og fuld filliste",
+      "copyReportHint": "Kopiér rapporten til udklipsholderen",
+      "copyReport": "Kopiér"
     },
     "cryptomator": {
       "title": "Cryptomator-boks",

@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench, FileDown, Scissors } from 'lucide-react';
+import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench, FileDown, Scissors, Copy } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
@@ -81,6 +81,18 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 )}
                 <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                     <Key size={14} /> {t('vault.changePassword')}
+                </button>
+                {/* Ehud #2: export a complete technical vault report (metadata,
+                    encryption, error-correction, chunk stats, full file list) as
+                    .txt/.json, or copy it to the clipboard. */}
+                <button onClick={() => state.handleExportVaultReport('txt')} disabled={state.loading} title={t('vault.exportReportHint')} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                    <FileDown size={14} /> {t('vault.receipt.exportTxt')}
+                </button>
+                <button onClick={() => state.handleExportVaultReport('json')} disabled={state.loading} title={t('vault.exportReportHint')} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                    <FileDown size={14} /> {t('vault.receipt.exportJson')}
+                </button>
+                <button onClick={state.handleCopyVaultReport} disabled={state.loading} title={t('vault.copyReportHint')} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                    <Copy size={14} /> {t('vault.copyReport')}
                 </button>
                 {state.vaultSecurity?.version === 2 && (
                     <button onClick={() => state.setShowSyncDialog(true)} className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 rounded text-white">

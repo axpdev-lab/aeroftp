@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} फ़ाइल {path} में निकाली गईं",
       "dropFilesHint": "फ़ाइलें या फ़ोल्डर यहाँ खींचें, या नीचे दिए गए बटनों का उपयोग करें",
       "itemSingular": "आइटम",
-      "itemPlural": "आइटम"
+      "itemPlural": "आइटम",
+      "reportExported": "वॉल्ट रिपोर्ट {path} में सहेजी गई",
+      "reportCopied": "वॉल्ट रिपोर्ट क्लिपबोर्ड पर कॉपी की गई",
+      "exportReportHint": "एक संपूर्ण तकनीकी रिपोर्ट निर्यात करें: वॉल्ट मेटाडेटा, एन्क्रिप्शन, त्रुटि सुधार और पूरी फ़ाइल सूची",
+      "copyReportHint": "रिपोर्ट को क्लिपबोर्ड पर कॉपी करें",
+      "copyReport": "कॉपी करें"
     },
     "cryptomator": {
       "title": "Cryptomator वॉल्ट",

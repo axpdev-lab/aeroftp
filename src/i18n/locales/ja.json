@@ -2826,7 +2826,12 @@
       "extractedAll": "{count} 個のファイルを {path} に抽出しました",
       "dropFilesHint": "ファイルやフォルダーをここにドラッグするか、下のボタンを使用してください",
       "itemSingular": "項目",
-      "itemPlural": "項目"
+      "itemPlural": "項目",
+      "reportExported": "ボールトのレポートを {path} に保存しました",
+      "reportCopied": "ボールトのレポートをクリップボードにコピーしました",
+      "exportReportHint": "完全な技術レポートをエクスポート：ボールトのメタデータ、暗号化、誤り訂正、全ファイル一覧",
+      "copyReportHint": "レポートをクリップボードにコピー",
+      "copyReport": "コピー"
     },
     "cryptomator": {
       "title": "Cryptomator保管庫",

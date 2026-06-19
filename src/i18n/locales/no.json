@@ -2861,7 +2861,12 @@
       "extractedAll": "Pakket ut {count} fil(er) til {path}",
       "dropFilesHint": "Dra filer eller mapper hit, eller bruk knappene nedenfor",
       "itemSingular": "element",
-      "itemPlural": "elementer"
+      "itemPlural": "elementer",
+      "reportExported": "Hvelvrapport lagret til {path}",
+      "reportCopied": "Hvelvrapport kopiert til utklippstavlen",
+      "exportReportHint": "Eksporter en fullstendig teknisk rapport: hvelvmetadata, kryptering, feilretting og fullstendig filliste",
+      "copyReportHint": "Kopier rapporten til utklippstavlen",
+      "copyReport": "Kopier"
     },
     "cryptomator": {
       "title": "Cryptomator-hvelv",

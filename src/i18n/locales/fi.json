@@ -2861,7 +2861,12 @@
       "extractedAll": "Purettiin {count} tiedosto(a) sijaintiin {path}",
       "dropFilesHint": "Vedä tiedostoja tai kansioita tähän tai käytä alla olevia painikkeita",
       "itemSingular": "kohde",
-      "itemPlural": "kohdetta"
+      "itemPlural": "kohdetta",
+      "reportExported": "Holvin raportti tallennettu sijaintiin {path}",
+      "reportCopied": "Holvin raportti kopioitu leikepöydälle",
+      "exportReportHint": "Vie täydellinen tekninen raportti: holvin metatiedot, salaus, virheenkorjaus ja täysi tiedostoluettelo",
+      "copyReportHint": "Kopioi raportti leikepöydälle",
+      "copyReport": "Kopioi"
     },
     "cryptomator": {
       "title": "Cryptomator-holvi",

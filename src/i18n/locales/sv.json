@@ -2861,7 +2861,12 @@
       "extractedAll": "Extraherade {count} fil(er) till {path}",
       "dropFilesHint": "Dra filer eller mappar hit, eller använd knapparna nedan",
       "itemSingular": "objekt",
-      "itemPlural": "objekt"
+      "itemPlural": "objekt",
+      "reportExported": "Valvrapport sparad till {path}",
+      "reportCopied": "Valvrapport kopierad till urklipp",
+      "exportReportHint": "Exportera en komplett teknisk rapport: valvmetadata, kryptering, felkorrigering och fullständig fillista",
+      "copyReportHint": "Kopiera rapporten till urklipp",
+      "copyReport": "Kopiera"
     },
     "cryptomator": {
       "title": "Cryptomator-valv",

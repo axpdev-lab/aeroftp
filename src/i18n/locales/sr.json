@@ -2861,7 +2861,12 @@
       "extractedAll": "Извучено {count} датотека у {path}",
       "dropFilesHint": "Превуците датотеке или фасцикле овде или користите дугмад испод",
       "itemSingular": "ставка",
-      "itemPlural": "ставке"
+      "itemPlural": "ставке",
+      "reportExported": "Извештај трезора сачуван у {path}",
+      "reportCopied": "Извештај трезора копиран у оставу",
+      "exportReportHint": "Извези комплетан технички извештај: метаподатке трезора, шифровање, исправку грешака и потпуну листу датотека",
+      "copyReportHint": "Копирај извештај у оставу",
+      "copyReport": "Копирај"
     },
     "cryptomator": {
       "title": "Cryptomator trezor",

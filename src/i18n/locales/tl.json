@@ -2861,7 +2861,12 @@
       "extractedAll": "Na-extract ang {count} (na) file sa {path}",
       "dropFilesHint": "I-drag ang mga file o folder dito, o gamitin ang mga button sa ibaba",
       "itemSingular": "item",
-      "itemPlural": "item"
+      "itemPlural": "item",
+      "reportExported": "Na-save ang ulat ng vault sa {path}",
+      "reportCopied": "Nakopya ang ulat ng vault sa clipboard",
+      "exportReportHint": "Mag-export ng kumpletong teknikal na ulat: metadata ng vault, pag-encrypt, pagwawasto ng error at buong listahan ng mga file",
+      "copyReportHint": "Kopyahin ang ulat sa clipboard",
+      "copyReport": "Kopyahin"
     },
     "cryptomator": {
       "title": "Cryptomator Vault",

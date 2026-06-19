@@ -2861,7 +2861,12 @@
       "extractedAll": "Extraídos {count} ficheiro(s) para {path}",
       "dropFilesHint": "Arraste arquivos ou pastas para aqui, ou use os botões abaixo",
       "itemSingular": "item",
-      "itemPlural": "itens"
+      "itemPlural": "itens",
+      "reportExported": "Relatório do cofre guardado em {path}",
+      "reportCopied": "Relatório do cofre copiado para a área de transferência",
+      "exportReportHint": "Exportar um relatório técnico completo: metadados do cofre, encriptação, correção de erros e lista completa de ficheiros",
+      "copyReportHint": "Copiar o relatório para a área de transferência",
+      "copyReport": "Copiar"
     },
     "cryptomator": {
       "title": "Cofre Cryptomator",

@@ -2861,7 +2861,12 @@
       "extractedAll": "Afþjappaði {count} skrá(r) í {path}",
       "dropFilesHint": "Dragðu skrár eða möppur hingað, eða notaðu hnappana hér að neðan",
       "itemSingular": "atriði",
-      "itemPlural": "atriði"
+      "itemPlural": "atriði",
+      "reportExported": "Skýrsla hvelfingar vistuð í {path}",
+      "reportCopied": "Skýrsla hvelfingar afrituð á klippiborð",
+      "exportReportHint": "Flytja út heildstæða tækniskýrslu: lýsigögn hvelfingar, dulkóðun, villuleiðréttingu og fullan skráalista",
+      "copyReportHint": "Afrita skýrsluna á klippiborð",
+      "copyReport": "Afrita"
     },
     "cryptomator": {
       "title": "Cryptomator Hvelfing",

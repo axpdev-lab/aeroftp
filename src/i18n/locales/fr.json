@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} fichier(s) extrait(s) vers {path}",
       "dropFilesHint": "Glissez des fichiers ou des dossiers ici, ou utilisez les boutons ci-dessous",
       "itemSingular": "élément",
-      "itemPlural": "éléments"
+      "itemPlural": "éléments",
+      "reportExported": "Rapport du coffre enregistré dans {path}",
+      "reportCopied": "Rapport du coffre copié dans le presse-papiers",
+      "exportReportHint": "Exporter un rapport technique complet : métadonnées du coffre, chiffrement, correction d'erreurs et liste complète des fichiers",
+      "copyReportHint": "Copier le rapport dans le presse-papiers",
+      "copyReport": "Copier"
     },
     "cryptomator": {
       "title": "Coffre-fort Cryptomator",

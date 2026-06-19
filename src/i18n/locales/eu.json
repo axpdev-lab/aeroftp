@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} fitxategi erauzi dira {path} helbidera",
       "dropFilesHint": "Arrastatu fitxategiak edo karpetak hona, edo erabili beheko botoiak",
       "itemSingular": "elementu",
-      "itemPlural": "elementu"
+      "itemPlural": "elementu",
+      "reportExported": "Kutxa gotorraren txostena hemen gorde da: {path}",
+      "reportCopied": "Kutxa gotorraren txostena arbelera kopiatu da",
+      "exportReportHint": "Esportatu txosten tekniko osoa: kutxa gotorraren metadatuak, zifratzea, errore-zuzenketa eta fitxategien zerrenda osoa",
+      "copyReportHint": "Kopiatu txostena arbelera",
+      "copyReport": "Kopiatu"
     },
     "cryptomator": {
       "title": "Cryptomator Ganga",

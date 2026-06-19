@@ -6,8 +6,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { ArchiveEntry, AeroVaultMeta } from '../../types';
+import { formatSize } from '../../utils/formatters';
 import { useTranslation } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
 import { splitPathsByType } from './pathStaging';
@@ -422,6 +424,8 @@ export interface VaultState {
     handleRemove: (entryName: string, isDir: boolean) => Promise<void>;
     handleExtract: (entryName: string) => Promise<void>;
     handleExtractAll: () => Promise<void>;
+    handleExportVaultReport: (format: 'txt' | 'json') => Promise<void>;
+    handleCopyVaultReport: () => Promise<void>;
     handleChangePassword: () => Promise<void>;
 
     // P2 Error Correction actions (use the registered Tauri commands; engine shared with CLI)
@@ -1260,6 +1264,185 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
+    // Ehud #2: a complete technical report of the open vault — metadata,
+    // encryption pipeline, error-correction state, chunk-level stats (re-fetched
+    // from the backend, richer than the UI-mapped entries) and the full file
+    // list. Shared by Export .txt/.json (save dialog) and Copy (clipboard).
+    const profileForLevel = (lvl: number): string => (lvl === 3 ? 'fast' : lvl === 19 ? 'archive' : 'balanced');
+
+    const buildVaultReport = async (format: 'txt' | 'json'): Promise<string> => {
+        const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');
+        const generatedAt = new Date().toISOString();
+        const levelConfig = vaultSecurity ? securityLevels[vaultSecurity.level] : null;
+        const algorithms = levelConfig?.features ?? [];
+
+        // Re-fetch full technical info (chunk_count, dedup, compression level,
+        // per-file chunk counts) which the UI entries/meta mapping discards.
+        let v3tech: VaultV3Info | null = null;
+        let v2tech: VaultV2Info | null = null;
+        let fileList: { name: string; size: number; is_dir: boolean; modified: string; chunk_count?: number }[] =
+            entries.map(e => ({ name: e.name, size: e.size, is_dir: e.isDir, modified: e.modified || '' }));
+        try {
+            if (vaultSecurity?.version === 3) {
+                v3tech = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
+                fileList = v3tech.files.map(f => ({ name: f.name, size: f.size, is_dir: f.is_dir, modified: f.modified, chunk_count: f.chunk_count }));
+            } else if (vaultSecurity?.version === 2) {
+                v2tech = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
+                fileList = v2tech.files.map(f => ({ name: f.name, size: f.size, is_dir: f.is_dir, modified: f.modified }));
+            }
+        } catch {
+            // best-effort: keep the in-state fallback file list
+        }
+
+        const fileEntries = fileList.filter(f => !f.is_dir);
+        const dirCount = fileList.length - fileEntries.length;
+        const totalSize = fileEntries.reduce((acc, f) => acc + (f.size || 0), 0);
+        const compressionProfileLabel = v3tech ? profileForLevel(v3tech.compression_level) : compressionProfile;
+
+        if (format === 'json') {
+            return JSON.stringify({
+                aerovault_report: {
+                    generated_at: generatedAt,
+                    tool: 'AeroFTP',
+                    vault: {
+                        name: vaultName,
+                        path: vaultPath,
+                        format_version: meta?.version ?? vaultSecurity?.version ?? null,
+                        security_level: vaultSecurity?.level ?? null,
+                        cascade_mode: vaultSecurity?.cascadeMode ?? false,
+                        description: meta?.description ?? null,
+                        created: meta?.created ?? null,
+                        modified: meta?.modified ?? null,
+                        encryption_pipeline: algorithms,
+                        compression_profile: compressionProfileLabel,
+                        error_correction: {
+                            embedded: hasErrorCorrection,
+                            detached: hasDetachedRecovery,
+                            detached_header_protected: hasDetachedHeaderRecovery,
+                        },
+                    },
+                    technical: v3tech
+                        ? {
+                            file_count: v3tech.file_count,
+                            chunk_count: v3tech.chunk_count,
+                            dedup_chunks: v3tech.dedup_chunks,
+                            compression_level: v3tech.compression_level,
+                        }
+                        : v2tech
+                            ? { file_count: v2tech.file_count, chunk_size: v2tech.chunk_size, cascade_mode: v2tech.cascade_mode }
+                            : null,
+                    summary: {
+                        total_items: fileList.length,
+                        files: fileEntries.length,
+                        directories: dirCount,
+                        total_size_bytes: totalSize,
+                    },
+                    files: fileList,
+                    last_operation_receipt: lastReport ?? null,
+                },
+            }, null, 2);
+        }
+
+        // Human-readable text report.
+        const L: string[] = [];
+        L.push('AeroVault — Vault Report');
+        L.push('========================');
+        L.push(`Generated:          ${generatedAt}`);
+        L.push('');
+        L.push('VAULT');
+        L.push(`  Name:             ${vaultName}`);
+        L.push(`  Path:             ${vaultPath}`);
+        L.push(`  Format:           v${meta?.version ?? vaultSecurity?.version ?? '?'}`);
+        L.push(`  Security level:   ${vaultSecurity?.level ?? '?'}${vaultSecurity?.cascadeMode ? ' (cascade)' : ''}`);
+        if (meta?.description) L.push(`  Description:      ${meta.description}`);
+        if (meta?.created) L.push(`  Created:          ${meta.created}`);
+        if (meta?.modified) L.push(`  Modified:         ${meta.modified}`);
+        if (algorithms.length) L.push(`  Encryption:       ${algorithms.join(' · ')}`);
+        L.push(`  Compression:      ${compressionProfileLabel}${v3tech ? ` (zstd -${v3tech.compression_level})` : ''}`);
+        const ecState = [hasErrorCorrection ? 'embedded' : null, hasDetachedRecovery ? 'detached' : null].filter(Boolean).join(' + ') || 'none';
+        L.push(`  Error correction: ${ecState}${hasDetachedHeaderRecovery ? ' (header protected)' : ''}`);
+        L.push('');
+        L.push('TECHNICAL');
+        if (v3tech) {
+            L.push(`  Files:            ${v3tech.file_count}`);
+            L.push(`  Chunks:           ${v3tech.chunk_count} (${v3tech.dedup_chunks} dedup)`);
+            L.push(`  zstd level:       ${v3tech.compression_level}`);
+        } else if (v2tech) {
+            L.push(`  Files:            ${v2tech.file_count}`);
+            L.push(`  Chunk size:       ${formatSize(v2tech.chunk_size)}`);
+            L.push(`  Cascade mode:     ${v2tech.cascade_mode}`);
+        } else {
+            L.push('  (chunk-level stats unavailable)');
+        }
+        L.push('');
+        L.push('SUMMARY');
+        L.push(`  Items:            ${fileList.length} (${fileEntries.length} files, ${dirCount} folders)`);
+        L.push(`  Total size:       ${formatSize(totalSize)}`);
+        L.push('');
+        L.push(`FILES (${fileList.length})`);
+        for (const f of [...fileList].sort((a, b) => a.name.localeCompare(b.name))) {
+            const tag = f.is_dir ? 'D' : 'F';
+            const size = f.is_dir ? '' : `  (${formatSize(f.size || 0)})`;
+            const chunks = f.chunk_count != null ? `  [${f.chunk_count} chunk${f.chunk_count === 1 ? '' : 's'}]` : '';
+            const mod = f.modified ? `  ${f.modified}` : '';
+            L.push(`  [${tag}] ${f.name}${size}${chunks}${mod}`);
+        }
+        if (lastReport) {
+            L.push('');
+            L.push('LAST OPERATION RECEIPT');
+            L.push(`  Operation:        ${lastReport.operation} (v${lastReport.vault_format})`);
+            L.push(`  Pipeline:         ${lastReport.algorithms.join(' → ')}`);
+            L.push(`  Profile:          ${lastReport.profile ?? '-'}`);
+            L.push(`  Files / packed:   ${lastReport.files} / ${lastReport.packed_files}`);
+            L.push(`  Chunks L/N/D:     ${lastReport.logical_chunks} / ${lastReport.new_physical_chunks} / ${lastReport.dedup_hits}`);
+            if (lastReport.cdc_avg) L.push(`  CDC min/avg/max:  ${lastReport.cdc_min} / ${lastReport.cdc_avg} / ${lastReport.cdc_max}`);
+            L.push(`  Plaintext:        ${formatSize(lastReport.plaintext_bytes)}`);
+            L.push(`  Compressed:       ${formatSize(lastReport.compressed_bytes)}`);
+            L.push(`  Encrypted:        ${formatSize(lastReport.encrypted_bytes)}`);
+            if (lastReport.compressed_bytes > 0) L.push(`  Compression:      ${lastReport.compression_ratio_pct.toFixed(1)}%`);
+            if (lastReport.error_correction_shards_generated != null) {
+                L.push(`  EC shards:        ${lastReport.error_correction_shards_generated}`);
+                L.push(`  EC protected:     ${formatSize(lastReport.error_correction_bytes_protected ?? 0)}`);
+                L.push(`  EC overhead:      ${(lastReport.error_correction_overhead_pct ?? 0).toFixed(1)}%`);
+            }
+            L.push(`  Elapsed:          ${lastReport.time_elapsed.toFixed(1)} s`);
+        }
+        L.push('');
+        L.push('Generated by AeroFTP · AeroVault');
+        return L.join('\n');
+    };
+
+    const handleExportVaultReport = async (format: 'txt' | 'json') => {
+        setLoading(true);
+        setError(null);
+        try {
+            const content = await buildVaultReport(format);
+            const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');
+            const filePath = await save({
+                defaultPath: `${vaultName}-report.${format}`,
+                filters: [{ name: `AeroVault report (.${format})`, extensions: [format] }],
+            });
+            if (!filePath) return;
+            await writeTextFile(filePath, content);
+            setSuccess(t('vault.reportExported', { path: filePath }));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCopyVaultReport = async () => {
+        setError(null);
+        try {
+            const content = await buildVaultReport('txt');
+            await navigator.clipboard.writeText(content);
+            setSuccess(t('vault.reportCopied'));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        }
+    };
+
     const handleChangePassword = async () => {
         if (newPassword.length < 8) { setError(t('vault.passwordTooShort')); return; }
         if (newPassword !== confirmNewPassword) { setError(t('vault.passwordMismatch')); return; }
@@ -1549,6 +1732,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         handleRemove,
         handleExtract,
         handleExtractAll,
+        handleExportVaultReport,
+        handleCopyVaultReport,
         handleChangePassword,
         handleScrub,
         handleRepair,

@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} fájl kibontva ide: {path}",
       "dropFilesHint": "Húzzon ide fájlokat vagy mappákat, vagy használja az alábbi gombokat",
       "itemSingular": "elem",
-      "itemPlural": "elem"
+      "itemPlural": "elem",
+      "reportExported": "A széf jelentése elmentve ide: {path}",
+      "reportCopied": "A széf jelentése a vágólapra másolva",
+      "exportReportHint": "Teljes technikai jelentés exportálása: széf-metaadatok, titkosítás, hibajavítás és teljes fájllista",
+      "copyReportHint": "A jelentés másolása a vágólapra",
+      "copyReport": "Másolás"
     },
     "cryptomator": {
       "title": "Cryptomator tároló",

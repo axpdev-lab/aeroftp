@@ -2861,7 +2861,12 @@
       "extractedAll": "Extrahovaných {count} súborov do {path}",
       "dropFilesHint": "Presuňte sem súbory alebo priečinky, alebo použite tlačidlá nižšie",
       "itemSingular": "položka",
-      "itemPlural": "položky"
+      "itemPlural": "položky",
+      "reportExported": "Správa trezora uložená do {path}",
+      "reportCopied": "Správa trezora skopírovaná do schránky",
+      "exportReportHint": "Exportovať kompletnú technickú správu: metadáta trezora, šifrovanie, opravu chýb a úplný zoznam súborov",
+      "copyReportHint": "Skopírovať správu do schránky",
+      "copyReport": "Kopírovať"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

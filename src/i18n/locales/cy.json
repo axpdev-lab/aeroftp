@@ -2861,7 +2861,12 @@
       "extractedAll": "Echdynnwyd {count} ffeil i {path}",
       "dropFilesHint": "Llusgwch ffeiliau neu ffolderi yma, neu defnyddiwch y botymau isod",
       "itemSingular": "eitem",
-      "itemPlural": "eitemau"
+      "itemPlural": "eitemau",
+      "reportExported": "Adroddiad y gladdgell wedi'i gadw i {path}",
+      "reportCopied": "Adroddiad y gladdgell wedi'i gopïo i'r clipfwrdd",
+      "exportReportHint": "Allforio adroddiad technegol cyflawn: metadata'r gladdgell, amgryptio, cywiro gwallau a rhestr lawn o ffeiliau",
+      "copyReportHint": "Copïo'r adroddiad i'r clipfwrdd",
+      "copyReport": "Copïo"
     },
     "cryptomator": {
       "title": "Coffor Cryptomator",

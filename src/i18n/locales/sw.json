@@ -2861,7 +2861,12 @@
       "extractedAll": "Faili {count} zimetolewa hadi {path}",
       "dropFilesHint": "Buruta faili au folda hapa, au tumia vitufe vilivyo hapa chini",
       "itemSingular": "kipengele",
-      "itemPlural": "vipengele"
+      "itemPlural": "vipengele",
+      "reportExported": "Ripoti ya kasha imehifadhiwa kwenye {path}",
+      "reportCopied": "Ripoti ya kasha imenakiliwa kwenye ubao wa kunakili",
+      "exportReportHint": "Hamisha ripoti kamili ya kiufundi: metadata ya kasha, usimbaji fiche, urekebishaji wa makosa na orodha kamili ya faili",
+      "copyReportHint": "Nakili ripoti kwenye ubao wa kunakili",
+      "copyReport": "Nakili"
     },
     "cryptomator": {
       "title": "Hazina ya Cryptomator",

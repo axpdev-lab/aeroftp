@@ -2861,7 +2861,12 @@
       "extractedAll": "Ekstraktiti {count} fail(i) asukohta {path}",
       "dropFilesHint": "Lohista failid või kaustad siia või kasuta allolevaid nuppe",
       "itemSingular": "üksus",
-      "itemPlural": "üksust"
+      "itemPlural": "üksust",
+      "reportExported": "Hoidla aruanne salvestati asukohta {path}",
+      "reportCopied": "Hoidla aruanne kopeeriti lõikelauale",
+      "exportReportHint": "Ekspordi täielik tehniline aruanne: hoidla metaandmed, krüpteerimine, veaparandus ja kogu faililoend",
+      "copyReportHint": "Kopeeri aruanne lõikelauale",
+      "copyReport": "Kopeeri"
     },
     "cryptomator": {
       "title": "Cryptomator hoidla",

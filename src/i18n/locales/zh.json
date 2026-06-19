@@ -2861,7 +2861,12 @@
       "extractedAll": "已解压 {count} 个文件到 {path}",
       "dropFilesHint": "将文件或文件夹拖到此处，或使用下方的按钮",
       "itemSingular": "项",
-      "itemPlural": "项"
+      "itemPlural": "项",
+      "reportExported": "保险库报告已保存到 {path}",
+      "reportCopied": "保险库报告已复制到剪贴板",
+      "exportReportHint": "导出完整的技术报告：保险库元数据、加密、纠错和完整文件列表",
+      "copyReportHint": "将报告复制到剪贴板",
+      "copyReport": "复制"
     },
     "cryptomator": {
       "title": "Cryptomator 保险库",

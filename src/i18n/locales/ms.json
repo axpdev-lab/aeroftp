@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} fail diekstrak ke {path}",
       "dropFilesHint": "Seret fail atau folder ke sini, atau gunakan butang di bawah",
       "itemSingular": "item",
-      "itemPlural": "item"
+      "itemPlural": "item",
+      "reportExported": "Laporan peti besi disimpan ke {path}",
+      "reportCopied": "Laporan peti besi disalin ke papan keratan",
+      "exportReportHint": "Eksport laporan teknikal lengkap: metadata peti besi, penyulitan, pembetulan ralat dan senarai fail penuh",
+      "copyReportHint": "Salin laporan ke papan keratan",
+      "copyReport": "Salin"
     },
     "cryptomator": {
       "title": "Peti Besi Cryptomator",

@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} fișier(e) extrase în {path}",
       "dropFilesHint": "Trageți fișiere sau foldere aici sau folosiți butoanele de mai jos",
       "itemSingular": "element",
-      "itemPlural": "elemente"
+      "itemPlural": "elemente",
+      "reportExported": "Raportul seifului a fost salvat în {path}",
+      "reportCopied": "Raportul seifului a fost copiat în clipboard",
+      "exportReportHint": "Exportă un raport tehnic complet: metadatele seifului, criptarea, corecția erorilor și lista completă de fișiere",
+      "copyReportHint": "Copiază raportul în clipboard",
+      "copyReport": "Copiază"
     },
     "cryptomator": {
       "title": "Seif Cryptomator",

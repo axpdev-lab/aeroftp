@@ -2861,7 +2861,12 @@
       "extractedAll": "បានស្រង់ឯកសារ {count} ទៅ {path}",
       "dropFilesHint": "អូសឯកសារ ឬថតនៅទីនេះ ឬប្រើប៊ូតុងខាងក្រោម",
       "itemSingular": "ធាតុ",
-      "itemPlural": "ធាតុ"
+      "itemPlural": "ធាតុ",
+      "reportExported": "របាយការណ៍ហិបត្រូវបានរក្សាទុកទៅ {path}",
+      "reportCopied": "របាយការណ៍ហិបត្រូវបានចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
+      "exportReportHint": "នាំចេញរបាយការណ៍បច្ចេកទេសពេញលេញ៖ ទិន្នន័យមេតារបស់ហិប ការអ៊ិនគ្រីប ការកែកំហុស និងបញ្ជីឯកសារពេញលេញ",
+      "copyReportHint": "ចម្លងរបាយការណ៍ទៅក្ដារតម្បៀតខ្ទាស់",
+      "copyReport": "ចម្លង"
     },
     "cryptomator": {
       "title": "វ៉ាល់ Cryptomator",

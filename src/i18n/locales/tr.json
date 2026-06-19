@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} dosya {path} konumuna çıkarıldı",
       "dropFilesHint": "Dosyaları veya klasörleri buraya sürükleyin ya da aşağıdaki düğmeleri kullanın",
       "itemSingular": "öğe",
-      "itemPlural": "öğe"
+      "itemPlural": "öğe",
+      "reportExported": "Kasa raporu {path} konumuna kaydedildi",
+      "reportCopied": "Kasa raporu panoya kopyalandı",
+      "exportReportHint": "Eksiksiz bir teknik rapor dışa aktar: kasa meta verileri, şifreleme, hata düzeltme ve tam dosya listesi",
+      "copyReportHint": "Raporu panoya kopyala",
+      "copyReport": "Kopyala"
     },
     "cryptomator": {
       "title": "Cryptomator Kasası",

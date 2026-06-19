@@ -2861,7 +2861,12 @@
       "extractedAll": "Išskleista {count} failų į {path}",
       "dropFilesHint": "Vilkite failus arba aplankus čia arba naudokite toliau esančius mygtukus",
       "itemSingular": "elementas",
-      "itemPlural": "elementai"
+      "itemPlural": "elementai",
+      "reportExported": "Saugyklos ataskaita įrašyta į {path}",
+      "reportCopied": "Saugyklos ataskaita nukopijuota į iškarpinę",
+      "exportReportHint": "Eksportuoti visą techninę ataskaitą: saugyklos metaduomenis, šifravimą, klaidų taisymą ir visą failų sąrašą",
+      "copyReportHint": "Kopijuoti ataskaitą į iškarpinę",
+      "copyReport": "Kopijuoti"
     },
     "cryptomator": {
       "title": "Cryptomator saugykla",

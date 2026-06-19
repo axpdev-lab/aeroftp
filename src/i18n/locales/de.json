@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} Datei(en) nach {path} extrahiert",
       "dropFilesHint": "Dateien oder Ordner hierher ziehen oder die Schaltflächen unten verwenden",
       "itemSingular": "Element",
-      "itemPlural": "Elemente"
+      "itemPlural": "Elemente",
+      "reportExported": "Tresor-Bericht gespeichert unter {path}",
+      "reportCopied": "Tresor-Bericht in die Zwischenablage kopiert",
+      "exportReportHint": "Vollständigen technischen Bericht exportieren: Tresor-Metadaten, Verschlüsselung, Fehlerkorrektur und vollständige Dateiliste",
+      "copyReportHint": "Bericht in die Zwischenablage kopieren",
+      "copyReport": "Kopieren"
     },
     "cryptomator": {
       "title": "Cryptomator-Tresor",

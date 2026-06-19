@@ -2861,7 +2861,12 @@
       "extractedAll": "Izdvojeno {count} datoteka u {path}",
       "dropFilesHint": "Povucite datoteke ili mape ovdje ili upotrijebite gumbe ispod",
       "itemSingular": "stavka",
-      "itemPlural": "stavke"
+      "itemPlural": "stavke",
+      "reportExported": "Izvješće trezora spremljeno u {path}",
+      "reportCopied": "Izvješće trezora kopirano u međuspremnik",
+      "exportReportHint": "Izvezi cjelovito tehničko izvješće: metapodatke trezora, šifriranje, ispravak pogrešaka i potpuni popis datoteka",
+      "copyReportHint": "Kopiraj izvješće u međuspremnik",
+      "copyReport": "Kopiraj"
     },
     "cryptomator": {
       "title": "Cryptomator Trezor",

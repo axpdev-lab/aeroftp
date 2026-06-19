@@ -2861,7 +2861,12 @@
       "extractedAll": "Wyodrębniono {count} plik(ów) do {path}",
       "dropFilesHint": "Przeciągnij pliki lub foldery tutaj albo użyj przycisków poniżej",
       "itemSingular": "element",
-      "itemPlural": "elementy"
+      "itemPlural": "elementy",
+      "reportExported": "Raport sejfu zapisano w {path}",
+      "reportCopied": "Raport sejfu skopiowano do schowka",
+      "exportReportHint": "Eksportuj pełny raport techniczny: metadane sejfu, szyfrowanie, korekcję błędów i pełną listę plików",
+      "copyReportHint": "Skopiuj raport do schowka",
+      "copyReport": "Kopiuj"
     },
     "cryptomator": {
       "title": "Magazyn Cryptomator",

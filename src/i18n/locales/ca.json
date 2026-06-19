@@ -2861,7 +2861,12 @@
       "extractedAll": "S'han extret {count} fitxer(s) a {path}",
       "dropFilesHint": "Arrossega fitxers o carpetes aquí, o utilitza els botons de sota",
       "itemSingular": "element",
-      "itemPlural": "elements"
+      "itemPlural": "elements",
+      "reportExported": "Informe del cofre desat a {path}",
+      "reportCopied": "Informe del cofre copiat al porta-retalls",
+      "exportReportHint": "Exporta un informe tècnic complet: metadades del cofre, xifratge, correcció d'errors i llista completa de fitxers",
+      "copyReportHint": "Copia l'informe al porta-retalls",
+      "copyReport": "Copia"
     },
     "cryptomator": {
       "title": "Caixa forta Cryptomator",

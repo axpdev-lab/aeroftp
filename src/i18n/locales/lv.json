@@ -2861,7 +2861,12 @@
       "extractedAll": "Izvilkti {count} fail(i) uz {path}",
       "dropFilesHint": "Velciet failus vai mapes šeit vai izmantojiet zemāk esošās pogas",
       "itemSingular": "vienums",
-      "itemPlural": "vienumi"
+      "itemPlural": "vienumi",
+      "reportExported": "Glabātavas pārskats saglabāts vietā {path}",
+      "reportCopied": "Glabātavas pārskats nokopēts starpliktuvē",
+      "exportReportHint": "Eksportēt pilnu tehnisko pārskatu: glabātavas metadatus, šifrēšanu, kļūdu labošanu un pilnu failu sarakstu",
+      "copyReportHint": "Kopēt pārskatu starpliktuvē",
+      "copyReport": "Kopēt"
     },
     "cryptomator": {
       "title": "Cryptomator glabātuve",

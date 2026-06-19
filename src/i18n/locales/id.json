@@ -2861,7 +2861,12 @@
       "extractedAll": "{count} file diekstrak ke {path}",
       "dropFilesHint": "Seret file atau folder ke sini, atau gunakan tombol di bawah",
       "itemSingular": "item",
-      "itemPlural": "item"
+      "itemPlural": "item",
+      "reportExported": "Laporan brankas disimpan ke {path}",
+      "reportCopied": "Laporan brankas disalin ke papan klip",
+      "exportReportHint": "Ekspor laporan teknis lengkap: metadata brankas, enkripsi, koreksi kesalahan, dan daftar berkas lengkap",
+      "copyReportHint": "Salin laporan ke papan klip",
+      "copyReport": "Salin"
     },
     "cryptomator": {
       "title": "Vault Cryptomator",

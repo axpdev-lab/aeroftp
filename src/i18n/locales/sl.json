@@ -2861,7 +2861,12 @@
       "extractedAll": "Izvlečenih {count} datotek v {path}",
       "dropFilesHint": "Povlecite datoteke ali mape sem ali uporabite spodnje gumbe",
       "itemSingular": "element",
-      "itemPlural": "elementi"
+      "itemPlural": "elementi",
+      "reportExported": "Poročilo trezorja shranjeno v {path}",
+      "reportCopied": "Poročilo trezorja kopirano v odložišče",
+      "exportReportHint": "Izvozi celovito tehnično poročilo: metapodatke trezorja, šifriranje, popravljanje napak in celoten seznam datotek",
+      "copyReportHint": "Kopiraj poročilo v odložišče",
+      "copyReport": "Kopiraj"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",
