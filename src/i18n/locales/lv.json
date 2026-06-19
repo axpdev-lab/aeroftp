@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Serveris atbild lēnāk nekā parasti. Turpiniet gaidīt vai atceliet savienojumu (varat arī nospiest Esc).",
       "connectionCancelled": "Savienojums atcelts",
       "keepWaiting": "Turpināt gaidīt",
-      "cancelConnection": "Atcelt savienojumu"
+      "cancelConnection": "Atcelt savienojumu",
+      "dropImported": "Šajā mapē importēti {count} vienumi",
+      "dropFailed": "Neizdevās importēt {count} vienumus"
     },
     "about": {
       "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Mape pievienota",
       "extractAll": "Izvilkt visu",
       "extractAllHint": "Izvilkt visus glabātavas failus mapē",
-      "extractedAll": "Izvilkti {count} fail(i) uz {path}"
+      "extractedAll": "Izvilkti {count} fail(i) uz {path}",
+      "dropFilesHint": "Velciet failus vai mapes šeit vai izmantojiet zemāk esošās pogas",
+      "itemSingular": "vienums",
+      "itemPlural": "vienumi"
     },
     "cryptomator": {
       "title": "Cryptomator glabātuve",

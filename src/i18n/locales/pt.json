@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "O servidor está a demorar mais do que o habitual a responder. Continue a aguardar ou cancele a ligação (também pode premir Esc).",
       "connectionCancelled": "Ligação cancelada",
       "keepWaiting": "Continuar a aguardar",
-      "cancelConnection": "Cancelar ligação"
+      "cancelConnection": "Cancelar ligação",
+      "dropImported": "{count} itens importados para esta pasta",
+      "dropFailed": "Falha ao importar {count} itens"
     },
     "about": {
       "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Pasta adicionada",
       "extractAll": "Extrair tudo",
       "extractAllHint": "Extrair todos os ficheiros do cofre para uma pasta",
-      "extractedAll": "Extraídos {count} ficheiro(s) para {path}"
+      "extractedAll": "Extraídos {count} ficheiro(s) para {path}",
+      "dropFilesHint": "Arraste arquivos ou pastas para aqui, ou use os botões abaixo",
+      "itemSingular": "item",
+      "itemPlural": "itens"
     },
     "cryptomator": {
       "title": "Cofre Cryptomator",

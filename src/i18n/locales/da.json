@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Serveren er længere tid om at svare end normalt. Bliv ved med at vente, eller annuller forbindelsen (du kan også trykke på Esc).",
       "connectionCancelled": "Forbindelse annulleret",
       "keepWaiting": "Bliv ved med at vente",
-      "cancelConnection": "Annuller forbindelse"
+      "cancelConnection": "Annuller forbindelse",
+      "dropImported": "Importerede {count} elementer til denne mappe",
+      "dropFailed": "Kunne ikke importere {count} elementer"
     },
     "about": {
       "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Mappe tilføjet",
       "extractAll": "Udpak alt",
       "extractAllHint": "Udpak alle filer i boksen til en mappe",
-      "extractedAll": "Udpakkede {count} fil(er) til {path}"
+      "extractedAll": "Udpakkede {count} fil(er) til {path}",
+      "dropFilesHint": "Træk filer eller mapper hertil, eller brug knapperne nedenfor",
+      "itemSingular": "element",
+      "itemPlural": "elementer"
     },
     "cryptomator": {
       "title": "Cryptomator-boks",

@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Sunucu her zamankinden daha uzun sürede yanıt veriyor. Beklemeye devam edin veya bağlantıyı iptal edin (Esc tuşuna da basabilirsiniz).",
       "connectionCancelled": "Bağlantı iptal edildi",
       "keepWaiting": "Beklemeye devam et",
-      "cancelConnection": "Bağlantıyı iptal et"
+      "cancelConnection": "Bağlantıyı iptal et",
+      "dropImported": "Bu klasöre {count} öğe içe aktarıldı",
+      "dropFailed": "{count} öğe içe aktarılamadı"
     },
     "about": {
       "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Klasör eklendi",
       "extractAll": "Tümünü çıkar",
       "extractAllHint": "Kasadaki her dosyayı bir klasöre çıkar",
-      "extractedAll": "{count} dosya {path} konumuna çıkarıldı"
+      "extractedAll": "{count} dosya {path} konumuna çıkarıldı",
+      "dropFilesHint": "Dosyaları veya klasörleri buraya sürükleyin ya da aşağıdaki düğmeleri kullanın",
+      "itemSingular": "öğe",
+      "itemPlural": "öğe"
     },
     "cryptomator": {
       "title": "Cryptomator Kasası",

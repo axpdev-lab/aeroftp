@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "เซิร์ฟเวอร์ใช้เวลาตอบสนองนานกว่าปกติ โปรดรอต่อไป หรือยกเลิกการเชื่อมต่อ (คุณสามารถกด Esc ได้เช่นกัน)",
       "connectionCancelled": "ยกเลิกการเชื่อมต่อแล้ว",
       "keepWaiting": "รอต่อไป",
-      "cancelConnection": "ยกเลิกการเชื่อมต่อ"
+      "cancelConnection": "ยกเลิกการเชื่อมต่อ",
+      "dropImported": "นำเข้า {count} รายการไปยังโฟลเดอร์นี้แล้ว",
+      "dropFailed": "นำเข้า {count} รายการไม่สำเร็จ"
     },
     "about": {
       "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -2856,7 +2858,10 @@
       "folderAdded": "เพิ่มโฟลเดอร์แล้ว",
       "extractAll": "แยกทั้งหมด",
       "extractAllHint": "แยกทุกไฟล์ในตู้นิรภัยไปยังโฟลเดอร์",
-      "extractedAll": "แยก {count} ไฟล์ไปยัง {path} แล้ว"
+      "extractedAll": "แยก {count} ไฟล์ไปยัง {path} แล้ว",
+      "dropFilesHint": "ลากไฟล์หรือโฟลเดอร์มาที่นี่ หรือใช้ปุ่มด้านล่าง",
+      "itemSingular": "รายการ",
+      "itemPlural": "รายการ"
     },
     "cryptomator": {
       "title": "ตู้นิรภัย Cryptomator",

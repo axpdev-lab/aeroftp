@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Сервер отвечает дольше обычного. Продолжайте ждать или отмените подключение (можно также нажать Esc).",
       "connectionCancelled": "Подключение отменено",
       "keepWaiting": "Продолжить ожидание",
-      "cancelConnection": "Отменить подключение"
+      "cancelConnection": "Отменить подключение",
+      "dropImported": "Импортировано {count} элементов в эту папку",
+      "dropFailed": "Не удалось импортировать {count} элементов"
     },
     "about": {
       "tagline": "Больше чем FTP. Полный инструментарий разработчика.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Папка добавлена",
       "extractAll": "Извлечь всё",
       "extractAllHint": "Извлечь все файлы из хранилища в папку",
-      "extractedAll": "Извлечено {count} файл(ов) в {path}"
+      "extractedAll": "Извлечено {count} файл(ов) в {path}",
+      "dropFilesHint": "Перетащите файлы или папки сюда или используйте кнопки ниже",
+      "itemSingular": "элемент",
+      "itemPlural": "элементы"
     },
     "cryptomator": {
       "title": "Хранилище Cryptomator",

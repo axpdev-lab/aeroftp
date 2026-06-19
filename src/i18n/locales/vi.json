@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Máy chủ đang phản hồi lâu hơn bình thường. Hãy tiếp tục chờ, hoặc hủy kết nối (bạn cũng có thể nhấn Esc).",
       "connectionCancelled": "Đã hủy kết nối",
       "keepWaiting": "Tiếp tục chờ",
-      "cancelConnection": "Hủy kết nối"
+      "cancelConnection": "Hủy kết nối",
+      "dropImported": "Đã nhập {count} mục vào thư mục này",
+      "dropFailed": "Không thể nhập {count} mục"
     },
     "about": {
       "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Đã thêm thư mục",
       "extractAll": "Trích xuất tất cả",
       "extractAllHint": "Trích xuất mọi tệp trong két vào một thư mục",
-      "extractedAll": "Đã trích xuất {count} tệp vào {path}"
+      "extractedAll": "Đã trích xuất {count} tệp vào {path}",
+      "dropFilesHint": "Kéo tệp hoặc thư mục vào đây, hoặc dùng các nút bên dưới",
+      "itemSingular": "mục",
+      "itemPlural": "mục"
     },
     "cryptomator": {
       "title": "Kho Cryptomator",

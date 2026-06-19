@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "सर्वर को जवाब देने में सामान्य से अधिक समय लग रहा है। प्रतीक्षा करते रहें, या कनेक्शन रद्द करें (आप Esc भी दबा सकते हैं)।",
       "connectionCancelled": "कनेक्शन रद्द किया गया",
       "keepWaiting": "प्रतीक्षा करते रहें",
-      "cancelConnection": "कनेक्शन रद्द करें"
+      "cancelConnection": "कनेक्शन रद्द करें",
+      "dropImported": "इस फ़ोल्डर में {count} आइटम आयात किए गए",
+      "dropFailed": "{count} आइटम आयात करने में विफल"
     },
     "about": {
       "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -2856,7 +2858,10 @@
       "folderAdded": "फ़ोल्डर जोड़ा गया",
       "extractAll": "सभी निकालें",
       "extractAllHint": "वॉल्ट की हर फ़ाइल को एक फ़ोल्डर में निकालें",
-      "extractedAll": "{count} फ़ाइल {path} में निकाली गईं"
+      "extractedAll": "{count} फ़ाइल {path} में निकाली गईं",
+      "dropFilesHint": "फ़ाइलें या फ़ोल्डर यहाँ खींचें, या नीचे दिए गए बटनों का उपयोग करें",
+      "itemSingular": "आइटम",
+      "itemPlural": "आइटम"
     },
     "cryptomator": {
       "title": "Cryptomator वॉल्ट",

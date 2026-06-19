@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "El servidor está tardando más de lo habitual en responder. Sigue esperando o cancela la conexión (también puedes pulsar Esc).",
       "connectionCancelled": "Conexión cancelada",
       "keepWaiting": "Seguir esperando",
-      "cancelConnection": "Cancelar conexión"
+      "cancelConnection": "Cancelar conexión",
+      "dropImported": "Se importaron {count} elementos a esta carpeta",
+      "dropFailed": "No se pudieron importar {count} elementos"
     },
     "about": {
       "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Carpeta añadida",
       "extractAll": "Extraer todo",
       "extractAllHint": "Extraer todos los archivos de la caja fuerte a una carpeta",
-      "extractedAll": "Se extrajeron {count} archivo(s) a {path}"
+      "extractedAll": "Se extrajeron {count} archivo(s) a {path}",
+      "dropFilesHint": "Arrastra archivos o carpetas aquí, o usa los botones de abajo",
+      "itemSingular": "elemento",
+      "itemPlural": "elementos"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",

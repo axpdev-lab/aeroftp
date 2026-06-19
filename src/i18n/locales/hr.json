@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Poslužitelj odgovara sporije nego inače. Nastavite čekati ili otkažite vezu (možete pritisnuti i Esc).",
       "connectionCancelled": "Veza otkazana",
       "keepWaiting": "Nastavi čekati",
-      "cancelConnection": "Otkaži vezu"
+      "cancelConnection": "Otkaži vezu",
+      "dropImported": "Uvezeno {count} stavki u ovu mapu",
+      "dropFailed": "Uvoz {count} stavki nije uspio"
     },
     "about": {
       "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Mapa dodana",
       "extractAll": "Izdvoji sve",
       "extractAllHint": "Izdvoji svaku datoteku iz trezora u mapu",
-      "extractedAll": "Izdvojeno {count} datoteka u {path}"
+      "extractedAll": "Izdvojeno {count} datoteka u {path}",
+      "dropFilesHint": "Povucite datoteke ili mape ovdje ili upotrijebite gumbe ispod",
+      "itemSingular": "stavka",
+      "itemPlural": "stavke"
     },
     "cryptomator": {
       "title": "Cryptomator Trezor",

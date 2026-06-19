@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Þjónninn er lengur en venjulega að svara. Haltu áfram að bíða eða hættu við tenginguna (þú getur líka ýtt á Esc).",
       "connectionCancelled": "Hætt við tengingu",
       "keepWaiting": "Halda áfram að bíða",
-      "cancelConnection": "Hætta við tengingu"
+      "cancelConnection": "Hætta við tengingu",
+      "dropImported": "Flutti inn {count} atriði í þessa möppu",
+      "dropFailed": "Mistókst að flytja inn {count} atriði"
     },
     "about": {
       "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Möppu bætt við",
       "extractAll": "Afþjappa allt",
       "extractAllHint": "Afþjappa allar skrár í hólfinu í möppu",
-      "extractedAll": "Afþjappaði {count} skrá(r) í {path}"
+      "extractedAll": "Afþjappaði {count} skrá(r) í {path}",
+      "dropFilesHint": "Dragðu skrár eða möppur hingað, eða notaðu hnappana hér að neðan",
+      "itemSingular": "atriði",
+      "itemPlural": "atriði"
     },
     "cryptomator": {
       "title": "Cryptomator Hvelfing",

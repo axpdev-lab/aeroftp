@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "De server reageert langzamer dan normaal. Blijf wachten of annuleer de verbinding (je kunt ook op Esc drukken).",
       "connectionCancelled": "Verbinding geannuleerd",
       "keepWaiting": "Blijf wachten",
-      "cancelConnection": "Verbinding annuleren"
+      "cancelConnection": "Verbinding annuleren",
+      "dropImported": "{count} items geïmporteerd in deze map",
+      "dropFailed": "Kan {count} items niet importeren"
     },
     "about": {
       "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Map toegevoegd",
       "extractAll": "Alles uitpakken",
       "extractAllHint": "Alle bestanden in de kluis naar een map uitpakken",
-      "extractedAll": "{count} bestand(en) uitgepakt naar {path}"
+      "extractedAll": "{count} bestand(en) uitgepakt naar {path}",
+      "dropFilesHint": "Sleep bestanden of mappen hierheen, of gebruik de knoppen hieronder",
+      "itemSingular": "item",
+      "itemPlural": "items"
     },
     "cryptomator": {
       "title": "Cryptomator-kluis",

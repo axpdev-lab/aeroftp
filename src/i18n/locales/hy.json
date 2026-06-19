@@ -1279,7 +1279,9 @@
       "stillConnectingHint": "Սերվերը սովորականից ավելի երկար է պատասխանում։ Շարունակեք սպասել կամ չեղարկեք կապը (կարող եք նաև սեղմել Esc)։",
       "connectionCancelled": "Կապը չեղարկվեց",
       "keepWaiting": "Շարունակել սպասել",
-      "cancelConnection": "Չեղարկել կապը"
+      "cancelConnection": "Չեղարկել կապը",
+      "dropImported": "{count} տարր ներմուծվեց այս թղթապանակ",
+      "dropFailed": "Չհաջողվեց ներմուծել {count} տարր"
     },
     "about": {
       "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -2849,7 +2851,10 @@
       "folderAdded": "Թղթապանակն ավելացվեց",
       "extractAll": "Հանել բոլորը",
       "extractAllHint": "Հանել պահոցի բոլոր ֆայլերը թղթապանակ",
-      "extractedAll": "Հանվել է {count} ֆայլ {path}-ում"
+      "extractedAll": "Հանվել է {count} ֆայլ {path}-ում",
+      "dropFilesHint": "Քաշեք ֆայլերը կամ թղթապանակները այստեղ, կամ օգտագործեք ստորև գտնվող կոճակները",
+      "itemSingular": "տարր",
+      "itemPlural": "տարր"
     },
     "cryptomator": {
       "title": "Cryptomator Պահոց",

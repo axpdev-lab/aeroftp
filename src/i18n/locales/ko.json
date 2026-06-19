@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "서버 응답이 평소보다 오래 걸리고 있습니다. 계속 기다리거나 연결을 취소하세요 (Esc 키를 눌러도 됩니다).",
       "connectionCancelled": "연결이 취소됨",
       "keepWaiting": "계속 기다리기",
-      "cancelConnection": "연결 취소"
+      "cancelConnection": "연결 취소",
+      "dropImported": "이 폴더에 {count}개 항목을 가져왔습니다",
+      "dropFailed": "{count}개 항목을 가져오지 못했습니다"
     },
     "about": {
       "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "폴더가 추가됨",
       "extractAll": "모두 추출",
       "extractAllHint": "보관소의 모든 파일을 폴더로 추출",
-      "extractedAll": "{count}개 파일을 {path}에 추출함"
+      "extractedAll": "{count}개 파일을 {path}에 추출함",
+      "dropFilesHint": "파일이나 폴더를 여기에 끌어다 놓거나 아래 버튼을 사용하세요",
+      "itemSingular": "항목",
+      "itemPlural": "항목"
     },
     "cryptomator": {
       "title": "Cryptomator 저장소",

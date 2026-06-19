@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Strežnik odgovarja počasneje kot običajno. Še naprej počakajte ali prekličite povezavo (pritisnete lahko tudi Esc).",
       "connectionCancelled": "Povezava preklicana",
       "keepWaiting": "Še naprej čakaj",
-      "cancelConnection": "Prekliči povezavo"
+      "cancelConnection": "Prekliči povezavo",
+      "dropImported": "V to mapo je bilo uvoženih {count} elementov",
+      "dropFailed": "Uvoz {count} elementov ni uspel"
     },
     "about": {
       "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Mapa dodana",
       "extractAll": "Izvleci vse",
       "extractAllHint": "Izvleci vsako datoteko iz trezorja v mapo",
-      "extractedAll": "Izvlečenih {count} datotek v {path}"
+      "extractedAll": "Izvlečenih {count} datotek v {path}",
+      "dropFilesHint": "Povlecite datoteke ali mape sem ali uporabite spodnje gumbe",
+      "itemSingular": "element",
+      "itemPlural": "elementi"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

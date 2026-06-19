@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Server odpovídá déle než obvykle. Počkejte, nebo zrušte připojení (můžete také stisknout Esc).",
       "connectionCancelled": "Připojení zrušeno",
       "keepWaiting": "Čekat dál",
-      "cancelConnection": "Zrušit připojení"
+      "cancelConnection": "Zrušit připojení",
+      "dropImported": "Importováno {count} položek do této složky",
+      "dropFailed": "Nepodařilo se importovat {count} položek"
     },
     "about": {
       "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Složka přidána",
       "extractAll": "Extrahovat vše",
       "extractAllHint": "Extrahovat každý soubor v trezoru do složky",
-      "extractedAll": "Extrahováno {count} souborů do {path}"
+      "extractedAll": "Extrahováno {count} souborů do {path}",
+      "dropFilesHint": "Přetáhněte sem soubory nebo složky, nebo použijte tlačítka níže",
+      "itemSingular": "položka",
+      "itemPlural": "položky"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

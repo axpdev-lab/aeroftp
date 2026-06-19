@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Palvelin vastaa tavallista hitaammin. Jatka odottamista tai peruuta yhteys (voit myös painaa Esc).",
       "connectionCancelled": "Yhteys peruutettu",
       "keepWaiting": "Jatka odottamista",
-      "cancelConnection": "Peruuta yhteys"
+      "cancelConnection": "Peruuta yhteys",
+      "dropImported": "Tuotiin {count} kohdetta tähän kansioon",
+      "dropFailed": "{count} kohteen tuonti epäonnistui"
     },
     "about": {
       "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Kansio lisätty",
       "extractAll": "Pura kaikki",
       "extractAllHint": "Pura kaikki holvin tiedostot kansioon",
-      "extractedAll": "Purettiin {count} tiedosto(a) sijaintiin {path}"
+      "extractedAll": "Purettiin {count} tiedosto(a) sijaintiin {path}",
+      "dropFilesHint": "Vedä tiedostoja tai kansioita tähän tai käytä alla olevia painikkeita",
+      "itemSingular": "kohde",
+      "itemPlural": "kohdetta"
     },
     "cryptomator": {
       "title": "Cryptomator-holvi",

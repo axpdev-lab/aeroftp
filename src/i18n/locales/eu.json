@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Zerbitzariak ohi baino denbora gehiago behar du erantzuteko. Itxaron jarraitu edo bertan behera utzi konexioa (Esc ere saka dezakezu).",
       "connectionCancelled": "Konexioa bertan behera utzita",
       "keepWaiting": "Itxaroten jarraitu",
-      "cancelConnection": "Utzi konexioa"
+      "cancelConnection": "Utzi konexioa",
+      "dropImported": "{count} elementu inportatu dira karpeta honetara",
+      "dropFailed": "Ezin izan dira {count} elementu inportatu"
     },
     "about": {
       "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2856,7 +2858,10 @@
       "folderAdded": "Karpeta gehituta",
       "extractAll": "Erauzi guztiak",
       "extractAllHint": "Erauzi gangako fitxategi guztiak karpeta batera",
-      "extractedAll": "{count} fitxategi erauzi dira {path} helbidera"
+      "extractedAll": "{count} fitxategi erauzi dira {path} helbidera",
+      "dropFilesHint": "Arrastatu fitxategiak edo karpetak hona, edo erabili beheko botoiak",
+      "itemSingular": "elementu",
+      "itemPlural": "elementu"
     },
     "cryptomator": {
       "title": "Cryptomator Ganga",

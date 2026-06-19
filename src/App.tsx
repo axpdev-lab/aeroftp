@@ -9,6 +9,7 @@ import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
@@ -4082,6 +4083,42 @@ interface UpdateVerificationInfo {
       void invoke('local_panel_watch_stop').catch(() => { /* ignore */ });
     };
   }, [loadLocalFiles]);
+
+  // Ehud #2: OS file/folder drag&drop from the system File Explorer onto the
+  // AeroFile local panel imports the dropped items into the current local
+  // directory (copy_local_file is recursive, so folders are pulled in whole).
+  // Skipped while the vault panel is open (it registers its own drop listener)
+  // or the connection screen is showing (no local target). The webview drop
+  // event is window-global, so this gate is what keeps it from double-firing.
+  useEffect(() => {
+    if (showVaultPanel || showConnectionScreen) return;
+    const webview = getCurrentWebview();
+    return guardedUnlisten(webview.onDragDropEvent(async (event) => {
+      if (event.payload.type !== 'drop') return;
+      const dest = currentLocalPathRef.current;
+      if (!dest || !event.payload.paths.length) return;
+      let copied = 0;
+      const failures: string[] = [];
+      for (const src of event.payload.paths) {
+        const base = src.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+        if (!base) continue;
+        const to = `${dest.replace(/\/+$/, '')}/${base}`;
+        try {
+          await invoke('copy_local_file', { from: src, to });
+          copied++;
+        } catch {
+          failures.push(base);
+        }
+      }
+      if (copied > 0) {
+        await loadLocalFiles(currentLocalPathRef.current);
+        notify.success(t('toast.dropImported', { count: copied.toString() }));
+      }
+      if (failures.length) {
+        notify.error(t('toast.dropFailed', { count: failures.length.toString() }), failures.join(', '));
+      }
+    }));
+  }, [showVaultPanel, showConnectionScreen, loadLocalFiles, notify, t]);
 
   // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
   // so the user gets feedback that the click that hit a dead session
