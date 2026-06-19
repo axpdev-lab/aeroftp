@@ -43,6 +43,7 @@ mod chat_history;
 mod cloud_config;
 mod cloud_provider_factory;
 mod cloud_service;
+mod coding_checkpoints;
 mod coding_context;
 mod coding_rules;
 mod context_intelligence;

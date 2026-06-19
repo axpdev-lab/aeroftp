@@ -54,6 +54,36 @@ export interface TransferPlanResultData {
     plan: TransferPlan;
 }
 
+export type CodingPlanRiskLevel = 'low' | 'medium' | 'high';
+export type CodingPlanScope = 'single_file' | 'multi_file' | 'investigation' | 'unknown';
+
+export interface CodingPlanStep {
+    id: string;
+    title: string;
+    description?: string;
+    files?: string[];
+}
+
+export interface CodingPlanArtifact {
+    kind: 'coding_plan';
+    title: string;
+    summary: string;
+    riskLevel: CodingPlanRiskLevel;
+    scope: CodingPlanScope;
+    files: string[];
+    steps: CodingPlanStep[];
+    verification: string[];
+    questions: string[];
+    warnings: string[];
+}
+
+export interface CodingPlanResultData {
+    kind: 'coding_plan';
+    plan: CodingPlanArtifact;
+}
+
+export type ChatResultData = TransferPlanResultData | CodingPlanResultData;
+
 export interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -78,7 +108,7 @@ export interface Message {
         cacheReadTokens?: number;      // Anthropic: tokens read from cache (90% cheaper)
         cacheSavings?: number;         // Estimated USD savings from caching
     };
-    toolResultData?: TransferPlanResultData;
+    toolResultData?: ChatResultData;
 }
 
 export interface AIChatProps {

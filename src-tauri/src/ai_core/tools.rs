@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, LazyLock};
 
 use crate::ai_core::agent_tools;
+use crate::ai_core::coding_tools;
 use crate::ai_core::correct_tools;
 use crate::ai_core::local_tools;
 use crate::ai_core::remote_tools;
@@ -116,6 +117,9 @@ pub trait ToolCtx: Send + Sync {
         None
     }
     fn approval_grant_id(&self) -> Option<&str> {
+        None
+    }
+    fn session_id(&self) -> Option<&str> {
         None
     }
     fn tauri_app_handle(&self) -> Option<tauri::AppHandle> {
@@ -451,6 +455,38 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
+        },
+        ToolDef {
+            name: "coding_checkpoint_create",
+            description: "Snapshot explicit workspace files before coding-agent mutations.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "label": {"type": "string"},
+                    "anchor_message_id": {"type": "string"},
+                    "conversation_anchor": {"type": "string"}
+                },
+                "required": ["workspace_root", "paths"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_checkpoint_restore",
+            description: "Restore files from a workspace checkpoint, optionally as a dry run.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "checkpoint_id": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["checkpoint_id"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
         },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
@@ -1779,6 +1815,8 @@ pub async fn dispatch_tool(
         "local_stat_batch" => local_tools::local_stat_batch(ctx, args).await,
         "local_diff" => local_tools::local_diff(ctx, args).await,
         "local_tree" => local_tools::local_tree(ctx, args).await,
+        "coding_checkpoint_create" => coding_tools::coding_checkpoint_create(ctx, args).await,
+        "coding_checkpoint_restore" => coding_tools::coding_checkpoint_restore(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,

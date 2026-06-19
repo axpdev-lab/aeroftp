@@ -356,6 +356,28 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'medium',
     },
+    {
+        name: 'coding_checkpoint_create',
+        description: 'Snapshot explicit workspace files before coding-agent edits. Stores file bytes plus chat/session anchor metadata for later restore.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root containing every path to snapshot', required: true },
+            { name: 'paths', type: 'array', description: 'Array of workspace-relative or absolute file paths to snapshot', required: true },
+            { name: 'label', type: 'string', description: 'Short human-readable checkpoint label', required: false },
+            { name: 'anchor_message_id', type: 'string', description: 'Optional chat message ID to anchor the checkpoint', required: false },
+            { name: 'conversation_anchor', type: 'string', description: 'Optional short note describing the conversation point', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'coding_checkpoint_restore',
+        description: 'Restore files from a coding checkpoint. Rewrites files that existed and deletes files that were absent when the checkpoint was created.',
+        parameters: [
+            { name: 'checkpoint_id', type: 'string', description: 'Checkpoint ID returned by coding_checkpoint_create', required: true },
+            { name: 'paths', type: 'array', description: 'Optional subset of checkpoint paths to restore', required: false },
+            { name: 'dry_run', type: 'boolean', description: 'Preview restore actions without changing files', required: false },
+        ],
+        dangerLevel: 'high',
+    },
 
     // Clipboard
     {

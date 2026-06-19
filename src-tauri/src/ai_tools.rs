@@ -71,6 +71,8 @@ const ALLOWED_TOOLS: &[&str] = &[
     "local_stat_batch",
     "local_diff",
     "local_tree",
+    "coding_checkpoint_create",
+    "coding_checkpoint_restore",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -138,6 +140,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "archive_compress"
                 | "archive_decompress"
                 | "clipboard_write"
+                | "coding_checkpoint_restore"
                 | "shell_execute"
         ),
     }
@@ -156,7 +159,11 @@ fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
 
     !matches!(
         tool_name,
-        "remote_delete" | "local_delete" | "local_trash" | "archive_decompress"
+        "remote_delete"
+            | "local_delete"
+            | "local_trash"
+            | "archive_decompress"
+            | "coding_checkpoint_restore"
     )
 }
 
@@ -315,6 +322,8 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "from",
         "to",
         "destination",
+        "workspace_root",
+        "checkpoint_id",
         "local_dir",
         "remote_dir",
         "pattern",
@@ -322,6 +331,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "theme",
         "entry",
         "category",
+        "dry_run",
     ] {
         if let Some(value) = args.get(key) {
             details.push(format!("{}: {}", key, format_approval_value(value)));
@@ -390,6 +400,8 @@ fn human_tool_label(tool_name: &str) -> &str {
         "archive_compress" => "Create Archive",
         "archive_decompress" => "Extract Archive",
         "clipboard_write" => "Write to Clipboard",
+        "coding_checkpoint_create" => "Create Coding Checkpoint",
+        "coding_checkpoint_restore" => "Restore Coding Checkpoint",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -922,6 +934,60 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                     }
                 } else {
                     errors.push(format!("Missing '{}' parameter", key));
+                }
+            }
+        }
+        "coding_checkpoint_create" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            let paths = args.get("paths").and_then(|v| v.as_array());
+            if paths.is_none() || paths.is_some_and(|a| a.is_empty()) {
+                errors.push("'paths' array is missing or empty".to_string());
+            } else if let Some(arr) = paths {
+                if arr.len() > 100 {
+                    errors.push(format!(
+                        "Too many checkpoint paths: {} (max 100)",
+                        arr.len()
+                    ));
+                }
+                for path in arr.iter().filter_map(|v| v.as_str()) {
+                    if let Err(e) = validate_path(path, "paths[]") {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+        "coding_checkpoint_restore" => {
+            if args
+                .get("checkpoint_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .is_none()
+            {
+                errors.push("Missing 'checkpoint_id' parameter".to_string());
+            }
+            if let Some(paths) = args.get("paths").and_then(|v| v.as_array()) {
+                if paths.is_empty() {
+                    errors.push("'paths' array cannot be empty when provided".to_string());
+                }
+                for path in paths.iter().filter_map(|v| v.as_str()) {
+                    if let Err(e) = validate_path(path, "paths[]") {
+                        errors.push(e);
+                    }
                 }
             }
         }
@@ -1620,6 +1686,7 @@ pub async fn execute_ai_tool(
         creds: crate::ai_core::tauri_impl::VaultCredentialProvider,
         context_local_path,
         approval_grant_id,
+        session_id,
     };
     crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args)
         .await

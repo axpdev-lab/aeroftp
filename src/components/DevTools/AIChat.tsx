@@ -30,9 +30,10 @@ import { useAgentMemory } from './useAgentMemory';
 import { buildContextBlock, buildSystemPrompt } from './aiChatSystemPrompt';
 import { getParameterPreset } from './aiProviderProfiles';
 import { detectProjectContext, invalidateProjectCache, fetchFileImports, fetchGitContext } from './aiChatProjectContext';
-import { fetchCodingRules, invalidateCodingRulesCache } from './aiChatRules';
-import { extractContextMentionCandidates, resolveContextMentions, formatMentionAttachmentsForPrompt } from './aiChatMentions';
-import { buildSmartContext, formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
+import { invalidateCodingRulesCache } from './aiChatRules';
+import { extractContextMentionCandidates } from './aiChatMentions';
+import { formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
+import { buildCodingPlanPromptBlock, buildCodingWorkspaceContext, buildSmartContextForWorkspace, resolveAgentPromptProfile, workspaceToSystemPromptContext } from './aiChatCodingWorkspace';
 import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
 import { BranchSelector } from './ConversationBranch';
 import type { ProjectContext } from '../../types/contextIntelligence';
@@ -761,7 +762,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         // The backend OS dialog is the single confirmation gate for mutative tools.
         if (mode === 'extreme') return true;
         // Never auto-approve destructive or credential-backed tools in other modes
-        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec'];
+        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec', 'coding_checkpoint_restore'];
         if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
         // Safe tools always auto-approved in all modes
         if (isSafeTool(toolName, allTools)) return true;
@@ -2007,58 +2008,58 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             // Phase 3: Determine budget mode and build smart context (#70, #71)
             const budgetMode = determineBudgetMode(modelContextWindow);
             const taskType = detectTaskType(userMessage.content);
-
-            // Build RAG summary from index
-            const ragSummary = ragIndexRef.current ? (() => {
-                const idx = ragIndexRef.current!;
-                const extSummary = Object.entries((idx.extensions || {}) as Record<string, number>)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 8)
-                    .map(([ext, count]) => `${count} .${ext}`)
-                    .join(', ');
-                return `- Workspace indexed: ${idx.files_count} files (${extSummary})`;
-            })() : null;
-
             const relevantAgentMemory = await searchMemory(userMessage.content, 5);
+            const workspaceCtx = await buildCodingWorkspaceContext({
+                projectPath,
+                localPath,
+                remotePath,
+                projectContext: projectContextRef.current,
+                gitBranch: gitBranchRef.current,
+                gitSummary: gitSummaryRef.current,
+                fileImports: fileImportsRef.current,
+                ragIndex: ragIndexRef.current,
+                userPrompt: userMessage.content,
+            });
 
             // Build smart context with priority-based allocation
             const contextTokenBudget = Math.floor(modelContextWindow * 0.15); // 15% for smart context
-            const smartCtx = buildSmartContext(
-                userMessage.content,
+            const smartCtx = buildSmartContextForWorkspace(workspaceCtx, {
+                userPrompt: userMessage.content,
                 taskType,
-                projectContextRef.current,
-                gitSummaryRef.current,
-                relevantAgentMemory || agentMemory,
-                fileImportsRef.current,
-                ragSummary,
-                contextTokenBudget,
+                agentMemory: relevantAgentMemory || agentMemory,
+                tokenBudget: contextTokenBudget,
                 budgetMode,
-            );
+            });
             const smartContextBlock = formatSmartContextForPrompt(smartCtx);
-            const codingRulesBlock = projectPath ? await fetchCodingRules(projectPath) : '';
-            const mentionAttachments = projectPath ? await resolveContextMentions(userMessage.content, projectPath) : [];
-            const mentionContextBlock = formatMentionAttachmentsForPrompt(mentionAttachments);
+            const codingPlanBlock = buildCodingPlanPromptBlock(workspaceCtx, {
+                userPrompt: userMessage.content,
+                taskType,
+                agentMode,
+            });
+            const promptProfile = resolveAgentPromptProfile(workspaceCtx, {
+                userPrompt: userMessage.content,
+                taskType,
+            });
 
             // Build context-aware system prompt with Phase 3 data
             const contextBlock = buildContextBlock({
                 providerType, isConnected, serverHost, serverPort, serverUser,
-                remotePath, localPath, selectedFiles,
+                selectedFiles,
                 activeFilePanel, isCloudConnection,
                 editorFileName, editorFilePath,
                 ragIndex: ragIndexRef.current,
                 macros,
-                projectContext: projectContextRef.current,
-                gitBranch: gitBranchRef.current || undefined,
-                gitSummary: gitSummaryRef.current || undefined,
                 agentMemory: relevantAgentMemory || agentMemory,
-                fileImports: fileImportsRef.current,
-                codingRulesBlock: codingRulesBlock || undefined,
-                mentionContextBlock: mentionContextBlock || undefined,
+                codingPlanBlock: codingPlanBlock || undefined,
                 smartContextBlock: smartContextBlock || undefined,
+                ...workspaceToSystemPromptContext(workspaceCtx),
             });
             // Build extra tool definitions for system prompt (plugin + macro, not built-in)
             const extraToolDefs = toNativeDefinitions([...pluginTools, ...macrosToToolDefinitions(macros)]);
-            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, extraToolDefs);
+            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, {
+                extraTools: extraToolDefs,
+                promptProfile,
+            });
 
             // Build message history (images only on the current user message)
             const currentUserMsg: Record<string, unknown> = {

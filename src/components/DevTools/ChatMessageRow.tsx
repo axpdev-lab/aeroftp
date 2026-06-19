@@ -12,6 +12,8 @@ import { Globe, Check, Copy, Wrench, GitBranch } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBlock } from './ThinkingBlock';
 import { getToolLabel } from './aiChatToolLabels';
+import { CodingPlanArtifactCard } from './CodingPlanArtifactCard';
+import { extractCodingPlanArtifact, getCodingPlanFromResultData } from './aiChatCodingPlan';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
 import type { AIProviderType } from '../../types/ai';
 
@@ -58,7 +60,13 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     TransferPlanReview,
 }) => {
     const isAssistant = message.role === 'assistant';
-    const isLong = isAssistant && message.content.length > 500;
+    const extractedCodingPlan = React.useMemo(
+        () => extractCodingPlanArtifact(message.content),
+        [message.content],
+    );
+    const codingPlan = getCodingPlanFromResultData(message.toolResultData) || extractedCodingPlan.plan;
+    const renderedContent = codingPlan ? extractedCodingPlan.content : message.content;
+    const isLong = isAssistant && renderedContent.length > 500;
     return (
         <div
             data-message-id={message.id}
@@ -97,11 +105,14 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                             }`}
                     >
                         <MarkdownRenderer
-                            content={message.content}
+                            content={renderedContent}
                             isStreaming={isStreamingRow}
                             editorFilePath={editorFilePath}
                             editorFileName={editorFileName}
                         />
+                        {codingPlan && (
+                            <CodingPlanArtifactCard plan={codingPlan} />
+                        )}
                         {isTransferPlanResultData(message.toolResultData) && (
                             <TransferPlanReview
                                 plan={message.toolResultData.plan}
