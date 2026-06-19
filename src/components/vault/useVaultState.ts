@@ -1268,7 +1268,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // encryption pipeline, error-correction state, chunk-level stats (re-fetched
     // from the backend, richer than the UI-mapped entries) and the full file
     // list. Shared by Export .txt/.json (save dialog) and Copy (clipboard).
-    const profileForLevel = (lvl: number): string => (lvl === 3 ? 'fast' : lvl === 19 ? 'archive' : 'balanced');
+    const profileForLevel = (lvl: number): string => (lvl === 3 ? 'fast' : lvl === 15 || lvl === 19 ? 'archive' : 'balanced');
 
     const buildVaultReport = async (format: 'txt' | 'json'): Promise<string> => {
         const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');

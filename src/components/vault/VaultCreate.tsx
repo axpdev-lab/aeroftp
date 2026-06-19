@@ -20,7 +20,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     const compressionProfiles: { id: VaultV3CompressionProfile; label: string; detail: string }[] = [
         { id: 'fast', label: 'Fast', detail: 'zstd -3' },
         { id: 'balanced', label: 'Balanced', detail: 'zstd -9' },
-        { id: 'archive', label: 'Archive', detail: 'zstd -19' },
+        { id: 'archive', label: 'Archive', detail: 'zstd -15' },
     ];
 
     // Ehud #8: mixed file/folder staging via two pickers feeding one list (Tauri's

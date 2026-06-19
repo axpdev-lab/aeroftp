@@ -313,10 +313,14 @@ fn info_from_summary(summary: &aerovault::v3::VaultSummaryV3) -> VaultV3Info {
 }
 
 /// zstd compression level -> the profile label shown on the technical receipt.
+/// Archive maps to zstd -15 (aerovault #5 item 10: the benchmark showed -19 buys
+/// only ~5-8% extra ratio for 2.5-14x the time and is pathological on
+/// incompressible media); -19 is still recognised as Archive so vaults created
+/// before the change keep their label.
 fn level_to_profile(level: i32) -> &'static str {
     match level {
         3 => "fast",
-        19 => "archive",
+        15 | 19 => "archive",
         _ => "balanced",
     }
 }
@@ -329,7 +333,7 @@ fn apply_profile_level(
 ) -> Result<aerovault::v3::CreateOptionsV3, String> {
     Ok(match profile {
         Some("fast") => opts.with_zstd_level(3),
-        Some("archive") => opts.with_zstd_level(19),
+        Some("archive") => opts.with_zstd_level(15),
         Some("balanced") | None | Some("") => opts,
         Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
     })
@@ -1127,6 +1131,8 @@ mod tests {
     #[test]
     fn level_to_profile_maps_known_levels() {
         assert_eq!(level_to_profile(3), "fast");
+        // Archive is now zstd -15; -19 stays recognised for pre-change vaults.
+        assert_eq!(level_to_profile(15), "archive");
         assert_eq!(level_to_profile(19), "archive");
         assert_eq!(level_to_profile(9), "balanced");
         assert_eq!(level_to_profile(1), "balanced");
@@ -1143,7 +1149,7 @@ mod tests {
             apply_profile_level(mk(), Some("archive"))
                 .unwrap()
                 .zstd_level,
-            19
+            15
         );
         // balanced / empty / none keep the crate default level (untouched).
         let default_level = mk().zstd_level;
