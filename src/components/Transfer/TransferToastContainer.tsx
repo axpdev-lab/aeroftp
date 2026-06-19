@@ -15,7 +15,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MinimizedTransferIndicator, TransferToastState } from './index';
+import { MinimizedTransferIndicator, ProgressCard, TransferToastState } from './index';
 
 /** Custom event name for transfer progress updates */
 export const TRANSFER_TOAST_EVENT = 'transfer-toast-update';
@@ -63,7 +63,9 @@ interface TransferToastContainerProps {
 
 export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ onOpen }) => {
     const [transfer, setTransfer] = useState<TransferToastState | null>(null);
+    const [minimized, setMinimized] = useState(false);
     const lastProgressUpdate = useRef<number>(Date.now());
+    const currentIdRef = useRef<string | null>(null);
 
     // Subscribe to transfer toast events
     useEffect(() => {
@@ -75,6 +77,13 @@ export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ 
             }
             if (detail.summary.transfer_id && detail.summary.transfer_id === dismissedTransferToastId) {
                 return;
+            }
+            // New transfer session -> default back to the full card (owner choice:
+            // shown by default; minimize is a per-transfer opt-in).
+            const nextId = detail.summary.transfer_id || null;
+            if (nextId !== currentIdRef.current) {
+                currentIdRef.current = nextId;
+                setMinimized(false);
             }
             setTransfer(detail);
             lastProgressUpdate.current = Date.now();
@@ -105,16 +114,26 @@ export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ 
         dismissTransferToast();
     }, []);
 
-    const handleOpen = useCallback(() => {
+    const handleOpenPanel = useCallback(() => {
         onOpen?.();
     }, [onOpen]);
 
     if (!transfer) return null;
+    if (minimized) {
+        return (
+            <MinimizedTransferIndicator
+                transfer={transfer}
+                onOpen={() => setMinimized(false)}
+                onCancel={handleCancel}
+            />
+        );
+    }
     return (
-        <MinimizedTransferIndicator
+        <ProgressCard
             transfer={transfer}
-            onOpen={handleOpen}
             onCancel={handleCancel}
+            onMinimize={() => setMinimized(true)}
+            onOpenPanel={onOpen ? handleOpenPanel : undefined}
         />
     );
 };

@@ -6,9 +6,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, Folder, X } from 'lucide-react';
-import { formatBytes } from '../../utils/formatters';
+import { Download, Upload, Folder, X, Minus, Maximize2 } from 'lucide-react';
+import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
+import { TransferProgressBar } from '../TransferProgressBar';
 
 /**
  * Truncate a path smartly: always show the last 2 segments with ellipsis prefix.
@@ -55,6 +56,8 @@ export interface TransferToastState {
     lanes?: TransferToastLane[];
     reservedLaneSlots?: number;
     maxChannels?: number;
+    /** Rolling aggregate speed samples (bytes/sec) for the collapsible graph. */
+    speedHistory?: number[];
 }
 
 // ============ Animated Bytes (Matrix-style for uploads) ============
@@ -96,6 +99,192 @@ export const AnimatedBytes: React.FC<AnimatedBytesProps> = ({ bytes, isAnimated 
     }, [bytes, isAnimated]);
 
     return <span className={isAnimated ? 'font-mono text-green-400' : ''}>{displayText}</span>;
+};
+
+// AeroProgress: the rich bar supports 4 gradient themes today; map the app's
+// wider EffectiveTheme set onto them deterministically (extra themes fall back
+// to the dark gradient until per-theme gradients land, tracked in the audit).
+type BarTheme = 'light' | 'dark' | 'tokyo' | 'cyber';
+function toBarTheme(effective: string): BarTheme {
+    if (effective === 'tokyo') return 'tokyo';
+    if (effective === 'cyber') return 'cyber';
+    if (effective === 'light') return 'light';
+    return 'dark';
+}
+
+// ============ Progress Lanes (per-file parallel channels) ============
+// One compact row per active / just-finished transfer lane (`lanes[]`), each
+// carrying its OWN real bytes/speed from the per-file executor events. This is
+// what makes parallel upload+download visible with real, synced data.
+interface ProgressLanesProps {
+    lanes: TransferToastLane[];
+    styles: ReturnType<typeof getToastStyles>;
+    barTheme: BarTheme;
+}
+
+export const ProgressLanes: React.FC<ProgressLanesProps> = ({ lanes, styles, barTheme }) => {
+    if (!lanes || lanes.length === 0) return null;
+    return (
+        <div className="mt-2.5 border-t border-current/10 pt-2 space-y-1.5 max-h-44 overflow-y-auto pr-1">
+            {lanes.map((lane) => {
+                const laneUpload = lane.direction === 'upload';
+                const tone = lane.state === 'error' ? 'error' : lane.state === 'completed' ? 'success' : 'default';
+                const laneName = lane.path ? truncatePath(lane.path, 30) : lane.filename;
+                const right = lane.state === 'error'
+                    ? 'error'
+                    : lane.state === 'completed'
+                        ? 'done'
+                        : lane.speed_bps > 0
+                            ? formatSpeed(lane.speed_bps)
+                            : `${lane.percentage}%`;
+                return (
+                    <div key={lane.id} className="flex items-center gap-2">
+                        <div className="shrink-0">
+                            {laneUpload
+                                ? <Upload size={11} className="text-cyan-400" />
+                                : <Download size={11} className="text-orange-400" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <span className={`truncate text-[11px] ${styles.subtitle}`} title={lane.path || lane.filename}>
+                                    {laneName}
+                                </span>
+                                <span className={`shrink-0 tabular-nums text-[10px] ${styles.subtitle}`}>{right}</span>
+                            </div>
+                            <TransferProgressBar
+                                percentage={lane.percentage}
+                                size="sm"
+                                variant={lane.total <= 0 && lane.state !== 'completed' ? 'indeterminate' : 'gradient'}
+                                animated={lane.state === 'active' || !lane.state}
+                                effectiveTheme={barTheme}
+                                tone={tone}
+                            />
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// ============ Progress Card (AeroProgress flagship floating card) ============
+// Aggregate header + aggregate bar (speed/ETA/bytes) + per-file lanes + the
+// collapsible advanced speed graph (built into TransferProgressBar via
+// showGraph/speedHistory). Restored and extended from the pre-TQ-5 TransferToast.
+interface ProgressCardProps {
+    transfer: TransferToastState;
+    onCancel: () => void;
+    onMinimize: () => void;
+    /** Open the full Transfer Queue panel (optional secondary action). */
+    onOpenPanel?: () => void;
+}
+
+export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, onMinimize, onOpenPanel }) => {
+    const { theme, isDark } = useTheme();
+    const effectiveTheme = getEffectiveTheme(theme, isDark);
+    const styles = getToastStyles(effectiveTheme);
+    const barTheme = toBarTheme(effectiveTheme);
+    const summary = transfer.summary;
+    const lanes = transfer.lanes ?? [];
+    const isUpload = summary.direction === 'upload';
+    const isFolderTransfer = summary.total_files != null && summary.total_files > 0;
+    const isIndeterminate = !isFolderTransfer && summary.total <= 0;
+    const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
+    const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
+    const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
+    const hasGraph = !!transfer.speedHistory && transfer.speedHistory.length > 1;
+
+    // Auto-dismiss safety: once the summary is complete AND no lane is still
+    // active, collapse after 3s (mirrors the legacy toast's behaviour).
+    useEffect(() => {
+        if (summary.percentage >= 100 && lanes.every((l) => l.state !== 'active')) {
+            const timer = setTimeout(() => onCancel(), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [summary.percentage, lanes, onCancel]);
+
+    return (
+        <div
+            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-xl border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
+            style={{ isolation: 'isolate', contain: 'layout paint' }}
+        >
+            <div className="flex items-start gap-3">
+                <div className={`mt-0.5 rounded-xl p-2 ${styles.panel} ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
+                    {isFolderTransfer
+                        ? <Folder size={18} className={isUpload ? 'text-cyan-400' : 'text-orange-400'} />
+                        : summary.direction === 'download'
+                            ? <Download size={18} className="text-orange-400" />
+                            : <Upload size={18} className="text-cyan-400" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                            <div className={`font-semibold truncate ${styles.title}`} title={summary.path || summary.filename}>
+                                {displayName}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                                <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>{transferModeLabel}</span>
+                                <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>{transferStateLabel}</span>
+                                {isFolderTransfer && (
+                                    <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>{summary.transferred}/{summary.total} files</span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                            <span className={`text-base font-semibold tabular-nums mr-1 ${styles.title}`}>
+                                {isIndeterminate ? '...' : `${summary.percentage}%`}
+                            </span>
+                            {onOpenPanel && (
+                                <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title="Open transfer queue">
+                                    <Maximize2 size={13} />
+                                </button>
+                            )}
+                            <button onClick={onMinimize} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title="Minimize">
+                                <Minus size={14} />
+                            </button>
+                            <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title="Dismiss">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-2.5">
+                        <TransferProgressBar
+                            percentage={summary.percentage}
+                            speedBps={summary.speed_bps}
+                            etaSeconds={summary.eta_seconds}
+                            transferredBytes={isFolderTransfer ? undefined : summary.transferred}
+                            totalBytes={isFolderTransfer ? undefined : summary.total}
+                            currentFile={isFolderTransfer ? summary.transferred : undefined}
+                            totalFiles={isFolderTransfer ? summary.total : undefined}
+                            size="lg"
+                            variant={isIndeterminate ? 'indeterminate' : 'gradient'}
+                            animated={!isIndeterminate}
+                            effectiveTheme={barTheme}
+                            showGraph={hasGraph}
+                            speedHistory={transfer.speedHistory}
+                        />
+                        <div className={`mt-1.5 flex justify-between gap-3 text-[11px] ${styles.subtitle}`}>
+                            <span className="tabular-nums">
+                                {isFolderTransfer
+                                    ? <>{summary.transferred} / {summary.total} files</>
+                                    : isIndeterminate
+                                        ? formatBytes(summary.total)
+                                        : <>{formatBytes(summary.transferred)} / {formatBytes(summary.total)}</>}
+                            </span>
+                            <span className="tabular-nums text-right">
+                                {summary.speed_bps > 0
+                                    ? `${formatSpeed(summary.speed_bps)}${summary.eta_seconds > 0 ? ` - ETA ${formatETA(summary.eta_seconds)}` : ''}`
+                                    : (isIndeterminate ? 'Streaming...' : (isUpload ? 'Uploading...' : 'Downloading...'))}
+                            </span>
+                        </div>
+                    </div>
+
+                    <ProgressLanes lanes={lanes} styles={styles} barTheme={barTheme} />
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // ============ Minimized Transfer Indicator (TQ-5) ============

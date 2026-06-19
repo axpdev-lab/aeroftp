@@ -89,6 +89,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const toastLanesRef = useRef<Map<string, TransferToastLane>>(new Map());
   const toastLaneCleanupTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const toastReservedLaneSlots = useRef(0);
+  // Rolling aggregate-speed samples (bytes/sec) for the collapsible speed graph.
+  const toastSpeedHistory = useRef<number[]>([]);
 
   useEffect(() => {
     const joinPath = (base: string, name: string): string => {
@@ -207,11 +209,18 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       const lanes = Array.from(toastLanesRef.current.values())
         .sort((a, b) => (toastLaneAssignments.current.get(a.id) ?? 0) - (toastLaneAssignments.current.get(b.id) ?? 0));
 
+      // Sample the current aggregate speed into the rolling history that feeds
+      // the collapsible speed graph. Capped so the buffer stays light.
+      const hist = toastSpeedHistory.current;
+      hist.push(toastSummaryRef.current.speed_bps || 0);
+      if (hist.length > 60) hist.shift();
+
       const toastState: TransferToastState = {
         summary: toastSummaryRef.current,
         lanes,
         reservedLaneSlots: toastReservedLaneSlots.current,
         maxChannels: optRef.current.maxChannels,
+        speedHistory: hist.slice(),
       };
       dispatchTransferToast(toastState);
     };
@@ -263,6 +272,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       toastReservedLaneSlots.current = 0;
       for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
       toastLaneCleanupTimers.current.clear();
+      toastSpeedHistory.current = [];
       optRef.current.onTransferStart?.();
       optRef.current.setActiveTransfer(batchSummary);
       dispatchTransferToast({ summary: batchSummary });
@@ -357,6 +367,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastReservedLaneSlots.current = 0;
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
+        toastSpeedHistory.current = [];
         if (toastSummaryRef.current) {
           setActiveTransfer(toastSummaryRef.current);
           dispatchTransferToast({ summary: toastSummaryRef.current });
