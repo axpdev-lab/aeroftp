@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Malelaud",
       "imagePreviewBgDark": "Tume",
       "imagePreviewBgLight": "Hele",
-      "imagePreviewBgCustom": "Kohandatud"
+      "imagePreviewBgCustom": "Kohandatud",
+      "showTransferProgress": "Kuva ülekande edenemisriba"
     },
     "devtools": {
       "title": "AeroTools",

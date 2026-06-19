@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Skakbræt",
       "imagePreviewBgDark": "Mørk",
       "imagePreviewBgLight": "Lys",
-      "imagePreviewBgCustom": "Tilpasset"
+      "imagePreviewBgCustom": "Tilpasset",
+      "showTransferProgress": "Vis statuslinje for overførsel"
     },
     "devtools": {
       "title": "AeroTools",

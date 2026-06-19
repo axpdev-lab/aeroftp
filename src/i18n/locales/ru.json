@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Шахматная доска",
       "imagePreviewBgDark": "Тёмный",
       "imagePreviewBgLight": "Светлый",
-      "imagePreviewBgCustom": "Свой"
+      "imagePreviewBgCustom": "Свой",
+      "showTransferProgress": "Показывать индикатор прогресса передачи"
     },
     "devtools": {
       "title": "AeroTools",

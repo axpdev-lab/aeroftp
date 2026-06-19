@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Šachmatų lenta",
       "imagePreviewBgDark": "Tamsus",
       "imagePreviewBgLight": "Šviesus",
-      "imagePreviewBgCustom": "Pasirinktinis"
+      "imagePreviewBgCustom": "Pasirinktinis",
+      "showTransferProgress": "Rodyti perdavimo eigos juostą"
     },
     "devtools": {
       "title": "AeroTools",

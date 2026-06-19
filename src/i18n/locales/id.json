@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Papan catur",
       "imagePreviewBgDark": "Gelap",
       "imagePreviewBgLight": "Terang",
-      "imagePreviewBgCustom": "Kustom"
+      "imagePreviewBgCustom": "Kustom",
+      "showTransferProgress": "Tampilkan bilah kemajuan transfer"
     },
     "devtools": {
       "title": "AeroTools",

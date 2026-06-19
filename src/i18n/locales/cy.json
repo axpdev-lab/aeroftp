@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Bwrdd gwyddbwyll",
       "imagePreviewBgDark": "Tywyll",
       "imagePreviewBgLight": "Golau",
-      "imagePreviewBgCustom": "Addasedig"
+      "imagePreviewBgCustom": "Addasedig",
+      "showTransferProgress": "Dangos bar cynnydd trosglwyddo"
     },
     "devtools": {
       "title": "AeroTools",

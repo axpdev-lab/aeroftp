@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Шахівниця",
       "imagePreviewBgDark": "Темний",
       "imagePreviewBgLight": "Світлий",
-      "imagePreviewBgCustom": "Власний"
+      "imagePreviewBgCustom": "Власний",
+      "showTransferProgress": "Показувати індикатор прогресу передавання"
     },
     "devtools": {
       "title": "AeroTools",

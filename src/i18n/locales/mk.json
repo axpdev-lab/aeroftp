@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Шаховска табла",
       "imagePreviewBgDark": "Темно",
       "imagePreviewBgLight": "Светло",
-      "imagePreviewBgCustom": "Прилагодено"
+      "imagePreviewBgCustom": "Прилагодено",
+      "showTransferProgress": "Прикажи лента за напредок на преносот"
     },
     "devtools": {
       "title": "AeroTools",

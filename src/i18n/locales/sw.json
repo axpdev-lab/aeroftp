@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Ubao wa sataranji",
       "imagePreviewBgDark": "Giza",
       "imagePreviewBgLight": "Angavu",
-      "imagePreviewBgCustom": "Maalum"
+      "imagePreviewBgCustom": "Maalum",
+      "showTransferProgress": "Onyesha upau wa maendeleo ya uhamishaji"
     },
     "devtools": {
       "title": "AeroTools",

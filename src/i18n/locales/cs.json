@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Šachovnice",
       "imagePreviewBgDark": "Tmavé",
       "imagePreviewBgLight": "Světlé",
-      "imagePreviewBgCustom": "Vlastní"
+      "imagePreviewBgCustom": "Vlastní",
+      "showTransferProgress": "Zobrazit ukazatel průběhu přenosu"
     },
     "devtools": {
       "title": "AeroTools",

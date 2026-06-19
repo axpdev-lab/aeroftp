@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Skákborð",
       "imagePreviewBgDark": "Dökkt",
       "imagePreviewBgLight": "Ljóst",
-      "imagePreviewBgCustom": "Sérsniðið"
+      "imagePreviewBgCustom": "Sérsniðið",
+      "showTransferProgress": "Sýna framvindustiku fyrir flutning"
     },
     "devtools": {
       "title": "AeroTools",

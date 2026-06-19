@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Tablă de șah",
       "imagePreviewBgDark": "Întunecat",
       "imagePreviewBgLight": "Luminos",
-      "imagePreviewBgCustom": "Personalizat"
+      "imagePreviewBgCustom": "Personalizat",
+      "showTransferProgress": "Afișează bara de progres a transferului"
     },
     "devtools": {
       "title": "AeroTools",

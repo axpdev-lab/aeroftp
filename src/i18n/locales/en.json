@@ -3168,6 +3168,7 @@
             "showHiddenFiles": "Show hidden files (dotfiles)",
             "showSecrets": "Show secrets",
             "showStatusBar": "Show Status Bar",
+            "showTransferProgress": "Show transfer progress bar",
             "showStatusBarDesc": "Display connection info and statistics at the bottom",
             "showSystemMenuBar": "Show System Menu Bar",
             "showSystemMenuBarDesc": "Show the native File/Edit/View menu at the top of the window",

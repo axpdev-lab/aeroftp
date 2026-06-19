@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Bàn cờ",
       "imagePreviewBgDark": "Tối",
       "imagePreviewBgLight": "Sáng",
-      "imagePreviewBgCustom": "Tùy chỉnh"
+      "imagePreviewBgCustom": "Tùy chỉnh",
+      "showTransferProgress": "Hiển thị thanh tiến trình truyền"
     },
     "devtools": {
       "title": "AeroTools",

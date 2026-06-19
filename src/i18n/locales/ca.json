@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Tauler d'escacs",
       "imagePreviewBgDark": "Fosc",
       "imagePreviewBgLight": "Clar",
-      "imagePreviewBgCustom": "Personalitzat"
+      "imagePreviewBgCustom": "Personalitzat",
+      "showTransferProgress": "Mostra la barra de progrés de transferència"
     },
     "devtools": {
       "title": "AeroTools",

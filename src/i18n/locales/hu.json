@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Sakktábla",
       "imagePreviewBgDark": "Sötét",
       "imagePreviewBgLight": "Világos",
-      "imagePreviewBgCustom": "Egyéni"
+      "imagePreviewBgCustom": "Egyéni",
+      "showTransferProgress": "Átviteli folyamatjelző megjelenítése"
     },
     "devtools": {
       "title": "AeroTools",

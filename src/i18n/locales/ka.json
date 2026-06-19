@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "ჭადრაკის დაფა",
       "imagePreviewBgDark": "მუქი",
       "imagePreviewBgLight": "ღია",
-      "imagePreviewBgCustom": "მორგებული"
+      "imagePreviewBgCustom": "მორგებული",
+      "showTransferProgress": "ტრანსფერის მიმდინარეობის ზოლის ჩვენება"
     },
     "devtools": {
       "title": "AeroTools",

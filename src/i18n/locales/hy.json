@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Շախմատի տախտակ",
       "imagePreviewBgDark": "Մուգ",
       "imagePreviewBgLight": "Բաց",
-      "imagePreviewBgCustom": "Հատուկ"
+      "imagePreviewBgCustom": "Հատուկ",
+      "showTransferProgress": "Ցույց տալ փոխանցման առաջընթացի գոտին"
     },
     "devtools": {
       "title": "AeroTools",

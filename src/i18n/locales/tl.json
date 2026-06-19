@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Checkerboard",
       "imagePreviewBgDark": "Madilim",
       "imagePreviewBgLight": "Maliwanag",
-      "imagePreviewBgCustom": "Pasadya"
+      "imagePreviewBgCustom": "Pasadya",
+      "showTransferProgress": "Ipakita ang progress bar ng paglilipat"
     },
     "devtools": {
       "title": "AeroTools",

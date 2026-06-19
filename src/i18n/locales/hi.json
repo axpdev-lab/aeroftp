@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "शतरंज बोर्ड",
       "imagePreviewBgDark": "गहरा",
       "imagePreviewBgLight": "हल्का",
-      "imagePreviewBgCustom": "कस्टम"
+      "imagePreviewBgCustom": "कस्टम",
+      "showTransferProgress": "स्थानांतरण प्रगति बार दिखाएं"
     },
     "devtools": {
       "title": "AeroTools",

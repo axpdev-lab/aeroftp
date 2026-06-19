@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Schackbräde",
       "imagePreviewBgDark": "Mörk",
       "imagePreviewBgLight": "Ljus",
-      "imagePreviewBgCustom": "Anpassad"
+      "imagePreviewBgCustom": "Anpassad",
+      "showTransferProgress": "Visa förloppsindikator för överföring"
     },
     "devtools": {
       "title": "AeroTools",

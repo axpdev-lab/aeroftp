@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Szachownica",
       "imagePreviewBgDark": "Ciemny",
       "imagePreviewBgLight": "Jasny",
-      "imagePreviewBgCustom": "Niestandardowy"
+      "imagePreviewBgCustom": "Niestandardowy",
+      "showTransferProgress": "Pokaż pasek postępu transferu"
     },
     "devtools": {
       "title": "AeroTools",

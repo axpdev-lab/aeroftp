@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Dama tahtası",
       "imagePreviewBgDark": "Koyu",
       "imagePreviewBgLight": "Açık",
-      "imagePreviewBgCustom": "Özel"
+      "imagePreviewBgCustom": "Özel",
+      "showTransferProgress": "Aktarım ilerleme çubuğunu göster"
     },
     "devtools": {
       "title": "AeroTools",

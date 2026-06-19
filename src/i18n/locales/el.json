@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Σκακιέρα",
       "imagePreviewBgDark": "Σκούρο",
       "imagePreviewBgLight": "Ανοιχτό",
-      "imagePreviewBgCustom": "Προσαρμοσμένο"
+      "imagePreviewBgCustom": "Προσαρμοσμένο",
+      "showTransferProgress": "Εμφάνιση γραμμής προόδου μεταφοράς"
     },
     "devtools": {
       "title": "AeroTools",

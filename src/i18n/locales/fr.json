@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Damier",
       "imagePreviewBgDark": "Sombre",
       "imagePreviewBgLight": "Clair",
-      "imagePreviewBgCustom": "Personnalisé"
+      "imagePreviewBgCustom": "Personnalisé",
+      "showTransferProgress": "Afficher la barre de progression du transfert"
     },
     "devtools": {
       "title": "AeroTools",

@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Šaha galdiņš",
       "imagePreviewBgDark": "Tumšs",
       "imagePreviewBgLight": "Gaišs",
-      "imagePreviewBgCustom": "Pielāgots"
+      "imagePreviewBgCustom": "Pielāgots",
+      "showTransferProgress": "Rādīt pārsūtīšanas norises joslu"
     },
     "devtools": {
       "title": "AeroTools",

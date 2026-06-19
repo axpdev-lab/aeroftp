@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Schaakbord",
       "imagePreviewBgDark": "Donker",
       "imagePreviewBgLight": "Licht",
-      "imagePreviewBgCustom": "Aangepast"
+      "imagePreviewBgCustom": "Aangepast",
+      "showTransferProgress": "Voortgangsbalk voor overdracht weergeven"
     },
     "devtools": {
       "title": "AeroTools",

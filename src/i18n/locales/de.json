@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Schachbrett",
       "imagePreviewBgDark": "Dunkel",
       "imagePreviewBgLight": "Hell",
-      "imagePreviewBgCustom": "Benutzerdefiniert"
+      "imagePreviewBgCustom": "Benutzerdefiniert",
+      "showTransferProgress": "Fortschrittsbalken für Übertragungen anzeigen"
     },
     "devtools": {
       "title": "AeroTools",

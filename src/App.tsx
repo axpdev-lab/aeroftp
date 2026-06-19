@@ -12664,7 +12664,7 @@ interface UpdateVerificationInfo {
           onRetryAllFailed={retryAllFailedItems}
         />
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
-        <TransferToastContainer onOpen={transferQueue.show} />
+        {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
         {pendingUnifiedTransferPlan && (

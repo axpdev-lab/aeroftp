@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "棋盘格",
       "imagePreviewBgDark": "深色",
       "imagePreviewBgLight": "浅色",
-      "imagePreviewBgCustom": "自定义"
+      "imagePreviewBgCustom": "自定义",
+      "showTransferProgress": "显示传输进度条"
     },
     "devtools": {
       "title": "AeroTools",

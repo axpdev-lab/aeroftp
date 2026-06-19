@@ -936,6 +936,7 @@
             "defaultLocalPath": "Percorso Locale Predefinito",
             "confirmBeforeDelete": "Conferma prima di eliminare",
             "showStatusBar": "Mostra Barra di Stato",
+            "showTransferProgress": "Mostra la barra di avanzamento dei trasferimenti",
             "showStatusBarDesc": "Mostra informazioni connessione e statistiche in basso",
             "showSystemMenuBar": "Mostra Menu di Sistema",
             "showSystemMenuBarDesc": "Mostra il menu nativo File/Modifica/Visualizza in alto",

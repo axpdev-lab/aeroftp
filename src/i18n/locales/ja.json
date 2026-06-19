@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "市松模様",
       "imagePreviewBgDark": "ダーク",
       "imagePreviewBgLight": "ライト",
-      "imagePreviewBgCustom": "カスタム"
+      "imagePreviewBgCustom": "カスタム",
+      "showTransferProgress": "転送の進行状況バーを表示"
     },
     "devtools": {
       "title": "AeroTools",

@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "체커보드",
       "imagePreviewBgDark": "어둡게",
       "imagePreviewBgLight": "밝게",
-      "imagePreviewBgCustom": "사용자 지정"
+      "imagePreviewBgCustom": "사용자 지정",
+      "showTransferProgress": "전송 진행률 표시줄 표시"
     },
     "devtools": {
       "title": "AeroTools",

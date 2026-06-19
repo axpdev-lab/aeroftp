@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Taboleiro de xadrez",
       "imagePreviewBgDark": "Escuro",
       "imagePreviewBgLight": "Claro",
-      "imagePreviewBgCustom": "Personalizado"
+      "imagePreviewBgCustom": "Personalizado",
+      "showTransferProgress": "Mostrar a barra de progreso de transferencia"
     },
     "devtools": {
       "title": "AeroTools",

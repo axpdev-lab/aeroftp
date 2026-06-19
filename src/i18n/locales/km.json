@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "ក្ដារអុក",
       "imagePreviewBgDark": "ងងឹត",
       "imagePreviewBgLight": "ភ្លឺ",
-      "imagePreviewBgCustom": "ផ្ទាល់ខ្លួន"
+      "imagePreviewBgCustom": "ផ្ទាល់ខ្លួន",
+      "showTransferProgress": "បង្ហាញរបារវឌ្ឍនភាពនៃការផ្ទេរ"
     },
     "devtools": {
       "title": "AeroTools",

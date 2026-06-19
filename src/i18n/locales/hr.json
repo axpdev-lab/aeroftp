@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Šahovnica",
       "imagePreviewBgDark": "Tamno",
       "imagePreviewBgLight": "Svijetlo",
-      "imagePreviewBgCustom": "Prilagođeno"
+      "imagePreviewBgCustom": "Prilagođeno",
+      "showTransferProgress": "Prikaži traku napretka prijenosa"
     },
     "devtools": {
       "title": "AeroTools",

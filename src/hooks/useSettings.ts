@@ -64,6 +64,8 @@ export interface AppSettings {
   showToastNotifications: boolean;
   confirmBeforeDelete: boolean;
   showStatusBar: boolean;
+  /** Show the floating transfer progress card (AeroProgress). Default on. */
+  showTransferProgress: boolean;
   defaultLocalPath: string;
   fontSize: number;
   fontFamily: string;
@@ -115,6 +117,7 @@ const DEFAULTS: AppSettings = {
   showToastNotifications: false,
   confirmBeforeDelete: true,
   showStatusBar: true,
+  showTransferProgress: true,
   defaultLocalPath: '',
   fontSize: 16,
   fontFamily: DEFAULT_APP_FONT_FAMILY,
@@ -148,6 +151,7 @@ export const useSettings = () => {
   const [showToastNotifications, setShowToastNotifications] = useState(DEFAULTS.showToastNotifications);
   const [confirmBeforeDelete, setConfirmBeforeDelete] = useState(DEFAULTS.confirmBeforeDelete);
   const [showStatusBar, setShowStatusBar] = useState(DEFAULTS.showStatusBar);
+  const [showTransferProgress, setShowTransferProgress] = useState(DEFAULTS.showTransferProgress);
   const [defaultLocalPath, setDefaultLocalPath] = useState(DEFAULTS.defaultLocalPath);
   const [fontSize, setFontSize] = useState<number>(DEFAULTS.fontSize);
   const [fontFamily, setFontFamily] = useState(DEFAULTS.fontFamily);
@@ -181,6 +185,7 @@ export const useSettings = () => {
     if (typeof parsed.showToastNotifications === 'boolean') setShowToastNotifications(parsed.showToastNotifications);
     if (typeof parsed.confirmBeforeDelete === 'boolean') setConfirmBeforeDelete(parsed.confirmBeforeDelete);
     if (typeof parsed.showStatusBar === 'boolean') setShowStatusBar(parsed.showStatusBar);
+    if (typeof parsed.showTransferProgress === 'boolean') setShowTransferProgress(parsed.showTransferProgress);
     if (typeof parsed.defaultLocalPath === 'string') setDefaultLocalPath(parsed.defaultLocalPath);
     if (typeof parsed.fontSize === 'number' || typeof parsed.fontSize === 'string') {
       setFontSize(clampAppFontSize(parsed.fontSize));
@@ -284,6 +289,7 @@ export const useSettings = () => {
     showToastNotifications,
     confirmBeforeDelete,
     showStatusBar,
+    showTransferProgress,
     defaultLocalPath,
     fontSize,
     fontFamily,
@@ -317,6 +323,7 @@ export const useSettings = () => {
     setShowToastNotifications,
     setConfirmBeforeDelete,
     setShowStatusBar,
+    setShowTransferProgress,
     setDefaultLocalPath,
     setFontSize,
     setFontFamily,

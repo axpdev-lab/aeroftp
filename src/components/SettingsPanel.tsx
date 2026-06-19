@@ -162,6 +162,7 @@ interface AppSettings {
     transferMode: 'auto' | 'ascii' | 'binary';
     // UI
     showStatusBar: boolean;
+    showTransferProgress: boolean;
     compactMode: boolean;
     showSystemMenu: boolean;
     swapPanels: boolean;
@@ -211,6 +212,7 @@ const defaultSettings: AppSettings = {
     preserveTimestamps: true,
     transferMode: 'auto',
     showStatusBar: true,
+    showTransferProgress: true,
     compactMode: false,
     showSystemMenu: false,
     swapPanels: false,
@@ -1041,6 +1043,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <Checkbox checked={settings.showHiddenFiles} onChange={(v) => updateSetting('showHiddenFiles', v)} label={<span className="text-sm">{t('settings.showHiddenFiles')}</span>} />
 
                                             <Checkbox checked={settings.confirmBeforeDelete} onChange={(v) => updateSetting('confirmBeforeDelete', v)} label={<span className="text-sm">{t('settings.confirmBeforeDelete')}</span>} />
+
+                                            <Checkbox checked={settings.showTransferProgress !== false} onChange={(v) => updateSetting('showTransferProgress', v)} label={<span className="text-sm">{t('settings.showTransferProgress')}</span>} />
                                         </div>
 
                                         <Checkbox

@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Ruutukuvio",
       "imagePreviewBgDark": "Tumma",
       "imagePreviewBgLight": "Vaalea",
-      "imagePreviewBgCustom": "Mukautettu"
+      "imagePreviewBgCustom": "Mukautettu",
+      "showTransferProgress": "Näytä siirron edistymispalkki"
     },
     "devtools": {
       "title": "AeroTools",

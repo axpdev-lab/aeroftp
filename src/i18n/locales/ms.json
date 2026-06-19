@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Papan dam",
       "imagePreviewBgDark": "Gelap",
       "imagePreviewBgLight": "Cerah",
-      "imagePreviewBgCustom": "Tersuai"
+      "imagePreviewBgCustom": "Tersuai",
+      "showTransferProgress": "Tunjukkan bar kemajuan pemindahan"
     },
     "devtools": {
       "title": "AeroTools",

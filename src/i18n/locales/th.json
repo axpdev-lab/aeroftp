@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "ตาหมากรุก",
       "imagePreviewBgDark": "มืด",
       "imagePreviewBgLight": "สว่าง",
-      "imagePreviewBgCustom": "กำหนดเอง"
+      "imagePreviewBgCustom": "กำหนดเอง",
+      "showTransferProgress": "แสดงแถบความคืบหน้าการถ่ายโอน"
     },
     "devtools": {
       "title": "AeroTools",

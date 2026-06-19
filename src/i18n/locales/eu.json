@@ -1006,7 +1006,8 @@
       "imagePreviewBgCheckerboard": "Xake-taula",
       "imagePreviewBgDark": "Iluna",
       "imagePreviewBgLight": "Argia",
-      "imagePreviewBgCustom": "Pertsonalizatua"
+      "imagePreviewBgCustom": "Pertsonalizatua",
+      "showTransferProgress": "Erakutsi transferentziaren aurrerapen-barra"
     },
     "devtools": {
       "title": "AeroTools",
