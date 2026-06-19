@@ -53,7 +53,7 @@ pub struct VaultReport {
     /// Total elapsed time in seconds, one decimal, derived from `ms_total`.
     /// Friendlier than raw milliseconds on the receipt (Ehud #2). `ms_total`
     /// is kept alongside for precision.
-    pub time_elapsed_secs: f64,
+    pub time_elapsed: f64,
     /// Behind-the-scenes log, one line per meaningful action. Drives the
     /// in-modal "mini terminal" and the exportable receipt body.
     pub steps: Vec<String>,
@@ -96,7 +96,7 @@ impl VaultReport {
             encrypted_bytes: 0,
             compression_ratio_pct: 0.0,
             ms_total: 0,
-            time_elapsed_secs: 0.0,
+            time_elapsed: 0.0,
             steps: Vec::new(),
             attribution: WRAPPER_MODEL_ATTRIBUTION.to_string(),
             error_correction_shards_generated: None,
@@ -157,7 +157,7 @@ impl VaultReport {
     pub fn finish(&mut self, ms_total: u64) {
         self.ms_total = ms_total;
         // Seconds with one decimal of precision for the receipt's headline.
-        self.time_elapsed_secs = (ms_total as f64 / 100.0).round() / 10.0;
+        self.time_elapsed = (ms_total as f64 / 100.0).round() / 10.0;
         // Only meaningful when a compression stage actually ran and recorded
         // its output (v3). v2/v1 leave compressed_bytes at 0 and report 0.0
         // rather than a misleading 100%.
@@ -217,7 +217,7 @@ impl VaultReport {
         ));
         out.push_str(&format!(
             "time elapsed: {:.1} s ({} ms)\n",
-            self.time_elapsed_secs, self.ms_total
+            self.time_elapsed, self.ms_total
         ));
         out.push_str("steps:\n");
         for s in &self.steps {

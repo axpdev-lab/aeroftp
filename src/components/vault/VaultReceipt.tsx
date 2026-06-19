@@ -41,7 +41,7 @@ function buildReceiptText(r: VaultReport): string {
     }
     lines.push(`files=${r.files} (packed=${r.packed_files}, packs=${r.packs}) chunks: logical=${r.logical_chunks} new=${r.new_physical_chunks} dedup=${r.dedup_hits}`);
     lines.push(`bytes: plaintext=${r.plaintext_bytes} compressed=${r.compressed_bytes} encrypted=${r.encrypted_bytes} ratio=${r.compression_ratio_pct.toFixed(1)}%`);
-    lines.push(`time elapsed: ${r.time_elapsed_secs.toFixed(1)} s (${r.ms_total} ms)`);
+    lines.push(`time elapsed: ${r.time_elapsed.toFixed(1)} s (${r.ms_total} ms)`);
     if (r.error_correction_shards_generated != null || r.error_correction_bytes_protected != null || r.error_correction_overhead_pct != null) {
         lines.push(`ecc: shards=${r.error_correction_shards_generated ?? '-'} protected=${r.error_correction_bytes_protected ?? '-'} overhead=${r.error_correction_overhead_pct != null ? r.error_correction_overhead_pct.toFixed(1)+'%' : '-'}`);
     }
@@ -137,7 +137,7 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
                         <Metric label={t('vault.receipt.operation')} value={`${report.operation} (v${report.vault_format})`} />
                         <Metric label={t('vault.receipt.profile')} value={report.profile ?? '-'} />
                         <Metric label={t('vault.receipt.files')} value={`${report.files} (${report.packed_files} packed)`} />
-                        <Metric label={t('vault.receipt.elapsed')} value={`${report.time_elapsed_secs.toFixed(1)} s`} />
+                        <Metric label={t('vault.receipt.elapsed')} value={`${report.time_elapsed.toFixed(1)} s`} />
                         <Metric label={t('vault.receipt.chunks')} value={`${report.logical_chunks}L / ${report.new_physical_chunks}N / ${report.dedup_hits}D`} />
                         <Metric label={t('vault.receipt.plaintext')} value={fmtBytes(report.plaintext_bytes)} />
                         <Metric label={t('vault.receipt.encrypted')} value={fmtBytes(report.encrypted_bytes)} />

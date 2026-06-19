@@ -125,7 +125,7 @@ export interface VaultReport {
     compression_ratio_pct: number;
     ms_total: number;
     /** Total elapsed time in seconds, one decimal (Ehud #2). */
-    time_elapsed_secs: number;
+    time_elapsed: number;
     steps: string[];
     attribution: string;
     // P3-03 Error Correction telemetry (populated on seal for Error Correction vaults; optional for compat)
