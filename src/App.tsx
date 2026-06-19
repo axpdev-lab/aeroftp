@@ -4227,19 +4227,37 @@ interface UpdateVerificationInfo {
   // bleed onto a different server, even if a vault id is still held in memory.
   const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
     if (!cryptOverlayOwnerMatchesActive) return null;
-    if (rcloneCryptVaultId) return { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' };
-    if (aeroCryptVaultId) return { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' };
-    return null;
+    const overlay = rcloneCryptVaultId
+      ? { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' as const }
+      : aeroCryptVaultId
+        ? { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' as const }
+        : null;
+    if (!overlay) return null;
+    // CWP-20B (B2): fail-closed scope gate. The overlay routes an op ONLY while the
+    // active panel's DECRYPTED path is within the session's bound crypt scope.
+    // Outside the scope this returns null, so the op falls through to the plain
+    // provider (real names, normal protocol, plaintext transfers). The predicate
+    // is fail-closed (unknown path or whole-remote scope => inside), so a
+    // normalization mismatch can at worst route an in-scope op through the overlay
+    // (a visible decrypt error), never expose plaintext where encryption was
+    // expected. This is the SAME predicate the path-bar badge uses (overlayInScope)
+    // and, via isCryptOverlayActive() below, the SAME one the CWP-20 action gating
+    // (share-link, server-side checksum) keys on, so badge + routing + gating can
+    // never diverge. In the shipped anchored architecture the path is always within
+    // scope, so this is a no-op until cross-boundary navigation (B3) can leave it.
+    if (!isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath)) return null;
+    return overlay;
   };
   // P3.4/P3.5 single source of truth: true when the ACTIVE panel is inside an
   // unlocked crypt overlay scope (either kind, at equal grade). Both the action
   // gating (share-link, server-side checksum) and the transparent transfer
   // routing derive from this SAME predicate, so the path-bar "encrypted" badge
   // and the actual behaviour can never diverge (a badge that lies about scope
-  // is a data-exposure bug). In the shipped architecture the overlay is anchored
-  // at its bound remote scope and the backend stays there, so "active overlay"
-  // == "within the bound scope"; this helper is the seam a future navigate-out
-  // model would refine.
+  // is a data-exposure bug). CWP-20B (B2): since activeCryptOverlay() now applies
+  // the fail-closed scope gate, this means "overlay owned AND unlocked AND the
+  // decrypted path is within the bound scope" — outside the scope it is false, so
+  // share-link / server-side checksum re-enable for the plaintext region exactly
+  // as the badge drops to its 'outside' state.
   const isCryptOverlayActive = (): boolean => activeCryptOverlay() !== null;
 
   // Per-session overlay binding. Each connected tab remembers its own overlay so
