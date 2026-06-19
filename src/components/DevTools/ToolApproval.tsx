@@ -8,6 +8,7 @@ import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel
 import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
+import { CodingGitApprovalPreview } from './CodingGitReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -68,6 +69,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const isEditTool = toolCall.toolName === 'local_edit' || toolCall.toolName === 'remote_edit';
     const isPatchTool = toolCall.toolName === 'coding_apply_patch';
     const isCheckpointRestoreTool = toolCall.toolName === 'coding_checkpoint_restore';
+    const isGitMutationTool = toolCall.toolName === 'coding_git_stage' || toolCall.toolName === 'coding_git_commit';
     const patchText = typeof toolCall.args.patch === 'string' ? toolCall.args.patch : undefined;
     const workspaceRoot = typeof toolCall.args.workspace_root === 'string' ? toolCall.args.workspace_root : undefined;
     const patchDryRun = toolCall.args.dry_run === true;
@@ -76,6 +78,11 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
         ? toolCall.args.paths.filter((path): path is string => typeof path === 'string')
         : undefined;
     const restoreDryRun = toolCall.args.dry_run === true;
+    const gitPaths = Array.isArray(toolCall.args.paths)
+        ? toolCall.args.paths.filter((path): path is string => typeof path === 'string')
+        : undefined;
+    const gitDryRun = toolCall.args.dry_run === true;
+    const gitCommitMessage = typeof toolCall.args.message === 'string' ? toolCall.args.message : undefined;
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -183,6 +190,16 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                         paths={restorePaths}
                         dryRun={restoreDryRun}
                         mode="approval"
+                    />
+                )}
+
+                {isGitMutationTool && isPending && (
+                    <CodingGitApprovalPreview
+                        toolName={toolCall.toolName}
+                        workspaceRoot={workspaceRoot}
+                        paths={gitPaths}
+                        dryRun={gitDryRun}
+                        commitMessage={gitCommitMessage}
                     />
                 )}
 

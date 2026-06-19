@@ -31,7 +31,7 @@ function isMutatingTool(toolName: string): boolean {
         'remote_edit', 'remote_upload', 'remote_delete', 'remote_rename', 'remote_mkdir',
         'upload_files', 'download_files',
         'archive_compress', 'archive_decompress',
-        'coding_apply_patch', 'coding_checkpoint_restore',
+        'coding_apply_patch', 'coding_checkpoint_restore', 'coding_git_stage', 'coding_git_commit',
     ]);
     return mutators.has(toolName);
 }

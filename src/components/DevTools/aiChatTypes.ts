@@ -137,11 +137,96 @@ export interface CodingCheckpointRestoreResultData {
     requestedPaths?: string[];
 }
 
+export interface CodingGitFileStatus {
+    path: string;
+    index_status: string;
+    worktree_status: string;
+}
+
+export interface CodingGitStatusResult {
+    workspace_root: string;
+    repo_root: string;
+    branch?: string | null;
+    head?: string | null;
+    upstream?: string | null;
+    ahead: number;
+    behind: number;
+    clean: boolean;
+    staged: CodingGitFileStatus[];
+    unstaged: CodingGitFileStatus[];
+    untracked: CodingGitFileStatus[];
+    conflicted: CodingGitFileStatus[];
+    total: number;
+    truncated: boolean;
+    raw: string[];
+}
+
+export interface CodingGitDiffStat {
+    path: string;
+    additions: number;
+    deletions: number;
+    binary: boolean;
+}
+
+export interface CodingGitDiffResult {
+    workspace_root: string;
+    repo_root: string;
+    staged: boolean;
+    paths: string[];
+    file_count: number;
+    total_additions: number;
+    total_deletions: number;
+    stats: CodingGitDiffStat[];
+    diff: string;
+    truncated: boolean;
+}
+
+export interface CodingGitStageResult {
+    success: boolean;
+    workspace_root: string;
+    repo_root: string;
+    dry_run: boolean;
+    staged: boolean;
+    paths: string[];
+    before: CodingGitStatusResult;
+    after?: CodingGitStatusResult | null;
+    message: string;
+}
+
+export interface CodingGitCommitResult {
+    success: boolean;
+    workspace_root: string;
+    repo_root: string;
+    dry_run: boolean;
+    committed: boolean;
+    commit_hash?: string | null;
+    message: string;
+    stdout: string;
+    stderr: string;
+    before: CodingGitStatusResult;
+    after?: CodingGitStatusResult | null;
+}
+
+export type CodingGitResult =
+    | CodingGitStatusResult
+    | CodingGitDiffResult
+    | CodingGitStageResult
+    | CodingGitCommitResult;
+
+export interface CodingGitResultData {
+    kind: 'coding_git';
+    toolName: 'coding_git_status' | 'coding_git_diff' | 'coding_git_stage' | 'coding_git_commit';
+    result: CodingGitResult;
+    requestedPaths?: string[];
+    commitMessage?: string;
+}
+
 export type ChatResultData =
     | TransferPlanResultData
     | CodingPlanResultData
     | CodingPatchResultData
-    | CodingCheckpointRestoreResultData;
+    | CodingCheckpointRestoreResultData
+    | CodingGitResultData;
 
 export interface Message {
     id: string;

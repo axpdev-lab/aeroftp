@@ -506,6 +506,66 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
         },
+        ToolDef {
+            name: "coding_git_status",
+            description: "Inspect git branch and working tree status for a coding workspace.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["workspace_root"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_diff",
+            description: "Inspect unstaged or staged git diff for a coding workspace.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "staged": {"type": "boolean"},
+                    "max_bytes": {"type": "integer"}
+                },
+                "required": ["workspace_root"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_stage",
+            description: "Stage explicit workspace paths in git, optionally as a dry run.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["workspace_root", "paths"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_commit",
+            description: "Create a git commit from the currently staged index, optionally as a dry run.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "message": {"type": "string"},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["workspace_root", "message"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
             name: "clipboard_read",
@@ -1836,6 +1896,10 @@ pub async fn dispatch_tool(
         "coding_checkpoint_create" => coding_tools::coding_checkpoint_create(ctx, args).await,
         "coding_checkpoint_restore" => coding_tools::coding_checkpoint_restore(ctx, args).await,
         "coding_apply_patch" => coding_tools::coding_apply_patch(ctx, args).await,
+        "coding_git_status" => coding_tools::coding_git_status(ctx, args).await,
+        "coding_git_diff" => coding_tools::coding_git_diff(ctx, args).await,
+        "coding_git_stage" => coding_tools::coding_git_stage(ctx, args).await,
+        "coding_git_commit" => coding_tools::coding_git_commit(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,

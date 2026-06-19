@@ -12,6 +12,10 @@ use crate::coding_checkpoints::{
     create_checkpoint, restore_checkpoint, CreateCodingCheckpointRequest,
     RestoreCodingCheckpointRequest,
 };
+use crate::coding_git::{
+    git_commit, git_diff, git_stage, git_status, CodingGitCommitRequest, CodingGitDiffRequest,
+    CodingGitStageRequest,
+};
 use crate::coding_patches::{apply_coding_patch, preview_coding_patch, ApplyCodingPatchRequest};
 
 pub async fn coding_checkpoint_create(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -63,7 +67,7 @@ pub async fn coding_checkpoint_restore(
         ToolError::Exec("coding_checkpoint_restore is only available in the GUI".to_string())
     })?;
     let checkpoint_id = get_str(args, "checkpoint_id")?;
-    let paths = optional_string_array(args, "paths")?;
+    let paths = optional_string_array(args, "paths", "coding_checkpoint_restore")?;
     let dry_run = args
         .get("dry_run")
         .and_then(|value| value.as_bool())
@@ -156,13 +160,80 @@ pub async fn coding_apply_patch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
     to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
 }
 
-fn optional_string_array(args: &Value, key: &str) -> Result<Option<Vec<String>>, ToolError> {
+pub async fn coding_git_status(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let paths = optional_string_array(args, "paths", "coding_git_status")?;
+    let result = git_status(workspace_root, paths).map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_git_diff(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let paths = optional_string_array(args, "paths", "coding_git_diff")?;
+    let staged = args
+        .get("staged")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let max_bytes = args
+        .get("max_bytes")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize);
+    let result = git_diff(CodingGitDiffRequest {
+        workspace_root,
+        paths,
+        staged,
+        max_bytes,
+    })
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_git_stage(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let paths = value_as_string_array(args, "paths").map_err(|reason| ToolError::InvalidArgs {
+        tool: "coding_git_stage".to_string(),
+        reason,
+    })?;
+    let dry_run = args
+        .get("dry_run")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let result = git_stage(CodingGitStageRequest {
+        workspace_root,
+        paths,
+        dry_run,
+    })
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_git_commit(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let message = get_str(args, "message")?;
+    let dry_run = args
+        .get("dry_run")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let result = git_commit(CodingGitCommitRequest {
+        workspace_root,
+        message,
+        dry_run,
+    })
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+fn optional_string_array(
+    args: &Value,
+    key: &str,
+    tool: &str,
+) -> Result<Option<Vec<String>>, ToolError> {
     let Some(value) = args.get(key) else {
         return Ok(None);
     };
     let Some(array) = value.as_array() else {
         return Err(ToolError::InvalidArgs {
-            tool: "<coding_checkpoint>".to_string(),
+            tool: tool.to_string(),
             reason: format!("'{key}' must be an array of strings"),
         });
     };
@@ -170,7 +241,7 @@ fn optional_string_array(args: &Value, key: &str) -> Result<Option<Vec<String>>,
     for item in array {
         let Some(s) = item.as_str() else {
             return Err(ToolError::InvalidArgs {
-                tool: "<coding_checkpoint>".to_string(),
+                tool: tool.to_string(),
                 reason: format!("'{key}' must contain only strings"),
             });
         };

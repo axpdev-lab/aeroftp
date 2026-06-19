@@ -8,6 +8,7 @@ import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel
 import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
+import { CodingGitApprovalPreview } from './CodingGitReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -56,6 +57,7 @@ const BatchToolItem: React.FC<{
     const isEditTool = tc.toolName === 'local_edit' || tc.toolName === 'remote_edit';
     const isPatchTool = tc.toolName === 'coding_apply_patch';
     const isCheckpointRestoreTool = tc.toolName === 'coding_checkpoint_restore';
+    const isGitMutationTool = tc.toolName === 'coding_git_stage' || tc.toolName === 'coding_git_commit';
     const patchText = typeof tc.args.patch === 'string' ? tc.args.patch : undefined;
     const workspaceRoot = typeof tc.args.workspace_root === 'string' ? tc.args.workspace_root : undefined;
     const patchDryRun = tc.args.dry_run === true;
@@ -64,6 +66,11 @@ const BatchToolItem: React.FC<{
         ? tc.args.paths.filter((path): path is string => typeof path === 'string')
         : undefined;
     const restoreDryRun = tc.args.dry_run === true;
+    const gitPaths = Array.isArray(tc.args.paths)
+        ? tc.args.paths.filter((path): path is string => typeof path === 'string')
+        : undefined;
+    const gitDryRun = tc.args.dry_run === true;
+    const gitCommitMessage = typeof tc.args.message === 'string' ? tc.args.message : undefined;
 
     const tool = allTools ? getToolByNameFromAll(tc.toolName, allTools) : getToolByName(tc.toolName);
     const dangerLevel = tool?.dangerLevel || 'medium';
@@ -204,6 +211,18 @@ const BatchToolItem: React.FC<{
                         paths={restorePaths}
                         dryRun={restoreDryRun}
                         mode="approval"
+                    />
+                </div>
+            )}
+
+            {isGitMutationTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingGitApprovalPreview
+                        toolName={tc.toolName}
+                        workspaceRoot={workspaceRoot}
+                        paths={gitPaths}
+                        dryRun={gitDryRun}
+                        commitMessage={gitCommitMessage}
                     />
                 </div>
             )}

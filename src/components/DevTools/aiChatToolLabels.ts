@@ -19,10 +19,16 @@ export function getToolLabel(
     toolName: string,
     t: (key: string, params?: Record<string, string | number>) => string
 ): string {
+    const fallbackLabels: Record<string, string> = {
+        coding_git_status: 'Git Status',
+        coding_git_diff: 'Git Diff',
+        coding_git_stage: 'Git Stage',
+        coding_git_commit: 'Git Commit',
+    };
     const key = `ai.toolLabels.${toolName}`;
     const translated = t(key);
 
     // If translation key doesn't exist, t() returns the key itself.
     // Fallback to the toolName as-is for unknown tools.
-    return translated !== key ? translated : toolName;
+    return translated !== key ? translated : fallbackLabels[toolName] || toolName;
 }

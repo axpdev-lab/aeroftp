@@ -16,7 +16,7 @@ import { type Conversation, cleanupHistory, loadSession } from '../../utils/chat
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData } from './aiChatTypes';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData, CodingGitResultData } from './aiChatTypes';
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
@@ -36,6 +36,7 @@ import { formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartC
 import { buildCodingPlanPromptBlock, buildCodingWorkspaceContext, buildSmartContextForWorkspace, resolveAgentPromptProfile, workspaceToSystemPromptContext } from './aiChatCodingWorkspace';
 import { normalizeCodingPatchResult } from './aiChatCodingPatch';
 import { normalizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
+import { isCodingGitToolName, normalizeCodingGitResult } from './aiChatCodingGit';
 import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
 import { BranchSelector } from './ConversationBranch';
 import type { ProjectContext } from '../../types/contextIntelligence';
@@ -321,6 +322,27 @@ const buildCodingCheckpointRestoreResultData = (
         requestedPaths: Array.isArray(args.paths)
             ? args.paths.filter((path): path is string => typeof path === 'string')
             : undefined,
+    };
+};
+
+const buildCodingGitResultData = (
+    toolName: string,
+    result: unknown,
+    args: Record<string, unknown>,
+): CodingGitResultData | undefined => {
+    if (!isCodingGitToolName(toolName)) return undefined;
+
+    const gitResult = normalizeCodingGitResult(toolName, result);
+    if (!gitResult) return undefined;
+
+    return {
+        kind: 'coding_git',
+        toolName,
+        result: gitResult,
+        requestedPaths: Array.isArray(args.paths)
+            ? args.paths.filter((path): path is string => typeof path === 'string')
+            : undefined,
+        commitMessage: typeof args.message === 'string' ? args.message : undefined,
     };
 };
 
@@ -815,7 +837,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         // The backend OS dialog is the single confirmation gate for mutative tools.
         if (mode === 'extreme') return true;
         // Never auto-approve destructive or credential-backed tools in other modes
-        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec', 'coding_checkpoint_restore', 'coding_apply_patch'];
+        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec', 'coding_checkpoint_restore', 'coding_apply_patch', 'coding_git_stage', 'coding_git_commit'];
         if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
         // Safe tools always auto-approved in all modes
         if (isSafeTool(toolName, allTools)) return true;
@@ -1570,7 +1592,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 : undefined;
             const codingPatchResultData = buildCodingPatchResultData(toolCall.toolName, result, executionArgs);
             const codingCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, result, executionArgs);
-            const codingToolResultData = codingPatchResultData ?? codingCheckpointRestoreResultData;
+            const codingGitResultData = buildCodingGitResultData(toolCall.toolName, result, executionArgs);
+            const codingToolResultData = codingPatchResultData ?? codingCheckpointRestoreResultData ?? codingGitResultData;
             const toolResultData = transferPlanData ?? codingToolResultData;
 
             // Check for soft failures (tool returned success: false)
@@ -1654,7 +1677,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     const retryFormatted = formatToolResult(toolCall.toolName, retryResult);
                     const retryPatchResultData = buildCodingPatchResultData(toolCall.toolName, retryResult, executionArgs);
                     const retryCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, retryResult, executionArgs);
-                    const retryCodingToolResultData = retryPatchResultData ?? retryCheckpointRestoreResultData;
+                    const retryGitResultData = buildCodingGitResultData(toolCall.toolName, retryResult, executionArgs);
+                    const retryCodingToolResultData = retryPatchResultData ?? retryCheckpointRestoreResultData ?? retryGitResultData;
                     const retryMsg: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',

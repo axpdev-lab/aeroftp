@@ -391,6 +391,46 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'high',
     },
+    {
+        name: 'coding_git_status',
+        description: 'Inspect git branch, ahead/behind state, and staged/unstaged/untracked/conflicted files for a coding workspace.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Optional literal workspace-relative path subset to inspect', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_git_diff',
+        description: 'Inspect unstaged or staged git diff for a coding workspace with stats and capped patch output.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Optional literal workspace-relative path subset to diff', required: false },
+            { name: 'staged', type: 'boolean', description: 'If true, diff the staged index; otherwise diff unstaged changes', required: false },
+            { name: 'max_bytes', type: 'number', description: 'Maximum diff text bytes to return (capped at 256 KiB)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_git_stage',
+        description: 'Stage explicit literal workspace paths in git. Use dry_run=true first for review; real stage changes the git index.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Literal workspace-relative or absolute paths to stage; no globs are expanded', required: true },
+            { name: 'dry_run', type: 'boolean', description: 'Preview status for the requested paths without changing the index', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'coding_git_commit',
+        description: 'Create a git commit from the currently staged index. Run coding_git_status and coding_git_diff with staged=true before using this.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'message', type: 'string', description: 'Commit message', required: true },
+            { name: 'dry_run', type: 'boolean', description: 'Preview staged commit inputs without creating a commit', required: false },
+        ],
+        dangerLevel: 'high',
+    },
 
     // Clipboard
     {

@@ -74,6 +74,10 @@ const ALLOWED_TOOLS: &[&str] = &[
     "coding_checkpoint_create",
     "coding_checkpoint_restore",
     "coding_apply_patch",
+    "coding_git_status",
+    "coding_git_diff",
+    "coding_git_stage",
+    "coding_git_commit",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -143,6 +147,8 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "clipboard_write"
                 | "coding_checkpoint_restore"
                 | "coding_apply_patch"
+                | "coding_git_stage"
+                | "coding_git_commit"
                 | "shell_execute"
         ),
     }
@@ -167,6 +173,8 @@ fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
             | "archive_decompress"
             | "coding_checkpoint_restore"
             | "coding_apply_patch"
+            | "coding_git_stage"
+            | "coding_git_commit"
     )
 }
 
@@ -328,6 +336,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "workspace_root",
         "checkpoint_id",
         "checkpoint_label",
+        "message",
         "local_dir",
         "remote_dir",
         "pattern",
@@ -407,6 +416,10 @@ fn human_tool_label(tool_name: &str) -> &str {
         "coding_checkpoint_create" => "Create Coding Checkpoint",
         "coding_checkpoint_restore" => "Restore Coding Checkpoint",
         "coding_apply_patch" => "Apply Coding Patch",
+        "coding_git_status" => "Inspect Git Status",
+        "coding_git_diff" => "Inspect Git Diff",
+        "coding_git_stage" => "Stage Git Paths",
+        "coding_git_commit" => "Create Git Commit",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -1021,6 +1034,84 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 }
                 Some(_) => {}
                 None => errors.push("Missing 'patch' parameter".to_string()),
+            }
+        }
+        "coding_git_status" | "coding_git_diff" | "coding_git_stage" | "coding_git_commit" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            if matches!(
+                tool_name.as_str(),
+                "coding_git_status" | "coding_git_diff" | "coding_git_stage"
+            ) {
+                if let Some(paths) = args.get("paths").and_then(|v| v.as_array()) {
+                    if paths.is_empty() && tool_name == "coding_git_stage" {
+                        errors.push("'paths' array cannot be empty".to_string());
+                    }
+                    if paths.len() > 100 {
+                        errors.push(format!("Too many git paths: {} (max 100)", paths.len()));
+                    }
+                    for path in paths.iter().filter_map(|v| v.as_str()) {
+                        if path.trim().is_empty() {
+                            errors.push("paths[]: path is empty".to_string());
+                        }
+                        if path.len() > 4096 {
+                            errors.push("paths[]: path exceeds 4096 characters".to_string());
+                        }
+                        if path.contains('\0') {
+                            errors.push("paths[]: path contains null bytes".to_string());
+                        }
+                        if path
+                            .replace('\\', "/")
+                            .split('/')
+                            .any(|component| component == "..")
+                        {
+                            errors.push("paths[]: path traversal ('..') not allowed".to_string());
+                        }
+                    }
+                    if paths.iter().any(|v| !v.is_string()) {
+                        errors.push("'paths' must contain only strings".to_string());
+                    }
+                } else if tool_name == "coding_git_stage" {
+                    errors.push("Missing 'paths' parameter".to_string());
+                }
+            }
+
+            if tool_name == "coding_git_commit" {
+                match args.get("message").and_then(|v| v.as_str()) {
+                    Some(message) if message.trim().is_empty() => {
+                        errors.push("'message' parameter cannot be empty".to_string());
+                    }
+                    Some(message) if message.len() > 10_000 => {
+                        errors.push("'message' exceeds 10000 characters".to_string());
+                    }
+                    Some(message) if message.contains('\0') => {
+                        errors.push("'message' contains null bytes".to_string());
+                    }
+                    Some(_) => {}
+                    None => errors.push("Missing 'message' parameter".to_string()),
+                }
+            }
+
+            if tool_name == "coding_git_diff" {
+                if let Some(max_bytes) = args.get("max_bytes").and_then(|v| v.as_u64()) {
+                    if max_bytes > 256 * 1024 {
+                        warnings.push("max_bytes will be capped at 256 KiB".to_string());
+                    }
+                }
             }
         }
         "clipboard_write" if args.get("content").and_then(|v| v.as_str()).is_none() => {

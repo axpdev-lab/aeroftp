@@ -58,6 +58,6 @@ describe('buildSystemPrompt prompt profiles', () => {
 
         expect(prompt).toContain('Custom base prompt.');
         expect(prompt).toContain('## Active Agent Profile: Coding Agent');
-        expect(prompt).toContain('Workspace checkpoint and patch tools are available for coding work');
+        expect(prompt).toContain('Workspace checkpoint, patch, and git tools are available for coding work');
     });
 });
