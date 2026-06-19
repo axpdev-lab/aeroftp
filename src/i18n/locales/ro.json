@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Niciun subdirector",
       "browseChildren": "Răsfoiește subfolderele"
     },
+    "bridge": {
+      "checking": "Se verifică {app}…",
+      "active": "{app} rulează, puntea locală este activă.",
+      "inactive": "{app} este instalat, dar puntea locală nu răspunde la 127.0.0.1:{port}. Porniți-l și conectați-vă.",
+      "notInstalled": "{app} nu a fost găsit pe acest computer. Instalați-l pentru a utiliza acest mod.",
+      "saveDisabled": "Salvarea este dezactivată până când {app} este instalat.",
+      "recheck": "Verifică din nou"
+    },
     "trash": {
       "title": "Coș de gunoi",
       "empty": "Golește coșul",

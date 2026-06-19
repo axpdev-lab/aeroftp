@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Alt dizin yok",
       "browseChildren": "Alt klasörlere göz at"
     },
+    "bridge": {
+      "checking": "{app} denetleniyor…",
+      "active": "{app} çalışıyor, yerel köprü etkin.",
+      "inactive": "{app} yüklü ancak yerel köprü 127.0.0.1:{port} üzerinde yanıt vermiyor. Başlatın ve oturum açın.",
+      "notInstalled": "Bu makinede {app} bulunamadı. Bu modu kullanmak için yükleyin.",
+      "saveDisabled": "{app} yüklenene kadar kaydetme devre dışı.",
+      "recheck": "Yeniden denetle"
+    },
     "trash": {
       "title": "Çöp Kutusu",
       "empty": "Çöp Kutusunu Boşalt",

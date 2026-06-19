@@ -58,6 +58,7 @@ pub mod duplicacy_import;
 pub mod error_correction;
 pub mod kopia_import;
 pub mod lftp_import;
+pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod putty_import;
 pub mod s3cmd_import;
@@ -16320,6 +16321,7 @@ pub fn run() {
             // Server Health Check
             server_health::server_health_check,
             server_health::server_health_check_batch,
+            local_bridge::bridge_status,
             // Server Speed Test
             speedtest::speedtest_run,
             speedtest::speedtest_compare,

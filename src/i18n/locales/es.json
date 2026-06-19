@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Sin subdirectorios",
       "browseChildren": "Explorar subcarpetas"
     },
+    "bridge": {
+      "checking": "Comprobando {app}…",
+      "active": "{app} se está ejecutando: el puente local está activo.",
+      "inactive": "{app} está instalado pero el puente local no responde en 127.0.0.1:{port}. Inícialo e inicia sesión.",
+      "notInstalled": "No se encontró {app} en este equipo. Instálalo para usar este modo.",
+      "saveDisabled": "El guardado está deshabilitado hasta que {app} esté instalado.",
+      "recheck": "Volver a comprobar"
+    },
     "trash": {
       "title": "Papelera",
       "empty": "Vaciar papelera",

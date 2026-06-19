@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Walang mga subdirectory",
       "browseChildren": "Mag-browse ng mga subdirectory"
     },
+    "bridge": {
+      "checking": "Sinusuri ang {app}…",
+      "active": "Tumatakbo ang {app}, aktibo ang lokal na tulay.",
+      "inactive": "Naka-install ang {app} ngunit hindi tumutugon ang lokal na tulay sa 127.0.0.1:{port}. Simulan ito at mag-sign in.",
+      "notInstalled": "Hindi natagpuan ang {app} sa makinang ito. I-install ito para gamitin ang mode na ito.",
+      "saveDisabled": "Naka-disable ang pag-save hangga't hindi naka-install ang {app}.",
+      "recheck": "Suriin muli"
+    },
     "trash": {
       "title": "Basurahan",
       "empty": "I-empty ang Basurahan",

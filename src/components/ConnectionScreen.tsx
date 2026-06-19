@@ -19,8 +19,9 @@ import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
+import { CollapsibleSetupBox } from './CollapsibleSetupBox';
 import { TotpLivePreview } from './TotpLivePreview';
-import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader } from './providerModeGroups';
+import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { OAuthConnect } from './OAuthConnect';
@@ -620,6 +621,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // copy it from the MEGAcmd terminal.
     const [megaWebdavFetching, setMegaWebdavFetching] = useState(false);
     const [megaWebdavError, setMegaWebdavError] = useState<string | null>(null);
+    // #215 follow-up: true when the active local-bridge mode's helper app
+    // (Filen Desktop / MEGAcmd) is confidently not installed (🔴). Disables the
+    // connect/save button. Reported by ProviderModeTabs -> BridgeStatusBanner.
+    const [bridgeSaveBlocked, setBridgeSaveBlocked] = useState(false);
+    // Active local-bridge 🔴/🟠/🟢 state (idea D): collapses the "Setup … first"
+    // box once the bridge is active. undefined for non-bridge providers.
+    const [bridgeUiState, setBridgeUiState] = useState<'red' | 'amber' | 'green' | undefined>(undefined);
 
     // When re-opening dropdown with a protocol already selected, clear the selection.
     // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
@@ -1252,6 +1260,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Handle the main action button
     const handleConnectAndSave = async () => {
+        // #215 follow-up: a local-bridge mode whose helper app is confidently
+        // not installed (🔴) cannot connect. Defense-in-depth beyond the
+        // disabled button.
+        if (bridgeSaveBlocked) return;
         // Store PAT in vault for future connections (if GitHub PAT mode)
         if (connectionParams.options?.githubAuthMode === 'pat' && connectionParams.password) {
             invoke('github_store_pat', { pat: connectionParams.password }).catch(() => {});
@@ -1832,6 +1844,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 };
                 const newKey = providerId || newProtocol;
                 const restored = modeCredentialSnapshotsRef.current[newKey];
+                // Issue #215 (Ehud, security): the S3 "Secret Access Key" field
+                // is the shared `password` slot relabeled, and the API "password"
+                // is the same slot. Carrying it across modes leaked the Filen/
+                // MEGA/FileLu account password into the S3 Secret Access Key on
+                // the FIRST visit to a tab (no stash yet). Only groups that
+                // authenticate every mode with the SAME credentials may carry
+                // creds over; groups with structurally different secrets must
+                // start blank on a never-visited tab. A restored stash (return
+                // visit) still wins, so the user's own typed keys come back.
+                const switchCreds = resolveModeSwitchCredentials(newGroup, restored, {
+                    username: connectionParams.username,
+                    password: connectionParams.password,
+                });
                 if (providerId) {
                     const provider = getProviderById(providerId);
                     if (provider) {
@@ -1851,8 +1876,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             // has none. A restored stash already holds this
                             // mode's own host, so it wins.
                             server: restored ? restored.server : (provider.defaults?.server || connectionParams.server || ''),
-                            username: restored ? restored.username : connectionParams.username,
-                            password: restored ? restored.password : connectionParams.password,
+                            username: switchCreds.username,
+                            password: switchCreds.password,
                             options: restored ? (restored.options ?? {}) : {
                                 pathStyle: provider.defaults?.pathStyle,
                                 region: provider.defaults?.region,
@@ -1875,8 +1900,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     providerId: undefined,
                     port: restored?.port ?? getDefaultPort(newProtocol),
                     server: restored ? restored.server : connectionParams.server,
-                    username: restored ? restored.username : connectionParams.username,
-                    password: restored ? restored.password : connectionParams.password,
+                    username: switchCreds.username,
+                    password: switchCreds.password,
                     options: restored ? (restored.options ?? {}) : {},
                 });
                 return;
@@ -2761,6 +2786,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             onSwitchMode={(newProtocol, newProviderId) => {
                                 handleProtocolChange(newProtocol as ProviderType, newProviderId);
                             }}
+                            onBridgeSaveBlockedChange={setBridgeSaveBlocked}
+                            onBridgeUiStateChange={setBridgeUiState}
                         />
 
                         {/* Show form only when protocol is selected AND selector is closed */}
@@ -4033,7 +4060,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-3">
                                             <button
                                                 onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.password || !connectionParams.options?.bucket}
+                                                disabled={loading || bridgeSaveBlocked || !connectionParams.password || !connectionParams.options?.bucket}
                                                 className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                                             >
@@ -4621,7 +4648,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-3">
                                             <button
                                                 onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.server || !connectionParams.password}
+                                                disabled={loading || bridgeSaveBlocked || !connectionParams.server || !connectionParams.password}
                                                 className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                                             >
@@ -5042,7 +5069,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-2">
                                             <button
                                                 onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.server || !connectionParams.password}
+                                                disabled={loading || bridgeSaveBlocked || !connectionParams.server || !connectionParams.password}
                                                 className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}
                                             >
@@ -5160,14 +5187,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     /* MEGAcmd local anonymous WebDAV */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">
-                                            <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-900 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-100">
-                                                <p className="font-medium mb-2">Setup MEGAcmd first</p>
+                                            <CollapsibleSetupBox
+                                                key="megacmd-webdav-setup"
+                                                title="Setup MEGAcmd first"
+                                                tone="red"
+                                                bridgeState={bridgeUiState}
+                                            >
                                                 <ol className="list-decimal list-inside space-y-1">
                                                     {(selectedProvider?.setupInstructions || []).map((step) => (
                                                         <li key={step}>{step}</li>
                                                     ))}
                                                 </ol>
-                                            </div>
+                                            </CollapsibleSetupBox>
                                             <div>
                                                 <div className="flex items-center justify-between gap-2 mb-1.5">
                                                     <label className="block text-sm font-medium">{t('connection.endpointUrl')}</label>
@@ -5222,10 +5253,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : ''}>
                                     {/* LEFT COLUMN: Connection fields */}
                                     <div className="space-y-3">
-                                        {/* Provider-specific setup steps (S3Drive, Filen Desktop S3, etc.) */}
+                                        {/* Provider-specific setup steps (S3Drive, Filen Desktop S3, etc.).
+                                            Collapsible; for local-bridge providers it auto-collapses once
+                                            the bridge is active (idea D). bridgeUiState is undefined for
+                                            non-bridge providers, so those just default to open. */}
                                         {selectedProvider?.setupInstructions && selectedProvider.setupInstructions.length > 0 && !editingProfileId && (
-                                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                                                <p className="font-medium mb-2">{t('protocol.setupSteps', { provider: selectedProvider.name })}</p>
+                                            <CollapsibleSetupBox
+                                                key={`setup-${selectedProviderId || selectedProvider.name}`}
+                                                title={t('protocol.setupSteps', { provider: selectedProvider.name })}
+                                                tone="amber"
+                                                bridgeState={bridgeUiState}
+                                            >
                                                 <ol className="list-decimal list-inside space-y-1">
                                                     {selectedProvider.setupInstructions.map((step) => (
                                                         <li key={step}>{step}</li>
@@ -5242,7 +5280,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         {t('protocol.openProviderDocs', { provider: selectedProvider.name })}
                                                     </a>
                                                 )}
-                                            </div>
+                                            </CollapsibleSetupBox>
                                         )}
                                         {(() => {
                                             const isNonGenericS3 = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.isGeneric;

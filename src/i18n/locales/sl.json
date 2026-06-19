@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Ni podimenikov",
       "browseChildren": "Brskaj po podmapah"
     },
+    "bridge": {
+      "checking": "Preverjanje {app}…",
+      "active": "{app} se izvaja, lokalni most je aktiven.",
+      "inactive": "{app} je nameščen, vendar se lokalni most ne odziva na 127.0.0.1:{port}. Zaženite ga in se prijavite.",
+      "notInstalled": "{app} ni bil najden v tem računalniku. Namestite ga za uporabo tega načina.",
+      "saveDisabled": "Shranjevanje je onemogočeno, dokler ni nameščen {app}.",
+      "recheck": "Znova preveri"
+    },
     "trash": {
       "title": "Koš",
       "empty": "Izprazni koš",

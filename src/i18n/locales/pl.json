@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Brak podkatalogów",
       "browseChildren": "Przeglądaj podkatalogi"
     },
+    "bridge": {
+      "checking": "Sprawdzanie {app}…",
+      "active": "{app} jest uruchomiony, lokalny most jest aktywny.",
+      "inactive": "{app} jest zainstalowany, ale lokalny most nie odpowiada pod adresem 127.0.0.1:{port}. Uruchom go i zaloguj się.",
+      "notInstalled": "Nie znaleziono {app} na tym komputerze. Zainstaluj go, aby używać tego trybu.",
+      "saveDisabled": "Zapisywanie jest wyłączone, dopóki {app} nie zostanie zainstalowany.",
+      "recheck": "Sprawdź ponownie"
+    },
     "trash": {
       "title": "Kosz",
       "empty": "Opróżnij kosz",

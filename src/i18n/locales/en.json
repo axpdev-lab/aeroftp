@@ -877,6 +877,14 @@
             "pathMismatch": "Path mismatch",
             "showAll": "Show collapsed segments"
         },
+        "bridge": {
+            "checking": "Checking {app}…",
+            "active": "{app} is running, the local bridge is active.",
+            "inactive": "{app} is installed but the local bridge is not responding on 127.0.0.1:{port}. Start it and sign in.",
+            "notInstalled": "{app} was not found on this machine. Install it to use this mode.",
+            "saveDisabled": "Save is disabled until {app} is installed.",
+            "recheck": "Re-check"
+        },
         "browser": {
             "ascending": "Ascending",
             "clickConnectPrompt": "Click \"Connect\" to access remote files",

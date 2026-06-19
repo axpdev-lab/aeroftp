@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Keine Unterverzeichnisse",
       "browseChildren": "Unterordner durchsuchen"
     },
+    "bridge": {
+      "checking": "{app} wird geprüft…",
+      "active": "{app} läuft, die lokale Brücke ist aktiv.",
+      "inactive": "{app} ist installiert, aber die lokale Brücke antwortet nicht unter 127.0.0.1:{port}. Starten Sie sie und melden Sie sich an.",
+      "notInstalled": "{app} wurde auf diesem Gerät nicht gefunden. Installieren Sie es, um diesen Modus zu verwenden.",
+      "saveDisabled": "Speichern ist deaktiviert, bis {app} installiert ist.",
+      "recheck": "Erneut prüfen"
+    },
     "trash": {
       "title": "Papierkorb",
       "empty": "Papierkorb leeren",

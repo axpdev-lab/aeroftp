@@ -3019,6 +3019,14 @@
       "loading": "Učitavanje...",
       "browseChildren": "Pregledaj podmape"
     },
+    "bridge": {
+      "checking": "Provjera {app}…",
+      "active": "{app} je pokrenut, lokalni most je aktivan.",
+      "inactive": "{app} je instaliran, ali lokalni most ne odgovara na 127.0.0.1:{port}. Pokrenite ga i prijavite se.",
+      "notInstalled": "{app} nije pronađen na ovom računalu. Instalirajte ga za korištenje ovog načina rada.",
+      "saveDisabled": "Spremanje je onemogućeno dok se {app} ne instalira.",
+      "recheck": "Ponovno provjeri"
+    },
     "trash": {
       "title": "Smeće",
       "empty": "Isprazni smeće",

@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Geen submappen",
       "browseChildren": "Subdirectories doorbladeren"
     },
+    "bridge": {
+      "checking": "{app} controleren…",
+      "active": "{app} is actief, de lokale brug is actief.",
+      "inactive": "{app} is geïnstalleerd maar de lokale brug reageert niet op 127.0.0.1:{port}. Start het en meld je aan.",
+      "notInstalled": "{app} is niet gevonden op deze machine. Installeer het om deze modus te gebruiken.",
+      "saveDisabled": "Opslaan is uitgeschakeld totdat {app} is geïnstalleerd.",
+      "recheck": "Opnieuw controleren"
+    },
     "trash": {
       "title": "Prullenbak",
       "empty": "Prullenbak legen",

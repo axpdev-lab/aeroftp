@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Nema poddirektorijuma",
       "browseChildren": "Прегледај подфасцикле"
     },
+    "bridge": {
+      "checking": "Провера {app}…",
+      "active": "{app} је покренут, локални мост је активан.",
+      "inactive": "{app} је инсталиран, али локални мост не одговара на 127.0.0.1:{port}. Покрените га и пријавите се.",
+      "notInstalled": "{app} није пронађен на овом рачунару. Инсталирајте га да бисте користили овај режим.",
+      "saveDisabled": "Чување је онемогућено док се {app} не инсталира.",
+      "recheck": "Поново провери"
+    },
     "trash": {
       "title": "Korpa za otpatke",
       "empty": "Isprazni korpu",

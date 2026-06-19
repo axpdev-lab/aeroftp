@@ -3019,6 +3019,14 @@
       "loading": "Cargando...",
       "browseChildren": "Explorar subcartafoles"
     },
+    "bridge": {
+      "checking": "Comprobando {app}…",
+      "active": "{app} estase executando: a ponte local está activa.",
+      "inactive": "{app} está instalado pero a ponte local non responde en 127.0.0.1:{port}. Iníciao e inicia sesión.",
+      "notInstalled": "Non se atopou {app} neste equipo. Instálao para usar este modo.",
+      "saveDisabled": "O gardado está desactivado ata que {app} estea instalado.",
+      "recheck": "Volver a comprobar"
+    },
     "trash": {
       "title": "Lixo",
       "empty": "Baleirar lixo",

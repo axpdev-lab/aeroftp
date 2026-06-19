@@ -3302,6 +3302,14 @@
             "noSubdirectories": "Nessuna sottocartella",
             "browseChildren": "Sfoglia sottocartelle"
         },
+        "bridge": {
+            "checking": "Verifica di {app}…",
+            "active": "{app} è in esecuzione: il bridge locale è attivo.",
+            "inactive": "{app} è installato ma il bridge locale non risponde su 127.0.0.1:{port}. Avvialo e accedi.",
+            "notInstalled": "{app} non è stato trovato su questo computer. Installalo per usare questa modalità.",
+            "saveDisabled": "Il salvataggio è disabilitato finché {app} non è installato.",
+            "recheck": "Ricontrolla"
+        },
         "trash": {
             "title": "Cestino",
             "empty": "Svuota Cestino",

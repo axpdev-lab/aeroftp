@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Nav apakšdirektoriju",
       "browseChildren": "Pārlūkot apakšmapes"
     },
+    "bridge": {
+      "checking": "Pārbauda {app}…",
+      "active": "{app} darbojas, vietējais tilts ir aktīvs.",
+      "inactive": "{app} ir instalēts, taču vietējais tilts neatbild adresē 127.0.0.1:{port}. Palaidiet to un piesakieties.",
+      "notInstalled": "{app} netika atrasts šajā datorā. Instalējiet to, lai izmantotu šo režīmu.",
+      "saveDisabled": "Saglabāšana ir atspējota, līdz {app} ir instalēts.",
+      "recheck": "Pārbaudīt vēlreiz"
+    },
     "trash": {
       "title": "Atkritne",
       "empty": "Iztukšot atkritni",

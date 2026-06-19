@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Inga underkataloger",
       "browseChildren": "Bläddra i underkataloger"
     },
+    "bridge": {
+      "checking": "Kontrollerar {app}…",
+      "active": "{app} körs, den lokala bryggan är aktiv.",
+      "inactive": "{app} är installerat men den lokala bryggan svarar inte på 127.0.0.1:{port}. Starta den och logga in.",
+      "notInstalled": "{app} hittades inte på den här datorn. Installera det för att använda det här läget.",
+      "saveDisabled": "Sparande är inaktiverat tills {app} är installerat.",
+      "recheck": "Kontrollera igen"
+    },
     "trash": {
       "title": "Papperskorg",
       "empty": "Töm papperskorgen",

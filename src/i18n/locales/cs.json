@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Zadne podadresare",
       "browseChildren": "Procházet podadresáře"
     },
+    "bridge": {
+      "checking": "Kontrola {app}…",
+      "active": "{app} běží, místní most je aktivní.",
+      "inactive": "{app} je nainstalován, ale místní most neodpovídá na 127.0.0.1:{port}. Spusťte jej a přihlaste se.",
+      "notInstalled": "{app} nebyl v tomto počítači nalezen. Nainstalujte jej pro použití tohoto režimu.",
+      "saveDisabled": "Ukládání je zakázáno, dokud nebude {app} nainstalován.",
+      "recheck": "Zkontrolovat znovu"
+    },
     "trash": {
       "title": "Kos",
       "empty": "Vyprazdnit kos",

@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Alamkatalooge pole",
       "browseChildren": "Sirvi alamkaustu"
     },
+    "bridge": {
+      "checking": "{app} kontrollimine…",
+      "active": "{app} töötab, kohalik sild on aktiivne.",
+      "inactive": "{app} on installitud, kuid kohalik sild ei vasta aadressil 127.0.0.1:{port}. Käivitage see ja logige sisse.",
+      "notInstalled": "{app} ei leitud sellest arvutist. Installige see selle režiimi kasutamiseks.",
+      "saveDisabled": "Salvestamine on keelatud, kuni {app} on installitud.",
+      "recheck": "Kontrolli uuesti"
+    },
     "trash": {
       "title": "Prügikast",
       "empty": "Tühjenda prügikast",

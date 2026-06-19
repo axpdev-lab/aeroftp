@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Hakuna saraka ndogo",
       "browseChildren": "Vinjari direktori ndogo"
     },
+    "bridge": {
+      "checking": "Inakagua {app}…",
+      "active": "{app} inaendeshwa, daraja la ndani liko hai.",
+      "inactive": "{app} imesakinishwa lakini daraja la ndani halijibu kwenye 127.0.0.1:{port}. Lianzishe na uingie.",
+      "notInstalled": "{app} haikupatikana kwenye mashine hii. Isakinishe ili kutumia hali hii.",
+      "saveDisabled": "Kuhifadhi kumezimwa hadi {app} isakinishwe.",
+      "recheck": "Kagua tena"
+    },
     "trash": {
       "title": "Tupio",
       "empty": "Tupia Tupio",

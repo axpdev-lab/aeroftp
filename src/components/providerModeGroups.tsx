@@ -47,7 +47,16 @@ export interface ProviderMode {
      *  from the rest of the group. Falls back to the group header. */
     headerProviderId?: string;
     headerName?: string;
+    /** When set, this mode is backed by a local helper app bridge (Filen
+     *  Desktop / MEGAcmd). The backend `bridge_status` command probes it and
+     *  the UI renders a 🔴/🟠/🟢 status dot + app-aware message in place of the
+     *  static "Requires …" warning (#215 follow-up). The value is the bridge
+     *  `kind` understood by `bridge_status`. */
+    bridgeKind?: BridgeKind;
 }
+
+/** Local bridge helper apps probed by the backend `bridge_status` command. */
+export type BridgeKind = 'filen-webdav' | 'filen-s3' | 'megacmd-webdav';
 
 export interface ProviderModeGroup {
     /** Stable group identifier; used for the `key` prop and as a
@@ -161,6 +170,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 description:
                     'WebDAV bridge exposed by Filen Desktop on 127.0.0.1:1900. Requires Filen Desktop running and signed in.',
                 badge: 'LOCAL',
+                bridgeKind: 'filen-webdav',
             },
             {
                 providerId: 'filen-desktop-s3',
@@ -171,6 +181,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 description:
                     'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, bucket "filen".',
                 badge: 'LOCAL',
+                bridgeKind: 'filen-s3',
             },
         ],
         activeWarnings: {
@@ -286,6 +297,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 description:
                     'Local WebDAV bridge served by the official MEGAcmd CLI, anonymous on 127.0.0.1. AeroFTP runs "mega-webdav /" for you on connect, so there is no manual step.',
                 badge: 'LOCAL',
+                bridgeKind: 'megacmd-webdav',
             },
             {
                 providerId: 'mega-s4',
@@ -341,6 +353,41 @@ export function findActiveModeGroup(
         }
     }
     return null;
+}
+
+/** Minimal credential shape consumed by {@link resolveModeSwitchCredentials}. */
+export interface ModeCredentialInput {
+    username?: string;
+    password?: string;
+}
+
+/**
+ * Resolve which username/password to show after switching to another mode of the
+ * same provider group (issue #215, security). The S3 "Secret Access Key" field
+ * and the API "password" field are the SAME shared slot relabeled per protocol,
+ * so blindly carrying it across modes leaked the Filen/MEGA/FileLu account
+ * password into the S3 Secret Access Key on the first visit to a tab.
+ *
+ * Priority:
+ *   1. A stash from a previous visit to the target mode (return visit) wins — the
+ *      user's own typed keys come back, including an intentionally empty value.
+ *   2. Else, if the group authenticates every mode with the SAME credential set
+ *      (`sharedCredentials`, e.g. Koofr / OpenDrive) → carry the current values.
+ *   3. Else (structurally different secrets, first visit) → blank, so an account
+ *      password never bleeds into a field destined for a different server.
+ */
+export function resolveModeSwitchCredentials(
+    group: ProviderModeGroup,
+    restored: ModeCredentialInput | null | undefined,
+    current: ModeCredentialInput,
+): { username: string; password: string } {
+    if (restored) {
+        return { username: restored.username ?? '', password: restored.password ?? '' };
+    }
+    if (group.sharedCredentials) {
+        return { username: current.username ?? '', password: current.password ?? '' };
+    }
+    return { username: '', password: '' };
 }
 
 /** Returns the currently active mode within a group, or null. */

@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Aucun sous-repertoire",
       "browseChildren": "Parcourir les sous-dossiers"
     },
+    "bridge": {
+      "checking": "Vérification de {app}…",
+      "active": "{app} est en cours d'exécution, le pont local est actif.",
+      "inactive": "{app} est installé mais le pont local ne répond pas sur 127.0.0.1:{port}. Démarrez-le et connectez-vous.",
+      "notInstalled": "{app} est introuvable sur cette machine. Installez-le pour utiliser ce mode.",
+      "saveDisabled": "L'enregistrement est désactivé tant que {app} n'est pas installé.",
+      "recheck": "Revérifier"
+    },
     "trash": {
       "title": "Corbeille",
       "empty": "Vider la corbeille",

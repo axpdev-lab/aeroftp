@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Ingen undermapper",
       "browseChildren": "Gennemse undermapper"
     },
+    "bridge": {
+      "checking": "Kontrollerer {app}…",
+      "active": "{app} kører, den lokale bro er aktiv.",
+      "inactive": "{app} er installeret, men den lokale bro svarer ikke på 127.0.0.1:{port}. Start den, og log ind.",
+      "notInstalled": "{app} blev ikke fundet på denne maskine. Installer den for at bruge denne tilstand.",
+      "saveDisabled": "Lagring er deaktiveret, indtil {app} er installeret.",
+      "recheck": "Tjek igen"
+    },
     "trash": {
       "title": "Papirkurv",
       "empty": "Tøm papirkurv",

@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Dim is-gyfeiriaduron",
       "browseChildren": "Pori isgyfeiriaduron"
     },
+    "bridge": {
+      "checking": "Gwirio {app}…",
+      "active": "Mae {app} yn rhedeg, mae'r bont leol yn weithredol.",
+      "inactive": "Mae {app} wedi'i osod ond nid yw'r bont leol yn ymateb ar 127.0.0.1:{port}. Cychwynnwch ef a mewngofnodwch.",
+      "notInstalled": "Ni chanfuwyd {app} ar y peiriant hwn. Gosodwch ef i ddefnyddio'r modd hwn.",
+      "saveDisabled": "Mae cadw wedi'i analluogi nes bod {app} wedi'i osod.",
+      "recheck": "Ailwirio"
+    },
     "trash": {
       "title": "Sbwriel",
       "empty": "Gwagio Sbwriel",

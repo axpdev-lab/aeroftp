@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Engar undirmöppur",
       "browseChildren": "Skoða undirmöppur"
     },
+    "bridge": {
+      "checking": "Athuga {app}…",
+      "active": "{app} er í gangi, staðværa brúin er virk.",
+      "inactive": "{app} er uppsett en staðværa brúin svarar ekki á 127.0.0.1:{port}. Ræstu hana og skráðu þig inn.",
+      "notInstalled": "{app} fannst ekki á þessari vél. Settu það upp til að nota þennan ham.",
+      "saveDisabled": "Vistun er óvirk þar til {app} er uppsett.",
+      "recheck": "Athuga aftur"
+    },
     "trash": {
       "title": "Rusl",
       "empty": "Tæma Rusl",

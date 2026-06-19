@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Sem subdiretórios",
       "browseChildren": "Navegar nas subpastas"
     },
+    "bridge": {
+      "checking": "Verificando {app}…",
+      "active": "{app} está em execução, a ponte local está ativa.",
+      "inactive": "{app} está instalado mas a ponte local não responde em 127.0.0.1:{port}. Inicie-o e faça login.",
+      "notInstalled": "{app} não foi encontrado nesta máquina. Instale-o para usar este modo.",
+      "saveDisabled": "O salvamento está desativado até que {app} seja instalado.",
+      "recheck": "Verificar novamente"
+    },
     "trash": {
       "title": "Lixeira",
       "empty": "Esvaziar Lixeira",

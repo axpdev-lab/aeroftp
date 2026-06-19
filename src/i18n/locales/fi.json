@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Ei alihakemistoja",
       "browseChildren": "Selaa alihakemistoja"
     },
+    "bridge": {
+      "checking": "Tarkistetaan {app}…",
+      "active": "{app} on käynnissä, paikallinen silta on aktiivinen.",
+      "inactive": "{app} on asennettu, mutta paikallinen silta ei vastaa osoitteessa 127.0.0.1:{port}. Käynnistä se ja kirjaudu sisään.",
+      "notInstalled": "{app} ei löytynyt tästä koneesta. Asenna se käyttääksesi tätä tilaa.",
+      "saveDisabled": "Tallennus on poistettu käytöstä, kunnes {app} on asennettu.",
+      "recheck": "Tarkista uudelleen"
+    },
     "trash": {
       "title": "Roskakori",
       "empty": "Tyhjennä roskakori",

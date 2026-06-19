@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Nincsenek alkönyvtárak",
       "browseChildren": "Almappák böngészése"
     },
+    "bridge": {
+      "checking": "{app} ellenőrzése…",
+      "active": "A(z) {app} fut, a helyi híd aktív.",
+      "inactive": "A(z) {app} telepítve van, de a helyi híd nem válaszol a 127.0.0.1:{port} címen. Indítsa el és jelentkezzen be.",
+      "notInstalled": "A(z) {app} nem található ezen a gépen. Telepítse a mód használatához.",
+      "saveDisabled": "A mentés le van tiltva, amíg a(z) {app} nincs telepítve.",
+      "recheck": "Újraellenőrzés"
+    },
     "trash": {
       "title": "Kuka",
       "empty": "Kuka ürítése",

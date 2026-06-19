@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Ingen underkataloger",
       "browseChildren": "Bla gjennom undermapper"
     },
+    "bridge": {
+      "checking": "Sjekker {app}…",
+      "active": "{app} kjører, den lokale broen er aktiv.",
+      "inactive": "{app} er installert, men den lokale broen svarer ikke på 127.0.0.1:{port}. Start den og logg inn.",
+      "notInstalled": "{app} ble ikke funnet på denne maskinen. Installer den for å bruke denne modusen.",
+      "saveDisabled": "Lagring er deaktivert til {app} er installert.",
+      "recheck": "Sjekk på nytt"
+    },
     "trash": {
       "title": "Papirkurv",
       "empty": "Tøm papirkurv",

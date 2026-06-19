@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Tiada subdirektori",
       "browseChildren": "Layari subdirektori"
     },
+    "bridge": {
+      "checking": "Memeriksa {app}…",
+      "active": "{app} sedang berjalan, jambatan tempatan aktif.",
+      "inactive": "{app} dipasang tetapi jambatan tempatan tidak bertindak balas pada 127.0.0.1:{port}. Mulakannya dan log masuk.",
+      "notInstalled": "{app} tidak ditemui pada mesin ini. Pasangnya untuk menggunakan mod ini.",
+      "saveDisabled": "Penyimpanan dilumpuhkan sehingga {app} dipasang.",
+      "recheck": "Periksa semula"
+    },
     "trash": {
       "title": "Tong Sampah",
       "empty": "Kosongkan Tong Sampah",

@@ -15,13 +15,14 @@
  * Renders nothing when no group is active, so it can be unconditionally
  * mounted in the form layout.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { FileText } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import {
     findActiveMode,
     findActiveModeGroup,
 } from './providerModeGroups';
+import BridgeStatusBanner from './BridgeStatusBanner';
 import type { ProviderType } from '../types';
 
 interface ProviderModeTabsProps {
@@ -47,6 +48,12 @@ interface ProviderModeTabsProps {
     readOnly?: boolean;
     /** Optional className override for the outer container. */
     className?: string;
+    /** Reports whether the active local-bridge mode blocks Save (helper app not
+     *  installed, #215 follow-up). Cleared to false for non-bridge modes. */
+    onBridgeSaveBlockedChange?: (blocked: boolean) => void;
+    /** Reports the active local-bridge 🔴/🟠/🟢 state (idea D: collapse the setup
+     *  box when active). Cleared to undefined for non-bridge modes. */
+    onBridgeUiStateChange?: (state: 'red' | 'amber' | 'green' | undefined) => void;
 }
 
 export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
@@ -55,15 +62,28 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
     onSwitchMode,
     readOnly,
     className,
+    onBridgeSaveBlockedChange,
+    onBridgeUiStateChange,
 }) => {
     const t = useTranslation();
     const group = findActiveModeGroup(activeProviderId, activeProtocol);
+    const active = group ? findActiveMode(group, activeProviderId, activeProtocol) : null;
+    const bridgeKind = active?.bridgeKind;
+
+    // Clear bridge-derived state when the active mode is not a local-bridge mode
+    // (the banner clears its own on unmount, but a non-bridge group never mounts
+    // it).
+    useEffect(() => {
+        if (!bridgeKind) {
+            onBridgeSaveBlockedChange?.(false);
+            onBridgeUiStateChange?.(undefined);
+        }
+    }, [bridgeKind, onBridgeSaveBlockedChange, onBridgeUiStateChange]);
 
     if (!group) {
         return null;
     }
 
-    const active = findActiveMode(group, activeProviderId, activeProtocol);
     const warning = active && group.activeWarnings?.[active.label];
 
     // Per-group i18n key for the active warning. Falls back to the
@@ -150,10 +170,21 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                     {lockedHint}
                 </div>
             )}
-            {warning && (
-                <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded px-2 py-1.5 leading-snug">
-                    {resolveWarning(group, active!.label, warning)}
-                </div>
+            {/* Local-bridge modes (Filen Desktop / MEGAcmd) get the live
+                🔴/🟠/🟢 app-aware banner instead of the static "Requires …"
+                warning (#215 follow-up). Other modes keep the static warning. */}
+            {bridgeKind ? (
+                <BridgeStatusBanner
+                    kind={bridgeKind}
+                    onSaveBlockedChange={onBridgeSaveBlockedChange}
+                    onUiStateChange={onBridgeUiStateChange}
+                />
+            ) : (
+                warning && (
+                    <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded px-2 py-1.5 leading-snug">
+                        {resolveWarning(group, active!.label, warning)}
+                    </div>
+                )
             )}
         </div>
     );

@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Nėra pakatalogų",
       "browseChildren": "Naršyti pakatalogiuose"
     },
+    "bridge": {
+      "checking": "Tikrinama {app}…",
+      "active": "{app} veikia, vietinis tiltas aktyvus.",
+      "inactive": "{app} įdiegta, bet vietinis tiltas neatsako adresu 127.0.0.1:{port}. Paleiskite ją ir prisijunkite.",
+      "notInstalled": "{app} nerasta šiame kompiuteryje. Įdiekite ją, kad galėtumėte naudoti šį režimą.",
+      "saveDisabled": "Įrašymas išjungtas, kol nebus įdiegta {app}.",
+      "recheck": "Tikrinti iš naujo"
+    },
     "trash": {
       "title": "Šiukšlinė",
       "empty": "Ištuštinti šiukšlinę",

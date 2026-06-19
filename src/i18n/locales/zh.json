@@ -3019,6 +3019,14 @@
       "noSubdirectories": "没有子目录",
       "browseChildren": "浏览子目录"
     },
+    "bridge": {
+      "checking": "正在检查 {app}…",
+      "active": "{app} 正在运行, 本地桥接已激活。",
+      "inactive": "{app} 已安装，但本地桥接在 127.0.0.1:{port} 上无响应。请启动并登录。",
+      "notInstalled": "此设备上未找到 {app}。请安装后使用此模式。",
+      "saveDisabled": "在安装 {app} 之前，保存已禁用。",
+      "recheck": "重新检查"
+    },
     "trash": {
       "title": "回收站",
       "empty": "清空回收站",

@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Tidak ada subdirektori",
       "browseChildren": "Telusuri subdirektori"
     },
+    "bridge": {
+      "checking": "Memeriksa {app}…",
+      "active": "{app} sedang berjalan, jembatan lokal aktif.",
+      "inactive": "{app} terpasang tetapi jembatan lokal tidak merespons di 127.0.0.1:{port}. Mulai dan masuk.",
+      "notInstalled": "{app} tidak ditemukan di mesin ini. Pasang untuk menggunakan mode ini.",
+      "saveDisabled": "Penyimpanan dinonaktifkan hingga {app} dipasang.",
+      "recheck": "Periksa ulang"
+    },
     "trash": {
       "title": "Sampah",
       "empty": "Kosongkan Sampah",

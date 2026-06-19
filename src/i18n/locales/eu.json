@@ -3019,6 +3019,14 @@
       "loading": "Kargatzen...",
       "browseChildren": "Azpikarpetak arakatu"
     },
+    "bridge": {
+      "checking": "{app} egiaztatzen…",
+      "active": "{app} exekutatzen ari da, tokiko zubia aktibo dago.",
+      "inactive": "{app} instalatuta dago baina tokiko zubiak ez du erantzuten 127.0.0.1:{port} helbidean. Abiarazi eta hasi saioa.",
+      "notInstalled": "{app} ez da aurkitu ordenagailu honetan. Instalatu modu hau erabiltzeko.",
+      "saveDisabled": "Gordetzea desgaituta dago {app} instalatu arte.",
+      "recheck": "Egiaztatu berriro"
+    },
     "trash": {
       "title": "Zakarrontzia",
       "empty": "Hustu zakarrontzia",

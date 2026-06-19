@@ -3019,6 +3019,14 @@
       "noSubdirectories": "No hi ha subdirectoris",
       "browseChildren": "Explora subcarpetes"
     },
+    "bridge": {
+      "checking": "Comprovant {app}…",
+      "active": "{app} s'està executant: el pont local està actiu.",
+      "inactive": "{app} està instal·lat però el pont local no respon a 127.0.0.1:{port}. Inicia'l i inicia la sessió.",
+      "notInstalled": "No s'ha trobat {app} en aquest equip. Instal·la'l per utilitzar aquest mode.",
+      "saveDisabled": "El desament està desactivat fins que {app} estigui instal·lat.",
+      "recheck": "Torna a comprovar"
+    },
     "trash": {
       "title": "Paperera",
       "empty": "Buidar paperera",

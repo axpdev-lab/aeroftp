@@ -3019,6 +3019,14 @@
       "noSubdirectories": "Không có thư mục con",
       "browseChildren": "Duyệt thư mục con"
     },
+    "bridge": {
+      "checking": "Đang kiểm tra {app}…",
+      "active": "{app} đang chạy, cầu nối cục bộ đang hoạt động.",
+      "inactive": "{app} đã được cài đặt nhưng cầu nối cục bộ không phản hồi tại 127.0.0.1:{port}. Hãy khởi động và đăng nhập.",
+      "notInstalled": "Không tìm thấy {app} trên máy này. Hãy cài đặt để sử dụng chế độ này.",
+      "saveDisabled": "Việc lưu bị tắt cho đến khi {app} được cài đặt.",
+      "recheck": "Kiểm tra lại"
+    },
     "trash": {
       "title": "Thùng rác",
       "empty": "Dọn thùng rác",
