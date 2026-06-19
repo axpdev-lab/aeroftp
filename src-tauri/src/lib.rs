@@ -45,6 +45,7 @@ mod cloud_provider_factory;
 mod cloud_service;
 mod coding_checkpoints;
 mod coding_context;
+mod coding_patches;
 mod coding_rules;
 mod context_intelligence;
 pub mod credential_store;

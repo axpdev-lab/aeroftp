@@ -2,6 +2,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { Message } from './aiChatTypes';
+import { normalizeCodingPatchResult, summarizeCodingPatchResult } from './aiChatCodingPatch';
+import { normalizeCodingCheckpointRestoreResult, summarizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
 import { TaskType } from '../../types/ai';
 import { computeResponseBuffer } from './aiChatTokenInfo';
 
@@ -343,6 +345,14 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             }
             lines.push('\nReview the plan card below before execution.');
             return lines.join('\n');
+        }
+        const patchResult = normalizeCodingPatchResult(r);
+        if (patchResult) {
+            return summarizeCodingPatchResult(patchResult);
+        }
+        const checkpointRestoreResult = normalizeCodingCheckpointRestoreResult(r);
+        if (checkpointRestoreResult) {
+            return summarizeCodingCheckpointRestoreResult(checkpointRestoreResult);
         }
         // Edit results
         if (r.replaced !== undefined) {

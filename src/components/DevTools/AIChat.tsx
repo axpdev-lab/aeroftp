@@ -16,7 +16,7 @@ import { type Conversation, cleanupHistory, loadSession } from '../../utils/chat
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData } from './aiChatTypes';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData } from './aiChatTypes';
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
@@ -34,6 +34,8 @@ import { invalidateCodingRulesCache } from './aiChatRules';
 import { extractContextMentionCandidates } from './aiChatMentions';
 import { formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
 import { buildCodingPlanPromptBlock, buildCodingWorkspaceContext, buildSmartContextForWorkspace, resolveAgentPromptProfile, workspaceToSystemPromptContext } from './aiChatCodingWorkspace';
+import { normalizeCodingPatchResult } from './aiChatCodingPatch';
+import { normalizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
 import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
 import { BranchSelector } from './ConversationBranch';
 import type { ProjectContext } from '../../types/contextIntelligence';
@@ -283,6 +285,57 @@ const isTransferPlanResultData = (value: unknown): value is TransferPlanResultDa
     if (!value || typeof value !== 'object') return false;
     const candidate = value as Record<string, unknown>;
     return candidate.kind === 'transfer_plan' && isTransferPlan(candidate.plan);
+};
+
+const buildCodingPatchResultData = (
+    toolName: string,
+    result: unknown,
+    args: Record<string, unknown>,
+): CodingPatchResultData | undefined => {
+    if (toolName !== 'coding_apply_patch') return undefined;
+
+    const patchResult = normalizeCodingPatchResult(result);
+    if (!patchResult) return undefined;
+
+    return {
+        kind: 'coding_patch',
+        result: patchResult,
+        workspaceRoot: typeof args.workspace_root === 'string' ? args.workspace_root : undefined,
+        patch: typeof args.patch === 'string' ? args.patch : undefined,
+    };
+};
+
+const buildCodingCheckpointRestoreResultData = (
+    toolName: string,
+    result: unknown,
+    args: Record<string, unknown>,
+): CodingCheckpointRestoreResultData | undefined => {
+    if (toolName !== 'coding_checkpoint_restore') return undefined;
+
+    const restoreResult = normalizeCodingCheckpointRestoreResult(result);
+    if (!restoreResult) return undefined;
+
+    return {
+        kind: 'coding_checkpoint_restore',
+        result: restoreResult,
+        requestedPaths: Array.isArray(args.paths)
+            ? args.paths.filter((path): path is string => typeof path === 'string')
+            : undefined,
+    };
+};
+
+const getMutationTargetForTool = (
+    toolName: string,
+    args: Record<string, unknown>,
+): 'remote' | 'local' | 'both' | undefined => {
+    if (
+        (toolName === 'coding_apply_patch' || toolName === 'coding_checkpoint_restore')
+        && args.dry_run === true
+    ) {
+        return undefined;
+    }
+
+    return MUTATION_TOOLS[toolName];
 };
 
 const TransferPlanReview: React.FC<{
@@ -762,7 +815,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         // The backend OS dialog is the single confirmation gate for mutative tools.
         if (mode === 'extreme') return true;
         // Never auto-approve destructive or credential-backed tools in other modes
-        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec', 'coding_checkpoint_restore'];
+        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec', 'coding_checkpoint_restore', 'coding_apply_patch'];
         if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
         // Safe tools always auto-approved in all modes
         if (isSafeTool(toolName, allTools)) return true;
@@ -1515,17 +1568,28 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             const transferPlanData = toolCall.toolName === 'generate_transfer_plan' && result && typeof result === 'object' && isTransferPlan(result)
                 ? ({ kind: 'transfer_plan', plan: result } as TransferPlanResultData)
                 : undefined;
+            const codingPatchResultData = buildCodingPatchResultData(toolCall.toolName, result, executionArgs);
+            const codingCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, result, executionArgs);
+            const codingToolResultData = codingPatchResultData ?? codingCheckpointRestoreResultData;
+            const toolResultData = transferPlanData ?? codingToolResultData;
 
             // Check for soft failures (tool returned success: false)
             if (result && typeof result === 'object' && 'success' in (result as Record<string, unknown>) && !(result as Record<string, unknown>).success) {
-                const softError = String((result as Record<string, unknown>).message || t('ai.error.operationFailed'));
+                const softError = String(
+                    (result as Record<string, unknown>).message
+                    || (codingToolResultData ? 'Coding tool validation failed' : t('ai.error.operationFailed')),
+                );
                 const strategy = analyzeToolError(toolCall.toolName, toolCall.args, softError);
 
                 const errorMessage: Message = {
                     id: crypto.randomUUID(),
                     role: 'assistant',
-                    content: `Tool returned failure: ${softError}\n\n**Suggestion**: ${strategy.suggestion}`,
+                    content: codingToolResultData
+                        ? formattedResult
+                        : `Tool returned failure: ${softError}\n\n**Suggestion**: ${strategy.suggestion}`,
                     timestamp: new Date(),
+                    toolName: codingToolResultData ? toolCall.toolName : undefined,
+                    toolResultData: codingToolResultData,
                 };
                 setMessages(prev => [...prev, errorMessage]);
 
@@ -1547,12 +1611,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 content: formattedResult,
                 toolName: toolCall.toolName,
                 timestamp: new Date(),
-                toolResultData: transferPlanData,
+                toolResultData,
             };
             setMessages(prev => [...prev, resultMessage]);
 
             // Refresh file panels after mutation tools
-            const mutationTarget = MUTATION_TOOLS[toolCall.toolName];
+            const mutationTarget = getMutationTargetForTool(toolCall.toolName, executionArgs);
             if (mutationTarget && onFileMutation) {
                 onFileMutation(mutationTarget);
             }
@@ -1588,15 +1652,20 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         strategy.maxRetries || 3,
                     );
                     const retryFormatted = formatToolResult(toolCall.toolName, retryResult);
+                    const retryPatchResultData = buildCodingPatchResultData(toolCall.toolName, retryResult, executionArgs);
+                    const retryCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, retryResult, executionArgs);
+                    const retryCodingToolResultData = retryPatchResultData ?? retryCheckpointRestoreResultData;
                     const retryMsg: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',
                         content: retryFormatted,
+                        toolName: retryCodingToolResultData ? toolCall.toolName : undefined,
+                        toolResultData: retryCodingToolResultData,
                         timestamp: new Date(),
                     };
                     setMessages(prev => [...prev, retryMsg]);
 
-                    const mutationTarget = MUTATION_TOOLS[toolCall.toolName];
+                    const mutationTarget = getMutationTargetForTool(toolCall.toolName, executionArgs);
                     if (mutationTarget && onFileMutation) onFileMutation(mutationTarget);
 
                     setPendingToolCalls([]);

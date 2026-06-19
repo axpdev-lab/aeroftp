@@ -73,6 +73,7 @@ const ALLOWED_TOOLS: &[&str] = &[
     "local_tree",
     "coding_checkpoint_create",
     "coding_checkpoint_restore",
+    "coding_apply_patch",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -141,6 +142,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "archive_decompress"
                 | "clipboard_write"
                 | "coding_checkpoint_restore"
+                | "coding_apply_patch"
                 | "shell_execute"
         ),
     }
@@ -164,6 +166,7 @@ fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
             | "local_trash"
             | "archive_decompress"
             | "coding_checkpoint_restore"
+            | "coding_apply_patch"
     )
 }
 
@@ -324,6 +327,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "destination",
         "workspace_root",
         "checkpoint_id",
+        "checkpoint_label",
         "local_dir",
         "remote_dir",
         "pattern",
@@ -402,6 +406,7 @@ fn human_tool_label(tool_name: &str) -> &str {
         "clipboard_write" => "Write to Clipboard",
         "coding_checkpoint_create" => "Create Coding Checkpoint",
         "coding_checkpoint_restore" => "Restore Coding Checkpoint",
+        "coding_apply_patch" => "Apply Coding Patch",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -989,6 +994,33 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                         errors.push(e);
                     }
                 }
+            }
+        }
+        "coding_apply_patch" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+            match args.get("patch").and_then(|v| v.as_str()) {
+                Some(patch) if patch.trim().is_empty() => {
+                    errors.push("'patch' parameter cannot be empty".to_string());
+                }
+                Some(patch) if patch.len() > 512 * 1024 => {
+                    errors.push("Patch exceeds 512 KB limit".to_string());
+                }
+                Some(_) => {}
+                None => errors.push("Missing 'patch' parameter".to_string()),
             }
         }
         "clipboard_write" if args.get("content").and_then(|v| v.as_str()).is_none() => {

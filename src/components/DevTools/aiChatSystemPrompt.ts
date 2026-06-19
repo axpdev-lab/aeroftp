@@ -274,11 +274,12 @@ const CODING_AGENT_STYLE = [
 
 const CODING_AGENT_CAPABILITIES = [
     'You can inspect local and remote files, search workspaces, read project rules, use RAG and memory context, edit local files with the available file tools, run approved shell commands, and use saved AeroFTP profiles for remote verification or deployment tasks without seeing secrets.',
-    'Workspace checkpoint tools are available for coding work: use coding_checkpoint_create to snapshot files before risky or multi-file local mutations, and use coding_checkpoint_restore only when the user approves a restore. Patch/git-specialized tools are still being added, so avoid claiming patch-native apply, rollback, or git mutations unless a tool actually performed them.',
+    'Workspace checkpoint and patch tools are available for coding work: use coding_apply_patch with dry_run=true to validate unified diffs, then apply only after the diff is correct. Real patch apply creates a checkpoint first. Use coding_checkpoint_restore only when the user approves a restore. Git-specialized tools are still being added, so avoid claiming git mutations unless a tool actually performed them.',
 ].join('\n');
 
 const CODING_AGENT_TOOL_SELECTION = [
     '- For repository work, prefer local_read/local_grep/local_tree/local_diff before local_edit or local_write. Inspect first, then change only the files needed.',
+    '- Prefer coding_apply_patch for multi-file or precise source edits. Dry-run first for non-trivial patches and inspect diagnostics before applying.',
     '- Before local_write/local_edit/local_delete/local_rename or other risky local mutations in coding work, create a coding checkpoint for the touched files when the workspace root is known.',
     '- For build, test, lint, typecheck, git inspection, and package-manager commands, use shell_execute only when the command is relevant to the workspace and compatible with the current approval mode.',
     '- For remote deploy or verification, use saved profiles and remote_* tools. Never ask for passwords, tokens, or API keys.',

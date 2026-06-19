@@ -488,6 +488,24 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
         },
+        ToolDef {
+            name: "coding_apply_patch",
+            description: "Dry-run or apply a unified multi-file diff inside a workspace root.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "patch": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                    "checkpoint_label": {"type": "string"},
+                    "anchor_message_id": {"type": "string"},
+                    "conversation_anchor": {"type": "string"}
+                },
+                "required": ["workspace_root", "patch"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
             name: "clipboard_read",
@@ -1817,6 +1835,7 @@ pub async fn dispatch_tool(
         "local_tree" => local_tools::local_tree(ctx, args).await,
         "coding_checkpoint_create" => coding_tools::coding_checkpoint_create(ctx, args).await,
         "coding_checkpoint_restore" => coding_tools::coding_checkpoint_restore(ctx, args).await,
+        "coding_apply_patch" => coding_tools::coding_apply_patch(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,

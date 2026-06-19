@@ -14,6 +14,10 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { getToolLabel } from './aiChatToolLabels';
 import { CodingPlanArtifactCard } from './CodingPlanArtifactCard';
 import { extractCodingPlanArtifact, getCodingPlanFromResultData } from './aiChatCodingPlan';
+import { CodingPatchReview } from './CodingPatchReview';
+import { getCodingPatchFromResultData } from './aiChatCodingPatch';
+import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
+import { getCodingCheckpointRestoreFromResultData } from './aiChatCodingCheckpointRestore';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
 import type { AIProviderType } from '../../types/ai';
 
@@ -65,6 +69,8 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
         [message.content],
     );
     const codingPlan = getCodingPlanFromResultData(message.toolResultData) || extractedCodingPlan.plan;
+    const codingPatch = getCodingPatchFromResultData(message.toolResultData);
+    const codingCheckpointRestore = getCodingCheckpointRestoreFromResultData(message.toolResultData);
     const renderedContent = codingPlan ? extractedCodingPlan.content : message.content;
     const isLong = isAssistant && renderedContent.length > 500;
     return (
@@ -120,6 +126,21 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                                 onExecute={async (selectedOperationIds) => {
                                     await onExecutePlan(message, selectedOperationIds);
                                 }}
+                            />
+                        )}
+                        {codingPatch && (
+                            <CodingPatchReview
+                                result={codingPatch.result}
+                                patchText={codingPatch.patch}
+                                workspaceRoot={codingPatch.workspaceRoot}
+                                mode="result"
+                            />
+                        )}
+                        {codingCheckpointRestore && (
+                            <CodingCheckpointRestoreReview
+                                result={codingCheckpointRestore.result}
+                                paths={codingCheckpointRestore.requestedPaths}
+                                mode="result"
                             />
                         )}
                     </div>

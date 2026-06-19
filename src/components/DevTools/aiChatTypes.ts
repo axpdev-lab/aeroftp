@@ -82,7 +82,66 @@ export interface CodingPlanResultData {
     plan: CodingPlanArtifact;
 }
 
-export type ChatResultData = TransferPlanResultData | CodingPlanResultData;
+export interface CodingPatchFileResult {
+    path: string;
+    status: string;
+    hunks: number;
+    additions: number;
+    deletions: number;
+    old_size_bytes: number;
+    new_size_bytes: number;
+}
+
+export interface CodingPatchDiagnostic {
+    path?: string | null;
+    hunk_index?: number | null;
+    message: string;
+    expected?: string | null;
+    actual?: string | null;
+}
+
+export interface CodingPatchResult {
+    success: boolean;
+    dry_run: boolean;
+    checkpoint_id?: string | null;
+    files: CodingPatchFileResult[];
+    diagnostics: CodingPatchDiagnostic[];
+    warnings: string[];
+}
+
+export interface CodingPatchResultData {
+    kind: 'coding_patch';
+    result: CodingPatchResult;
+    workspaceRoot?: string;
+    patch?: string;
+}
+
+export interface CodingCheckpointRestoreFileResult {
+    path: string;
+    action: string;
+    existed_at_checkpoint: boolean;
+    size_bytes: number;
+    sha256?: string | null;
+}
+
+export interface CodingCheckpointRestoreResult {
+    checkpoint_id: string;
+    workspace_root: string;
+    dry_run: boolean;
+    files: CodingCheckpointRestoreFileResult[];
+}
+
+export interface CodingCheckpointRestoreResultData {
+    kind: 'coding_checkpoint_restore';
+    result: CodingCheckpointRestoreResult;
+    requestedPaths?: string[];
+}
+
+export type ChatResultData =
+    | TransferPlanResultData
+    | CodingPlanResultData
+    | CodingPatchResultData
+    | CodingCheckpointRestoreResultData;
 
 export interface Message {
     id: string;
@@ -159,5 +218,6 @@ export const MUTATION_TOOLS: Record<string, 'remote' | 'local' | 'both'> = {
     local_write: 'local', local_delete: 'local', local_rename: 'local', local_move_files: 'local',
     local_batch_rename: 'local', local_copy_files: 'local', local_trash: 'local',
     local_mkdir: 'local', local_edit: 'local',
+    coding_apply_patch: 'local', coding_checkpoint_restore: 'local',
     archive_compress: 'both', archive_decompress: 'both',
 };

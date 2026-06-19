@@ -12,7 +12,7 @@ interface ExecutionLevel {
  */
 function extractPaths(args: Record<string, unknown>): string[] {
     const paths: string[] = [];
-    for (const key of ['path', 'local_path', 'remote_path', 'from', 'to']) {
+    for (const key of ['path', 'local_path', 'remote_path', 'from', 'to', 'workspace_root']) {
         const val = args[key];
         if (typeof val === 'string' && val.trim()) {
             paths.push(val.trim());
@@ -31,6 +31,7 @@ function isMutatingTool(toolName: string): boolean {
         'remote_edit', 'remote_upload', 'remote_delete', 'remote_rename', 'remote_mkdir',
         'upload_files', 'download_files',
         'archive_compress', 'archive_decompress',
+        'coding_apply_patch', 'coding_checkpoint_restore',
     ]);
     return mutators.has(toolName);
 }

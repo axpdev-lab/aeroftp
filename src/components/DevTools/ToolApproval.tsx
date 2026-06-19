@@ -6,6 +6,8 @@ import { Check, X, ChevronDown, ChevronRight, Loader2, Shield, ShieldAlert, Shie
 import { invoke } from '@tauri-apps/api/core';
 import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
 import { DiffPreview } from './DiffPreview';
+import { CodingPatchReview } from './CodingPatchReview';
+import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -33,11 +35,13 @@ const dangerIconColor: Record<DangerLevel, string> = {
 
 /** Extract the main argument to show inline (usually path or command) */
 function getMainArg(_toolName: string, args: Record<string, unknown>): string {
-    const path = (args.path || args.local_path || args.remote_path || args.from) as string | undefined;
+    const path = (args.path || args.local_path || args.remote_path || args.from || args.workspace_root) as string | undefined;
     if (path) {
         const parts = path.replace(/\\/g, '/').split('/');
         return parts[parts.length - 1] || path;
     }
+    const checkpointId = args.checkpoint_id as string | undefined;
+    if (checkpointId) return checkpointId.length > 40 ? checkpointId.slice(0, 40) + '...' : checkpointId;
     const command = args.command as string | undefined;
     if (command) return command.length > 40 ? command.slice(0, 40) + '...' : command;
     return '';
@@ -62,6 +66,16 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const isPending = toolCall.status === 'pending' || toolCall.status === 'approved';
 
     const isEditTool = toolCall.toolName === 'local_edit' || toolCall.toolName === 'remote_edit';
+    const isPatchTool = toolCall.toolName === 'coding_apply_patch';
+    const isCheckpointRestoreTool = toolCall.toolName === 'coding_checkpoint_restore';
+    const patchText = typeof toolCall.args.patch === 'string' ? toolCall.args.patch : undefined;
+    const workspaceRoot = typeof toolCall.args.workspace_root === 'string' ? toolCall.args.workspace_root : undefined;
+    const patchDryRun = toolCall.args.dry_run === true;
+    const restoreCheckpointId = typeof toolCall.args.checkpoint_id === 'string' ? toolCall.args.checkpoint_id : undefined;
+    const restorePaths = Array.isArray(toolCall.args.paths)
+        ? toolCall.args.paths.filter((path): path is string => typeof path === 'string')
+        : undefined;
+    const restoreDryRun = toolCall.args.dry_run === true;
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -152,6 +166,24 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                     <div className="py-1 text-[11px] text-yellow-400">
                         {t('ai.tool.previewUnavailable') || 'Preview unavailable:'} {diffError}
                     </div>
+                )}
+
+                {isPatchTool && isPending && (
+                    <CodingPatchReview
+                        patchText={patchText}
+                        workspaceRoot={workspaceRoot}
+                        dryRun={patchDryRun}
+                        mode="approval"
+                    />
+                )}
+
+                {isCheckpointRestoreTool && isPending && (
+                    <CodingCheckpointRestoreReview
+                        checkpointId={restoreCheckpointId}
+                        paths={restorePaths}
+                        dryRun={restoreDryRun}
+                        mode="approval"
+                    />
                 )}
 
                 {/* Validation errors/warnings */}

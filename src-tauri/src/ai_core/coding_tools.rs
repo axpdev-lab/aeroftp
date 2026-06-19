@@ -12,6 +12,7 @@ use crate::coding_checkpoints::{
     create_checkpoint, restore_checkpoint, CreateCodingCheckpointRequest,
     RestoreCodingCheckpointRequest,
 };
+use crate::coding_patches::{apply_coding_patch, preview_coding_patch, ApplyCodingPatchRequest};
 
 pub async fn coding_checkpoint_create(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let app = ctx.tauri_app_handle().ok_or_else(|| {
@@ -83,6 +84,74 @@ pub async fn coding_checkpoint_restore(
         },
     )
     .map_err(ToolError::Exec)?;
+
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_apply_patch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let patch = get_str(args, "patch")?;
+    let dry_run = args
+        .get("dry_run")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+
+    let request = ApplyCodingPatchRequest {
+        workspace_root: workspace_root.clone(),
+        patch: patch.clone(),
+        dry_run,
+    };
+
+    if dry_run {
+        let result = preview_coding_patch(request).map_err(ToolError::Exec)?;
+        return to_value(result).map_err(|e| ToolError::Exec(e.to_string()));
+    }
+
+    let preview = preview_coding_patch(ApplyCodingPatchRequest {
+        workspace_root: workspace_root.clone(),
+        patch: patch.clone(),
+        dry_run: true,
+    })
+    .map_err(ToolError::Exec)?;
+
+    if !preview.success {
+        return to_value(preview).map_err(|e| ToolError::Exec(e.to_string()));
+    }
+
+    let app = ctx.tauri_app_handle().ok_or_else(|| {
+        ToolError::Exec("coding_apply_patch is only available in the GUI".to_string())
+    })?;
+    let paths: Vec<String> = preview.files.iter().map(|file| file.path.clone()).collect();
+    let checkpoint_label = get_str_opt(args, "checkpoint_label")
+        .unwrap_or_else(|| "Before coding_apply_patch".to_string());
+
+    let checkpoint = {
+        let db = app.state::<crate::chat_history::ChatHistoryDb>();
+        let mut conn = db.0.lock().unwrap_or_else(|e| {
+            log::warn!("Chat history DB mutex was poisoned during patch checkpoint: {e}");
+            e.into_inner()
+        });
+        create_checkpoint(
+            &mut conn,
+            CreateCodingCheckpointRequest {
+                workspace_root: workspace_root.clone(),
+                paths,
+                session_id: ctx.session_id().map(str::to_string),
+                anchor_message_id: get_str_opt(args, "anchor_message_id"),
+                conversation_anchor: get_str_opt(args, "conversation_anchor"),
+                label: Some(checkpoint_label),
+            },
+        )
+        .map_err(ToolError::Exec)?
+    };
+
+    let mut result = apply_coding_patch(request).map_err(|error| {
+        ToolError::Exec(format!(
+            "{}. A checkpoint was created before applying: {}",
+            error, checkpoint.id
+        ))
+    })?;
+    result.checkpoint_id = Some(checkpoint.id);
 
     to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
 }

@@ -378,6 +378,19 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'high',
     },
+    {
+        name: 'coding_apply_patch',
+        description: 'Dry-run or apply a unified multi-file diff inside a workspace root. Real apply creates a checkpoint before changing files.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root containing every patched file', required: true },
+            { name: 'patch', type: 'string', description: 'Unified diff text to validate or apply', required: true },
+            { name: 'dry_run', type: 'boolean', description: 'Validate and summarize without changing files (default false)', required: false },
+            { name: 'checkpoint_label', type: 'string', description: 'Optional checkpoint label for real apply', required: false },
+            { name: 'anchor_message_id', type: 'string', description: 'Optional chat message ID to anchor the pre-apply checkpoint', required: false },
+            { name: 'conversation_anchor', type: 'string', description: 'Optional short note for the pre-apply checkpoint', required: false },
+        ],
+        dangerLevel: 'high',
+    },
 
     // Clipboard
     {
