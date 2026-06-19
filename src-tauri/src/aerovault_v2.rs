@@ -1151,10 +1151,11 @@ mod tests {
                         None,
                     ))
                     .unwrap_or_else(|e| panic!("[{}] create: {e}", case.label));
-                    rt.block_on(crate::aerovault_v3::vault_v3_add_files(
+                    rt.block_on(crate::aerovault_v3::vault_v3_add_files_inner(
                         vault_path.clone(),
                         pw.to_string(),
                         vec![src_path.clone()],
+                        None,
                     ))
                     .unwrap_or_else(|e| panic!("[{}] add: {e}", case.label));
                 }

@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use tauri::Emitter;
 
 #[derive(Debug, Serialize)]
 pub struct VaultV3Info {
@@ -338,11 +339,24 @@ fn apply_profile_level(
 /// Attached to an opened crate vault via `set_telemetry_sink`; the handler keeps
 /// the `Arc` to read the populated report back after the blocking op. Poison is
 /// recovered (a sink panic must not poison subsequent receipts).
-struct ReportSink(Arc<Mutex<VaultReport>>);
+struct ReportSink {
+    report: Arc<Mutex<VaultReport>>,
+    progress: Option<VaultProgressEmitter>,
+}
+
+/// Live GUI progress for a long vault op: accumulates the plaintext bytes seen
+/// by `on_chunk` (compression + encryption run on the same chunk stream) and
+/// emits a throttled `vault_progress` event, one per integer percent.
+struct VaultProgressEmitter {
+    app: tauri::AppHandle,
+    total: u64,
+    acc: u64,
+    last_pct: i64,
+}
 
 impl ReportSink {
     fn with<R>(&self, f: impl FnOnce(&mut VaultReport) -> R) -> R {
-        let mut guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.report.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut guard)
     }
 }
@@ -350,6 +364,18 @@ impl ReportSink {
 impl aerovault::v3::VaultTelemetrySink for ReportSink {
     fn on_chunk(&mut self, is_new: bool, plaintext: u64, compressed: u64, encrypted: u64) {
         self.with(|r| r.on_chunk(is_new, plaintext, compressed, encrypted));
+        if let Some(p) = self.progress.as_mut() {
+            p.acc = p.acc.saturating_add(plaintext);
+            let done = p.acc.min(p.total);
+            let pct = done.saturating_mul(100).checked_div(p.total).unwrap_or(0) as i64;
+            if pct != p.last_pct {
+                p.last_pct = pct;
+                let _ = p.app.emit(
+                    "vault_progress",
+                    serde_json::json!({ "percentage": pct, "transferred": done, "total": p.total }),
+                );
+            }
+        }
     }
     fn on_file(&mut self, packed: bool) {
         self.with(|r| r.on_file(packed));
@@ -688,6 +714,19 @@ pub async fn vault_v3_add_files(
     vault_path: String,
     password: String,
     file_paths: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<VaultV3Info, String> {
+    vault_v3_add_files_inner(vault_path, password, file_paths, Some(app)).await
+}
+
+/// Shared body for the public command (which forwards the injected `AppHandle`
+/// so the GUI gets live progress) and internal callers like the AeroCrypt
+/// overlay path (which pass `None`, no progress channel).
+pub async fn vault_v3_add_files_inner(
+    vault_path: String,
+    password: String,
+    file_paths: Vec<String>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<VaultV3Info, String> {
     let started = Instant::now();
     let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
@@ -699,6 +738,10 @@ pub async fn vault_v3_add_files(
         let name = safe_entry_name(&path)?;
         sources.push((path, name));
     }
+    let total_bytes: u64 = sources
+        .iter()
+        .map(|(p, _)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .sum();
     preflight_vault_memory_guard(Path::new(&vault_path), &sources)?;
     let report = Arc::new(Mutex::new(VaultReport::new("add_files", 3)));
     let report_for_task = report.clone();
@@ -714,7 +757,15 @@ pub async fn vault_v3_add_files(
                 r.set_algorithms(pre.algorithms.clone());
             }
             // The crate emits scan/pack/chunk/file/cdc + Error-Correction events.
-            vault.set_telemetry_sink(Box::new(ReportSink(report_for_task.clone())));
+            vault.set_telemetry_sink(Box::new(ReportSink {
+                report: report_for_task.clone(),
+                progress: app.map(|app| VaultProgressEmitter {
+                    app,
+                    total: total_bytes,
+                    acc: 0,
+                    last_pct: -1,
+                }),
+            }));
             aerovault::v3::VaultV3::add_files(&mut vault, &sources)?;
             Ok(aerovault::v3::VaultV3::summary(&vault))
         })

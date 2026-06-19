@@ -911,10 +911,11 @@ async fn aerovault_overlay_add_file(
 
     let add_result = if version == 3 {
         if current_dir.is_empty() {
-            aerovault_v3::vault_v3_add_files(
+            aerovault_v3::vault_v3_add_files_inner(
                 vault_path.clone(),
                 password.clone(),
                 vec![upload_source.to_string_lossy().to_string()],
+                None,
             )
             .await
             .map(|_| serde_json::json!({ "ok": true }))

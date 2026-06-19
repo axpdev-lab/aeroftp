@@ -48893,7 +48893,7 @@ async fn main() {
                         resolve_ver(vault_version)
                     };
                     if ver == "v3" {
-                        match aerovault_v3::vault_v3_add_files(path.clone(), pw, files.clone())
+                        match aerovault_v3::vault_v3_add_files_inner(path.clone(), pw, files.clone(), None)
                             .await
                         {
                             Ok(info) => {
