@@ -518,19 +518,25 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 {formatBytes(item.size)}
                             </span>
 
-                            {/* Progress or Time or Error with tooltip */}
-                            <span className={`w-14 text-right shrink-0 ${item.status === 'error' ? 'text-red-500 dark:text-red-400 cursor-help' : 'text-gray-500'}`}
-                                title={item.status === 'error' && item.error ? item.error : undefined}
-                            >
-                                {item.status === 'transferring' && item.progress !== undefined
-                                    ? `${item.progress}%`
-                                    : item.status === 'completed' && item.startTime && item.endTime
+                            {/* Progress bar (transferring) or Time/Error (else) */}
+                            {item.status === 'transferring' && item.progress !== undefined ? (
+                                <span className="w-28 flex items-center gap-1.5 shrink-0">
+                                    <span className="flex-1 min-w-0">
+                                        <TransferProgressBar percentage={item.progress} size="sm" />
+                                    </span>
+                                    <span className="w-9 text-right tabular-nums text-gray-500 dark:text-gray-400">{item.progress}%</span>
+                                </span>
+                            ) : (
+                                <span className={`w-14 text-right shrink-0 ${item.status === 'error' ? 'text-red-500 dark:text-red-400 cursor-help' : 'text-gray-500'}`}
+                                    title={item.status === 'error' && item.error ? item.error : undefined}
+                                >
+                                    {item.status === 'completed' && item.startTime && item.endTime
                                         ? formatTime(item.endTime - item.startTime)
                                         : item.status === 'error'
                                             ? t('transfer.fail')
-                                            : '-'
-                                }
-                            </span>
+                                            : '-'}
+                                </span>
+                            )}
 
                             {/* Inline action buttons: hover only */}
                             <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
@@ -582,14 +588,16 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     })}
                 </div>
 
-                {/* Footer: always visible, glows during transfers */}
-                <div className={`h-1 transition-all duration-500 ${transferringCount > 0 ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-gray-300 dark:bg-gray-700 opacity-40'}`}>
-                    {transferringCount > 0 && (
-                        <div
-                            className="h-full bg-cyan-400/60 rounded-full transition-all duration-300"
-                            style={{ width: `${items.length > 0 ? (completedCount / items.length) * 100 : 0}%` }}
-                        />
-                    )}
+                {/* Footer: aggregate progress bar (AeroProgress: was a 1px file-count strip) */}
+                <div className="px-3 py-2 border-t border-gray-200/60 dark:border-gray-700/60">
+                    <TransferProgressBar
+                        percentage={items.length > 0 ? (completedCount / items.length) * 100 : 0}
+                        currentFile={completedCount}
+                        totalFiles={items.length}
+                        size="md"
+                        variant={transferringCount > 0 ? 'gradient' : 'default'}
+                        animated={transferringCount > 0}
+                    />
                 </div>
             </div>
 
