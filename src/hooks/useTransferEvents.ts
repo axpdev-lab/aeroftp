@@ -604,7 +604,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
               );
               emitToastState();
             } else {
-              dispatchTransferToast({ summary: data.progress });
+              // Route single-file progress through the toast builder too, so a
+              // large single file gets the speed-history graph (it has no lanes).
+              toastSummaryRef.current = data.progress;
+              emitToastState();
             }
           }
         }

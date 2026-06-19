@@ -130,12 +130,15 @@ export const ProgressLanes: React.FC<ProgressLanesProps> = ({ lanes, styles, bar
                 const laneUpload = lane.direction === 'upload';
                 const tone = lane.state === 'error' ? 'error' : lane.state === 'completed' ? 'success' : 'default';
                 const laneName = lane.path ? truncatePath(lane.path, 30) : lane.filename;
+                const laneEta = lane.speed_bps > 0 && lane.total > lane.transferred
+                    ? Math.round((lane.total - lane.transferred) / lane.speed_bps)
+                    : 0;
                 const right = lane.state === 'error'
                     ? 'error'
                     : lane.state === 'completed'
                         ? 'done'
                         : lane.speed_bps > 0
-                            ? formatSpeed(lane.speed_bps)
+                            ? `${formatSpeed(lane.speed_bps)}${laneEta > 0 ? ` · ${formatETA(laneEta)}` : ''}`
                             : `${lane.percentage}%`;
                 return (
                     <div key={lane.id} className="flex items-center gap-2">
