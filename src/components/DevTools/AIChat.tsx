@@ -30,6 +30,8 @@ import { useAgentMemory } from './useAgentMemory';
 import { buildContextBlock, buildSystemPrompt } from './aiChatSystemPrompt';
 import { getParameterPreset } from './aiProviderProfiles';
 import { detectProjectContext, invalidateProjectCache, fetchFileImports, fetchGitContext } from './aiChatProjectContext';
+import { fetchCodingRules, invalidateCodingRulesCache } from './aiChatRules';
+import { extractContextMentionCandidates, resolveContextMentions, formatMentionAttachmentsForPrompt } from './aiChatMentions';
 import { buildSmartContext, formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
 import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
 import { BranchSelector } from './ConversationBranch';
@@ -548,6 +550,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [appTheme]);
 
     const [input, setInput] = useState('');
+    const mentionCandidates = useMemo(() => extractContextMentionCandidates(input), [input]);
     const [showModelSelector, setShowModelSelector] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
@@ -1560,8 +1563,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     window.dispatchEvent(new CustomEvent('file-changed', { detail: { path: changedPath } }));
                     // Invalidate cached project context when config files are modified
                     const configFiles = ['package.json', 'Cargo.toml', 'composer.json', 'pyproject.toml', 'go.mod', 'pom.xml', 'build.gradle'];
+                    const ruleFiles = ['AGENTS.md', 'CLAUDE.md', '.cursorrules', '.github/copilot-instructions.md'];
                     if (configFiles.some(cf => changedPath.endsWith(cf))) {
                         invalidateProjectCache();
+                    }
+                    if (ruleFiles.some(rf => changedPath.endsWith(rf))) {
+                        invalidateCodingRulesCache();
                     }
                 }
             }
@@ -2028,6 +2035,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 budgetMode,
             );
             const smartContextBlock = formatSmartContextForPrompt(smartCtx);
+            const codingRulesBlock = projectPath ? await fetchCodingRules(projectPath) : '';
+            const mentionAttachments = projectPath ? await resolveContextMentions(userMessage.content, projectPath) : [];
+            const mentionContextBlock = formatMentionAttachmentsForPrompt(mentionAttachments);
 
             // Build context-aware system prompt with Phase 3 data
             const contextBlock = buildContextBlock({
@@ -2042,6 +2052,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 gitSummary: gitSummaryRef.current || undefined,
                 agentMemory: relevantAgentMemory || agentMemory,
                 fileImports: fileImportsRef.current,
+                codingRulesBlock: codingRulesBlock || undefined,
+                mentionContextBlock: mentionContextBlock || undefined,
                 smartContextBlock: smartContextBlock || undefined,
             });
             // Build extra tool definitions for system prompt (plugin + macro, not built-in)
@@ -2922,6 +2934,19 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                         <X size={10} />
                                     </button>
                                 </div>
+                            ))}
+                        </div>
+                    )}
+                    {mentionCandidates.length > 0 && (
+                        <div className={`flex flex-wrap gap-1.5 px-3 py-2 border-b ${ct.border}`}>
+                            {mentionCandidates.map(path => (
+                                <span
+                                    key={path}
+                                    className={`max-w-[220px] truncate rounded-md border ${ct.borderSolid} px-2 py-0.5 text-[11px] ${ct.textSecondary}`}
+                                    title={`@${path}`}
+                                >
+                                    @{path}
+                                </span>
                             ))}
                         </div>
                     )}

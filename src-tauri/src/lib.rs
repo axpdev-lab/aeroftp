@@ -43,6 +43,8 @@ mod chat_history;
 mod cloud_config;
 mod cloud_provider_factory;
 mod cloud_service;
+mod coding_context;
+mod coding_rules;
 mod context_intelligence;
 pub mod credential_store;
 mod cross_profile_commands;
@@ -15801,6 +15803,8 @@ pub fn run() {
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands
+            coding_context::resolve_context_mentions,
+            coding_rules::read_coding_rules,
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,
             context_intelligence::get_git_context,

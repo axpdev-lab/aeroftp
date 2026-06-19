@@ -31,6 +31,8 @@ export interface SystemPromptContext {
     gitSummary?: string;
     agentMemory?: string;
     fileImports?: string[];
+    codingRulesBlock?: string;
+    mentionContextBlock?: string;
     smartContextBlock?: string;  // Pre-built smart context from aiChatSmartContext.ts
 }
 
@@ -66,6 +68,14 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
     if (ctx.localPath) contextLines.push(`- Local path: ${ctx.localPath}`);
     if (ctx.selectedFiles && ctx.selectedFiles.length > 0) contextLines.push(`- Selected files: ${ctx.selectedFiles.slice(0, 10).join(', ')}${ctx.selectedFiles.length > 10 ? ` (+${ctx.selectedFiles.length - 10} more)` : ''}`);
     if (ctx.editorFileName) contextLines.push(`- Editor: currently editing "${ctx.editorFileName}"${ctx.editorFilePath ? ` (${ctx.editorFilePath})` : ''}`);
+
+    if (ctx.mentionContextBlock?.trim()) {
+        contextLines.push(ctx.mentionContextBlock.trim());
+    }
+
+    if (ctx.codingRulesBlock?.trim()) {
+        contextLines.push(ctx.codingRulesBlock.trim());
+    }
 
     // RAG workspace index summary
     if (ctx.ragIndex) {
