@@ -12,6 +12,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ChevronDown, ChevronRight, CircleStop, FolderOpen, Info, Play, AlertTriangle, Ban, CheckCircle2, Zap } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { TransferProgressBar } from '../TransferProgressBar';
 import type { AeroSyncPairKind } from './types';
 
 interface SyncTabContentProps {
@@ -469,18 +470,14 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
 
             {running && progress && (
                 <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-                    <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1.5">
-                        <span>
-                            {progress.processed} / {progress.total}
-                        </span>
-                        <span className="font-mono">{pct.toFixed(0)}%</span>
-                    </div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded-lg overflow-hidden">
-                        <div
-                            className="h-full bg-blue-500 transition-all"
-                            style={{ width: `${pct}%` }}
-                        />
-                    </div>
+                    <TransferProgressBar
+                        percentage={Math.round(pct)}
+                        filename={progress.current_path}
+                        currentFile={progress.processed}
+                        totalFiles={progress.total}
+                        size="md"
+                        variant={pct > 0 ? 'gradient' : 'indeterminate'}
+                    />
                     <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 truncate">
                         {progress.used_delta ? '[delta] ' : '[copy] '}
                         {progress.current_path}

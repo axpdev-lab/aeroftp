@@ -723,6 +723,11 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                         percentage={liveProgress.percentage}
                                         filename={liveProgress.currentFile}
                                         speedBps={liveProgress.speedBps}
+                                        etaSeconds={
+                                            liveProgress.speedBps > 0 && plan && plan.total_bytes > liveProgress.bytesTransferred
+                                                ? Math.round((plan.total_bytes - liveProgress.bytesTransferred) / liveProgress.speedBps)
+                                                : 0
+                                        }
                                         transferredBytes={liveProgress.bytesTransferred}
                                         totalBytes={plan?.total_bytes}
                                         currentFile={liveProgress.currentIndex}
