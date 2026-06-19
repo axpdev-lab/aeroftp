@@ -35,6 +35,10 @@
 .tpb-dark .tpb-track { background: #374151; }
 .tpb-tokyo .tpb-track { background: #2d2250; }
 .tpb-cyber .tpb-track { background: #0d1520; }
+.tpb-truedark .tpb-track { background: #21262d; }
+.tpb-green .tpb-track { background: #18302a; }
+.tpb-ice .tpb-track { background: #d6e8f8; }
+.tpb-redhorse .tpb-track { background: #2a1416; }
 
 /* Fill: shimmer animation */
 .tpb-fill {
@@ -109,6 +113,48 @@
     animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
 }
 
+/* Green theme: forest shimmer */
+.tpb-green .tpb-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(34, 197, 94, 0.3) 45%,
+        rgba(74, 222, 128, 0.5) 50%,
+        rgba(34, 197, 94, 0.3) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
+}
+
+/* Ice theme: frost shimmer */
+.tpb-ice .tpb-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(14, 165, 233, 0.3) 45%,
+        rgba(56, 189, 248, 0.5) 50%,
+        rgba(14, 165, 233, 0.3) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
+}
+
+/* Redhorse theme: racing-red shimmer */
+.tpb-redhorse .tpb-shimmer::after {
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(227, 38, 54, 0.3) 45%,
+        rgba(255, 40, 0, 0.5) 50%,
+        rgba(227, 38, 54, 0.3) 55%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tpb-shimmer-overlay 1.8s ease-in-out infinite;
+}
+
 /* Indeterminate animation */
 .tpb-fill-indeterminate {
     border-radius: 9999px;
@@ -121,6 +167,10 @@
 .tpb-dark .tpb-fill-indeterminate { background: linear-gradient(90deg, #10b981, #34d399); }
 .tpb-tokyo .tpb-fill-indeterminate { background: linear-gradient(90deg, #a855f7, #ec4899); }
 .tpb-cyber .tpb-fill-indeterminate { background: linear-gradient(90deg, #22d3ee, #10b981); }
+.tpb-truedark .tpb-fill-indeterminate { background: linear-gradient(90deg, #58a6ff, #1f6feb); }
+.tpb-green .tpb-fill-indeterminate { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.tpb-ice .tpb-fill-indeterminate { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+.tpb-redhorse .tpb-fill-indeterminate { background: linear-gradient(90deg, #E32636, #FF2800); }
 
 @keyframes tpb-indeterminate {
     0%   { transform: translateX(-100%); }
@@ -137,6 +187,10 @@
 .tpb-dark .tpb-filename { color: #d1d5db; }
 .tpb-tokyo .tpb-filename { color: #c4b5fd; }
 .tpb-cyber .tpb-filename { color: #67e8f9; }
+.tpb-truedark .tpb-filename { color: #e6edf3; }
+.tpb-green .tpb-filename { color: #a7c4b1; }
+.tpb-ice .tpb-filename { color: #0b2942; }
+.tpb-redhorse .tpb-filename { color: #f1d6d8; }
 
 .tpb-stats {
     flex-shrink: 0;
@@ -149,6 +203,10 @@
 .tpb-dark .tpb-stats { color: #9ca3af; }
 .tpb-tokyo .tpb-stats { color: #a78bfa; }
 .tpb-cyber .tpb-stats { color: #22d3ee; }
+.tpb-truedark .tpb-stats { color: #8b949e; }
+.tpb-green .tpb-stats { color: #6b8a78; }
+.tpb-ice .tpb-stats { color: #3b6789; }
+.tpb-redhorse .tpb-stats { color: #b08488; }
 
 .tpb-batch {
     font-weight: 600;

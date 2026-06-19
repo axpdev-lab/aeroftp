@@ -101,15 +101,23 @@ export const AnimatedBytes: React.FC<AnimatedBytesProps> = ({ bytes, isAnimated 
     return <span className={isAnimated ? 'font-mono text-green-400' : ''}>{displayText}</span>;
 };
 
-// AeroProgress: the rich bar supports 4 gradient themes today; map the app's
-// wider EffectiveTheme set onto them deterministically (extra themes fall back
-// to the dark gradient until per-theme gradients land, tracked in the audit).
-type BarTheme = 'light' | 'dark' | 'tokyo' | 'cyber';
+// AeroProgress: the rich bar carries a dedicated gradient for each of the app's
+// 8 effective themes; map the resolved theme onto a BarTheme, defaulting unknown
+// values to the dark gradient.
+type BarTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse';
 function toBarTheme(effective: string): BarTheme {
-    if (effective === 'tokyo') return 'tokyo';
-    if (effective === 'cyber') return 'cyber';
-    if (effective === 'light') return 'light';
-    return 'dark';
+    switch (effective) {
+        case 'truedark':
+        case 'tokyo':
+        case 'cyber':
+        case 'green':
+        case 'ice':
+        case 'redhorse':
+        case 'light':
+            return effective;
+        default:
+            return 'dark';
+    }
 }
 
 // ============ Progress Lanes (per-file parallel channels) ============
@@ -391,6 +399,46 @@ function getToastStyles(theme: string) {
                 badge: 'bg-purple-950/40 text-purple-200',
                 badgeMuted: 'bg-purple-950/30 text-purple-100/60',
                 cancel: 'text-purple-600/70 hover:text-red-400 hover:bg-red-900/20',
+            };
+        case 'truedark':
+            return {
+                container: 'bg-[#0d1117] border-zinc-700/50 shadow-2xl',
+                panel: 'bg-[#161b22]',
+                title: 'text-zinc-100',
+                subtitle: 'text-zinc-400',
+                badge: 'bg-zinc-800/60 text-zinc-200',
+                badgeMuted: 'bg-zinc-800/40 text-zinc-400',
+                cancel: 'text-zinc-500/70 hover:text-red-400 hover:bg-red-900/30',
+            };
+        case 'green':
+            return {
+                container: 'bg-[#0f1f17] border-green-900/50 shadow-2xl',
+                panel: 'bg-[#18302a]',
+                title: 'text-green-50',
+                subtitle: 'text-green-300/70',
+                badge: 'bg-green-950/50 text-green-200',
+                badgeMuted: 'bg-green-950/30 text-green-300/60',
+                cancel: 'text-green-700/70 hover:text-red-400 hover:bg-red-900/20',
+            };
+        case 'ice':
+            return {
+                container: 'bg-[#f4f9ff] border-sky-200 shadow-2xl',
+                panel: 'bg-[#e8f2fc]',
+                title: 'text-[#0b2942]',
+                subtitle: 'text-[#3b6789]',
+                badge: 'bg-sky-100 text-sky-800',
+                badgeMuted: 'bg-sky-100/70 text-[#6b95b5]',
+                cancel: 'text-sky-400 hover:text-red-500 hover:bg-red-50',
+            };
+        case 'redhorse':
+            return {
+                container: 'bg-[#111111] border-red-900/40 shadow-2xl',
+                panel: 'bg-[#1a1a1a]',
+                title: 'text-white',
+                subtitle: 'text-[#f1d6d8]/70',
+                badge: 'bg-red-950/40 text-[#f1d6d8]',
+                badgeMuted: 'bg-red-950/30 text-[#b08488]',
+                cancel: 'text-[#b08488]/70 hover:text-red-400 hover:bg-red-900/30',
             };
         case 'light':
             return {

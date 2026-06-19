@@ -20,13 +20,19 @@ import { formatBytes, formatSpeed, formatETA } from '../utils/formatters';
 import { SpeedGraph } from './SpeedGraph';
 import './TransferProgressBar.css';
 
-type EffectiveTheme = 'light' | 'dark' | 'tokyo' | 'cyber';
+type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse';
 
 function resolveThemeFromDom(): EffectiveTheme {
     if (typeof document === 'undefined') return 'dark';
     const root = document.documentElement;
+    // Specific theme classes first: truedark/green/redhorse also carry `.dark`,
+    // and `ice` is a light theme with no `.dark`, so the generic checks come last.
+    if (root.classList.contains('truedark')) return 'truedark';
     if (root.classList.contains('tokyo')) return 'tokyo';
     if (root.classList.contains('cyber')) return 'cyber';
+    if (root.classList.contains('green')) return 'green';
+    if (root.classList.contains('ice')) return 'ice';
+    if (root.classList.contains('redhorse')) return 'redhorse';
     if (root.classList.contains('dark')) return 'dark';
     return 'light';
 }
@@ -87,6 +93,14 @@ function getThemeGradient(theme: string, tone: 'default' | 'success' | 'error'):
             return { from: '#a855f7', to: '#ec4899', shimmer: 'rgba(168,85,247,0.3)' }; // purple→pink
         case 'cyber':
             return { from: '#22d3ee', to: '#10b981', shimmer: 'rgba(34,211,238,0.3)' }; // cyan→green
+        case 'truedark':
+            return { from: '#58a6ff', to: '#1f6feb', shimmer: 'rgba(88,166,255,0.3)' }; // GitHub-dark blue
+        case 'green':
+            return { from: '#22c55e', to: '#4ade80', shimmer: 'rgba(34,197,94,0.3)' }; // forest green
+        case 'ice':
+            return { from: '#0ea5e9', to: '#38bdf8', shimmer: 'rgba(14,165,233,0.3)' }; // sky/frost
+        case 'redhorse':
+            return { from: '#E32636', to: '#FF2800', shimmer: 'rgba(227,38,54,0.3)' }; // racing red
         default:
             return { from: '#3b82f6', to: '#06b6d4', shimmer: 'rgba(59,130,246,0.3)' }; // blue→cyan
     }
@@ -135,6 +149,10 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     // Determine theme class for CSS animations (use resolved theme, not raw 'auto')
     const themeClass = resolvedTheme === 'tokyo' ? 'tpb-tokyo'
         : resolvedTheme === 'cyber' ? 'tpb-cyber'
+        : resolvedTheme === 'truedark' ? 'tpb-truedark'
+        : resolvedTheme === 'green' ? 'tpb-green'
+        : resolvedTheme === 'ice' ? 'tpb-ice'
+        : resolvedTheme === 'redhorse' ? 'tpb-redhorse'
         : resolvedTheme === 'light' ? 'tpb-light'
         : 'tpb-dark';
 

@@ -59,6 +59,50 @@ function getGraphColors(theme: string) {
                 peak: '#ef4444',
                 avg: '#2563eb',
             };
+        case 'ice':
+            return {
+                line: '#0ea5e9',
+                fill: 'rgba(14, 165, 233, 0.08)',
+                fillTop: 'rgba(14, 165, 233, 0.22)',
+                grid: 'rgba(11, 41, 66, 0.05)',
+                text: '#3b6789',
+                bg: 'rgba(232, 242, 252, 0.85)',
+                peak: '#0284c7',
+                avg: '#38bdf8',
+            };
+        case 'green':
+            return {
+                line: '#22c55e',
+                fill: 'rgba(34, 197, 94, 0.12)',
+                fillTop: 'rgba(34, 197, 94, 0.32)',
+                grid: 'rgba(148, 163, 184, 0.06)',
+                text: '#a7c4b1',
+                bg: 'rgba(15, 31, 23, 0.5)',
+                peak: '#f59e0b',
+                avg: '#4ade80',
+            };
+        case 'truedark':
+            return {
+                line: '#58a6ff',
+                fill: 'rgba(88, 166, 255, 0.10)',
+                fillTop: 'rgba(88, 166, 255, 0.26)',
+                grid: 'rgba(139, 148, 158, 0.06)',
+                text: '#8b949e',
+                bg: 'rgba(1, 4, 9, 0.5)',
+                peak: '#f85149',
+                avg: '#1f6feb',
+            };
+        case 'redhorse':
+            return {
+                line: '#E32636',
+                fill: 'rgba(227, 38, 54, 0.12)',
+                fillTop: 'rgba(227, 38, 54, 0.32)',
+                grid: 'rgba(255, 255, 255, 0.05)',
+                text: '#b08488',
+                bg: 'rgba(17, 17, 17, 0.55)',
+                peak: '#FCE300',
+                avg: '#FF2800',
+            };
         default: // dark
             return {
                 line: '#3b82f6',
