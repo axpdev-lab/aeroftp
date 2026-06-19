@@ -253,6 +253,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
         credential,
         has_stored_credential,
         public_url_base: None,
+        ..Default::default()
     }))
 }
 

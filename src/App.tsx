@@ -136,6 +136,11 @@ interface ImportedServerProfile {
   providerId?: string;
   credential?: string;
   hasStoredCredential?: boolean;
+  // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags, so an
+  // imported Crypt profile re-imports AS a Crypt profile instead of plaintext.
+  aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+  hasStoredAeroCryptPassword?: boolean;
+  hasStoredAeroCryptSalt?: boolean;
 }
 
 interface ServerProfilesImportResult {
@@ -11343,6 +11348,11 @@ interface UpdateVerificationInfo {
         options: s.options,
         providerId: s.providerId,
         hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
+        // CWP-20B: carry the crypt-overlay binding + secret flags so the
+        // imported profile reconnects as Crypt (both kinds).
+        aeroCryptOverlay: s.aeroCryptOverlay,
+        hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
+        hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
       }));
 
     if (newServers.length > 0) {

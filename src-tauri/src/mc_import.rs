@@ -248,6 +248,7 @@ pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
                     credential: mapped.password,
                     has_stored_credential: None,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             Err(reason) => {

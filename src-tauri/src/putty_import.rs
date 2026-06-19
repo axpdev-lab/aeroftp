@@ -187,6 +187,7 @@ fn map_putty_session(name: &str, kv: &HashMap<String, String>) -> Option<ServerP
         credential: None,
         has_stored_credential: Some(false),
         public_url_base: None,
+        ..Default::default()
     })
 }
 
