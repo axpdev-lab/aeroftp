@@ -48,6 +48,22 @@ aeroftp-cli --version
 aeroftp-cli --help
 ```
 
+### Windows portable ZIP
+
+The Windows portable build (`AeroFTP-<version>-portable-windows-x64.zip`, no
+installer) ships `aeroftp-cli.exe` next to `AeroFTP.exe` (since v4.0.8). It is
+not on `PATH` automatically: either call it by its full path, `cd` into the
+extracted folder, or add that folder to your `PATH`.
+
+```powershell
+# From inside the extracted portable folder
+.\aeroftp-cli.exe --version
+.\aeroftp-cli.exe --help
+```
+
+The portable CLI shares the portable `data\` folder, so the servers and vault
+you set up in the GUI are visible to the CLI and vice versa.
+
 ### Building from Source
 
 ```bash
