@@ -98,6 +98,8 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Folder-level exclusion through a checkbox tree, `.aeroignore` glob patterns, and per-direction bandwidth limits (KB/s, 0 = unlimited).
 - **Cipher-strength badges**
   My Servers, Discover and the protocol selector show `128-bit`/`256-bit` lock badges instead of the old ambiguous `E2E`/`🔒` framing, aligning OAuth, API and overlay profiles on one visual grammar.
+- **Streaming Scan Pipeline** (v3.3.5)
+  Folder transfers no longer wait for a full recursive directory scan: the engine interleaves scan and transfer directory by directory (like an audio-player buffer), so the first file starts downloading after only the root directory is read, not after the whole tree is enumerated.
 
 ### 🟡 In Flight
 
@@ -105,23 +107,23 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Direct device-to-device transfers over an iroh-based peer connection (QUIC with hole-punching), no server in the middle: a send-file flow with progress, presence, and a received-files inbox. Nearing a first usable cut.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
+- **Crypt as a dedicated profile type**
+  The native AeroCrypt overlay (and the rclone-crypt interop overlay, at equal grade) is now a first-class saved profile: a `Crypt` class in My Servers and in `aeroftp-cli profiles` instead of living only in CLI commands and `.sh` / `.ps1` automation, transparent decryption inside the bound folder with the rest of the server visible in clear outside it, and public share links and server-side hashes disabled inside the encrypted area. Implemented and merged on `main`; lands in the next release.
+- **Compression wrapper profile**
+  Symmetric to the Crypt overlay. A per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only), implemented as a provider wrapper that compresses on upload and decompresses on download. The UI warns when a user tries to compress an already-encrypted overlay, which would defeat compression.
+- **Selectable XChaCha20 vault cipher**
+  Promote ChaCha20 / XChaCha20-Poly1305 to a user-selectable primary content cipher for AeroVault v3 (battery-efficient on mobile and AES-NI-less ARM), as a new header-flagged mode that defaults to AES-256-GCM-SIV so existing vaults stay byte-compatible. Requires an `aerovault` crate format flag and release.
 
 ### 🔵 Up Next
 
-- **Crypt as a dedicated profile type**
-  Surface `crypt` in the `aeroftp-cli profiles` listing under the "Proto" column instead of hiding the encryption configuration inside `.sh` and `.ps1` automation scripts. Same on the GUI: Crypt becomes its own card on My Servers and Discover with a `256-bit 🔐` badge.
-- **Compression wrapper profile**
-  Symmetric to the Crypt overlay. A per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only). The UI warns when a user tries to compress an already-encrypted overlay, which would defeat compression.
-- **Streaming Scan Pipeline**
-  Producer-consumer architecture for immediate transfer start without waiting for a full directory scan.
 - **Share Link UX Redesign**
-  Unified share experience with QR codes, link analytics, and team sharing on top of the 22 provider backends already shipped.
+  The unified share dialog already ships across 21-22 provider backends with expiry, password and permission controls plus a link-management tab. The remaining work is the presentation layer: QR codes for the generated links, link analytics, and team sharing.
 - **VS Code Remote Explorer extension**
   Browse, edit, and upload to remotes from inside VS Code, distinct from the existing MCP launcher extension.
 - **Deploy Engine**
   One-click self-hosted server provisioning (S3, WebDAV, SFTP, FTP) on a NAS, VPS, or local Docker, with the resulting endpoint auto-saved as a connection profile.
 - **Photo and Media Services expansion**
-  Seven services beyond Immich and Google Photos.
+  More photo and media-CDN services on top of the five already shipped (Immich, Google Photos, Cloudinary, ImageKit, Uploadcare).
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
 - **Agent Orchestration v2**
@@ -143,8 +145,6 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Anonymous file transfers via Tor hidden services (NLnet grant submitted).
 - **Biometric Unlock**
   Fingerprint and face unlock for the encrypted vault (Touch ID, Windows Hello).
-- **ChaCha20 / XChaCha20 as a selectable vault cipher**
-  Promote the existing ChaCha20-Poly1305 cascade and Cyber Tools algorithm to a first-class, user-selectable content cipher for the vault (battery-efficient on mobile). Benchmark phase before pinning a default.
 - **Per-protocol comparison page in docs**
   Qualitative API vs WebDAV trade-offs, complementing Health Check and Speed Test.
 - **Keyboard accessibility: Tab forward unstuck**
@@ -160,7 +160,7 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 | **Immich** | REST API (self-hosted) | 🟢 Just Shipped |
 | **Bitbucket** | REST 2.0 | 🟡 In Flight: Git forge Tier 1 |
 | **Gitea / Forgejo** | REST v1 | 🟡 In Flight: Git forge Tier 1 (~90% GitHub reuse) |
-| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout, 7 services in queue |
+| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout on top of the 5 shipped (Immich, Google Photos, Cloudinary, ImageKit, Uploadcare) |
 | **ImageKit** | REST API | 🟢 Just Shipped (v3.7.2): media CDN + storage |
 | **Uploadcare** | REST + Upload API | 🟢 Just Shipped (v3.7.2): media CDN, EU/GDPR |
 | **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |
