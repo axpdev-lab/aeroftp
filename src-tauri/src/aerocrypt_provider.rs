@@ -185,6 +185,64 @@ fn encode_rel_path(master_key: &[u8; KEY_SIZE], rel: &str) -> Result<String, Str
     }
 }
 
+/// Normalize a plaintext crypt anchor: `""`/`"/"` mean "the whole remote is the
+/// scope"; otherwise an absolute, slash-trimmed `/Foo/Bar`.
+fn norm_anchor(scope: Option<&str>) -> String {
+    let s = scope.unwrap_or("").trim();
+    if s.is_empty() || s == "/" {
+        return String::new();
+    }
+    format!("/{}", s.trim_matches('/'))
+}
+
+/// Normalize an absolute path: leading slash, no trailing slash.
+fn norm_abs(p: &str) -> String {
+    let trimmed = p.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    if let Some(stripped) = trimmed.strip_prefix('/') {
+        format!("/{}", stripped.trim_start_matches('/'))
+    } else {
+        format!("/{}", trimmed)
+    }
+}
+
+/// Encode a plaintext navigation target for `cd`, encrypting ONLY the components
+/// BELOW the overlay's anchor. CWP-20B (B3): a relative target is encrypted in
+/// full (it is always resolved against the current in-scope dir, as before). An
+/// absolute target keeps the cleartext anchor prefix and encrypts only the tail,
+/// so jumping to e.g. `/AeroCryptTest/test` from OUTSIDE the scope (path bar)
+/// yields `/AeroCryptTest/<enc(test)>` instead of wrongly encrypting the anchor
+/// segment too (which produced an undecryptable cd). FAIL-CLOSED: an absolute
+/// target that is not under the anchor is refused, never cd'd blindly.
+fn encode_plain_target(
+    master_key: &[u8; KEY_SIZE],
+    crypt_scope: Option<&str>,
+    target: &str,
+) -> Result<String, String> {
+    if !target.starts_with('/') {
+        return encode_rel_path(master_key, target);
+    }
+    let anchor = norm_anchor(crypt_scope);
+    if anchor.is_empty() {
+        // Whole-remote scope: every component below root is encrypted.
+        return encode_rel_path(master_key, target);
+    }
+    let t = norm_abs(target);
+    if t == anchor {
+        return Ok(anchor); // the cleartext anchor root itself, no sub-components
+    }
+    if let Some(below) = t.strip_prefix(&format!("{}/", anchor)) {
+        let enc_below = encode_rel_path(master_key, below)?;
+        return Ok(format!("{}/{}", anchor, enc_below));
+    }
+    Err(format!(
+        "crypt navigation target {:?} is outside the overlay scope {:?}",
+        target, anchor
+    ))
+}
+
 /// Decrypt an obfuscated remote path for display, leaving undecryptable
 /// components as-is.
 fn decode_path(master_key: &[u8; KEY_SIZE], encrypted_path: &str) -> String {
@@ -353,6 +411,7 @@ pub async fn aerocrypt_provider_list(
     vault_id: String,
     path: Option<String>,
     plain_path: Option<bool>,
+    crypt_scope: Option<String>,
 ) -> Result<AeroCryptBrowserListResponse, String> {
     let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
 
@@ -369,7 +428,7 @@ pub async fn aerocrypt_provider_list(
                 .map_err(|e| format!("Failed to go up: {}", e))?;
         } else if !target.is_empty() && target != "." {
             let target_path = if plain_path.unwrap_or(false) {
-                encode_rel_path(&master_key, target)?
+                encode_plain_target(&master_key, crypt_scope.as_deref(), target)?
             } else {
                 target.to_string()
             };
@@ -983,6 +1042,76 @@ mod tests {
             2
         );
         assert!(encode_rel_path(&master, "a/../b").is_err());
+    }
+
+    #[test]
+    fn encode_plain_target_relative_encodes_full() {
+        let master = test_master_key();
+        // A relative target is encrypted in full (resolved against the in-scope cwd).
+        let enc = encode_plain_target(&master, Some("/AeroCryptTest"), "test").unwrap();
+        assert!(!enc.starts_with('/'));
+        assert_eq!(decode_name(&master, &enc).as_deref(), Some("test"));
+    }
+
+    #[test]
+    fn encode_plain_target_absolute_keeps_anchor_cleartext() {
+        let master = test_master_key();
+        // CWP-20B (B3): an absolute in-scope target keeps the cleartext anchor and
+        // encrypts ONLY the components below it.
+        let enc =
+            encode_plain_target(&master, Some("/AeroCryptTest"), "/AeroCryptTest/test").unwrap();
+        assert!(enc.starts_with("/AeroCryptTest/"));
+        let tail = enc.strip_prefix("/AeroCryptTest/").unwrap();
+        assert!(!tail.contains('/'));
+        assert_eq!(decode_name(&master, tail).as_deref(), Some("test"));
+
+        // Deeper tail: every below-anchor component is encrypted, anchor stays clear.
+        let deep =
+            encode_plain_target(&master, Some("/AeroCryptTest"), "/AeroCryptTest/a/b").unwrap();
+        let deep_tail = deep.strip_prefix("/AeroCryptTest/").unwrap();
+        let comps: Vec<String> = deep_tail
+            .split('/')
+            .map(|c| decode_name(&master, c).expect("component decodes"))
+            .collect();
+        assert_eq!(comps, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn encode_plain_target_anchor_root_is_cleartext() {
+        let master = test_master_key();
+        // The anchor root itself has no sub-components: cleartext, no encryption.
+        assert_eq!(
+            encode_plain_target(&master, Some("/AeroCryptTest"), "/AeroCryptTest").unwrap(),
+            "/AeroCryptTest"
+        );
+        // Trailing slash tolerated.
+        assert_eq!(
+            encode_plain_target(&master, Some("/AeroCryptTest/"), "/AeroCryptTest/").unwrap(),
+            "/AeroCryptTest"
+        );
+    }
+
+    #[test]
+    fn encode_plain_target_outside_anchor_is_refused() {
+        let master = test_master_key();
+        // FAIL-CLOSED: an absolute target not under the anchor is rejected, never
+        // cd'd blindly.
+        assert!(encode_plain_target(&master, Some("/AeroCryptTest"), "/elsewhere/x").is_err());
+    }
+
+    #[test]
+    fn encode_plain_target_whole_remote_encrypts_all() {
+        let master = test_master_key();
+        // Whole-remote scope ('' / '/'): every component below root is encrypted.
+        for scope in [None, Some(""), Some("/")] {
+            let enc = encode_plain_target(&master, scope, "/a/b").unwrap();
+            let comps: Vec<String> = enc
+                .trim_start_matches('/')
+                .split('/')
+                .map(|c| decode_name(&master, c).expect("component decodes"))
+                .collect();
+            assert_eq!(comps, vec!["a", "b"]);
+        }
     }
 
     #[test]

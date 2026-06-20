@@ -540,6 +540,44 @@ const isWithinCryptScope = (
   return p === s || p.startsWith(s + '/');
 };
 
+// CWP-20B (B3): the absolute display path a navigation will LAND on, derived from
+// the current display path and the navigation argument, so routing can key off the
+// destination rather than the current location and flip the crypt overlay on/off
+// exactly at the scope boundary. The key trick that keeps this sound WITHOUT having
+// to decrypt: an encrypted absolute path (e.g. `/AeroCryptTest/<enc>/<enc>`) still
+// carries the cleartext anchor as its leading segment, so isWithinCryptScope
+// classifies "deeper inside the anchor" correctly even though the tail is opaque.
+//   - '..'              => the parent display path
+//   - absolute path     => itself (plain-absolute outside, or encrypted-under-anchor inside)
+//   - relative name     => joined onto the current display path
+const normDisplayPath = (p: string): string => {
+  const trimmed = String(p).replace(/\/+$/g, '');
+  if (trimmed === '' || trimmed === '/') return '/';
+  return trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+};
+const parentDisplayPath = (current: string): string => {
+  const p = normDisplayPath(current);
+  if (p === '/') return '/';
+  const idx = p.lastIndexOf('/');
+  return idx <= 0 ? '/' : p.slice(0, idx);
+};
+const joinDisplayPath = (current: string, name: string): string => {
+  const base = normDisplayPath(current);
+  const leaf = String(name).replace(/^\/+|\/+$/g, '');
+  if (!leaf) return base;
+  return base === '/' ? '/' + leaf : base + '/' + leaf;
+};
+const resolveTargetDisplayPath = (
+  current: string,
+  path: string,
+  _plainPath?: boolean,
+): string => {
+  if (path === '..') return parentDisplayPath(current);
+  if (path === '' || path === '.') return normDisplayPath(current);
+  if (path.startsWith('/')) return normDisplayPath(path);
+  return joinDisplayPath(current, path);
+};
+
 const App: React.FC = () => {
   // Mouse Back button (button code 3) → synthetic Escape, so any open
   // modal / dialog / dropdown closes via its existing Esc handler. See
@@ -4225,13 +4263,22 @@ interface UpdateVerificationInfo {
   // connected server this returns null, so its operations use the plain provider
   // (uploads stay plaintext, listings show the real names) — an overlay can never
   // bleed onto a different server, even if a vault id is still held in memory.
-  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+  // The session's overlay binding WITHOUT the B2 fail-closed scope gate: "this tab
+  // owns an unlocked overlay", regardless of where the panel currently sits. B3
+  // routing needs this ungated form to re-anchor the overlay when the user steps
+  // back INTO the anchor from a cleartext (out-of-scope) location, where the gated
+  // activeCryptOverlay() below has already gone null. All path-preserving ops keep
+  // using activeCryptOverlay() so they stay fail-closed on the CURRENT path.
+  const rawActiveCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
     if (!cryptOverlayOwnerMatchesActive) return null;
-    const overlay = rcloneCryptVaultId
+    return rcloneCryptVaultId
       ? { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' as const }
       : aeroCryptVaultId
         ? { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' as const }
         : null;
+  };
+  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+    const overlay = rawActiveCryptOverlay();
     if (!overlay) return null;
     // CWP-20B (B2): fail-closed scope gate. The overlay routes an op ONLY while the
     // active panel's DECRYPTED path is within the session's bound crypt scope.
@@ -6789,7 +6836,25 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const cryptOverlay = isProvider ? activeCryptOverlay() : null;
+
+      // CWP-20B (B3): route on the TARGET display path, not the current one, so a
+      // boundary crossing flips between the crypt overlay and the plain provider at
+      // the moment of navigation (B2 keyed only off the current path, so it could
+      // never *leave* the anchor). overlayBinding is the ungated session overlay so
+      // we can re-anchor when stepping back INTO the anchor from cleartext.
+      const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;
+      const targetDisplay = resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath);
+      const targetInScope = overlayBinding
+        ? isWithinCryptScope(activeBoundRemoteScope, targetDisplay)
+        : false;
+      const cryptOverlay = targetInScope ? overlayBinding : null;
+      // Leaving the anchor (in-scope -> out-of-scope, only reachable via '..' or a
+      // typed path): drive the plain provider to the ABSOLUTE parent (outside the
+      // scope display == real path) so it lands deterministically in the cleartext
+      // region, rather than a relative '..' from the encrypted cwd.
+      const crossingOut = !!overlayBinding && !targetInScope
+        && isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
+      const plainNavPath = crossingOut ? targetDisplay : path;
 
       let response: FileListResponse;
       if (isAeroVaultOverlay) {
@@ -6799,15 +6864,20 @@ interface UpdateVerificationInfo {
         });
       } else if (isProvider) {
         if (cryptOverlay) {
+          // In-scope: relative descent / cd_up stay encrypted; an in-scope absolute
+          // path (incl. re-anchor at the cleartext anchor itself) is a clear cd.
+          // cryptScope lets the backend encrypt ONLY the components BELOW the anchor
+          // for a plaintext-absolute target (path bar), keeping the anchor cleartext.
           const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
             vaultId: cryptOverlay.vaultId,
             path,
             plainPath: !!plainPath,
+            cryptScope: activeBoundRemoteScope || null,
           });
           response = mapRcloneCryptListResponse(cryptResponse);
         } else {
-          // Use provider API
-          response = await invoke('provider_change_dir', { path });
+          // Plain provider region (incl. having just crossed out of the anchor).
+          response = await invoke('provider_change_dir', { path: plainNavPath });
         }
       } else {
         // Use FTP API

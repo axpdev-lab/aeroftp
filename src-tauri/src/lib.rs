@@ -1296,6 +1296,57 @@ fn rclone_overlay_encode_path(
     }
 }
 
+/// Normalize a plaintext crypt anchor: `""`/`"/"` => whole-remote scope; else an
+/// absolute, slash-trimmed `/Foo/Bar`. (Twin of aerocrypt_provider::norm_anchor.)
+fn rclone_norm_anchor(scope: Option<&str>) -> String {
+    let s = scope.unwrap_or("").trim();
+    if s.is_empty() || s == "/" {
+        return String::new();
+    }
+    format!("/{}", s.trim_matches('/'))
+}
+
+/// Normalize an absolute path: leading slash, no trailing slash.
+fn rclone_norm_abs(p: &str) -> String {
+    let trimmed = p.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    format!("/{}", trimmed.trim_start_matches('/'))
+}
+
+/// Encode a plaintext navigation target for `cd`, encrypting ONLY the components
+/// BELOW the overlay's anchor. CWP-20B (B3): mirrors
+/// aerocrypt_provider::encode_plain_target so an absolute in-scope jump (path bar)
+/// keeps the cleartext anchor prefix and encrypts only the tail, instead of
+/// wrongly encrypting the anchor segment. FAIL-CLOSED: an absolute target not
+/// under the anchor is refused.
+fn rclone_encode_plain_target(
+    keys: &rclone_crypt::RcloneCryptKeys,
+    crypt_scope: Option<&str>,
+    target: &str,
+) -> Result<String, String> {
+    if !target.starts_with('/') {
+        return rclone_overlay_encode_path(keys, target);
+    }
+    let anchor = rclone_norm_anchor(crypt_scope);
+    if anchor.is_empty() {
+        return rclone_overlay_encode_path(keys, target);
+    }
+    let t = rclone_norm_abs(target);
+    if t == anchor {
+        return Ok(anchor);
+    }
+    if let Some(below) = t.strip_prefix(&format!("{}/", anchor)) {
+        let enc_below = rclone_overlay_encode_path(keys, below)?;
+        return Ok(format!("{}/{}", anchor, enc_below));
+    }
+    Err(format!(
+        "crypt navigation target {:?} is outside the overlay scope {:?}",
+        target, anchor
+    ))
+}
+
 fn rclone_overlay_decode_path(
     keys: &rclone_crypt::RcloneCryptKeys,
     encrypted_path: &str,
@@ -1342,6 +1393,7 @@ async fn rclone_crypt_provider_list(
     vault_id: String,
     path: Option<String>,
     plain_path: Option<bool>,
+    crypt_scope: Option<String>,
 ) -> Result<RcloneCryptBrowserListResponse, String> {
     let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
@@ -1379,7 +1431,7 @@ async fn rclone_crypt_provider_list(
                 .map_err(|e| format!("Failed to go up: {}", e))?;
         } else if !target.is_empty() && target != "." {
             let target_path = if plain_path.unwrap_or(false) {
-                rclone_overlay_encode_path(&keys, target)?
+                rclone_encode_plain_target(&keys, crypt_scope.as_deref(), target)?
             } else {
                 target.to_string()
             };
