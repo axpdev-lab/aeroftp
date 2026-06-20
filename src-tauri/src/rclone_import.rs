@@ -919,6 +919,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                         crate::profile_export::ProviderSecrets {
                             oauth: mapped.oauth_token,
                             jotta_refresh: mapped.jotta_refresh,
+                            ..Default::default()
                         },
                     );
                 }
@@ -939,6 +940,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                     credential: mapped.password,
                     has_stored_credential: None,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             None => {

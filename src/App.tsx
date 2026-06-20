@@ -136,6 +136,11 @@ interface ImportedServerProfile {
   providerId?: string;
   credential?: string;
   hasStoredCredential?: boolean;
+  // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags, so an
+  // imported Crypt profile re-imports AS a Crypt profile instead of plaintext.
+  aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+  hasStoredAeroCryptPassword?: boolean;
+  hasStoredAeroCryptSalt?: boolean;
 }
 
 interface ServerProfilesImportResult {
@@ -509,6 +514,70 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 //   - Connection logic (connectToFtp ~200 lines)
 //   - Cloud sync events (~98 lines)
 // ============================================================================
+
+// CWP-20B (navigate-out scope): plaintext-absolute scope predicate shared by
+// the path-bar badge and (later) the transfer routing, so the two can never
+// diverge. Both `scope` (binding.remoteScope) and `displayPath`
+// (currentRemoteDisplayPath = the backend's decode_path of pwd) are
+// plaintext-absolute, which is the only sound comparison (current_path is
+// ciphertext). FAIL-CLOSED: returns true ("inside / encrypted") unless we are
+// CONFIDENTLY outside, so a normalization mismatch can only cause a visible
+// decrypt error, never silent plaintext exposure.
+// Spec: docs/dev/roadmap/APPENDIX-CRYPTO-WRAPPER-PROFILES/tasks/CWP-20B-navigate-out-scope.md
+const normCryptScope = (s?: string | null): string => {
+  const t = (s || '').trim();
+  if (!t || t === '/') return ''; // empty / root => whole remote is the scope
+  return '/' + t.replace(/^\/+|\/+$/g, '');
+};
+const isWithinCryptScope = (
+  scope: string | undefined | null,
+  displayPath: string | null | undefined,
+): boolean => {
+  const s = normCryptScope(scope);
+  if (s === '') return true; // whole-remote scope (== legacy anchored session)
+  if (displayPath == null) return true; // unknown path => fail closed
+  const p = '/' + String(displayPath).replace(/^\/+|\/+$/g, '');
+  return p === s || p.startsWith(s + '/');
+};
+
+// CWP-20B (B3): the absolute display path a navigation will LAND on, derived from
+// the current display path and the navigation argument, so routing can key off the
+// destination rather than the current location and flip the crypt overlay on/off
+// exactly at the scope boundary. The key trick that keeps this sound WITHOUT having
+// to decrypt: an encrypted absolute path (e.g. `/AeroCryptTest/<enc>/<enc>`) still
+// carries the cleartext anchor as its leading segment, so isWithinCryptScope
+// classifies "deeper inside the anchor" correctly even though the tail is opaque.
+//   - '..'              => the parent display path
+//   - absolute path     => itself (plain-absolute outside, or encrypted-under-anchor inside)
+//   - relative name     => joined onto the current display path
+const normDisplayPath = (p: string): string => {
+  const trimmed = String(p).replace(/\/+$/g, '');
+  if (trimmed === '' || trimmed === '/') return '/';
+  return trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+};
+const parentDisplayPath = (current: string): string => {
+  const p = normDisplayPath(current);
+  if (p === '/') return '/';
+  const idx = p.lastIndexOf('/');
+  return idx <= 0 ? '/' : p.slice(0, idx);
+};
+const joinDisplayPath = (current: string, name: string): string => {
+  const base = normDisplayPath(current);
+  const leaf = String(name).replace(/^\/+|\/+$/g, '');
+  if (!leaf) return base;
+  return base === '/' ? '/' + leaf : base + '/' + leaf;
+};
+const resolveTargetDisplayPath = (
+  current: string,
+  path: string,
+  _plainPath?: boolean,
+): string => {
+  if (path === '..') return parentDisplayPath(current);
+  if (path === '' || path === '.') return normDisplayPath(current);
+  if (path.startsWith('/')) return normDisplayPath(path);
+  return joinDisplayPath(current, path);
+};
+
 const App: React.FC = () => {
   // Mouse Back button (button code 3) → synthetic Escape, so any open
   // modal / dialog / dropdown closes via its existing Esc handler. See
@@ -3273,8 +3342,21 @@ interface UpdateVerificationInfo {
   const overlayBadgeKind = sessions.find((s) => s.id === activeSessionId)?.cryptOverlayKind ?? null;
   const overlayVaultLit = cryptOverlayOwnerMatchesActive && !!(rcloneCryptVaultId || aeroCryptVaultId);
   const overlayBadgeDecrypting = overlayAnimActive && overlayDecrypting;
-  const overlayBadgeState: 'decrypting' | 'active' | 'locked' =
-    overlayBadgeDecrypting ? 'decrypting' : overlayVaultLit ? 'active' : 'locked';
+  // CWP-20B: the active tab's bound plaintext scope ('' = whole remote) and
+  // whether the current decrypted path is inside it. SAME predicate the routing
+  // gate will use, so the badge can never claim "encrypted" where an op runs in
+  // the clear (or vice-versa). In the legacy anchored architecture the path is
+  // always within scope, so 'outside' only becomes reachable once cross-boundary
+  // navigation (B3) lands; wiring it now keeps badge and routing on one check.
+  const activeBoundRemoteScope =
+    sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope ?? '';
+  const overlayInScope = isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
+  const overlayBadgeState: 'decrypting' | 'active' | 'outside' | 'locked' =
+    overlayBadgeDecrypting
+      ? 'decrypting'
+      : overlayVaultLit
+        ? (overlayInScope ? 'active' : 'outside')
+        : 'locked';
 
   const toggleActiveCryptOverlay = () => {
     const sess = sessions.find((s) => s.id === activeSessionId);
@@ -4141,6 +4223,15 @@ interface UpdateVerificationInfo {
     setCurrentRemotePath(response.current_path);
     setCurrentRemoteDisplayPath(response.display_current_path || response.current_path);
     setSelectedRemoteFiles(new Set());
+    // CWP-20B coordinate probe (debug-gated): confirm the exact normalization of
+    // current_path (ciphertext-absolute) vs display_current_path (plaintext-
+    // absolute) so isWithinCryptScope keys off the right one. Enable debug mode
+    // and navigate in/out of a bound crypt scope to read these.
+    logger.debug('[CWP-20B scope]', {
+      current_path: response.current_path,
+      display_current_path: response.display_current_path,
+      boundScope: sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope,
+    });
   };
 
   const loadRcloneCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
@@ -4172,12 +4263,49 @@ interface UpdateVerificationInfo {
   // connected server this returns null, so its operations use the plain provider
   // (uploads stay plaintext, listings show the real names) — an overlay can never
   // bleed onto a different server, even if a vault id is still held in memory.
-  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+  // The session's overlay binding WITHOUT the B2 fail-closed scope gate: "this tab
+  // owns an unlocked overlay", regardless of where the panel currently sits. B3
+  // routing needs this ungated form to re-anchor the overlay when the user steps
+  // back INTO the anchor from a cleartext (out-of-scope) location, where the gated
+  // activeCryptOverlay() below has already gone null. All path-preserving ops keep
+  // using activeCryptOverlay() so they stay fail-closed on the CURRENT path.
+  const rawActiveCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
     if (!cryptOverlayOwnerMatchesActive) return null;
-    if (rcloneCryptVaultId) return { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' };
-    if (aeroCryptVaultId) return { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' };
-    return null;
+    return rcloneCryptVaultId
+      ? { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' as const }
+      : aeroCryptVaultId
+        ? { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' as const }
+        : null;
   };
+  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+    const overlay = rawActiveCryptOverlay();
+    if (!overlay) return null;
+    // CWP-20B (B2): fail-closed scope gate. The overlay routes an op ONLY while the
+    // active panel's DECRYPTED path is within the session's bound crypt scope.
+    // Outside the scope this returns null, so the op falls through to the plain
+    // provider (real names, normal protocol, plaintext transfers). The predicate
+    // is fail-closed (unknown path or whole-remote scope => inside), so a
+    // normalization mismatch can at worst route an in-scope op through the overlay
+    // (a visible decrypt error), never expose plaintext where encryption was
+    // expected. This is the SAME predicate the path-bar badge uses (overlayInScope)
+    // and, via isCryptOverlayActive() below, the SAME one the CWP-20 action gating
+    // (share-link, server-side checksum) keys on, so badge + routing + gating can
+    // never diverge. In the shipped anchored architecture the path is always within
+    // scope, so this is a no-op until cross-boundary navigation (B3) can leave it.
+    if (!isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath)) return null;
+    return overlay;
+  };
+  // P3.4/P3.5 single source of truth: true when the ACTIVE panel is inside an
+  // unlocked crypt overlay scope (either kind, at equal grade). Both the action
+  // gating (share-link, server-side checksum) and the transparent transfer
+  // routing derive from this SAME predicate, so the path-bar "encrypted" badge
+  // and the actual behaviour can never diverge (a badge that lies about scope
+  // is a data-exposure bug). CWP-20B (B2): since activeCryptOverlay() now applies
+  // the fail-closed scope gate, this means "overlay owned AND unlocked AND the
+  // decrypted path is within the bound scope" — outside the scope it is false, so
+  // share-link / server-side checksum re-enable for the plaintext region exactly
+  // as the badge drops to its 'outside' state.
+  const isCryptOverlayActive = (): boolean => activeCryptOverlay() !== null;
 
   // Per-session overlay binding. Each connected tab remembers its own overlay so
   // switching/reconnecting to it restores ITS decrypted view (the single global
@@ -4198,13 +4326,16 @@ interface UpdateVerificationInfo {
     ));
   };
   // Overlay UNLOCKED: store the live vault + keep the capability kind.
+  // `remoteScope` (CWP-20B) is the plaintext-absolute bound folder ('' = whole
+  // remote); carried per-session so the scope-aware badge/routing stay isolated.
   const bindSessionCryptOverlay = (
     match: { savedServerId?: string; sessionId?: string },
     vaultId: string,
     kind: 'rclone-crypt' | 'aerocrypt',
+    remoteScope?: string,
   ) => {
     setSessions((prev) => prev.map((s) =>
-      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind }, cryptOverlayKind: kind } : s,
+      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind, remoteScope: normCryptScope(remoteScope) }, cryptOverlayKind: kind } : s,
     ));
   };
   // Overlay LOCKED: drop the live vault but KEEP the capability kind so the badge
@@ -4306,7 +4437,7 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setAeroCryptVaultId(null);
             setRcloneCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt');
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt', overlayScope);
             return { vaultId: info.vault_id, prefix: 'rclone_crypt_provider' };
           }
         } else {
@@ -4317,7 +4448,7 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt');
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt', overlayScope);
             return { vaultId: info.vault_id, prefix: 'aerocrypt_provider' };
           }
         }
@@ -6705,7 +6836,25 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const cryptOverlay = isProvider ? activeCryptOverlay() : null;
+
+      // CWP-20B (B3): route on the TARGET display path, not the current one, so a
+      // boundary crossing flips between the crypt overlay and the plain provider at
+      // the moment of navigation (B2 keyed only off the current path, so it could
+      // never *leave* the anchor). overlayBinding is the ungated session overlay so
+      // we can re-anchor when stepping back INTO the anchor from cleartext.
+      const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;
+      const targetDisplay = resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath);
+      const targetInScope = overlayBinding
+        ? isWithinCryptScope(activeBoundRemoteScope, targetDisplay)
+        : false;
+      const cryptOverlay = targetInScope ? overlayBinding : null;
+      // Leaving the anchor (in-scope -> out-of-scope, only reachable via '..' or a
+      // typed path): drive the plain provider to the ABSOLUTE parent (outside the
+      // scope display == real path) so it lands deterministically in the cleartext
+      // region, rather than a relative '..' from the encrypted cwd.
+      const crossingOut = !!overlayBinding && !targetInScope
+        && isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
+      const plainNavPath = crossingOut ? targetDisplay : path;
 
       let response: FileListResponse;
       if (isAeroVaultOverlay) {
@@ -6715,15 +6864,20 @@ interface UpdateVerificationInfo {
         });
       } else if (isProvider) {
         if (cryptOverlay) {
+          // In-scope: relative descent / cd_up stay encrypted; an in-scope absolute
+          // path (incl. re-anchor at the cleartext anchor itself) is a clear cd.
+          // cryptScope lets the backend encrypt ONLY the components BELOW the anchor
+          // for a plaintext-absolute target (path bar), keeping the anchor cleartext.
           const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
             vaultId: cryptOverlay.vaultId,
             path,
             plainPath: !!plainPath,
+            cryptScope: activeBoundRemoteScope || null,
           });
           response = mapRcloneCryptListResponse(cryptResponse);
         } else {
-          // Use provider API
-          response = await invoke('provider_change_dir', { path });
+          // Plain provider region (incl. having just crossed out of the anchor).
+          response = await invoke('provider_change_dir', { path: plainNavPath });
         }
       } else {
         // Use FTP API
@@ -10845,7 +10999,9 @@ interface UpdateVerificationInfo {
     // the ciphertext blobs (scrambled names, encrypted bytes), so they are
     // misleading: a share link would hand out unreadable data, a server hash
     // would not match the plaintext. Disable them in the menu (P3.5 gating).
-    const cryptOverlayActive = !!(aeroCryptVaultId || rcloneCryptVaultId);
+    // Uses the single session-scoped predicate so the gate matches the path-bar
+    // badge and the transfer routing (both kinds, native + interop).
+    const cryptOverlayActive = isCryptOverlayActive();
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
@@ -11280,6 +11436,11 @@ interface UpdateVerificationInfo {
         options: s.options,
         providerId: s.providerId,
         hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
+        // CWP-20B: carry the crypt-overlay binding + secret flags so the
+        // imported profile reconnects as Crypt (both kinds).
+        aeroCryptOverlay: s.aeroCryptOverlay,
+        hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
+        hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
       }));
 
     if (newServers.length > 0) {
@@ -12860,7 +13021,18 @@ interface UpdateVerificationInfo {
               if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
-                if (propertiesDialog.isRemote) {
+                if (propertiesDialog.isRemote && isCryptOverlayActive()) {
+                  // P3.5 gating: under an active crypt overlay (native or
+                  // interop) the server stores ciphertext, so a server-side
+                  // digest would hash the encrypted blob, NOT the plaintext the
+                  // user sees. Refuse it honestly rather than return a hash that
+                  // silently fails every integrity check against the real file.
+                  notify.error(
+                    t('toast.checksumFailed'),
+                    t('aerocrypt.serverHashGated'),
+                  );
+                  setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
+                } else if (propertiesDialog.isRemote) {
                   // Server-side only: provider_checksum never downloads the
                   // file. One call returns every digest the backend exposes
                   // cheaply (S3 md5, B2 sha1, SFTP sha256, Drive/OneDrive/Box
@@ -14368,19 +14540,29 @@ interface UpdateVerificationInfo {
                         ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 border-emerald-500/30'
                         : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 border-blue-500/30';
                       const greyCls = 'bg-gray-400/15 text-gray-400 border-gray-400/30';
+                      // CWP-20B 'outside': overlay unlocked but the current path is
+                      // outside its bound scope, i.e. this folder is plaintext.
+                      // Amber dim distinguishes it from 'locked' (vault locked).
+                      const outsideCls = 'bg-amber-500/15 text-amber-500 border-amber-500/30';
                       const stateCls = overlayBadgeState === 'active'
                         ? `${litCls} cursor-pointer`
                         : overlayBadgeState === 'decrypting'
                           ? `${greyCls} animate-pulse cursor-wait`
-                          : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
+                          : overlayBadgeState === 'outside'
+                            ? `${outsideCls} hover:bg-amber-500/25 cursor-pointer`
+                            : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
                       const iconCls = overlayBadgeState === 'active'
                         ? (isAero ? 'text-emerald-400' : 'text-blue-400')
-                        : 'text-gray-400';
+                        : overlayBadgeState === 'outside'
+                          ? 'text-amber-500'
+                          : 'text-gray-400';
                       const title = overlayBadgeState === 'active'
                         ? `${label} · ${t('aerocrypt.lock')}`
                         : overlayBadgeState === 'decrypting'
                           ? `${label} · …`
-                          : `${label} · ${t('aerocrypt.unlock')}`;
+                          : overlayBadgeState === 'outside'
+                            ? `${label} · ${t('aerocrypt.outsideScope')}`
+                            : `${label} · ${t('aerocrypt.unlock')}`;
                       return (
                         <button
                           type="button"

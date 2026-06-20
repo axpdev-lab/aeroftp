@@ -1296,6 +1296,57 @@ fn rclone_overlay_encode_path(
     }
 }
 
+/// Normalize a plaintext crypt anchor: `""`/`"/"` => whole-remote scope; else an
+/// absolute, slash-trimmed `/Foo/Bar`. (Twin of aerocrypt_provider::norm_anchor.)
+fn rclone_norm_anchor(scope: Option<&str>) -> String {
+    let s = scope.unwrap_or("").trim();
+    if s.is_empty() || s == "/" {
+        return String::new();
+    }
+    format!("/{}", s.trim_matches('/'))
+}
+
+/// Normalize an absolute path: leading slash, no trailing slash.
+fn rclone_norm_abs(p: &str) -> String {
+    let trimmed = p.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    format!("/{}", trimmed.trim_start_matches('/'))
+}
+
+/// Encode a plaintext navigation target for `cd`, encrypting ONLY the components
+/// BELOW the overlay's anchor. CWP-20B (B3): mirrors
+/// aerocrypt_provider::encode_plain_target so an absolute in-scope jump (path bar)
+/// keeps the cleartext anchor prefix and encrypts only the tail, instead of
+/// wrongly encrypting the anchor segment. FAIL-CLOSED: an absolute target not
+/// under the anchor is refused.
+fn rclone_encode_plain_target(
+    keys: &rclone_crypt::RcloneCryptKeys,
+    crypt_scope: Option<&str>,
+    target: &str,
+) -> Result<String, String> {
+    if !target.starts_with('/') {
+        return rclone_overlay_encode_path(keys, target);
+    }
+    let anchor = rclone_norm_anchor(crypt_scope);
+    if anchor.is_empty() {
+        return rclone_overlay_encode_path(keys, target);
+    }
+    let t = rclone_norm_abs(target);
+    if t == anchor {
+        return Ok(anchor);
+    }
+    if let Some(below) = t.strip_prefix(&format!("{}/", anchor)) {
+        let enc_below = rclone_overlay_encode_path(keys, below)?;
+        return Ok(format!("{}/{}", anchor, enc_below));
+    }
+    Err(format!(
+        "crypt navigation target {:?} is outside the overlay scope {:?}",
+        target, anchor
+    ))
+}
+
 fn rclone_overlay_decode_path(
     keys: &rclone_crypt::RcloneCryptKeys,
     encrypted_path: &str,
@@ -1342,6 +1393,7 @@ async fn rclone_crypt_provider_list(
     vault_id: String,
     path: Option<String>,
     plain_path: Option<bool>,
+    crypt_scope: Option<String>,
 ) -> Result<RcloneCryptBrowserListResponse, String> {
     let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
@@ -1379,7 +1431,7 @@ async fn rclone_crypt_provider_list(
                 .map_err(|e| format!("Failed to go up: {}", e))?;
         } else if !target.is_empty() && target != "." {
             let target_path = if plain_path.unwrap_or(false) {
-                rclone_overlay_encode_path(&keys, target)?
+                rclone_encode_plain_target(&keys, crypt_scope.as_deref(), target)?
             } else {
                 target.to_string()
             };
@@ -14114,6 +14166,23 @@ fn collect_provider_secrets_for_server(
         }
     }
 
+    // CWP-20B: bundle the crypt-overlay secrets (BOTH kinds — native AeroCrypt
+    // and interop rclone-crypt share these generic vault keys) so an exported
+    // Crypt profile reconnects on import without re-entering the overlay password.
+    // Protocol-agnostic: the overlay can sit on any provider-API backend.
+    if let Ok(Some(pw)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_pw_{}", server.id),
+    ) {
+        out.aerocrypt_overlay_pw = Some(pw.to_string());
+    }
+    if let Ok(Some(salt)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_salt_{}", server.id),
+    ) {
+        out.aerocrypt_overlay_salt = Some(salt.to_string());
+    }
+
     out
 }
 
@@ -14147,7 +14216,11 @@ async fn export_server_profiles(
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
                     let secrets = collect_provider_secrets_for_server(&store, server);
-                    if secrets.oauth.is_some() || secrets.jotta_refresh.is_some() {
+                    if secrets.oauth.is_some()
+                        || secrets.jotta_refresh.is_some()
+                        || secrets.aerocrypt_overlay_pw.is_some()
+                        || secrets.aerocrypt_overlay_salt.is_some()
+                    {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
                 }
@@ -14178,6 +14251,14 @@ async fn import_server_profiles(
 
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
+    // CWP-20B: track which profiles actually had their crypt-overlay secret
+    // restored, so the redacted `hasStoredAeroCrypt*` flags returned to the UI
+    // reflect reality (a binding can round-trip without its secret when the
+    // export excluded credentials or the vault is unavailable).
+    let mut restored_aerocrypt_pw: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut restored_aerocrypt_salt: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
             for server in &servers {
@@ -14236,6 +14317,28 @@ async fn import_server_profiles(
                         }
                     }
                 }
+                // CWP-20B: restore the crypt-overlay secrets under the same
+                // generic vault keys the connect path reads (App.tsx
+                // get_credential aerocrypt_overlay_pw_/salt_<id>). Protocol-
+                // agnostic and shared by both overlay kinds (AeroCrypt + rclone).
+                if let Some(ref pw) = secrets.aerocrypt_overlay_pw {
+                    let key = format!("aerocrypt_overlay_pw_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, pw) {
+                        Ok(()) => {
+                            restored_aerocrypt_pw.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors.push(format!("{} aerocrypt pw: {}", profile_id, e)),
+                    }
+                }
+                if let Some(ref salt) = secrets.aerocrypt_overlay_salt {
+                    let key = format!("aerocrypt_overlay_salt_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, salt) {
+                        Ok(()) => {
+                            restored_aerocrypt_salt.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors.push(format!("{} aerocrypt salt: {}", profile_id, e)),
+                    }
+                }
             }
         }
         None => {
@@ -14282,6 +14385,13 @@ async fn import_server_profiles(
                 "options": s.options,
                 "providerId": s.provider_id,
                 "hasStoredCredential": s.credential.is_some(),
+                // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
+                // kinds). The flags reflect what was actually restored, not the
+                // source state, so the UI prompts for the overlay password only
+                // when the secret did not travel with the export.
+                "aeroCryptOverlay": s.aero_crypt_overlay,
+                "hasStoredAeroCryptPassword": restored_aerocrypt_pw.contains(&s.id),
+                "hasStoredAeroCryptSalt": restored_aerocrypt_salt.contains(&s.id),
             })
         })
         .collect();

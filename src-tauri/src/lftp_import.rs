@@ -346,6 +346,7 @@ pub fn import_lftp(path: &Path) -> Result<LftpImportResult, String> {
                     credential: mapped.password,
                     has_stored_credential,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             None => {

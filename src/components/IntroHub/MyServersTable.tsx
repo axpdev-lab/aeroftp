@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Cloud, Database, Globe, KeyRound, Server as ServerIcon, Shield } from 'lucide-react';
-import { getE2EBits, getProtocolClass, ServerProfile, type ProviderType } from '../../types';
+import { getE2EBits, getProfileProtocolClass, ServerProfile, type ProviderType } from '../../types';
 import {
     MY_SERVERS_TABLE_COLUMNS,
     type MyServersSortableColId,
@@ -82,11 +82,14 @@ const PROTOCOL_ICON: Record<string, React.ReactNode> = {
     S3: <Database size={14} className="text-orange-500" />,
     Azure: <Cloud size={14} className="text-blue-600" />,
     AeroCloud: <Cloud size={14} className="text-purple-500" />,
+    Crypt: <Shield size={14} className="text-emerald-500" />,
 };
 
 const badgeSortLabel = (server: ServerProfile) => {
     const proto = (server.protocol || 'ftp') as ProviderType;
-    const protocolClass = getProtocolClass(proto);
+    // Profile-aware: crypt-overlay profiles (native or interop) sort under the
+    // shared "Crypt" family, matching their card badge and the breakdown.
+    const protocolClass = getProfileProtocolClass(server);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto) : null;
     // Match both the bare provider id (saved from the Quick Connect form)
     // and the `-webdav` suffix variant (assigned by MyServersPanel's host

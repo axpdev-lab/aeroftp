@@ -4587,7 +4587,9 @@
       "loading": "Hleður...",
       "emptyFolder": "Tóm mappa",
       "nameNotDecrypted": "nafn ekki afkóðað",
-      "download": "Sækja"
+      "download": "Sækja",
+      "serverHashGated": "Eftirlitssumma á netþjónshlið er ekki tiltæk meðan dulkóðað yfirlag er virkt (hún myndi tæta dulmálstextann, ekki skrána þína).",
+      "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)"
     },
     "b2": {
       "hidden": {

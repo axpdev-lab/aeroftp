@@ -4568,7 +4568,9 @@
       "loading": "Načítání...",
       "emptyFolder": "Prázdná složka",
       "nameNotDecrypted": "název nedešifrován",
-      "download": "Stáhnout"
+      "download": "Stáhnout",
+      "serverHashGated": "Kontrolní součet na straně serveru není dostupný, když je aktivní šifrovaná vrstva (vypočítal by hash šifrovaného textu, ne vašeho souboru).",
+      "outsideScope": "Mimo šifrovanou oblast (soubory zde nejsou šifrované)"
     },
     "b2": {
       "hidden": {

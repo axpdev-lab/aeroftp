@@ -246,6 +246,7 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
                     credential: mapped.password,
                     has_stored_credential: None,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             None => {

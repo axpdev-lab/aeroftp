@@ -4568,7 +4568,9 @@
       "loading": "Chargement...",
       "emptyFolder": "Dossier vide",
       "nameNotDecrypted": "nom non déchiffré",
-      "download": "Télécharger"
+      "download": "Télécharger",
+      "serverHashGated": "Somme de contrôle côté serveur indisponible lorsqu'une surcouche chiffrée est active (elle hacherait le texte chiffré, pas votre fichier).",
+      "outsideScope": "Hors de la zone chiffrée (les fichiers ici ne sont pas chiffrés)"
     },
     "b2": {
       "hidden": {

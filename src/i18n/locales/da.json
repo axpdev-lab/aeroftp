@@ -4568,7 +4568,9 @@
       "loading": "Indlæser...",
       "emptyFolder": "Tom mappe",
       "nameNotDecrypted": "navn ikke dekrypteret",
-      "download": "Download"
+      "download": "Download",
+      "serverHashGated": "Tjeksum på serversiden er ikke tilgængelig, mens et krypteret overlay er aktivt (den ville hashe chifferteksten, ikke din fil).",
+      "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)"
     },
     "b2": {
       "hidden": {

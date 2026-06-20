@@ -4568,7 +4568,9 @@
       "loading": "Đang tải...",
       "emptyFolder": "Thư mục trống",
       "nameNotDecrypted": "tên chưa giải mã",
-      "download": "Tải xuống"
+      "download": "Tải xuống",
+      "serverHashGated": "Không thể dùng checksum phía máy chủ khi lớp phủ mã hóa đang hoạt động (nó sẽ băm bản mã, không phải tệp của bạn).",
+      "outsideScope": "Ngoài vùng mã hóa (tệp ở đây không được mã hóa)"
     },
     "b2": {
       "hidden": {

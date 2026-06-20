@@ -487,6 +487,7 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
                     credential: mapped.password,
                     has_stored_credential: None,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             None => {

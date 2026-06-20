@@ -4568,7 +4568,9 @@
       "loading": "Inapakia...",
       "emptyFolder": "Folda tupu",
       "nameNotDecrypted": "jina halijafichuliwa",
-      "download": "Pakua"
+      "download": "Pakua",
+      "serverHashGated": "Hakikisho la upande wa seva halipatikani wakati safu iliyosimbwa fiche inafanya kazi (lingehesabu hashi ya maandishi yaliyosimbwa, si faili yako).",
+      "outsideScope": "Nje ya eneo lililosimbwa fiche (faili hapa hazijasimbwa fiche)"
     },
     "b2": {
       "hidden": {

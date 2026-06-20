@@ -4568,7 +4568,9 @@
       "loading": "Betöltés...",
       "emptyFolder": "Üres mappa",
       "nameNotDecrypted": "név nincs visszafejtve",
-      "download": "Letöltés"
+      "download": "Letöltés",
+      "serverHashGated": "A kiszolgálóoldali ellenőrzőösszeg nem érhető el, amíg titkosított átfedés aktív (a titkosított szöveget hashelné, nem a fájlt).",
+      "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)"
     },
     "b2": {
       "hidden": {

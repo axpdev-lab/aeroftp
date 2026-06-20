@@ -41,6 +41,10 @@ interface ImportedServer {
     providerId?: string;
     credential?: string;
     hasStoredCredential?: boolean;
+    // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags.
+    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+    hasStoredAeroCryptPassword?: boolean;
+    hasStoredAeroCryptSalt?: boolean;
 }
 
 interface ImportResult {
@@ -218,6 +222,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     options: s.options,
                     providerId: s.providerId,
                     hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
+                    // CWP-20B: carry crypt-overlay binding + secret flags so the
+                    // imported profile reconnects as Crypt (both kinds).
+                    aeroCryptOverlay: s.aeroCryptOverlay,
+                    hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
+                    hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
                 }));
 
             const skipped = importedServers.length - newServers.length;

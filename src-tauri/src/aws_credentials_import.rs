@@ -208,6 +208,7 @@ pub fn import_aws_credentials_with_config(
                 .cloned(),
             has_stored_credential: None,
             public_url_base: None,
+            ..Default::default()
         });
     }
 

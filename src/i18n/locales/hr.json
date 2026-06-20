@@ -4568,7 +4568,9 @@
       "loading": "Učitavanje...",
       "emptyFolder": "Prazna mapa",
       "nameNotDecrypted": "naziv nije dešifriran",
-      "download": "Preuzmi"
+      "download": "Preuzmi",
+      "serverHashGated": "Kontrolni zbroj na strani poslužitelja nije dostupan dok je aktivan šifrirani sloj (raspršio bi šifrirani tekst, a ne vašu datoteku).",
+      "outsideScope": "Izvan šifrirane zone (datoteke ovdje nisu šifrirane)"
     },
     "b2": {
       "hidden": {

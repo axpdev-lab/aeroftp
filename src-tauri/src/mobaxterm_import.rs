@@ -389,6 +389,7 @@ pub fn import_mobaxterm(path: &Path) -> Result<MobaxtermImportResult, String> {
                     credential: mapped.password,
                     has_stored_credential,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             Err(reason) => {

@@ -307,6 +307,7 @@ pub fn import_restic_repo_url(
         credential,
         has_stored_credential,
         public_url_base: None,
+        ..Default::default()
     };
 
     Ok(ResticImportResult {

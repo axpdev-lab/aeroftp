@@ -397,6 +397,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
                     credential: m.password,
                     has_stored_credential: if has_cred { None } else { Some(false) },
                     public_url_base,
+                    ..Default::default()
                 });
             }
             MapOutcome::Skipped(kind, reason) => {

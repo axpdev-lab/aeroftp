@@ -75,9 +75,20 @@ pub struct ProviderSecrets {
     /// vault format). Absent when the profile is not a Jotta profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jotta_refresh: Option<String>,
+    /// CWP-20B: the crypt-overlay password (`aerocrypt_overlay_pw_<id>`) so a
+    /// Crypt profile reconnects on a fresh device without re-entering it. Shared
+    /// by BOTH overlay kinds (native AeroCrypt and interop rclone-crypt). Absent
+    /// for non-crypt profiles or when credentials are excluded from the export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aerocrypt_overlay_pw: Option<String>,
+    /// CWP-20B: the crypt-overlay salt (`aerocrypt_overlay_salt_<id>`). For
+    /// rclone-crypt this is the second password (password2); native AeroCrypt
+    /// leaves it unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aerocrypt_overlay_salt: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerProfileExport {
     pub id: String,
@@ -96,6 +107,20 @@ pub struct ServerProfileExport {
     pub has_stored_credential: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_url_base: Option<String>,
+    /// CWP-20B round-trip: the crypt-overlay binding (`AeroCryptOverlayBinding`:
+    /// kind + remoteScope + filename/dir settings). Without this an exported
+    /// Crypt profile silently re-imported as plaintext (the binding lived only in
+    /// a frontend field this struct dropped). Carried verbatim as JSON;
+    /// `#[serde(default)]` keeps pre-CWP-20B `.aeroftp` files importable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aero_crypt_overlay: Option<serde_json::Value>,
+    /// Mirrors `ServerProfile.hasStoredAeroCryptPassword` /
+    /// `hasStoredAeroCryptSalt`; on import these are corrected to reflect whether
+    /// the secret was actually restored (see `import_server_profiles`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_stored_aero_crypt_password: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_stored_aero_crypt_salt: Option<bool>,
 }
 
 // ============ Export/Import ============
@@ -230,6 +255,9 @@ mod tests {
             credential: None,
             has_stored_credential: None,
             public_url_base: None,
+            aero_crypt_overlay: None,
+            has_stored_aero_crypt_password: None,
+            has_stored_aero_crypt_salt: None,
         }
     }
 
@@ -257,6 +285,7 @@ mod tests {
                         .to_string(),
                 ),
                 jotta_refresh: None,
+                ..Default::default()
             },
         );
         secrets.insert(
@@ -267,6 +296,7 @@ mod tests {
                     r#"{"refresh_token":"jotta-rt","token_endpoint":"https://example/token","username":"alice"}"#
                         .to_string(),
                 ),
+                ..Default::default()
             },
         );
 
@@ -299,6 +329,109 @@ mod tests {
             secrets
                 .get("server-b")
                 .and_then(|s| s.jotta_refresh.clone())
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// CWP-20B: a Crypt profile (either overlay kind) must re-import AS a Crypt
+    /// profile. The `aeroCryptOverlay` binding (kind + remoteScope) and the
+    /// overlay password/salt secrets must survive the export -> import round-trip;
+    /// before the fix the binding lived in a frontend-only field that
+    /// `ServerProfileExport` silently dropped, so the import degraded to plaintext.
+    #[test]
+    fn round_trip_preserves_crypt_overlay_binding_both_kinds() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_crypt_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+
+        // Native AeroCrypt on a subfolder scope.
+        let mut native = sample_server("crypt-native", "filen");
+        native.aero_crypt_overlay = Some(serde_json::json!({
+            "enabled": true,
+            "kind": "aerocrypt",
+            "remoteScope": "/AeroCryptTest",
+        }));
+        native.has_stored_aero_crypt_password = Some(true);
+
+        // Interop rclone-crypt with a second password (salt).
+        let mut rclone = sample_server("crypt-rclone", "sftp");
+        rclone.aero_crypt_overlay = Some(serde_json::json!({
+            "enabled": true,
+            "kind": "rclone-crypt",
+            "remoteScope": "/enc",
+            "directoryNameEncryption": true,
+        }));
+        rclone.has_stored_aero_crypt_password = Some(true);
+        rclone.has_stored_aero_crypt_salt = Some(true);
+
+        let mut secrets = HashMap::new();
+        secrets.insert(
+            "crypt-native".to_string(),
+            ProviderSecrets {
+                aerocrypt_overlay_pw: Some("native-overlay-pw".to_string()),
+                ..Default::default()
+            },
+        );
+        secrets.insert(
+            "crypt-rclone".to_string(),
+            ProviderSecrets {
+                aerocrypt_overlay_pw: Some("rclone-pw1".to_string()),
+                aerocrypt_overlay_salt: Some("rclone-pw2-salt".to_string()),
+                ..Default::default()
+            },
+        );
+
+        export_profiles(vec![native, rclone], secrets.clone(), "pw-12345678", &tmp)
+            .expect("export should succeed");
+
+        let (servers, restored_secrets, _meta) =
+            import_profiles(&tmp, "pw-12345678").expect("import should succeed");
+
+        let native_out = servers.iter().find(|s| s.id == "crypt-native").unwrap();
+        assert_eq!(
+            native_out
+                .aero_crypt_overlay
+                .as_ref()
+                .and_then(|b| b.get("kind"))
+                .and_then(|k| k.as_str()),
+            Some("aerocrypt"),
+            "native crypt binding kind must survive"
+        );
+        assert_eq!(
+            native_out
+                .aero_crypt_overlay
+                .as_ref()
+                .and_then(|b| b.get("remoteScope"))
+                .and_then(|s| s.as_str()),
+            Some("/AeroCryptTest"),
+            "native crypt remoteScope must survive"
+        );
+
+        let rclone_out = servers.iter().find(|s| s.id == "crypt-rclone").unwrap();
+        assert_eq!(
+            rclone_out
+                .aero_crypt_overlay
+                .as_ref()
+                .and_then(|b| b.get("kind"))
+                .and_then(|k| k.as_str()),
+            Some("rclone-crypt"),
+            "rclone-crypt binding kind must survive"
+        );
+
+        assert_eq!(
+            restored_secrets
+                .get("crypt-native")
+                .and_then(|s| s.aerocrypt_overlay_pw.clone()),
+            Some("native-overlay-pw".to_string()),
+        );
+        assert_eq!(
+            restored_secrets
+                .get("crypt-rclone")
+                .and_then(|s| s.aerocrypt_overlay_salt.clone()),
+            Some("rclone-pw2-salt".to_string()),
         );
 
         let _ = std::fs::remove_file(&tmp);

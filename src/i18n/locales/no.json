@@ -4587,7 +4587,9 @@
       "loading": "Laster...",
       "emptyFolder": "Tom mappe",
       "nameNotDecrypted": "navn ikke dekryptert",
-      "download": "Last ned"
+      "download": "Last ned",
+      "serverHashGated": "Sjekksum på serversiden er utilgjengelig mens et kryptert overlegg er aktivt (den ville hashe chifferteksten, ikke filen din).",
+      "outsideScope": "Utenfor det krypterte området (filer her er ikke kryptert)"
     },
     "b2": {
       "hidden": {

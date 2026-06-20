@@ -1487,7 +1487,9 @@
             "loading": "Loading...",
             "emptyFolder": "Empty folder",
             "nameNotDecrypted": "name not decrypted",
-            "download": "Download"
+            "download": "Download",
+            "serverHashGated": "Server-side checksum unavailable while an encrypted overlay is active (it would hash the ciphertext, not your file).",
+            "outsideScope": "Outside the encrypted area (files here are not encrypted)"
         },
         "aerocryptNative": {
             "title": "AeroCrypt overlay",

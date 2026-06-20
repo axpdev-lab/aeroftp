@@ -4568,7 +4568,9 @@
       "loading": "Ladataan...",
       "emptyFolder": "Tyhjä kansio",
       "nameNotDecrypted": "nimeä ei purettu",
-      "download": "Lataa"
+      "download": "Lataa",
+      "serverHashGated": "Palvelinpuolen tarkistussumma ei ole käytettävissä, kun salattu peittokerros on aktiivinen (se laskisi salatekstin tiivisteen, ei tiedostoasi).",
+      "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)"
     },
     "b2": {
       "hidden": {

@@ -4568,7 +4568,9 @@
       "loading": "加载中...",
       "emptyFolder": "空文件夹",
       "nameNotDecrypted": "名称未解密",
-      "download": "下载"
+      "download": "下载",
+      "serverHashGated": "加密叠加层处于活动状态时无法使用服务器端校验和（它会对密文而非您的文件进行哈希）。",
+      "outsideScope": "加密区域之外（此处文件未加密）"
     },
     "b2": {
       "hidden": {
