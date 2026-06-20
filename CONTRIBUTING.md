@@ -33,6 +33,41 @@ Be respectful, inclusive, and professional. We're here to build great software t
 
 ## Development Setup
 
+### Prerequisites
+
+Core toolchain (all platforms):
+
+- **Node.js 20+** and npm (CI builds on Node 20).
+- **Rust** stable toolchain via [rustup](https://rustup.rs/) (minimum 1.85.0).
+- A **C/C++ compiler toolchain** and **Perl**: two native dependencies build
+  from source. `ssh2` vendors OpenSSL (needs `perl` on `PATH`) and
+  `whisper-rs-sys` vendors whisper.cpp and runs `bindgen` (needs **libclang**
+  from LLVM). On most Linux/macOS setups Perl is already present; on Windows it
+  is not, so it must be installed explicitly.
+
+Platform-specific native build tools:
+
+- **Windows**:
+  - [Strawberry Perl](https://strawberryperl.com/) (fixes
+    `openssl-sys ... Command 'perl' not found`).
+  - [LLVM](https://github.com/llvm/llvm-project/releases) for `clang.dll` /
+    `libclang.dll` (fixes `whisper-rs-sys ... Unable to find libclang`). If the
+    build still cannot find it, set `LIBCLANG_PATH` to the LLVM `bin` folder
+    (e.g. `C:\Program Files\LLVM\bin`).
+  - Visual Studio Build Tools 2022 (MSVC, "Desktop development with C++").
+  - WebView2 Runtime (preinstalled on Windows 11 and recent Windows 10).
+- **Linux** (Debian/Ubuntu):
+  ```bash
+  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+    librsvg2-dev patchelf libfuse3-dev
+  ```
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`).
+
+> First build note: `npm run tauri dev` compiles the full Rust dependency tree,
+> including OpenSSL and whisper.cpp from source. The first run can take many
+> minutes even on a fast CPU and looks like it has stalled. This is expected;
+> let it finish. Subsequent builds are incremental and fast.
+
 ```bash
 # Clone the repo
 git clone https://github.com/axpdev-lab/aeroftp.git
