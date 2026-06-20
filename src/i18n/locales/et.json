@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Server vastab tavalisest aeglasemalt. Oota edasi või tühista ühendus (võid vajutada ka Esc).",
       "connectionCancelled": "Ühendus tühistatud",
       "keepWaiting": "Oota edasi",
-      "cancelConnection": "Tühista ühendus"
+      "cancelConnection": "Tühista ühendus",
+      "dropImported": "{count} üksust imporditi sellesse kausta",
+      "dropFailed": "{count} üksuse importimine ebaõnnestus"
     },
     "about": {
       "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Kaust lisatud",
       "extractAll": "Ekstrakti kõik",
       "extractAllHint": "Ekstrakti kõik hoidla failid kausta",
-      "extractedAll": "Ekstraktiti {count} fail(i) asukohta {path}"
+      "extractedAll": "Ekstraktiti {count} fail(i) asukohta {path}",
+      "dropFilesHint": "Lohista failid või kaustad siia või kasuta allolevaid nuppe",
+      "itemSingular": "üksus",
+      "itemPlural": "üksust",
+      "reportExported": "Hoidla aruanne salvestati asukohta {path}",
+      "reportCopied": "Hoidla aruanne kopeeriti lõikelauale",
+      "exportReportHint": "Ekspordi täielik tehniline aruanne: hoidla metaandmed, krüpteerimine, veaparandus ja kogu faililoend",
+      "copyReportHint": "Kopeeri aruanne lõikelauale",
+      "copyReport": "Kopeeri"
     },
     "cryptomator": {
       "title": "Cryptomator hoidla",

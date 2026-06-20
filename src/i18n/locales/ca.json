@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "El servidor està trigant més del normal a respondre. Continua esperant o cancel·la la connexió (també pots prémer Esc).",
       "connectionCancelled": "Connexió cancel·lada",
       "keepWaiting": "Continua esperant",
-      "cancelConnection": "Cancel·la la connexió"
+      "cancelConnection": "Cancel·la la connexió",
+      "dropImported": "S'han importat {count} elements en aquesta carpeta",
+      "dropFailed": "No s'han pogut importar {count} elements"
     },
     "about": {
       "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Carpeta afegida",
       "extractAll": "Extreu-ho tot",
       "extractAllHint": "Extreu tots els fitxers de la caixa forta a una carpeta",
-      "extractedAll": "S'han extret {count} fitxer(s) a {path}"
+      "extractedAll": "S'han extret {count} fitxer(s) a {path}",
+      "dropFilesHint": "Arrossega fitxers o carpetes aquí, o utilitza els botons de sota",
+      "itemSingular": "element",
+      "itemPlural": "elements",
+      "reportExported": "Informe del cofre desat a {path}",
+      "reportCopied": "Informe del cofre copiat al porta-retalls",
+      "exportReportHint": "Exporta un informe tècnic complet: metadades del cofre, xifratge, correcció d'errors i llista completa de fitxers",
+      "copyReportHint": "Copia l'informe al porta-retalls",
+      "copyReport": "Copia"
     },
     "cryptomator": {
       "title": "Caixa forta Cryptomator",

@@ -2,7 +2,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
+import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus } from 'lucide-react';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
@@ -19,18 +20,75 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     const compressionProfiles: { id: VaultV3CompressionProfile; label: string; detail: string }[] = [
         { id: 'fast', label: 'Fast', detail: 'zstd -3' },
         { id: 'balanced', label: 'Balanced', detail: 'zstd -9' },
-        { id: 'archive', label: 'Archive', detail: 'zstd -19' },
+        { id: 'archive', label: 'Archive', detail: 'zstd -15' },
     ];
+
+    // Ehud #8: mixed file/folder staging via two pickers feeding one list (Tauri's
+    // dialog cannot pick files AND folders in a single dialog). Combined with the
+    // create-screen drag&drop (Ehud #2) this gives a regular zipping experience.
+    const stageFiles = async () => {
+        const sel = await open({ multiple: true });
+        if (!sel) return;
+        await state.handleStageDrop(Array.isArray(sel) ? (sel as string[]) : [sel as string]);
+    };
+    const stageFolders = async () => {
+        const sel = await open({ directory: true, multiple: true });
+        if (!sel) return;
+        await state.handleStageDrop(Array.isArray(sel) ? (sel as string[]) : [sel as string]);
+    };
+
+    const stagedCount = state.stagedFiles.length + state.stagedDirs.length;
 
     return (
         <div className="p-4 flex flex-col gap-3">
-            {/* Files to be included */}
-            {state.initialFiles && state.initialFiles.length > 0 && !state.initialFolderPath && (
-                <div className="px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded text-xs text-emerald-700 dark:text-emerald-300">
-                    <span className="font-medium">{state.initialFiles.length} {state.initialFiles.length === 1 ? 'file' : 'files'}</span>
-                    {': '}
-                    {state.initialFiles.slice(0, 3).map(f => f.split('/').pop()).join(', ')}
-                    {state.initialFiles.length > 3 && ` +${state.initialFiles.length - 3}`}
+            {/* Staged contents: files + folders to include in the new vault.
+                Seeded from the opening selection, grown by drag&drop (Ehud #2)
+                and the Add files / Add folders pickers (Ehud #8). */}
+            {!state.initialFolderPath && (
+                <div className={`px-3 py-2 rounded text-xs border ${state.dragOver
+                    ? 'bg-emerald-100 dark:bg-emerald-800/40 border-emerald-400 dark:border-emerald-600'
+                    : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'} text-emerald-700 dark:text-emerald-300 transition-colors`}>
+                    {stagedCount > 0 ? (
+                        <>
+                            <div className="font-medium mb-1">
+                                {stagedCount} {stagedCount === 1 ? t('vault.itemSingular') : t('vault.itemPlural')}
+                            </div>
+                            <div className="flex flex-col gap-0.5 max-h-28 overflow-y-auto pr-1">
+                                {state.stagedDirs.map(d => (
+                                    <div key={d} className="flex items-center gap-1.5 group">
+                                        <FolderOpen size={11} className="shrink-0" />
+                                        <span className="truncate flex-1">{d.replace(/[\\/]+$/, '').split(/[\\/]/).pop()}</span>
+                                        <button onClick={() => state.removeStagedDir(d)} aria-label={t('vault.remove')}
+                                            className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity">
+                                            <X size={11} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {state.stagedFiles.map(f => (
+                                    <div key={f} className="flex items-center gap-1.5 group">
+                                        <FileIcon size={11} className="shrink-0" />
+                                        <span className="truncate flex-1">{f.split(/[\\/]/).pop()}</span>
+                                        <button onClick={() => state.removeStagedFile(f)} aria-label={t('vault.remove')}
+                                            className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity">
+                                            <X size={11} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80">{t('vault.dropFilesHint')}</div>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                        <button onClick={stageFiles}
+                            className="flex items-center gap-1 px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-800/40">
+                            <FilePlus size={12} /> {t('vault.addFiles')}
+                        </button>
+                        <button onClick={stageFolders}
+                            className="flex items-center gap-1 px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-800/40">
+                            <FolderPlus size={12} /> {t('vault.addFolder')}
+                        </button>
+                    </div>
                 </div>
             )}
 

@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "O servidor está tardando máis do habitual en responder. Continúa agardando ou cancela a conexión (tamén podes premer Esc).",
       "connectionCancelled": "Conexión cancelada",
       "keepWaiting": "Seguir agardando",
-      "cancelConnection": "Cancelar conexión"
+      "cancelConnection": "Cancelar conexión",
+      "dropImported": "Importáronse {count} elementos a este cartafol",
+      "dropFailed": "Non se puideron importar {count} elementos"
     },
     "about": {
       "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Cartafol engadido",
       "extractAll": "Extraer todo",
       "extractAllHint": "Extraer todos os ficheiros do cofre a un cartafol",
-      "extractedAll": "Extraéronse {count} ficheiro(s) a {path}"
+      "extractedAll": "Extraéronse {count} ficheiro(s) a {path}",
+      "dropFilesHint": "Arrastra ficheiros ou cartafoles aquí, ou usa os botóns de abaixo",
+      "itemSingular": "elemento",
+      "itemPlural": "elementos",
+      "reportExported": "Informe do cofre gardado en {path}",
+      "reportCopied": "Informe do cofre copiado ao portapapeis",
+      "exportReportHint": "Exportar un informe técnico completo: metadatos do cofre, cifrado, corrección de erros e lista completa de ficheiros",
+      "copyReportHint": "Copiar o informe ao portapapeis",
+      "copyReport": "Copiar"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",

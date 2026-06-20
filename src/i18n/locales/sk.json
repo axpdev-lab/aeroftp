@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Server odpovedá dlhšie ako zvyčajne. Pokračujte v čakaní alebo zrušte pripojenie (môžete stlačiť aj Esc).",
       "connectionCancelled": "Pripojenie zrušené",
       "keepWaiting": "Pokračovať v čakaní",
-      "cancelConnection": "Zrušiť pripojenie"
+      "cancelConnection": "Zrušiť pripojenie",
+      "dropImported": "Importovaných {count} položiek do tohto priečinka",
+      "dropFailed": "Nepodarilo sa importovať {count} položiek"
     },
     "about": {
       "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Priečinok pridaný",
       "extractAll": "Extrahovať všetko",
       "extractAllHint": "Extrahovať každý súbor v trezore do priečinka",
-      "extractedAll": "Extrahovaných {count} súborov do {path}"
+      "extractedAll": "Extrahovaných {count} súborov do {path}",
+      "dropFilesHint": "Presuňte sem súbory alebo priečinky, alebo použite tlačidlá nižšie",
+      "itemSingular": "položka",
+      "itemPlural": "položky",
+      "reportExported": "Správa trezora uložená do {path}",
+      "reportCopied": "Správa trezora skopírovaná do schránky",
+      "exportReportHint": "Exportovať kompletnú technickú správu: metadáta trezora, šifrovanie, opravu chýb a úplný zoznam súborov",
+      "copyReportHint": "Skopírovať správu do schránky",
+      "copyReport": "Kopírovať"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

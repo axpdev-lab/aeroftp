@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Serwer odpowiada wolniej niż zwykle. Poczekaj dalej lub anuluj połączenie (możesz też nacisnąć Esc).",
       "connectionCancelled": "Połączenie anulowane",
       "keepWaiting": "Czekaj dalej",
-      "cancelConnection": "Anuluj połączenie"
+      "cancelConnection": "Anuluj połączenie",
+      "dropImported": "Zaimportowano {count} elementów do tego folderu",
+      "dropFailed": "Nie udało się zaimportować {count} elementów"
     },
     "about": {
       "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Folder dodany",
       "extractAll": "Wyodrębnij wszystko",
       "extractAllHint": "Wyodrębnij wszystkie pliki ze skarbca do folderu",
-      "extractedAll": "Wyodrębniono {count} plik(ów) do {path}"
+      "extractedAll": "Wyodrębniono {count} plik(ów) do {path}",
+      "dropFilesHint": "Przeciągnij pliki lub foldery tutaj albo użyj przycisków poniżej",
+      "itemSingular": "element",
+      "itemPlural": "elementy",
+      "reportExported": "Raport sejfu zapisano w {path}",
+      "reportCopied": "Raport sejfu skopiowano do schowka",
+      "exportReportHint": "Eksportuj pełny raport techniczny: metadane sejfu, szyfrowanie, korekcję błędów i pełną listę plików",
+      "copyReportHint": "Skopiuj raport do schowka",
+      "copyReport": "Kopiuj"
     },
     "cryptomator": {
       "title": "Magazyn Cryptomator",

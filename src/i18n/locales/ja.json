@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "サーバーの応答に通常より時間がかかっています。このまま待つか、接続をキャンセルしてください（Esc キーでもキャンセルできます）。",
       "connectionCancelled": "接続をキャンセルしました",
       "keepWaiting": "待機を続ける",
-      "cancelConnection": "接続をキャンセル"
+      "cancelConnection": "接続をキャンセル",
+      "dropImported": "{count}件の項目をこのフォルダーにインポートしました",
+      "dropFailed": "{count}件の項目のインポートに失敗しました"
     },
     "about": {
       "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -2821,7 +2823,15 @@
       "folderAdded": "フォルダーを追加しました",
       "extractAll": "すべて抽出",
       "extractAllHint": "ボールト内のすべてのファイルをフォルダーに抽出",
-      "extractedAll": "{count} 個のファイルを {path} に抽出しました"
+      "extractedAll": "{count} 個のファイルを {path} に抽出しました",
+      "dropFilesHint": "ファイルやフォルダーをここにドラッグするか、下のボタンを使用してください",
+      "itemSingular": "項目",
+      "itemPlural": "項目",
+      "reportExported": "ボールトのレポートを {path} に保存しました",
+      "reportCopied": "ボールトのレポートをクリップボードにコピーしました",
+      "exportReportHint": "完全な技術レポートをエクスポート：ボールトのメタデータ、暗号化、誤り訂正、全ファイル一覧",
+      "copyReportHint": "レポートをクリップボードにコピー",
+      "copyReport": "コピー"
     },
     "cryptomator": {
       "title": "Cryptomator保管庫",

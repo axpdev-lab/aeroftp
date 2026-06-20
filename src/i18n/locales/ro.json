@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Serverul răspunde mai greu decât de obicei. Continuă să aștepți sau anulează conexiunea (poți apăsa și Esc).",
       "connectionCancelled": "Conexiune anulată",
       "keepWaiting": "Continuă să aștepți",
-      "cancelConnection": "Anulează conexiunea"
+      "cancelConnection": "Anulează conexiunea",
+      "dropImported": "{count} elemente importate în acest folder",
+      "dropFailed": "Importul a {count} elemente a eșuat"
     },
     "about": {
       "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Folder adăugat",
       "extractAll": "Extrage tot",
       "extractAllHint": "Extrage fiecare fișier din seif într-un folder",
-      "extractedAll": "{count} fișier(e) extrase în {path}"
+      "extractedAll": "{count} fișier(e) extrase în {path}",
+      "dropFilesHint": "Trageți fișiere sau foldere aici sau folosiți butoanele de mai jos",
+      "itemSingular": "element",
+      "itemPlural": "elemente",
+      "reportExported": "Raportul seifului a fost salvat în {path}",
+      "reportCopied": "Raportul seifului a fost copiat în clipboard",
+      "exportReportHint": "Exportă un raport tehnic complet: metadatele seifului, criptarea, corecția erorilor și lista completă de fișiere",
+      "copyReportHint": "Copiază raportul în clipboard",
+      "copyReport": "Copiază"
     },
     "cryptomator": {
       "title": "Seif Cryptomator",

@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Servern svarar långsammare än vanligt. Fortsätt vänta eller avbryt anslutningen (du kan också trycka på Esc).",
       "connectionCancelled": "Anslutning avbruten",
       "keepWaiting": "Fortsätt vänta",
-      "cancelConnection": "Avbryt anslutning"
+      "cancelConnection": "Avbryt anslutning",
+      "dropImported": "Importerade {count} objekt till den här mappen",
+      "dropFailed": "Det gick inte att importera {count} objekt"
     },
     "about": {
       "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Mapp tillagd",
       "extractAll": "Extrahera alla",
       "extractAllHint": "Extrahera alla filer i valvet till en mapp",
-      "extractedAll": "Extraherade {count} fil(er) till {path}"
+      "extractedAll": "Extraherade {count} fil(er) till {path}",
+      "dropFilesHint": "Dra filer eller mappar hit, eller använd knapparna nedan",
+      "itemSingular": "objekt",
+      "itemPlural": "objekt",
+      "reportExported": "Valvrapport sparad till {path}",
+      "reportCopied": "Valvrapport kopierad till urklipp",
+      "exportReportHint": "Exportera en komplett teknisk rapport: valvmetadata, kryptering, felkorrigering och fullständig fillista",
+      "copyReportHint": "Kopiera rapporten till urklipp",
+      "copyReport": "Kopiera"
     },
     "cryptomator": {
       "title": "Cryptomator-valv",

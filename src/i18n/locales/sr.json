@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Сервер одговара спорије него обично. Наставите да чекате или откажите везу (можете притиснути и Esc).",
       "connectionCancelled": "Веза је отказана",
       "keepWaiting": "Настави да чекаш",
-      "cancelConnection": "Откажи везу"
+      "cancelConnection": "Откажи везу",
+      "dropImported": "Увезено {count} ставки у ову фасциклу",
+      "dropFailed": "Увоз {count} ставки није успео"
     },
     "about": {
       "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Фасцикла додата",
       "extractAll": "Извуци све",
       "extractAllHint": "Извуци сваку датотеку из трезора у фасциклу",
-      "extractedAll": "Извучено {count} датотека у {path}"
+      "extractedAll": "Извучено {count} датотека у {path}",
+      "dropFilesHint": "Превуците датотеке или фасцикле овде или користите дугмад испод",
+      "itemSingular": "ставка",
+      "itemPlural": "ставке",
+      "reportExported": "Извештај трезора сачуван у {path}",
+      "reportCopied": "Извештај трезора копиран у оставу",
+      "exportReportHint": "Извези комплетан технички извештај: метаподатке трезора, шифровање, исправку грешака и потпуну листу датотека",
+      "copyReportHint": "Копирај извештај у оставу",
+      "copyReport": "Копирај"
     },
     "cryptomator": {
       "title": "Cryptomator trezor",

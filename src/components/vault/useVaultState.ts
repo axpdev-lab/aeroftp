@@ -6,10 +6,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { ArchiveEntry, AeroVaultMeta } from '../../types';
+import { formatSize } from '../../utils/formatters';
 import { useTranslation } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
+import { splitPathsByType } from './pathStaging';
 
 /** Where Error Correction parity lives relative to the vault container. */
 export type RecoveryPlacement = 'embedded' | 'detached' | 'both';
@@ -398,8 +401,14 @@ export interface VaultState {
     setRepairResult: (r: any | null) => void;
     setIsRepairing: (v: boolean) => void;
 
-    // Initial props passthrough
+    // Initial props passthrough (now backed by the staged-files list so the
+    // create screen reflects drag&drop / mixed-picker additions; Ehud #2/#8)
     initialFiles?: string[];
+    stagedFiles: string[];
+    stagedDirs: string[];
+    removeStagedFile: (p: string) => void;
+    removeStagedDir: (p: string) => void;
+    handleStageDrop: (paths: string[]) => Promise<void>;
 
     // Functions
     resetState: () => void;
@@ -415,6 +424,8 @@ export interface VaultState {
     handleRemove: (entryName: string, isDir: boolean) => Promise<void>;
     handleExtract: (entryName: string) => Promise<void>;
     handleExtractAll: () => Promise<void>;
+    handleExportVaultReport: (format: 'txt' | 'json') => Promise<void>;
+    handleCopyVaultReport: () => Promise<void>;
     handleChangePassword: () => Promise<void>;
 
     // P2 Error Correction actions (use the registered Tauri commands; engine shared with CLI)
@@ -495,6 +506,14 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // Drag-and-drop state
     const [dragOver, setDragOver] = useState(false);
     const [dragTargetDir, setDragTargetDir] = useState<string | null>(null);
+
+    // Staged contents for the create screen (Ehud #2 drag&drop + #8 mixed
+    // file/folder picker). Seeded from the `initialFiles` prop (selection that
+    // opened the panel); drops and the picker append files here and folders to
+    // stagedDirs. handleCreate adds files via vault_*_add_files and folders via
+    // vault_*_add_directory after the container is created.
+    const [stagedFiles, setStagedFiles] = useState<string[]>(initialFiles || []);
+    const [stagedDirs, setStagedDirs] = useState<string[]>([]);
 
     // Recent vaults (NEW)
     const [recentVaults, setRecentVaults] = useState<RecentVault[]>([]);
@@ -640,12 +659,17 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 const name = initialFolderPath.split('/').pop() || 'vault';
                 return `${name}.aerovault`;
             }
-            if (initialFiles?.length === 1) {
-                const name = initialFiles[0].split('/').pop()?.replace(/\.[^.]+$/, '') || 'vault';
+            if (stagedFiles.length === 1 && stagedDirs.length === 0) {
+                const name = stagedFiles[0].split('/').pop()?.replace(/\.[^.]+$/, '') || 'vault';
                 return `${name}.aerovault`;
             }
-            if (initialFiles && initialFiles.length > 1) {
-                const parent = initialFiles[0].split('/').slice(0, -1).pop() || 'archive';
+            if (stagedDirs.length === 1 && stagedFiles.length === 0) {
+                const name = stagedDirs[0].replace(/\/+$/, '').split('/').pop() || 'vault';
+                return `${name}.aerovault`;
+            }
+            if (stagedFiles.length > 1 || stagedDirs.length > 0) {
+                const first = stagedFiles[0] || stagedDirs[0];
+                const parent = first.split('/').slice(0, -1).pop() || 'archive';
                 return `${parent}.aerovault`;
             }
             if (description) return `${description.replace(/[^a-zA-Z0-9_-]/g, '_')}.aerovault`;
@@ -694,16 +718,28 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     setMeta(mapV3InfoToMeta(info));
                     setSuccess(t('vault.created') + `: ${info.file_count} files`);
                     setFolderProgress(null);
-                } else if (initialFiles?.length) {
-                    const info = await invoke<VaultV3Info>('vault_v3_add_files', {
-                        vaultPath: savePath,
-                        password,
-                        filePaths: initialFiles,
-                    });
+                } else if (stagedFiles.length || stagedDirs.length) {
+                    let addInfo: VaultV3Info | null = null;
+                    if (stagedFiles.length) {
+                        addInfo = await invoke<VaultV3Info>('vault_v3_add_files', {
+                            vaultPath: savePath,
+                            password,
+                            filePaths: stagedFiles,
+                        });
+                    }
+                    for (const dir of stagedDirs) {
+                        await invoke('vault_v3_add_directory', {
+                            vaultPath: savePath,
+                            password,
+                            sourceDir: dir,
+                            targetPrefix: null,
+                        });
+                    }
+                    const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath: savePath, password });
                     setEntries(mapV3InfoToEntries(info));
                     setMeta(mapV3InfoToMeta(info));
-                    setLastReport(info.report ?? null);
-                    setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
+                    setLastReport((addInfo?.report ?? info.report) ?? null);
+                    setSuccess(t('vault.created') + `: ${info.file_count} ${info.file_count === 1 ? 'file' : 'files'}`);
                 } else {
                     setSuccess(t('vault.created'));
                     setEntries([]);
@@ -718,7 +754,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setMode('browse');
 
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
-                await saveToHistory(savePath, vName, 'experimental', 3, false, initialFiles?.length || 0);
+                await saveToHistory(savePath, vName, 'experimental', 3, false, stagedFiles.length || 0);
             } else if (levelConfig.version === 2) {
                 await invoke('vault_v2_create', {
                     vaultPath: savePath,
@@ -742,13 +778,20 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     setSuccess(t('vault.created') + `: ${info.file_count} files`);
                     setMeta(mapV2InfoToMeta(info));
                     setFolderProgress(null);
-                } else if (initialFiles?.length) {
-                    // Auto-add selected files
-                    const v2add = await invoke<{ report?: VaultReport }>('vault_v2_add_files', { vaultPath: savePath, password, filePaths: initialFiles });
-                    setLastReport(v2add.report ?? null);
+                } else if (stagedFiles.length || stagedDirs.length) {
+                    // Auto-add staged files, then each staged folder (tree preserved)
+                    let v2report: VaultReport | null = null;
+                    if (stagedFiles.length) {
+                        const v2add = await invoke<{ report?: VaultReport }>('vault_v2_add_files', { vaultPath: savePath, password, filePaths: stagedFiles });
+                        v2report = v2add.report ?? null;
+                    }
+                    for (const dir of stagedDirs) {
+                        await invoke('vault_v2_add_directory', { vaultPath: savePath, password, sourceDir: dir });
+                    }
+                    setLastReport(v2report);
                     const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath: savePath, password });
                     setEntries(mapV2InfoToEntries(info));
-                    setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
+                    setSuccess(t('vault.created') + `: ${info.file_count} ${info.file_count === 1 ? 'file' : 'files'}`);
                     setMeta(mapV2InfoToMeta(info));
                 } else {
                     setSuccess(t('vault.created'));
@@ -765,7 +808,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
                 // Save to history: use meta.fileCount (not stale entries.length)
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
-                const actualCount = initialFolderPath ? (folderScanResult?.file_count || 0) : (initialFiles?.length || 0);
+                const actualCount = initialFolderPath ? (folderScanResult?.file_count || 0) : (stagedFiles.length || 0);
                 await saveToHistory(savePath, vName, securityLevel, 2, levelConfig.cascade, actualCount);
             } else {
                 await invoke('vault_create', { vaultPath: savePath, password, description: description || null });
@@ -1017,48 +1060,52 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const targetDir = dragTargetDir || currentDir;
+            // Ehud #2/#8: a drop (or a mixed pick) can include folders; route the
+            // files through add_files and each folder through add_directory so a
+            // dropped directory keeps its tree instead of erroring as a "file".
+            const { files, dirs } = await splitPathsByType(paths);
+            if (!files.length && !dirs.length) return;
+            const totalCount = files.length + dirs.length;
+
             if (vaultSecurity?.version === 3) {
-                if (targetDir) {
-                    const result = await invoke<{ added: number; total: number }>('vault_v3_add_files_to_dir', {
-                        vaultPath,
-                        password,
-                        filePaths: paths,
-                        targetDir
-                    });
-                    await refreshVaultEntries();
-                    setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
-                } else {
-                    const info = await invoke<VaultV3Info>('vault_v3_add_files', {
-                        vaultPath,
-                        password,
-                        filePaths: paths,
-                    });
-                    setEntries(mapV3InfoToEntries(info));
-                    setMeta(mapV3InfoToMeta(info, meta));
-                    setLastReport(info.report ?? null);
-                    setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
+                if (files.length) {
+                    if (targetDir) {
+                        await invoke('vault_v3_add_files_to_dir', { vaultPath, password, filePaths: files, targetDir });
+                    } else {
+                        const info = await invoke<VaultV3Info>('vault_v3_add_files', { vaultPath, password, filePaths: files });
+                        setLastReport(info.report ?? null);
+                    }
                 }
+                for (const dir of dirs) {
+                    await invoke('vault_v3_add_directory', { vaultPath, password, sourceDir: dir, targetPrefix: targetDir || null });
+                }
+                await refreshVaultEntries();
+                setSuccess(t('vault.filesAdded', { count: totalCount.toString() }));
             } else if (vaultSecurity?.version === 2) {
-                const result = targetDir
-                    ? await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files_to_dir', {
-                        vaultPath,
-                        password,
-                        filePaths: paths,
-                        targetDir
-                    })
-                    : await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files', {
-                        vaultPath,
-                        password,
-                        filePaths: paths
-                    });
+                if (files.length) {
+                    const result = targetDir
+                        ? await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files_to_dir', {
+                            vaultPath, password, filePaths: files, targetDir
+                        })
+                        : await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files', {
+                            vaultPath, password, filePaths: files
+                        });
+                    setLastReport(result.report ?? null);
+                }
+                for (const dir of dirs) {
+                    await invoke('vault_v2_add_directory', { vaultPath, password, sourceDir: dir });
+                }
                 await refreshVaultEntries();
-                setLastReport(result.report ?? null);
-                setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
+                setSuccess(t('vault.filesAdded', { count: totalCount.toString() }));
             } else {
-                const v1res = await invoke<{ report?: VaultReport }>('vault_add_files', { vaultPath, password, filePaths: paths });
+                // v1 has no directory support: add files, surface folders as unsupported.
+                if (files.length) {
+                    const v1res = await invoke<{ report?: VaultReport }>('vault_add_files', { vaultPath, password, filePaths: files });
+                    setLastReport(v1res.report ?? null);
+                }
                 await refreshVaultEntries();
-                setLastReport(v1res.report ?? null);
-                setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
+                if (dirs.length) setError(t('vault.addFolderUnsupported'));
+                else setSuccess(t('vault.filesAdded', { count: files.length.toString() }));
             }
         } catch (e) {
             setError(mapVaultError(e, t));
@@ -1067,6 +1114,18 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             setDragTargetDir(null);
         }
     }, [vaultPath, password, currentDir, dragTargetDir, vaultSecurity, loading, t]);
+
+    // Ehud #2: OS drag&drop onto the CREATE screen stages files/folders into the
+    // not-yet-created vault (handleCreate adds them after sealing the container).
+    const handleStageDrop = useCallback(async (paths: string[]) => {
+        if (!paths.length) return;
+        const { files, dirs } = await splitPathsByType(paths);
+        if (files.length) setStagedFiles(prev => Array.from(new Set([...prev, ...files])));
+        if (dirs.length) setStagedDirs(prev => Array.from(new Set([...prev, ...dirs])));
+    }, []);
+
+    const removeStagedFile = useCallback((p: string) => setStagedFiles(prev => prev.filter(x => x !== p)), []);
+    const removeStagedDir = useCallback((p: string) => setStagedDirs(prev => prev.filter(x => x !== p)), []);
 
     const handleCreateDirectory = async () => {
         const trimmed = newDirName.trim();
@@ -1205,6 +1264,185 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
+    // Ehud #2: a complete technical report of the open vault — metadata,
+    // encryption pipeline, error-correction state, chunk-level stats (re-fetched
+    // from the backend, richer than the UI-mapped entries) and the full file
+    // list. Shared by Export .txt/.json (save dialog) and Copy (clipboard).
+    const profileForLevel = (lvl: number): string => (lvl === 3 ? 'fast' : lvl === 15 || lvl === 19 ? 'archive' : 'balanced');
+
+    const buildVaultReport = async (format: 'txt' | 'json'): Promise<string> => {
+        const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');
+        const generatedAt = new Date().toISOString();
+        const levelConfig = vaultSecurity ? securityLevels[vaultSecurity.level] : null;
+        const algorithms = levelConfig?.features ?? [];
+
+        // Re-fetch full technical info (chunk_count, dedup, compression level,
+        // per-file chunk counts) which the UI entries/meta mapping discards.
+        let v3tech: VaultV3Info | null = null;
+        let v2tech: VaultV2Info | null = null;
+        let fileList: { name: string; size: number; is_dir: boolean; modified: string; chunk_count?: number }[] =
+            entries.map(e => ({ name: e.name, size: e.size, is_dir: e.isDir, modified: e.modified || '' }));
+        try {
+            if (vaultSecurity?.version === 3) {
+                v3tech = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
+                fileList = v3tech.files.map(f => ({ name: f.name, size: f.size, is_dir: f.is_dir, modified: f.modified, chunk_count: f.chunk_count }));
+            } else if (vaultSecurity?.version === 2) {
+                v2tech = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
+                fileList = v2tech.files.map(f => ({ name: f.name, size: f.size, is_dir: f.is_dir, modified: f.modified }));
+            }
+        } catch {
+            // best-effort: keep the in-state fallback file list
+        }
+
+        const fileEntries = fileList.filter(f => !f.is_dir);
+        const dirCount = fileList.length - fileEntries.length;
+        const totalSize = fileEntries.reduce((acc, f) => acc + (f.size || 0), 0);
+        const compressionProfileLabel = v3tech ? profileForLevel(v3tech.compression_level) : compressionProfile;
+
+        if (format === 'json') {
+            return JSON.stringify({
+                aerovault_report: {
+                    generated_at: generatedAt,
+                    tool: 'AeroFTP',
+                    vault: {
+                        name: vaultName,
+                        path: vaultPath,
+                        format_version: meta?.version ?? vaultSecurity?.version ?? null,
+                        security_level: vaultSecurity?.level ?? null,
+                        cascade_mode: vaultSecurity?.cascadeMode ?? false,
+                        description: meta?.description ?? null,
+                        created: meta?.created ?? null,
+                        modified: meta?.modified ?? null,
+                        encryption_pipeline: algorithms,
+                        compression_profile: compressionProfileLabel,
+                        error_correction: {
+                            embedded: hasErrorCorrection,
+                            detached: hasDetachedRecovery,
+                            detached_header_protected: hasDetachedHeaderRecovery,
+                        },
+                    },
+                    technical: v3tech
+                        ? {
+                            file_count: v3tech.file_count,
+                            chunk_count: v3tech.chunk_count,
+                            dedup_chunks: v3tech.dedup_chunks,
+                            compression_level: v3tech.compression_level,
+                        }
+                        : v2tech
+                            ? { file_count: v2tech.file_count, chunk_size: v2tech.chunk_size, cascade_mode: v2tech.cascade_mode }
+                            : null,
+                    summary: {
+                        total_items: fileList.length,
+                        files: fileEntries.length,
+                        directories: dirCount,
+                        total_size_bytes: totalSize,
+                    },
+                    files: fileList,
+                    last_operation_receipt: lastReport ?? null,
+                },
+            }, null, 2);
+        }
+
+        // Human-readable text report.
+        const L: string[] = [];
+        L.push('AeroVault — Vault Report');
+        L.push('========================');
+        L.push(`Generated:          ${generatedAt}`);
+        L.push('');
+        L.push('VAULT');
+        L.push(`  Name:             ${vaultName}`);
+        L.push(`  Path:             ${vaultPath}`);
+        L.push(`  Format:           v${meta?.version ?? vaultSecurity?.version ?? '?'}`);
+        L.push(`  Security level:   ${vaultSecurity?.level ?? '?'}${vaultSecurity?.cascadeMode ? ' (cascade)' : ''}`);
+        if (meta?.description) L.push(`  Description:      ${meta.description}`);
+        if (meta?.created) L.push(`  Created:          ${meta.created}`);
+        if (meta?.modified) L.push(`  Modified:         ${meta.modified}`);
+        if (algorithms.length) L.push(`  Encryption:       ${algorithms.join(' · ')}`);
+        L.push(`  Compression:      ${compressionProfileLabel}${v3tech ? ` (zstd -${v3tech.compression_level})` : ''}`);
+        const ecState = [hasErrorCorrection ? 'embedded' : null, hasDetachedRecovery ? 'detached' : null].filter(Boolean).join(' + ') || 'none';
+        L.push(`  Error correction: ${ecState}${hasDetachedHeaderRecovery ? ' (header protected)' : ''}`);
+        L.push('');
+        L.push('TECHNICAL');
+        if (v3tech) {
+            L.push(`  Files:            ${v3tech.file_count}`);
+            L.push(`  Chunks:           ${v3tech.chunk_count} (${v3tech.dedup_chunks} dedup)`);
+            L.push(`  zstd level:       ${v3tech.compression_level}`);
+        } else if (v2tech) {
+            L.push(`  Files:            ${v2tech.file_count}`);
+            L.push(`  Chunk size:       ${formatSize(v2tech.chunk_size)}`);
+            L.push(`  Cascade mode:     ${v2tech.cascade_mode}`);
+        } else {
+            L.push('  (chunk-level stats unavailable)');
+        }
+        L.push('');
+        L.push('SUMMARY');
+        L.push(`  Items:            ${fileList.length} (${fileEntries.length} files, ${dirCount} folders)`);
+        L.push(`  Total size:       ${formatSize(totalSize)}`);
+        L.push('');
+        L.push(`FILES (${fileList.length})`);
+        for (const f of [...fileList].sort((a, b) => a.name.localeCompare(b.name))) {
+            const tag = f.is_dir ? 'D' : 'F';
+            const size = f.is_dir ? '' : `  (${formatSize(f.size || 0)})`;
+            const chunks = f.chunk_count != null ? `  [${f.chunk_count} chunk${f.chunk_count === 1 ? '' : 's'}]` : '';
+            const mod = f.modified ? `  ${f.modified}` : '';
+            L.push(`  [${tag}] ${f.name}${size}${chunks}${mod}`);
+        }
+        if (lastReport) {
+            L.push('');
+            L.push('LAST OPERATION RECEIPT');
+            L.push(`  Operation:        ${lastReport.operation} (v${lastReport.vault_format})`);
+            L.push(`  Pipeline:         ${lastReport.algorithms.join(' → ')}`);
+            L.push(`  Profile:          ${lastReport.profile ?? '-'}`);
+            L.push(`  Files / packed:   ${lastReport.files} / ${lastReport.packed_files}`);
+            L.push(`  Chunks L/N/D:     ${lastReport.logical_chunks} / ${lastReport.new_physical_chunks} / ${lastReport.dedup_hits}`);
+            if (lastReport.cdc_avg) L.push(`  CDC min/avg/max:  ${lastReport.cdc_min} / ${lastReport.cdc_avg} / ${lastReport.cdc_max}`);
+            L.push(`  Plaintext:        ${formatSize(lastReport.plaintext_bytes)}`);
+            L.push(`  Compressed:       ${formatSize(lastReport.compressed_bytes)}`);
+            L.push(`  Encrypted:        ${formatSize(lastReport.encrypted_bytes)}`);
+            if (lastReport.compressed_bytes > 0) L.push(`  Compression:      ${lastReport.compression_ratio_pct.toFixed(1)}%`);
+            if (lastReport.error_correction_shards_generated != null) {
+                L.push(`  EC shards:        ${lastReport.error_correction_shards_generated}`);
+                L.push(`  EC protected:     ${formatSize(lastReport.error_correction_bytes_protected ?? 0)}`);
+                L.push(`  EC overhead:      ${(lastReport.error_correction_overhead_pct ?? 0).toFixed(1)}%`);
+            }
+            L.push(`  Elapsed:          ${lastReport.time_elapsed.toFixed(1)} s`);
+        }
+        L.push('');
+        L.push('Generated by AeroFTP · AeroVault');
+        return L.join('\n');
+    };
+
+    const handleExportVaultReport = async (format: 'txt' | 'json') => {
+        setLoading(true);
+        setError(null);
+        try {
+            const content = await buildVaultReport(format);
+            const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');
+            const filePath = await save({
+                defaultPath: `${vaultName}-report.${format}`,
+                filters: [{ name: `AeroVault report (.${format})`, extensions: [format] }],
+            });
+            if (!filePath) return;
+            await writeTextFile(filePath, content);
+            setSuccess(t('vault.reportExported', { path: filePath }));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCopyVaultReport = async () => {
+        setError(null);
+        try {
+            const content = await buildVaultReport('txt');
+            await navigator.clipboard.writeText(content);
+            setSuccess(t('vault.reportCopied'));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        }
+    };
+
     const handleChangePassword = async () => {
         if (newPassword.length < 8) { setError(t('vault.passwordTooShort')); return; }
         if (newPassword !== confirmNewPassword) { setError(t('vault.passwordMismatch')); return; }
@@ -1268,6 +1506,27 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             }
         }));
     }, [mode, handleDropFiles]);
+
+    // Ehud #2: OS file drag-and-drop onto the create screen (stages into the
+    // new vault). Separate from the browse listener so each only fires in its
+    // own mode.
+    useEffect(() => {
+        if (mode !== 'create') return;
+
+        const webview = getCurrentWebview();
+        return guardedUnlisten(webview.onDragDropEvent((event) => {
+            if (event.payload.type === 'over' || event.payload.type === 'enter') {
+                setDragOver(true);
+            } else if (event.payload.type === 'drop') {
+                setDragOver(false);
+                if (event.payload.paths.length > 0) {
+                    handleStageDrop(event.payload.paths);
+                }
+            } else if (event.payload.type === 'leave') {
+                setDragOver(false);
+            }
+        }));
+    }, [mode, handleStageDrop]);
 
     // Load recent vaults on mount
     useEffect(() => {
@@ -1454,7 +1713,12 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         folderScanResult,
         folderProgress,
         initialFolderPath,
-        initialFiles,
+        initialFiles: stagedFiles,
+        stagedFiles,
+        stagedDirs,
+        removeStagedFile,
+        removeStagedDir,
+        handleStageDrop,
         resetState,
         detectVaultVersion,
         handleCreate,
@@ -1468,6 +1732,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         handleRemove,
         handleExtract,
         handleExtractAll,
+        handleExportVaultReport,
+        handleCopyVaultReport,
         handleChangePassword,
         handleScrub,
         handleRepair,

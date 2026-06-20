@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Pelayan mengambil masa lebih lama daripada biasa untuk membalas. Teruskan menunggu, atau batalkan sambungan (anda juga boleh tekan Esc).",
       "connectionCancelled": "Sambungan dibatalkan",
       "keepWaiting": "Teruskan menunggu",
-      "cancelConnection": "Batalkan sambungan"
+      "cancelConnection": "Batalkan sambungan",
+      "dropImported": "Mengimport {count} item ke dalam folder ini",
+      "dropFailed": "Gagal mengimport {count} item"
     },
     "about": {
       "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Folder ditambah",
       "extractAll": "Ekstrak semua",
       "extractAllHint": "Ekstrak setiap fail dalam bilik kebal ke folder",
-      "extractedAll": "{count} fail diekstrak ke {path}"
+      "extractedAll": "{count} fail diekstrak ke {path}",
+      "dropFilesHint": "Seret fail atau folder ke sini, atau gunakan butang di bawah",
+      "itemSingular": "item",
+      "itemPlural": "item",
+      "reportExported": "Laporan peti besi disimpan ke {path}",
+      "reportCopied": "Laporan peti besi disalin ke papan keratan",
+      "exportReportHint": "Eksport laporan teknikal lengkap: metadata peti besi, penyulitan, pembetulan ralat dan senarai fail penuh",
+      "copyReportHint": "Salin laporan ke papan keratan",
+      "copyReport": "Salin"
     },
     "cryptomator": {
       "title": "Peti Besi Cryptomator",

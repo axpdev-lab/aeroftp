@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Le serveur met plus de temps que d'habitude à répondre. Continuez à patienter ou annulez la connexion (vous pouvez aussi appuyer sur Esc).",
       "connectionCancelled": "Connexion annulée",
       "keepWaiting": "Continuer à attendre",
-      "cancelConnection": "Annuler la connexion"
+      "cancelConnection": "Annuler la connexion",
+      "dropImported": "{count} éléments importés dans ce dossier",
+      "dropFailed": "Échec de l'importation de {count} éléments"
     },
     "about": {
       "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Dossier ajouté",
       "extractAll": "Tout extraire",
       "extractAllHint": "Extraire tous les fichiers du coffre vers un dossier",
-      "extractedAll": "{count} fichier(s) extrait(s) vers {path}"
+      "extractedAll": "{count} fichier(s) extrait(s) vers {path}",
+      "dropFilesHint": "Glissez des fichiers ou des dossiers ici, ou utilisez les boutons ci-dessous",
+      "itemSingular": "élément",
+      "itemPlural": "éléments",
+      "reportExported": "Rapport du coffre enregistré dans {path}",
+      "reportCopied": "Rapport du coffre copié dans le presse-papiers",
+      "exportReportHint": "Exporter un rapport technique complet : métadonnées du coffre, chiffrement, correction d'erreurs et liste complète des fichiers",
+      "copyReportHint": "Copier le rapport dans le presse-papiers",
+      "copyReport": "Copier"
     },
     "cryptomator": {
       "title": "Coffre-fort Cryptomator",

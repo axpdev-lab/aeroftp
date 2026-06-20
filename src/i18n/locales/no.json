@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Serveren bruker lengre tid enn vanlig på å svare. Fortsett å vente, eller avbryt tilkoblingen (du kan også trykke Esc).",
       "connectionCancelled": "Tilkobling avbrutt",
       "keepWaiting": "Fortsett å vente",
-      "cancelConnection": "Avbryt tilkobling"
+      "cancelConnection": "Avbryt tilkobling",
+      "dropImported": "Importerte {count} elementer til denne mappen",
+      "dropFailed": "Kunne ikke importere {count} elementer"
     },
     "about": {
       "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Mappe lagt til",
       "extractAll": "Pakk ut alt",
       "extractAllHint": "Pakk ut alle filer i hvelvet til en mappe",
-      "extractedAll": "Pakket ut {count} fil(er) til {path}"
+      "extractedAll": "Pakket ut {count} fil(er) til {path}",
+      "dropFilesHint": "Dra filer eller mapper hit, eller bruk knappene nedenfor",
+      "itemSingular": "element",
+      "itemPlural": "elementer",
+      "reportExported": "Hvelvrapport lagret til {path}",
+      "reportCopied": "Hvelvrapport kopiert til utklippstavlen",
+      "exportReportHint": "Eksporter en fullstendig teknisk rapport: hvelvmetadata, kryptering, feilretting og fullstendig filliste",
+      "copyReportHint": "Kopier rapporten til utklippstavlen",
+      "copyReport": "Kopier"
     },
     "cryptomator": {
       "title": "Cryptomator-hvelv",

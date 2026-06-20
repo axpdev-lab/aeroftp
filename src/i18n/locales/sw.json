@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Seva inachukua muda mrefu kuliko kawaida kujibu. Endelea kusubiri, au ghairi muunganisho (unaweza pia kubonyeza Esc).",
       "connectionCancelled": "Muunganisho umeghairiwa",
       "keepWaiting": "Endelea kusubiri",
-      "cancelConnection": "Ghairi muunganisho"
+      "cancelConnection": "Ghairi muunganisho",
+      "dropImported": "Vimeingizwa vipengele {count} kwenye folda hii",
+      "dropFailed": "Imeshindwa kuingiza vipengele {count}"
     },
     "about": {
       "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Folda imeongezwa",
       "extractAll": "Toa zote",
       "extractAllHint": "Toa kila faili kwenye kasha hadi folda",
-      "extractedAll": "Faili {count} zimetolewa hadi {path}"
+      "extractedAll": "Faili {count} zimetolewa hadi {path}",
+      "dropFilesHint": "Buruta faili au folda hapa, au tumia vitufe vilivyo hapa chini",
+      "itemSingular": "kipengele",
+      "itemPlural": "vipengele",
+      "reportExported": "Ripoti ya kasha imehifadhiwa kwenye {path}",
+      "reportCopied": "Ripoti ya kasha imenakiliwa kwenye ubao wa kunakili",
+      "exportReportHint": "Hamisha ripoti kamili ya kiufundi: metadata ya kasha, usimbaji fiche, urekebishaji wa makosa na orodha kamili ya faili",
+      "copyReportHint": "Nakili ripoti kwenye ubao wa kunakili",
+      "copyReport": "Nakili"
     },
     "cryptomator": {
       "title": "Hazina ya Cryptomator",

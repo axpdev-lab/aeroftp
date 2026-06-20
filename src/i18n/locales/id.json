@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "Server membutuhkan waktu lebih lama dari biasanya untuk merespons. Terus tunggu, atau batalkan koneksi (Anda juga bisa menekan Esc).",
       "connectionCancelled": "Koneksi dibatalkan",
       "keepWaiting": "Terus tunggu",
-      "cancelConnection": "Batalkan koneksi"
+      "cancelConnection": "Batalkan koneksi",
+      "dropImported": "Mengimpor {count} item ke folder ini",
+      "dropFailed": "Gagal mengimpor {count} item"
     },
     "about": {
       "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Folder ditambahkan",
       "extractAll": "Ekstrak semua",
       "extractAllHint": "Ekstrak setiap file di brankas ke folder",
-      "extractedAll": "{count} file diekstrak ke {path}"
+      "extractedAll": "{count} file diekstrak ke {path}",
+      "dropFilesHint": "Seret file atau folder ke sini, atau gunakan tombol di bawah",
+      "itemSingular": "item",
+      "itemPlural": "item",
+      "reportExported": "Laporan brankas disimpan ke {path}",
+      "reportCopied": "Laporan brankas disalin ke papan klip",
+      "exportReportHint": "Ekspor laporan teknis lengkap: metadata brankas, enkripsi, koreksi kesalahan, dan daftar berkas lengkap",
+      "copyReportHint": "Salin laporan ke papan klip",
+      "copyReport": "Salin"
     },
     "cryptomator": {
       "title": "Vault Cryptomator",

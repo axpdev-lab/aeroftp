@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "ម៉ាស៊ីនមេកំពុងប្រើពេលយូរជាងធម្មតាដើម្បីឆ្លើយតប។ សូមរង់ចាំបន្ត ឬបោះបង់ការតភ្ជាប់ (អ្នកក៏អាចចុច Esc បានដែរ)។",
       "connectionCancelled": "បានបោះបង់ការតភ្ជាប់",
       "keepWaiting": "បន្តរង់ចាំ",
-      "cancelConnection": "បោះបង់ការតភ្ជាប់"
+      "cancelConnection": "បោះបង់ការតភ្ជាប់",
+      "dropImported": "បាននាំចូល {count} ធាតុទៅក្នុងថតនេះ",
+      "dropFailed": "បរាជ័យក្នុងការនាំចូល {count} ធាតុ"
     },
     "about": {
       "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -2856,7 +2858,15 @@
       "folderAdded": "បានបន្ថែមថត",
       "extractAll": "ស្រង់ទាំងអស់",
       "extractAllHint": "ស្រង់ឯកសារទាំងអស់ក្នុងហិបទៅថត",
-      "extractedAll": "បានស្រង់ឯកសារ {count} ទៅ {path}"
+      "extractedAll": "បានស្រង់ឯកសារ {count} ទៅ {path}",
+      "dropFilesHint": "អូសឯកសារ ឬថតនៅទីនេះ ឬប្រើប៊ូតុងខាងក្រោម",
+      "itemSingular": "ធាតុ",
+      "itemPlural": "ធាតុ",
+      "reportExported": "របាយការណ៍ហិបត្រូវបានរក្សាទុកទៅ {path}",
+      "reportCopied": "របាយការណ៍ហិបត្រូវបានចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
+      "exportReportHint": "នាំចេញរបាយការណ៍បច្ចេកទេសពេញលេញ៖ ទិន្នន័យមេតារបស់ហិប ការអ៊ិនគ្រីប ការកែកំហុស និងបញ្ជីឯកសារពេញលេញ",
+      "copyReportHint": "ចម្លងរបាយការណ៍ទៅក្ដារតម្បៀតខ្ទាស់",
+      "copyReport": "ចម្លង"
     },
     "cryptomator": {
       "title": "វ៉ាល់ Cryptomator",

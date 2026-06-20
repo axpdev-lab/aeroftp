@@ -1286,7 +1286,9 @@
       "stillConnectingHint": "A kiszolgáló a szokásosnál tovább válaszol. Várjon tovább, vagy szakítsa meg a kapcsolatot (az Esc billentyűt is megnyomhatja).",
       "connectionCancelled": "Kapcsolat megszakítva",
       "keepWaiting": "Várakozás folytatása",
-      "cancelConnection": "Kapcsolat megszakítása"
+      "cancelConnection": "Kapcsolat megszakítása",
+      "dropImported": "{count} elem importálva ebbe a mappába",
+      "dropFailed": "{count} elem importálása sikertelen"
     },
     "about": {
       "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -2856,7 +2858,15 @@
       "folderAdded": "Mappa hozzáadva",
       "extractAll": "Összes kibontása",
       "extractAllHint": "A széf minden fájljának kibontása egy mappába",
-      "extractedAll": "{count} fájl kibontva ide: {path}"
+      "extractedAll": "{count} fájl kibontva ide: {path}",
+      "dropFilesHint": "Húzzon ide fájlokat vagy mappákat, vagy használja az alábbi gombokat",
+      "itemSingular": "elem",
+      "itemPlural": "elem",
+      "reportExported": "A széf jelentése elmentve ide: {path}",
+      "reportCopied": "A széf jelentése a vágólapra másolva",
+      "exportReportHint": "Teljes technikai jelentés exportálása: széf-metaadatok, titkosítás, hibajavítás és teljes fájllista",
+      "copyReportHint": "A jelentés másolása a vágólapra",
+      "copyReport": "Másolás"
     },
     "cryptomator": {
       "title": "Cryptomator tároló",
