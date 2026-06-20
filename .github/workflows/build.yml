@@ -330,6 +330,8 @@ jobs:
       # Create portable ZIP for Windows (no installer needed).
       # Includes:
       #   - AeroFTP.exe          (the app)
+      #   - aeroftp-cli.exe      (headless CLI: providers, transfers, vault)
+      #   - aeroftp-dispatch.exe (CLI subcommand dispatcher / shim)
       #   - portable.marker      (detection key for the in-place auto-updater;
       #                          presence triggers portable-mode behaviour:
       #                          data dir next to .exe, in-place .exe swap on
@@ -346,6 +348,19 @@ jobs:
             exit 1
           }
 
+          # The CLI binaries are produced by the same `tauri build` (cargo builds
+          # every [[bin]] in the crate). Ship them inside the portable ZIP so the
+          # headless CLI is available without the installer (issue #340). Hard-fail
+          # if absent so a packaging regression can never silently drop them again.
+          $cliExe      = "src-tauri/target/release/aeroftp-cli.exe"
+          $dispatchExe = "src-tauri/target/release/aeroftp-dispatch.exe"
+          foreach ($bin in @($cliExe, $dispatchExe)) {
+            if (-not (Test-Path $bin)) {
+              Write-Host "::error::CLI binary not found at $bin"
+              exit 1
+            }
+          }
+
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           $zipName = "AeroFTP-${version}-portable-windows-x64.zip"
           $stage = "src-tauri/target/release/bundle/portable-stage"
@@ -356,6 +371,8 @@ jobs:
           New-Item -ItemType Directory -Path $stage | Out-Null
 
           Copy-Item $exe                                              "$stage\AeroFTP.exe"
+          Copy-Item $cliExe                                           "$stage\aeroftp-cli.exe"
+          Copy-Item $dispatchExe                                      "$stage\aeroftp-dispatch.exe"
           Copy-Item "src-tauri/installer/portable/portable.marker"    "$stage\portable.marker"
           Copy-Item "src-tauri/installer/portable/README.txt"         "$stage\README.txt"
           Copy-Item "LICENSE"                                         "$stage\LICENSE.txt"

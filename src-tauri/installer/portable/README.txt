@@ -14,6 +14,21 @@ QUICK START
    folder to another machine and pick up where you left off.
 
 
+COMMAND-LINE TOOLS
+------------------
+
+This folder also ships the headless command-line tools, next to AeroFTP.exe:
+
+  - aeroftp-cli.exe       Scriptable client for every provider (FTP/SFTP/cloud),
+                          transfers, and AeroVault. Run "aeroftp-cli.exe --help".
+  - aeroftp-dispatch.exe  Subcommand dispatcher used by the CLI; you normally
+                          do not call it directly.
+
+They share the same portable "data\" folder as the app, so servers and the
+vault you set up in the GUI are visible to the CLI and vice versa. To use them
+from any prompt, add this folder to your PATH (optional).
+
+
 REQUIREMENTS
 ------------
 
