@@ -2351,6 +2351,12 @@ enum Commands {
         /// plain listing stays instant. Mirrors the GUI's 🔴/🟠/🟢 detector.
         #[arg(long)]
         health: bool,
+
+        /// Open the inline action menu (TUI) directly, skipping the `-i` line
+        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
+        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        #[arg(long)]
+        tui: bool,
     },
     /// Manage local AeroFTP user partitions
     ///
@@ -9715,6 +9721,10 @@ struct ProfilesViewOverrides {
     /// Probe the local-bridge helper apps and print a status line per bridge
     /// profile after the table (#215 follow-up; opt-in due to probe latency).
     health: bool,
+    /// `--tui` (Ehud #311): open the inline action menu directly, skipping the
+    /// line prompt. Implies interactive; quitting the directly-opened menu exits
+    /// instead of dropping into the prompt.
+    start_in_tui: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -13482,9 +13492,12 @@ fn render_profiles_text(
         print_bridge_health_section(&sorted, color_on);
     }
 
-    if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+    if (overrides.interactive || overrides.start_in_tui)
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal()
+    {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
-        return interactive_profiles_loop(cli, store, ordered, overrides);
+        return interactive_profiles_loop(cli, store, ordered, overrides, overrides.start_in_tui);
     }
 
     0
@@ -13553,6 +13566,7 @@ fn interactive_profiles_loop(
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
     overrides: &ProfilesViewOverrides,
+    start_in_tui: bool,
 ) -> i32 {
     use std::io::{self, BufRead, Write};
 
@@ -13562,7 +13576,14 @@ fn interactive_profiles_loop(
     let mut tombstones: Vec<(usize, serde_json::Value)> = Vec::new();
     // Command queued by the raw-mode `tui` navigator: when set, it is consumed
     // instead of reading a line, so the existing action dispatch runs it.
-    let mut pending_command: Option<String> = None;
+    // `--tui` (Ehud #311) seeds it with "tui" so the menu opens immediately, and
+    // `direct_tui` makes a Quit from that directly-opened menu exit the program.
+    let mut pending_command: Option<String> = if start_in_tui {
+        Some("tui".to_string())
+    } else {
+        None
+    };
+    let mut direct_tui = start_in_tui;
 
     loop {
         if !tombstones.is_empty() {
@@ -13660,8 +13681,16 @@ fn interactive_profiles_loop(
                 eprintln!("The inline action menu needs an interactive terminal.");
                 continue;
             }
+            // A `--tui`-opened menu (direct_tui) exits on Quit instead of dropping
+            // into the line prompt the user never asked for; a `tui` typed at the
+            // prompt returns there as before. The flag is consumed on first open.
+            let was_direct = std::mem::take(&mut direct_tui);
             match profiles_tui_pick(&current, fav_marker) {
-                Ok(ProfilesTuiOutcome::Quit) => {}
+                Ok(ProfilesTuiOutcome::Quit) => {
+                    if was_direct {
+                        return 0;
+                    }
+                }
                 Ok(ProfilesTuiOutcome::Command(cmd)) => pending_command = Some(cmd),
                 Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
             }
@@ -14646,7 +14675,8 @@ fn profiles_tui_pick(
     // never a consequential one. Re-index is the riskiest action and used to be
     // the default focus; starting on Quit makes every action opt-in, so a stray
     // Enter just leaves instead of triggering a re-index. Robust to reordering.
-    let mut selected = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
+    let quit_idx = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
+    let mut selected = quit_idx;
 
     // Restore the terminal no matter how we leave (early return, panic unwind).
     struct RawGuard;
@@ -14758,8 +14788,12 @@ fn profiles_tui_pick(
 
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Char('0') | KeyCode::Esc => {
-                    break None;
+                // Esc escapes silently (wipes the bar). Q/0 SELECT Quit, which is then
+                // redrawn highlighted like any other picked action (Ehud #311: Quit was
+                // only highlighted while focused, never when chosen via its hotkey).
+                KeyCode::Esc => break None,
+                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Char('0') => {
+                    break Some(quit_idx)
                 }
                 KeyCode::Enter => break Some(selected),
                 // Arrows, Tab and PageUp/PageDown all step the highlight one
@@ -14788,12 +14822,11 @@ fn profiles_tui_pick(
         }
     };
 
-    // For a real action keep the bar on screen with the chosen option still
-    // highlighted (Ehud: the highlight should stay so it's obvious which option
-    // was picked), then drop to a fresh line for the typed target. For a plain
-    // quit, wipe the bar so only the table above remains.
-    let action_idx = chosen.filter(|&idx| !matches!(actions[idx].2, ProfilesActionTarget::None));
-    match action_idx {
+    // Keep the chosen option highlighted on screen (Ehud #311: picking Quit via
+    // Q/0 or Enter should highlight it just like any other action, then drop to a
+    // fresh line). Only Esc (chosen == None) is a true escape that wipes the bar,
+    // leaving just the table above.
+    match chosen {
         Some(idx) => {
             draw_bar(&mut err, idx, &mut prev_widths);
             let _ = queue!(err, Print("\r\n"));
@@ -14812,6 +14845,7 @@ fn profiles_tui_pick(
     }
     drop(guard);
 
+    let action_idx = chosen.filter(|&idx| !matches!(actions[idx].2, ProfilesActionTarget::None));
     let Some(idx) = action_idx else {
         return Ok(ProfilesTuiOutcome::Quit);
     };
@@ -50404,6 +50438,7 @@ async fn main() {
             interactive,
             group,
             health,
+            tui,
         } => list_vault_profiles(
             &cli,
             format,
@@ -50415,6 +50450,7 @@ async fn main() {
                 interactive: *interactive,
                 group: group.clone(),
                 health: *health,
+                start_in_tui: *tui,
             },
         ),
         Commands::Users { command } => cmd_users(&cli, command, format),
@@ -51773,6 +51809,7 @@ mod tests {
                 interactive: false,
                 group: None,
                 health: false,
+                tui: false,
             },
         }
     }
@@ -54611,6 +54648,7 @@ mod tests {
             interactive: true,
             group: None,
             health: false,
+            start_in_tui: false,
         };
         assert_eq!(profiles_view_args(&plain), vec!["profiles".to_string()]);
         // `interactive` must NOT leak into the refresh args.
@@ -54625,6 +54663,7 @@ mod tests {
             interactive: true,
             group: Some("Production".to_string()),
             health: true,
+            start_in_tui: false,
         };
         assert_eq!(
             profiles_view_args(&full),
