@@ -1589,6 +1589,14 @@ pub enum ProviderError {
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
 
+    /// The provider rejected the upload because the file exceeds a hard per-file
+    /// size limit (e.g. OpenDrive free/Basic plan = 100 MB). Distinct from
+    /// PermissionDenied (not an authorization problem) and from QuotaExceeded
+    /// (the account has room; this single file is just too big). Deterministic
+    /// and non-retryable: the same oversized file always fails.
+    #[error("File too large: {0}")]
+    FileTooLarge(String),
+
     #[error("Path already exists: {0}")]
     AlreadyExists(String),
 

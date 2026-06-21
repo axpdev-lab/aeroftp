@@ -5176,6 +5176,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
+        | ProviderError::FileTooLarge(_)
         | ProviderError::RestrictedChar { .. } => 5,
         ProviderError::AuthenticationFailed(_) => 6,
         ProviderError::NotSupported(_) => 7,
@@ -51236,6 +51237,15 @@ mod tests {
             7
         );
         assert_eq!(provider_error_to_exit_code(&ProviderError::Timeout), 8);
+        // A hard per-file size limit (OpenDrive free/Basic = 100 MB) is a
+        // deterministic client error, not an authorization failure: it shares
+        // exit code 5 with the other non-retryable client errors so a retry
+        // loop will not pointlessly re-upload the same oversized file.
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::FileTooLarge("test".into())),
+            5
+        );
+        assert!(!is_retryable_exit(5));
     }
 
     #[test]

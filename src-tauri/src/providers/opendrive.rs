@@ -598,12 +598,27 @@ impl OpenDriveProvider {
         match status.as_u16() {
             400 => ProviderError::InvalidPath(message),
             401 => ProviderError::AuthenticationFailed(message),
-            403 => ProviderError::PermissionDenied(message),
+            403 => {
+                if Self::message_is_file_size_limit(&message) {
+                    ProviderError::FileTooLarge(message)
+                } else {
+                    ProviderError::PermissionDenied(message)
+                }
+            }
             404 => ProviderError::NotFound(message),
             409 => ProviderError::AlreadyExists(message),
             500..=599 => ProviderError::ServerError(message),
             _ => ProviderError::Other(message),
         }
+    }
+
+    /// True when an OpenDrive 403 body indicates the hard per-file size limit,
+    /// so it is a "file too large" rather than an authorization failure.
+    fn message_is_file_size_limit(message: &str) -> bool {
+        let m = message.to_lowercase();
+        m.contains("file size limit")
+            || m.contains("maximum allowed file size")
+            || m.contains("file too large")
     }
 
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T, ProviderError> {
@@ -2408,6 +2423,19 @@ mod tests {
         assert_eq!(parse_u64_value(Some(&json!(false))), 0);
         assert_eq!(parse_u64_value(None), 0);
         assert_eq!(parse_u64_value(Some(&json!(null))), 0);
+    }
+
+    #[test]
+    fn message_is_file_size_limit_detects_hard_per_file_cap() {
+        // The exact OpenDrive free/Basic 403 body (live-tested 2026-06-21).
+        assert!(OpenDriveProvider::message_is_file_size_limit(
+            "File size limit exceeded. Maximum allowed file size: 100 MB"
+        ));
+        // A plain authorization 403 must stay PermissionDenied.
+        assert!(!OpenDriveProvider::message_is_file_size_limit("Forbidden"));
+        assert!(!OpenDriveProvider::message_is_file_size_limit(
+            "Access denied"
+        ));
     }
 
     #[test]

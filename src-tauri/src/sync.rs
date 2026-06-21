@@ -2839,6 +2839,16 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         || lower.contains("552 ")
     {
         (SyncErrorKind::QuotaExceeded, false)
+    } else if lower.contains("file too large")
+        || lower.contains("file size limit")
+        || lower.contains("maximum allowed file size")
+    {
+        // A single file exceeds a hard per-file size limit (e.g. OpenDrive
+        // free/Basic = 100 MB). Deterministic: retrying the same oversized
+        // file never succeeds. Matched BEFORE permission-denied because the
+        // underlying 403 body would otherwise fall through to Unknown once
+        // the message no longer says "permission denied".
+        (SyncErrorKind::QuotaExceeded, false)
     } else if lower.contains("permission denied")
         || lower.contains("access denied")
         || lower.contains("403 ")
@@ -4854,6 +4864,19 @@ mod tests {
     #[test]
     fn test_classify_sync_error_quota() {
         let err = classify_sync_error("552 Insufficient storage space", Some("/path"));
+        assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_file_too_large() {
+        // The OpenDrive FileTooLarge error reaches the executor as a string;
+        // it must classify as non-retryable, NOT fall through to permission
+        // denied or Unknown (which would retry the same oversized file).
+        let err = classify_sync_error(
+            "File too large: File size limit exceeded. Maximum allowed file size: 100 MB",
+            Some("/big.bin"),
+        );
         assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
         assert!(!err.retryable);
     }
