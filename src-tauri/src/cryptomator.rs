@@ -1306,9 +1306,14 @@ mod tests {
         // (4) empty folder
         let emptydir = src.join("emptydir");
         fs::create_dir_all(&emptydir).unwrap();
-        // (5) symlink (must be skipped, not followed)
-        let link = src.join("link.txt");
-        std::os::unix::fs::symlink(&deep, &link).unwrap();
+        // (5) symlink (unix only: Windows symlink creation is privileged and
+        //     std::os::unix is absent there). Must be skipped, not followed.
+        #[cfg(unix)]
+        let link = {
+            let link = src.join("link.txt");
+            std::os::unix::fs::symlink(&deep, &link).unwrap();
+            link
+        };
         // (6) overlong filename: encrypted name blows past the 255-byte path
         //     limit, so File::create fails and it is reported as skipped, never
         //     a panic and never a silent drop.
@@ -1325,12 +1330,30 @@ mod tests {
         let (vault, _c) = unlock_vault_inner(&vault_root, password).expect("unlock");
 
         let mut report = CryptomatorIngestReport::default();
-        for p in [&empty, &uni, &a, &emptydir, &link, &overlong] {
+        #[allow(unused_mut)]
+        let mut targets: Vec<&Path> = vec![
+            empty.as_path(),
+            uni.as_path(),
+            a.as_path(),
+            emptydir.as_path(),
+            overlong.as_path(),
+        ];
+        #[cfg(unix)]
+        targets.push(link.as_path());
+        for p in targets {
             ingest_path_inner(&vault, "", p, &mut report);
         }
 
-        // The symlink and the overlong file are the only skips, each with a reason.
-        assert_eq!(report.skipped.len(), 2, "skips: {:?}", report.skipped);
+        // The overlong file is always skipped; the symlink adds one more on unix.
+        // Both are reported with a reason, never silently dropped.
+        let expected_skips = if cfg!(unix) { 2 } else { 1 };
+        assert_eq!(
+            report.skipped.len(),
+            expected_skips,
+            "skips: {:?}",
+            report.skipped
+        );
+        #[cfg(unix)]
         assert!(report.skipped.iter().any(|s| s.contains("symlink")));
         assert!(report.skipped.iter().any(|s| s.contains(&"x".repeat(10)))); // the overlong entry
                                                                              // Folders ingested: a, a/b, emptydir = 3. Files: empty, uni, deep, top = 4.
