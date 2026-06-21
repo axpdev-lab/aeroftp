@@ -114,7 +114,7 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
     );
 
     return (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 p-4 animate-scale-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 animate-scale-in">
             <div {...modalDrag.panelProps} className="w-full max-w-2xl max-h-full overflow-auto rounded-lg bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700">
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">

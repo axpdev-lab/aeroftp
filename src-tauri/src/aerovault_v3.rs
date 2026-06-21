@@ -418,6 +418,7 @@ pub async fn vault_v3_create(
     })
     .await
     .map_err(|e| format!("vault create task failed: {e}"))??;
+    log::info!("vault v3 create: '{}'", vault_basename(&vault_path));
     Ok(vault_path)
 }
 
@@ -732,6 +733,15 @@ fn repack_vault_blocking(
     }))
 }
 
+/// Basename of a vault path, for activity logging. We never log the full path so the
+/// user's home directory is not written into the on-disk log file.
+pub(crate) fn vault_basename(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
+}
+
 /// Change the "mode" of an existing vault (Ehud #2): re-pack it under a new security
 /// level (v2 <-> v3 / cascade), compression profile and/or Error-Correction setting,
 /// keeping the same password. `target_security_level` (`None` keeps the current
@@ -747,7 +757,14 @@ pub async fn vault_v3_change_mode(
     error_correction_pct: Option<u32>,
 ) -> Result<serde_json::Value, String> {
     let pct = error_correction_pct.unwrap_or(ERROR_CORRECTION_DEFAULT_PCT);
-    tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
+    // Activity logging (surfaces in the Debug panel "Logs" tab via tauri-plugin-log).
+    // Log the basename only, never the full path, to avoid home-dir leakage on disk.
+    let vault_label = vault_basename(&vault_path);
+    let level_label = target_security_level
+        .clone()
+        .unwrap_or_else(|| "(unchanged)".to_string());
+    log::info!("vault change-mode: '{vault_label}' -> level={level_label} ec={error_correction}");
+    let result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, String> {
         let target = RepackTarget {
             security_level: target_security_level,
             compression_profile,
@@ -757,7 +774,12 @@ pub async fn vault_v3_change_mode(
         repack_vault_blocking(Path::new(&vault_path), &password, &target)
     })
     .await
-    .map_err(|e| format!("vault change-mode task failed: {e}"))?
+    .map_err(|e| format!("vault change-mode task failed: {e}"))?;
+    match &result {
+        Ok(_) => log::info!("vault change-mode: '{vault_label}' done"),
+        Err(e) => log::error!("vault change-mode: '{vault_label}' failed: {e}"),
+    }
+    result
 }
 
 /// Export a detached `.aerocorrect` recovery file for an existing vault. This is

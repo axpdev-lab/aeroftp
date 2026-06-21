@@ -243,16 +243,22 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-browser-title"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
             <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Archive size={18} className="text-blue-500 dark:text-blue-400" />
-                        <span className="font-medium truncate max-w-[400px]">{archiveName}</span>
+                        <span id="archive-browser-title" className="font-medium truncate max-w-[400px]">{archiveName}</span>
                         <span className="text-xs text-gray-500 dark:text-gray-400 uppercase">{archiveType}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}>
+                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')} aria-label={t('common.close')}>
                         <X size={18} />
                     </button>
                 </div>

@@ -6549,11 +6549,17 @@ interface UpdateVerificationInfo {
     return () => window.removeEventListener('aerovault-overlay-toggle', onToggle);
   }, [toggleAeroVaultOverlay]);
 
-  // N1.3: backend sweeper emits `aerovault-overlay-expired` when an overlay session
-  // crosses its idle timeout. Drop the matching session from the active state and
-  // any background tab that still references it, then notify the user.
+  // N1.3: the backend sweeper emits ONE `aerovault-overlay-expired` per session that
+  // crosses its idle timeout. Drop each matching session from the active state and any
+  // background tab that references it. The user-facing notification is COALESCED: a long
+  // working session can accumulate several idle overlays, and the sweeper expires them in
+  // the same tick, so without batching the user would get N identical toasts and N
+  // identical activity-log lines at the same timestamp. We collapse a burst into a single
+  // notification carrying the count.
+  const overlayExpiredBatchRef = React.useRef<{ ids: Set<string>; timer: number | null }>({ ids: new Set(), timer: null });
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     listen<{ session_id: string; source?: string }>('aerovault-overlay-expired', (event) => {
       const expiredId = event.payload?.session_id;
       if (!expiredId) return;
@@ -6565,15 +6571,28 @@ interface UpdateVerificationInfo {
             : s
         )
       );
-      notify.warning(
-        'AeroVault Overlay',
-        t('toolbar.aerovaultOverlayExpired') || 'Overlay locked due to inactivity'
-      );
+      // Coalesce the notification: gather this burst and emit a single entry shortly after.
+      const batch = overlayExpiredBatchRef.current;
+      batch.ids.add(expiredId);
+      if (batch.timer == null) {
+        batch.timer = window.setTimeout(() => {
+          const count = batch.ids.size;
+          batch.ids.clear();
+          batch.timer = null;
+          const base = t('toolbar.aerovaultOverlayExpired') || 'Overlay locked due to inactivity';
+          notify.warning('AeroVault Overlay', count > 1 ? `${base} (${count})` : base);
+        }, 250);
+      }
     }).then((un) => {
-      unlisten = un;
+      // If the effect was cleaned up before listen() resolved, detach immediately so the
+      // async registration cannot leak a listener (defensive: deps here are stable).
+      if (cancelled) un(); else unlisten = un;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
+      const batch = overlayExpiredBatchRef.current;
+      if (batch.timer != null) { window.clearTimeout(batch.timer); batch.timer = null; }
     };
   }, [notify, t]);
 
@@ -11618,6 +11637,36 @@ interface UpdateVerificationInfo {
     });
   }, [notify, refreshProfilesFromImportedKeystore, t]);
 
+  // Double-click routing for archive containers: open the in-app ArchiveBrowser
+  // (mirrors the right-click "Browse Archive" action) instead of previewing the
+  // container as a blob. Encryption is probed per-format so the browser prompts.
+  const handleOpenArchiveFromFile = useCallback(async (file: LocalFile) => {
+    const lower = file.name.toLowerCase();
+    const is7z = lower.endsWith('.7z');
+    const isZip = lower.endsWith('.zip');
+    const isRar = lower.endsWith('.rar');
+    const archType: import('./types').ArchiveType = isZip ? 'zip' : is7z ? '7z' : isRar ? 'rar' : 'tar';
+    let encrypted = false;
+    try {
+      encrypted = is7z
+        ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
+        : isZip
+          ? await invoke<boolean>('is_zip_encrypted', { archivePath: file.path })
+          : isRar
+            ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
+            : false;
+    } catch { /* ignore */ }
+    setArchiveBrowserState({ path: file.path, type: archType, encrypted });
+  }, []);
+
+  // Double-click on a Cryptomator marker file opens its parent dir (the vault
+  // root) in CryptomatorBrowser, mirroring the right-click action.
+  const handleOpenCryptomatorFromFile = useCallback((file: LocalFile) => {
+    const cut = Math.max(file.path.lastIndexOf('\\'), file.path.lastIndexOf('/'));
+    const parent = cut > 0 ? file.path.slice(0, cut) : undefined;
+    setShowCryptomatorBrowser({ initialVaultPath: parent });
+  }, []);
+
   const handleOpenWithDefaultApp = useCallback(async (file: LocalFile) => {
     try {
       const path = file.path || `${currentLocalPath}/${file.name}`;
@@ -15299,6 +15348,9 @@ interface UpdateVerificationInfo {
                   onOpenDevToolsPreview={openDevToolsPreview}
                   onUploadFile={uploadFile}
                   onOpenInFileManager={openInFileManager}
+                  onOpenVault={(path) => setShowVaultPanel({ mode: 'open', path })}
+                  onOpenArchive={handleOpenArchiveFromFile}
+                  onOpenCryptomator={handleOpenCryptomatorFromFile}
                   isTrashView={isTrashView}
                   trashItems={trashItems}
                   onEmptyTrash={handleEmptyTrash}
@@ -15435,6 +15487,9 @@ interface UpdateVerificationInfo {
                     onOpenDevToolsPreview={openDevToolsPreview}
                     onUploadFile={uploadFile}
                     onOpenInFileManager={openInFileManager}
+                    onOpenVault={(path) => setShowVaultPanel({ mode: 'open', path })}
+                    onOpenArchive={handleOpenArchiveFromFile}
+                    onOpenCryptomator={handleOpenCryptomatorFromFile}
                     isTrashView={false}
                     trashItems={[]}
                     onEmptyTrash={handleEmptyTrash}

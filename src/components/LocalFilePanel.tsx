@@ -173,6 +173,12 @@ export interface LocalFilePanelProps {
   onOpenDevToolsPreview: (file: LocalFile, isRemote: boolean) => void;
   onUploadFile: (path: string, name: string, isFolder: boolean) => void;
   onOpenInFileManager: (path: string) => void;
+  // Open a local .aerovault file in the AeroVault modal (browse/open flow).
+  onOpenVault: (path: string) => void;
+  // Open a local archive (zip/7z/rar/tar...) in the in-app ArchiveBrowser.
+  onOpenArchive: (file: LocalFile) => void;
+  // Open a Cryptomator marker file (vault/masterkey.cryptomator) in CryptomatorBrowser.
+  onOpenCryptomator: (file: LocalFile) => void;
 
   // --- Trash ---
   isTrashView: boolean;
@@ -283,6 +289,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   onOpenDevToolsPreview,
   onUploadFile,
   onOpenInFileManager,
+  onOpenVault,
+  onOpenArchive,
+  onOpenCryptomator,
   isTrashView,
   trashItems,
   onEmptyTrash,
@@ -314,6 +323,19 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   const handleDoubleClick = (file: LocalFile) => {
     if (file.is_dir) {
       onNavigate(file.path);
+    } else if (file.name.toLowerCase().endsWith('.aerovault')) {
+      // A vault is an opaque encrypted container: never preview/upload it as a
+      // blob. Open it in the AeroVault modal (same path as the OS file
+      // association) so a double-click unlocks and browses it in-app.
+      onOpenVault(file.path);
+    } else if (/^(vault|masterkey)\.cryptomator$/i.test(file.name)) {
+      // Cryptomator marker file: open the vault (its parent dir) in CryptomatorBrowser,
+      // mirroring the right-click "Open as Cryptomator Vault" action.
+      onOpenCryptomator(file);
+    } else if (/\.(zip|7z|rar|tar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2)$/i.test(file.name)) {
+      // Archive: open the in-app ArchiveBrowser instead of previewing the blob,
+      // mirroring the right-click "Browse Archive" action.
+      onOpenArchive(file);
     } else if (doubleClickAction === 'preview') {
       const category = getPreviewCategory(file.name);
       if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {

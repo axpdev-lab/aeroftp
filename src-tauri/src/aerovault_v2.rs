@@ -31,6 +31,10 @@ pub async fn vault_v2_create(
     let opts = CreateOptions::new(&vault_path, password).with_mode(mode);
 
     Vault::create(opts).map_err(|e| e.to_string())?;
+    log::info!(
+        "vault v2 create: '{}'",
+        crate::aerovault_v3::vault_basename(&vault_path)
+    );
     Ok(vault_path)
 }
 
@@ -178,6 +182,10 @@ pub async fn vault_v2_add_files(
         added, report.encrypted_bytes
     ));
     report.finish(started.elapsed().as_millis() as u64);
+    log::info!(
+        "vault v2 add-files: '{}' +{added} file(s)",
+        crate::aerovault_v3::vault_basename(&vault_path)
+    );
 
     Ok(serde_json::json!({
         "added": added,

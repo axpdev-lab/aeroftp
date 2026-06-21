@@ -60,7 +60,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 </div>
             )}
             {/* Toolbar */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                 <button onClick={state.handleAddFiles} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">
                     <Plus size={14} /> {t('vault.addFiles')}
                 </button>
@@ -313,7 +313,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         {targetIsV3 && (
                             <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
                                 <input type="checkbox" checked={state.newModeErrorCorrection} onChange={e => state.setNewModeErrorCorrection(e.target.checked)} />
-                                {t('vault.errorCorrection')}
+                                {t('vault.enableErrorCorrection')}
                             </label>
                         )}
                         <button onClick={state.handleChangeMode} disabled={state.loading} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs shrink-0 flex items-center gap-1">

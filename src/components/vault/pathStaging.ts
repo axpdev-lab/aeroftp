@@ -16,6 +16,13 @@ import { invoke } from '@tauri-apps/api/core';
  * `@tauri-apps/plugin-fs` `stat`, which is fs-scope-gated and would reject
  * arbitrary dropped paths. Unstattable paths fall back to being treated as
  * files (best-effort, the add_files call will surface any real error).
+ *
+ * The match is by BASENAME within the listed parent (entry names are unique per
+ * directory), not by full-path string equality: a folder picker / XDG portal can
+ * return a directory path with a trailing slash or a differently-canonicalized
+ * form than `get_local_files` emits, and a full-path mismatch would misclassify
+ * the directory as a file -> it would then hit `vault_*_add_files`, whose raw
+ * read on a directory fails with EISDIR ("is a directory", os error 21).
  */
 export interface SplitPaths {
     files: string[];
@@ -29,6 +36,8 @@ interface LocalEntry {
 }
 
 const norm = (p: string): string => p.replace(/\\/g, '/');
+const stripTrailing = (p: string): string => p.replace(/\/+$/, '') || '/';
+const baseOf = (p: string): string => stripTrailing(p).split('/').pop() || p;
 const parentOf = (p: string): string => {
     const cut = p.replace(/\/+$/, '').replace(/\/[^/]*$/, '');
     return cut || '/';
@@ -49,18 +58,21 @@ export async function splitPathsByType(rawPaths: string[]): Promise<SplitPaths> 
     }
 
     for (const [parent, group] of byParent) {
-        let dirSet = new Set<string>();
+        // Map each child's basename -> is_dir. Basenames are unique within a
+        // directory, so this is robust to trailing-slash / canonicalization
+        // differences between the picker's path and get_local_files' path.
+        let dirNames = new Set<string>();
         try {
             const listing = await invoke<LocalEntry[]>('get_local_files', {
                 path: parent,
                 showHidden: true,
             });
-            dirSet = new Set(listing.filter((e) => e.is_dir).map((e) => norm(e.path)));
+            dirNames = new Set(listing.filter((e) => e.is_dir).map((e) => baseOf(norm(e.path))));
         } catch {
             // Parent unreadable: treat every path in this group as a file.
         }
         for (const p of group) {
-            if (dirSet.has(p)) dirs.push(p);
+            if (dirNames.has(baseOf(p))) dirs.push(p);
             else files.push(p);
         }
     }

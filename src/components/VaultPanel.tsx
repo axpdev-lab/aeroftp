@@ -32,6 +32,7 @@ export type { VaultMode } from './vault/useVaultState';
 export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialFolderPath, iconProvider, onOverlaySessionChange }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const { log } = useActivityLog();
 
     const state = useVaultState({
         initialMode,
@@ -40,9 +41,9 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         initialFolderPath,
         isConnected,
         onClose,
+        onActivityLog: (message, details) => log('SUCCESS', message, 'success', details),
     });
 
-    const { log } = useActivityLog();
     const loggedReportRef = React.useRef<unknown>(null);
     React.useEffect(() => {
         const r = state.lastReport;

@@ -272,6 +272,9 @@ export interface UseVaultStateProps {
     initialFolderPath?: string;
     isConnected?: boolean;
     onClose: () => void;
+    // Optional activity-log sink: mutating vault ops that do not produce a receipt
+    // (e.g. Change Mode) report through this so they appear in the Activity Log.
+    onActivityLog?: (message: string, details?: string) => void;
 }
 
 export interface VaultState {
@@ -456,7 +459,7 @@ export interface VaultState {
 // --- Hook implementation ---
 
 export function useVaultState(props: UseVaultStateProps): VaultState {
-    const { initialMode, initialPath, initialFiles, initialFolderPath, onClose } = props;
+    const { initialMode, initialPath, initialFiles, initialFolderPath, onClose, onActivityLog } = props;
     const t = useTranslation();
 
     // Core state
@@ -701,6 +704,15 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
 
+        // Re-validate file-vs-dir at create time. Staging classifies each path
+        // when it is added (handleStageDrop -> splitPathsByType); if a directory
+        // was ever staged as a file, routing it to vault_*_add_files fails with
+        // EISDIR ("is a directory"). Re-splitting here is authoritative and cheap,
+        // so the create path is robust regardless of how/when items were staged.
+        const { files: effFiles, dirs: effDirs } = (stagedFiles.length || stagedDirs.length)
+            ? await splitPathsByType([...stagedFiles, ...stagedDirs])
+            : { files: stagedFiles, dirs: stagedDirs };
+
         const levelConfig = securityLevels[securityLevel];
 
         try {
@@ -737,16 +749,16 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     setMeta(mapV3InfoToMeta(info));
                     setSuccess(t('vault.created') + `: ${info.file_count} files`);
                     setFolderProgress(null);
-                } else if (stagedFiles.length || stagedDirs.length) {
+                } else if (effFiles.length || effDirs.length) {
                     let addInfo: VaultV3Info | null = null;
-                    if (stagedFiles.length) {
+                    if (effFiles.length) {
                         addInfo = await invoke<VaultV3Info>('vault_v3_add_files', {
                             vaultPath: savePath,
                             password,
-                            filePaths: stagedFiles,
+                            filePaths: effFiles,
                         });
                     }
-                    for (const dir of stagedDirs) {
+                    for (const dir of effDirs) {
                         await invoke('vault_v3_add_directory', {
                             vaultPath: savePath,
                             password,
@@ -773,7 +785,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setMode('browse');
 
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
-                await saveToHistory(savePath, vName, 'experimental', 3, false, stagedFiles.length || 0);
+                await saveToHistory(savePath, vName, 'experimental', 3, false, effFiles.length || 0);
             } else if (levelConfig.version === 2) {
                 await invoke('vault_v2_create', {
                     vaultPath: savePath,
@@ -797,14 +809,14 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     setSuccess(t('vault.created') + `: ${info.file_count} files`);
                     setMeta(mapV2InfoToMeta(info));
                     setFolderProgress(null);
-                } else if (stagedFiles.length || stagedDirs.length) {
+                } else if (effFiles.length || effDirs.length) {
                     // Auto-add staged files, then each staged folder (tree preserved)
                     let v2report: VaultReport | null = null;
-                    if (stagedFiles.length) {
-                        const v2add = await invoke<{ report?: VaultReport }>('vault_v2_add_files', { vaultPath: savePath, password, filePaths: stagedFiles });
+                    if (effFiles.length) {
+                        const v2add = await invoke<{ report?: VaultReport }>('vault_v2_add_files', { vaultPath: savePath, password, filePaths: effFiles });
                         v2report = v2add.report ?? null;
                     }
-                    for (const dir of stagedDirs) {
+                    for (const dir of effDirs) {
                         await invoke('vault_v2_add_directory', { vaultPath: savePath, password, sourceDir: dir });
                     }
                     setLastReport(v2report);
@@ -827,7 +839,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
                 // Save to history: use meta.fileCount (not stale entries.length)
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
-                const actualCount = initialFolderPath ? (folderScanResult?.file_count || 0) : (stagedFiles.length || 0);
+                const actualCount = initialFolderPath ? (folderScanResult?.file_count || 0) : (effFiles.length || 0);
                 await saveToHistory(savePath, vName, securityLevel, 2, levelConfig.cascade, actualCount);
             } else {
                 await invoke('vault_create', { vaultPath: savePath, password, description: description || null });
@@ -911,12 +923,18 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setRemoteVaultPath('');
     };
 
-    const refreshVaultEntries = async () => {
-        if (vaultSecurity?.version === 3) {
+    // versionOverride: read the container as this format instead of the (possibly
+    // stale) vaultSecurity.version. Needed right after a cross-format Change Mode
+    // repack, where the on-disk format already changed but the React state has not
+    // yet been updated, so the default reader would open a v3 file as v2 and fail
+    // with "Not a valid AeroVault file".
+    const refreshVaultEntries = async (versionOverride?: number) => {
+        const version = versionOverride ?? vaultSecurity?.version;
+        if (version === 3) {
             const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
             setEntries(mapV3InfoToEntries(info));
             setMeta(mapV3InfoToMeta(info, meta));
-        } else if (vaultSecurity?.version === 2) {
+        } else if (version === 2) {
             const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
             setEntries(mapV2InfoToEntries(info));
             setMeta(mapV2InfoToMeta(info));
@@ -1509,7 +1527,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            await invoke('vault_v3_change_mode', {
+            const repack = await invoke<{ files?: number; format?: number }>('vault_v3_change_mode', {
                 vaultPath,
                 password,
                 targetSecurityLevel: newModeSecurityLevel,
@@ -1517,8 +1535,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 errorCorrection: ec,
             });
             // The container was rewritten in place (possibly across formats); reload
-            // entries/meta and reflect the new security/EC shape.
-            await refreshVaultEntries();
+            // entries/meta using the TARGET format (vaultSecurity state is still the
+            // old version at this point) and reflect the new security/EC shape.
+            await refreshVaultEntries(targetConfig.version);
             setErrorCorrectionEnabled(ec);
             setHasErrorCorrection(ec);
             setHasDetachedRecovery(false);
@@ -1528,6 +1547,17 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 cascadeMode: targetConfig.cascade,
                 level: newModeSecurityLevel,
             });
+            // Recent Vaults history was written at create time with the OLD level/format;
+            // refresh it so the entry reflects the new mode/format/file count after the
+            // repack (otherwise the history badge keeps showing e.g. "Standard / 2 files").
+            const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
+            await saveToHistory(vaultPath, vName, newModeSecurityLevel, targetConfig.version, targetConfig.cascade, repack?.files ?? 0);
+            // Change Mode produces no receipt, so it would otherwise be invisible in the
+            // Activity Log; report it explicitly through the optional sink.
+            onActivityLog?.(
+                t('vault.modeChanged'),
+                `${vName} -> ${newModeSecurityLevel} (v${targetConfig.version}), ${repack?.files ?? 0} file(s)`,
+            );
             setChangingMode(false);
             setSuccess(t('vault.modeChanged'));
         } catch (e) {
