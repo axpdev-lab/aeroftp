@@ -277,7 +277,40 @@ pub async fn vault_v2_extract_entry(
     Ok(dest_path)
 }
 
-/// Extract all entries from AeroVault v2
+/// Extract every entry of an opened v2 `vault` into `dest`, rebuilding the directory
+/// tree. The `aerovault` crate's v2 `extract`/`extract_all` write each file under its
+/// `file_name()` only, so nested files all collapse into the destination root, and
+/// two files that share a basename across directories (e.g. `a/x.txt` + `b/x.txt`)
+/// overwrite each other: silent data loss. This extracts each file entry into its own
+/// parent directory (which the crate then appends the file name to) and pre-creates
+/// every directory entry, including empty ones. Returns the count of entries written.
+pub(crate) fn extract_all_v2_tree(vault: &Vault, dest: &std::path::Path) -> Result<u32, String> {
+    let entries = vault.list().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dest)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    let mut count = 0u32;
+    // Pre-create directory entries so empty dirs survive and file targets exist.
+    for e in entries.iter().filter(|e| e.is_dir) {
+        std::fs::create_dir_all(dest.join(&e.name))
+            .map_err(|err| format!("Failed to create directory '{}': {}", e.name, err))?;
+        count += 1;
+    }
+    for e in entries.iter().filter(|e| !e.is_dir) {
+        let parent = std::path::Path::new(&e.name)
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
+        let out_dir = dest.join(parent);
+        std::fs::create_dir_all(&out_dir)
+            .map_err(|err| format!("Failed to create directory for '{}': {}", e.name, err))?;
+        vault
+            .extract(&e.name, &out_dir)
+            .map_err(|err| format!("Failed to extract '{}': {}", e.name, err))?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Extract all entries from AeroVault v2, preserving the directory tree.
 #[tauri::command]
 pub async fn vault_v2_extract_all(
     vault_path: String,
@@ -285,11 +318,7 @@ pub async fn vault_v2_extract_all(
     dest_dir: String,
 ) -> Result<serde_json::Value, String> {
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
-
-    std::fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
-
-    let count = vault.extract_all(&dest_dir).map_err(|e| e.to_string())?;
+    let count = extract_all_v2_tree(&vault, std::path::Path::new(&dest_dir))?;
 
     Ok(serde_json::json!({
         "extracted": count,
@@ -895,7 +924,41 @@ pub async fn vault_v2_add_directory(
     target_prefix: Option<String>,
 ) -> Result<serde_json::Value, String> {
     use tauri::Emitter;
+    let (added_files, added_dirs) = vault_v2_add_directory_core(
+        vault_path,
+        password,
+        source_dir,
+        target_prefix,
+        |current, total, current_file| {
+            let _ = app.emit(
+                "vault-add-progress",
+                serde_json::json!({
+                    "current": current,
+                    "total": total,
+                    "current_file": current_file,
+                }),
+            );
+        },
+    )
+    .await?;
+    Ok(serde_json::json!({
+        "added_files": added_files,
+        "added_dirs": added_dirs,
+        "total_entries": added_files + added_dirs
+    }))
+}
 
+/// AppHandle-free core of [`vault_v2_add_directory`]: recursively add `source_dir`
+/// into the v2 vault (optionally under `target_prefix`), invoking `on_progress(added,
+/// total, current_file)` throttled to ~150ms. Shared by the GUI command (emits a
+/// Tauri event) and the CLI `vault add-dir` verb. Returns `(added_files, added_dirs)`.
+pub async fn vault_v2_add_directory_core(
+    vault_path: String,
+    password: String,
+    source_dir: String,
+    target_prefix: Option<String>,
+    mut on_progress: impl FnMut(usize, usize, &str),
+) -> Result<(usize, usize), String> {
     let source = std::path::Path::new(&source_dir)
         .canonicalize()
         .map_err(|e| format!("Failed to resolve directory: {}", e))?;
@@ -1029,26 +1092,15 @@ pub async fn vault_v2_add_directory(
 
         added_files += added as usize;
 
-        // Emit progress (per-batch, throttled)
+        // Report progress (per-batch, throttled)
         if last_emit.elapsed() >= throttle || added_files == total_files {
             let current_file = dir_files.last().map(|f| f.rel_path.as_str()).unwrap_or("");
-            let _ = app.emit(
-                "vault-add-progress",
-                serde_json::json!({
-                    "current": added_files,
-                    "total": total_files,
-                    "current_file": current_file
-                }),
-            );
+            on_progress(added_files, total_files, current_file);
             last_emit = std::time::Instant::now();
         }
     }
 
-    Ok(serde_json::json!({
-        "added_files": added_files,
-        "added_dirs": added_dirs,
-        "total_entries": added_files + added_dirs
-    }))
+    Ok((added_files, added_dirs))
 }
 
 #[cfg(test)]
@@ -1221,5 +1273,239 @@ mod tests {
                 case.label
             );
         }
+    }
+
+    // ---- v2 tree-preserving extraction stress matrix -----------------------
+    // The crate's v2 `extract`/`extract_all` write each file under its `file_name()`
+    // only, so nested files collapse into the destination root and two files that
+    // share a basename across directories silently overwrite each other (data loss).
+    // `extract_all_v2_tree` rebuilds the tree; these tests stress it with the worst
+    // cases: duplicate basenames, deep nesting, empty dirs/files, unicode, and both
+    // Standard and Cascade (paranoid) modes.
+
+    /// Snapshot a directory tree as a sorted map of relative-path -> contents
+    /// (`None` marks a directory, `Some(bytes)` a file). Lets two trees be compared
+    /// for exact structural + byte equality regardless of walk order.
+    fn snapshot_tree(root: &Path) -> std::collections::BTreeMap<String, Option<Vec<u8>>> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in walkdir::WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.path() == root {
+                continue;
+            }
+            let rel = entry
+                .path()
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            if entry.file_type().is_dir() {
+                map.insert(rel, None);
+            } else {
+                map.insert(rel, Some(fs::read(entry.path()).unwrap()));
+            }
+        }
+        map
+    }
+
+    /// Build a v2 vault at `path` (cascade or not) containing `dirs` (created
+    /// parents-first) and `files` ((relpath, bytes)). Mirrors the two-pass add the
+    /// GUI command uses, via the crate `Vault` API directly.
+    fn build_v2_vault(
+        path: &Path,
+        pw: &str,
+        cascade: bool,
+        dirs: &[&str],
+        files: &[(&str, Vec<u8>)],
+        scratch: &Path,
+    ) {
+        let mode = if cascade {
+            super::EncryptionMode::Cascade
+        } else {
+            super::EncryptionMode::Standard
+        };
+        let opts = super::CreateOptions::new(path, pw).with_mode(mode);
+        super::Vault::create(opts).unwrap();
+        // Create directories shortest-path-first so parents exist before children.
+        let mut sorted_dirs = dirs.to_vec();
+        sorted_dirs.sort_by_key(|d| d.matches('/').count());
+        {
+            let v = super::Vault::open(path, pw).unwrap();
+            for d in &sorted_dirs {
+                v.create_directory(d).unwrap();
+            }
+        }
+        // Stage each file on disk, then add it into its parent dir inside the vault.
+        for (i, (rel, bytes)) in files.iter().enumerate() {
+            let staged = scratch.join(format!("stage_{i}"));
+            fs::create_dir_all(&staged).unwrap();
+            let fname = Path::new(rel)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            let staged_file = staged.join(&fname);
+            fs::write(&staged_file, bytes).unwrap();
+            let parent = Path::new(rel)
+                .parent()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            let v = super::Vault::open(path, pw).unwrap();
+            if parent.is_empty() {
+                v.add_files(&[&staged_file]).unwrap();
+            } else {
+                v.add_files_to_dir(&[&staged_file], &parent).unwrap();
+            }
+        }
+    }
+
+    /// The worst-case tree: a root file, duplicate basenames across two dirs with
+    /// DIFFERENT content (the data-loss trap), deep nesting, a multi-chunk file, an
+    /// empty file, an empty directory, and a unicode path.
+    fn stress_tree() -> (Vec<&'static str>, Vec<(&'static str, Vec<u8>)>) {
+        let dirs = vec!["d1", "d2", "d1/deep", "d1/deep/deeper", "empty_dir", "café"];
+        let files = vec![
+            ("root.txt", b"root-level file".to_vec()),
+            ("d1/x.txt", b"content of d1 x".to_vec()),
+            ("d2/x.txt", b"DIFFERENT content of d2 x".to_vec()),
+            ("d1/deep/deeper/leaf.bin", vec![0xABu8; 70_000]),
+            ("d1/empty.txt", Vec::new()),
+            (
+                "café/ünïcode.txt",
+                "naïve café façade \u{1F600}".as_bytes().to_vec(),
+            ),
+        ];
+        (dirs, files)
+    }
+
+    #[test]
+    fn v2_extract_all_preserves_tree_and_distinguishes_duplicate_basenames() {
+        for cascade in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let vault = dir.path().join("stress.aerovault");
+            let scratch = dir.path().join("scratch");
+            fs::create_dir_all(&scratch).unwrap();
+            let pw = "v2-tree-stress-pw-12345";
+            let (dirs, files) = stress_tree();
+            build_v2_vault(&vault, pw, cascade, &dirs, &files, &scratch);
+
+            let out = dir.path().join("out");
+            let v = super::Vault::open(&vault, pw).unwrap();
+            super::extract_all_v2_tree(&v, &out).unwrap();
+            let snap = snapshot_tree(&out);
+
+            // Every file landed at its FULL path with the right bytes.
+            for (rel, bytes) in &files {
+                assert_eq!(
+                    snap.get(*rel),
+                    Some(&Some(bytes.clone())),
+                    "[cascade={cascade}] file '{rel}' missing or wrong content"
+                );
+            }
+            // The duplicate-basename trap: d1/x.txt and d2/x.txt must stay distinct.
+            assert_ne!(
+                snap.get("d1/x.txt").unwrap(),
+                snap.get("d2/x.txt").unwrap(),
+                "[cascade={cascade}] duplicate basenames collapsed: data loss"
+            );
+            // No stray flattened copy at the root.
+            assert!(
+                !out.join("x.txt").exists() && !out.join("leaf.bin").exists(),
+                "[cascade={cascade}] a nested file leaked to the destination root"
+            );
+            // Empty directory survives.
+            assert!(
+                out.join("empty_dir").is_dir(),
+                "[cascade={cascade}] empty directory was not recreated"
+            );
+        }
+    }
+
+    #[test]
+    fn v2_extract_all_command_roundtrips_nested_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("cmd.aerovault");
+        let scratch = dir.path().join("scratch");
+        fs::create_dir_all(&scratch).unwrap();
+        let pw = "v2-cmd-tree-pw-12345";
+        let (dirs, files) = stress_tree();
+        build_v2_vault(&vault, pw, false, &dirs, &files, &scratch);
+
+        let out = dir.path().join("out");
+        let res = rt()
+            .block_on(super::vault_v2_extract_all(
+                vault.to_string_lossy().to_string(),
+                pw.to_string(),
+                out.to_string_lossy().to_string(),
+            ))
+            .unwrap();
+        // extracted count covers every dir + file entry.
+        assert_eq!(
+            res["extracted"].as_u64().unwrap() as usize,
+            dirs.len() + files.len()
+        );
+        let snap = snapshot_tree(&out);
+        for (rel, bytes) in &files {
+            assert_eq!(
+                snap.get(*rel),
+                Some(&Some(bytes.clone())),
+                "'{rel}' mismatch"
+            );
+        }
+    }
+
+    /// The AppHandle-free `vault_v2_add_directory_core` (shared by the GUI command and
+    /// the CLI `add-dir` verb) must add a nested tree preserving structure, with no
+    /// progress sink, and round-trip through the tree-preserving extractor.
+    #[test]
+    fn v2_add_directory_core_roundtrips_tree_without_apphandle() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("core.aerovault");
+        let src = dir.path().join("src");
+        let (dirs, files) = stress_tree();
+        for d in &dirs {
+            fs::create_dir_all(src.join(d)).unwrap();
+        }
+        for (rel, bytes) in &files {
+            let p = src.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, bytes).unwrap();
+        }
+        let pw = "v2-core-pw-123456";
+        let opts = super::CreateOptions::new(&vault, pw).with_mode(super::EncryptionMode::Standard);
+        super::Vault::create(opts).unwrap();
+
+        let mut ticks = 0;
+        let (added_files, _added_dirs) = rt()
+            .block_on(super::vault_v2_add_directory_core(
+                vault.to_string_lossy().to_string(),
+                pw.to_string(),
+                src.to_string_lossy().to_string(),
+                None,
+                |_, _, _| ticks += 1,
+            ))
+            .unwrap();
+        assert_eq!(added_files, files.len());
+        let _ = ticks; // progress is best-effort; presence of the sink is the contract
+
+        let out = dir.path().join("out");
+        let v = super::Vault::open(&vault, pw).unwrap();
+        super::extract_all_v2_tree(&v, &out).unwrap();
+        let snap = snapshot_tree(&out);
+        for (rel, bytes) in &files {
+            assert_eq!(
+                snap.get(*rel),
+                Some(&Some(bytes.clone())),
+                "'{rel}' mismatch via add_directory_core"
+            );
+        }
+        assert_ne!(
+            snap.get("d1/x.txt").unwrap(),
+            snap.get("d2/x.txt").unwrap(),
+            "duplicate basenames collapsed via core path"
+        );
     }
 }

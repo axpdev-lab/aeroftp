@@ -2966,9 +2966,159 @@ enum VaultCommands {
         /// path. The plain-text rendering is printed to stderr regardless.
         #[arg(long)]
         receipt: Option<String>,
+        /// Place the added files inside this directory in the vault (created if it
+        /// does not exist yet). Without it, files land at the vault root.
+        #[arg(long = "to-dir")]
+        to_dir: Option<String>,
         /// Vault format: auto (detect from file) | v1 | v2 | v3
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
+    },
+    /// Recursively add a local directory tree into the vault, preserving its
+    /// structure (mirrors the GUI "add folder"). v2/v3 auto-detected from the file.
+    AddDir {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Local directory to add recursively
+        source_dir: String,
+        /// Place the tree under this directory prefix inside the vault
+        #[arg(long = "prefix")]
+        prefix: Option<String>,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Extract the WHOLE vault into a destination directory, preserving the tree
+    /// (mirrors the GUI "extract all"). v2/v3 auto-detected from the file.
+    ExtractAll {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Destination directory (created if needed)
+        dest: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Create an empty directory inside the vault.
+    Mkdir {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Directory path to create inside the vault (e.g. docs/2026)
+        dir: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Delete one or more entries from the vault. Use --recursive to remove a
+    /// directory and everything under it.
+    Rm {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// One or more entry paths inside the vault to delete
+        #[arg(required = true)]
+        entries: Vec<String>,
+        /// Recursively delete directory contents
+        #[arg(long, short = 'r')]
+        recursive: bool,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Move or rename an entry inside the vault (a rename is a move within the same
+    /// directory).
+    Mv {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Source entry path inside the vault
+        from: String,
+        /// Destination entry path inside the vault
+        to: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Copy an entry inside the vault to a new path.
+    Cp {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Source entry path inside the vault
+        from: String,
+        /// Destination entry path inside the vault
+        to: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Change a vault's password (re-wraps the keys; the content is not re-encrypted).
+    /// New password via --new-password or AEROFTP_VAULT_NEW_PASSWORD.
+    ChangePassword {
+        /// Path to the .aerovault file
+        path: String,
+        /// Current password (or AEROFTP_VAULT_PASSWORD)
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// New password (or set AEROFTP_VAULT_NEW_PASSWORD)
+        #[arg(long = "new-password")]
+        new_password: Option<String>,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Compact a v2 vault, reclaiming space left by deleted entries (orphaned data).
+    Compact {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+    },
+    /// Preview a LOCAL directory: file count, directory count, total size. No vault
+    /// is opened (mirrors the GUI add-folder pre-scan).
+    ScanDir {
+        /// Local directory to scan
+        source_dir: String,
+    },
+    /// Compare a vault's contents against a local directory and print the differences
+    /// (vault-only, local-only, conflicts, unchanged). Read-only. v2 vaults only.
+    SyncCompare {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Local directory to compare against
+        local_dir: String,
+    },
+    /// One-shot directional sync between a vault and a local directory, deriving the
+    /// actions from a fresh comparison. v2 vaults only.
+    SyncApply {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Local directory to sync with
+        local_dir: String,
+        /// Direction: to-vault (push local additions/changes into the vault) or
+        /// to-local (pull vault additions/changes out to disk). Conflicts resolve in
+        /// favour of the chosen side; the other side's extra files are left untouched.
+        #[arg(long, value_parser = ["to-vault", "to-local"])]
+        direction: String,
+    },
+    /// Report a v3 vault's Error Correction recovery status (embedded extension and/or
+    /// detached `.aerocorrect` sidecar) from a header-only read. No password needed.
+    RecoveryStatus {
+        /// Path to the .aerovault file
+        path: String,
     },
     /// Open a vault and print its info (file / chunk / dedup counts)
     Info {
@@ -3056,6 +3206,32 @@ enum VaultCommands {
         /// Drop embedded parity even if no detached sidecar exists
         #[arg(long)]
         force: bool,
+    },
+    /// Re-pack a vault under a new "mode" (Ehud #2), keeping the same password: a new
+    /// security level (v2 <-> v3 / cascade), compression profile and/or Error
+    /// Correction. The source is opened in its own format and recreated in the target
+    /// format, so this covers both same-format tweaks and full cross-format moves
+    /// (which fully re-encrypt every file). Mirrors the GUI "Change Mode" action.
+    ChangeMode {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Target security level: standard | advanced | paranoid (v2) | archive (v3).
+        /// Omit to keep the current format (profile/EC-only change).
+        #[arg(long = "security-level", visible_alias = "level")]
+        security_level: Option<String>,
+        /// Compression profile (archive/v3 target only): fast | balanced | archive
+        #[arg(long, default_value = "balanced")]
+        profile: String,
+        /// Enable Error Correction (Reed-Solomon). Archive (v3) target only; ignored
+        /// for a v2 target.
+        #[arg(long, visible_alias = "ec")]
+        error_correction: bool,
+        /// QR-style Error Correction overhead level (with --error-correction): named
+        /// low (~7%), medium (~15%), quartile (~25%), high (~30%), or a number 5-50.
+        #[arg(long = "recovery-level", default_value = "20")]
+        recovery_level: String,
     },
 }
 
@@ -48994,6 +49170,7 @@ async fn main() {
                     password,
                     files,
                     receipt,
+                    to_dir,
                     vault_version,
                 } => {
                     let pw = resolve_pw(password);
@@ -49002,7 +49179,45 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
-                    if ver == "v3" {
+                    // `--to-dir`: place the files inside a subdirectory. v3 creates the
+                    // dir on add; v2 requires it to exist, so create it first (idempotent).
+                    if let Some(dir) = to_dir {
+                        let res = if ver == "v3" {
+                            aerovault_v3::vault_v3_add_files_to_dir(
+                                path.clone(),
+                                pw.clone(),
+                                files.clone(),
+                                dir.clone(),
+                            )
+                            .await
+                        } else if ver == "v2" {
+                            let _ = aerovault_v2::vault_v2_create_directory(
+                                path.clone(),
+                                pw.clone(),
+                                dir.clone(),
+                            )
+                            .await;
+                            aerovault_v2::vault_v2_add_files_to_dir(
+                                path.clone(),
+                                pw.clone(),
+                                files.clone(),
+                                dir.clone(),
+                            )
+                            .await
+                        } else {
+                            Err("--to-dir is only supported for v2/v3 vaults".to_string())
+                        };
+                        match res {
+                            Ok(value) => {
+                                print_json(&value);
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
+                        }
+                    } else if ver == "v3" {
                         // Ehud #5: live progress for the long compress+encrypt pass.
                         // create_progress_bar is hidden when output is not a TTY
                         // (e.g. --json piped) or NO_COLOR is set, so it never dirties
@@ -49533,6 +49748,591 @@ async fn main() {
                                 print_error(format, &e, 1);
                                 1
                             }
+                        }
+                    }
+                }
+                VaultCommands::ChangeMode {
+                    path,
+                    password,
+                    security_level,
+                    profile,
+                    error_correction,
+                    recovery_level,
+                } => {
+                    let pw = resolve_pw(password);
+                    // Map the QR-style overhead level (named or numeric) to a percentage.
+                    let recovery_pct: u32 =
+                        match recovery_level.trim().to_ascii_lowercase().as_str() {
+                            "low" => 7,
+                            "medium" | "med" => 15,
+                            "quartile" => 25,
+                            "high" => 30,
+                            other => other.trim_end_matches('%').parse::<u32>().unwrap_or(20),
+                        };
+                    match aerovault_v3::vault_v3_change_mode(
+                        path.clone(),
+                        pw,
+                        security_level.clone(),
+                        Some(profile.clone()),
+                        *error_correction,
+                        Some(recovery_pct),
+                    )
+                    .await
+                    {
+                        Ok(report) => {
+                            match format {
+                                OutputFormat::Json => print_json(&report),
+                                OutputFormat::Text => {
+                                    let fmt =
+                                        report.get("format").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let files =
+                                        report.get("files").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let dirs =
+                                        report.get("dirs").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let cascade = report
+                                        .get("cascade")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let ec = report
+                                        .get("error_correction")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let level = if fmt == 3 {
+                                        "archive (v3)".to_string()
+                                    } else if cascade {
+                                        "paranoid (v2, cascade)".to_string()
+                                    } else {
+                                        "v2".to_string()
+                                    };
+                                    println!(
+                                        "Re-packed vault to {level}: {files} files, {dirs} dirs{}",
+                                        if ec { ", Error Correction enabled" } else { "" }
+                                    );
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 1);
+                            1
+                        }
+                    }
+                }
+                VaultCommands::AddDir {
+                    path,
+                    password,
+                    source_dir,
+                    prefix,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res: Result<(usize, usize), String> = if ver == "v3" {
+                        aerovault_v3::vault_v3_add_directory_core(
+                            path.clone(),
+                            pw,
+                            source_dir.clone(),
+                            prefix.clone(),
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_add_directory_core(
+                            path.clone(),
+                            pw,
+                            source_dir.clone(),
+                            prefix.clone(),
+                            |_, _, _| {},
+                        )
+                        .await
+                    } else {
+                        Err("add-dir is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok((files, dirs)) => {
+                            match format {
+                                OutputFormat::Json => print_json(&serde_json::json!({
+                                    "added_files": files,
+                                    "added_dirs": dirs,
+                                    "total_entries": files + dirs,
+                                })),
+                                OutputFormat::Text => println!(
+                                    "Added {files} file(s), {dirs} dir(s) from {source_dir}"
+                                ),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::ExtractAll {
+                    path,
+                    password,
+                    dest,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res: Result<u64, String> = if ver == "v3" {
+                        aerovault_v3::vault_v3_extract_all(path.clone(), pw, dest.clone()).await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_extract_all(path.clone(), pw, dest.clone())
+                            .await
+                            .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                    } else {
+                        Err("extract-all is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(n) => {
+                            match format {
+                                OutputFormat::Json => print_json(&serde_json::json!({
+                                    "extracted": n,
+                                    "dest": dest,
+                                })),
+                                OutputFormat::Text => {
+                                    println!(
+                                        "Extracted {n} entr{} to {dest}",
+                                        if n == 1 { "y" } else { "ies" }
+                                    )
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Mkdir {
+                    path,
+                    password,
+                    dir,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_create_directory(path.clone(), pw, dir.clone()).await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_create_directory(path.clone(), pw, dir.clone()).await
+                    } else {
+                        Err("mkdir is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!("Created directory {dir}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Rm {
+                    path,
+                    password,
+                    entries,
+                    recursive,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_delete_entries(
+                            path.clone(),
+                            pw,
+                            entries.clone(),
+                            *recursive,
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_delete_entries(
+                            path.clone(),
+                            pw,
+                            entries.clone(),
+                            *recursive,
+                        )
+                        .await
+                    } else {
+                        Err("rm is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!(
+                                    "Deleted {} entr{}",
+                                    entries.len(),
+                                    if entries.len() == 1 { "y" } else { "ies" }
+                                ),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Mv {
+                    path,
+                    password,
+                    from,
+                    to,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_move_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_move_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else {
+                        Err("mv is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!("Moved {from} -> {to}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Cp {
+                    path,
+                    password,
+                    from,
+                    to,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_copy_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_copy_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else {
+                        Err("cp is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!("Copied {from} -> {to}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::ChangePassword {
+                    path,
+                    password,
+                    new_password,
+                    vault_version,
+                } => {
+                    let old_pw = resolve_pw(password);
+                    let new_pw = new_password
+                        .clone()
+                        .or_else(|| std::env::var("AEROFTP_VAULT_NEW_PASSWORD").ok())
+                        .filter(|p| !p.is_empty());
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    match new_pw {
+                        None => {
+                            print_error(
+                                format,
+                                "Provide the new password via --new-password or AEROFTP_VAULT_NEW_PASSWORD",
+                                6,
+                            );
+                            6
+                        }
+                        Some(new_pw) => {
+                            let res = if ver == "v3" {
+                                aerovault_v3::vault_v3_change_password(path.clone(), old_pw, new_pw)
+                                    .await
+                            } else if ver == "v2" {
+                                aerovault_v2::vault_v2_change_password(path.clone(), old_pw, new_pw)
+                                    .await
+                            } else {
+                                Err("change-password is only supported for v2/v3 vaults"
+                                    .to_string())
+                            };
+                            match res {
+                                Ok(msg) => {
+                                    match format {
+                                        OutputFormat::Json => print_json(&serde_json::json!({
+                                            "ok": true,
+                                            "message": msg,
+                                        })),
+                                        OutputFormat::Text => println!("{msg}"),
+                                    }
+                                    0
+                                }
+                                Err(e) => {
+                                    print_error(format, &e, 1);
+                                    1
+                                }
+                            }
+                        }
+                    }
+                }
+                VaultCommands::Compact { path, password } => {
+                    let pw = resolve_pw(password);
+                    let ver = detect_vault_version(path).await;
+                    if ver != "v2" {
+                        print_error(format, "compact is only supported for v2 vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v2::vault_v2_compact(path.clone(), pw).await {
+                            Ok(result) => {
+                                print_json(&result);
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::ScanDir { source_dir } => {
+                    match aerovault_v2::vault_v2_scan_directory(source_dir.clone()).await {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => {
+                                    let files = value["file_count"].as_u64().unwrap_or(0);
+                                    let dirs = value["dir_count"].as_u64().unwrap_or(0);
+                                    let size = value["total_size"].as_u64().unwrap_or(0);
+                                    println!(
+                                        "{files} file(s), {dirs} dir(s), {size} byte(s) in {source_dir}"
+                                    );
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::SyncCompare {
+                    path,
+                    password,
+                    local_dir,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = detect_vault_version(path).await;
+                    if ver != "v2" {
+                        print_error(format, "sync is currently supported for v2 vaults only", 7);
+                        7
+                    } else {
+                        match aerovault_v2::vault_v2_sync_compare(
+                            path.clone(),
+                            pw,
+                            local_dir.clone(),
+                        )
+                        .await
+                        {
+                            Ok(cmp) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&cmp),
+                                    OutputFormat::Text => {
+                                        println!(
+                                            "vault-only: {}, local-only: {}, conflicts: {}, unchanged: {}",
+                                            cmp.vault_only.len(),
+                                            cmp.local_only.len(),
+                                            cmp.conflicts.len(),
+                                            cmp.unchanged
+                                        );
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
+                        }
+                    }
+                }
+                VaultCommands::SyncApply {
+                    path,
+                    password,
+                    local_dir,
+                    direction,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = detect_vault_version(path).await;
+                    if ver != "v2" {
+                        print_error(format, "sync is currently supported for v2 vaults only", 7);
+                        7
+                    } else {
+                        // Derive the action list from a fresh comparison. to-vault pushes
+                        // the local-only files plus conflicts (local wins); to-local pulls
+                        // the vault-only files plus conflicts (vault wins). The opposite
+                        // side's extra files are left untouched (no destructive deletes).
+                        match aerovault_v2::vault_v2_sync_compare(
+                            path.clone(),
+                            pw.clone(),
+                            local_dir.clone(),
+                        )
+                        .await
+                        {
+                            Ok(cmp) => {
+                                let act = if direction == "to-vault" {
+                                    "to_vault"
+                                } else {
+                                    "to_local"
+                                };
+                                let mut actions: Vec<aerovault_v2::VaultSyncAction> = Vec::new();
+                                let primary = if direction == "to-vault" {
+                                    &cmp.local_only
+                                } else {
+                                    &cmp.vault_only
+                                };
+                                for name in primary {
+                                    actions.push(aerovault_v2::VaultSyncAction {
+                                        name: name.clone(),
+                                        action: act.to_string(),
+                                    });
+                                }
+                                for c in &cmp.conflicts {
+                                    actions.push(aerovault_v2::VaultSyncAction {
+                                        name: c.name.clone(),
+                                        action: act.to_string(),
+                                    });
+                                }
+                                match aerovault_v2::vault_v2_sync_apply(
+                                    path.clone(),
+                                    pw,
+                                    local_dir.clone(),
+                                    actions,
+                                )
+                                .await
+                                {
+                                    Ok(res) => {
+                                        match format {
+                                            OutputFormat::Json => print_json(&res),
+                                            OutputFormat::Text => {
+                                                println!(
+                                                    "Synced {} -> vault, {} -> local, {} skipped, {} error(s)",
+                                                    res.to_vault,
+                                                    res.to_local,
+                                                    res.skipped,
+                                                    res.errors.len()
+                                                );
+                                                for e in &res.errors {
+                                                    eprintln!("  {e}");
+                                                }
+                                            }
+                                        }
+                                        if res.errors.is_empty() {
+                                            0
+                                        } else {
+                                            1
+                                        }
+                                    }
+                                    Err(e) => {
+                                        print_error(format, &e, 4);
+                                        4
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
+                        }
+                    }
+                }
+                VaultCommands::RecoveryStatus { path } => {
+                    match aerovault_v3::vault_v3_recovery_status(path.clone()).await {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => {
+                                    let embedded = value["embedded"].as_bool().unwrap_or(false);
+                                    let detached = value["detached"].as_bool().unwrap_or(false);
+                                    println!(
+                                        "Error Correction recovery: embedded={embedded}, detached={detached}"
+                                    );
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
                         }
                     }
                 }

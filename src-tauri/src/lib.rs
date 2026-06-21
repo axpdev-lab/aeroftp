@@ -15979,6 +15979,7 @@ pub fn run() {
             aerovault_v3::vault_v3_rename_entry,
             aerovault_v3::vault_v3_copy_entry,
             aerovault_v3::vault_v3_change_password,
+            aerovault_v3::vault_v3_change_mode,
             aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
             aerovault_v3::vault_v3_has_error_correction,

@@ -324,6 +324,21 @@ export interface VaultState {
     confirmNewPassword: string;
     setConfirmNewPassword: (pw: string) => void;
 
+    // Change Mode (Ehud #2): re-pack a vault under a new security level (v2<->v3 /
+    // cascade), compression profile and/or Error Correction, keeping the same
+    // password. The repack extracts the source in its own format and recreates it in
+    // the target format, so it covers both same-format tweaks and full cross-format
+    // moves.
+    changingMode: boolean;
+    setChangingMode: (changing: boolean) => void;
+    newModeSecurityLevel: SecurityLevel;
+    setNewModeSecurityLevel: (l: SecurityLevel) => void;
+    newModeProfile: VaultV3CompressionProfile;
+    setNewModeProfile: (p: VaultV3CompressionProfile) => void;
+    newModeErrorCorrection: boolean;
+    setNewModeErrorCorrection: (v: boolean) => void;
+    handleChangeMode: () => Promise<void>;
+
     // Remote vault
     remoteVaultPath: string;
     setRemoteVaultPath: (path: string) => void;
@@ -457,6 +472,10 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [entries, setEntries] = useState<ArchiveEntry[]>([]);
     const [meta, setMeta] = useState<AeroVaultMeta | null>(null);
     const [changingPassword, setChangingPassword] = useState(false);
+    const [changingMode, setChangingMode] = useState(false);
+    const [newModeSecurityLevel, setNewModeSecurityLevel] = useState<SecurityLevel>('experimental');
+    const [newModeProfile, setNewModeProfile] = useState<VaultV3CompressionProfile>('balanced');
+    const [newModeErrorCorrection, setNewModeErrorCorrection] = useState(false);
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
@@ -1477,6 +1496,47 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
+    // Change Mode (Ehud #2): re-pack a v3 vault under a new compression profile + EC,
+    // keeping the same password. The backend repack (decrypt -> recreate -> re-add ->
+    // atomic swap) is the same engine the full v2<->v3 security-level change will reuse.
+    const handleChangeMode = async () => {
+        if (!vaultPath || !vaultSecurity) return;
+        const targetConfig = securityLevels[newModeSecurityLevel];
+        const targetIsV3 = targetConfig.version === 3;
+        // Error Correction lives only in v3; the backend ignores it for a v2 target,
+        // so never request it when moving down to a v2 level.
+        const ec = targetIsV3 && newModeErrorCorrection;
+        setLoading(true);
+        setError(null);
+        try {
+            await invoke('vault_v3_change_mode', {
+                vaultPath,
+                password,
+                targetSecurityLevel: newModeSecurityLevel,
+                compressionProfile: targetIsV3 ? newModeProfile : null,
+                errorCorrection: ec,
+            });
+            // The container was rewritten in place (possibly across formats); reload
+            // entries/meta and reflect the new security/EC shape.
+            await refreshVaultEntries();
+            setErrorCorrectionEnabled(ec);
+            setHasErrorCorrection(ec);
+            setHasDetachedRecovery(false);
+            if (targetIsV3) setCompressionProfile(newModeProfile);
+            setVaultSecurity({
+                version: targetConfig.version,
+                cascadeMode: targetConfig.cascade,
+                level: newModeSecurityLevel,
+            });
+            setChangingMode(false);
+            setSuccess(t('vault.modeChanged'));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // --- Effects ---
 
     // Auto-detect vault version when opened via context menu (initialPath)
@@ -1679,6 +1739,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         newDirName, setNewDirName,
         showNewDirDialog, setShowNewDirDialog,
         changingPassword, setChangingPassword,
+        changingMode, setChangingMode,
+        newModeSecurityLevel, setNewModeSecurityLevel,
+        newModeProfile, setNewModeProfile,
+        newModeErrorCorrection, setNewModeErrorCorrection,
+        handleChangeMode,
         newPassword, setNewPassword,
         confirmNewPassword, setConfirmNewPassword,
         remoteVaultPath, setRemoteVaultPath,

@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench, FileDown, Scissors, Copy } from 'lucide-react';
+import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench, FileDown, Scissors, Copy, SlidersHorizontal } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
@@ -82,6 +82,20 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
                     <Key size={14} /> {t('vault.changePassword')}
                 </button>
+                {/* Change Mode (Ehud #2): re-pack the vault under a new security level
+                    (v2<->v3 / cascade), compression profile and/or Error Correction
+                    (same password). Next to Change Password; available for any open
+                    vault. Opening the form seeds the selector with the current level. */}
+                {state.vaultSecurity && (
+                    <button onClick={() => {
+                        if (!state.changingMode && state.vaultSecurity) {
+                            state.setNewModeSecurityLevel(state.vaultSecurity.level);
+                        }
+                        state.setChangingMode(!state.changingMode);
+                    }} disabled={state.loading} title={t('vault.changeModeHint')} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                        <SlidersHorizontal size={14} /> {t('vault.changeMode')}
+                    </button>
+                )}
                 {/* Ehud #2: export a complete technical vault report (metadata,
                     encryption, error-correction, chunk stats, full file list) as
                     .txt/.json, or copy it to the clipboard. */}
@@ -262,6 +276,56 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     <PasswordStrengthBar password={state.newPassword} />
                 </div>
             </>)}
+
+            {/* Change Mode form (Ehud #2): re-pack the vault under a new security level
+                (v2<->v3 / cascade), compression profile and/or Error Correction,
+                keeping the same password. The Archive (v3) level unlocks the
+                compression profile and Error Correction; the v2 levels hide both.
+                Moving across formats is a full re-encrypt, flagged with a warning. */}
+            {state.changingMode && state.vaultSecurity && (() => {
+                const targetConfig = securityLevels[state.newModeSecurityLevel];
+                const targetIsV3 = targetConfig.version === 3;
+                const crossFormat = targetConfig.version !== state.vaultSecurity.version
+                    || (!targetIsV3 && targetConfig.cascade !== state.vaultSecurity.cascadeMode);
+                return (
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('vault.securityLevel')}</label>
+                            <select value={state.newModeSecurityLevel} onChange={e => state.setNewModeSecurityLevel(e.target.value as typeof state.newModeSecurityLevel)}
+                                className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs">
+                                <option value="standard">{securityLevels.standard.label}</option>
+                                <option value="advanced">{securityLevels.advanced.label}</option>
+                                <option value="paranoid">{securityLevels.paranoid.label}</option>
+                                <option value="experimental">{securityLevels.experimental.label}</option>
+                            </select>
+                        </div>
+                        {targetIsV3 && (
+                            <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('vault.compressionProfile')}</label>
+                                <select value={state.newModeProfile} onChange={e => state.setNewModeProfile(e.target.value as typeof state.newModeProfile)}
+                                    className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs">
+                                    <option value="fast">Fast (zstd -3)</option>
+                                    <option value="balanced">Balanced (zstd -9)</option>
+                                    <option value="archive">Archive (zstd -15)</option>
+                                </select>
+                            </div>
+                        )}
+                        {targetIsV3 && (
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                                <input type="checkbox" checked={state.newModeErrorCorrection} onChange={e => state.setNewModeErrorCorrection(e.target.checked)} />
+                                {t('vault.errorCorrection')}
+                            </label>
+                        )}
+                        <button onClick={state.handleChangeMode} disabled={state.loading} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs shrink-0 flex items-center gap-1">
+                            {state.loading ? <Loader2 size={12} className="animate-spin" /> : t('vault.apply')}
+                        </button>
+                        <span className="text-[11px] text-gray-400 basis-full">{t('vault.changeModeNote')}</span>
+                        {crossFormat && (
+                            <span className="text-[11px] text-amber-500 basis-full">{t('vault.changeModeCrossFormat')}</span>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* File list */}
             <div className="flex-1 overflow-auto relative">
