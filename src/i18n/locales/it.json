@@ -3115,7 +3115,12 @@
             "folderAdded": "Cartella aggiunta",
             "extractAll": "Estrai tutto",
             "extractAllHint": "Estrai ogni file della cassaforte in una cartella",
-            "extractedAll": "Estratti {count} file in {path}"
+            "extractedAll": "Estratti {count} file in {path}",
+            "changeMode": "Cambia modalità",
+            "changeModeHint": "Reimpacchetta questa cassaforte con un livello di sicurezza, profilo di compressione e Correzione degli Errori diversi (stessa password)",
+            "changeModeNote": "La cassaforte viene reimpacchettata sul posto con le nuove impostazioni; la password resta la stessa.",
+            "modeChanged": "Modalità della cassaforte cambiata",
+            "changeModeCrossFormat": "Questo cambia il formato della cassaforte e ri-cifra completamente ogni file."
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",
