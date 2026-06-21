@@ -2891,7 +2891,11 @@
       "minPassword": "Mínimo 8 caracteres",
       "passwordMismatch": "Os contrasinais non coinciden",
       "repeatPassword": "Repetir contrasinal",
-      "vaultName": "Nome da bóveda"
+      "vaultName": "Nome da bóveda",
+      "done": "Feito",
+      "encryptingSelection": "Cifrando os elementos seleccionados...",
+      "ingestSkipped": "Creouse a caixa forte, pero algúns elementos non se puideron engadir:",
+      "selectionInfo": "{count} elemento(s) cifraranse na caixa forte"
     },
     "compress": {
       "title": "Comprimir ficheiros",

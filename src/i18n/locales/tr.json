@@ -2891,7 +2891,11 @@
       "minPassword": "En az 8 karakter",
       "passwordMismatch": "Şifreler eşleşmiyor",
       "repeatPassword": "Şifreyi tekrarlayın",
-      "vaultName": "Kasa Adı"
+      "vaultName": "Kasa Adı",
+      "done": "Tamam",
+      "encryptingSelection": "Seçili öğeler şifreleniyor...",
+      "ingestSkipped": "Kasa oluşturuldu, ancak bazı öğeler eklenemedi:",
+      "selectionInfo": "{count} öğe kasaya şifrelenecek"
     },
     "compress": {
       "title": "Dosyaları Sıkıştır",

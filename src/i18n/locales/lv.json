@@ -2891,7 +2891,11 @@
       "minPassword": "Minimāli 8 rakstzīmes",
       "passwordMismatch": "Paroles neatbilst",
       "repeatPassword": "Atkārtojiet paroli",
-      "vaultName": "Sefa nosaukums"
+      "vaultName": "Sefa nosaukums",
+      "done": "Gatavs",
+      "encryptingSelection": "Notiek atlasīto vienumu šifrēšana...",
+      "ingestSkipped": "Glabātava izveidota, taču dažus vienumus neizdevās pievienot:",
+      "selectionInfo": "{count} vienums tiks šifrēts glabātavā"
     },
     "compress": {
       "title": "Saspiest failus",

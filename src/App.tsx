@@ -1200,7 +1200,7 @@ const App: React.FC = () => {
     resolve: ((accepted: boolean) => void) | null;
   }>({ visible: false, info: null, host: '', port: 22, resolve: null });
   const [compressDialogState, setCompressDialogState] = useState<{ files: { name: string; path: string; size: number; isDir: boolean }[]; defaultName: string; outputDir: string } | null>(null);
-  const [cryptomatorCreateDialog, setCryptomatorCreateDialog] = useState<{ outputDir: string } | null>(null);
+  const [cryptomatorCreateDialog, setCryptomatorCreateDialog] = useState<{ outputDir: string; files?: string[] } | null>(null);
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
@@ -12160,7 +12160,13 @@ interface UpdateVerificationInfo {
           {
             label: t('contextMenu.createCryptomator') || 'Create Cryptomator Vault...',
             icon: <Lock size={14} />,
-            action: () => setCryptomatorCreateDialog({ outputDir: currentLocalPath }),
+            action: () => {
+              const paths = filesToUpload.map(name => {
+                const f = sortedLocalFiles.find(lf => lf.name === name);
+                return f ? f.path : `${currentLocalPath}/${name}`;
+              });
+              setCryptomatorCreateDialog({ outputDir: currentLocalPath, files: paths });
+            },
           },
         ],
       });
@@ -13836,6 +13842,7 @@ interface UpdateVerificationInfo {
         {cryptomatorCreateDialog && (
           <CryptomatorCreateDialog
             outputDir={cryptomatorCreateDialog.outputDir}
+            files={cryptomatorCreateDialog.files}
             onClose={() => setCryptomatorCreateDialog(null)}
             onCreated={() => loadLocalFiles(currentLocalPath)}
           />

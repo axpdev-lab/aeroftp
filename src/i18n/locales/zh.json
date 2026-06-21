@@ -2891,7 +2891,11 @@
       "minPassword": "最少 8 个字符",
       "passwordMismatch": "密码不匹配",
       "repeatPassword": "重复密码",
-      "vaultName": "保险库名称"
+      "vaultName": "保险库名称",
+      "done": "完成",
+      "encryptingSelection": "正在加密所选项目...",
+      "ingestSkipped": "保险库已创建，但无法添加某些项目：",
+      "selectionInfo": "{count} 个项目将被加密到保险库中"
     },
     "compress": {
       "title": "压缩文件",

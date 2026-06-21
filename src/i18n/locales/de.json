@@ -2891,7 +2891,11 @@
       "minPassword": "Mindestens 8 Zeichen",
       "passwordMismatch": "Passwörter stimmen nicht überein",
       "repeatPassword": "Passwort wiederholen",
-      "vaultName": "Tresorname"
+      "vaultName": "Tresorname",
+      "done": "Fertig",
+      "encryptingSelection": "Ausgewählte Elemente werden verschlüsselt...",
+      "ingestSkipped": "Tresor erstellt, aber einige Elemente konnten nicht hinzugefügt werden:",
+      "selectionInfo": "{count} Element(e) werden in den Tresor verschlüsselt"
     },
     "compress": {
       "title": "Dateien komprimieren",

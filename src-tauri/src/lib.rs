@@ -15997,6 +15997,7 @@ pub fn run() {
             cryptomator::cryptomator_list,
             cryptomator::cryptomator_decrypt_file,
             cryptomator::cryptomator_encrypt_file,
+            cryptomator::cryptomator_encrypt_paths,
             cryptomator::cryptomator_create,
             // Rclone crypt compatibility support
             rclone_crypt::rclone_crypt_unlock,

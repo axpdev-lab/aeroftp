@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 characters",
       "passwordMismatch": "Ang mga password ay hindi tumutugma",
       "repeatPassword": "Ulitin ang password",
-      "vaultName": "Pangalan ng Vault"
+      "vaultName": "Pangalan ng Vault",
+      "done": "Tapos na",
+      "encryptingSelection": "Ine-encrypt ang mga napiling item...",
+      "ingestSkipped": "Nalikha ang vault, ngunit may ilang item na hindi naidagdag:",
+      "selectionInfo": "{count} item ang ie-encrypt sa vault"
     },
     "compress": {
       "title": "I-compress ang mga File",

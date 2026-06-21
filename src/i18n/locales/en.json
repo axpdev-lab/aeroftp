@@ -1551,7 +1551,11 @@
             "size": "Size",
             "title": "Cryptomator Vault",
             "unlock": "Unlock Vault",
-            "vaultName": "Vault Name"
+            "vaultName": "Vault Name",
+            "done": "Done",
+            "encryptingSelection": "Encrypting selected items...",
+            "ingestSkipped": "Vault created, but some items could not be added:",
+            "selectionInfo": "{count} item(s) will be encrypted into the vault"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",

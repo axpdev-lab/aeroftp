@@ -3226,7 +3226,11 @@
             "size": "Dimensione",
             "title": "Vault Cryptomator",
             "unlock": "Sblocca Vault",
-            "vaultName": "Nome Vault"
+            "vaultName": "Nome Vault",
+            "done": "Fatto",
+            "encryptingSelection": "Crittografia degli elementi selezionati in corso...",
+            "ingestSkipped": "Cassaforte creata, ma non è stato possibile aggiungere alcuni elementi:",
+            "selectionInfo": "{count} elemento/i verranno crittografati nella cassaforte"
         },
         "batchRename": {
             "title": "Rinomina Multipla",

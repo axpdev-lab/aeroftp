@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 znaków",
       "passwordMismatch": "Hasła nie są zgodne",
       "repeatPassword": "Powtórz hasło",
-      "vaultName": "Nazwa skarbca"
+      "vaultName": "Nazwa skarbca",
+      "done": "Gotowe",
+      "encryptingSelection": "Szyfrowanie wybranych elementów...",
+      "ingestSkipped": "Sejf utworzony, ale niektórych elementów nie udało się dodać:",
+      "selectionInfo": "{count} element(ów) zostanie zaszyfrowanych w sejfie"
     },
     "compress": {
       "title": "Kompresuj pliki",

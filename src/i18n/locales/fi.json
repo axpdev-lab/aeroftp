@@ -2891,7 +2891,11 @@
       "minPassword": "Vähintään 8 merkkiä",
       "passwordMismatch": "Salasanat eivät vastaa toisiaan",
       "repeatPassword": "Toista salasana",
-      "vaultName": "Holvin nimi"
+      "vaultName": "Holvin nimi",
+      "done": "Valmis",
+      "encryptingSelection": "Salataan valittuja kohteita...",
+      "ingestSkipped": "Holvi luotiin, mutta joitakin kohteita ei voitu lisätä:",
+      "selectionInfo": "{count} kohdetta salataan holviin"
     },
     "compress": {
       "title": "Pakkaa tiedostot",

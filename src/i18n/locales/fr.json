@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 caractères",
       "passwordMismatch": "Les mots de passe ne correspondent pas",
       "repeatPassword": "Répéter le mot de passe",
-      "vaultName": "Nom du coffre-fort"
+      "vaultName": "Nom du coffre-fort",
+      "done": "Terminé",
+      "encryptingSelection": "Chiffrement des éléments sélectionnés...",
+      "ingestSkipped": "Coffre créé, mais certains éléments n'ont pas pu être ajoutés :",
+      "selectionInfo": "{count} élément(s) seront chiffrés dans le coffre"
     },
     "compress": {
       "title": "Compresser des fichiers",

@@ -2891,7 +2891,11 @@
       "minPassword": "Mínimo 8 caracteres",
       "passwordMismatch": "Las contraseñas no coinciden",
       "repeatPassword": "Repetir contraseña",
-      "vaultName": "Nombre de la caja fuerte"
+      "vaultName": "Nombre de la caja fuerte",
+      "done": "Hecho",
+      "encryptingSelection": "Cifrando los elementos seleccionados...",
+      "ingestSkipped": "Caja fuerte creada, pero algunos elementos no se pudieron añadir:",
+      "selectionInfo": "{count} elemento(s) se cifrarán en la caja fuerte"
     },
     "compress": {
       "title": "Comprimir archivos",

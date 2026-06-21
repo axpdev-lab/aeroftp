@@ -2891,7 +2891,11 @@
       "minPassword": "Angalau herufi 8",
       "passwordMismatch": "Nenosiri hazilingani",
       "repeatPassword": "Kurudia nenosiri",
-      "vaultName": "Jina la hazina"
+      "vaultName": "Jina la hazina",
+      "done": "Imekamilika",
+      "encryptingSelection": "Inasimba vipengele vilivyochaguliwa...",
+      "ingestSkipped": "Hazina imeundwa, lakini baadhi ya vipengele havikuweza kuongezwa:",
+      "selectionInfo": "Vipengele {count} vitasimbwa kwenye hazina"
     },
     "compress": {
       "title": "Bana Faili",

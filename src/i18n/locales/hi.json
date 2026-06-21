@@ -2891,7 +2891,11 @@
       "minPassword": "न्यूनतम 8 वर्ण",
       "passwordMismatch": "पासवर्ड मेल नहीं खाते",
       "repeatPassword": "पासवर्ड दोहराएँ",
-      "vaultName": "तिजोरी का नाम"
+      "vaultName": "तिजोरी का नाम",
+      "done": "पूर्ण",
+      "encryptingSelection": "चयनित आइटम एन्क्रिप्ट किए जा रहे हैं...",
+      "ingestSkipped": "वॉल्ट बन गया, लेकिन कुछ आइटम जोड़े नहीं जा सके:",
+      "selectionInfo": "{count} आइटम वॉल्ट में एन्क्रिप्ट किए जाएंगे"
     },
     "compress": {
       "title": "फ़ाइलें सम्पीडित करें",

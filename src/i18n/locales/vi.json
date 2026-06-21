@@ -2891,7 +2891,11 @@
       "minPassword": "Tối thiểu 8 ký tự",
       "passwordMismatch": "Mật khẩu không khớp",
       "repeatPassword": "Nhập lại mật khẩu",
-      "vaultName": "Tên kho lưu trữ"
+      "vaultName": "Tên kho lưu trữ",
+      "done": "Xong",
+      "encryptingSelection": "Đang mã hóa các mục đã chọn...",
+      "ingestSkipped": "Đã tạo kho, nhưng không thể thêm một số mục:",
+      "selectionInfo": "{count} mục sẽ được mã hóa vào kho"
     },
     "compress": {
       "title": "Nén tệp",

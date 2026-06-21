@@ -2891,7 +2891,11 @@
       "minPassword": "ন্যূনতম ৮টি অক্ষর",
       "passwordMismatch": "পাসওয়ার্ডগুলি মেলে না",
       "repeatPassword": "পাসওয়ার্ড পুনরাবৃত্তি করুন",
-      "vaultName": "ভল্ট নাম"
+      "vaultName": "ভল্ট নাম",
+      "done": "সম্পন্ন",
+      "encryptingSelection": "নির্বাচিত আইটেম এনক্রিপ্ট করা হচ্ছে...",
+      "ingestSkipped": "ভল্ট তৈরি হয়েছে, তবে কিছু আইটেম যোগ করা যায়নি:",
+      "selectionInfo": "{count}টি আইটেম ভল্টে এনক্রিপ্ট করা হবে"
     },
     "compress": {
       "title": "ফাইল কম্প্রেস করুন",

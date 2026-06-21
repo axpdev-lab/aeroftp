@@ -2891,7 +2891,11 @@
       "minPassword": "Minimálne 8 znakov",
       "passwordMismatch": "Heslá sa nezhodujú",
       "repeatPassword": "Zopakujte heslo",
-      "vaultName": "Názov trezoru"
+      "vaultName": "Názov trezoru",
+      "done": "Hotovo",
+      "encryptingSelection": "Šifrovanie vybraných položiek...",
+      "ingestSkipped": "Trezor bol vytvorený, ale niektoré položky sa nepodarilo pridať:",
+      "selectionInfo": "{count} položiek bude zašifrovaných do trezora"
     },
     "compress": {
       "title": "Komprimovat subory",

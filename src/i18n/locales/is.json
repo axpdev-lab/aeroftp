@@ -2891,7 +2891,11 @@
       "minPassword": "Lágmark 8 stafir",
       "passwordMismatch": "Lykilorð stemma ekki",
       "repeatPassword": "Endurtaka lykilorð",
-      "vaultName": "Heiti hólfs"
+      "vaultName": "Heiti hólfs",
+      "done": "Lokið",
+      "encryptingSelection": "Dulkóða valin atriði...",
+      "ingestSkipped": "Hvelfingin var búin til, en ekki var hægt að bæta við sumum atriðum:",
+      "selectionInfo": "{count} atriði verða dulkóðuð í hvelfinguna"
     },
     "compress": {
       "title": "Þjappa Skrár",

@@ -2891,7 +2891,11 @@
       "minPassword": "Mínimo 8 caracteres",
       "passwordMismatch": "As senhas não coincidem",
       "repeatPassword": "Repetir senha",
-      "vaultName": "Nome do Cofre"
+      "vaultName": "Nome do Cofre",
+      "done": "Concluído",
+      "encryptingSelection": "A encriptar os itens selecionados...",
+      "ingestSkipped": "Cofre criado, mas alguns itens não puderam ser adicionados:",
+      "selectionInfo": "{count} item(ns) serão encriptados no cofre"
     },
     "compress": {
       "title": "Compactar Arquivos",

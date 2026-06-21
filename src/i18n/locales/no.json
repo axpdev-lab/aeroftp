@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 tegn",
       "passwordMismatch": "Passordene samsvarer ikke",
       "repeatPassword": "Gjenta passord",
-      "vaultName": "Navn på hvelv"
+      "vaultName": "Navn på hvelv",
+      "done": "Ferdig",
+      "encryptingSelection": "Krypterer valgte elementer...",
+      "ingestSkipped": "Hvelvet ble opprettet, men noen elementer kunne ikke legges til:",
+      "selectionInfo": "{count} element(er) vil bli kryptert i hvelvet"
     },
     "compress": {
       "title": "Komprimer filer",

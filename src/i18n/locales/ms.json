@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 aksara",
       "passwordMismatch": "Kata laluan tidak sepadan",
       "repeatPassword": "Ulangi kata laluan",
-      "vaultName": "Nama Peti"
+      "vaultName": "Nama Peti",
+      "done": "Selesai",
+      "encryptingSelection": "Menyulitkan item yang dipilih...",
+      "ingestSkipped": "Bilik kebal dicipta, tetapi sesetengah item tidak dapat ditambah:",
+      "selectionInfo": "{count} item akan disulitkan ke dalam bilik kebal"
     },
     "compress": {
       "title": "Mampatkan Fail",

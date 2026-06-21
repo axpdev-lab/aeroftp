@@ -2891,7 +2891,11 @@
       "minPassword": "Minim 8 caractere",
       "passwordMismatch": "Parolele nu coincid",
       "repeatPassword": "Repetă parola",
-      "vaultName": "Nume seif"
+      "vaultName": "Nume seif",
+      "done": "Gata",
+      "encryptingSelection": "Se criptează elementele selectate...",
+      "ingestSkipped": "Seif creat, dar unele elemente nu au putut fi adăugate:",
+      "selectionInfo": "{count} element(e) vor fi criptate în seif"
     },
     "compress": {
       "title": "Comprimare fișiere",

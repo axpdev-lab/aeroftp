@@ -2891,7 +2891,11 @@
       "minPassword": "Najmanj 8 znakov",
       "passwordMismatch": "Gesli se ne ujemata",
       "repeatPassword": "Ponovite geslo",
-      "vaultName": "Ime zakljenjenega predala"
+      "vaultName": "Ime zakljenjenega predala",
+      "done": "Končano",
+      "encryptingSelection": "Šifriranje izbranih elementov...",
+      "ingestSkipped": "Trezor je ustvarjen, vendar nekaterih elementov ni bilo mogoče dodati:",
+      "selectionInfo": "{count} elementov bo šifriranih v trezor"
     },
     "compress": {
       "title": "Stisni datoteke",

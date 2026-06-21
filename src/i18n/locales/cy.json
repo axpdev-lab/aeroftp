@@ -2891,7 +2891,11 @@
       "minPassword": "O leiaf 8 nod",
       "passwordMismatch": "Nid yw cyfrineiriau yn cyfateb",
       "repeatPassword": "Ailadroddwch y cyfrinair",
-      "vaultName": "Enw Coffor"
+      "vaultName": "Enw Coffor",
+      "done": "Wedi gorffen",
+      "encryptingSelection": "Wrthi'n amgryptio'r eitemau a ddewiswyd...",
+      "ingestSkipped": "Crëwyd y gell, ond ni ellid ychwanegu rhai eitemau:",
+      "selectionInfo": "Bydd {count} eitem yn cael eu hamgryptio i'r gell"
     },
     "compress": {
       "title": "Cywasgu Ffeiliau",

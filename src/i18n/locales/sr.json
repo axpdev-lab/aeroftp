@@ -2891,7 +2891,11 @@
       "minPassword": "Минимално 8 знакова",
       "passwordMismatch": "Лозинке се не подударају",
       "repeatPassword": "Поновите лозинку",
-      "vaultName": "Назив сефа"
+      "vaultName": "Назив сефа",
+      "done": "Готово",
+      "encryptingSelection": "Шифровање изабраних ставки...",
+      "ingestSkipped": "Сеф је направљен, али неке ставке није било могуће додати:",
+      "selectionInfo": "{count} ставки ће бити шифровано у сеф"
     },
     "compress": {
       "title": "Kompresuj fajlove",

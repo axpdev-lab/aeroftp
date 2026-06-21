@@ -2891,7 +2891,11 @@
       "minPassword": "Mažiausiai 8 simboliai",
       "passwordMismatch": "Slaptažodžiai nesutampa",
       "repeatPassword": "Pakartoti slaptažodį",
-      "vaultName": "Seiso pavadinimas"
+      "vaultName": "Seiso pavadinimas",
+      "done": "Atlikta",
+      "encryptingSelection": "Šifruojami pasirinkti elementai...",
+      "ingestSkipped": "Saugykla sukurta, bet kai kurių elementų nepavyko pridėti:",
+      "selectionInfo": "{count} element(ai) bus užšifruoti į saugyklą"
     },
     "compress": {
       "title": "Suspausti failus",

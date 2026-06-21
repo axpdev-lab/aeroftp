@@ -67,6 +67,18 @@ pub struct CryptomatorEntry {
     pub dir_id: Option<String>,
 }
 
+/// Summary of a recursive ingest (used when creating a vault from a selection).
+/// `skipped` carries a human-readable "path: reason" for every item that could
+/// not be added (symlinks, unreadable entries, per-file failures) so the caller
+/// can surface a partial-failure summary instead of silently dropping items.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CryptomatorIngestReport {
+    pub files: u32,
+    pub dirs: u32,
+    pub skipped: Vec<String>,
+}
+
 /// Info returned after unlocking
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -171,6 +183,33 @@ fn aes_siv_encrypt(
         .map_err(|e| format!("AES-SIV encrypt: {}", e))
 }
 
+/// Encrypt data with AES-SIV passing ZERO associated-data components.
+///
+/// This is distinct from `aes_siv_encrypt(.., b"")`: the RustCrypto wrapper used
+/// elsewhere always supplies exactly one associated-data header, and in AES-SIV
+/// (RFC 5297, the S2V construction) "no headers" and "one empty header" yield
+/// different synthetic IVs. Cryptomator hashes directory IDs with the dir ID as
+/// the plaintext and NO associated data, so directory paths only match an
+/// independent Cryptomator implementation when hashed exactly this way.
+fn aes_siv_encrypt_no_ad(
+    enc_key: &[u8; 32],
+    mac_key: &[u8; 32],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, String> {
+    use aes_siv::siv::Aes256Siv;
+    use aes_siv::KeyInit as SivKeyInit;
+
+    let mut combined_key = [0u8; 64];
+    combined_key[..32].copy_from_slice(mac_key);
+    combined_key[32..].copy_from_slice(enc_key);
+
+    let mut cipher = Aes256Siv::new(&combined_key.into());
+    let headers: [&[u8]; 0] = [];
+    cipher
+        .encrypt(headers, plaintext)
+        .map_err(|e| format!("AES-SIV encrypt (no AD): {}", e))
+}
+
 /// Decrypt data with AES-SIV
 fn aes_siv_decrypt(
     enc_key: &[u8; 32],
@@ -195,8 +234,8 @@ fn aes_siv_decrypt(
 
 /// Hash a directory ID to its physical path in the vault
 fn hash_dir_id(vault: &UnlockedVault, dir_id: &str) -> Result<PathBuf, String> {
-    // Encrypt empty string with dir_id as associated data
-    let encrypted = aes_siv_encrypt(&vault.enc_key, &vault.mac_key, b"", dir_id.as_bytes())?;
+    // Cryptomator spec: hash = SHA1(AES-SIV(plaintext = dirId, associatedData = none)).
+    let encrypted = aes_siv_encrypt_no_ad(&vault.enc_key, &vault.mac_key, dir_id.as_bytes())?;
 
     // SHA-1 hash
     let mut hasher = Sha1::new();
@@ -213,7 +252,7 @@ fn hash_dir_id(vault: &UnlockedVault, dir_id: &str) -> Result<PathBuf, String> {
 
 /// Encrypt a cleartext filename
 fn encrypt_filename(vault: &UnlockedVault, dir_id: &str, name: &str) -> Result<String, String> {
-    use data_encoding::BASE64URL_NOPAD;
+    use data_encoding::BASE64URL;
 
     let encrypted = aes_siv_encrypt(
         &vault.enc_key,
@@ -221,7 +260,11 @@ fn encrypt_filename(vault: &UnlockedVault, dir_id: &str, name: &str) -> Result<S
         name.as_bytes(),
         dir_id.as_bytes(),
     )?;
-    let encoded = BASE64URL_NOPAD.encode(&encrypted);
+    // Cryptomator encodes encrypted names with PADDED base64url (e.g. "...==.c9r").
+    // BASE64URL_NOPAD would drop the "=" padding and produce names a real
+    // Cryptomator implementation cannot find (interop break for any name whose
+    // ciphertext length is not a multiple of 3).
+    let encoded = BASE64URL.encode(&encrypted);
 
     Ok(format!("{}.c9r", encoded))
 }
@@ -232,13 +275,13 @@ fn decrypt_filename(
     dir_id: &str,
     encrypted_name: &str,
 ) -> Result<String, String> {
-    use data_encoding::BASE64URL_NOPAD;
+    use data_encoding::BASE64URL;
 
     let name_part = encrypted_name
         .strip_suffix(".c9r")
         .ok_or_else(|| format!("Not a .c9r entry: {}", encrypted_name))?;
 
-    let ciphertext = BASE64URL_NOPAD
+    let ciphertext = BASE64URL
         .decode(name_part.as_bytes())
         .map_err(|e| format!("Base64url decode: {}", e))?;
 
@@ -692,6 +735,116 @@ fn encrypt_file_inner(
     Ok(encrypted_name)
 }
 
+/// Create a subdirectory inside the vault under `parent_dir_id` and return the
+/// freshly minted child `dir_id`.
+///
+/// Cryptomator format 8 represents a directory as a `<encrypted_name>.c9r`
+/// FOLDER (sibling of file entries) that contains a single `dir.c9r` holding the
+/// child directory's UUID in cleartext. The child's contents then live under the
+/// hashed path of that UUID (see `hash_dir_id` / `list_dir_inner`).
+fn create_dir_inner(
+    vault: &UnlockedVault,
+    parent_dir_id: &str,
+    name: &str,
+) -> Result<String, String> {
+    // A fresh random dir_id for the new directory (cleartext UUID, like Cryptomator).
+    let new_dir_id = uuid::Uuid::new_v4().to_string();
+
+    let encrypted_name = encrypt_filename(vault, parent_dir_id, name)?;
+    let parent_path = hash_dir_id(vault, parent_dir_id)?;
+    fs::create_dir_all(&parent_path)
+        .map_err(|e| format!("Failed to create parent vault directory: {}", e))?;
+
+    // The directory entry is itself a folder containing dir.c9r.
+    let dir_entry_path = parent_path.join(&encrypted_name);
+    fs::create_dir_all(&dir_entry_path)
+        .map_err(|e| format!("Failed to create directory entry: {}", e))?;
+    fs::write(dir_entry_path.join("dir.c9r"), new_dir_id.as_bytes())
+        .map_err(|e| format!("Failed to write dir.c9r: {}", e))?;
+
+    // Materialize the child's (initially empty) content directory.
+    let child_path = hash_dir_id(vault, &new_dir_id)?;
+    fs::create_dir_all(&child_path)
+        .map_err(|e| format!("Failed to create child content directory: {}", e))?;
+
+    Ok(new_dir_id)
+}
+
+/// Recursively ingest a single host path (file or directory) into the vault
+/// under `parent_dir_id`. Files are encrypted in place; directories are created
+/// via `create_dir_inner` and their children ingested under the new dir_id.
+///
+/// Symlinks are never followed (skipped with a reason) so ingest cannot be
+/// tricked into walking outside the selection. Per-entry failures are recorded
+/// in `report.skipped` rather than aborting the whole operation, so one bad file
+/// does not lose the rest of the selection.
+fn ingest_path_inner(
+    vault: &UnlockedVault,
+    parent_dir_id: &str,
+    path: &Path,
+    report: &mut CryptomatorIngestReport,
+) {
+    // symlink_metadata does NOT follow symlinks.
+    let meta = match fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) => {
+            report.skipped.push(format!("{}: {}", path.display(), e));
+            return;
+        }
+    };
+
+    if meta.file_type().is_symlink() {
+        report
+            .skipped
+            .push(format!("{}: symlink (not supported)", path.display()));
+        return;
+    }
+
+    if meta.is_dir() {
+        let name = match path.file_name() {
+            Some(n) => n.to_string_lossy().to_string(),
+            None => {
+                report
+                    .skipped
+                    .push(format!("{}: invalid directory name", path.display()));
+                return;
+            }
+        };
+        let child_dir_id = match create_dir_inner(vault, parent_dir_id, &name) {
+            Ok(id) => id,
+            Err(e) => {
+                report.skipped.push(format!("{}: {}", path.display(), e));
+                return;
+            }
+        };
+        report.dirs += 1;
+
+        let read_dir = match fs::read_dir(path) {
+            Ok(rd) => rd,
+            Err(e) => {
+                report.skipped.push(format!("{}: {}", path.display(), e));
+                return;
+            }
+        };
+        for entry in read_dir {
+            match entry {
+                Ok(entry) => ingest_path_inner(vault, &child_dir_id, &entry.path(), report),
+                Err(e) => report.skipped.push(format!("{}: {}", path.display(), e)),
+            }
+        }
+    } else if meta.is_file() {
+        match encrypt_file_inner(vault, parent_dir_id, path) {
+            Ok(_) => report.files += 1,
+            Err(e) => report.skipped.push(format!("{}: {}", path.display(), e)),
+        }
+    } else {
+        report.skipped.push(format!(
+            "{}: not a regular file or directory",
+            path.display()
+        ));
+    }
+}
+
 // ─── Tauri Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -773,6 +926,30 @@ pub async fn cryptomator_encrypt_file(
     let vaults = state.vaults.lock().await;
     let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
     encrypt_file_inner(vault, &dir_id, Path::new(&input_path))
+}
+
+/// Recursively ingest a list of host paths (files and/or directories) into the
+/// vault under `dir_id`. Used by the "Create Cryptomator Vault..." flow to add
+/// the user's selection into a freshly created vault (#322). Returns a summary
+/// of what was added and what was skipped.
+#[tauri::command]
+pub async fn cryptomator_encrypt_paths(
+    state: tauri::State<'_, CryptomatorState>,
+    vault_id: String,
+    dir_id: String,
+    input_paths: Vec<String>,
+) -> Result<CryptomatorIngestReport, String> {
+    for p in &input_paths {
+        crate::filesystem::validate_path(p)?;
+    }
+    let vaults = state.vaults.lock().await;
+    let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
+
+    let mut report = CryptomatorIngestReport::default();
+    for p in &input_paths {
+        ingest_path_inner(vault, &dir_id, Path::new(p), &mut report);
+    }
+    Ok(report)
 }
 
 #[tauri::command]
@@ -954,5 +1131,256 @@ mod tests {
 
         // Wrong password on the right directory must also fail (sanity).
         assert!(unlock_vault_inner(&vault_root, "wrong-password").is_err());
+    }
+
+    // Regression test for #322 (the empty-vault report): "Create Cryptomator
+    // Vault..." from a selection must actually INGEST the selected items, not
+    // just build an empty skeleton. This locks the create -> ingest -> read-back
+    // round-trip for both files AND a nested folder, including byte-identical
+    // decryption.
+    #[tokio::test]
+    async fn create_from_selection_ingests_files_and_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let password = "correcthorse";
+
+        // Build a source selection on disk: two top-level files + a folder that
+        // itself holds a file (to exercise directory recursion).
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        let file_a = src.join("alpha.txt");
+        let file_b = src.join("beta.bin");
+        let bytes_a = b"hello cryptomator round-trip".to_vec();
+        let bytes_b: Vec<u8> = (0u8..=255).cycle().take(5000).collect(); // binary content
+        fs::write(&file_a, &bytes_a).unwrap();
+        fs::write(&file_b, &bytes_b).unwrap();
+        let sub = src.join("nested");
+        fs::create_dir_all(&sub).unwrap();
+        let file_c = sub.join("gamma.txt");
+        let bytes_c = b"deep inside a subfolder".to_vec();
+        fs::write(&file_c, &bytes_c).unwrap();
+
+        // Create the vault skeleton, then ingest the selection into root (dir_id "").
+        // When AERO_VAULT_OUT is set, build it there (persisted) so an INDEPENDENT
+        // reader (real Cryptomator / cryptomator-cli) can open it for the
+        // cross-implementation proof; otherwise inside the auto-deleted tempdir.
+        let vault_root = match std::env::var("AERO_VAULT_OUT") {
+            Ok(p) => {
+                fs::create_dir_all(&p).unwrap();
+                Path::new(&p).join("MyVault")
+            }
+            Err(_) => tmp.path().join("MyVault"),
+        };
+        cryptomator_create(
+            vault_root.to_string_lossy().to_string(),
+            password.to_string(),
+        )
+        .await
+        .expect("vault creation");
+
+        let (vault, _config) =
+            unlock_vault_inner(&vault_root, password).expect("unlock from vault root");
+
+        let mut report = CryptomatorIngestReport::default();
+        for p in [&file_a, &file_b, &sub] {
+            ingest_path_inner(&vault, "", p, &mut report);
+        }
+        assert!(
+            report.skipped.is_empty(),
+            "unexpected skips: {:?}",
+            report.skipped
+        );
+        // files is a recursive total: alpha.txt + beta.bin + nested/gamma.txt.
+        assert_eq!(report.files, 3, "all three files ingested (incl. nested)");
+        assert_eq!(report.dirs, 1, "one folder ingested");
+
+        // Read the vault root back: it must contain exactly alpha.txt, beta.bin,
+        // and the nested/ folder (NOT empty).
+        let root = list_dir_inner(&vault, "").expect("list root");
+        let mut names: Vec<String> = root.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, vec!["alpha.txt", "beta.bin", "nested"]);
+
+        // Decrypt the two root files and assert byte-identical to the originals.
+        for (entry_name, expected) in [("alpha.txt", &bytes_a), ("beta.bin", &bytes_b)] {
+            let out = tmp.path().join(format!("out-{entry_name}"));
+            decrypt_file_inner(&vault, "", entry_name, &out).expect("decrypt root file");
+            assert_eq!(
+                &fs::read(&out).unwrap(),
+                expected,
+                "{entry_name} round-trip"
+            );
+        }
+
+        // Recurse into the nested folder via its child dir_id and decrypt gamma.txt.
+        let nested = root
+            .iter()
+            .find(|e| e.name == "nested")
+            .expect("nested dir entry");
+        assert!(nested.is_dir);
+        let child_dir_id = nested.dir_id.clone().expect("nested dir_id");
+        let children = list_dir_inner(&vault, &child_dir_id).expect("list nested");
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].name, "gamma.txt");
+        let out_c = tmp.path().join("out-gamma.txt");
+        decrypt_file_inner(&vault, &child_dir_id, "gamma.txt", &out_c)
+            .expect("decrypt nested file");
+        assert_eq!(fs::read(&out_c).unwrap(), bytes_c, "gamma.txt round-trip");
+
+        // Optional: persist originals + decrypted outputs for external sha256
+        // verification (the "verifiable tests executed" evidence for #322).
+        // Enabled only when AERO_E2E_DIR is set, so normal CI runs stay clean.
+        if let Ok(dir) = std::env::var("AERO_E2E_DIR") {
+            let d = Path::new(&dir);
+            fs::create_dir_all(d).unwrap();
+            for (orig, dec, label) in [
+                (&file_a, &tmp.path().join("out-alpha.txt"), "alpha.txt"),
+                (&file_b, &tmp.path().join("out-beta.bin"), "beta.bin"),
+                (&file_c, &out_c, "gamma.txt"),
+            ] {
+                fs::copy(orig, d.join(format!("orig-{label}"))).unwrap();
+                fs::copy(dec, d.join(format!("dec-{label}"))).unwrap();
+            }
+        }
+    }
+
+    // Reverse cross-implementation harness for #322: read a vault that an
+    // INDEPENDENT Cryptomator implementation wrote. Gated on AERO_READ_VAULT
+    // (vault dir), AERO_READ_PW (password) and AERO_READ_DUMP (output dir); a
+    // no-op in normal CI. Recursively decrypts every file so the caller can
+    // sha256-compare against the originals.
+    #[tokio::test]
+    async fn read_external_vault_dump() {
+        let (vault_path, pw, dump) = match (
+            std::env::var("AERO_READ_VAULT"),
+            std::env::var("AERO_READ_PW"),
+            std::env::var("AERO_READ_DUMP"),
+        ) {
+            (Ok(v), Ok(p), Ok(d)) => (v, p, d),
+            _ => return, // not requested
+        };
+
+        let (vault, _c) = unlock_vault_inner(Path::new(&vault_path), &pw).expect("unlock external");
+
+        fn walk(vault: &UnlockedVault, dir_id: &str, rel: &Path, out: &Path) {
+            for e in list_dir_inner(vault, dir_id).expect("list") {
+                if e.is_dir {
+                    let child = e.dir_id.clone().unwrap();
+                    walk(vault, &child, &rel.join(&e.name), out);
+                } else {
+                    let dest = out.join(rel).join(&e.name);
+                    fs::create_dir_all(dest.parent().unwrap()).unwrap();
+                    decrypt_file_inner(vault, dir_id, &e.name, &dest).expect("decrypt external");
+                }
+            }
+        }
+        fs::create_dir_all(&dump).unwrap();
+        walk(&vault, "", Path::new(""), Path::new(&dump));
+    }
+
+    // Edge-case sweep for #322: exercises the limit conditions the GUI flow can
+    // hit (empty file, unicode/spaced names, multi-level nesting, empty folder,
+    // symlink, overlong name) and proves the ingest neither panics nor silently
+    // drops items, and that every encrypted file decrypts byte-identically.
+    #[tokio::test]
+    async fn ingest_edge_cases_roundtrip_and_skip_reporting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let password = "correcthorse";
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        // (1) empty file
+        let empty = src.join("empty.txt");
+        fs::write(&empty, b"").unwrap();
+        // (2) unicode + spaces in the name
+        let uni = src.join("caffè è bello 日本語.dat");
+        let uni_bytes = "naïve ☕ 🚀 содержимое".as_bytes().to_vec();
+        fs::write(&uni, &uni_bytes).unwrap();
+        // (3) multi-level nesting a/b/deep.txt + a sibling file
+        let a = src.join("a");
+        let ab = a.join("b");
+        fs::create_dir_all(&ab).unwrap();
+        let deep = ab.join("deep.txt");
+        let deep_bytes = b"two levels down".to_vec();
+        fs::write(&deep, &deep_bytes).unwrap();
+        fs::write(a.join("top.txt"), b"top of a").unwrap();
+        // (4) empty folder
+        let emptydir = src.join("emptydir");
+        fs::create_dir_all(&emptydir).unwrap();
+        // (5) symlink (must be skipped, not followed)
+        let link = src.join("link.txt");
+        std::os::unix::fs::symlink(&deep, &link).unwrap();
+        // (6) overlong filename: encrypted name blows past the 255-byte path
+        //     limit, so File::create fails and it is reported as skipped, never
+        //     a panic and never a silent drop.
+        let overlong = src.join(format!("{}.txt", "x".repeat(250)));
+        fs::write(&overlong, b"too long to store").unwrap();
+
+        let vault_root = tmp.path().join("EdgeVault");
+        cryptomator_create(
+            vault_root.to_string_lossy().to_string(),
+            password.to_string(),
+        )
+        .await
+        .expect("vault creation");
+        let (vault, _c) = unlock_vault_inner(&vault_root, password).expect("unlock");
+
+        let mut report = CryptomatorIngestReport::default();
+        for p in [&empty, &uni, &a, &emptydir, &link, &overlong] {
+            ingest_path_inner(&vault, "", p, &mut report);
+        }
+
+        // The symlink and the overlong file are the only skips, each with a reason.
+        assert_eq!(report.skipped.len(), 2, "skips: {:?}", report.skipped);
+        assert!(report.skipped.iter().any(|s| s.contains("symlink")));
+        assert!(report.skipped.iter().any(|s| s.contains(&"x".repeat(10)))); // the overlong entry
+                                                                             // Folders ingested: a, a/b, emptydir = 3. Files: empty, uni, deep, top = 4.
+        assert_eq!(report.dirs, 3, "dirs");
+        assert_eq!(report.files, 4, "files");
+
+        // Root listing: empty.txt, the unicode file, folder a, folder emptydir.
+        let mut root: Vec<String> = list_dir_inner(&vault, "")
+            .unwrap()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        root.sort();
+        assert_eq!(
+            root,
+            vec!["a", "caffè è bello 日本語.dat", "empty.txt", "emptydir"]
+        );
+
+        // Empty file round-trips to zero bytes.
+        let out_empty = tmp.path().join("o-empty");
+        decrypt_file_inner(&vault, "", "empty.txt", &out_empty).expect("decrypt empty");
+        assert!(
+            fs::read(&out_empty).unwrap().is_empty(),
+            "empty stays empty"
+        );
+
+        // Unicode-named file round-trips byte-identically.
+        let out_uni = tmp.path().join("o-uni");
+        decrypt_file_inner(&vault, "", "caffè è bello 日本語.dat", &out_uni)
+            .expect("decrypt unicode");
+        assert_eq!(fs::read(&out_uni).unwrap(), uni_bytes, "unicode round-trip");
+
+        // The empty folder exists in the vault and lists as empty.
+        let entries = list_dir_inner(&vault, "").unwrap();
+        let edir = entries.iter().find(|e| e.name == "emptydir").unwrap();
+        assert!(edir.is_dir);
+        let edir_id = edir.dir_id.clone().unwrap();
+        assert!(list_dir_inner(&vault, &edir_id).unwrap().is_empty());
+
+        // Drill two levels: a -> b -> deep.txt, byte-identical.
+        let a_entry = entries.iter().find(|e| e.name == "a").unwrap();
+        let a_id = a_entry.dir_id.clone().unwrap();
+        let a_children = list_dir_inner(&vault, &a_id).unwrap();
+        let b_entry = a_children.iter().find(|e| e.name == "b").unwrap();
+        let b_id = b_entry.dir_id.clone().unwrap();
+        let out_deep = tmp.path().join("o-deep");
+        decrypt_file_inner(&vault, &b_id, "deep.txt", &out_deep).expect("decrypt deep");
+        assert_eq!(fs::read(&out_deep).unwrap(), deep_bytes, "deep round-trip");
+
+        // The overlong file must NOT have leaked into the vault root.
+        assert!(!entries.iter().any(|e| e.name.starts_with("xxxx")));
     }
 }

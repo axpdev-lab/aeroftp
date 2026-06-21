@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 tegn",
       "passwordMismatch": "Adgangskoderne stemmer ikke overens",
       "repeatPassword": "Gentag adgangskode",
-      "vaultName": "Boksnavn"
+      "vaultName": "Boksnavn",
+      "done": "Færdig",
+      "encryptingSelection": "Krypterer valgte elementer...",
+      "ingestSkipped": "Boksen blev oprettet, men nogle elementer kunne ikke tilføjes:",
+      "selectionInfo": "{count} element(er) vil blive krypteret i boksen"
     },
     "compress": {
       "title": "Komprimer filer",

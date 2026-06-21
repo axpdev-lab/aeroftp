@@ -2891,7 +2891,11 @@
       "minPassword": "Minst 8 tecken",
       "passwordMismatch": "Lösenorden matchar inte",
       "repeatPassword": "Upprepa lösenord",
-      "vaultName": "Valvnamn"
+      "vaultName": "Valvnamn",
+      "done": "Klar",
+      "encryptingSelection": "Krypterar valda objekt...",
+      "ingestSkipped": "Valvet skapades, men vissa objekt kunde inte läggas till:",
+      "selectionInfo": "{count} objekt kommer att krypteras till valvet"
     },
     "compress": {
       "title": "Komprimera filer",

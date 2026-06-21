@@ -2891,7 +2891,11 @@
       "minPassword": "Mínim 8 caràcters",
       "passwordMismatch": "Les contrasenyes no coincideixen",
       "repeatPassword": "Repeteix la contrasenya",
-      "vaultName": "Nom de la caixa forta"
+      "vaultName": "Nom de la caixa forta",
+      "done": "Fet",
+      "encryptingSelection": "S'estan xifrant els elements seleccionats...",
+      "ingestSkipped": "S'ha creat la caixa forta, però alguns elements no s'han pogut afegir:",
+      "selectionInfo": "{count} element(s) es xifraran a la caixa forta"
     },
     "compress": {
       "title": "Comprimir fitxers",

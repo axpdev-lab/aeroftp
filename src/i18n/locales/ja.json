@@ -2856,7 +2856,11 @@
       "minPassword": "最低8文字",
       "passwordMismatch": "パスワードが一致しません",
       "repeatPassword": "パスワードを再入力",
-      "vaultName": "ヴォルト名"
+      "vaultName": "ヴォルト名",
+      "done": "完了",
+      "encryptingSelection": "選択した項目を暗号化しています...",
+      "ingestSkipped": "ボルトを作成しましたが、一部の項目を追加できませんでした:",
+      "selectionInfo": "{count} 個の項目がボルトに暗号化されます"
     },
     "compress": {
       "title": "ファイルを圧縮",

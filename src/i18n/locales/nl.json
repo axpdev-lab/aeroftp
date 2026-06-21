@@ -2891,7 +2891,11 @@
       "minPassword": "Minimaal 8 tekens",
       "passwordMismatch": "Wachtwoorden komen niet overeen",
       "repeatPassword": "Wachtwoord herhalen",
-      "vaultName": "Kluisnaam"
+      "vaultName": "Kluisnaam",
+      "done": "Klaar",
+      "encryptingSelection": "Geselecteerde items worden versleuteld...",
+      "ingestSkipped": "Kluis aangemaakt, maar sommige items konden niet worden toegevoegd:",
+      "selectionInfo": "{count} item(s) worden versleuteld in de kluis"
     },
     "compress": {
       "title": "Bestanden comprimeren",

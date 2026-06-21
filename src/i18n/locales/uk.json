@@ -2891,7 +2891,11 @@
       "minPassword": "Мінімум 8 символів",
       "passwordMismatch": "Паролі не збігаються",
       "repeatPassword": "Повторіть пароль",
-      "vaultName": "Назва сейфу"
+      "vaultName": "Назва сейфу",
+      "done": "Готово",
+      "encryptingSelection": "Шифрування вибраних елементів...",
+      "ingestSkipped": "Сховище створено, але деякі елементи не вдалося додати:",
+      "selectionInfo": "{count} елемент(ів) буде зашифровано у сховище"
     },
     "compress": {
       "title": "Стиснути файли",

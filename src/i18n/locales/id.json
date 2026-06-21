@@ -2891,7 +2891,11 @@
       "minPassword": "Minimum 8 karakter",
       "passwordMismatch": "Sandi tidak cocok",
       "repeatPassword": "Ulangi sandi",
-      "vaultName": "Nama Brankas"
+      "vaultName": "Nama Brankas",
+      "done": "Selesai",
+      "encryptingSelection": "Mengenkripsi item yang dipilih...",
+      "ingestSkipped": "Brankas dibuat, tetapi beberapa item tidak dapat ditambahkan:",
+      "selectionInfo": "{count} item akan dienkripsi ke dalam brankas"
     },
     "compress": {
       "title": "Kompres File",

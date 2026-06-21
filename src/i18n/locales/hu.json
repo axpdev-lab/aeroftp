@@ -2891,7 +2891,11 @@
       "minPassword": "Legalább 8 karakter",
       "passwordMismatch": "A jelszavak nem egyeznek",
       "repeatPassword": "Jelszó ismétlése",
-      "vaultName": "Tár neve"
+      "vaultName": "Tár neve",
+      "done": "Kész",
+      "encryptingSelection": "Kijelölt elemek titkosítása...",
+      "ingestSkipped": "A széf létrejött, de néhány elemet nem sikerült hozzáadni:",
+      "selectionInfo": "{count} elem titkosítva lesz a széfbe"
     },
     "compress": {
       "title": "Fájlok tömörítése",

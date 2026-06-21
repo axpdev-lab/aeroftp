@@ -2891,7 +2891,11 @@
       "minPassword": "Gutxienez 8 karaktere",
       "passwordMismatch": "Pasahitzak ez datoz bat",
       "repeatPassword": "Errepikatu pasahitza",
-      "vaultName": "Gangela izena"
+      "vaultName": "Gangela izena",
+      "done": "Eginda",
+      "encryptingSelection": "Hautatutako elementuak enkriptatzen...",
+      "ingestSkipped": "Kutxa gotorra sortu da, baina elementu batzuk ezin izan dira gehitu:",
+      "selectionInfo": "{count} elementu enkriptatuko dira kutxa gotorrean"
     },
     "compress": {
       "title": "Konprimitu fitxategiak",

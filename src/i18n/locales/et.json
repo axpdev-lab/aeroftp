@@ -2891,7 +2891,11 @@
       "minPassword": "Vähemalt 8 tähemärki",
       "passwordMismatch": "Paroolid ei ühti",
       "repeatPassword": "Korda parooli",
-      "vaultName": "Holvuse nimi"
+      "vaultName": "Holvuse nimi",
+      "done": "Valmis",
+      "encryptingSelection": "Valitud üksuste krüpteerimine...",
+      "ingestSkipped": "Hoidla loodi, kuid mõnda üksust ei õnnestunud lisada:",
+      "selectionInfo": "{count} üksust krüpteeritakse hoidlasse"
     },
     "compress": {
       "title": "Paki failid",
