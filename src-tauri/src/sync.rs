@@ -2862,6 +2862,15 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     {
         // 550 can be either permission or not-found; prefer permission if already matched
         (SyncErrorKind::PathNotFound, false)
+    } else if lower.contains("invalid path")
+        || lower.contains("not a writable file")
+        || lower.contains("parent directory is missing")
+        || lower.contains("parent directory does not exist")
+    {
+        // A WebDAV PUT to a missing-parent or directory target (Koofr returns
+        // 404 here, others 409, see webdav::upload_failure_error). Deterministic:
+        // the same file can never land at that path, so retrying is pointless.
+        (SyncErrorKind::PathNotFound, false)
     } else if lower.contains("auth")
         || lower.contains("login")
         || lower.contains("credential")
@@ -4878,6 +4887,20 @@ mod tests {
             Some("/big.bin"),
         );
         assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_webdav_invalid_upload_target() {
+        // The Koofr 404 / 409 upload error reaches the executor as a string;
+        // it must classify as non-retryable so a sync does not loop on a file
+        // that can never land at that path.
+        let err = classify_sync_error(
+            "Invalid path: Upload target is not a writable file: the parent directory is \
+             missing or the path is a directory",
+            Some("/koofr/x.bin"),
+        );
+        assert_eq!(err.kind, SyncErrorKind::PathNotFound);
         assert!(!err.retryable);
     }
 
