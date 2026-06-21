@@ -7484,11 +7484,12 @@ pub struct UsedScanProgress {
 }
 
 /// Explicit recursive "used storage" scan for the connected provider
-/// (item 4b). Shares `used_scan::scan_used_bytes` with the CLI so the
-/// method (S3 flat listing, WebDAV Depth:infinity, generic BFS) and caps
-/// are identical. NEVER called automatically: the GUI "Calculate used
-/// storage" action invokes it. Persisting the figure into the profile's
-/// lastQuota is done frontend-side (same path as the cached API quota).
+/// (item 4b). Shares the S3/WebDAV fast-path fallback semantics with
+/// `used_scan`, but keeps the GUI BFS inline so it can re-lock the
+/// provider per directory. NEVER called automatically: the GUI "Calculate
+/// used storage" action invokes it. Persisting the figure into the
+/// profile's lastQuota is done frontend-side (same path as the cached API
+/// quota).
 #[tauri::command]
 pub async fn provider_scan_used(
     state: State<'_, ProviderState>,
@@ -7517,27 +7518,23 @@ pub async fn provider_scan_used(
     };
 
     // --- Single-shot specializations (one short lock each) -------------
-    // S3: flat ListObjectsV2; WebDAV: PROPFIND Depth:infinity. These are a
-    // single request, so holding the lock briefly does not freeze the UI.
+    // S3: flat ListObjectsV2; WebDAV: PROPFIND Depth:infinity. The shared
+    // helper treats any fast-path failure, and empty/non-recursed WebDAV
+    // responses, as a miss so we fall through to the per-directory BFS.
     {
         let mut guard = state.provider.lock().await;
         let provider = guard
             .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-        if let Some(s3) = provider
-            .as_any_mut()
-            .downcast_mut::<crate::providers::S3Provider>()
+        if let Some(fast) =
+            crate::used_scan::provider_list_recursive_fastpath(provider, &root).await
         {
-            let entries = s3
-                .list_recursive(&root)
-                .await
-                .map_err(|e| format!("Used-storage scan failed: {}", e))?;
             let mut used = 0u64;
             let mut files = 0u64;
             let mut dirs = 0u64;
             let mut truncated = false;
-            for e in entries {
+            for e in fast.entries {
                 if e.is_dir {
                     dirs += 1;
                     continue;
@@ -7555,50 +7552,8 @@ pub async fn provider_scan_used(
                 file_count: files,
                 dir_count: dirs,
                 truncated,
-                method: "s3-list-recursive".to_string(),
+                method: fast.method.to_string(),
             });
-        }
-
-        if let Some(dav) = provider
-            .as_any_mut()
-            .downcast_mut::<crate::providers::WebDavProvider>()
-        {
-            if let Ok(entries) = dav.list_recursive(&root).await {
-                let mut used = 0u64;
-                let mut files = 0u64;
-                let mut dirs = 0u64;
-                let mut truncated = false;
-                for e in entries {
-                    if e.is_dir {
-                        dirs += 1;
-                        continue;
-                    }
-                    if files >= MAX_ENTRIES {
-                        truncated = true;
-                        break;
-                    }
-                    used = used.saturating_add(e.size);
-                    files += 1;
-                }
-                // Some servers (CloudMe, DriveHQ, jianguoyun) answer 207 to
-                // Depth:infinity without recursing (only the requested
-                // collection, maybe its immediate subdirs), so files==0
-                // even though the tree has files. Trust infinity ONLY when
-                // it actually found files; otherwise fall through to the
-                // per-directory BFS, which returns the true figure (a
-                // genuinely file-less tree also yields 0 via BFS).
-                if files > 0 {
-                    emit_progress(files, used, false);
-                    return Ok(UsedScanResult {
-                        used,
-                        file_count: files,
-                        dir_count: dirs,
-                        truncated,
-                        method: "webdav-infinity".to_string(),
-                    });
-                }
-            }
-            // infinity rejected/limited/non-recursive: fall through to BFS.
         }
     }
 
