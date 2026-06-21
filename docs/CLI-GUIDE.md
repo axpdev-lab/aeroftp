@@ -1821,6 +1821,8 @@ Notes on honesty of the matrix:
 - **SFTP** reports a single-lease provider-generic profile by design (the shared SFTP pool is not the provider-generic path). SFTP-specific acceleration is still available and is documented separately: byte-level delta via [`--delta`](#get---download-files) and segmented single-file download via [`pget`](#pget---segmented-parallel-download).
 - The discovery surfaces report `source: "profile_defaults"` (`agent-info` per-profile) or `source: "protocol_defaults"` (`agent-info` `protocol_transfer_capabilities`, `agent-connect` discovery path). Only a real connection upgrades a block to `source: "live_provider"`, which can differ from the defaults above when a specific server exposes more or fewer primitives.
 
+Per-file size limits are intentionally not a column here. A maximum single-file size is a provider plan or account policy, not a transfer-scheduler capability, so it is not part of the generated `TransferCapabilities` block this table is built from. For those limits see [wrapper-stack: Free-tier max single file](architecture/wrapper-stack.md#chunking-in-depth) (the largest single file a provider's free plan accepts, which AeroFTP's chunking is built to bypass) and [PROVIDER-INTEGRATION-GUIDE: Upload Pattern Summary](PROVIDER-INTEGRATION-GUIDE.md#upload-pattern-summary) (the API single-request ceiling before a chunked upload strategy is needed).
+
 ---
 
 ## JSON Output

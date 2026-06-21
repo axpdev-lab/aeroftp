@@ -927,6 +927,17 @@ if file_size <= RESUMABLE_THRESHOLD {
 | Filen | Unlimited | Encrypt + single PUT per chunk | 1 MB |
 | OpenDrive | Unlimited | `create_file` → `open_file_upload` → `upload_file_chunk2` → `close_file_upload` | Provider-defined single/few chunks |
 
+> **What "Simple Upload Limit" means here:** the largest file a provider's
+> simple (single-request, non-chunked) upload API accepts before the "Large File
+> Strategy" column kicks in. It is an API and protocol ceiling, not an account
+> quota. This is a different metric from the free-plan per-file caps in
+> [wrapper-stack: Chunking in depth](architecture/wrapper-stack.md#chunking-in-depth).
+> For example, OpenDrive is "Unlimited" here because every upload runs as a
+> chunked `create_file` to `close_file_upload` session with no documented
+> single-request cap, while its free plan separately caps a single stored file
+> (see that table). A file can clear the protocol ceiling yet still exceed a
+> free-plan cap; the two limits are independent.
+
 ---
 
 ## 5. Download Patterns
