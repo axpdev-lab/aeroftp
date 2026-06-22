@@ -150,6 +150,14 @@ struct AerovzListReport {
 }
 
 pub(crate) fn cmd_archive(command: &ArchiveCommands, cli: &Cli, format: OutputFormat) -> i32 {
+    // The plaintext lane never consumes a password from ANY source. The
+    // per-subcommand `--password` is caught by reject_password below; the
+    // GLOBAL `--password-stdin` flag would otherwise be silently ignored and
+    // leave the user believing the archive was encrypted, so reject it here
+    // too (same message + config exit code as the inline flag).
+    if cli.password_stdin {
+        return fail(format, PASSWORD_REJECTED_MSG, 5);
+    }
     let result = match command {
         ArchiveCommands::Create {
             output,
@@ -254,7 +262,23 @@ pub(crate) fn cmd_archive(command: &ArchiveCommands, cli: &Cli, format: OutputFo
             }
             0
         }
-        Err(e) => fail(format, &e, 1),
+        Err(e) => fail(format, &e, archive_exit_code(&e)),
+    }
+}
+
+/// Map an archive-lane error string to the CLI's structured exit-code contract
+/// (see `docs/CLI-GUIDE.md`): not-found -> 2, already-exists / refuse-overwrite
+/// -> 9, everything else -> 1. The lane surfaces `String` errors rather than a
+/// typed `ProviderError`, so this matches on the stable message fragments the
+/// lane itself emits (`No such file or directory`, `Refusing to overwrite`).
+fn archive_exit_code(msg: &str) -> i32 {
+    let m = msg.to_ascii_lowercase();
+    if m.contains("no such file") || m.contains("not readable") || m.contains("not found") {
+        2
+    } else if m.contains("refusing to overwrite") || m.contains("already exists") {
+        9
+    } else {
+        1
     }
 }
 
@@ -563,9 +587,14 @@ fn v3_plaintext_flag(path: &Path) -> Result<Option<bool>, String> {
     ))
 }
 
+/// Refusal message shared by every password entry point on the plaintext lane
+/// (the per-subcommand `--password` and the global `--password-stdin`).
+const PASSWORD_REJECTED_MSG: &str =
+    ".aerozip is an unencrypted lane and has no password; use `.aerovault` if you need confidentiality.";
+
 fn reject_password(password: &Option<String>) -> Result<(), String> {
     if password.is_some() {
-        Err(".aerozip is an unencrypted lane and has no password; use `.aerovault` if you need confidentiality.".to_string())
+        Err(PASSWORD_REJECTED_MSG.to_string())
     } else {
         Ok(())
     }
@@ -662,6 +691,23 @@ mod tests {
     fn password_is_rejected_for_plaintext_lane() {
         let err = reject_password(&Some("secret".to_string())).unwrap_err();
         assert!(err.contains("unencrypted lane"));
+    }
+
+    #[test]
+    fn archive_exit_code_follows_structured_contract() {
+        // Not-found family -> 2
+        assert_eq!(
+            archive_exit_code("Archive input not readable '/x': No such file or directory (os error 2)"),
+            2
+        );
+        assert_eq!(archive_exit_code("Open archive: No such file or directory (os error 2)"), 2);
+        // Already-exists / refuse-overwrite -> 9
+        assert_eq!(
+            archive_exit_code("Refusing to overwrite existing .aerozip archive: /x.aerozip"),
+            9
+        );
+        // Anything else -> generic 1
+        assert_eq!(archive_exit_code("Cipher block hash mismatch for chunk abc"), 1);
     }
 
     #[test]
