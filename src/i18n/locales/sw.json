@@ -2891,7 +2891,8 @@
             "openingZip": "Inafungua AeroVault Zip…",
             "encryptedBadge": "Imesimbwa",
             "notEncryptedBadge": "Haijasimbwa",
-            "encryptedTooltip": "Imesimbwa kwa AES-256. Maudhui na majina ya faili ni siri; nenosiri linahitajika kufungua."
+            "encryptedTooltip": "Imesimbwa kwa AES-256. Maudhui na majina ya faili ni siri; nenosiri linahitajika kufungua.",
+            "resetDefaults": "Rejesha chaguo-msingi"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

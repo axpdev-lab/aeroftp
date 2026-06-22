@@ -2891,7 +2891,8 @@
             "openingZip": "Atver AeroVault Zip…",
             "encryptedBadge": "Šifrēts",
             "notEncryptedBadge": "Nešifrēts",
-            "encryptedTooltip": "Šifrēts ar AES-256. Saturs un failu nosaukumi ir konfidenciāli; lai atvērtu, nepieciešama parole."
+            "encryptedTooltip": "Šifrēts ar AES-256. Saturs un failu nosaukumi ir konfidenciāli; lai atvērtu, nepieciešama parole.",
+            "resetDefaults": "Atiestatīt noklusējumu"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

@@ -2891,7 +2891,8 @@
             "openingZip": "正在打开 AeroVault Zip…",
             "encryptedBadge": "已加密",
             "notEncryptedBadge": "未加密",
-            "encryptedTooltip": "使用 AES-256 加密。内容和文件名均为机密，打开需要密码。"
+            "encryptedTooltip": "使用 AES-256 加密。内容和文件名均为机密，打开需要密码。",
+            "resetDefaults": "重置为默认"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

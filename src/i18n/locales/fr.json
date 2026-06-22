@@ -2891,7 +2891,8 @@
             "openingZip": "Ouverture d'AeroVault Zip…",
             "encryptedBadge": "Chiffré",
             "notEncryptedBadge": "Non chiffré",
-            "encryptedTooltip": "Chiffré avec AES-256. Le contenu et les noms de fichiers sont confidentiels ; le mot de passe est requis pour ouvrir."
+            "encryptedTooltip": "Chiffré avec AES-256. Le contenu et les noms de fichiers sont confidentiels ; le mot de passe est requis pour ouvrir.",
+            "resetDefaults": "Réinitialiser"
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

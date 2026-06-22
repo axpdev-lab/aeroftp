@@ -2891,7 +2891,8 @@
             "openingZip": "Odpiranje AeroVault Zip…",
             "encryptedBadge": "Šifrirano",
             "notEncryptedBadge": "Nešifrirano",
-            "encryptedTooltip": "Šifrirano z AES-256. Vsebina in imena datotek so zaupni; za odpiranje je potrebno geslo."
+            "encryptedTooltip": "Šifrirano z AES-256. Vsebina in imena datotek so zaupni; za odpiranje je potrebno geslo.",
+            "resetDefaults": "Ponastavi na privzeto"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip 여는 중…",
             "encryptedBadge": "암호화됨",
             "notEncryptedBadge": "암호화 안 됨",
-            "encryptedTooltip": "AES-256으로 암호화됨. 내용과 파일 이름은 기밀이며 열려면 비밀번호가 필요합니다."
+            "encryptedTooltip": "AES-256으로 암호화됨. 내용과 파일 이름은 기밀이며 열려면 비밀번호가 필요합니다.",
+            "resetDefaults": "기본값으로 재설정"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",

@@ -2891,7 +2891,8 @@
             "openingZip": "Opnar AeroVault Zip…",
             "encryptedBadge": "Dulkóðað",
             "notEncryptedBadge": "Ódulkóðað",
-            "encryptedTooltip": "Dulkóðað með AES-256. Innihald og skráarnöfn eru trúnaðarmál; lykilorð þarf til að opna."
+            "encryptedTooltip": "Dulkóðað með AES-256. Innihald og skráarnöfn eru trúnaðarmál; lykilorð þarf til að opna.",
+            "resetDefaults": "Endurstilla á sjálfgefið"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

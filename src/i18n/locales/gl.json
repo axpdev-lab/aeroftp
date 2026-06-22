@@ -2891,7 +2891,8 @@
             "openingZip": "Abrindo AeroVault Zip…",
             "encryptedBadge": "Cifrado",
             "notEncryptedBadge": "Sen cifrar",
-            "encryptedTooltip": "Cifrado con AES-256. O contido e os nomes de ficheiro son confidenciais; é necesario o contrasinal para abrir."
+            "encryptedTooltip": "Cifrado con AES-256. O contido e os nomes de ficheiro son confidenciais; é necesario o contrasinal para abrir.",
+            "resetDefaults": "Restablecer predefinidos"
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

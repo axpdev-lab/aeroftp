@@ -2891,7 +2891,8 @@
             "openingZip": "Åpner AeroVault Zip…",
             "encryptedBadge": "Kryptert",
             "notEncryptedBadge": "Ikke kryptert",
-            "encryptedTooltip": "Kryptert med AES-256. Innhold og filnavn er konfidensielle; passord kreves for å åpne."
+            "encryptedTooltip": "Kryptert med AES-256. Innhold og filnavn er konfidensielle; passord kreves for å åpne.",
+            "resetDefaults": "Tilbakestill til standard"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",

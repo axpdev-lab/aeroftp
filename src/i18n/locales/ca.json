@@ -2891,7 +2891,8 @@
             "openingZip": "S'està obrint AeroVault Zip…",
             "encryptedBadge": "Xifrat",
             "notEncryptedBadge": "Sense xifrar",
-            "encryptedTooltip": "Xifrat amb AES-256. El contingut i els noms de fitxer són confidencials; cal la contrasenya per obrir."
+            "encryptedTooltip": "Xifrat amb AES-256. El contingut i els noms de fitxer són confidencials; cal la contrasenya per obrir.",
+            "resetDefaults": "Restableix als valors"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

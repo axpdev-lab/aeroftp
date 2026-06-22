@@ -2891,7 +2891,8 @@
             "openingZip": "Đang mở AeroVault Zip…",
             "encryptedBadge": "Đã mã hóa",
             "notEncryptedBadge": "Chưa mã hóa",
-            "encryptedTooltip": "Mã hóa bằng AES-256. Nội dung và tên tệp được bảo mật; cần mật khẩu để mở."
+            "encryptedTooltip": "Mã hóa bằng AES-256. Nội dung và tên tệp được bảo mật; cần mật khẩu để mở.",
+            "resetDefaults": "Đặt lại mặc định"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

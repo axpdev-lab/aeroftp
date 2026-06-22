@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip avamine…",
             "encryptedBadge": "Krüpteeritud",
             "notEncryptedBadge": "Krüpteerimata",
-            "encryptedTooltip": "Krüpteeritud AES-256-ga. Sisu ja failinimed on konfidentsiaalsed; avamiseks on vaja parooli."
+            "encryptedTooltip": "Krüpteeritud AES-256-ga. Sisu ja failinimed on konfidentsiaalsed; avamiseks on vaja parooli.",
+            "resetDefaults": "Lähtesta vaikeväärtused"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

@@ -2891,7 +2891,8 @@
             "openingZip": "កំពុងបើក AeroVault Zip…",
             "encryptedBadge": "បានអ៊ីនគ្រីប",
             "notEncryptedBadge": "មិនបានអ៊ីនគ្រីប",
-            "encryptedTooltip": "អ៊ីនគ្រីបដោយ AES-256។ មាតិកា និងឈ្មោះឯកសារ​ជាការសម្ងាត់; ត្រូវការពាក្យសម្ងាត់ដើម្បីបើក។"
+            "encryptedTooltip": "អ៊ីនគ្រីបដោយ AES-256។ មាតិកា និងឈ្មោះឯកសារ​ជាការសម្ងាត់; ត្រូវការពាក្យសម្ងាត់ដើម្បីបើក។",
+            "resetDefaults": "កំណត់ឡើងវិញ​ជាលំនាំដើម"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",

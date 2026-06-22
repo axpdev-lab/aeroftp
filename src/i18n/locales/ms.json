@@ -2891,7 +2891,8 @@
             "openingZip": "Membuka AeroVault Zip…",
             "encryptedBadge": "Disulitkan",
             "notEncryptedBadge": "Tidak disulitkan",
-            "encryptedTooltip": "Disulitkan dengan AES-256. Kandungan dan nama fail adalah sulit; kata laluan diperlukan untuk membuka."
+            "encryptedTooltip": "Disulitkan dengan AES-256. Kandungan dan nama fail adalah sulit; kata laluan diperlukan untuk membuka.",
+            "resetDefaults": "Tetapkan semula lalai"
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

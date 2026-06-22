@@ -2891,7 +2891,8 @@
             "openingZip": "Открытие AeroVault Zip…",
             "encryptedBadge": "Зашифровано",
             "notEncryptedBadge": "Без шифрования",
-            "encryptedTooltip": "Зашифровано AES-256. Содержимое и имена файлов конфиденциальны; для открытия нужен пароль."
+            "encryptedTooltip": "Зашифровано AES-256. Содержимое и имена файлов конфиденциальны; для открытия нужен пароль.",
+            "resetDefaults": "Сбросить по умолчанию"
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",

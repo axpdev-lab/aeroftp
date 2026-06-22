@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip açılıyor…",
             "encryptedBadge": "Şifreli",
             "notEncryptedBadge": "Şifresiz",
-            "encryptedTooltip": "AES-256 ile şifreli. İçerik ve dosya adları gizlidir; açmak için parola gerekir."
+            "encryptedTooltip": "AES-256 ile şifreli. İçerik ve dosya adları gizlidir; açmak için parola gerekir.",
+            "resetDefaults": "Varsayılana sıfırla"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

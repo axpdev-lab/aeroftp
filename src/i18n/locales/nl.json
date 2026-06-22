@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip openen…",
             "encryptedBadge": "Versleuteld",
             "notEncryptedBadge": "Niet versleuteld",
-            "encryptedTooltip": "Versleuteld met AES-256. Inhoud en bestandsnamen zijn vertrouwelijk; het wachtwoord is vereist om te openen."
+            "encryptedTooltip": "Versleuteld met AES-256. Inhoud en bestandsnamen zijn vertrouwelijk; het wachtwoord is vereist om te openen.",
+            "resetDefaults": "Standaard herstellen"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

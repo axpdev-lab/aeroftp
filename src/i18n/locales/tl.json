@@ -2891,7 +2891,8 @@
             "openingZip": "Binubuksan ang AeroVault Zip…",
             "encryptedBadge": "Naka-encrypt",
             "notEncryptedBadge": "Hindi naka-encrypt",
-            "encryptedTooltip": "Naka-encrypt gamit ang AES-256. Kumpidensyal ang nilalaman at mga pangalan ng file; kailangan ng password para buksan."
+            "encryptedTooltip": "Naka-encrypt gamit ang AES-256. Kumpidensyal ang nilalaman at mga pangalan ng file; kailangan ng password para buksan.",
+            "resetDefaults": "I-reset sa default"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

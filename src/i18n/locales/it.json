@@ -3140,7 +3140,8 @@
             "openingZip": "Apertura AeroVault Zip…",
             "encryptedBadge": "Cifrato",
             "notEncryptedBadge": "Non cifrato",
-            "encryptedTooltip": "Cifrato con AES-256. Contenuti e nomi file sono riservati; serve la password per aprire."
+            "encryptedTooltip": "Cifrato con AES-256. Contenuti e nomi file sono riservati; serve la password per aprire.",
+            "resetDefaults": "Ripristina predefiniti"
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

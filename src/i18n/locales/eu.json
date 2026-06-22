@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip irekitzen…",
             "encryptedBadge": "Zifratuta",
             "notEncryptedBadge": "Zifratu gabe",
-            "encryptedTooltip": "AES-256 bidez zifratuta. Edukia eta fitxategi-izenak konfidentzialak dira; pasahitza behar da irekitzeko."
+            "encryptedTooltip": "AES-256 bidez zifratuta. Edukia eta fitxategi-izenak konfidentzialak dira; pasahitza behar da irekitzeko.",
+            "resetDefaults": "Berrezarri lehenetsia"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

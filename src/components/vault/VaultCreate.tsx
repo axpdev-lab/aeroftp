@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus, Lock, Unlock, RotateCcw } from 'lucide-react';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
@@ -39,6 +39,16 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     };
 
     const stagedCount = state.stagedFiles.length + state.stagedDirs.length;
+
+    // Restore every create-form control to its initial default.
+    const resetToDefaults = () => {
+        state.setSecurityLevel('advanced');
+        state.setCompressionProfile(isZip ? 'archive' : 'balanced');
+        state.setErrorCorrectionEnabled(false);
+        state.setRecoveryPlacement('embedded');
+        state.setErrorCorrectionPct(20);
+        state.setDescription('');
+    };
 
     return (
         <div className="p-4 flex flex-col gap-3">
@@ -125,7 +135,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                     onClick={() => state.setCompressionProfile(profile.id)}
                                     className={`rounded border px-3 py-2 text-left ${selected
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
                                 >
                                     <div className="text-sm font-medium">{profile.label}</div>
                                     <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
@@ -151,7 +161,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                     onClick={() => state.setErrorCorrectionPct(lvl.id)}
                                     className={`rounded border px-1.5 py-1 text-center ${selected
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
                                 >
                                     <div className="text-[11px] font-medium">{lvl.label}</div>
                                     <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
@@ -195,7 +205,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
             <div className="relative">
                 <button
                     onClick={() => state.setShowLevelDropdown(!state.showLevelDropdown)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded border ${securityLevels[state.securityLevel].borderColor} bg-gray-50 dark:bg-gray-800 text-left`}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded border ${securityLevels[state.securityLevel].borderColor} bg-gray-50 dark:bg-gray-800 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
                 >
                     <div className="flex items-center gap-2">
                         {React.createElement(securityLevels[state.securityLevel].icon, {
@@ -224,7 +234,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                 <button
                                     key={level}
                                     onClick={() => { state.setSecurityLevel(level); state.setShowLevelDropdown(false); }}
-                                    className={`w-full flex items-start gap-3 px-3 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-800 ${isSelected ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
+                                    className={`w-full flex items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'bg-gray-100 dark:bg-gray-700/60' : ''}`}
                                 >
                                     <Icon size={18} className={`mt-0.5 ${config.color}`} />
                                     <div className="flex-1">
@@ -260,7 +270,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                     onClick={() => state.setCompressionProfile(profile.id)}
                                     className={`rounded border px-3 py-2 text-left ${selected
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
                                 >
                                     <div className="text-sm font-medium">{profile.label}</div>
                                     <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
@@ -303,7 +313,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                             onClick={() => state.setRecoveryPlacement(p.id)}
                                             className={`rounded border px-2 py-1.5 text-left ${selected
                                                 ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
                                         >
                                             <div className="text-[12px] font-medium">{p.label}</div>
                                             <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.detail}</div>
@@ -334,7 +344,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                             onClick={() => state.setErrorCorrectionPct(lvl.id)}
                                             className={`rounded border px-1.5 py-1 text-center ${selected
                                                 ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
                                         >
                                             <div className="text-[11px] font-medium">{lvl.label}</div>
                                             <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
@@ -445,14 +455,20 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                 </div>
             )}
 
-            <div className="flex gap-2 justify-end mt-2">
-                <button onClick={() => state.setMode('home')} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                    {t('vault.cancel')}
+            <div className="flex gap-2 items-center mt-2">
+                <button onClick={resetToDefaults} disabled={state.loading}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50">
+                    <RotateCcw size={13} /> {t('vault.resetDefaults')}
                 </button>
-                <button onClick={state.handleCreate} disabled={state.loading} className={`flex items-center gap-2 px-4 py-1.5 ${isZip ? 'bg-amber-600' : securityLevels[state.securityLevel].bgColor} hover:opacity-90 rounded text-sm disabled:opacity-50`}>
-                    {state.loading && <Loader2 size={14} className="animate-spin" />}
-                    {isZip ? t('vault.createZip') : t('vault.create')}
-                </button>
+                <div className="flex gap-2 ml-auto">
+                    <button onClick={() => state.setMode('home')} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">
+                        {t('vault.cancel')}
+                    </button>
+                    <button onClick={state.handleCreate} disabled={state.loading} className={`flex items-center gap-2 px-4 py-1.5 ${isZip ? 'bg-amber-600' : securityLevels[state.securityLevel].bgColor} hover:opacity-90 rounded text-sm disabled:opacity-50 transition-opacity`}>
+                        {state.loading ? <Loader2 size={14} className="animate-spin" /> : (isZip ? <Unlock size={14} /> : <Lock size={14} />)}
+                        {t('vault.create')} {isZip ? '.aerozip' : '.aerovault'}
+                    </button>
+                </div>
             </div>
         </div>
     );

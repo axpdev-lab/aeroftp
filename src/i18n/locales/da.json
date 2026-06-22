@@ -2891,7 +2891,8 @@
             "openingZip": "Åbner AeroVault Zip…",
             "encryptedBadge": "Krypteret",
             "notEncryptedBadge": "Ikke krypteret",
-            "encryptedTooltip": "Krypteret med AES-256. Indhold og filnavne er fortrolige; adgangskode kræves for at åbne."
+            "encryptedTooltip": "Krypteret med AES-256. Indhold og filnavne er fortrolige; adgangskode kræves for at åbne.",
+            "resetDefaults": "Nulstil til standard"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",

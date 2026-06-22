@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip wird geöffnet…",
             "encryptedBadge": "Verschlüsselt",
             "notEncryptedBadge": "Unverschlüsselt",
-            "encryptedTooltip": "Mit AES-256 verschlüsselt. Inhalte und Dateinamen sind vertraulich; zum Öffnen ist das Passwort erforderlich."
+            "encryptedTooltip": "Mit AES-256 verschlüsselt. Inhalte und Dateinamen sind vertraulich; zum Öffnen ist das Passwort erforderlich.",
+            "resetDefaults": "Zurücksetzen"
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

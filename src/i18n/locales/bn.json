@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip খোলা হচ্ছে…",
             "encryptedBadge": "এনক্রিপ্টেড",
             "notEncryptedBadge": "এনক্রিপ্ট করা নেই",
-            "encryptedTooltip": "AES-256 দিয়ে এনক্রিপ্ট করা। বিষয়বস্তু ও ফাইলের নাম গোপনীয়; খুলতে পাসওয়ার্ড প্রয়োজন।"
+            "encryptedTooltip": "AES-256 দিয়ে এনক্রিপ্ট করা। বিষয়বস্তু ও ফাইলের নাম গোপনীয়; খুলতে পাসওয়ার্ড প্রয়োজন।",
+            "resetDefaults": "ডিফল্টে রিসেট করুন"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

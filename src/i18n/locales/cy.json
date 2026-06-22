@@ -2891,7 +2891,8 @@
             "openingZip": "Yn agor AeroVault Zip…",
             "encryptedBadge": "Wedi amgryptio",
             "notEncryptedBadge": "Heb amgryptio",
-            "encryptedTooltip": "Wedi amgryptio gydag AES-256. Mae cynnwys ac enwau ffeiliau yn gyfrinachol; mae angen cyfrinair i agor."
+            "encryptedTooltip": "Wedi amgryptio gydag AES-256. Mae cynnwys ac enwau ffeiliau yn gyfrinachol; mae angen cyfrinair i agor.",
+            "resetDefaults": "Ailosod i ddiofyn"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",

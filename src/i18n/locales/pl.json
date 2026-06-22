@@ -2891,7 +2891,8 @@
             "openingZip": "Otwieranie AeroVault Zip…",
             "encryptedBadge": "Zaszyfrowane",
             "notEncryptedBadge": "Niezaszyfrowane",
-            "encryptedTooltip": "Zaszyfrowane AES-256. Zawartość i nazwy plików są poufne; do otwarcia wymagane jest hasło."
+            "encryptedTooltip": "Zaszyfrowane AES-256. Zawartość i nazwy plików są poufne; do otwarcia wymagane jest hasło.",
+            "resetDefaults": "Przywróć domyślne"
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

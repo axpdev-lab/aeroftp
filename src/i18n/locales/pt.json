@@ -2891,7 +2891,8 @@
             "openingZip": "A abrir o AeroVault Zip…",
             "encryptedBadge": "Cifrado",
             "notEncryptedBadge": "Não cifrado",
-            "encryptedTooltip": "Cifrado com AES-256. Conteúdo e nomes de ficheiros são confidenciais; é necessária a palavra-passe para abrir."
+            "encryptedTooltip": "Cifrado com AES-256. Conteúdo e nomes de ficheiros são confidenciais; é necessária a palavra-passe para abrir.",
+            "resetDefaults": "Repor predefinições"
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

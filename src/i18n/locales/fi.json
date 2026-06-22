@@ -2891,7 +2891,8 @@
             "openingZip": "Avataan AeroVault Zip…",
             "encryptedBadge": "Salattu",
             "notEncryptedBadge": "Salaamaton",
-            "encryptedTooltip": "Salattu AES-256:lla. Sisältö ja tiedostonimet ovat luottamuksellisia; avaaminen vaatii salasanan."
+            "encryptedTooltip": "Salattu AES-256:lla. Sisältö ja tiedostonimet ovat luottamuksellisia; avaaminen vaatii salasanan.",
+            "resetDefaults": "Palauta oletukset"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

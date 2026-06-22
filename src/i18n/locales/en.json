@@ -4164,7 +4164,8 @@
             "openingZip": "Opening AeroVault Zip…",
             "encryptedBadge": "Encrypted",
             "notEncryptedBadge": "Not encrypted",
-            "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open."
+            "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open.",
+            "resetDefaults": "Reset to default"
         },
         "vaultSync": {
             "title": "Vault Sync",

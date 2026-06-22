@@ -2891,7 +2891,8 @@
             "openingZip": "Atveriama AeroVault Zip…",
             "encryptedBadge": "Užšifruota",
             "notEncryptedBadge": "Neužšifruota",
-            "encryptedTooltip": "Užšifruota AES-256. Turinys ir failų pavadinimai konfidencialūs; norint atidaryti reikia slaptažodžio."
+            "encryptedTooltip": "Užšifruota AES-256. Turinys ir failų pavadinimai konfidencialūs; norint atidaryti reikia slaptažodžio.",
+            "resetDefaults": "Atstatyti numatytuosius"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

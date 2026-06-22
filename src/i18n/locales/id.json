@@ -2891,7 +2891,8 @@
             "openingZip": "Membuka AeroVault Zip…",
             "encryptedBadge": "Terenkripsi",
             "notEncryptedBadge": "Tidak terenkripsi",
-            "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka."
+            "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka.",
+            "resetDefaults": "Atur ulang ke bawaan"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

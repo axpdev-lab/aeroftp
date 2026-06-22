@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip megnyitása…",
             "encryptedBadge": "Titkosított",
             "notEncryptedBadge": "Nem titkosított",
-            "encryptedTooltip": "AES-256 titkosítással. A tartalom és a fájlnevek bizalmasak; a megnyitáshoz jelszó szükséges."
+            "encryptedTooltip": "AES-256 titkosítással. A tartalom és a fájlnevek bizalmasak; a megnyitáshoz jelszó szükséges.",
+            "resetDefaults": "Alapértelmezett visszaállítása"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

@@ -2891,7 +2891,8 @@
             "openingZip": "Se deschide AeroVault Zip…",
             "encryptedBadge": "Criptat",
             "notEncryptedBadge": "Necriptat",
-            "encryptedTooltip": "Criptat cu AES-256. Conținutul și numele fișierelor sunt confidențiale; este necesară parola pentru deschidere."
+            "encryptedTooltip": "Criptat cu AES-256. Conținutul și numele fișierelor sunt confidențiale; este necesară parola pentru deschidere.",
+            "resetDefaults": "Resetează la implicit"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",

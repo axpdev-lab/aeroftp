@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip იხსნება…",
             "encryptedBadge": "დაშიფრული",
             "notEncryptedBadge": "დაუშიფრავი",
-            "encryptedTooltip": "დაშიფრულია AES-256-ით. შინაარსი და ფაილების სახელები კონფიდენციალურია; გასახსნელად საჭიროა პაროლი."
+            "encryptedTooltip": "დაშიფრულია AES-256-ით. შინაარსი და ფაილების სახელები კონფიდენციალურია; გასახსნელად საჭიროა პაროლი.",
+            "resetDefaults": "ნაგულისხმევზე დაბრუნება"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

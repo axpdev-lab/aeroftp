@@ -2891,7 +2891,8 @@
             "openingZip": "Öppnar AeroVault Zip…",
             "encryptedBadge": "Krypterad",
             "notEncryptedBadge": "Okrypterad",
-            "encryptedTooltip": "Krypterad med AES-256. Innehåll och filnamn är konfidentiella; lösenord krävs för att öppna."
+            "encryptedTooltip": "Krypterad med AES-256. Innehåll och filnamn är konfidentiella; lösenord krävs för att öppna.",
+            "resetDefaults": "Återställ standard"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

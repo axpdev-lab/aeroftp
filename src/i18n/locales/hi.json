@@ -2891,7 +2891,8 @@
             "openingZip": "AeroVault Zip खोल रहे हैं…",
             "encryptedBadge": "एन्क्रिप्टेड",
             "notEncryptedBadge": "अनएन्क्रिप्टेड",
-            "encryptedTooltip": "AES-256 से एन्क्रिप्टेड। सामग्री और फ़ाइल नाम गोपनीय हैं; खोलने के लिए पासवर्ड आवश्यक है।"
+            "encryptedTooltip": "AES-256 से एन्क्रिप्टेड। सामग्री और फ़ाइल नाम गोपनीय हैं; खोलने के लिए पासवर्ड आवश्यक है।",
+            "resetDefaults": "डिफ़ॉल्ट पर रीसेट करें"
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",
