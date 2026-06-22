@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Listanézet",
             "gridView": "Ikonnézet",
-            "iconSmaller": "Kisebb ikonok",
-            "iconLarger": "Nagyobb ikonok"
+            "iconSmall": "Kis ikonok",
+            "iconMedium": "Közepes ikonok",
+            "iconLarge": "Nagy ikonok"
         }
     }
 }

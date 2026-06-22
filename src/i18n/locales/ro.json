@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Vizualizare listă",
             "gridView": "Vizualizare pictograme",
-            "iconSmaller": "Pictograme mai mici",
-            "iconLarger": "Pictograme mai mari"
+            "iconSmall": "Pictograme mici",
+            "iconMedium": "Pictograme medii",
+            "iconLarge": "Pictograme mari"
         }
     }
 }

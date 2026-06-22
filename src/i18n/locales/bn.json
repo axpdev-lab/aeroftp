@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "তালিকা ভিউ",
             "gridView": "আইকন ভিউ",
-            "iconSmaller": "ছোট আইকন",
-            "iconLarger": "বড় আইকন"
+            "iconSmall": "ছোট আইকন",
+            "iconMedium": "মাঝারি আইকন",
+            "iconLarge": "বড় আইকন"
         }
     }
 }

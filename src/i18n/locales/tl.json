@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "Tingnan bilang listahan",
             "gridView": "Tingnan bilang icon",
-            "iconSmaller": "Mas maliliit na icon",
-            "iconLarger": "Mas malalaking icon"
+            "iconSmall": "Maliliit na icon",
+            "iconMedium": "Katamtamang icon",
+            "iconLarge": "Malalaking icon"
         }
     }
 }

@@ -160,7 +160,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         >
             <div
                 {...modalDrag.panelProps}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[840px] max-h-[88vh] flex flex-col animate-scale-in"
             >
                 {/* Header: drag moves this modal, not the native app window. */}
                 <div

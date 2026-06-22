@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Lijstweergave",
             "gridView": "Pictogramweergave",
-            "iconSmaller": "Kleinere pictogrammen",
-            "iconLarger": "Grotere pictogrammen"
+            "iconSmall": "Kleine pictogrammen",
+            "iconMedium": "Middelgrote pictogrammen",
+            "iconLarge": "Grote pictogrammen"
         }
     }
 }

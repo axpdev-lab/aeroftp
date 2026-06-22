@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "Listasýn",
             "gridView": "Táknmyndasýn",
-            "iconSmaller": "Minni tákn",
-            "iconLarger": "Stærri tákn"
+            "iconSmall": "Lítil tákn",
+            "iconMedium": "Meðalstór tákn",
+            "iconLarge": "Stór tákn"
         }
     }
 }

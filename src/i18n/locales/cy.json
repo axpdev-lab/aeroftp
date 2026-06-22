@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "Golwg rhestr",
             "gridView": "Golwg eiconau",
-            "iconSmaller": "Eiconau llai",
-            "iconLarger": "Eiconau mwy"
+            "iconSmall": "Eiconau bach",
+            "iconMedium": "Eiconau canolig",
+            "iconLarge": "Eiconau mawr"
         }
     }
 }

@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "ទិដ្ឋភាពបញ្ជី",
             "gridView": "ទិដ្ឋភាពរូបតំណាង",
-            "iconSmaller": "រូបតំណាងតូចជាង",
-            "iconLarger": "រូបតំណាងធំជាង"
+            "iconSmall": "រូបតំណាងតូច",
+            "iconMedium": "រូបតំណាងមធ្យម",
+            "iconLarge": "រូបតំណាងធំ"
         }
     }
 }

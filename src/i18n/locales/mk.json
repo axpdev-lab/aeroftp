@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "Приказ на листа",
             "gridView": "Приказ на икони",
-            "iconSmaller": "Помали икони",
-            "iconLarger": "Поголеми икони"
+            "iconSmall": "Мали икони",
+            "iconMedium": "Средни икони",
+            "iconLarge": "Големи икони"
         }
     }
 }

@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Seznamski pogled",
             "gridView": "Ikonski pogled",
-            "iconSmaller": "Manjše ikone",
-            "iconLarger": "Večje ikone"
+            "iconSmall": "Majhne ikone",
+            "iconMedium": "Srednje ikone",
+            "iconLarge": "Velike ikone"
         }
     }
 }

@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Liste görünümü",
             "gridView": "Simge görünümü",
-            "iconSmaller": "Daha küçük simgeler",
-            "iconLarger": "Daha büyük simgeler"
+            "iconSmall": "Küçük simgeler",
+            "iconMedium": "Orta simgeler",
+            "iconLarge": "Büyük simgeler"
         }
     }
 }

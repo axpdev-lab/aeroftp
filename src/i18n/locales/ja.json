@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "リスト表示",
             "gridView": "アイコン表示",
-            "iconSmaller": "アイコンを小さく",
-            "iconLarger": "アイコンを大きく"
+            "iconSmall": "小アイコン",
+            "iconMedium": "中アイコン",
+            "iconLarge": "大アイコン"
         }
     }
 }

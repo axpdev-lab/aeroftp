@@ -11,16 +11,15 @@ import { useCallback, useEffect, useState } from 'react';
  * bare table.
  */
 export type ModalViewMode = 'list' | 'grid';
-export type ModalGridSize = 'sm' | 'md' | 'lg' | 'xl';
+export type ModalGridSize = 'sm' | 'md' | 'lg';
 
-export const MODAL_GRID_SIZES: ModalGridSize[] = ['sm', 'md', 'lg', 'xl'];
+export const MODAL_GRID_SIZES: ModalGridSize[] = ['sm', 'md', 'lg'];
 
-/** Tile min-width and icon px for each grid size. */
+/** Tile min-width and icon px for each grid size (small / medium / large). */
 export const GRID_SIZE_METRICS: Record<ModalGridSize, { tile: number; icon: number }> = {
-  sm: { tile: 84, icon: 28 },
-  md: { tile: 116, icon: 44 },
-  lg: { tile: 148, icon: 64 },
-  xl: { tile: 188, icon: 88 },
+  sm: { tile: 92, icon: 32 },
+  md: { tile: 124, icon: 48 },
+  lg: { tile: 164, icon: 72 },
 };
 
 const STORAGE_KEY = 'aeroModalFileView';
@@ -52,8 +51,6 @@ export interface ModalFileView {
   setViewMode: (mode: ModalViewMode) => void;
   gridSize: ModalGridSize;
   setGridSize: (size: ModalGridSize) => void;
-  /** Step the grid size up/down within bounds (file-manager +/- control). */
-  stepGridSize: (delta: 1 | -1) => void;
 }
 
 export function useModalFileView(): ModalFileView {
@@ -69,17 +66,11 @@ export function useModalFileView(): ModalFileView {
 
   const setViewMode = useCallback((mode: ModalViewMode) => setView(v => ({ ...v, mode })), []);
   const setGridSize = useCallback((size: ModalGridSize) => setView(v => ({ ...v, size })), []);
-  const stepGridSize = useCallback((delta: 1 | -1) => setView(v => {
-    const idx = MODAL_GRID_SIZES.indexOf(v.size);
-    const next = Math.min(MODAL_GRID_SIZES.length - 1, Math.max(0, idx + delta));
-    return { ...v, size: MODAL_GRID_SIZES[next] };
-  }), []);
 
   return {
     viewMode: view.mode,
     setViewMode,
     gridSize: view.size,
     setGridSize,
-    stepGridSize,
   };
 }

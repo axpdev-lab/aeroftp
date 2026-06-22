@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "सूची दृश्य",
             "gridView": "आइकन दृश्य",
-            "iconSmaller": "छोटे आइकन",
-            "iconLarger": "बड़े आइकन"
+            "iconSmall": "छोटे आइकन",
+            "iconMedium": "मध्यम आइकन",
+            "iconLarge": "बड़े आइकन"
         }
     }
 }

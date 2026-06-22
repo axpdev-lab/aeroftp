@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "มุมมองรายการ",
             "gridView": "มุมมองไอคอน",
-            "iconSmaller": "ไอคอนเล็กลง",
-            "iconLarger": "ไอคอนใหญ่ขึ้น"
+            "iconSmall": "ไอคอนเล็ก",
+            "iconMedium": "ไอคอนกลาง",
+            "iconLarge": "ไอคอนใหญ่"
         }
     }
 }

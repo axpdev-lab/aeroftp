@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Xem danh sách",
             "gridView": "Xem biểu tượng",
-            "iconSmaller": "Biểu tượng nhỏ hơn",
-            "iconLarger": "Biểu tượng lớn hơn"
+            "iconSmall": "Biểu tượng nhỏ",
+            "iconMedium": "Biểu tượng vừa",
+            "iconLarge": "Biểu tượng lớn"
         }
     }
 }

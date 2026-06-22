@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Loendivaade",
             "gridView": "Ikoonivaade",
-            "iconSmaller": "Väiksemad ikoonid",
-            "iconLarger": "Suuremad ikoonid"
+            "iconSmall": "Väikesed ikoonid",
+            "iconMedium": "Keskmised ikoonid",
+            "iconLarge": "Suured ikoonid"
         }
     }
 }

@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Вид списком",
             "gridView": "Вид значками",
-            "iconSmaller": "Меньше значки",
-            "iconLarger": "Больше значки"
+            "iconSmall": "Маленькие значки",
+            "iconMedium": "Средние значки",
+            "iconLarge": "Большие значки"
         }
     }
 }

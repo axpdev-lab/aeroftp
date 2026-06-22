@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "სიის ხედი",
             "gridView": "ხატულების ხედი",
-            "iconSmaller": "პატარა ხატულები",
-            "iconLarger": "დიდი ხატულები"
+            "iconSmall": "პატარა ხატულები",
+            "iconMedium": "საშუალო ხატულები",
+            "iconLarge": "დიდი ხატულები"
         }
     }
 }

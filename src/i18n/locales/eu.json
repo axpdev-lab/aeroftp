@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "Zerrenda ikuspegia",
             "gridView": "Ikono ikuspegia",
-            "iconSmaller": "Ikono txikiagoak",
-            "iconLarger": "Ikono handiagoak"
+            "iconSmall": "Ikono txikiak",
+            "iconMedium": "Ikono ertainak",
+            "iconLarge": "Ikono handiak"
         }
     }
 }

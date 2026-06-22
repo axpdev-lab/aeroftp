@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Paparan senarai",
             "gridView": "Paparan ikon",
-            "iconSmaller": "Ikon lebih kecil",
-            "iconLarger": "Ikon lebih besar"
+            "iconSmall": "Ikon kecil",
+            "iconMedium": "Ikon sederhana",
+            "iconLarge": "Ikon besar"
         }
     }
 }

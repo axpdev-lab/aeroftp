@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Zobrazení seznamu",
             "gridView": "Zobrazení ikon",
-            "iconSmaller": "Menší ikony",
-            "iconLarger": "Větší ikony"
+            "iconSmall": "Malé ikony",
+            "iconMedium": "Střední ikony",
+            "iconLarge": "Velké ikony"
         }
     }
 }

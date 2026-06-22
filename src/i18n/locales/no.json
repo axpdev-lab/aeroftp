@@ -4975,8 +4975,9 @@
         "modalView": {
             "listView": "Listevisning",
             "gridView": "Ikonvisning",
-            "iconSmaller": "Mindre ikoner",
-            "iconLarger": "Større ikoner"
+            "iconSmall": "Små ikoner",
+            "iconMedium": "Mellomstore ikoner",
+            "iconLarge": "Store ikoner"
         }
     }
 }

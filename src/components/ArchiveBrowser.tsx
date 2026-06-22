@@ -314,7 +314,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             aria-labelledby="archive-browser-title"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[840px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">

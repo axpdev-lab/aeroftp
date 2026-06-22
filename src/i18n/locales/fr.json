@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Vue liste",
             "gridView": "Vue icônes",
-            "iconSmaller": "Icônes plus petites",
-            "iconLarger": "Icônes plus grandes"
+            "iconSmall": "Petites icônes",
+            "iconMedium": "Icônes moyennes",
+            "iconLarge": "Grandes icônes"
         }
     }
 }

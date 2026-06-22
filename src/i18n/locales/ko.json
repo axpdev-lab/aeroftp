@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "목록 보기",
             "gridView": "아이콘 보기",
-            "iconSmaller": "아이콘 축소",
-            "iconLarger": "아이콘 확대"
+            "iconSmall": "작은 아이콘",
+            "iconMedium": "중간 아이콘",
+            "iconLarge": "큰 아이콘"
         }
     }
 }

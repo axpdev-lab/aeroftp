@@ -4956,8 +4956,9 @@
         "modalView": {
             "listView": "Listenansicht",
             "gridView": "Symbolansicht",
-            "iconSmaller": "Kleinere Symbole",
-            "iconLarger": "Größere Symbole"
+            "iconSmall": "Kleine Symbole",
+            "iconMedium": "Mittlere Symbole",
+            "iconLarge": "Große Symbole"
         }
     }
 }
