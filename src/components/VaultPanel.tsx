@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Archive } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { VaultIcon } from './icons/VaultIcon';
 import { useTranslation } from '../i18n';
@@ -168,7 +168,9 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
                 >
                     <div className="flex items-center gap-2 pointer-events-none">
-                        <VaultIcon variant="outline" size={18} className="text-gray-600 dark:text-gray-300" />
+                        {state.isPlaintextZip
+                            ? <Archive size={18} className="text-amber-500" />
+                            : <VaultIcon variant="outline" size={18} className="text-gray-600 dark:text-gray-300" />}
                         <span className="font-medium">
                             {state.mode === 'browse' ? vaultName : (state.isPlaintextZip ? t('vault.zipTitle') : t('vault.title'))}
                         </span>

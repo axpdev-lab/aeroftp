@@ -15,6 +15,7 @@
 import React from 'react';
 import type { IconThemeProvider, FileIconResult } from './types';
 import { AeroVaultFileIcon } from '../../components/icons/AeroVaultFileIcon';
+import { AeroVaultZipFileIcon } from '../../components/icons/AeroVaultZipFileIcon';
 import { AeroFtpFileIcon } from '../../components/icons/AeroFtpFileIcon';
 import { AeroFtpKeystoreIcon } from '../../components/icons/AeroFtpKeystoreIcon';
 
@@ -172,6 +173,9 @@ export const filledTheme: IconThemeProvider = {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
         if (ext === 'aerovault') {
             return { icon: <AeroVaultFileIcon size={size} />, color: '' };
+        }
+        if (ext === 'aerozip') {
+            return { icon: <AeroVaultZipFileIcon size={size} />, color: '' };
         }
         if (ext === 'aeroftp-keystore') {
             return { icon: <AeroFtpKeystoreIcon size={size} />, color: '' };

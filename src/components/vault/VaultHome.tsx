@@ -125,7 +125,9 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                                         state.setMode('open');
                                     }}
                                 >
-                                    <VaultIcon size={20} className="text-emerald-400 shrink-0" />
+                                    {isZip
+                                        ? <Archive size={20} className="text-amber-500 shrink-0" />
+                                        : <VaultIcon size={20} className="text-emerald-400 shrink-0" />}
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
