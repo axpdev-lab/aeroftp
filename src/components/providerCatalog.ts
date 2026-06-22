@@ -86,6 +86,17 @@ export interface CatalogCompany {
 }
 
 /**
+ * Providers kept in the codebase for DEV work but hidden from the production UI
+ * until they are ready: Blomp (storage proxy 403, awaiting a reliable API) and
+ * Google Photos (Photos API problem, fix pending on our side). Single source for
+ * the "disabled in production, available in DEV" rule applied across the provider
+ * lists (Discover catalog, Providers & Integrations dialog, protocol grid).
+ */
+export const DEV_ONLY_LOGO_IDS: ReadonlySet<string> = new Set(['blomp', 'googlephotos']);
+
+export const isDevOnlyProvider = (logoId: string): boolean => DEV_ONLY_LOGO_IDS.has(logoId);
+
+/**
  * The catalog. Ordered by descending free storage for readability; the
  * table re-sorts anyway. Storage figures are editorial and approximate.
  */
@@ -407,7 +418,9 @@ function mdCell(s: string): string {
  * em-dash in user-facing output).
  */
 export function buildProvidersMarkdown(): string {
-    const rows = [...PROVIDER_CATALOG]
+    // Public docs never list dev-only providers (Blomp, Google Photos).
+    const publicCatalog = PROVIDER_CATALOG.filter(c => !isDevOnlyProvider(c.logoId));
+    const rows = [...publicCatalog]
         .sort((a, b) => a.company.toLowerCase().localeCompare(b.company.toLowerCase(), 'en'))
         .map(c => {
             const hq = c.countryCode ? c.countryCode.toUpperCase() : '-';
@@ -424,7 +437,7 @@ export function buildProvidersMarkdown(): string {
             return `| ${mdCell(c.company)} | ${hq} | ${mdCell(free)} | ${mdCell(methods)} |`;
         });
 
-    const methodCount = PROVIDER_CATALOG.reduce((n, c) => n + c.protocols.length, 0);
+    const methodCount = publicCatalog.reduce((n, c) => n + c.protocols.length, 0);
 
     return [
         '<!-- Generated from src/components/providerCatalog.ts by `npm run gen:providers-table`. Do not edit by hand. -->',
@@ -433,7 +446,7 @@ export function buildProvidersMarkdown(): string {
         '| --- | --- | --- | --- |',
         ...rows,
         '',
-        `<sub>${PROVIDER_CATALOG.length} providers, ${methodCount} connection methods. \`*\` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>`,
+        `<sub>${publicCatalog.length} providers, ${methodCount} connection methods. \`*\` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>`,
     ].join('\n');
 }
 

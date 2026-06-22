@@ -6,8 +6,8 @@
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
 > 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
-> 2. **25+ native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Google Photos, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, InfiniCLOUD, Felicloud);
-> 3. **45+ pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive, Blomp), WebDAV-compatible (Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
+> 2. **25+ native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, InfiniCLOUD, Felicloud);
+> 3. **45+ pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive), WebDAV-compatible (Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
 >
 > The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
 
@@ -753,7 +753,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | Version | Feature |
 |---------|---------|
 | v3.7.x | P3-T01 streaming multi-file + session reuse (rimuove cap 256 MiB native rsync, batch SSH session per N file). 4 onde, ~24 gg netti |
-| v3.x | Advanced Share Links (expiration, password, permissions), Full Activity Logging, Blomp provider, AeroVault biometric unlock |
+| v3.x | Advanced Share Links (expiration, password, permissions), Full Activity Logging, AeroVault biometric unlock |
 
 ---
 

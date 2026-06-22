@@ -86,7 +86,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague:
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift.
-2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, Google Photos, PixelUnion).
+2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
 3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, etc.).
 
 <table align="center">
@@ -180,7 +180,6 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Amazon S3 | US | 5 GB 12-month trial | S3* |
 | Azure Blob | US | 12-month trial | Blob* |
 | Backblaze B2 | US | 10 GB | API, S3 |
-| Blomp | US | 20 GB (referral bonus) | Swift |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free) | S3 |
 | Cloudinary | US | credit-based | API |
@@ -226,7 +225,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Yandex Object Storage | RU | paid plan | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>50 providers, 61 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>49 providers, 60 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

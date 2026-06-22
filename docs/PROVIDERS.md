@@ -22,7 +22,6 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Amazon S3 | US | 5 GB 12-month trial | S3* |
 | Azure Blob | US | 12-month trial | Blob* |
 | Backblaze B2 | US | 10 GB | API, S3 |
-| Blomp | US | 20 GB (referral bonus) | Swift |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free) | S3 |
 | Cloudinary | US | credit-based | API |
@@ -68,6 +67,6 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Yandex Object Storage | RU | paid plan | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>50 providers, 61 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>49 providers, 60 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->

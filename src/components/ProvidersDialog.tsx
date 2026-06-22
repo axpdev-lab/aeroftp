@@ -8,7 +8,7 @@ import { useTranslation } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { CountryFlag } from './CountryFlag';
-import { findCatalogByLogo, hasFreeTier } from './providerCatalog';
+import { findCatalogByLogo, hasFreeTier, isDevOnlyProvider } from './providerCatalog';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -356,7 +356,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
               </tr>
             </thead>
             <tbody>
-              {ALL_PROVIDERS.map((provider, idx) => {
+              {ALL_PROVIDERS.filter(p => import.meta.env.DEV || !isDevOnlyProvider(p.logoId)).map((provider, idx) => {
                 const Logo = PROVIDER_LOGOS[provider.logoId];
                 const hasCoreOps = CORE_OPS.every(op => provider.base.includes(op));
                 const catalog = findCatalogByLogo(provider.catalogId ?? provider.logoId);

@@ -166,7 +166,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 - **Deploy Engine**
   One-click self-hosted server provisioning (S3, WebDAV, SFTP, FTP) on a NAS, VPS, or local Docker, with the resulting endpoint auto-saved as a connection profile.
 - **Photo and Media Services expansion**
-  More photo and media-CDN services on top of the five already shipped (Immich, Google Photos, Cloudinary, ImageKit, Uploadcare).
+  More photo and media-CDN services on top of the four already shipped (Immich, Cloudinary, ImageKit, Uploadcare).
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
 - **Agent Orchestration v2**
@@ -203,7 +203,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | **Immich** | REST API (self-hosted) | 🟢 Just Shipped |
 | **Bitbucket** | REST 2.0 | 🟡 In Flight: Git forge Tier 1 |
 | **Gitea / Forgejo** | REST v1 | 🟡 In Flight: Git forge Tier 1 (~90% GitHub reuse) |
-| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout on top of the 5 shipped (Immich, Google Photos, Cloudinary, ImageKit, Uploadcare) |
+| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout on top of the 4 shipped (Immich, Cloudinary, ImageKit, Uploadcare) |
 | **ImageKit** | REST API | 🟢 Just Shipped (v3.7.2): media CDN + storage |
 | **Uploadcare** | REST + Upload API | 🟢 Just Shipped (v3.7.2): media CDN, EU/GDPR |
 | **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |
@@ -640,7 +640,7 @@ Every native cloud provider integration is a milestone. Here's the full history:
 | 26 | **ImageKit** | v3.7.2 | REST API (media CDN + storage) |
 | 25 | **InfiniCLOUD** | v3.7.0 | REST v2 (Muramasa) + WebDAV |
 | 24 | **Immich** | v3.4.4 | REST API (self-hosted) |
-| 23 | **Google Photos** | v3.4.3 | OAuth2 (read-only, Google restricted scope 2025) |
+| 23 | **Google Photos** | dev only | OAuth2 (read-only); kept in development due to a Photos API problem, hidden in release builds |
 | 22 | **GitLab** | v3.3.2 | REST API v4 |
 | 21 | **SourceForge** | v3.3.0 | SFTP |
 | 20 | **Felicloud** | v3.1.6 | WebDAV + OCS API |

@@ -401,7 +401,7 @@ Architecture details: [docs.aeroftp.app/architecture/dag-transfer-engine](https:
 
 Saved profiles cover both direct-auth and browser-authorized providers.
 
-**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, Backblaze B2, Swift (OpenStack), Azure Blob, GitHub, GitLab, MEGA (Native + MEGAcmd), Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Immich, ImageKit, Uploadcare, Cloudinary, Google Photos, Drime Cloud, SourceForge (SFTP preset)
+**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, Backblaze B2, Swift (OpenStack), Azure Blob, GitHub, GitLab, MEGA (Native + MEGAcmd), Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Immich, ImageKit, Uploadcare, Cloudinary, Drime Cloud, SourceForge (SFTP preset)
 
 **Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared
 
