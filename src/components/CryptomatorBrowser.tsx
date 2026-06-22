@@ -9,6 +9,9 @@ import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useModalFileView } from './modalview/useModalFileView';
+import { ModalViewToolbar } from './modalview/ModalViewToolbar';
+import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
@@ -36,6 +39,7 @@ interface BreadcrumbItem {
 export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose, initialVaultPath }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const modalView = useModalFileView();
     const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -157,6 +161,38 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } finally {
             setLoading(false);
         }
+    };
+
+    // --- Grid (icon) view (shared file-manager view) ---
+    const gridItems: ModalGridItem[] = entries.map(entry => ({
+        key: entry.name,
+        label: entry.name,
+        isDir: entry.isDir,
+        size: entry.isDir ? undefined : entry.size,
+    }));
+    const gridGetIcon = (item: ModalGridItem, px: number): React.ReactNode => (
+        item.isDir
+            ? <Folder size={px} className="text-yellow-500 dark:text-yellow-400" />
+            : <File size={px} className="text-gray-500 dark:text-gray-400" />
+    );
+    const gridActivate = (item: ModalGridItem) => {
+        const entry = entries.find(e => e.name === item.key);
+        if (!entry) return;
+        if (entry.isDir && entry.dirId) navigateToDir(entry.name, entry.dirId);
+        else if (!entry.isDir) handleDecrypt(entry);
+    };
+    const gridActions = (item: ModalGridItem): React.ReactNode => {
+        const entry = entries.find(e => e.name === item.key);
+        if (!entry || entry.isDir) return null;
+        return (
+            <button
+                onClick={(e) => { e.stopPropagation(); handleDecrypt(entry); }}
+                className="p-1 rounded bg-white/80 dark:bg-gray-800/80 hover:bg-blue-100 dark:hover:bg-gray-600"
+                title={t('cryptomator.decryptAndSave')}
+            >
+                <Download size={12} />
+            </button>
+        );
     };
 
     return (
@@ -285,6 +321,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                             <button onClick={handleEncrypt} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 rounded">
                                 <Upload size={12} /> {t('cryptomator.encrypt')}
                             </button>
+                            <ModalViewToolbar view={modalView} />
                         </div>
 
                         {/* File list */}
@@ -299,7 +336,17 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                     {t('cryptomator.empty')}
                                 </div>
                             )}
-                            {!loading && entries.length > 0 && (
+                            {!loading && entries.length > 0 && modalView.viewMode === 'grid' && (
+                                <ModalFileGrid
+                                    items={gridItems}
+                                    gridSize={modalView.gridSize}
+                                    getIcon={gridGetIcon}
+                                    onActivate={gridActivate}
+                                    renderActions={gridActions}
+                                    formatSize={formatSize}
+                                />
+                            )}
+                            {!loading && entries.length > 0 && modalView.viewMode === 'list' && (
                                 <table className="w-full">
                                     <thead className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-gray-50 dark:bg-gray-800">
                                         <tr>
