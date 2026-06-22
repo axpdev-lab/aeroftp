@@ -353,7 +353,9 @@ fn ensure_aerovz_product_path(path: &str) -> Result<(), String> {
     if is_aerovz_product_path(path) {
         Ok(())
     } else {
-        Err(format!("Expected a .{AEROVZ_PRODUCT_EXTENSION} archive path"))
+        Err(format!(
+            "Expected a .{AEROVZ_PRODUCT_EXTENSION} archive path"
+        ))
     }
 }
 
@@ -836,11 +838,10 @@ pub async fn aerovz_scrub(vault_path: String) -> Result<serde_json::Value, Strin
             let vault = open_aerovz_archive(Path::new(&vault_path))?;
             let checked = aerovault::v3::VaultV3::summary(&vault).chunk_count;
             let damaged = aerovault::v3::VaultV3::scrub(&vault);
-            let parity_source =
-                match aerovault::v3::VaultV3::resolve_parity_source(&vault, None) {
-                    Ok(s) => s,
-                    Err(_) => aerovault::v3::ParitySource::None,
-                };
+            let parity_source = match aerovault::v3::VaultV3::resolve_parity_source(&vault, None) {
+                Ok(s) => s,
+                Err(_) => aerovault::v3::ParitySource::None,
+            };
             let list: Vec<_> = damaged
                 .into_iter()
                 .map(|d| {

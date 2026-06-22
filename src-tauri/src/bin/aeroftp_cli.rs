@@ -49934,8 +49934,13 @@ async fn main() {
                         resolve_ver(vault_version)
                     };
                     let res: Result<u64, String> = if ver == "v3" {
-                        aerovault_v3::vault_v3_extract_all_impl(path.clone(), pw, dest.clone(), None)
-                            .await
+                        aerovault_v3::vault_v3_extract_all_impl(
+                            path.clone(),
+                            pw,
+                            dest.clone(),
+                            None,
+                        )
+                        .await
                     } else if ver == "v2" {
                         aerovault_v2::vault_v2_extract_all(path.clone(), pw, dest.clone())
                             .await

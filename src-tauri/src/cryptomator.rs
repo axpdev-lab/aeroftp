@@ -952,7 +952,13 @@ pub async fn cryptomator_decrypt_file(
     crate::filesystem::validate_path(&output_path)?;
     let vaults = state.vaults.lock().await;
     let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
-    decrypt_file_inner_with_progress(vault, &dir_id, &filename, Path::new(&output_path), Some(app))?;
+    decrypt_file_inner_with_progress(
+        vault,
+        &dir_id,
+        &filename,
+        Path::new(&output_path),
+        Some(app),
+    )?;
     Ok(output_path)
 }
 

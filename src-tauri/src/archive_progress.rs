@@ -109,7 +109,11 @@ impl ArchiveProgress {
     /// A determinate emitter that emits to the GUI when an `AppHandle` is present and
     /// is otherwise a silent no-op. Lets one implementation serve both the GUI command
     /// path (`Some(app)`) and the headless CLI / AI-tool `_core` path (`None`).
-    pub fn for_optional_app(app: Option<tauri::AppHandle>, phase: &'static str, total: u64) -> Self {
+    pub fn for_optional_app(
+        app: Option<tauri::AppHandle>,
+        phase: &'static str,
+        total: u64,
+    ) -> Self {
         match app {
             Some(a) => Self::for_app(a, phase, total),
             None => Self::new(phase, total, Box::new(|_| {})),
@@ -239,7 +243,10 @@ mod tests {
         p.add(512);
         p.add(512);
         p.finish();
-        assert!(frames.lock().unwrap().is_empty(), "tiny ops must stay silent");
+        assert!(
+            frames.lock().unwrap().is_empty(),
+            "tiny ops must stay silent"
+        );
     }
 
     #[test]
@@ -254,7 +261,10 @@ mod tests {
         assert_eq!(f.first().unwrap().percentage, 0, "must open at 0%");
         let last = f.last().unwrap();
         assert_eq!(last.percentage, 100, "must close at exactly 100%");
-        assert_eq!(last.transferred, total, "final transferred must equal total");
+        assert_eq!(
+            last.transferred, total,
+            "final transferred must equal total"
+        );
     }
 
     #[test]
@@ -267,7 +277,10 @@ mod tests {
         p.add(total);
         p.finish();
         for fr in frames.lock().unwrap().iter() {
-            assert!(fr.transferred <= total, "transferred must never exceed total");
+            assert!(
+                fr.transferred <= total,
+                "transferred must never exceed total"
+            );
             assert!(fr.percentage <= 100, "percentage must never exceed 100");
         }
     }
@@ -316,7 +329,10 @@ mod tests {
         p.add(1024);
         p.finish();
         let f = frames.lock().unwrap();
-        assert!(f.iter().all(|fr| fr.indeterminate), "frames stay indeterminate");
+        assert!(
+            f.iter().all(|fr| fr.indeterminate),
+            "frames stay indeterminate"
+        );
         assert_eq!(f.first().unwrap().percentage, 0);
         assert_eq!(f.last().unwrap().percentage, 100);
         // add() must not have produced extra frames for an opaque op.

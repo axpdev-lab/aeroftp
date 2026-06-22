@@ -697,17 +697,25 @@ mod tests {
     fn archive_exit_code_follows_structured_contract() {
         // Not-found family -> 2
         assert_eq!(
-            archive_exit_code("Archive input not readable '/x': No such file or directory (os error 2)"),
+            archive_exit_code(
+                "Archive input not readable '/x': No such file or directory (os error 2)"
+            ),
             2
         );
-        assert_eq!(archive_exit_code("Open archive: No such file or directory (os error 2)"), 2);
+        assert_eq!(
+            archive_exit_code("Open archive: No such file or directory (os error 2)"),
+            2
+        );
         // Already-exists / refuse-overwrite -> 9
         assert_eq!(
             archive_exit_code("Refusing to overwrite existing .aerozip archive: /x.aerozip"),
             9
         );
         // Anything else -> generic 1
-        assert_eq!(archive_exit_code("Cipher block hash mismatch for chunk abc"), 1);
+        assert_eq!(
+            archive_exit_code("Cipher block hash mismatch for chunk abc"),
+            1
+        );
     }
 
     #[test]

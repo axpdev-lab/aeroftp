@@ -576,7 +576,8 @@ pub async fn extract_rar_entry(
             // RAR extracts in a single opaque call (no byte hook), so show an honest
             // indeterminate bar rather than a faked percentage (HANDOFF section 3.6).
             let total = header.entry().unpacked_size;
-            let mut progress = ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total);
+            let mut progress =
+                ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total);
             header
                 .extract_to(&output_path)
                 .map_err(|e| format!("Failed to extract entry: {}", e))?;

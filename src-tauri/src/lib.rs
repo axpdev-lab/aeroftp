@@ -8013,7 +8013,14 @@ async fn compress_files_impl(
                 .ok_or("Invalid file name")?
                 .to_string_lossy()
                 .to_string();
-            add_zip_file_entry(&mut zip, file_name, path, level, &secret_password, &mut progress)?;
+            add_zip_file_entry(
+                &mut zip,
+                file_name,
+                path,
+                level,
+                &secret_password,
+                &mut progress,
+            )?;
         } else if path.is_dir() {
             let _base_name = path
                 .file_name()
