@@ -430,6 +430,23 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                         <span>{formatSize(state.vaultProgress.transferred)} / {formatSize(state.vaultProgress.total)}</span>
                         <span>{state.vaultProgress.percentage}%</span>
                     </div>
+                    {/* Inverse drain bar: starts full and empties in step with the
+                        progress above (filled = input still to read), the byte
+                        figure shrinking together with the bar. */}
+                    {state.vaultProgress.total > 0 && (() => {
+                        const remaining = Math.max(0, state.vaultProgress.total - state.vaultProgress.transferred);
+                        const filled = Math.max(0, Math.min(100, (remaining / state.vaultProgress.total) * 100));
+                        return (
+                            <>
+                                <div className="w-full h-2.5 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
+                                    <div className="h-full rounded-full bg-amber-500 transition-all duration-300" style={{ width: `${filled}%` }} />
+                                </div>
+                                <div className="flex justify-end text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                                    {formatSize(remaining)}
+                                </div>
+                            </>
+                        );
+                    })()}
                 </div>
             )}
 

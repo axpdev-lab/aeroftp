@@ -314,6 +314,9 @@ export interface VaultState {
     lastReport: VaultReport | null;
     clearReport: () => void;
 
+    // Input-vs-output sizes of the last AeroVault Zip create (compression report)
+    zipReport: { inputBytes: number; outputBytes: number } | null;
+
     // Entries
     entries: ArchiveEntry[];
     meta: AeroVaultMeta | null;
@@ -508,6 +511,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [lastReport, setLastReport] = useState<VaultReport | null>(null);
     // Byte-level progress of the current compress+encrypt op (AeroProgress).
     const [vaultProgress, setVaultProgress] = useState<VaultProgress | null>(null);
+    // Final input-vs-output sizes of the last AeroVault Zip create, for the
+    // post-create compression report (parity with the standard CompressDialog).
+    const [zipReport, setZipReport] = useState<{ inputBytes: number; outputBytes: number } | null>(null);
 
     // Security state
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
@@ -562,6 +568,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setDescription('');
         setError(null);
         setSuccess(null);
+        setZipReport(null);
         setEntries([]);
         setMeta(null);
         setChangingPassword(false);
@@ -796,6 +803,17 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setHasDetachedRecovery(false);
                 setHasDetachedHeaderRecovery(false);
                 setSuccess(t('vault.zipCreated') + `: ${info.file_count} ${info.file_count === 1 ? 'file' : 'files'}`);
+                // Compression report: original payload (sum of file sizes) vs the
+                // produced .aerozip container size. Stat is best-effort; on failure
+                // the report is simply omitted (no fake ratio).
+                try {
+                    const inputBytes = info.files.reduce((sum, f) => sum + (f.is_dir ? 0 : f.size), 0);
+                    const props = await invoke<{ size: number }>('get_file_properties', { path: savePath });
+                    const outputBytes = props?.size ?? 0;
+                    setZipReport(inputBytes > 0 && outputBytes > 0 ? { inputBytes, outputBytes } : null);
+                } catch {
+                    setZipReport(null);
+                }
                 setMode('browse');
 
                 const vName = savePath.split(/[\\/]/).pop() || 'AeroVault Zip';
@@ -1985,6 +2003,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         success, setSuccess,
         lastReport,
         clearReport: () => setLastReport(null),
+        zipReport,
         entries,
         meta,
         currentDir, setCurrentDir,

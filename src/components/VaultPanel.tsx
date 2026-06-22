@@ -12,6 +12,7 @@ import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
 import { VaultBrowse } from './vault/VaultBrowse';
 import { VaultReceipt } from './vault/VaultReceipt';
+import { ZipCompressionReport } from './vault/ZipCompressionReport';
 import type { AeroVaultOverlaySession } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useActivityLog } from '../hooks/useActivityLog';
@@ -195,6 +196,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                 {/* Error / Success */}
                 {state.error && <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm">{state.error}</div>}
                 {state.success && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-sm">{state.success}</div>}
+                {state.zipReport && state.mode === 'browse' && <ZipCompressionReport inputBytes={state.zipReport.inputBytes} outputBytes={state.zipReport.outputBytes} />}
 
                 {/* Content */}
                 {state.mode === 'home' && <VaultHome state={state} isConnected={isConnected} iconProvider={iconProvider} />}
