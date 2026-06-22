@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maximal",
             "compressing": "Komprimerar...",
-            "estimatedSize": "Beräknad storlek"
+            "estimatedSize": "Beräknad storlek",
+            "complete": "Komprimering klar",
+            "before": "Före",
+            "after": "Efter",
+            "saved": "Sparat",
+            "increased": "Ökat",
+            "done": "Klar"
         },
         "batchRename": {
             "title": "Massnamnsändring",

@@ -2937,7 +2937,13 @@
             "normal": "ปกติ",
             "maximum": "สูงสุด",
             "compressing": "กำลังบีบอัด...",
-            "estimatedSize": "ขนาดโดยประมาณ"
+            "estimatedSize": "ขนาดโดยประมาณ",
+            "complete": "การบีบอัดเสร็จสิ้น",
+            "before": "ก่อน",
+            "after": "หลัง",
+            "saved": "ประหยัด",
+            "increased": "เพิ่มขึ้น",
+            "done": "เสร็จ"
         },
         "batchRename": {
             "title": "เปลี่ยนชื่อแบบกลุ่ม",

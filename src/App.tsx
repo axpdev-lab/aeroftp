@@ -422,6 +422,8 @@ import { useTranslation } from './i18n';
 // Components
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
+import { runExtractWithToast } from './utils/extractToast';
+import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -11836,7 +11838,7 @@ interface UpdateVerificationInfo {
             action: async () => {
               try {
                 notify.info(t('contextMenu.extracting'), file.name);
-                const count = await invoke<number>('aerovz_extract_all', { vaultPath: file.path, destPath: currentLocalPath });
+                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: currentLocalPath }, { filename: file.name, archiveBytes: file.size });
                 notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: currentLocalPath }));
                 await loadLocalFiles(currentLocalPath);
               } catch (err) {
@@ -11851,7 +11853,7 @@ interface UpdateVerificationInfo {
               const subFolder = `${currentLocalPath}/${file.name.replace(/\.aerozip$/i, '')}`;
               try {
                 notify.info(t('contextMenu.extracting'), file.name);
-                const count = await invoke<number>('aerovz_extract_all', { vaultPath: file.path, destPath: subFolder });
+                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: subFolder }, { filename: file.name, archiveBytes: file.size });
                 notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: subFolder }));
                 await loadLocalFiles(currentLocalPath);
               } catch (err) {
@@ -11886,7 +11888,7 @@ interface UpdateVerificationInfo {
                   if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
                   try {
                     notify.info(t('contextMenu.extracting'), file.name);
-                    await invoke<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: currentLocalPath });
+                    await runExtractWithToast<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: currentLocalPath }, { filename: file.name, archiveBytes: file.size });
                     notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: currentLocalPath }));
                     await loadLocalFiles(currentLocalPath);
                   } catch (err) {
@@ -11910,7 +11912,7 @@ interface UpdateVerificationInfo {
                   if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
                   try {
                     notify.info(t('contextMenu.extracting'), file.name);
-                    await invoke<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: subFolder });
+                    await runExtractWithToast<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: subFolder }, { filename: file.name, archiveBytes: file.size });
                     notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: subFolder }));
                     await loadLocalFiles(currentLocalPath);
                   } catch (err) {
@@ -12099,14 +12101,16 @@ interface UpdateVerificationInfo {
                   const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
                   notify.info(t('contextMenu.extracting'), file.name);
                   const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+                  const toastOpts = { filename: file.name, archiveBytes: file.size };
+                  let extractedTotal = 0;
                   if (is7zArchive) {
-                    await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                    ({ extractedTotal } = await runExtractWithToast<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder }, toastOpts));
                   } else if (isRarArchive) {
-                    await invoke<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                    ({ extractedTotal } = await runExtractWithToast<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder }, toastOpts));
                   } else {
-                    await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password });
+                    ({ extractedTotal } = await runExtractWithToast<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password }, toastOpts));
                   }
-                  activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+                  activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
                 } catch (err) {
@@ -12120,16 +12124,18 @@ interface UpdateVerificationInfo {
           const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
           notify.info(t('contextMenu.extracting'), file.name);
           const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+          const toastOpts = { filename: file.name, archiveBytes: file.size };
+          let extractedTotal = 0;
           if (isZipArchive) {
-            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null }, toastOpts));
           } else if (is7zArchive) {
-            await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder }, toastOpts));
           } else if (isRarArchive) {
-            await invoke<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder }, toastOpts));
           } else if (isTarArchive) {
-            await invoke<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder }, toastOpts));
           }
-          activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+          activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);
         } catch (err) {
@@ -13930,6 +13936,7 @@ interface UpdateVerificationInfo {
               const ext = opts.format === 'tar.gz' ? '.tar.gz' : opts.format === 'tar.xz' ? '.tar.xz' : opts.format === 'tar.bz2' ? '.tar.bz2' : `.${opts.format}`;
               const outputPath = `${compressDialogState.outputDir}/${opts.archiveName}${ext}`;
               const paths = compressDialogState.files.map(f => f.path);
+              const inputBytes = compressDialogState.files.reduce((sum, f) => sum + (f.size || 0), 0);
               const logId = activityLog.log('INFO', `Compressing to ${opts.archiveName}${ext}...`, 'running');
               try {
                 if (opts.format === 'zip') {
@@ -13939,14 +13946,23 @@ interface UpdateVerificationInfo {
                 } else {
                   await invoke<string>('compress_tar', { paths, outputPath, format: opts.format, compressionLevel: opts.compressionLevel });
                 }
+                // Stat the produced archive to report the real output size and saving.
+                let outputBytes = 0;
+                try {
+                  const props = await invoke<{ size: number }>('get_file_properties', { path: outputPath });
+                  outputBytes = props?.size ?? 0;
+                } catch { /* size stays 0 -> log reports input only, no fake ratio */ }
                 const suffix = opts.password ? ' (AES-256)' : '';
-                activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}` });
+                activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}`, details: formatCompressDetails(inputBytes, outputBytes) });
                 notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
-                setCompressDialogState(null);
                 await loadLocalFiles(currentLocalPath);
+                // Keep the dialog open so it can present the completion stats
+                // (ratio, bytes saved, before/after bars); the user closes it.
+                return { inputBytes, outputBytes };
               } catch (err) {
                 activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
                 notify.error(t('contextMenu.compressionFailed'), String(err));
+                throw err;
               }
             }}
           />

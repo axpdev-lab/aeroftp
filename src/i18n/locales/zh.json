@@ -2937,7 +2937,13 @@
             "normal": "标准",
             "maximum": "最大",
             "compressing": "正在压缩...",
-            "estimatedSize": "预计大小"
+            "estimatedSize": "预计大小",
+            "complete": "压缩完成",
+            "before": "之前",
+            "after": "之后",
+            "saved": "已节省",
+            "increased": "已增加",
+            "done": "完成"
         },
         "batchRename": {
             "title": "批量重命名",

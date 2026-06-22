@@ -2937,7 +2937,13 @@
             "normal": "Κανονικό",
             "maximum": "Μέγιστο",
             "compressing": "Συμπίεση...",
-            "estimatedSize": "Εκτιμώμενο μέγεθος"
+            "estimatedSize": "Εκτιμώμενο μέγεθος",
+            "complete": "Η συμπίεση ολοκληρώθηκε",
+            "before": "Πριν",
+            "after": "Μετά",
+            "saved": "Εξοικονομήθηκαν",
+            "increased": "Αυξήθηκε",
+            "done": "Τέλος"
         },
         "batchRename": {
             "title": "Μαζική Μετονομασία",

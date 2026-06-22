@@ -2937,7 +2937,13 @@
             "normal": "Venjulegt",
             "maximum": "Hámark",
             "compressing": "Þjappa...",
-            "estimatedSize": "Áætlað"
+            "estimatedSize": "Áætlað",
+            "complete": "Þjöppun lokið",
+            "before": "Áður",
+            "after": "Eftir",
+            "saved": "Sparað",
+            "increased": "Aukið",
+            "done": "Lokið"
         },
         "batchRename": {
             "title": "Hópendurnefning",

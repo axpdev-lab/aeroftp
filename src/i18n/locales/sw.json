@@ -2937,7 +2937,13 @@
             "normal": "Kawaida",
             "maximum": "Upeo",
             "compressing": "Inabana...",
-            "estimatedSize": "Ukubwa Uliokadiriwa"
+            "estimatedSize": "Ukubwa Uliokadiriwa",
+            "complete": "Mgandamizo umekamilika",
+            "before": "Kabla",
+            "after": "Baada",
+            "saved": "Imehifadhiwa",
+            "increased": "Imeongezeka",
+            "done": "Imekamilika"
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",

@@ -2937,7 +2937,13 @@
             "normal": "Normaali",
             "maximum": "Maksimi",
             "compressing": "Pakataan...",
-            "estimatedSize": "Arvioitu koko"
+            "estimatedSize": "Arvioitu koko",
+            "complete": "Pakkaus valmis",
+            "before": "Ennen",
+            "after": "Jälkeen",
+            "saved": "Säästetty",
+            "increased": "Kasvanut",
+            "done": "Valmis"
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",

@@ -2937,7 +2937,13 @@
             "normal": "보통",
             "maximum": "최대",
             "compressing": "압축 중...",
-            "estimatedSize": "예상 크기"
+            "estimatedSize": "예상 크기",
+            "complete": "압축 완료",
+            "before": "이전",
+            "after": "이후",
+            "saved": "절약됨",
+            "increased": "증가됨",
+            "done": "완료"
         },
         "batchRename": {
             "title": "일괄 이름 변경",

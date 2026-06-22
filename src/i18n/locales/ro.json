@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maxim",
             "compressing": "Se comprimă...",
-            "estimatedSize": "Dimensiune estimată"
+            "estimatedSize": "Dimensiune estimată",
+            "complete": "Comprimare finalizată",
+            "before": "Înainte",
+            "after": "După",
+            "saved": "Economisit",
+            "increased": "Mărit",
+            "done": "Gata"
         },
         "batchRename": {
             "title": "Redenumire în masă",

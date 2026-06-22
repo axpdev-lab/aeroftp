@@ -2937,7 +2937,13 @@
             "normal": "Normala",
             "maximum": "Maximoa",
             "compressing": "Konprimatzen...",
-            "estimatedSize": "Estimatua"
+            "estimatedSize": "Estimatua",
+            "complete": "Konpresioa osatuta",
+            "before": "Aurretik",
+            "after": "Ondoren",
+            "saved": "Aurreztua",
+            "increased": "Handitua",
+            "done": "Eginda"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

@@ -2937,7 +2937,13 @@
             "normal": "Normalni",
             "maximum": "Maximalni",
             "compressing": "Komprimování...",
-            "estimatedSize": "Odhadovaná velikost"
+            "estimatedSize": "Odhadovaná velikost",
+            "complete": "Komprese dokončena",
+            "before": "Před",
+            "after": "Po",
+            "saved": "Ušetřeno",
+            "increased": "Zvětšeno",
+            "done": "Hotovo"
         },
         "batchRename": {
             "title": "Hromadne prejmenovani",

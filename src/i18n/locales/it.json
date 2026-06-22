@@ -3299,7 +3299,13 @@
             "store": "Archivia (senza compressione)",
             "fast": "Veloce",
             "normal": "Normale",
-            "maximum": "Massimo"
+            "maximum": "Massimo",
+            "complete": "Compressione completata",
+            "before": "Prima",
+            "after": "Dopo",
+            "saved": "Risparmiati",
+            "increased": "Aumentato",
+            "done": "Fatto"
         },
         "sidebar": {
             "places": "Posizioni",

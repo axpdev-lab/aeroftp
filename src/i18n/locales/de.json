@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maximum",
             "compressing": "Komprimieren...",
-            "estimatedSize": "Geschätzte Größe"
+            "estimatedSize": "Geschätzte Größe",
+            "complete": "Komprimierung abgeschlossen",
+            "before": "Vorher",
+            "after": "Nachher",
+            "saved": "Gespart",
+            "increased": "Vergrößert",
+            "done": "Fertig"
         },
         "batchRename": {
             "title": "Stapelumbenennung",

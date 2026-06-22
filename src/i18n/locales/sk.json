@@ -2937,7 +2937,13 @@
             "normal": "Normalny",
             "maximum": "Maximalny",
             "compressing": "Komprimovanie...",
-            "estimatedSize": "Odhadovaná veľkosť"
+            "estimatedSize": "Odhadovaná veľkosť",
+            "complete": "Kompresia dokončená",
+            "before": "Pred",
+            "after": "Po",
+            "saved": "Ušetrené",
+            "increased": "Zväčšené",
+            "done": "Hotovo"
         },
         "batchRename": {
             "title": "Hromadne premenovanie",

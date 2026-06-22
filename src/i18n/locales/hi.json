@@ -2937,7 +2937,13 @@
             "normal": "सामान्य",
             "maximum": "अधिकतम",
             "compressing": "संपीड़ित हो रहा है...",
-            "estimatedSize": "अनुमानित आकार"
+            "estimatedSize": "अनुमानित आकार",
+            "complete": "संपीड़न पूर्ण",
+            "before": "पहले",
+            "after": "बाद में",
+            "saved": "बचाया गया",
+            "increased": "बढ़ा",
+            "done": "पूर्ण"
         },
         "batchRename": {
             "title": "बैच नाम बदलना",

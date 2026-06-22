@@ -1103,7 +1103,13 @@
             "password": "Password (optional, AES-256)",
             "passwordHint": "Leave empty for no encryption",
             "store": "Store (no compression)",
-            "title": "Compress Files"
+            "title": "Compress Files",
+            "complete": "Compression complete",
+            "before": "Before",
+            "after": "After",
+            "saved": "Saved",
+            "increased": "Increased",
+            "done": "Done"
         },
         "connection": {
             "accessKeyId": "Access Key ID",

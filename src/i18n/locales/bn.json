@@ -2937,7 +2937,13 @@
             "normal": "স্বাভাবিক",
             "maximum": "সর্বাধিক",
             "compressing": "সংকুচিত হচ্ছে...",
-            "estimatedSize": "আনুমানিক আকার"
+            "estimatedSize": "আনুমানিক আকার",
+            "complete": "সংকোচন সম্পন্ন",
+            "before": "আগে",
+            "after": "পরে",
+            "saved": "সাশ্রয়",
+            "increased": "বেড়েছে",
+            "done": "সম্পন্ন"
         },
         "batchRename": {
             "title": "ব্যাচ রিনেম",

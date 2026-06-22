@@ -2937,7 +2937,13 @@
             "normal": "ធម្មតា",
             "maximum": "អតិបរមា",
             "compressing": "កំពុងបង្ហាប់...",
-            "estimatedSize": "ទំហំប្រហាក់ប្រហែល"
+            "estimatedSize": "ទំហំប្រហាក់ប្រហែល",
+            "complete": "ការបង្ហាប់បានបញ្ចប់",
+            "before": "មុន",
+            "after": "ក្រោយ",
+            "saved": "បានសន្សំ",
+            "increased": "បានកើនឡើង",
+            "done": "រួចរាល់"
         },
         "batchRename": {
             "title": "ប្តូរឈ្មោះជាក្រុម",

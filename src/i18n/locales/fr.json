@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maximum",
             "compressing": "Compression en cours...",
-            "estimatedSize": "Taille estimée"
+            "estimatedSize": "Taille estimée",
+            "complete": "Compression terminée",
+            "before": "Avant",
+            "after": "Après",
+            "saved": "Économisé",
+            "increased": "Augmenté",
+            "done": "Terminé"
         },
         "batchRename": {
             "title": "Renommage par lot",

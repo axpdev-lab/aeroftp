@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Komprimerer...",
-            "estimatedSize": "Estimeret størrelse"
+            "estimatedSize": "Estimeret størrelse",
+            "complete": "Komprimering fuldført",
+            "before": "Før",
+            "after": "Efter",
+            "saved": "Sparet",
+            "increased": "Forøget",
+            "done": "Færdig"
         },
         "batchRename": {
             "title": "Masseomdøbning",

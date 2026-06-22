@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Máximo",
             "compressing": "Comprimiendo...",
-            "estimatedSize": "Tamaño estimado"
+            "estimatedSize": "Tamaño estimado",
+            "complete": "Compresión completada",
+            "before": "Antes",
+            "after": "Después",
+            "saved": "Ahorrado",
+            "increased": "Aumentado",
+            "done": "Listo"
         },
         "batchRename": {
             "title": "Renombrado masivo",

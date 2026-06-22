@@ -2937,7 +2937,13 @@
             "normal": "Нормално",
             "maximum": "Максимално",
             "compressing": "Компресиране...",
-            "estimatedSize": "Очакван размер"
+            "estimatedSize": "Очакван размер",
+            "complete": "Компресията завърши",
+            "before": "Преди",
+            "after": "След",
+            "saved": "Спестено",
+            "increased": "Увеличено",
+            "done": "Готово"
         },
         "batchRename": {
             "title": "Групово преименуване",

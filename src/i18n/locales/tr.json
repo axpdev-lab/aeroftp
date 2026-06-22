@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Sıkıştırılıyor...",
-            "estimatedSize": "Tahmini Boyut"
+            "estimatedSize": "Tahmini Boyut",
+            "complete": "Sıkıştırma tamamlandı",
+            "before": "Önce",
+            "after": "Sonra",
+            "saved": "Kazanılan",
+            "increased": "Arttı",
+            "done": "Tamam"
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",

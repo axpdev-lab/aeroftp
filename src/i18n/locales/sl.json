@@ -2937,7 +2937,13 @@
             "normal": "Normalno",
             "maximum": "Največje",
             "compressing": "Stiskanje...",
-            "estimatedSize": "Ocenjena velikost"
+            "estimatedSize": "Ocenjena velikost",
+            "complete": "Stiskanje končano",
+            "before": "Prej",
+            "after": "Potem",
+            "saved": "Prihranjeno",
+            "increased": "Povečano",
+            "done": "Končano"
         },
         "batchRename": {
             "title": "Skupinsko preimenovanje",

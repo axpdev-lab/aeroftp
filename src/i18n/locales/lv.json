@@ -2937,7 +2937,13 @@
             "normal": "Normāls",
             "maximum": "Maksimāls",
             "compressing": "Saspiežana...",
-            "estimatedSize": "Aptuvens izmērs"
+            "estimatedSize": "Aptuvens izmērs",
+            "complete": "Saspiešana pabeigta",
+            "before": "Pirms",
+            "after": "Pēc",
+            "saved": "Ietaupīts",
+            "increased": "Palielinājies",
+            "done": "Gatavs"
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",

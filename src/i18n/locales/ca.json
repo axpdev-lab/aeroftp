@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Màxim",
             "compressing": "Comprimint...",
-            "estimatedSize": "Estimat"
+            "estimatedSize": "Estimat",
+            "complete": "Compressió completada",
+            "before": "Abans",
+            "after": "Després",
+            "saved": "Estalviat",
+            "increased": "Augmentat",
+            "done": "Fet"
         },
         "batchRename": {
             "title": "Reanomenament massiu",

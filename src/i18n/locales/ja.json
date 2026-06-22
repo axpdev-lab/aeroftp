@@ -2902,7 +2902,13 @@
             "normal": "通常",
             "maximum": "最大",
             "compressing": "圧縮中...",
-            "estimatedSize": "推定サイズ"
+            "estimatedSize": "推定サイズ",
+            "complete": "圧縮完了",
+            "before": "前",
+            "after": "後",
+            "saved": "削減",
+            "increased": "増加",
+            "done": "完了"
         },
         "batchRename": {
             "title": "一括リネーム",

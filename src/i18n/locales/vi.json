@@ -2937,7 +2937,13 @@
             "normal": "Bình thường",
             "maximum": "Tối đa",
             "compressing": "Đang nén...",
-            "estimatedSize": "Kích thước ước tính"
+            "estimatedSize": "Kích thước ước tính",
+            "complete": "Nén hoàn tất",
+            "before": "Trước",
+            "after": "Sau",
+            "saved": "Đã tiết kiệm",
+            "increased": "Đã tăng",
+            "done": "Xong"
         },
         "batchRename": {
             "title": "Đổi tên hàng loạt",

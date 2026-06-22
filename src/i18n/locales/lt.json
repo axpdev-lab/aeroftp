@@ -2937,7 +2937,13 @@
             "normal": "Įprastas",
             "maximum": "Maksimalus",
             "compressing": "Glaudinamas...",
-            "estimatedSize": "Apytikris dydis"
+            "estimatedSize": "Apytikris dydis",
+            "complete": "Glaudinimas baigtas",
+            "before": "Prieš",
+            "after": "Po",
+            "saved": "Sutaupyta",
+            "increased": "Padidėjo",
+            "done": "Atlikta"
         },
         "batchRename": {
             "title": "Masinis pervadinimas",

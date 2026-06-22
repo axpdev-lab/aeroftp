@@ -2937,7 +2937,13 @@
             "normal": "Normál",
             "maximum": "Maximum",
             "compressing": "Tömörítés...",
-            "estimatedSize": "Becsült méret"
+            "estimatedSize": "Becsült méret",
+            "complete": "Tömörítés kész",
+            "before": "Előtte",
+            "after": "Utána",
+            "saved": "Megtakarítva",
+            "increased": "Növekedett",
+            "done": "Kész"
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

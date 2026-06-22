@@ -2937,7 +2937,13 @@
             "normal": "Normalny",
             "maximum": "Maksymalny",
             "compressing": "Kompresowanie...",
-            "estimatedSize": "Szacowany rozmiar"
+            "estimatedSize": "Szacowany rozmiar",
+            "complete": "Kompresja zakończona",
+            "before": "Przed",
+            "after": "Po",
+            "saved": "Zaoszczędzono",
+            "increased": "Zwiększono",
+            "done": "Gotowe"
         },
         "batchRename": {
             "title": "Zbiorcza zmiana nazw",

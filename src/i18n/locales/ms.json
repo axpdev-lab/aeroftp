@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Memampatkan...",
-            "estimatedSize": "Anggaran Saiz"
+            "estimatedSize": "Anggaran Saiz",
+            "complete": "Pemampatan selesai",
+            "before": "Sebelum",
+            "after": "Selepas",
+            "saved": "Dijimat",
+            "increased": "Bertambah",
+            "done": "Selesai"
         },
         "batchRename": {
             "title": "Nama Semula Kelompok",

@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Máximo",
             "compressing": "Comprimindo...",
-            "estimatedSize": "Estimado"
+            "estimatedSize": "Estimado",
+            "complete": "Compresión completada",
+            "before": "Antes",
+            "after": "Despois",
+            "saved": "Aforrado",
+            "increased": "Aumentado",
+            "done": "Feito"
         },
         "batchRename": {
             "title": "Renomear por lotes",

@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maximum",
             "compressing": "Ino-compress...",
-            "estimatedSize": "Tinatantiyang Sukat"
+            "estimatedSize": "Tinatantiyang Sukat",
+            "complete": "Tapos na ang pag-compress",
+            "before": "Bago",
+            "after": "Pagkatapos",
+            "saved": "Naitipid",
+            "increased": "Tumaas",
+            "done": "Tapos"
         },
         "batchRename": {
             "title": "Batch Rename",

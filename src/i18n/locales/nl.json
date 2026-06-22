@@ -2937,7 +2937,13 @@
             "normal": "Normaal",
             "maximum": "Maximaal",
             "compressing": "Comprimeren...",
-            "estimatedSize": "Geschatte grootte"
+            "estimatedSize": "Geschatte grootte",
+            "complete": "Compressie voltooid",
+            "before": "Voor",
+            "after": "Na",
+            "saved": "Bespaard",
+            "increased": "Vergroot",
+            "done": "Klaar"
         },
         "batchRename": {
             "title": "Batch hernoemen",

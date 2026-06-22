@@ -2937,7 +2937,13 @@
             "normal": "Tavaline",
             "maximum": "Maksimaalne",
             "compressing": "Pakkimine...",
-            "estimatedSize": "Hinnanguline suurus"
+            "estimatedSize": "Hinnanguline suurus",
+            "complete": "Pakkimine valmis",
+            "before": "Enne",
+            "after": "Pärast",
+            "saved": "Säästetud",
+            "increased": "Suurenes",
+            "done": "Valmis"
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",

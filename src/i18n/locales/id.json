@@ -2937,7 +2937,13 @@
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Mengompresi...",
-            "estimatedSize": "Perkiraan Ukuran"
+            "estimatedSize": "Perkiraan Ukuran",
+            "complete": "Kompresi selesai",
+            "before": "Sebelum",
+            "after": "Sesudah",
+            "saved": "Dihemat",
+            "increased": "Bertambah",
+            "done": "Selesai"
         },
         "batchRename": {
             "title": "Ganti Nama Batch",

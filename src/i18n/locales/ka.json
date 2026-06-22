@@ -2937,7 +2937,13 @@
             "normal": "ნორმალური",
             "maximum": "მაქსიმალური",
             "compressing": "შეკუმშვა...",
-            "estimatedSize": "სავარაუდო ზომა"
+            "estimatedSize": "სავარაუდო ზომა",
+            "complete": "შეკუმშვა დასრულდა",
+            "before": "მანამდე",
+            "after": "შემდეგ",
+            "saved": "დაზოგილი",
+            "increased": "გაიზარდა",
+            "done": "მზადაა"
         },
         "batchRename": {
             "title": "ჯგუფური სახელების შეცვლა",

@@ -2930,7 +2930,13 @@
             "normal": "Նորմալ",
             "maximum": "Առավելագույն",
             "compressing": "Սեղմում...",
-            "estimatedSize": "Գնահատված չափ"
+            "estimatedSize": "Գնահատված չափ",
+            "complete": "Սեղմումն ավարտվեց",
+            "before": "Մինչ",
+            "after": "Հետո",
+            "saved": "Խնայված",
+            "increased": "Ավելացել է",
+            "done": "Պատրաստ է"
         },
         "batchRename": {
             "title": "Խմբային անվանափոխում",
