@@ -80,11 +80,11 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "export",
     "keystore",
     "aerorsync",
-    "archive",
     "vault",
     "correct",
     "compress",
     "extract",
+    "archive",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
