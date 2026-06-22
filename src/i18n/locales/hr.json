@@ -4952,6 +4952,12 @@
             "dirtyBody": "Imate nespremljene promjene. Odbaciti i zatvoriti?",
             "keepEditing": "Nastavi uređivanje",
             "discardAndClose": "Odbaci i zatvori"
+        },
+        "modalView": {
+            "listView": "Prikaz popisa",
+            "gridView": "Prikaz ikona",
+            "iconSmaller": "Manje ikone",
+            "iconLarger": "Veće ikone"
         }
     }
 }

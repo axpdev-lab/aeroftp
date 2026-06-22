@@ -4952,6 +4952,12 @@
             "dirtyBody": "Имате несачуване измене. Одбацити и затворити?",
             "keepEditing": "Настави уређивање",
             "discardAndClose": "Одбаци и затвори"
+        },
+        "modalView": {
+            "listView": "Приказ листе",
+            "gridView": "Приказ икона",
+            "iconSmaller": "Мање иконе",
+            "iconLarger": "Веће иконе"
         }
     }
 }

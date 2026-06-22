@@ -4952,6 +4952,12 @@
             "dirtyBody": "Vous avez des modifications non enregistrées. Les abandonner et fermer ?",
             "keepEditing": "Continuer l'édition",
             "discardAndClose": "Abandonner et fermer"
+        },
+        "modalView": {
+            "listView": "Vue liste",
+            "gridView": "Vue icônes",
+            "iconSmaller": "Icônes plus petites",
+            "iconLarger": "Icônes plus grandes"
         }
     }
 }

@@ -4952,6 +4952,12 @@
             "dirtyBody": "Kaydedilmemiş değişiklikleriniz var. Atıp kapat?",
             "keepEditing": "Düzenlemeye devam et",
             "discardAndClose": "At ve kapat"
+        },
+        "modalView": {
+            "listView": "Liste görünümü",
+            "gridView": "Simge görünümü",
+            "iconSmaller": "Daha küçük simgeler",
+            "iconLarger": "Daha büyük simgeler"
         }
     }
 }

@@ -4952,6 +4952,12 @@
             "dirtyBody": "Tev ir nesaglabātas izmaiņas. Atmest un aizvērt?",
             "keepEditing": "Turpināt rediģēšanu",
             "discardAndClose": "Atmest un aizvērt"
+        },
+        "modalView": {
+            "listView": "Saraksta skats",
+            "gridView": "Ikonu skats",
+            "iconSmaller": "Mazākas ikonas",
+            "iconLarger": "Lielākas ikonas"
         }
     }
 }

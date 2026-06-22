@@ -4952,6 +4952,12 @@
             "dirtyBody": "Máte neuložené změny. Zahodit a zavřít?",
             "keepEditing": "Pokračovat v úpravách",
             "discardAndClose": "Zahodit a zavřít"
+        },
+        "modalView": {
+            "listView": "Zobrazení seznamu",
+            "gridView": "Zobrazení ikon",
+            "iconSmaller": "Menší ikony",
+            "iconLarger": "Větší ikony"
         }
     }
 }

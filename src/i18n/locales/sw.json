@@ -4952,6 +4952,12 @@
             "dirtyBody": "Una mabadiliko ambayo hayajahifadhiwa. Tupa na funga?",
             "keepEditing": "Endelea kuhariri",
             "discardAndClose": "Tupa na funga"
+        },
+        "modalView": {
+            "listView": "Mwonekano wa orodha",
+            "gridView": "Mwonekano wa aikoni",
+            "iconSmaller": "Aikoni ndogo zaidi",
+            "iconLarger": "Aikoni kubwa zaidi"
         }
     }
 }

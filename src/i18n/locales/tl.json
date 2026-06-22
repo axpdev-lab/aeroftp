@@ -4971,6 +4971,12 @@
             "dirtyBody": "May hindi naka-save na mga pagbabago. Itapon at isara?",
             "keepEditing": "Magpatuloy sa pag-edit",
             "discardAndClose": "Itapon at isara"
+        },
+        "modalView": {
+            "listView": "Tingnan bilang listahan",
+            "gridView": "Tingnan bilang icon",
+            "iconSmaller": "Mas maliliit na icon",
+            "iconLarger": "Mas malalaking icon"
         }
     }
 }

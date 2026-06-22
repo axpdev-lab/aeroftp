@@ -4952,6 +4952,12 @@
             "dirtyBody": "Tens alterações não guardadas. Descartar e fechar?",
             "keepEditing": "Continuar a editar",
             "discardAndClose": "Descartar e fechar"
+        },
+        "modalView": {
+            "listView": "Vista de lista",
+            "gridView": "Vista de ícones",
+            "iconSmaller": "Ícones menores",
+            "iconLarger": "Ícones maiores"
         }
     }
 }

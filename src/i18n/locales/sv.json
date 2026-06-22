@@ -4952,6 +4952,12 @@
             "dirtyBody": "Du har osparade ändringar. Kasta och stäng?",
             "keepEditing": "Fortsätt redigera",
             "discardAndClose": "Kasta och stäng"
+        },
+        "modalView": {
+            "listView": "Listvy",
+            "gridView": "Ikonvy",
+            "iconSmaller": "Mindre ikoner",
+            "iconLarger": "Större ikoner"
         }
     }
 }

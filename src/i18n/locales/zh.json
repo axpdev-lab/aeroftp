@@ -4952,6 +4952,12 @@
             "dirtyBody": "你有未保存的更改。放弃并关闭？",
             "keepEditing": "继续编辑",
             "discardAndClose": "放弃并关闭"
+        },
+        "modalView": {
+            "listView": "列表视图",
+            "gridView": "图标视图",
+            "iconSmaller": "缩小图标",
+            "iconLarger": "放大图标"
         }
     }
 }

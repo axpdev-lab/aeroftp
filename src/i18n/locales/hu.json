@@ -4952,6 +4952,12 @@
             "dirtyBody": "Nem mentett változásai vannak. Elveti és bezárja?",
             "keepEditing": "Szerkesztés folytatása",
             "discardAndClose": "Elvetés és bezárás"
+        },
+        "modalView": {
+            "listView": "Listanézet",
+            "gridView": "Ikonnézet",
+            "iconSmaller": "Kisebb ikonok",
+            "iconLarger": "Nagyobb ikonok"
         }
     }
 }

@@ -4971,6 +4971,12 @@
             "dirtyBody": "Þú ert með óvistaðar breytingar. Henda og loka?",
             "keepEditing": "Halda áfram að breyta",
             "discardAndClose": "Henda og loka"
+        },
+        "modalView": {
+            "listView": "Listasýn",
+            "gridView": "Táknmyndasýn",
+            "iconSmaller": "Minni tákn",
+            "iconLarger": "Stærri tákn"
         }
     }
 }

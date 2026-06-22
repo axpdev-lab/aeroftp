@@ -4971,6 +4971,12 @@
             "dirtyBody": "Mae gennych newidiadau heb eu cadw. Eu taflu a chau?",
             "keepEditing": "Parhau i olygu",
             "discardAndClose": "Taflu a chau"
+        },
+        "modalView": {
+            "listView": "Golwg rhestr",
+            "gridView": "Golwg eiconau",
+            "iconSmaller": "Eiconau llai",
+            "iconLarger": "Eiconau mwy"
         }
     }
 }

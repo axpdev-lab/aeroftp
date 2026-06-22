@@ -4952,6 +4952,12 @@
             "dirtyBody": "Bạn có thay đổi chưa lưu. Bỏ và đóng?",
             "keepEditing": "Tiếp tục chỉnh sửa",
             "discardAndClose": "Bỏ và đóng"
+        },
+        "modalView": {
+            "listView": "Xem danh sách",
+            "gridView": "Xem biểu tượng",
+            "iconSmaller": "Biểu tượng nhỏ hơn",
+            "iconLarger": "Biểu tượng lớn hơn"
         }
     }
 }

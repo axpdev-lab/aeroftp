@@ -4952,6 +4952,12 @@
             "dirtyBody": "Máte neuložené zmeny. Zahodiť a zavrieť?",
             "keepEditing": "Pokračovať v úpravách",
             "discardAndClose": "Zahodiť a zavrieť"
+        },
+        "modalView": {
+            "listView": "Zobrazenie zoznamu",
+            "gridView": "Zobrazenie ikon",
+            "iconSmaller": "Menšie ikony",
+            "iconLarger": "Väčšie ikony"
         }
     }
 }

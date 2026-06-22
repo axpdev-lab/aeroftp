@@ -4952,6 +4952,12 @@
             "dirtyBody": "আপনার অসংরক্ষিত পরিবর্তন আছে. বাতিল করে বন্ধ করবেন?",
             "keepEditing": "সম্পাদনা চালিয়ে যান",
             "discardAndClose": "বাতিল করে বন্ধ করুন"
+        },
+        "modalView": {
+            "listView": "তালিকা ভিউ",
+            "gridView": "আইকন ভিউ",
+            "iconSmaller": "ছোট আইকন",
+            "iconLarger": "বড় আইকন"
         }
     }
 }

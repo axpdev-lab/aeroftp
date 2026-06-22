@@ -4952,6 +4952,12 @@
             "dirtyBody": "Ai modificări nesalvate. Le renunți și închizi?",
             "keepEditing": "Continuă editarea",
             "discardAndClose": "Renunță și închide"
+        },
+        "modalView": {
+            "listView": "Vizualizare listă",
+            "gridView": "Vizualizare pictograme",
+            "iconSmaller": "Pictograme mai mici",
+            "iconLarger": "Pictograme mai mari"
         }
     }
 }

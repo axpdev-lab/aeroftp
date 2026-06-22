@@ -4952,6 +4952,12 @@
             "dirtyBody": "Es gibt nicht gespeicherte Änderungen. Verwerfen und schließen?",
             "keepEditing": "Weiter bearbeiten",
             "discardAndClose": "Verwerfen und schließen"
+        },
+        "modalView": {
+            "listView": "Listenansicht",
+            "gridView": "Symbolansicht",
+            "iconSmaller": "Kleinere Symbole",
+            "iconLarger": "Größere Symbole"
         }
     }
 }

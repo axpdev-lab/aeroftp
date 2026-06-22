@@ -4952,6 +4952,12 @@
             "dirtyBody": "Hai modifiche non salvate. Scartarle e chiudere?",
             "keepEditing": "Continua a modificare",
             "discardAndClose": "Scarta e chiudi"
+        },
+        "modalView": {
+            "listView": "Vista elenco",
+            "gridView": "Vista icone",
+            "iconSmaller": "Icone più piccole",
+            "iconLarger": "Icone più grandi"
         }
     }
 }

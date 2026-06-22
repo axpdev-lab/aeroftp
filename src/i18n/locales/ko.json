@@ -4952,6 +4952,12 @@
             "dirtyBody": "저장되지 않은 변경 사항이 있습니다. 취소하고 닫을까요?",
             "keepEditing": "계속 편집",
             "discardAndClose": "취소하고 닫기"
+        },
+        "modalView": {
+            "listView": "목록 보기",
+            "gridView": "아이콘 보기",
+            "iconSmaller": "아이콘 축소",
+            "iconLarger": "아이콘 확대"
         }
     }
 }

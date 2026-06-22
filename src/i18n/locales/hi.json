@@ -4952,6 +4952,12 @@
             "dirtyBody": "आपके पास असहेजे बदलाव हैं. छोड़कर बंद करें?",
             "keepEditing": "संपादन जारी रखें",
             "discardAndClose": "छोड़ें और बंद करें"
+        },
+        "modalView": {
+            "listView": "सूची दृश्य",
+            "gridView": "आइकन दृश्य",
+            "iconSmaller": "छोटे आइकन",
+            "iconLarger": "बड़े आइकन"
         }
     }
 }

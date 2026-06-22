@@ -4952,6 +4952,12 @@
             "dirtyBody": "Masz niezapisane zmiany. Odrzucić i zamknąć?",
             "keepEditing": "Kontynuuj edycję",
             "discardAndClose": "Odrzuć i zamknij"
+        },
+        "modalView": {
+            "listView": "Widok listy",
+            "gridView": "Widok ikon",
+            "iconSmaller": "Mniejsze ikony",
+            "iconLarger": "Większe ikony"
         }
     }
 }

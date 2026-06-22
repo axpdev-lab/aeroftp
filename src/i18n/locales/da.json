@@ -4952,6 +4952,12 @@
             "dirtyBody": "Du har ugemte ændringer. Kassér og luk?",
             "keepEditing": "Fortsæt redigering",
             "discardAndClose": "Kassér og luk"
+        },
+        "modalView": {
+            "listView": "Listevisning",
+            "gridView": "Ikonvisning",
+            "iconSmaller": "Mindre ikoner",
+            "iconLarger": "Større ikoner"
         }
     }
 }

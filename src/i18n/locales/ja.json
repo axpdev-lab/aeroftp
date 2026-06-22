@@ -4952,6 +4952,12 @@
             "dirtyBody": "未保存の変更があります。破棄して閉じますか？",
             "keepEditing": "編集を続ける",
             "discardAndClose": "破棄して閉じる"
+        },
+        "modalView": {
+            "listView": "リスト表示",
+            "gridView": "アイコン表示",
+            "iconSmaller": "アイコンを小さく",
+            "iconLarger": "アイコンを大きく"
         }
     }
 }

@@ -4971,6 +4971,12 @@
             "dirtyBody": "Tes cambios sen gardar. Descartalos e pechar?",
             "keepEditing": "Continuar a editar",
             "discardAndClose": "Descartar e pechar"
+        },
+        "modalView": {
+            "listView": "Vista de lista",
+            "gridView": "Vista de iconas",
+            "iconSmaller": "Iconas máis pequenas",
+            "iconLarger": "Iconas máis grandes"
         }
     }
 }

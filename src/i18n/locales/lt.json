@@ -4952,6 +4952,12 @@
             "dirtyBody": "Turite neįrašytų pakeitimų. Atmesti ir uždaryti?",
             "keepEditing": "Tęsti redagavimą",
             "discardAndClose": "Atmesti ir uždaryti"
+        },
+        "modalView": {
+            "listView": "Sąrašo rodinys",
+            "gridView": "Piktogramų rodinys",
+            "iconSmaller": "Mažesnės piktogramos",
+            "iconLarger": "Didesnės piktogramos"
         }
     }
 }

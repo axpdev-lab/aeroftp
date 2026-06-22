@@ -4952,6 +4952,12 @@
             "dirtyBody": "Sul on salvestamata muudatusi. Kas hüljata ja sulgeda?",
             "keepEditing": "Jätka muutmist",
             "discardAndClose": "Hülga ja sulge"
+        },
+        "modalView": {
+            "listView": "Loendivaade",
+            "gridView": "Ikoonivaade",
+            "iconSmaller": "Väiksemad ikoonid",
+            "iconLarger": "Suuremad ikoonid"
         }
     }
 }

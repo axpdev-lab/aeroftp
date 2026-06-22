@@ -4971,6 +4971,12 @@
             "dirtyBody": "Du har ulagrede endringer. Forkast og lukk?",
             "keepEditing": "Fortsett redigering",
             "discardAndClose": "Forkast og lukk"
+        },
+        "modalView": {
+            "listView": "Listevisning",
+            "gridView": "Ikonvisning",
+            "iconSmaller": "Mindre ikoner",
+            "iconLarger": "Større ikoner"
         }
     }
 }

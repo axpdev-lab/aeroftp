@@ -7,6 +7,9 @@ import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, IconProvider } from './useVaultState';
+import { useModalFileView } from '../modalview/useModalFileView';
+import { ModalViewToolbar } from '../modalview/ModalViewToolbar';
+import { ModalFileGrid, ModalGridItem } from '../modalview/ModalFileGrid';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { formatSize } from '../../utils/formatters';
@@ -21,6 +24,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
     const t = useTranslation();
     const scrubDrag = useDraggableModal();
     const repairDrag = useDraggableModal();
+    const modalView = useModalFileView();
     const isZip = state.isPlaintextZip;
 
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
@@ -48,6 +52,52 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
     // Display name: just the last segment of the path
     const displayName = (fullName: string) => fullName.split('/').pop() || fullName;
+
+    // --- Grid (icon) view (shared file-manager view across the AeroVault modals) ---
+    const gridItems: ModalGridItem[] = sortedEntries.map(entry => ({
+        key: entry.name,
+        label: displayName(entry.name),
+        isDir: entry.isDir,
+        size: entry.isDir ? undefined : entry.size,
+    }));
+    const gridGetIcon = (item: ModalGridItem, px: number): React.ReactNode => {
+        if (iconProvider) {
+            return item.isDir ? iconProvider.getFolderIcon(px).icon : iconProvider.getFileIcon(item.label, px).icon;
+        }
+        return item.isDir
+            ? <Folder size={px} className="text-yellow-400" />
+            : <File size={px} className="text-gray-500 dark:text-gray-400" />;
+    };
+    const gridActivate = (item: ModalGridItem) => {
+        const entry = sortedEntries.find(e => e.name === item.key);
+        if (!entry) return;
+        if (entry.isDir) state.setCurrentDir(entry.name);
+        else state.handleExtract(entry.name);
+    };
+    const gridActions = (item: ModalGridItem): React.ReactNode => {
+        const entry = sortedEntries.find(e => e.name === item.key);
+        if (!entry) return null;
+        return (
+            <>
+                {!entry.isDir && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); state.handleExtract(entry.name); }}
+                        className="p-1 rounded bg-white/80 dark:bg-gray-800/80 hover:bg-blue-100 dark:hover:bg-gray-600"
+                        title={t('vault.extract')}
+                    >
+                        <Download size={12} />
+                    </button>
+                )}
+                <button
+                    onClick={(e) => { e.stopPropagation(); state.handleRemove(entry.name, entry.isDir); }}
+                    className="p-1 rounded bg-white/80 dark:bg-gray-800/80 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400"
+                    title={t('vault.remove')}
+                >
+                    <Trash2 size={12} />
+                </button>
+            </>
+        );
+    };
 
     return (
         <>
@@ -177,8 +227,10 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <Download size={14} /> {t('vault.remote.saveAndClose')}
                     </button>
                 )}
+                <div className="ml-auto" />
+                <ModalViewToolbar view={modalView} />
                 {currentLevelConfig && (
-                    <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-100/50 dark:bg-gray-800/50`}>
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-100/50 dark:bg-gray-800/50`}>
                         <LevelIcon size={12} />
                         <span>v{state.vaultSecurity?.version}</span>
                         {isZip && (
@@ -367,6 +419,15 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             </p>
                         )}
                     </div>
+                ) : modalView.viewMode === 'grid' ? (
+                    <ModalFileGrid
+                        items={gridItems}
+                        gridSize={modalView.gridSize}
+                        getIcon={gridGetIcon}
+                        onActivate={gridActivate}
+                        renderActions={gridActions}
+                        formatSize={formatSize}
+                    />
                 ) : (
                     <table className="w-full table-fixed">
                         <thead className="text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">

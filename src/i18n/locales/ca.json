@@ -4971,6 +4971,12 @@
             "dirtyBody": "Tens canvis sense desar. Descartar-los i tancar?",
             "keepEditing": "Continua editant",
             "discardAndClose": "Descarta i tanca"
+        },
+        "modalView": {
+            "listView": "Vista de llista",
+            "gridView": "Vista d'icones",
+            "iconSmaller": "Icones més petites",
+            "iconLarger": "Icones més grans"
         }
     }
 }

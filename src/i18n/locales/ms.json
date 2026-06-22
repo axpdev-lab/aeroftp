@@ -4952,6 +4952,12 @@
             "dirtyBody": "Anda mempunyai perubahan belum disimpan. Buang dan tutup?",
             "keepEditing": "Teruskan menyunting",
             "discardAndClose": "Buang dan tutup"
+        },
+        "modalView": {
+            "listView": "Paparan senarai",
+            "gridView": "Paparan ikon",
+            "iconSmaller": "Ikon lebih kecil",
+            "iconLarger": "Ikon lebih besar"
         }
     }
 }

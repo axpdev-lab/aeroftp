@@ -4952,6 +4952,12 @@
             "dirtyBody": "Je hebt niet-opgeslagen wijzigingen. Verwerpen en sluiten?",
             "keepEditing": "Verder bewerken",
             "discardAndClose": "Verwerpen en sluiten"
+        },
+        "modalView": {
+            "listView": "Lijstweergave",
+            "gridView": "Pictogramweergave",
+            "iconSmaller": "Kleinere pictogrammen",
+            "iconLarger": "Grotere pictogrammen"
         }
     }
 }

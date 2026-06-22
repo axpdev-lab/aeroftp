@@ -4952,6 +4952,12 @@
             "dirtyBody": "Sinulla on tallentamattomia muutoksia. Hylätäänkö ja suljetaan?",
             "keepEditing": "Jatka muokkausta",
             "discardAndClose": "Hylkää ja sulje"
+        },
+        "modalView": {
+            "listView": "Luettelonäkymä",
+            "gridView": "Kuvakenäkymä",
+            "iconSmaller": "Pienemmät kuvakkeet",
+            "iconLarger": "Suuremmat kuvakkeet"
         }
     }
 }

@@ -4952,6 +4952,12 @@
             "dirtyBody": "Imate neshranjene spremembe. Zavreči in zapreti?",
             "keepEditing": "Nadaljuj urejanje",
             "discardAndClose": "Zavrzi in zapri"
+        },
+        "modalView": {
+            "listView": "Seznamski pogled",
+            "gridView": "Ikonski pogled",
+            "iconSmaller": "Manjše ikone",
+            "iconLarger": "Večje ikone"
         }
     }
 }
