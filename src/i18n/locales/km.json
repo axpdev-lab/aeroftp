@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "ចាក់សោការត្រួតលើ Rclone Crypt",
             "unlockRcloneCrypt": "ឌិគ្រីបជាការត្រួតលើ Rclone Crypt…",
             "openAsAeroVaultOverlay": "បើកជា AeroVault Overlay",
-            "privacyEllipsis": "ឯកជនភាព..."
+            "privacyEllipsis": "ឯកជនភាព...",
+            "openWithAeroVaultZip": "បើកជាមួយ AeroVault Zip",
+            "createAeroVaultZip": "បង្កើត AeroVault Zip..."
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "បង្ហើបឡើងវិញ vault នេះជាមួយកម្រិតសុវត្ថិភាព ប្រូហ្វាល់ការបង្ហាប់ និងការកែតំរូវវបញ្ហា ខុសប្លែក (លេខសម្ងាត់ដដែល)",
             "changeModeNote": "ឃ្លាំងត្រូវបានខ្ចប់ឡើងវិញនៅនឹងកន្លែងជាមួយការកំណត់ថ្មី ពាក្យសម្ងាត់នៅដដែល។",
             "modeChanged": "របៀបឃ្លាំងត្រូវបានប្តូរ",
-            "changeModeCrossFormat": "វាផ្លាស់ប្ដូរទ្រង់ទ្រាយ vault ហើយអ៊ិនគ្រីបឡើងវិញគ្រប់ឯកសារទាំងអស់ពេញលេញ។"
+            "changeModeCrossFormat": "វាផ្លាស់ប្ដូរទ្រង់ទ្រាយ vault ហើយអ៊ិនគ្រីបឡើងវិញគ្រប់ឯកសារទាំងអស់ពេញលេញ។",
+            "zipCreated": "បានបង្កើត AeroVault Zip ដោយជោគជ័យ",
+            "createZip": "បង្កើត AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip ផ្តល់នូវការបង្ហាប់ខ្ពស់ ការត្រួតពិនិត្យភាពត្រឹមត្រូវ និងការសង្គ្រោះ។ វាមិនត្រូវបានអ៊ិនគ្រីបទេ អ្នកណាដែលមានឯកសារនេះអាចអានវាបាន។",
+            "zipBrowseNotice": "តែការបង្ហាប់ + ភាពត្រឹមត្រូវ + ការសង្គ្រោះ; មិនមែនការសម្ងាត់ទេ។",
+            "dropFilesZip": "ទម្លាក់ឯកសារដើម្បីបន្ថែមទៅ AeroVault Zip",
+            "zipEmpty": "AeroVault Zip ទទេ។ បន្ថែមឯកសារដើម្បីចាប់ផ្តើម។",
+            "zipEmptyHint": "អូសឯកសារនៅទីនេះ ឬចុចបន្ថែមឯកសារ ដើម្បីបង្កើត Zip",
+            "openZip": "បើក AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip គឺជាគន្លងអត្ថបទធម្មតារបស់ AeroVault Zip; កុងតឺន័រដែលបានអ៊ិនគ្រីបត្រូវប្រើ .aerovault។",
+            "zipRecoveryHint": "ភាពស្មើគ្នានៃការសង្គ្រោះជួយជួសជុលបៃតដែលខូច; វាមិនលាក់មាតិកាទេ។",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",

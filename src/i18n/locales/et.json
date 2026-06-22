@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Lukusta Rclone Crypt kate",
             "unlockRcloneCrypt": "Dekrüpteeri Rclone Crypt kattena…",
             "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
-            "privacyEllipsis": "Privaatsus..."
+            "privacyEllipsis": "Privaatsus...",
+            "openWithAeroVaultZip": "Ava rakendusega AeroVault Zip",
+            "createAeroVaultZip": "Loo AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Pakkige see võlv uuesti teise turvatase, tihendusprofiiliga ja Vigade parandusega (sama parool)",
             "changeModeNote": "Hoidla pakitakse kohapeal uute sätetega ümber; parool jääb samaks.",
             "modeChanged": "Hoidla režiim muudetud",
-            "changeModeCrossFormat": "See muudab võlvi formaati ja krüpteerib iga faili täielikult uuesti."
+            "changeModeCrossFormat": "See muudab võlvi formaati ja krüpteerib iga faili täielikult uuesti.",
+            "zipCreated": "AeroVault Zip loodi edukalt",
+            "createZip": "Loo AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip pakub kõrget tihendamist, terviklikkuse kontrolle ja taastamist. See ei ole krüpteeritud; igaüks, kellel on fail, saab seda lugeda.",
+            "zipBrowseNotice": "Ainult tihendamine + terviklikkus + taastamine; mitte konfidentsiaalsus.",
+            "dropFilesZip": "Lohista failid AeroVault Zipi lisamiseks",
+            "zipEmpty": "AeroVault Zip on tühi. Alustamiseks lisa faile.",
+            "zipEmptyHint": "Lohista failid siia või klõpsa Lisa failid, et Zip üles ehitada",
+            "openZip": "Ava AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip on AeroVault Zipi krüpteerimata režiim; krüpteeritud konteinerid peavad kasutama .aerovault.",
+            "zipRecoveryHint": "Taastamise pariteet aitab parandada kahjustatud baite; see ei peida sisu.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

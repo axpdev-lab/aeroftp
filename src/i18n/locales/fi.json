@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Lukitse Rclone Crypt -peittokerros",
             "unlockRcloneCrypt": "Pura salaus Rclone Crypt -peittokerroksena…",
             "openAsAeroVaultOverlay": "Avaa AeroVault Overlayna",
-            "privacyEllipsis": "Yksityisyys..."
+            "privacyEllipsis": "Yksityisyys...",
+            "openWithAeroVaultZip": "Avaa sovelluksella AeroVault Zip",
+            "createAeroVaultZip": "Luo AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Pakkaa tämä holvi uudelleen eri suojaustason, pakkausprofiilin ja Virheenkorjauksen kanssa (sama salasana)",
             "changeModeNote": "Holvi paketoidaan uudelleen paikallaan uusilla asetuksilla; salasana pysyy samana.",
             "modeChanged": "Holvin tila vaihdettu",
-            "changeModeCrossFormat": "Tämä muuttaa holvin muotoa ja salaa jokaisen tiedoston kokonaan uudelleen."
+            "changeModeCrossFormat": "Tämä muuttaa holvin muotoa ja salaa jokaisen tiedoston kokonaan uudelleen.",
+            "zipCreated": "AeroVault Zip luotiin onnistuneesti",
+            "createZip": "Luo AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip tarjoaa korkean pakkauksen, eheystarkistukset ja palautuksen. Sitä ei ole salattu; kuka tahansa, jolla on tiedosto, voi lukea sen.",
+            "zipBrowseNotice": "Vain pakkaus + eheys + palautus; ei luottamuksellisuutta.",
+            "dropFilesZip": "Pudota tiedostot lisätäksesi ne AeroVault Zipiin",
+            "zipEmpty": "AeroVault Zip on tyhjä. Aloita lisäämällä tiedostoja.",
+            "zipEmptyHint": "Vedä tiedostot tähän tai napsauta Lisää tiedostoja rakentaaksesi Zipin",
+            "openZip": "Avaa AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip on AeroVault Zipin salaamaton tila; salattujen säiliöiden on käytettävä .aerovault-muotoa.",
+            "zipRecoveryHint": "Palautuspariteetti auttaa korjaamaan vahingoittuneita tavuja; se ei piilota sisältöä.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

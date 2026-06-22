@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Bloqueja la superposició Rclone Crypt",
             "unlockRcloneCrypt": "Desxifra com a superposició Rclone Crypt…",
             "openAsAeroVaultOverlay": "Obre com a AeroVault Overlay",
-            "privacyEllipsis": "Privacitat..."
+            "privacyEllipsis": "Privacitat...",
+            "openWithAeroVaultZip": "Obre amb AeroVault Zip",
+            "createAeroVaultZip": "Crea AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Reempaqueta aquest cofre amb un nivell de seguretat, perfil de compressió i Correcció d'Errors diferent (mateixa contrasenya)",
             "changeModeNote": "La caixa forta es torna a empaquetar in situ amb la nova configuració; la contrasenya no canvia.",
             "modeChanged": "S'ha canviat el mode de la caixa forta",
-            "changeModeCrossFormat": "Això canvia el format del cofre i re-encripta completament cada fitxer."
+            "changeModeCrossFormat": "Això canvia el format del cofre i re-encripta completament cada fitxer.",
+            "zipCreated": "AeroVault Zip creat correctament",
+            "createZip": "Crea AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip ofereix una compressió alta, comprovacions d'integritat i recuperació. No està xifrat; qualsevol que tingui el fitxer el pot llegir.",
+            "zipBrowseNotice": "Només compressió + integritat + recuperació; sense confidencialitat.",
+            "dropFilesZip": "Deixa anar els fitxers per afegir-los a l'AeroVault Zip",
+            "zipEmpty": "L'AeroVault Zip és buit. Afegeix fitxers per començar.",
+            "zipEmptyHint": "Arrossega els fitxers aquí o fes clic a Afegeix fitxers per construir el Zip",
+            "openZip": "Obre AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip és el canal en text pla d'AeroVault Zip; els contenidors xifrats han d'usar .aerovault.",
+            "zipRecoveryHint": "La paritat de recuperació ajuda a reparar bytes malmesos; no amaga el contingut.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

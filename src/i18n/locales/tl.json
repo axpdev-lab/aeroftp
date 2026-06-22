@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "I-lock ang Rclone Crypt overlay",
             "unlockRcloneCrypt": "I-decrypt bilang Rclone Crypt overlay…",
             "openAsAeroVaultOverlay": "Buksan bilang AeroVault Overlay",
-            "privacyEllipsis": "Privacy..."
+            "privacyEllipsis": "Privacy...",
+            "openWithAeroVaultZip": "Buksan gamit ang AeroVault Zip",
+            "createAeroVaultZip": "Gumawa ng AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "I-repack ang vault na ito sa ilalim ng ibang antas ng seguridad, profile ng compression at Error Correction (parehong password)",
             "changeModeNote": "Ang vault ay ire-repack sa lugar gamit ang mga bagong setting; mananatiling pareho ang password.",
             "modeChanged": "Nabago ang mode ng vault",
-            "changeModeCrossFormat": "Binabago nito ang format ng vault at ganap na nire-encrypt muli ang bawat file."
+            "changeModeCrossFormat": "Binabago nito ang format ng vault at ganap na nire-encrypt muli ang bawat file.",
+            "zipCreated": "Matagumpay na nalikha ang AeroVault Zip",
+            "createZip": "Gumawa ng AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": "Nagbibigay ang .aerozip ng mataas na compression, mga pagsusuri sa integridad, at pagbawi. Hindi ito naka-encrypt; sinumang may file ay maaaring magbasa nito.",
+            "zipBrowseNotice": "Compression + integridad + pagbawi lamang; hindi pagiging kumpidensyal.",
+            "dropFilesZip": "I-drop ang mga file para idagdag sa AeroVault Zip",
+            "zipEmpty": "Walang laman ang AeroVault Zip. Magdagdag ng mga file para magsimula.",
+            "zipEmptyHint": "I-drag ang mga file dito o i-click ang Magdagdag ng Mga File para buuin ang Zip",
+            "openZip": "Buksan ang AeroVault Zip",
+            "zipEncryptedRejected": "Ang .aerozip ang plaintext na daanan ng AeroVault Zip; dapat gumamit ng .aerovault ang mga naka-encrypt na container.",
+            "zipRecoveryHint": "Tumutulong ang recovery parity na ayusin ang mga sirang byte; hindi nito itinatago ang nilalaman.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

@@ -1440,7 +1440,9 @@
             "shareLinksFor": "Share links for",
             "deleteShareLinkPrompt": "Enter link ID to delete (or cancel):",
             "shareLinkDeleted": "Share link deleted",
-            "newDocumentName": "Document name:"
+            "newDocumentName": "Document name:",
+            "openWithAeroVaultZip": "Open with AeroVault Zip",
+            "createAeroVaultZip": "Create AeroVault Zip..."
         },
         "aerocrypt": {
             "title": "Rclone Crypt overlay",
@@ -4136,7 +4138,20 @@
             "folderAdded": "Folder added",
             "extractAll": "Extract all",
             "extractAllHint": "Extract every file in the vault to a folder",
-            "extractedAll": "Extracted {count} file(s) to {path}"
+            "extractedAll": "Extracted {count} file(s) to {path}",
+            "zipCreated": "AeroVault Zip created successfully",
+            "createZip": "Create AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip provides high compression, integrity checks, and recovery. It is not encrypted; anyone with the file can read it.",
+            "zipBrowseNotice": "Compression + integrity + recovery only; not confidentiality.",
+            "dropFilesZip": "Drop files to add to AeroVault Zip",
+            "zipEmpty": "AeroVault Zip is empty. Add files to get started.",
+            "zipEmptyHint": "Drag files here or click Add Files to build the Zip",
+            "openZip": "Open AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip is the AeroVault Zip plaintext lane; encrypted containers must use .aerovault.",
+            "zipRecoveryHint": "Recovery parity helps repair damaged bytes; it does not hide contents.",
+            "zipBadge": "Zip"
         },
         "vaultSync": {
             "title": "Vault Sync",

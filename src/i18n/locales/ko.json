@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt 오버레이 잠금",
             "unlockRcloneCrypt": "Rclone Crypt 오버레이로 복호화…",
             "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
-            "privacyEllipsis": "개인정보..."
+            "privacyEllipsis": "개인정보...",
+            "openWithAeroVaultZip": "AeroVault Zip으로 열기",
+            "createAeroVaultZip": "AeroVault Zip 만들기..."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "이 보관소를 다른 보안 수준, 압축 프로필 및 오류 수정으로 다시 패킹합니다 (동일한 비밀번호)",
             "changeModeNote": "보관함이 새 설정으로 제자리에서 다시 패킹됩니다. 비밀번호는 그대로 유지됩니다.",
             "modeChanged": "보관함 모드가 변경되었습니다",
-            "changeModeCrossFormat": "이것은 보관소 형식을 변경하고 모든 파일을 완전히 다시 암호화합니다."
+            "changeModeCrossFormat": "이것은 보관소 형식을 변경하고 모든 파일을 완전히 다시 암호화합니다.",
+            "zipCreated": "AeroVault Zip을 만들었습니다",
+            "createZip": "AeroVault Zip 만들기",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip은 높은 압축률, 무결성 검사 및 복구를 제공합니다. 암호화되지 않으므로 파일을 가진 사람은 누구나 읽을 수 있습니다.",
+            "zipBrowseNotice": "압축 + 무결성 + 복구만 제공하며, 기밀성은 없습니다.",
+            "dropFilesZip": "AeroVault Zip에 추가할 파일을 놓으세요",
+            "zipEmpty": "AeroVault Zip이 비어 있습니다. 파일을 추가하여 시작하세요.",
+            "zipEmptyHint": "여기에 파일을 끌어다 놓거나 파일 추가를 클릭하여 Zip을 구성하세요",
+            "openZip": "AeroVault Zip 열기",
+            "zipEncryptedRejected": ".aerozip은 AeroVault Zip의 평문 레인입니다. 암호화된 컨테이너는 .aerovault를 사용해야 합니다.",
+            "zipRecoveryHint": "복구 패리티는 손상된 바이트를 복구하는 데 도움이 되며, 내용을 숨기지 않습니다.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",

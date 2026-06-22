@@ -80,6 +80,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "export",
     "keystore",
     "aerorsync",
+    "archive",
     "vault",
     "correct",
     "compress",
@@ -167,7 +168,10 @@ fn executable_stem(argv0: &OsString) -> Option<String> {
 }
 
 fn is_gui_file_suffix(arg: &str) -> bool {
-    arg.ends_with(".aerovault") || arg.ends_with(".aeroftp") || arg.ends_with(".aeroftp-keystore")
+    arg.ends_with(".aerovault")
+        || arg.ends_with(".aerozip")
+        || arg.ends_with(".aeroftp")
+        || arg.ends_with(".aeroftp-keystore")
 }
 
 pub fn resolve_target(exe_path: &Path, route: DispatchRoute) -> Option<PathBuf> {
@@ -207,6 +211,7 @@ mod tests {
                 DispatchRoute::Gui,
             ),
             (vec!["aeroftp", "/tmp/x.aerovault"], DispatchRoute::Gui),
+            (vec!["aeroftp", "/tmp/x.aerozip"], DispatchRoute::Gui),
             (vec!["aeroftp", "/etc/hostname"], DispatchRoute::Gui),
             (vec!["aftp", "ls"], DispatchRoute::Cli),
             (vec!["aeroftp-cli", "ls"], DispatchRoute::Cli),

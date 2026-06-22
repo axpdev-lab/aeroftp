@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Κλείδωμα επικάλυψης Rclone Crypt",
             "unlockRcloneCrypt": "Αποκρυπτογράφηση ως επικάλυψη Rclone Crypt…",
             "openAsAeroVaultOverlay": "Άνοιγμα ως AeroVault Overlay",
-            "privacyEllipsis": "Απόρρητο..."
+            "privacyEllipsis": "Απόρρητο...",
+            "openWithAeroVaultZip": "Άνοιγμα με AeroVault Zip",
+            "createAeroVaultZip": "Δημιουργία AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Μεταφορά...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Επανασυσκευάστε αυτό το θησαυροφυλάκιο με διαφορετικό επίπεδο ασφαλείας, προφίλ συμπίεσης και Διόρθωση Σφαλμάτων (ίδιος κωδικός)",
             "changeModeNote": "Το θησαυροφυλάκιο επανασυσκευάζεται επιτόπου με τις νέες ρυθμίσεις· ο κωδικός παραμένει ίδιος.",
             "modeChanged": "Η λειτουργία του θησαυροφυλακίου άλλαξε",
-            "changeModeCrossFormat": "Αυτό αλλάζει τη μορφή θησαυροφυλακίου και επανακρυπτογραφεί πλήρως κάθε αρχείο."
+            "changeModeCrossFormat": "Αυτό αλλάζει τη μορφή θησαυροφυλακίου και επανακρυπτογραφεί πλήρως κάθε αρχείο.",
+            "zipCreated": "Το AeroVault Zip δημιουργήθηκε με επιτυχία",
+            "createZip": "Δημιουργία AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": "Το .aerozip παρέχει υψηλή συμπίεση, ελέγχους ακεραιότητας και ανάκτηση. Δεν είναι κρυπτογραφημένο· οποιοσδήποτε έχει το αρχείο μπορεί να το διαβάσει.",
+            "zipBrowseNotice": "Μόνο συμπίεση + ακεραιότητα + ανάκτηση· όχι εμπιστευτικότητα.",
+            "dropFilesZip": "Αποθέστε αρχεία για προσθήκη στο AeroVault Zip",
+            "zipEmpty": "Το AeroVault Zip είναι κενό. Προσθέστε αρχεία για να ξεκινήσετε.",
+            "zipEmptyHint": "Σύρετε αρχεία εδώ ή κάντε κλικ στο Προσθήκη αρχείων για να δημιουργήσετε το Zip",
+            "openZip": "Άνοιγμα AeroVault Zip",
+            "zipEncryptedRejected": "Το .aerozip είναι η μη κρυπτογραφημένη λειτουργία του AeroVault Zip· τα κρυπτογραφημένα κοντέινερ πρέπει να χρησιμοποιούν .aerovault.",
+            "zipRecoveryHint": "Η ισοτιμία ανάκτησης βοηθά στην επιδιόρθωση κατεστραμμένων byte· δεν κρύβει το περιεχόμενο.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",

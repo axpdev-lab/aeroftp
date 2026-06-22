@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Kunci overlay Rclone Crypt",
             "unlockRcloneCrypt": "Dekripsi sebagai overlay Rclone Crypt…",
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
-            "privacyEllipsis": "Privasi..."
+            "privacyEllipsis": "Privasi...",
+            "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
+            "createAeroVaultZip": "Buat AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Kemas ulang vault ini dengan tingkat keamanan, profil kompresi, dan Koreksi Kesalahan yang berbeda (kata sandi sama)",
             "changeModeNote": "Vault dikemas ulang di tempat dengan pengaturan baru; kata sandi tetap sama.",
             "modeChanged": "Mode vault diubah",
-            "changeModeCrossFormat": "Ini mengubah format vault dan mengenkripsi ulang setiap file sepenuhnya."
+            "changeModeCrossFormat": "Ini mengubah format vault dan mengenkripsi ulang setiap file sepenuhnya.",
+            "zipCreated": "AeroVault Zip berhasil dibuat",
+            "createZip": "Buat AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip menyediakan kompresi tinggi, pemeriksaan integritas, dan pemulihan. Ini tidak dienkripsi; siapa pun yang memiliki file dapat membacanya.",
+            "zipBrowseNotice": "Hanya kompresi + integritas + pemulihan; bukan kerahasiaan.",
+            "dropFilesZip": "Lepaskan file untuk menambahkannya ke AeroVault Zip",
+            "zipEmpty": "AeroVault Zip kosong. Tambahkan file untuk memulai.",
+            "zipEmptyHint": "Seret file ke sini atau klik Tambah File untuk membangun Zip",
+            "openZip": "Buka AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip adalah jalur teks biasa AeroVault Zip; kontainer terenkripsi harus menggunakan .aerovault.",
+            "zipRecoveryHint": "Paritas pemulihan membantu memperbaiki byte yang rusak; ini tidak menyembunyikan konten.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

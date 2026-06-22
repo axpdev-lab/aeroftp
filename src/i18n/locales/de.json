@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone-Crypt-Overlay sperren",
             "unlockRcloneCrypt": "Als Rclone-Crypt-Overlay entschlüsseln…",
             "openAsAeroVaultOverlay": "Als AeroVault Overlay öffnen",
-            "privacyEllipsis": "Datenschutz..."
+            "privacyEllipsis": "Datenschutz...",
+            "openWithAeroVaultZip": "Mit AeroVault Zip öffnen",
+            "createAeroVaultZip": "AeroVault Zip erstellen..."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Diesen Tresor mit einem anderen Sicherheitslevel, Komprimierungsprofil und Fehlerkorrektur neu verpacken (gleiches Passwort)",
             "changeModeNote": "Der Tresor wird mit den neuen Einstellungen an Ort und Stelle neu verpackt; das Passwort bleibt gleich.",
             "modeChanged": "Tresormodus geändert",
-            "changeModeCrossFormat": "Dies ändert das Tresorformat und verschlüsselt jede Datei vollständig neu."
+            "changeModeCrossFormat": "Dies ändert das Tresorformat und verschlüsselt jede Datei vollständig neu.",
+            "zipCreated": "AeroVault Zip erfolgreich erstellt",
+            "createZip": "AeroVault Zip erstellen",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip bietet hohe Komprimierung, Integritätsprüfungen und Wiederherstellung. Es ist nicht verschlüsselt; jeder mit der Datei kann sie lesen.",
+            "zipBrowseNotice": "Nur Komprimierung + Integrität + Wiederherstellung; keine Vertraulichkeit.",
+            "dropFilesZip": "Dateien ablegen, um sie zum AeroVault Zip hinzuzufügen",
+            "zipEmpty": "Das AeroVault Zip ist leer. Fügen Sie Dateien hinzu, um zu beginnen.",
+            "zipEmptyHint": "Dateien hierher ziehen oder auf Dateien hinzufügen klicken, um das Zip zu erstellen",
+            "openZip": "AeroVault Zip öffnen",
+            "zipEncryptedRejected": ".aerozip ist der unverschlüsselte Modus von AeroVault Zip; verschlüsselte Container müssen .aerovault verwenden.",
+            "zipRecoveryHint": "Die Wiederherstellungsparität hilft, beschädigte Bytes zu reparieren; sie verbirgt den Inhalt nicht.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

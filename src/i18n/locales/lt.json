@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Užrakinti Rclone Crypt sluoksnį",
             "unlockRcloneCrypt": "Iššifruoti kaip Rclone Crypt sluoksnį…",
             "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay",
-            "privacyEllipsis": "Privatumas..."
+            "privacyEllipsis": "Privatumas...",
+            "openWithAeroVaultZip": "Atidaryti su AeroVault Zip",
+            "createAeroVaultZip": "Kurti AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Perpakuokite šį saugyklą su kitu saugumo lygiu, glaudinimo profiliu ir Klaidų taisymu (tas pats slaptažodis)",
             "changeModeNote": "Seifas perpakuojamas vietoje su naujais nustatymais; slaptažodis lieka tas pats.",
             "modeChanged": "Seifo režimas pakeistas",
-            "changeModeCrossFormat": "Tai pakeičia saugyklos formatą ir visiškai iš naujo užšifruoja kiekvieną failą."
+            "changeModeCrossFormat": "Tai pakeičia saugyklos formatą ir visiškai iš naujo užšifruoja kiekvieną failą.",
+            "zipCreated": "AeroVault Zip sėkmingai sukurtas",
+            "createZip": "Kurti AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip suteikia didelį glaudinimą, vientisumo patikras ir atkūrimą. Jis nešifruotas; bet kas, turintis failą, gali jį perskaityti.",
+            "zipBrowseNotice": "Tik glaudinimas + vientisumas + atkūrimas; ne konfidencialumas.",
+            "dropFilesZip": "Vilkite failus, kad pridėtumėte juos prie AeroVault Zip",
+            "zipEmpty": "AeroVault Zip tuščias. Pridėkite failų, kad pradėtumėte.",
+            "zipEmptyHint": "Vilkite failus čia arba spustelėkite Pridėti failus, kad sukurtumėte Zip",
+            "openZip": "Atidaryti AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip yra nešifruotas AeroVault Zip režimas; šifruoti konteineriai turi naudoti .aerovault.",
+            "zipRecoveryHint": "Atkūrimo lygiškumas padeda taisyti sugadintus baitus; jis neslepia turinio.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

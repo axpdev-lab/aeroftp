@@ -821,7 +821,9 @@
             "azureTrashTitle": "Cestino Azure Blob",
             "lockRcloneCrypt": "Blocca overlay Rclone Crypt",
             "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Apri come AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Apri come AeroVault Overlay",
+            "openWithAeroVaultZip": "Apri con AeroVault Zip",
+            "createAeroVaultZip": "Crea AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -3120,7 +3122,20 @@
             "changeModeHint": "Reimpacchetta questa cassaforte con un livello di sicurezza, profilo di compressione e Correzione degli Errori diversi (stessa password)",
             "changeModeNote": "La cassaforte viene reimpacchettata sul posto con le nuove impostazioni; la password resta la stessa.",
             "modeChanged": "Modalità della cassaforte cambiata",
-            "changeModeCrossFormat": "Questo cambia il formato della cassaforte e ri-cifra completamente ogni file."
+            "changeModeCrossFormat": "Questo cambia il formato della cassaforte e ri-cifra completamente ogni file.",
+            "zipCreated": "AeroVault Zip creato correttamente",
+            "createZip": "Crea AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip offre compressione elevata, controlli di integrità e recupero. Non è cifrato; chiunque abbia il file può leggerlo.",
+            "zipBrowseNotice": "Solo compressione + integrità + recupero; nessuna riservatezza.",
+            "dropFilesZip": "Trascina i file da aggiungere all'AeroVault Zip",
+            "zipEmpty": "L'AeroVault Zip è vuoto. Aggiungi file per iniziare.",
+            "zipEmptyHint": "Trascina i file qui o clicca Aggiungi file per costruire lo Zip",
+            "openZip": "Apri AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip è la modalità in chiaro di AeroVault Zip; i contenitori cifrati devono usare .aerovault.",
+            "zipRecoveryHint": "La parità di recupero aiuta a riparare i byte danneggiati; non nasconde i contenuti.",
+            "zipBadge": "Zip"
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

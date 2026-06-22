@@ -17,7 +17,7 @@ use crate::error_correction::ERROR_CORRECTION_DEFAULT_PCT;
 use crate::vault_telemetry::VaultReport;
 use serde::Serialize;
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
@@ -339,6 +339,46 @@ fn apply_profile_level(
     })
 }
 
+const AEROVZ_PRODUCT_EXTENSION: &str = "aerozip";
+
+fn is_aerovz_product_path(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case(AEROVZ_PRODUCT_EXTENSION))
+        .unwrap_or(false)
+}
+
+fn ensure_aerovz_product_path(path: &str) -> Result<(), String> {
+    if is_aerovz_product_path(path) {
+        Ok(())
+    } else {
+        Err(format!("Expected a .{AEROVZ_PRODUCT_EXTENSION} archive path"))
+    }
+}
+
+fn aerovz_plaintext_flag(path: &Path) -> Result<Option<bool>, String> {
+    let mut file = File::open(path).map_err(|e| format!("Open archive: {e}"))?;
+    let mut header_prefix = [0u8; 12];
+    file.read_exact(&mut header_prefix)
+        .map_err(|e| format!("Read archive header: {e}"))?;
+    if &header_prefix[..10] != aerovault::v3::constants::MAGIC
+        || header_prefix[10] != aerovault::v3::constants::VERSION
+    {
+        return Ok(None);
+    }
+    Ok(Some(
+        header_prefix[11] & aerovault::v3::constants::FLAG_PLAINTEXT_CONTENT != 0,
+    ))
+}
+
+fn open_aerovz_archive(path: &Path) -> Result<aerovault::v3::OpenVaultV3, String> {
+    if matches!(aerovz_plaintext_flag(path)?, Some(false)) {
+        return Err("Not a plaintext .aerozip archive (it is encrypted)".to_string());
+    }
+    aerovault::v3::VaultV3::open_plaintext(path)
+}
+
 /// Forwards the crate's content-pipeline telemetry into a shared [`VaultReport`].
 /// Attached to an opened crate vault via `set_telemetry_sink`; the handler keeps
 /// the `Arc` to read the populated report back after the blocking op. Poison is
@@ -455,6 +495,338 @@ pub async fn vault_v3_create_with_error_correction(
     .await
     .map_err(|e| format!("vault create task failed: {e}"))??;
     Ok(vault_path)
+}
+
+#[tauri::command]
+pub async fn aerovz_is_archive(path: String) -> Result<bool, String> {
+    Ok(matches!(
+        aerovz_plaintext_flag(Path::new(&path)),
+        Ok(Some(true))
+    ))
+}
+
+#[tauri::command]
+pub async fn aerovz_create_archive(
+    vault_path: String,
+    compression_profile: Option<String>,
+    error_correction_pct: Option<u32>,
+) -> Result<String, String> {
+    ensure_aerovz_product_path(&vault_path)?;
+    let opts = apply_profile_level(
+        aerovault::v3::CreateOptionsV3::new_plaintext(PathBuf::from(&vault_path)),
+        compression_profile.as_deref(),
+    )?;
+    let pct = error_correction_pct.unwrap_or(ERROR_CORRECTION_DEFAULT_PCT);
+    let vp = vault_path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vp))?;
+        aerovault::v3::VaultV3::create_with_error_correction(
+            &opts,
+            aerovault::v3::RecoveryPlacement::Embedded,
+            pct,
+        )
+    })
+    .await
+    .map_err(|e| format!("archive create task failed: {e}"))??;
+    Ok(vault_path)
+}
+
+#[tauri::command]
+pub async fn aerovz_open_archive(vault_path: String) -> Result<VaultV3Info, String> {
+    let summary =
+        tokio::task::spawn_blocking(move || -> Result<aerovault::v3::VaultSummaryV3, String> {
+            let vault = open_aerovz_archive(Path::new(&vault_path))?;
+            Ok(aerovault::v3::VaultV3::summary(&vault))
+        })
+        .await
+        .map_err(|e| format!("archive open task failed: {e}"))??;
+    Ok(info_from_summary(&summary))
+}
+
+#[tauri::command]
+pub async fn aerovz_recovery_status(path: String) -> Result<serde_json::Value, String> {
+    let status = aerovault::v3::VaultV3::recovery_status(Path::new(&path))?;
+    Ok(serde_json::json!({
+        "embedded": status.embedded,
+        "detached": status.detached,
+        "header_parity": status.header_parity,
+        "manifest_parity": status.manifest_parity,
+    }))
+}
+
+#[tauri::command]
+pub async fn aerovz_add_files(
+    vault_path: String,
+    file_paths: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<VaultV3Info, String> {
+    let cb: VaultProgressFn = Box::new(move |pct, done, total| {
+        let _ = app.emit(
+            "vault_progress",
+            serde_json::json!({ "percentage": pct, "transferred": done, "total": total }),
+        );
+    });
+    aerovz_add_files_with_progress(vault_path, file_paths, Some(cb)).await
+}
+
+async fn aerovz_add_files_with_progress(
+    vault_path: String,
+    file_paths: Vec<String>,
+    progress: Option<VaultProgressFn>,
+) -> Result<VaultV3Info, String> {
+    let started = Instant::now();
+    let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
+    for file_path in &file_paths {
+        let path = PathBuf::from(file_path);
+        if !path.is_file() {
+            return Err(format!("Not a regular file: {file_path}"));
+        }
+        let name = safe_entry_name(&path)?;
+        sources.push((path, name));
+    }
+    let total_bytes: u64 = sources
+        .iter()
+        .map(|(p, _)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .sum();
+    preflight_vault_memory_guard(Path::new(&vault_path), &sources)?;
+
+    let report = Arc::new(Mutex::new(VaultReport::new("archive_add_files", 3)));
+    let report_for_task = report.clone();
+    let summary =
+        tokio::task::spawn_blocking(move || -> Result<aerovault::v3::VaultSummaryV3, String> {
+            let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+            let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+            let pre = aerovault::v3::VaultV3::summary(&vault);
+            {
+                let mut r = report_for_task.lock().unwrap_or_else(|e| e.into_inner());
+                r.set_profile(level_to_profile(pre.compression_level));
+                r.set_algorithms(pre.algorithms.clone());
+            }
+            vault.set_telemetry_sink(Box::new(ReportSink {
+                report: report_for_task.clone(),
+                progress: progress.map(|cb| VaultProgressEmitter {
+                    cb,
+                    total: total_bytes,
+                    acc: 0,
+                    last_pct: -1,
+                }),
+            }));
+            aerovault::v3::VaultV3::add_files(&mut vault, &sources)?;
+            Ok(aerovault::v3::VaultV3::summary(&vault))
+        })
+        .await
+        .map_err(|e| format!("archive add task failed: {e}"))??;
+
+    let mut info = info_from_summary(&summary);
+    {
+        let mut r = report.lock().unwrap_or_else(|e| e.into_inner());
+        r.step("seal: rebuild plaintext manifest + atomic write");
+        r.finish(started.elapsed().as_millis() as u64);
+        let (np, dh, ratio) = (r.new_physical_chunks, r.dedup_hits, r.compression_ratio_pct);
+        r.step(format!(
+            "done: {np} new physical chunk(s), {dh} dedup hit(s), {ratio:.1}% compressed"
+        ));
+        info.report = Some(r.clone());
+    }
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn aerovz_add_files_to_dir(
+    vault_path: String,
+    file_paths: Vec<String>,
+    target_dir: String,
+) -> Result<serde_json::Value, String> {
+    let paths: Vec<PathBuf> = file_paths.iter().map(PathBuf::from).collect();
+    let guard_sources: Vec<(PathBuf, String)> =
+        paths.iter().map(|p| (p.clone(), String::new())).collect();
+    preflight_vault_memory_guard(Path::new(&vault_path), &guard_sources)?;
+    let added = paths.len();
+    let total = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+        aerovault::v3::VaultV3::add_files_to_dir(&mut vault, &paths, &target_dir)?;
+        Ok(aerovault::v3::VaultV3::summary(&vault).entries.len())
+    })
+    .await
+    .map_err(|e| format!("archive add task failed: {e}"))??;
+    Ok(serde_json::json!({ "added": added, "total": total }))
+}
+
+#[tauri::command]
+pub async fn aerovz_add_directory(
+    app: tauri::AppHandle,
+    vault_path: String,
+    source_dir: String,
+    target_prefix: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (added_files, added_dirs) =
+        tokio::task::spawn_blocking(move || -> Result<(usize, usize), String> {
+            let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+            let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+            aerovault::v3::VaultV3::add_directory(
+                &mut vault,
+                Path::new(&source_dir),
+                target_prefix.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| format!("archive add directory task failed: {e}"))??;
+
+    let _ = app.emit(
+        "vault-add-progress",
+        serde_json::json!({
+            "current": added_files,
+            "total": added_files,
+            "current_file": ""
+        }),
+    );
+    Ok(serde_json::json!({
+        "added_files": added_files,
+        "added_dirs": added_dirs,
+        "total_entries": added_files + added_dirs
+    }))
+}
+
+#[tauri::command]
+pub async fn aerovz_create_directory(
+    vault_path: String,
+    dir_name: String,
+) -> Result<serde_json::Value, String> {
+    let dir = normalize_vault_relative_path(&dir_name)?;
+    let created = tokio::task::spawn_blocking(move || -> Result<bool, String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+        aerovault::v3::VaultV3::create_directory(&mut vault, &dir_name)
+    })
+    .await
+    .map_err(|e| format!("archive mkdir task failed: {e}"))??;
+    Ok(serde_json::json!({ "created": created, "dir": dir }))
+}
+
+#[tauri::command]
+pub async fn aerovz_delete_entry(
+    vault_path: String,
+    entry_name: String,
+) -> Result<serde_json::Value, String> {
+    let deleted = normalize_vault_relative_path(&entry_name)?;
+    let remaining = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+        let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+        let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+        aerovault::v3::VaultV3::delete_entry(&mut vault, &entry_name)?;
+        Ok(aerovault::v3::VaultV3::summary(&vault).entries.len())
+    })
+    .await
+    .map_err(|e| format!("archive delete task failed: {e}"))??;
+    Ok(serde_json::json!({ "deleted": deleted, "remaining": remaining }))
+}
+
+#[tauri::command]
+pub async fn aerovz_delete_entries(
+    vault_path: String,
+    entry_names: Vec<String>,
+    recursive: bool,
+) -> Result<serde_json::Value, String> {
+    let (removed, remaining) =
+        tokio::task::spawn_blocking(move || -> Result<(usize, usize), String> {
+            let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
+            let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+            let removed =
+                aerovault::v3::VaultV3::delete_entries(&mut vault, &entry_names, recursive)?;
+            Ok((
+                removed,
+                aerovault::v3::VaultV3::summary(&vault).entries.len(),
+            ))
+        })
+        .await
+        .map_err(|e| format!("archive delete task failed: {e}"))??;
+    Ok(serde_json::json!({ "removed": removed, "remaining": remaining }))
+}
+
+#[tauri::command]
+pub async fn aerovz_extract_entry(
+    vault_path: String,
+    entry_name: String,
+    dest_path: String,
+) -> Result<String, String> {
+    let extracted = tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
+        let vault = open_aerovz_archive(Path::new(&vault_path))?;
+        aerovault::v3::VaultV3::extract_entry(&vault, &entry_name, Path::new(&dest_path))
+    })
+    .await
+    .map_err(|e| format!("archive extract task failed: {e}"))??;
+    Ok(extracted.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn aerovz_extract_all(vault_path: String, dest_path: String) -> Result<u64, String> {
+    tokio::task::spawn_blocking(move || -> Result<u64, String> {
+        let vault = open_aerovz_archive(Path::new(&vault_path))?;
+        aerovault::v3::VaultV3::extract_all(&vault, Path::new(&dest_path))
+    })
+    .await
+    .map_err(|e| format!("archive extract task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn aerovz_scrub(vault_path: String) -> Result<serde_json::Value, String> {
+    let (checked, list, parity_source) = tokio::task::spawn_blocking(
+        move || -> Result<(usize, Vec<serde_json::Value>, &'static str), String> {
+            let vault = open_aerovz_archive(Path::new(&vault_path))?;
+            let checked = aerovault::v3::VaultV3::summary(&vault).chunk_count;
+            let damaged = aerovault::v3::VaultV3::scrub(&vault);
+            let parity_source =
+                match aerovault::v3::VaultV3::resolve_parity_source(&vault, None) {
+                    Ok(s) => s,
+                    Err(_) => aerovault::v3::ParitySource::None,
+                };
+            let list: Vec<_> = damaged
+                .into_iter()
+                .map(|d| {
+                    serde_json::json!({
+                        "id": d.record.id,
+                        "on_disk_start": d.on_disk_start,
+                        "on_disk_len": d.on_disk_len,
+                        "cipher_hash": d.record.cipher_hash,
+                    })
+                })
+                .collect();
+            Ok((checked, list, parity_source.as_str()))
+        },
+    )
+    .await
+    .map_err(|e| format!("archive scrub task failed: {e}"))??;
+    let count = list.len();
+    Ok(serde_json::json!({
+        "damaged": list,
+        "count": count,
+        "checked": checked,
+        "parity_source": parity_source,
+    }))
+}
+
+#[tauri::command]
+pub async fn aerovz_repair(vault_path: String, dry_run: bool) -> Result<serde_json::Value, String> {
+    let (repaired, damaged, source) =
+        tokio::task::spawn_blocking(move || -> Result<(usize, usize, &'static str), String> {
+            let _lock = if dry_run {
+                None
+            } else {
+                Some(acquire_vault_write_lock(Path::new(&vault_path))?)
+            };
+            let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
+            let damaged = aerovault::v3::VaultV3::scrub(&vault).len();
+            let (repaired, source) = aerovault::v3::VaultV3::repair(&mut vault, dry_run, None)?;
+            Ok((repaired, damaged, source.as_str()))
+        })
+        .await
+        .map_err(|e| format!("archive repair task failed: {e}"))??;
+    Ok(serde_json::json!({
+        "repaired": repaired,
+        "damaged": damaged,
+        "dry_run": dry_run,
+        "parity_source": source,
+    }))
 }
 
 /// The target "mode" for a vault repack (Ehud #2: a "Change Mode" action next to

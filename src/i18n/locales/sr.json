@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Закључај прекривач Rclone Crypt",
             "unlockRcloneCrypt": "Дешифруј као прекривач Rclone Crypt…",
             "openAsAeroVaultOverlay": "Отвори као AeroVault Overlay",
-            "privacyEllipsis": "Приватност..."
+            "privacyEllipsis": "Приватност...",
+            "openWithAeroVaultZip": "Отвори помоћу AeroVault Zip",
+            "createAeroVaultZip": "Направи AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Преупакујте овај трезор са другачијим нивоом безбедности, профилом компресије и Исправком грешака (иста лозинка)",
             "changeModeNote": "Трезор се поново пакује на месту са новим подешавањима; лозинка остаје иста.",
             "modeChanged": "Режим трезора је промењен",
-            "changeModeCrossFormat": "Ово мења формат трезора и у потпуности поново шифрује сваку датотеку."
+            "changeModeCrossFormat": "Ово мења формат трезора и у потпуности поново шифрује сваку датотеку.",
+            "zipCreated": "AeroVault Zip је успешно направљен",
+            "createZip": "Направи AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip пружа високу компресију, провере интегритета и опоравак. Није шифрован; свако ко има датотеку може да је прочита.",
+            "zipBrowseNotice": "Само компресија + интегритет + опоравак; не поверљивост.",
+            "dropFilesZip": "Спустите датотеке да бисте их додали у AeroVault Zip",
+            "zipEmpty": "AeroVault Zip је празан. Додајте датотеке да бисте почели.",
+            "zipEmptyHint": "Превуците датотеке овде или кликните на Додај датотеке да бисте изградили Zip",
+            "openZip": "Отвори AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip је нешифровани режим AeroVault Zip; шифровани контејнери морају користити .aerovault.",
+            "zipRecoveryHint": "Паритет опоравка помаже у поправци оштећених бајтова; не скрива садржај.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator trezor",

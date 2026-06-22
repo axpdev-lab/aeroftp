@@ -15139,8 +15139,12 @@ pub fn run() {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            // Forward .aerovault file argument to frontend
-            if let Some(vault_arg) = argv.iter().skip(1).find(|a| a.ends_with(".aerovault")) {
+            // Forward .aerovault/.aerozip file argument to frontend
+            if let Some(vault_arg) = argv
+                .iter()
+                .skip(1)
+                .find(|a| a.ends_with(".aerovault") || a.ends_with(".aerozip"))
+            {
                 if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
                     let meta = std::fs::symlink_metadata(&canonical);
                     if meta.map(|m| m.is_file()).unwrap_or(false) {
@@ -15861,10 +15865,14 @@ pub fn run() {
 
             info!("System tray icon initialized");
 
-            // Handle .aerovault file passed as CLI argument on first launch
+            // Handle .aerovault/.aerozip file passed as CLI argument on first launch
             {
                 let args: Vec<String> = std::env::args().collect();
-                if let Some(vault_arg) = args.iter().skip(1).find(|a| a.ends_with(".aerovault")) {
+                if let Some(vault_arg) = args
+                    .iter()
+                    .skip(1)
+                    .find(|a| a.ends_with(".aerovault") || a.ends_with(".aerozip"))
+                {
                     if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
                         let meta = std::fs::symlink_metadata(&canonical);
                         if meta.map(|m| m.is_file()).unwrap_or(false) {
@@ -16296,6 +16304,20 @@ pub fn run() {
             aerovault_v2::vault_v2_scan_directory,
             aerovault_v2::vault_v2_add_directory,
             // AeroVault v3 draft wrapper-stack backend
+            aerovault_v3::aerovz_is_archive,
+            aerovault_v3::aerovz_create_archive,
+            aerovault_v3::aerovz_open_archive,
+            aerovault_v3::aerovz_recovery_status,
+            aerovault_v3::aerovz_add_files,
+            aerovault_v3::aerovz_add_files_to_dir,
+            aerovault_v3::aerovz_add_directory,
+            aerovault_v3::aerovz_create_directory,
+            aerovault_v3::aerovz_delete_entry,
+            aerovault_v3::aerovz_delete_entries,
+            aerovault_v3::aerovz_extract_entry,
+            aerovault_v3::aerovz_extract_all,
+            aerovault_v3::aerovz_scrub,
+            aerovault_v3::aerovz_repair,
             aerovault_v3::vault_v3_create,
             aerovault_v3::vault_v3_create_with_error_correction,
             aerovault_v3::vault_v3_open,

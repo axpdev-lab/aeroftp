@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Blochează suprapunerea Rclone Crypt",
             "unlockRcloneCrypt": "Decriptează ca suprapunere Rclone Crypt…",
             "openAsAeroVaultOverlay": "Deschide ca AeroVault Overlay",
-            "privacyEllipsis": "Confidențialitate..."
+            "privacyEllipsis": "Confidențialitate...",
+            "openWithAeroVaultZip": "Deschide cu AeroVault Zip",
+            "createAeroVaultZip": "Creează AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Reambalați acest seif cu un nivel de securitate, profil de compresie și Corecție a Erorilor diferit (aceeași parolă)",
             "changeModeNote": "Seiful este reîmpachetat pe loc cu noile setări; parola rămâne aceeași.",
             "modeChanged": "Modul seifului a fost schimbat",
-            "changeModeCrossFormat": "Aceasta schimbă formatul seifului și re-criptează complet fiecare fișier."
+            "changeModeCrossFormat": "Aceasta schimbă formatul seifului și re-criptează complet fiecare fișier.",
+            "zipCreated": "AeroVault Zip a fost creat cu succes",
+            "createZip": "Creează AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip oferă compresie ridicată, verificări de integritate și recuperare. Nu este criptat; oricine are fișierul îl poate citi.",
+            "zipBrowseNotice": "Doar compresie + integritate + recuperare; nu confidențialitate.",
+            "dropFilesZip": "Plasați fișiere pentru a le adăuga la AeroVault Zip",
+            "zipEmpty": "AeroVault Zip este gol. Adăugați fișiere pentru a începe.",
+            "zipEmptyHint": "Trageți fișiere aici sau faceți clic pe Adăugați fișiere pentru a construi Zip-ul",
+            "openZip": "Deschide AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip este modul necriptat al AeroVault Zip; containerele criptate trebuie să folosească .aerovault.",
+            "zipRecoveryHint": "Paritatea de recuperare ajută la repararea octeților deteriorați; nu ascunde conținutul.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",

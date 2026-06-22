@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt katmanını kilitle",
             "unlockRcloneCrypt": "Rclone Crypt katmanı olarak çöz…",
             "openAsAeroVaultOverlay": "AeroVault Overlay olarak aç",
-            "privacyEllipsis": "Gizlilik..."
+            "privacyEllipsis": "Gizlilik...",
+            "openWithAeroVaultZip": "AeroVault Zip ile aç",
+            "createAeroVaultZip": "AeroVault Zip oluştur..."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Bu kasayı farklı bir güvenlik düzeyi, sıkıştırma profili ve Hata Düzeltme ile yeniden paketleyin (aynı parola)",
             "changeModeNote": "Kasa yeni ayarlarla yerinde yeniden paketlenir; parola aynı kalır.",
             "modeChanged": "Kasa modu değiştirildi",
-            "changeModeCrossFormat": "Bu, kasa biçimini değiştirir ve her dosyayı tamamen yeniden şifreler."
+            "changeModeCrossFormat": "Bu, kasa biçimini değiştirir ve her dosyayı tamamen yeniden şifreler.",
+            "zipCreated": "AeroVault Zip başarıyla oluşturuldu",
+            "createZip": "AeroVault Zip oluştur",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip yüksek sıkıştırma, bütünlük kontrolleri ve kurtarma sağlar. Şifrelenmemiştir; dosyaya sahip herkes onu okuyabilir.",
+            "zipBrowseNotice": "Yalnızca sıkıştırma + bütünlük + kurtarma; gizlilik değil.",
+            "dropFilesZip": "AeroVault Zip'e eklemek için dosyaları bırakın",
+            "zipEmpty": "AeroVault Zip boş. Başlamak için dosya ekleyin.",
+            "zipEmptyHint": "Dosyaları buraya sürükleyin veya Zip'i oluşturmak için Dosya Ekle'ye tıklayın",
+            "openZip": "AeroVault Zip'i aç",
+            "zipEncryptedRejected": ".aerozip, AeroVault Zip'in şifrelenmemiş modudur; şifrelenmiş kapsayıcılar .aerovault kullanmalıdır.",
+            "zipRecoveryHint": "Kurtarma eşliği hasarlı baytları onarmaya yardımcı olur; içeriği gizlemez.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

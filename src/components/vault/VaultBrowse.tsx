@@ -21,6 +21,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
     const t = useTranslation();
     const scrubDrag = useDraggableModal();
     const repairDrag = useDraggableModal();
+    const isZip = state.isPlaintextZip;
 
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || VaultIcon;
@@ -59,6 +60,12 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     </div>
                 </div>
             )}
+            {isZip && (
+                <div className="px-4 py-2 border-b border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
+                    <span className="font-medium">{t('vault.zipPlaintextTitle')}</span>
+                    <span className="ml-2">{t('vault.zipBrowseNotice')}</span>
+                </div>
+            )}
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                 <button onClick={state.handleAddFiles} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">
@@ -79,14 +86,16 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <Download size={14} /> {t('vault.extractAll')}
                     </button>
                 )}
-                <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
-                    <Key size={14} /> {t('vault.changePassword')}
-                </button>
+                {!isZip && (
+                    <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">
+                        <Key size={14} /> {t('vault.changePassword')}
+                    </button>
+                )}
                 {/* Change Mode (Ehud #2): re-pack the vault under a new security level
                     (v2<->v3 / cascade), compression profile and/or Error Correction
                     (same password). Next to Change Password; available for any open
                     vault. Opening the form seeds the selector with the current level. */}
-                {state.vaultSecurity && (
+                {state.vaultSecurity && !isZip && (
                     <button onClick={() => {
                         if (!state.changingMode && state.vaultSecurity) {
                             state.setNewModeSecurityLevel(state.vaultSecurity.level);
@@ -135,16 +144,18 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             <Wrench size={14} /> {t('vault.repairErrorCorrection')}
                         </button>
                         {/* SIDECAR: export a detached .aerocorrect (add/refresh parity without rewriting the container). */}
-                        <button
-                            onClick={state.exportParity}
-                            disabled={state.loading || state.isExportingParity}
-                            className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded"
-                            title={t('vault.exportParityHint')}
-                        >
-                            <FileDown size={14} /> {state.isExportingParity ? t('vault.exportingParity') : t('vault.exportParity')}
-                        </button>
+                        {!isZip && (
+                            <button
+                                onClick={state.exportParity}
+                                disabled={state.loading || state.isExportingParity}
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded"
+                                title={t('vault.exportParityHint')}
+                            >
+                                <FileDown size={14} /> {state.isExportingParity ? t('vault.exportingParity') : t('vault.exportParity')}
+                            </button>
+                        )}
                         {/* Strip embedded parity (only meaningful when an in-container copy exists). */}
-                        {state.hasErrorCorrection && (
+                        {state.hasErrorCorrection && !isZip && (
                             <button
                                 onClick={() => state.stripParity(false)}
                                 disabled={state.loading || state.isStrippingParity}
@@ -170,6 +181,11 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded text-xs ${currentLevelConfig.color} bg-gray-100/50 dark:bg-gray-800/50`}>
                         <LevelIcon size={12} />
                         <span>v{state.vaultSecurity?.version}</span>
+                        {isZip && (
+                            <span className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                {t('vault.zipBadge')}
+                            </span>
+                        )}
                         {state.vaultSecurity?.cascadeMode && (
                             <span className="flex items-center gap-0.5">
                                 <Zap size={10} /> {t('vault.cascade')}
@@ -246,7 +262,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
             )}
 
             {/* Change password form */}
-            {state.changingPassword && (<>
+                {state.changingPassword && !isZip && (<>
                 <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex gap-2 items-end">
                     <div className="flex-1">
                         <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('vault.newPassword')}</label>
@@ -282,7 +298,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 keeping the same password. The Archive (v3) level unlocks the
                 compression profile and Error Correction; the v2 levels hide both.
                 Moving across formats is a full re-encrypt, flagged with a warning. */}
-            {state.changingMode && state.vaultSecurity && (() => {
+            {state.changingMode && state.vaultSecurity && !isZip && (() => {
                 const targetConfig = securityLevels[state.newModeSecurityLevel];
                 const targetIsV3 = targetConfig.version === 3;
                 const crossFormat = targetConfig.version !== state.vaultSecurity.version
@@ -334,7 +350,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     <div className="absolute inset-0 z-10 flex items-center justify-center bg-emerald-500/10 border-2 border-dashed border-emerald-500 rounded-lg pointer-events-none">
                         <div className="flex flex-col items-center gap-2 text-emerald-500">
                             <Plus size={32} />
-                            <span className="text-sm font-medium">{t('vault.dropFiles')}</span>
+                            <span className="text-sm font-medium">{isZip ? t('vault.dropFilesZip') : t('vault.dropFiles')}</span>
                             {state.currentDir && (
                                 <span className="text-xs opacity-70">/{state.currentDir}</span>
                             )}
@@ -344,10 +360,10 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 {sortedEntries.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
                         <VaultIcon size={32} className="mb-2 opacity-50" />
-                        <p className="text-sm">{state.currentDir ? t('vault.dirEmpty') : t('vault.empty')}</p>
+                        <p className="text-sm">{state.currentDir ? t('vault.dirEmpty') : (isZip ? t('vault.zipEmpty') : t('vault.empty'))}</p>
                         {!state.currentDir && (
                             <p className="text-xs mt-1 text-gray-400 dark:text-gray-500">
-                                {t('vault.emptyHint') || 'Drag files here or click Add Files to get started'}
+                                {isZip ? t('vault.zipEmptyHint') : (t('vault.emptyHint') || 'Drag files here or click Add Files to get started')}
                             </p>
                         )}
                     </div>
@@ -429,7 +445,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition-colors"
                     >
                         <Check size={12} />
-                        {t('vault.save') || 'Save'}
+                        {isZip ? t('vault.close') : (t('vault.save') || 'Save')}
                     </button>
                 </div>
             </div>

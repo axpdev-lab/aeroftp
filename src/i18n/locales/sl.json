@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Zakleni prekrivanje Rclone Crypt",
             "unlockRcloneCrypt": "Dešifriraj kot prekrivanje Rclone Crypt…",
             "openAsAeroVaultOverlay": "Odpri kot AeroVault Overlay",
-            "privacyEllipsis": "Zasebnost..."
+            "privacyEllipsis": "Zasebnost...",
+            "openWithAeroVaultZip": "Odpri z AeroVault Zip",
+            "createAeroVaultZip": "Ustvari AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Znova zapakirajte ta trezor z drugačno varnostno ravnjo, profilom stiskanja in Popravljanjem napak (isto geslo)",
             "changeModeNote": "Trezor se znova zapakira na mestu z novimi nastavitvami; geslo ostane isto.",
             "modeChanged": "Način trezorja spremenjen",
-            "changeModeCrossFormat": "To spremeni format trezorja in v celoti znova šifrira vsako datoteko."
+            "changeModeCrossFormat": "To spremeni format trezorja in v celoti znova šifrira vsako datoteko.",
+            "zipCreated": "AeroVault Zip je uspešno ustvarjen",
+            "createZip": "Ustvari AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip zagotavlja visoko stiskanje, preverjanja celovitosti in obnovitev. Ni šifriran; kdor koli ima datoteko, jo lahko prebere.",
+            "zipBrowseNotice": "Samo stiskanje + celovitost + obnovitev; brez zaupnosti.",
+            "dropFilesZip": "Spustite datoteke za dodajanje v AeroVault Zip",
+            "zipEmpty": "AeroVault Zip je prazen. Dodajte datoteke za začetek.",
+            "zipEmptyHint": "Povlecite datoteke sem ali kliknite Dodaj datoteke za izgradnjo Zip",
+            "openZip": "Odpri AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip je nešifrirani način AeroVault Zip; šifrirani vsebniki morajo uporabljati .aerovault.",
+            "zipRecoveryHint": "Pariteta obnovitve pomaga popraviti poškodovane bajte; ne skriva vsebine.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

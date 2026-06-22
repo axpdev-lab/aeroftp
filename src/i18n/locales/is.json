@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Læsa Rclone Crypt yfirlag",
             "unlockRcloneCrypt": "Afkóða sem Rclone Crypt yfirlag…",
             "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay",
-            "privacyEllipsis": "Persónuvernd..."
+            "privacyEllipsis": "Persónuvernd...",
+            "openWithAeroVaultZip": "Opna með AeroVault Zip",
+            "createAeroVaultZip": "Búa til AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Endurpakkað þetta vault undir öðru öryggisstig, þjöppunarforstillingu og Villuleiðréttingu (sama lykilorð)",
             "changeModeNote": "Hvelfingin er endurpökkuð á staðnum með nýju stillingunum; lykilorðið helst óbreytt.",
             "modeChanged": "Ham hvelfingar breytt",
-            "changeModeCrossFormat": "Þetta breytir sniði vault og dulkóðar allar skrár að fullu á ný."
+            "changeModeCrossFormat": "Þetta breytir sniði vault og dulkóðar allar skrár að fullu á ný.",
+            "zipCreated": "AeroVault Zip búið til",
+            "createZip": "Búa til AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip býður upp á mikla þjöppun, heilleikaprófanir og endurheimt. Það er ekki dulkóðað; hver sem hefur skrána getur lesið hana.",
+            "zipBrowseNotice": "Aðeins þjöppun + heilleiki + endurheimt; ekki trúnaður.",
+            "dropFilesZip": "Slepptu skrám til að bæta þeim við AeroVault Zip",
+            "zipEmpty": "AeroVault Zip er tómt. Bættu við skrám til að byrja.",
+            "zipEmptyHint": "Dragðu skrár hingað eða smelltu á Bæta við skrám til að byggja Zip",
+            "openZip": "Opna AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip er ódulkóðaða leið AeroVault Zip; dulkóðuð ílát verða að nota .aerovault.",
+            "zipRecoveryHint": "Endurheimtarjöfnuður hjálpar til við að gera við skemmd bæti; hann felur ekki innihaldið.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

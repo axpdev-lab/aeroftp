@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Khóa lớp phủ Rclone Crypt",
             "unlockRcloneCrypt": "Giải mã làm lớp phủ Rclone Crypt…",
             "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay",
-            "privacyEllipsis": "Quyền riêng tư..."
+            "privacyEllipsis": "Quyền riêng tư...",
+            "openWithAeroVaultZip": "Mở bằng AeroVault Zip",
+            "createAeroVaultZip": "Tạo AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Đóng gói lại kho lưu trữ này với mức bảo mật, cấu hình nén và Sửa lỗi khác nhau (cùng mật khẩu)",
             "changeModeNote": "Kho được đóng gói lại tại chỗ với cài đặt mới; mật khẩu vẫn giữ nguyên.",
             "modeChanged": "Đã đổi chế độ kho",
-            "changeModeCrossFormat": "Thao tác này thay đổi định dạng kho lưu trữ và mã hóa lại hoàn toàn mọi tệp."
+            "changeModeCrossFormat": "Thao tác này thay đổi định dạng kho lưu trữ và mã hóa lại hoàn toàn mọi tệp.",
+            "zipCreated": "Đã tạo AeroVault Zip thành công",
+            "createZip": "Tạo AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip cung cấp khả năng nén cao, kiểm tra tính toàn vẹn và khôi phục. Nó không được mã hóa; bất kỳ ai có tệp đều có thể đọc được.",
+            "zipBrowseNotice": "Chỉ nén + toàn vẹn + khôi phục; không bảo mật.",
+            "dropFilesZip": "Thả tệp để thêm vào AeroVault Zip",
+            "zipEmpty": "AeroVault Zip trống. Thêm tệp để bắt đầu.",
+            "zipEmptyHint": "Kéo tệp vào đây hoặc nhấp Thêm tệp để tạo Zip",
+            "openZip": "Mở AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip là luồng văn bản thuần của AeroVault Zip; các vùng chứa được mã hóa phải dùng .aerovault.",
+            "zipRecoveryHint": "Tính chẵn lẻ khôi phục giúp sửa các byte bị hỏng; nó không ẩn nội dung.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

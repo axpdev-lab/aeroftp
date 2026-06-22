@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt オーバーレイをロック",
             "unlockRcloneCrypt": "Rclone Crypt オーバーレイとして復号…",
             "openAsAeroVaultOverlay": "AeroVault Overlay として開く",
-            "privacyEllipsis": "プライバシー…"
+            "privacyEllipsis": "プライバシー…",
+            "openWithAeroVaultZip": "AeroVault Zip で開く",
+            "createAeroVaultZip": "AeroVault Zip を作成..."
         },
         "transfer": {
             "transferring": "転送中...",
@@ -2836,7 +2838,20 @@
             "changeModeHint": "別のセキュリティレベル、圧縮プロファイル、エラー訂正でこのボールトを再パックします（パスワードは同じ）",
             "changeModeNote": "ボールトは新しい設定でその場で再パックされます。パスワードは変わりません。",
             "modeChanged": "ボールトのモードを変更しました",
-            "changeModeCrossFormat": "これによりボールト形式が変更され、すべてのファイルが完全に再暗号化されます。"
+            "changeModeCrossFormat": "これによりボールト形式が変更され、すべてのファイルが完全に再暗号化されます。",
+            "zipCreated": "AeroVault Zip を作成しました",
+            "createZip": "AeroVault Zip を作成",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip は高い圧縮率、整合性チェック、復旧を提供します。暗号化されていないため、ファイルを持つ人は誰でも読み取れます。",
+            "zipBrowseNotice": "圧縮＋整合性＋復旧のみ。機密性はありません。",
+            "dropFilesZip": "ファイルをドロップして AeroVault Zip に追加",
+            "zipEmpty": "AeroVault Zip は空です。ファイルを追加して始めましょう。",
+            "zipEmptyHint": "ここにファイルをドラッグするか、「ファイルを追加」をクリックして Zip を作成します",
+            "openZip": "AeroVault Zip を開く",
+            "zipEncryptedRejected": ".aerozip は AeroVault Zip の平文レーンです。暗号化コンテナには .aerovault を使用してください。",
+            "zipRecoveryHint": "復旧パリティは破損したバイトの修復に役立ちますが、内容を隠すものではありません。",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",

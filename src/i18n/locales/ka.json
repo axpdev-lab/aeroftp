@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt გადაფარვის დაბლოკვა",
             "unlockRcloneCrypt": "Rclone Crypt გადაფარვად გაშიფვრა…",
             "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay",
-            "privacyEllipsis": "კონფიდენციალურობა..."
+            "privacyEllipsis": "კონფიდენციალურობა...",
+            "openWithAeroVaultZip": "გახსნა AeroVault Zip-ით",
+            "createAeroVaultZip": "AeroVault Zip-ის შექმნა..."
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "გადაათავსეთ ეს სეიფი განსხვავებული უსაფრთხოების დონით, კომპრესიის პროფილით და შეცდომების კორექტირებით (იგივე პაროლი)",
             "changeModeNote": "საცავი ადგილზე ხელახლა იფუთება ახალი პარამეტრებით; პაროლი იგივე რჩება.",
             "modeChanged": "საცავის რეჟიმი შეიცვალა",
-            "changeModeCrossFormat": "ეს ცვლის სეიფის ფორმატს და სრულად ხელახლა შიფრავს ყველა ფაილს."
+            "changeModeCrossFormat": "ეს ცვლის სეიფის ფორმატს და სრულად ხელახლა შიფრავს ყველა ფაილს.",
+            "zipCreated": "AeroVault Zip წარმატebით შეიქმნა",
+            "createZip": "AeroVault Zip-ის შექმნა",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip უზრუნველყოფს მაღალ შეკუმშვას, მთლიანობის შემოწმებებს და აღდგენას. ის არ არის დაშიფრული; ნებისმიერ, ვისაც ფაილი აქვს, შეუძლია წაიკითხოს.",
+            "zipBrowseNotice": "მხოლოდ შეკუმშვა + მთლიანობა + აღდგენა; არა კონფიდენციალურობა.",
+            "dropFilesZip": "ჩააგდეთ ფაილები AeroVault Zip-ში დასამატებლად",
+            "zipEmpty": "AeroVault Zip ცარიელია. დასაწყებად დაამატეთ ფაილები.",
+            "zipEmptyHint": "გადმოიტანეთ ფაილები აქ ან დააწკაპუნეთ ფაილების დამატებაზე Zip-ის ასაგებად",
+            "openZip": "AeroVault Zip-ის გახსნა",
+            "zipEncryptedRejected": ".aerozip არის AeroVault Zip-ის დაუშიფრავი რეჟიმი; დაშიფრულმა კონტეინერებმა უნდა გამოიყენონ .aerovault.",
+            "zipRecoveryHint": "აღდგენის პარიტეტი ეხმარება დაზიანებული ბაიტების შეკეთებაში; ის არ მალავს შინაარსს.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

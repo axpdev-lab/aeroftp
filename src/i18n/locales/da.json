@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Lås Rclone Crypt-overlay",
             "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlay…",
             "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay",
-            "privacyEllipsis": "Privatliv..."
+            "privacyEllipsis": "Privatliv...",
+            "openWithAeroVaultZip": "Åbn med AeroVault Zip",
+            "createAeroVaultZip": "Opret AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Ompakning af denne vault under et andet sikkerhedsniveau, komprimeringsprofil og Fejlkorrektion (samme adgangskode)",
             "changeModeNote": "Boksen ompakkes på stedet med de nye indstillinger; adgangskoden forbliver den samme.",
             "modeChanged": "Bokstilstand ændret",
-            "changeModeCrossFormat": "Dette ændrer vault-formatet og krypterer alle filer fuldt ud igen."
+            "changeModeCrossFormat": "Dette ændrer vault-formatet og krypterer alle filer fuldt ud igen.",
+            "zipCreated": "AeroVault Zip blev oprettet",
+            "createZip": "Opret AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip giver høj komprimering, integritetstjek og gendannelse. Den er ikke krypteret; enhver med filen kan læse den.",
+            "zipBrowseNotice": "Kun komprimering + integritet + gendannelse; ikke fortrolighed.",
+            "dropFilesZip": "Slip filer for at føje dem til AeroVault Zip",
+            "zipEmpty": "AeroVault Zip er tom. Tilføj filer for at komme i gang.",
+            "zipEmptyHint": "Træk filer hertil, eller klik på Tilføj filer for at opbygge Zip'en",
+            "openZip": "Åbn AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip er AeroVault Zips ukrypterede tilstand; krypterede containere skal bruge .aerovault.",
+            "zipRecoveryHint": "Gendannelsesparitet hjælper med at reparere beskadigede bytes; den skjuler ikke indholdet.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",

@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Blokeatu Rclone Crypt gainjartzea",
             "unlockRcloneCrypt": "Deszifratu Rclone Crypt gainjartze gisa…",
             "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa",
-            "privacyEllipsis": "Pribatutasuna..."
+            "privacyEllipsis": "Pribatutasuna...",
+            "openWithAeroVaultZip": "Ireki AeroVault Zip-ekin",
+            "createAeroVaultZip": "Sortu AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Berrikusi ganga hau segurtasun maila, konpresio profil eta Erroreen Zuzenketarekin (pasahitz bera)",
             "changeModeNote": "Kutxa bertan birpaketatzen da ezarpen berriekin; pasahitza ez da aldatzen.",
             "modeChanged": "Kutxaren modua aldatu da",
-            "changeModeCrossFormat": "Honek ganga formatua aldatzen du eta fitxategi guztiak berriro enkriptatzen ditu."
+            "changeModeCrossFormat": "Honek ganga formatua aldatzen du eta fitxategi guztiak berriro enkriptatzen ditu.",
+            "zipCreated": "AeroVault Zip ondo sortu da",
+            "createZip": "Sortu AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip-ek konpresio handia, osotasun egiaztapenak eta berreskurapena eskaintzen ditu. Ez dago zifratuta; fitxategia duen edonork irakur dezake.",
+            "zipBrowseNotice": "Konpresioa + osotasuna + berreskurapena soilik; ez konfidentzialtasuna.",
+            "dropFilesZip": "Jaregin fitxategiak AeroVault Zip-era gehitzeko",
+            "zipEmpty": "AeroVault Zip hutsik dago. Gehitu fitxategiak hasteko.",
+            "zipEmptyHint": "Arrastatu fitxategiak hona edo egin klik Gehitu fitxategiak Zip-a eraikitzeko",
+            "openZip": "Ireki AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip AeroVault Zip-en testu soileko modua da; zifratutako edukiontziek .aerovault erabili behar dute.",
+            "zipRecoveryHint": "Berreskurapen paritateak hondatutako byteak konpontzen laguntzen du; ez du edukia ezkutatzen.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt fedőréteg zárolása",
             "unlockRcloneCrypt": "Visszafejtés Rclone Crypt fedőrétegként…",
             "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként",
-            "privacyEllipsis": "Adatvédelem..."
+            "privacyEllipsis": "Adatvédelem...",
+            "openWithAeroVaultZip": "Megnyitás ezzel: AeroVault Zip",
+            "createAeroVaultZip": "AeroVault Zip létrehozása..."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Csomagolja újra ezt a széfet eltérő biztonsági szinttel, tömörítési profillal és Hibajavítással (ugyanaz a jelszó)",
             "changeModeNote": "A széf a helyén lesz újracsomagolva az új beállításokkal; a jelszó változatlan marad.",
             "modeChanged": "A széf módja megváltozott",
-            "changeModeCrossFormat": "Ez megváltoztatja a széf formátumát, és teljesen újra titkosít minden fájlt."
+            "changeModeCrossFormat": "Ez megváltoztatja a széf formátumát, és teljesen újra titkosít minden fájlt.",
+            "zipCreated": "Az AeroVault Zip sikeresen létrejött",
+            "createZip": "AeroVault Zip létrehozása",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": "Az .aerozip magas tömörítést, integritás-ellenőrzéseket és helyreállítást biztosít. Nincs titkosítva; bárki, akinek megvan a fájl, elolvashatja.",
+            "zipBrowseNotice": "Csak tömörítés + integritás + helyreállítás; nem bizalmasság.",
+            "dropFilesZip": "Húzza ide a fájlokat az AeroVault Ziphez való hozzáadáshoz",
+            "zipEmpty": "Az AeroVault Zip üres. Adjon hozzá fájlokat a kezdéshez.",
+            "zipEmptyHint": "Húzza ide a fájlokat, vagy kattintson a Fájlok hozzáadása gombra a Zip felépítéséhez",
+            "openZip": "AeroVault Zip megnyitása",
+            "zipEncryptedRejected": "Az .aerozip az AeroVault Zip titkosítatlan módja; a titkosított tárolóknak a .aerovault formátumot kell használniuk.",
+            "zipRecoveryHint": "A helyreállítási paritás segít kijavítani a sérült bájtokat; nem rejti el a tartalmat.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

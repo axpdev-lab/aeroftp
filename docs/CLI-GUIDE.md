@@ -8,7 +8,7 @@
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), local archives (`compress`/`extract`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), plaintext `.aerozip` archives (`archive`), local archives (`compress`/`extract`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
 
 ### Direct URL Protocols
 
@@ -363,6 +363,33 @@ Emits a pretty-printed JSON **array** to stdout with a stable, machine-parsable 
 | `Hashes` | object | Only with `--hash`: `{ "<algo>": "<hex>" }`, server-side only (never downloads). Omitted for directories and when the backend does not expose the requested digest cheaply. |
 
 Flags: `-R`/`--recursive`, `--files-only`, `--dirs-only` (mutually exclusive with `--files-only`), `--stat` (single object for the path itself, not its contents), `--no-modtime`, `--no-mimetype`, `--hash`, `--hash-type <md5|sha1|sha256|sha512|blake3>` (default `sha256`). The global `--max-depth` caps recursion. `--hash` is server-side only: it reports a digest the backend already exposes (S3/MinIO/R2 ETag `md5`, B2 `contentSha1`, pCloud, SFTP `sha256sum` over an exec channel) without ever downloading the file. It is off by default; the `Hashes` field is omitted for directories and for any file whose backend does not provide the requested digest cheaply (it never falls back to downloading). Exit code `0` on success, `2` on a missing path. Same path and `--profile` rules as `ls`.
+
+### archive - Plaintext `.aerozip` Archives
+
+```bash
+# Create a passwordless archive with compression + recovery parity
+aeroftp-cli archive create backup.aerozip ./docs ./photos
+
+# Tune archive-local compression; --profile remains a hidden compatibility alias
+aeroftp-cli archive create backup.aerozip ./docs --compression-profile archive
+
+# List entries; renamed files are accepted by header detection
+aeroftp-cli archive list backup.aerozip
+
+# Extract, repairing from embedded recovery parity first when possible
+aeroftp-cli archive extract backup.aerozip ./restore
+
+# Machine-readable reports
+aeroftp-cli --json archive create backup.aerozip ./docs
+```
+
+`archive` is for `.aerozip` plaintext archives (`application/x-aerozip`) backed by the internal `aerovz` lane. It uses the AeroVault v3 wrapper stack without encryption: chunking, zstd compression, integrity checks, and Reed-Solomon recovery parity.
+
+Important threat-model note: `.aerozip` is **not confidential**. It has no password and the CLI rejects `--password`; anyone who can read the archive can read the contents. Use `vault create` and `.aerovault` when you need encryption.
+
+`archive create` writes the current product extension (`.aerozip`). `archive list` and `archive extract` identify plaintext archives from the container header, so a renamed file still opens as long as the header marks the plaintext lane. Encrypted `.aerovault` containers are rejected by `archive`, and plaintext archives are rejected by encrypted `vault` commands.
+
+JSON reports include `encrypted: false`, `confidential: false`, file/entry/chunk counts, compression ratio, MIME, and recovery status/overhead.
 
 ### get - Download Files
 

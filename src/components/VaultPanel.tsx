@@ -6,7 +6,7 @@ import { X, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { VaultIcon } from './icons/VaultIcon';
 import { useTranslation } from '../i18n';
-import { useVaultState, VaultMode, securityLevels, IconProvider } from './vault/useVaultState';
+import { useVaultState, VaultMode, VaultContainerKind, securityLevels, IconProvider } from './vault/useVaultState';
 import { VaultHome } from './vault/VaultHome';
 import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
@@ -22,6 +22,7 @@ interface VaultPanelProps {
     initialPath?: string;
     initialFiles?: string[];
     initialMode?: VaultMode;
+    initialContainerKind?: VaultContainerKind;
     initialFolderPath?: string;
     iconProvider?: IconProvider;
     onOverlaySessionChange?: (session: AeroVaultOverlaySession | null) => void;
@@ -29,13 +30,14 @@ interface VaultPanelProps {
 
 export type { VaultMode } from './vault/useVaultState';
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialFolderPath, iconProvider, onOverlaySessionChange }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialContainerKind, initialFolderPath, iconProvider, onOverlaySessionChange }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const { log } = useActivityLog();
 
     const state = useVaultState({
         initialMode,
+        initialContainerKind,
         initialPath,
         initialFiles,
         initialFolderPath,
@@ -68,7 +70,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         let cancelled = false;
 
         const syncOverlay = async () => {
-            if (state.mode !== 'browse' || !state.vaultPath || !state.password || !state.vaultSecurity || state.vaultSecurity.version < 2) {
+            if (state.isPlaintextZip || state.mode !== 'browse' || !state.vaultPath || !state.password || !state.vaultSecurity || state.vaultSecurity.version < 2) {
                 const previousSessionId = overlaySessionRef.current?.sessionId;
                 overlaySessionRef.current = null;
                 onOverlaySessionChange(null);
@@ -138,6 +140,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         };
     }, [
         onOverlaySessionChange,
+        state.isPlaintextZip,
         state.mode,
         state.vaultPath,
         state.password,
@@ -167,13 +170,13 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     <div className="flex items-center gap-2 pointer-events-none">
                         <VaultIcon variant="outline" size={18} className="text-gray-600 dark:text-gray-300" />
                         <span className="font-medium">
-                            {state.mode === 'browse' ? vaultName : t('vault.title')}
+                            {state.mode === 'browse' ? vaultName : (state.isPlaintextZip ? t('vault.zipTitle') : t('vault.title'))}
                         </span>
                         {/* Security badge in browse mode */}
                         {state.mode === 'browse' && currentLevelConfig && (
                             <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${currentLevelConfig.bgColor} bg-opacity-20 ${currentLevelConfig.color}`}>
                                 <LevelIcon size={10} className="inline mr-1" />
-                                {currentLevelConfig.label}
+                                {state.isPlaintextZip ? t('vault.zipBadge') : currentLevelConfig.label}
                             </span>
                         )}
                     </div>

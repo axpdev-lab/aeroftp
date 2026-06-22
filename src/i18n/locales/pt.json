@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Bloquear sobreposição Rclone Crypt",
             "unlockRcloneCrypt": "Descriptografar como sobreposição Rclone Crypt…",
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
-            "privacyEllipsis": "Privacidade..."
+            "privacyEllipsis": "Privacidade...",
+            "openWithAeroVaultZip": "Abrir com AeroVault Zip",
+            "createAeroVaultZip": "Criar AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Reempacotar este cofre com um nível de segurança, perfil de compressão e Correção de Erros diferente (mesma senha)",
             "changeModeNote": "O cofre é reempacotado no local com as novas configurações; a senha permanece a mesma.",
             "modeChanged": "Modo do cofre alterado",
-            "changeModeCrossFormat": "Isso altera o formato do cofre e re-encripta completamente cada ficheiro."
+            "changeModeCrossFormat": "Isso altera o formato do cofre e re-encripta completamente cada ficheiro.",
+            "zipCreated": "AeroVault Zip criado com sucesso",
+            "createZip": "Criar AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip oferece alta compressão, verificações de integridade e recuperação. Não é criptografado; qualquer pessoa com o arquivo pode lê-lo.",
+            "zipBrowseNotice": "Apenas compressão + integridade + recuperação; sem confidencialidade.",
+            "dropFilesZip": "Solte arquivos para adicioná-los ao AeroVault Zip",
+            "zipEmpty": "O AeroVault Zip está vazio. Adicione arquivos para começar.",
+            "zipEmptyHint": "Arraste arquivos para aqui ou clique em Adicionar arquivos para criar o Zip",
+            "openZip": "Abrir AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip é o modo sem criptografia do AeroVault Zip; contêineres criptografados devem usar .aerovault.",
+            "zipRecoveryHint": "A paridade de recuperação ajuda a reparar bytes danificados; ela não oculta o conteúdo.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

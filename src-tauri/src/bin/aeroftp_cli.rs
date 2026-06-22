@@ -93,6 +93,9 @@ use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 use zeroize::Zeroize;
 
+#[path = "../cli_aerovz.rs"]
+mod cli_aerovz;
+
 #[path = "../cli_tui/mod.rs"]
 mod cli_tui;
 
@@ -2822,6 +2825,14 @@ enum Commands {
         /// Extract into a subfolder named after the archive
         #[arg(long)]
         subfolder: bool,
+    },
+    /// Plaintext archive operations for `.aerozip` (application/x-aerozip).
+    ///
+    /// Creates, extracts, and lists passwordless archives backed by the aerovz
+    /// lane: compression + integrity + Reed-Solomon recovery, not confidentiality.
+    Archive {
+        #[command(subcommand)]
+        command: cli_aerovz::ArchiveCommands,
     },
 }
 
@@ -49047,7 +49058,12 @@ async fn main() {
             )
             .await
         }
-        Commands::Vault { command } => {
+        Commands::Archive { command } => cli_aerovz::cmd_archive(command, &cli, format),
+        Commands::Vault { command } => 'vault_command: {
+            if let Some(message) = cli_aerovz::vault_plaintext_lane_rejection(command) {
+                print_error(format, &message, 5);
+                break 'vault_command 5;
+            }
             use ftp_client_gui_lib::{aerovault, aerovault_v2, aerovault_v3};
             let resolve_pw = |p: &Option<String>| -> String {
                 if let Some(pw) = p {

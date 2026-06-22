@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Заблокувати накладання Rclone Crypt",
             "unlockRcloneCrypt": "Розшифрувати як накладання Rclone Crypt…",
             "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay",
-            "privacyEllipsis": "Приватність..."
+            "privacyEllipsis": "Приватність...",
+            "openWithAeroVaultZip": "Відкрити за допомогою AeroVault Zip",
+            "createAeroVaultZip": "Створити AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Перепакуйте це сховище з іншим рівнем безпеки, профілем стиснення та Виправленням помилок (той самий пароль)",
             "changeModeNote": "Сховище перепаковується на місці з новими налаштуваннями; пароль залишається тим самим.",
             "modeChanged": "Режим сховища змінено",
-            "changeModeCrossFormat": "Це змінює формат сховища та повністю повторно шифрує кожен файл."
+            "changeModeCrossFormat": "Це змінює формат сховища та повністю повторно шифрує кожен файл.",
+            "zipCreated": "AeroVault Zip успішно створено",
+            "createZip": "Створити AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip забезпечує високе стиснення, перевірки цілісності та відновлення. Він не зашифрований; будь-хто, хто має файл, може його прочитати.",
+            "zipBrowseNotice": "Лише стиснення + цілісність + відновлення; без конфіденційності.",
+            "dropFilesZip": "Перетягніть файли, щоб додати їх до AeroVault Zip",
+            "zipEmpty": "AeroVault Zip порожній. Додайте файли, щоб почати.",
+            "zipEmptyHint": "Перетягніть файли сюди або натисніть «Додати файли», щоб створити Zip",
+            "openZip": "Відкрити AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip — це незашифрований режим AeroVault Zip; зашифровані контейнери повинні використовувати .aerovault.",
+            "zipRecoveryHint": "Парність відновлення допомагає виправити пошкоджені байти; вона не приховує вміст.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",

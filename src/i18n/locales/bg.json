@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Заключи наслагване Rclone Crypt",
             "unlockRcloneCrypt": "Дешифрирай като наслагване Rclone Crypt…",
             "openAsAeroVaultOverlay": "Отвори като AeroVault Overlay",
-            "privacyEllipsis": "Поверителност..."
+            "privacyEllipsis": "Поверителност...",
+            "openWithAeroVaultZip": "Отвори с AeroVault Zip",
+            "createAeroVaultZip": "Създай AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Преопакова тезгяха под различно ниво на сигурност, профил на компресия и Корекция на грешки (същата парола)",
             "changeModeNote": "Трезорът се преопакова на място с новите настройки; паролата остава същата.",
             "modeChanged": "Режимът на трезора е променен",
-            "changeModeCrossFormat": "Това променя формата на хранилището и напълно криптира отново всеки файл."
+            "changeModeCrossFormat": "Това променя формата на хранилището и напълно криптира отново всеки файл.",
+            "zipCreated": "AeroVault Zip е създаден успешно",
+            "createZip": "Създай AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip осигурява висока компресия, проверки на целостта и възстановяване. Не е криптиран; всеки, който има файла, може да го прочете.",
+            "zipBrowseNotice": "Само компресия + цялост + възстановяване; без поверителност.",
+            "dropFilesZip": "Пуснете файлове, за да ги добавите към AeroVault Zip",
+            "zipEmpty": "AeroVault Zip е празен. Добавете файлове, за да започнете.",
+            "zipEmptyHint": "Плъзнете файлове тук или щракнете „Добави файлове“, за да изградите Zip",
+            "openZip": "Отвори AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip е некриптираният канал на AeroVault Zip; криптираните контейнери трябва да използват .aerovault.",
+            "zipRecoveryHint": "Паритетът за възстановяване помага за поправка на повредени байтове; той не скрива съдържанието.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

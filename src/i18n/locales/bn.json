@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt ওভারলে লক করুন",
             "unlockRcloneCrypt": "Rclone Crypt ওভারলে হিসাবে ডিক্রিপ্ট করুন…",
             "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন",
-            "privacyEllipsis": "গোপনীয়তা..."
+            "privacyEllipsis": "গোপনীয়তা...",
+            "openWithAeroVaultZip": "AeroVault Zip দিয়ে খুলুন",
+            "createAeroVaultZip": "AeroVault Zip তৈরি করুন..."
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "ভিন্ন নিরাপত্তা স্তর, সংকোচন প্রোফাইল এবং ত্রুটি সংশোধন সহ এই ভল্টটি পুনরায় প্যাক করুন (একই পাসওয়ার্ড)",
             "changeModeNote": "ভল্টটি নতুন সেটিংস দিয়ে স্থানেই পুনরায় প্যাক করা হয়; পাসওয়ার্ড একই থাকে।",
             "modeChanged": "ভল্ট মোড পরিবর্তিত হয়েছে",
-            "changeModeCrossFormat": "এটি ভল্ট ফরম্যাট পরিবর্তন করে এবং প্রতিটি ফাইল সম্পূর্ণরূপে পুনরায় এনক্রিপ্ট করে।"
+            "changeModeCrossFormat": "এটি ভল্ট ফরম্যাট পরিবর্তন করে এবং প্রতিটি ফাইল সম্পূর্ণরূপে পুনরায় এনক্রিপ্ট করে।",
+            "zipCreated": "AeroVault Zip সফলভাবে তৈরি হয়েছে",
+            "createZip": "AeroVault Zip তৈরি করুন",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip উচ্চ সংকোচন, অখণ্ডতা যাচাই এবং পুনরুদ্ধার প্রদান করে। এটি এনক্রিপ্ট করা নয়; ফাইলটি যার কাছে আছে সে এটি পড়তে পারে।",
+            "zipBrowseNotice": "শুধুমাত্র সংকোচন + অখণ্ডতা + পুনরুদ্ধার; গোপনীয়তা নয়।",
+            "dropFilesZip": "AeroVault Zip-এ যোগ করতে ফাইল ছেড়ে দিন",
+            "zipEmpty": "AeroVault Zip খালি। শুরু করতে ফাইল যোগ করুন।",
+            "zipEmptyHint": "এখানে ফাইল টেনে আনুন বা Zip তৈরি করতে ফাইল যোগ করুন ক্লিক করুন",
+            "openZip": "AeroVault Zip খুলুন",
+            "zipEncryptedRejected": ".aerozip হল AeroVault Zip-এর প্লেইনটেক্সট লেন; এনক্রিপ্ট করা কন্টেইনারগুলিকে অবশ্যই .aerovault ব্যবহার করতে হবে।",
+            "zipRecoveryHint": "পুনরুদ্ধার প্যারিটি ক্ষতিগ্রস্ত বাইট মেরামত করতে সাহায্য করে; এটি বিষয়বস্তু লুকায় না।",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

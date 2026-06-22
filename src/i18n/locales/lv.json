@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Bloķēt Rclone Crypt pārklājumu",
             "unlockRcloneCrypt": "Atšifrēt kā Rclone Crypt pārklājumu…",
             "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay",
-            "privacyEllipsis": "Privātums..."
+            "privacyEllipsis": "Privātums...",
+            "openWithAeroVaultZip": "Atvērt ar AeroVault Zip",
+            "createAeroVaultZip": "Izveidot AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Pāriepakojiet šo seifi ar citu drošības līmeni, saspiešanas profilu un Kļūdu labošanu (tā pati parole)",
             "changeModeNote": "Seifs tiek pārpakots uz vietas ar jaunajiem iestatījumiem; parole paliek nemainīga.",
             "modeChanged": "Seifa režīms mainīts",
-            "changeModeCrossFormat": "Tas maina seifa formātu un pilnībā atkārtoti šifrē katru failu."
+            "changeModeCrossFormat": "Tas maina seifa formātu un pilnībā atkārtoti šifrē katru failu.",
+            "zipCreated": "AeroVault Zip veiksmīgi izveidots",
+            "createZip": "Izveidot AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip nodrošina augstu saspiešanu, integritātes pārbaudes un atkopšanu. Tas nav šifrēts; ikviens, kuram ir fails, var to izlasīt.",
+            "zipBrowseNotice": "Tikai saspiešana + integritāte + atkopšana; ne konfidencialitāte.",
+            "dropFilesZip": "Nometiet failus, lai pievienotu tos AeroVault Zip",
+            "zipEmpty": "AeroVault Zip ir tukšs. Pievienojiet failus, lai sāktu.",
+            "zipEmptyHint": "Velciet failus šeit vai noklikšķiniet uz Pievienot failus, lai izveidotu Zip",
+            "openZip": "Atvērt AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip ir AeroVault Zip nešifrētais režīms; šifrētiem konteineriem jāizmanto .aerovault.",
+            "zipRecoveryHint": "Atkopšanas paritāte palīdz labot bojātus baitus; tā neslēpj saturu.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

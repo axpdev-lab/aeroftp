@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Cloi troshaen Rclone Crypt",
             "unlockRcloneCrypt": "Dadgryptio fel troshaen Rclone Crypt…",
             "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay",
-            "privacyEllipsis": "Preifatrwydd..."
+            "privacyEllipsis": "Preifatrwydd...",
+            "openWithAeroVaultZip": "Agor gydag AeroVault Zip",
+            "createAeroVaultZip": "Creu AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Ailbecynnu'r fanc hon o dan lefel ddiogelwch wahanol, proffil cywasgiad a Chywiro Gwallau (yr un cyfrinair)",
             "changeModeNote": "Mae'r gladdgell yn cael ei hailbacio yn ei lle gyda'r gosodiadau newydd; mae'r cyfrinair yn aros yr un fath.",
             "modeChanged": "Newidiwyd modd y gladdgell",
-            "changeModeCrossFormat": "Mae hyn yn newid fformat y fanc ac yn ail-amgryptio pob ffeil yn llwyr."
+            "changeModeCrossFormat": "Mae hyn yn newid fformat y fanc ac yn ail-amgryptio pob ffeil yn llwyr.",
+            "zipCreated": "Crëwyd AeroVault Zip yn llwyddiannus",
+            "createZip": "Creu AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": "Mae .aerozip yn darparu cywasgu uchel, gwiriadau cywirdeb ac adfer. Nid yw wedi'i amgryptio; gall unrhyw un â'r ffeil ei ddarllen.",
+            "zipBrowseNotice": "Cywasgu + cywirdeb + adfer yn unig; nid cyfrinachedd.",
+            "dropFilesZip": "Gollwng ffeiliau i'w hychwanegu at AeroVault Zip",
+            "zipEmpty": "Mae'r AeroVault Zip yn wag. Ychwanegwch ffeiliau i ddechrau.",
+            "zipEmptyHint": "Llusgwch ffeiliau yma neu cliciwch Ychwanegu Ffeiliau i adeiladu'r Zip",
+            "openZip": "Agor AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip yw lôn testun plaen AeroVault Zip; rhaid i gynwysyddion wedi'u hamgryptio ddefnyddio .aerovault.",
+            "zipRecoveryHint": "Mae paredd adfer yn helpu i drwsio beitiau wedi'u difrodi; nid yw'n cuddio'r cynnwys.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",

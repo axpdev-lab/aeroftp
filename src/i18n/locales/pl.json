@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Zablokuj nakładkę Rclone Crypt",
             "unlockRcloneCrypt": "Odszyfruj jako nakładkę Rclone Crypt…",
             "openAsAeroVaultOverlay": "Otwórz jako AeroVault Overlay",
-            "privacyEllipsis": "Prywatność..."
+            "privacyEllipsis": "Prywatność...",
+            "openWithAeroVaultZip": "Otwórz za pomocą AeroVault Zip",
+            "createAeroVaultZip": "Utwórz AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Przepakuj ten skarbiec z innym poziomem bezpieczeństwa, profilem kompresji i Korekcją błędów (to samo hasło)",
             "changeModeNote": "Sejf jest przepakowywany w miejscu z nowymi ustawieniami; hasło pozostaje takie samo.",
             "modeChanged": "Zmieniono tryb sejfu",
-            "changeModeCrossFormat": "Zmienia to format skarbca i w pełni ponownie szyfruje każdy plik."
+            "changeModeCrossFormat": "Zmienia to format skarbca i w pełni ponownie szyfruje każdy plik.",
+            "zipCreated": "Pomyślnie utworzono AeroVault Zip",
+            "createZip": "Utwórz AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip zapewnia wysoką kompresję, kontrole integralności i odzyskiwanie. Nie jest zaszyfrowany; każdy, kto ma plik, może go odczytać.",
+            "zipBrowseNotice": "Tylko kompresja + integralność + odzyskiwanie; bez poufności.",
+            "dropFilesZip": "Upuść pliki, aby dodać je do AeroVault Zip",
+            "zipEmpty": "AeroVault Zip jest pusty. Dodaj pliki, aby rozpocząć.",
+            "zipEmptyHint": "Przeciągnij pliki tutaj lub kliknij Dodaj pliki, aby zbudować Zip",
+            "openZip": "Otwórz AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip to niezaszyfrowany tryb AeroVault Zip; zaszyfrowane kontenery muszą używać .aerovault.",
+            "zipRecoveryHint": "Parzystość odzyskiwania pomaga naprawić uszkodzone bajty; nie ukrywa zawartości.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

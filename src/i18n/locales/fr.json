@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Verrouiller la superposition Rclone Crypt",
             "unlockRcloneCrypt": "Déchiffrer comme superposition Rclone Crypt…",
             "openAsAeroVaultOverlay": "Ouvrir en tant qu'AeroVault Overlay",
-            "privacyEllipsis": "Confidentialité..."
+            "privacyEllipsis": "Confidentialité...",
+            "openWithAeroVaultZip": "Ouvrir avec AeroVault Zip",
+            "createAeroVaultZip": "Créer AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Reconditionner ce coffre avec un niveau de sécurité, un profil de compression et une Correction d'Erreurs différents (même mot de passe)",
             "changeModeNote": "Le coffre est reconditionné sur place avec les nouveaux paramètres ; le mot de passe reste le même.",
             "modeChanged": "Mode du coffre modifié",
-            "changeModeCrossFormat": "Cela modifie le format du coffre et re-chiffre intégralement chaque fichier."
+            "changeModeCrossFormat": "Cela modifie le format du coffre et re-chiffre intégralement chaque fichier.",
+            "zipCreated": "AeroVault Zip créé avec succès",
+            "createZip": "Créer AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip offre une compression élevée, des vérifications d'intégrité et une récupération. Il n'est pas chiffré ; quiconque possède le fichier peut le lire.",
+            "zipBrowseNotice": "Compression + intégrité + récupération uniquement ; pas de confidentialité.",
+            "dropFilesZip": "Déposez des fichiers pour les ajouter à l'AeroVault Zip",
+            "zipEmpty": "L'AeroVault Zip est vide. Ajoutez des fichiers pour commencer.",
+            "zipEmptyHint": "Glissez des fichiers ici ou cliquez sur Ajouter des fichiers pour construire le Zip",
+            "openZip": "Ouvrir AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip est le mode non chiffré d'AeroVault Zip ; les conteneurs chiffrés doivent utiliser .aerovault.",
+            "zipRecoveryHint": "La parité de récupération aide à réparer les octets endommagés ; elle ne masque pas le contenu.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

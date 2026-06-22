@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "锁定 Rclone Crypt 覆盖层",
             "unlockRcloneCrypt": "解密为 Rclone Crypt 覆盖层…",
             "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开",
-            "privacyEllipsis": "隐私…"
+            "privacyEllipsis": "隐私…",
+            "openWithAeroVaultZip": "用 AeroVault Zip 打开",
+            "createAeroVaultZip": "创建 AeroVault Zip..."
         },
         "transfer": {
             "transferring": "传输中...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "以不同的安全级别、压缩配置和纠错重新打包此保险库（相同密码）",
             "changeModeNote": "保险库将就地以新设置重新打包；密码保持不变。",
             "modeChanged": "保险库模式已更改",
-            "changeModeCrossFormat": "这将更改保险库格式并对每个文件进行完整重新加密。"
+            "changeModeCrossFormat": "这将更改保险库格式并对每个文件进行完整重新加密。",
+            "zipCreated": "AeroVault Zip 创建成功",
+            "createZip": "创建 AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip 提供高压缩率、完整性校验和恢复功能。它未加密；任何持有该文件的人都能读取。",
+            "zipBrowseNotice": "仅压缩 + 完整性 + 恢复；不提供机密性。",
+            "dropFilesZip": "拖放文件以添加到 AeroVault Zip",
+            "zipEmpty": "AeroVault Zip 为空。添加文件即可开始。",
+            "zipEmptyHint": "将文件拖到此处，或点击“添加文件”来构建 Zip",
+            "openZip": "打开 AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip 是 AeroVault Zip 的明文通道；加密容器必须使用 .aerovault。",
+            "zipRecoveryHint": "恢复校验有助于修复损坏的字节；它不会隐藏内容。",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

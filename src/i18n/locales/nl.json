@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt-overlay vergrendelen",
             "unlockRcloneCrypt": "Ontsleutelen als Rclone Crypt-overlay…",
             "openAsAeroVaultOverlay": "Openen als AeroVault Overlay",
-            "privacyEllipsis": "Privacy..."
+            "privacyEllipsis": "Privacy...",
+            "openWithAeroVaultZip": "Openen met AeroVault Zip",
+            "createAeroVaultZip": "AeroVault Zip maken..."
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Herpack deze kluis met een ander beveiligingsniveau, compressieprofiel en Foutcorrectie (hetzelfde wachtwoord)",
             "changeModeNote": "De kluis wordt ter plaatse opnieuw ingepakt met de nieuwe instellingen; het wachtwoord blijft hetzelfde.",
             "modeChanged": "Kluismodus gewijzigd",
-            "changeModeCrossFormat": "Dit wijzigt het kluis-formaat en versleutelt elk bestand volledig opnieuw."
+            "changeModeCrossFormat": "Dit wijzigt het kluis-formaat en versleutelt elk bestand volledig opnieuw.",
+            "zipCreated": "AeroVault Zip succesvol gemaakt",
+            "createZip": "AeroVault Zip maken",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip biedt hoge compressie, integriteitscontroles en herstel. Het is niet versleuteld; iedereen met het bestand kan het lezen.",
+            "zipBrowseNotice": "Alleen compressie + integriteit + herstel; geen vertrouwelijkheid.",
+            "dropFilesZip": "Sleep bestanden om ze aan de AeroVault Zip toe te voegen",
+            "zipEmpty": "De AeroVault Zip is leeg. Voeg bestanden toe om te beginnen.",
+            "zipEmptyHint": "Sleep bestanden hierheen of klik op Bestanden toevoegen om de Zip te bouwen",
+            "openZip": "AeroVault Zip openen",
+            "zipEncryptedRejected": ".aerozip is de niet-versleutelde modus van AeroVault Zip; versleutelde containers moeten .aerovault gebruiken.",
+            "zipRecoveryHint": "Herstelpariteit helpt beschadigde bytes te repareren; het verbergt de inhoud niet.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

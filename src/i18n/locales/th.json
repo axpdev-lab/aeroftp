@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "ล็อกการซ้อนทับ Rclone Crypt",
             "unlockRcloneCrypt": "ถอดรหัสเป็นการซ้อนทับ Rclone Crypt…",
             "openAsAeroVaultOverlay": "เปิดเป็น AeroVault Overlay",
-            "privacyEllipsis": "ความเป็นส่วนตัว..."
+            "privacyEllipsis": "ความเป็นส่วนตัว...",
+            "openWithAeroVaultZip": "เปิดด้วย AeroVault Zip",
+            "createAeroVaultZip": "สร้าง AeroVault Zip..."
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "แพ็กใหม่ Vault นี้ด้วยระดับความปลอดภัย โปรไฟล์การบีบอัด และการแก้ไขข้อผิดพลาดที่แตกต่าง (รหัสผ่านเดิม)",
             "changeModeNote": "ห้องนิรภัยจะถูกบรรจุใหม่ในที่เดิมด้วยการตั้งค่าใหม่ รหัสผ่านยังคงเดิม",
             "modeChanged": "เปลี่ยนโหมดห้องนิรภัยแล้ว",
-            "changeModeCrossFormat": "การดำเนินการนี้จะเปลี่ยนรูปแบบ Vault และเข้ารหัสใหม่ทุกไฟล์อย่างสมบูรณ์"
+            "changeModeCrossFormat": "การดำเนินการนี้จะเปลี่ยนรูปแบบ Vault และเข้ารหัสใหม่ทุกไฟล์อย่างสมบูรณ์",
+            "zipCreated": "สร้าง AeroVault Zip สำเร็จแล้ว",
+            "createZip": "สร้าง AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip ให้การบีบอัดสูง การตรวจสอบความสมบูรณ์ และการกู้คืน ไม่มีการเข้ารหัส ใครก็ตามที่มีไฟล์สามารถอ่านได้",
+            "zipBrowseNotice": "เฉพาะการบีบอัด + ความสมบูรณ์ + การกู้คืน ไม่ใช่การรักษาความลับ",
+            "dropFilesZip": "วางไฟล์เพื่อเพิ่มลงใน AeroVault Zip",
+            "zipEmpty": "AeroVault Zip ว่างเปล่า เพิ่มไฟล์เพื่อเริ่มต้น",
+            "zipEmptyHint": "ลากไฟล์มาที่นี่หรือคลิกเพิ่มไฟล์เพื่อสร้าง Zip",
+            "openZip": "เปิด AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip คือเลนข้อความธรรมดาของ AeroVault Zip คอนเทนเนอร์ที่เข้ารหัสต้องใช้ .aerovault",
+            "zipRecoveryHint": "พาริตีการกู้คืนช่วยซ่อมแซมไบต์ที่เสียหาย แต่ไม่ได้ซ่อนเนื้อหา",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",

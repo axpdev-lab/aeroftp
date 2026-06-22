@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Bloquear superposición Rclone Crypt",
             "unlockRcloneCrypt": "Descifrar como superposición Rclone Crypt…",
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
-            "privacyEllipsis": "Privacidad..."
+            "privacyEllipsis": "Privacidad...",
+            "openWithAeroVaultZip": "Abrir con AeroVault Zip",
+            "createAeroVaultZip": "Crear AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Reempaquetar esta caja fuerte con un nivel de seguridad, perfil de compresión y Corrección de Errores diferente (misma contraseña)",
             "changeModeNote": "La caja fuerte se reempaqueta in situ con la nueva configuración; la contraseña no cambia.",
             "modeChanged": "Modo de la caja fuerte cambiado",
-            "changeModeCrossFormat": "Esto cambia el formato de la caja fuerte y re-encripta completamente cada archivo."
+            "changeModeCrossFormat": "Esto cambia el formato de la caja fuerte y re-encripta completamente cada archivo.",
+            "zipCreated": "AeroVault Zip creado correctamente",
+            "createZip": "Crear AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip ofrece compresión alta, comprobaciones de integridad y recuperación. No está cifrado; cualquiera que tenga el archivo puede leerlo.",
+            "zipBrowseNotice": "Solo compresión + integridad + recuperación; sin confidencialidad.",
+            "dropFilesZip": "Suelta archivos para añadirlos al AeroVault Zip",
+            "zipEmpty": "El AeroVault Zip está vacío. Añade archivos para empezar.",
+            "zipEmptyHint": "Arrastra archivos aquí o haz clic en Añadir archivos para construir el Zip",
+            "openZip": "Abrir AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip es el modo sin cifrar de AeroVault Zip; los contenedores cifrados deben usar .aerovault.",
+            "zipRecoveryHint": "La paridad de recuperación ayuda a reparar bytes dañados; no oculta el contenido.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

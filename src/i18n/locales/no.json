@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Lås Rclone Crypt-overlegg",
             "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlegg…",
             "openAsAeroVaultOverlay": "Åpne som AeroVault Overlay",
-            "privacyEllipsis": "Personvern..."
+            "privacyEllipsis": "Personvern...",
+            "openWithAeroVaultZip": "Åpne med AeroVault Zip",
+            "createAeroVaultZip": "Opprett AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Pakk om denne krypterte lagringsenheten med et annet sikkerhetsnivå, komprimeringsprofil og Feilretting (samme passord)",
             "changeModeNote": "Hvelvet pakkes på nytt på stedet med de nye innstillingene; passordet forblir det samme.",
             "modeChanged": "Hvelvmodus endret",
-            "changeModeCrossFormat": "Dette endrer vault-formatet og krypterer alle filer helt på nytt."
+            "changeModeCrossFormat": "Dette endrer vault-formatet og krypterer alle filer helt på nytt.",
+            "zipCreated": "AeroVault Zip ble opprettet",
+            "createZip": "Opprett AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip gir høy komprimering, integritetskontroller og gjenoppretting. Den er ikke kryptert; alle som har filen kan lese den.",
+            "zipBrowseNotice": "Kun komprimering + integritet + gjenoppretting; ikke konfidensialitet.",
+            "dropFilesZip": "Slipp filer for å legge dem til i AeroVault Zip",
+            "zipEmpty": "AeroVault Zip er tom. Legg til filer for å komme i gang.",
+            "zipEmptyHint": "Dra filer hit eller klikk på Legg til filer for å bygge Zip-en",
+            "openZip": "Åpne AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip er den ukrypterte modusen til AeroVault Zip; krypterte beholdere må bruke .aerovault.",
+            "zipRecoveryHint": "Gjenopprettingsparitet hjelper med å reparere skadede byte; den skjuler ikke innholdet.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",

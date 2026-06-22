@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Rclone Crypt ओवरले लॉक करें",
             "unlockRcloneCrypt": "Rclone Crypt ओवरले के रूप में डिक्रिप्ट करें…",
             "openAsAeroVaultOverlay": "AeroVault Overlay के रूप में खोलें",
-            "privacyEllipsis": "गोपनीयता..."
+            "privacyEllipsis": "गोपनीयता...",
+            "openWithAeroVaultZip": "AeroVault Zip से खोलें",
+            "createAeroVaultZip": "AeroVault Zip बनाएं..."
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "इस तिजोरी को एक अलग सुरक्षा स्तर, संपीड़न प्रोफ़ाइल और त्रुटि सुधार के साथ पुनः पैक करें (समान पासवर्ड)",
             "changeModeNote": "वॉल्ट को नई सेटिंग्स के साथ यथास्थान पुनः पैक किया जाता है; पासवर्ड वही रहता है।",
             "modeChanged": "वॉल्ट मोड बदल गया",
-            "changeModeCrossFormat": "यह तिजोरी का प्रारूप बदलता है और प्रत्येक फ़ाइल को पूरी तरह से पुनः एन्क्रिप्ट करता है।"
+            "changeModeCrossFormat": "यह तिजोरी का प्रारूप बदलता है और प्रत्येक फ़ाइल को पूरी तरह से पुनः एन्क्रिप्ट करता है।",
+            "zipCreated": "AeroVault Zip सफलतापूर्वक बनाया गया",
+            "createZip": "AeroVault Zip बनाएं",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip उच्च संपीड़न, अखंडता जांच और पुनर्प्राप्ति प्रदान करता है। यह एन्क्रिप्टेड नहीं है; जिसके पास फ़ाइल है वह इसे पढ़ सकता है।",
+            "zipBrowseNotice": "केवल संपीड़न + अखंडता + पुनर्प्राप्ति; गोपनीयता नहीं।",
+            "dropFilesZip": "AeroVault Zip में जोड़ने के लिए फ़ाइलें छोड़ें",
+            "zipEmpty": "AeroVault Zip खाली है। आरंभ करने के लिए फ़ाइलें जोड़ें।",
+            "zipEmptyHint": "फ़ाइलें यहाँ खींचें या Zip बनाने के लिए फ़ाइलें जोड़ें पर क्लिक करें",
+            "openZip": "AeroVault Zip खोलें",
+            "zipEncryptedRejected": ".aerozip, AeroVault Zip की बिना एन्क्रिप्शन वाली विधि है; एन्क्रिप्टेड कंटेनरों को .aerovault का उपयोग करना चाहिए।",
+            "zipRecoveryHint": "रिकवरी पैरिटी क्षतिग्रस्त बाइट्स की मरम्मत में मदद करती है; यह सामग्री को नहीं छिपाती।",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",

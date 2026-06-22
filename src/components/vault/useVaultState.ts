@@ -68,6 +68,8 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
 
 export type VaultMode = 'home' | 'create' | 'open' | 'browse';
 
+export type VaultContainerKind = 'vault' | 'zip';
+
 export type SecurityLevel = 'standard' | 'advanced' | 'paranoid' | 'experimental';
 
 export type VaultV3CompressionProfile = 'fast' | 'balanced' | 'archive';
@@ -76,6 +78,7 @@ export interface VaultSecurityInfo {
     version: number;
     cascadeMode: boolean;
     level: SecurityLevel;
+    plaintext?: boolean;
 }
 
 export interface IconResult {
@@ -176,13 +179,13 @@ function mapV2InfoToMeta(info: VaultV2Info): AeroVaultMeta {
     };
 }
 
-function mapV3InfoToEntries(info: VaultV3Info): ArchiveEntry[] {
+function mapV3InfoToEntries(info: VaultV3Info, isEncrypted = true): ArchiveEntry[] {
     return info.files.map(file => ({
         name: file.name,
         size: file.size,
         compressedSize: file.size,
         isDir: file.is_dir,
-        isEncrypted: true,
+        isEncrypted,
         modified: file.modified,
     }));
 }
@@ -267,6 +270,7 @@ export const securityLevels = {
 
 export interface UseVaultStateProps {
     initialMode?: VaultMode;
+    initialContainerKind?: VaultContainerKind;
     initialPath?: string;
     initialFiles?: string[];
     initialFolderPath?: string;
@@ -283,6 +287,9 @@ export interface VaultState {
     setMode: (mode: VaultMode) => void;
 
     // Core state
+    containerKind: VaultContainerKind;
+    setContainerKind: (kind: VaultContainerKind) => void;
+    isPlaintextZip: boolean;
     vaultPath: string;
     setVaultPath: (path: string) => void;
     password: string;
@@ -459,11 +466,12 @@ export interface VaultState {
 // --- Hook implementation ---
 
 export function useVaultState(props: UseVaultStateProps): VaultState {
-    const { initialMode, initialPath, initialFiles, initialFolderPath, onClose, onActivityLog } = props;
+    const { initialMode, initialContainerKind, initialPath, initialFiles, initialFolderPath, onClose, onActivityLog } = props;
     const t = useTranslation();
 
     // Core state
     const [mode, setMode] = useState<VaultMode>(initialMode || (initialPath ? 'open' : initialFiles?.length ? 'create' : 'home'));
+    const [containerKind, setContainerKind] = useState<VaultContainerKind>(initialContainerKind || 'vault');
     const [vaultPath, setVaultPath] = useState(initialPath || '');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -503,7 +511,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
     // Security state
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
-    const [compressionProfile, setCompressionProfile] = useState<VaultV3CompressionProfile>('balanced');
+    const [compressionProfile, setCompressionProfile] = useState<VaultV3CompressionProfile>(
+        initialContainerKind === 'zip' ? 'archive' : 'balanced',
+    );
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
     const [showLevelDropdown, setShowLevelDropdown] = useState(false);
 
@@ -543,8 +553,10 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // Folder encryption (NEW)
     const [folderScanResult, setFolderScanResult] = useState<FolderScanResult | null>(null);
     const [folderProgress, setFolderProgress] = useState<FolderProgress | null>(null);
+    const isPlaintextZip = containerKind === 'zip' || vaultSecurity?.plaintext === true;
 
     const resetState = () => {
+        setContainerKind('vault');
         setPassword('');
         setConfirmPassword('');
         setDescription('');
@@ -556,6 +568,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setNewPassword('');
         setConfirmNewPassword('');
         setVaultSecurity(null);
+        setCompressionProfile('balanced');
         setCurrentDir('');
         setNewDirName('');
         setShowNewDirDialog(false);
@@ -566,6 +579,15 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const detectVaultVersion = async (path: string): Promise<VaultSecurityInfo> => {
+        try {
+            const isZipArchive = await invoke<boolean>('aerovz_is_archive', { path });
+            if (isZipArchive) {
+                return { version: 3, cascadeMode: false, level: 'experimental', plaintext: true };
+            }
+        } catch {
+            // Header sniffing is best-effort; encrypted vault detection follows.
+        }
+
         try {
             const isV3 = await invoke<boolean>('is_vault_v3', { path });
             if (isV3) {
@@ -643,11 +665,17 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const handleAddDirectory = async () => {
-        if (!initialFolderPath || !vaultPath || !password) return;
+        if (!initialFolderPath || !vaultPath || (!password && !isPlaintextZip)) return;
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                await invoke('aerovz_add_directory', {
+                    vaultPath,
+                    sourceDir: initialFolderPath,
+                    targetPrefix: currentDir || null,
+                });
+            } else if (vaultSecurity?.version === 3) {
                 await invoke('vault_v3_add_directory', {
                     vaultPath,
                     password,
@@ -673,32 +701,42 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // --- Core vault operations ---
 
     const handleCreate = async () => {
-        if (password.length < 8) { setError(t('vault.passwordTooShort')); return; }
-        if (password !== confirmPassword) { setError(t('vault.passwordMismatch')); return; }
+        const creatingZip = isPlaintextZip;
+        if (!creatingZip) {
+            if (password.length < 8) { setError(t('vault.passwordTooShort')); return; }
+            if (password !== confirmPassword) { setError(t('vault.passwordMismatch')); return; }
+        }
 
         const defaultName = (() => {
+            const ext = creatingZip ? 'aerozip' : 'aerovault';
+            const fallback = creatingZip ? 'zip' : 'vault';
             if (initialFolderPath) {
-                const name = initialFolderPath.split('/').pop() || 'vault';
-                return `${name}.aerovault`;
+                const name = initialFolderPath.split('/').pop() || fallback;
+                return `${name}.${ext}`;
             }
             if (stagedFiles.length === 1 && stagedDirs.length === 0) {
-                const name = stagedFiles[0].split('/').pop()?.replace(/\.[^.]+$/, '') || 'vault';
-                return `${name}.aerovault`;
+                const name = stagedFiles[0].split('/').pop()?.replace(/\.[^.]+$/, '') || fallback;
+                return `${name}.${ext}`;
             }
             if (stagedDirs.length === 1 && stagedFiles.length === 0) {
-                const name = stagedDirs[0].replace(/\/+$/, '').split('/').pop() || 'vault';
-                return `${name}.aerovault`;
+                const name = stagedDirs[0].replace(/\/+$/, '').split('/').pop() || fallback;
+                return `${name}.${ext}`;
             }
             if (stagedFiles.length > 1 || stagedDirs.length > 0) {
                 const first = stagedFiles[0] || stagedDirs[0];
-                const parent = first.split('/').slice(0, -1).pop() || 'archive';
-                return `${parent}.aerovault`;
+                const parent = first.split('/').slice(0, -1).pop() || fallback;
+                return `${parent}.${ext}`;
             }
-            if (description) return `${description.replace(/[^a-zA-Z0-9_-]/g, '_')}.aerovault`;
-            return 'vault.aerovault';
+            if (description) return `${description.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`;
+            return `${fallback}.${ext}`;
         })();
 
-        const savePath = await save({ defaultPath: defaultName, filters: [{ name: 'AeroVault', extensions: ['aerovault'] }] });
+        const savePath = await save({
+            defaultPath: defaultName,
+            filters: creatingZip
+                ? [{ name: 'AeroVault Zip', extensions: ['aerozip'] }]
+                : [{ name: 'AeroVault', extensions: ['aerovault'] }],
+        });
         if (!savePath) return;
 
         setLoading(true);
@@ -716,7 +754,53 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         const levelConfig = securityLevels[securityLevel];
 
         try {
-            if (levelConfig.version === 3) {
+            if (creatingZip) {
+                await invoke('aerovz_create_archive', {
+                    vaultPath: savePath,
+                    compressionProfile,
+                    errorCorrectionPct: Math.min(50, Math.max(5, Math.round(errorCorrectionPct))),
+                });
+                setContainerKind('zip');
+                setVaultPath(savePath);
+                setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental', plaintext: true });
+
+                if (initialFolderPath) {
+                    setFolderProgress({ current: 0, total: folderScanResult?.file_count || 0, current_file: '' });
+                    await invoke('aerovz_add_directory', {
+                        vaultPath: savePath,
+                        sourceDir: initialFolderPath,
+                        targetPrefix: null,
+                    });
+                    setFolderProgress(null);
+                } else {
+                    if (effFiles.length) {
+                        await invoke<VaultV3Info>('aerovz_add_files', {
+                            vaultPath: savePath,
+                            filePaths: effFiles,
+                        });
+                    }
+                    for (const dir of effDirs) {
+                        await invoke('aerovz_add_directory', {
+                            vaultPath: savePath,
+                            sourceDir: dir,
+                            targetPrefix: null,
+                        });
+                    }
+                    setLastReport(null);
+                }
+
+                const info = await invoke<VaultV3Info>('aerovz_open_archive', { vaultPath: savePath });
+                setEntries(mapV3InfoToEntries(info, false));
+                setMeta(mapV3InfoToMeta(info));
+                setHasErrorCorrection(true);
+                setHasDetachedRecovery(false);
+                setHasDetachedHeaderRecovery(false);
+                setSuccess(t('vault.zipCreated') + `: ${info.file_count} ${info.file_count === 1 ? 'file' : 'files'}`);
+                setMode('browse');
+
+                const vName = savePath.split(/[\\/]/).pop() || 'AeroVault Zip';
+                await saveToHistory(savePath, vName, 'aerovault-zip', 3, false, info.file_count);
+            } else if (levelConfig.version === 3) {
                 // P2: if Error Correction enabled in experimental, use the dedicated with_ecc creator (non-critical RS extension stub).
                 if (securityLevel === 'experimental' && errorCorrectionEnabled) {
                     await invoke('vault_v3_create_with_error_correction', {
@@ -863,12 +947,17 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const handleOpen = async () => {
-        const selected = await open({ filters: [{ name: 'AeroVault', extensions: ['aerovault'] }] });
+        const selected = await open({ filters: [{ name: 'AeroVault / AeroVault Zip', extensions: ['aerovault', 'aerozip'] }] });
         if (!selected) return;
         const path = selected as string;
         setVaultPath(path);
 
         const security = await detectVaultVersion(path);
+        if (path.toLowerCase().endsWith('.aerozip') && !security.plaintext) {
+            setError(t('vault.zipEncryptedRejected'));
+            return;
+        }
+        setContainerKind(security.plaintext ? 'zip' : 'vault');
         setVaultSecurity(security);
         setMode('open');
     };
@@ -930,7 +1019,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // with "Not a valid AeroVault file".
     const refreshVaultEntries = async (versionOverride?: number) => {
         const version = versionOverride ?? vaultSecurity?.version;
-        if (version === 3) {
+        if (isPlaintextZip && versionOverride == null) {
+            const info = await invoke<VaultV3Info>('aerovz_open_archive', { vaultPath });
+            setEntries(mapV3InfoToEntries(info, false));
+            setMeta(mapV3InfoToMeta(info, meta));
+        } else if (version === 3) {
             const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
             setEntries(mapV3InfoToEntries(info));
             setMeta(mapV3InfoToMeta(info, meta));
@@ -949,7 +1042,27 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
 
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                const info = await invoke<VaultV3Info>('aerovz_open_archive', { vaultPath });
+                setContainerKind('zip');
+                setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental', plaintext: true });
+                setEntries(mapV3InfoToEntries(info, false));
+                setMeta(mapV3InfoToMeta(info, meta));
+                try {
+                    const status = await invoke<{ embedded: boolean; detached: boolean; header_parity?: boolean }>('aerovz_recovery_status', { path: vaultPath });
+                    setHasErrorCorrection(!!status.embedded);
+                    setHasDetachedRecovery(!!status.detached);
+                    setHasDetachedHeaderRecovery(!!status.header_parity);
+                } catch {
+                    setHasErrorCorrection(false);
+                    setHasDetachedRecovery(false);
+                    setHasDetachedHeaderRecovery(false);
+                }
+                setMode('browse');
+
+                const vName = vaultPath.split(/[\\/]/).pop() || 'AeroVault Zip';
+                await saveToHistory(vaultPath, vName, 'aerovault-zip', 3, false, info.file_count);
+            } else if (vaultSecurity?.version === 3) {
                 const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
                 setEntries(mapV3InfoToEntries(info));
@@ -1004,7 +1117,26 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                if (currentDir) {
+                    const result = await invoke<{ added: number; total: number }>('aerovz_add_files_to_dir', {
+                        vaultPath,
+                        filePaths: paths,
+                        targetDir: currentDir
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
+                } else {
+                    const info = await invoke<VaultV3Info>('aerovz_add_files', {
+                        vaultPath,
+                        filePaths: paths,
+                    });
+                    setEntries(mapV3InfoToEntries(info, false));
+                    setMeta(mapV3InfoToMeta(info, meta));
+                    setLastReport(null);
+                    setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
+                }
+            } else if (vaultSecurity?.version === 3) {
                 if (currentDir) {
                     const result = await invoke<{ added: number; total: number }>('vault_v3_add_files_to_dir', {
                         vaultPath,
@@ -1064,7 +1196,13 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                await invoke('aerovz_add_directory', {
+                    vaultPath,
+                    sourceDir: selected,
+                    targetPrefix: currentDir || null,
+                });
+            } else if (vaultSecurity?.version === 3) {
                 await invoke('vault_v3_add_directory', {
                     vaultPath,
                     password,
@@ -1091,7 +1229,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const handleDropFiles = useCallback(async (paths: string[]) => {
-        if (!paths.length || !vaultPath || !password || loading) return;
+        if (!paths.length || !vaultPath || (!password && !isPlaintextZip) || loading) return;
 
         setLoading(true);
         setError(null);
@@ -1104,7 +1242,21 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             if (!files.length && !dirs.length) return;
             const totalCount = files.length + dirs.length;
 
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                if (files.length) {
+                    if (targetDir) {
+                        await invoke('aerovz_add_files_to_dir', { vaultPath, filePaths: files, targetDir });
+                    } else {
+                        await invoke<VaultV3Info>('aerovz_add_files', { vaultPath, filePaths: files });
+                        setLastReport(null);
+                    }
+                }
+                for (const dir of dirs) {
+                    await invoke('aerovz_add_directory', { vaultPath, sourceDir: dir, targetPrefix: targetDir || null });
+                }
+                await refreshVaultEntries();
+                setSuccess(t('vault.filesAdded', { count: totalCount.toString() }));
+            } else if (vaultSecurity?.version === 3) {
                 if (files.length) {
                     if (targetDir) {
                         await invoke('vault_v3_add_files_to_dir', { vaultPath, password, filePaths: files, targetDir });
@@ -1150,7 +1302,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             setLoading(false);
             setDragTargetDir(null);
         }
-    }, [vaultPath, password, currentDir, dragTargetDir, vaultSecurity, loading, t]);
+    }, [vaultPath, password, currentDir, dragTargetDir, vaultSecurity, isPlaintextZip, loading, t]);
 
     // Ehud #2: OS drag&drop onto the CREATE screen stages files/folders into the
     // not-yet-created vault (handleCreate adds them after sealing the container).
@@ -1172,7 +1324,12 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const fullPath = currentDir ? `${currentDir}/${trimmed}` : trimmed;
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                await invoke('aerovz_create_directory', {
+                    vaultPath,
+                    dirName: fullPath
+                });
+            } else if (vaultSecurity?.version === 3) {
                 await invoke('vault_v3_create_directory', {
                     vaultPath,
                     password,
@@ -1200,7 +1357,24 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                if (isDir) {
+                    const result = await invoke<{ removed: number; remaining: number }>('aerovz_delete_entries', {
+                        vaultPath,
+                        entryNames: [entryName],
+                        recursive: true
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.itemsDeleted', { count: result.removed.toString() }));
+                } else {
+                    await invoke<{ deleted: string; remaining: number }>('aerovz_delete_entry', {
+                        vaultPath,
+                        entryName
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.itemDeleted', { name: entryName.split('/').pop() || entryName }));
+                }
+            } else if (vaultSecurity?.version === 3) {
                 if (isDir) {
                     const result = await invoke<{ removed: number; remaining: number }>('vault_v3_delete_entries', {
                         vaultPath,
@@ -1256,7 +1430,13 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         setLoading(true);
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                await invoke('aerovz_extract_entry', {
+                    vaultPath,
+                    entryName,
+                    destPath: savePath
+                });
+            } else if (vaultSecurity?.version === 3) {
                 await invoke('vault_v3_extract_entry', {
                     vaultPath,
                     password,
@@ -1288,11 +1468,16 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         setLoading(true);
         try {
-            const count = await invoke<number>('vault_v3_extract_all', {
-                vaultPath,
-                password,
-                destPath,
-            });
+            const count = isPlaintextZip
+                ? await invoke<number>('aerovz_extract_all', {
+                    vaultPath,
+                    destPath,
+                })
+                : await invoke<number>('vault_v3_extract_all', {
+                    vaultPath,
+                    password,
+                    destPath,
+                });
             setSuccess(t('vault.extractedAll', { count: String(count), path: destPath }));
         } catch (e) {
             setError(mapVaultError(e, t));
@@ -1308,10 +1493,12 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const profileForLevel = (lvl: number): string => (lvl === 3 ? 'fast' : lvl === 15 || lvl === 19 ? 'archive' : 'balanced');
 
     const buildVaultReport = async (format: 'txt' | 'json'): Promise<string> => {
-        const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');
+        const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.(aerovault|aerozip)$/i, '');
         const generatedAt = new Date().toISOString();
         const levelConfig = vaultSecurity ? securityLevels[vaultSecurity.level] : null;
-        const algorithms = levelConfig?.features ?? [];
+        const algorithms = isPlaintextZip
+            ? ['Plaintext content', 'zstd per chunk', 'BLAKE3 integrity', 'Reed-Solomon recovery']
+            : (levelConfig?.features ?? []);
 
         // Re-fetch full technical info (chunk_count, dedup, compression level,
         // per-file chunk counts) which the UI entries/meta mapping discards.
@@ -1320,7 +1507,10 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         let fileList: { name: string; size: number; is_dir: boolean; modified: string; chunk_count?: number }[] =
             entries.map(e => ({ name: e.name, size: e.size, is_dir: e.isDir, modified: e.modified || '' }));
         try {
-            if (vaultSecurity?.version === 3) {
+            if (isPlaintextZip) {
+                v3tech = await invoke<VaultV3Info>('aerovz_open_archive', { vaultPath });
+                fileList = v3tech.files.map(f => ({ name: f.name, size: f.size, is_dir: f.is_dir, modified: f.modified, chunk_count: f.chunk_count }));
+            } else if (vaultSecurity?.version === 3) {
                 v3tech = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
                 fileList = v3tech.files.map(f => ({ name: f.name, size: f.size, is_dir: f.is_dir, modified: f.modified, chunk_count: f.chunk_count }));
             } else if (vaultSecurity?.version === 2) {
@@ -1345,11 +1535,12 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         name: vaultName,
                         path: vaultPath,
                         format_version: meta?.version ?? vaultSecurity?.version ?? null,
-                        security_level: vaultSecurity?.level ?? null,
+                        security_level: isPlaintextZip ? 'aerovault-zip' : (vaultSecurity?.level ?? null),
                         cascade_mode: vaultSecurity?.cascadeMode ?? false,
                         description: meta?.description ?? null,
                         created: meta?.created ?? null,
                         modified: meta?.modified ?? null,
+                        confidential: !isPlaintextZip,
                         encryption_pipeline: algorithms,
                         compression_profile: compressionProfileLabel,
                         error_correction: {
@@ -1390,11 +1581,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         L.push(`  Name:             ${vaultName}`);
         L.push(`  Path:             ${vaultPath}`);
         L.push(`  Format:           v${meta?.version ?? vaultSecurity?.version ?? '?'}`);
-        L.push(`  Security level:   ${vaultSecurity?.level ?? '?'}${vaultSecurity?.cascadeMode ? ' (cascade)' : ''}`);
+        L.push(`  Security level:   ${isPlaintextZip ? 'AeroVault Zip (not confidential)' : `${vaultSecurity?.level ?? '?'}${vaultSecurity?.cascadeMode ? ' (cascade)' : ''}`}`);
         if (meta?.description) L.push(`  Description:      ${meta.description}`);
         if (meta?.created) L.push(`  Created:          ${meta.created}`);
         if (meta?.modified) L.push(`  Modified:         ${meta.modified}`);
-        if (algorithms.length) L.push(`  Encryption:       ${algorithms.join(' · ')}`);
+        if (algorithms.length) L.push(`${isPlaintextZip ? '  Processing:       ' : '  Encryption:       '}${algorithms.join(' · ')}`);
         L.push(`  Compression:      ${compressionProfileLabel}${v3tech ? ` (zstd -${v3tech.compression_level})` : ''}`);
         const ecState = [hasErrorCorrection ? 'embedded' : null, hasDetachedRecovery ? 'detached' : null].filter(Boolean).join(' + ') || 'none';
         L.push(`  Error correction: ${ecState}${hasDetachedHeaderRecovery ? ' (header protected)' : ''}`);
@@ -1454,7 +1645,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const content = await buildVaultReport(format);
-            const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.aerovault$/i, '');
+            const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.(aerovault|aerozip)$/i, '');
             const filePath = await save({
                 defaultPath: `${vaultName}-report.${format}`,
                 filters: [{ name: `AeroVault report (.${format})`, extensions: [format] }],
@@ -1572,9 +1763,18 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // Auto-detect vault version when opened via context menu (initialPath)
     useEffect(() => {
         if (initialPath && !vaultSecurity) {
-            detectVaultVersion(initialPath).then(setVaultSecurity).catch(() => {});
+            detectVaultVersion(initialPath).then((security) => {
+                if (initialPath.toLowerCase().endsWith('.aerozip') && !security.plaintext) {
+                    setError(t('vault.zipEncryptedRejected'));
+                    setContainerKind('vault');
+                    setVaultSecurity(security);
+                    return;
+                }
+                setContainerKind(security.plaintext ? 'zip' : 'vault');
+                setVaultSecurity(security);
+            }).catch(() => {});
         }
-    }, [initialPath]);
+    }, [initialPath, t, vaultSecurity]);
 
     // Listen for OS file drag-and-drop events via Tauri webview API
     useEffect(() => {
@@ -1670,7 +1870,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            const res = await invoke<any>('vault_v3_scrub', { vaultPath, password });
+            const res = isPlaintextZip
+                ? await invoke<any>('aerovz_scrub', { vaultPath })
+                : await invoke<any>('vault_v3_scrub', { vaultPath, password });
             setScrubResult(res);
             setShowScrubDialog(true);
             const checked = res.checked ?? res.count ?? 0;
@@ -1688,7 +1890,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setIsRepairing(true);
         setError(null);
         try {
-            const res = await invoke<any>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
+            const res = isPlaintextZip
+                ? await invoke<any>('aerovz_repair', { vaultPath, dryRun: repairDryRun })
+                : await invoke<any>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
             setRepairResult(res);
             if (!repairDryRun) {
                 await refreshVaultEntries();
@@ -1752,6 +1956,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
     return {
         mode, setMode,
+        containerKind, setContainerKind,
+        isPlaintextZip,
         vaultPath, setVaultPath,
         password, setPassword,
         confirmPassword, setConfirmPassword,

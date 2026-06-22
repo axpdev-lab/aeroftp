@@ -980,7 +980,7 @@ const App: React.FC = () => {
   // openAeroSync() bumps it; a stale scan (dialog closed or reopened
   // meanwhile) sees a mismatched token and discards its result.
   const aeroSyncCompareSeqRef = useRef(0);
-  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
+  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; containerKind?: 'vault' | 'zip'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
@@ -3968,10 +3968,10 @@ interface UpdateVerificationInfo {
     }
   });
 
-  // OS file association: listen for .aerovault files opened via double-click or single-instance forwarding
+  // OS file association: listen for .aerovault/.aerozip files opened via double-click or single-instance forwarding
   useTauriListener<string>('vault-open-file', (event) => {
     const vaultPath = event.payload;
-    if (vaultPath && vaultPath.endsWith('.aerovault')) {
+    if (vaultPath && (vaultPath.endsWith('.aerovault') || vaultPath.endsWith('.aerozip'))) {
       setShowVaultPanel({ mode: 'open', path: vaultPath });
     }
   });
@@ -11738,8 +11738,9 @@ interface UpdateVerificationInfo {
       : (count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload'));
     const filesToUpload = Array.from(selection);
 
-    // Detect .aerovault early for context menu ordering
+    // Detect AeroFTP container files early for context menu ordering.
     const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
+    const isAeroVaultArchiveFile = count === 1 && !file.is_dir && /\.aerozip$/i.test(file.name);
 
     const isAeroFileDualActive = (!isConnected || !showRemotePanel) && showDualLocalPanel;
     const items: ContextMenuItem[] = [
@@ -11807,6 +11808,12 @@ interface UpdateVerificationInfo {
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
         icon: <VaultIcon size={14} />,
+        action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
+      }] : []),
+      // .aerozip: Open with AeroVault Zip (plaintext aerovz lane, no password)
+      ...(isAeroVaultArchiveFile ? [{
+        label: t('contextMenu.openWithAeroVaultZip') || 'Open with AeroVault Zip',
+        icon: <Archive size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
       // .aerovault: Open as AeroVault Overlay (N3 onboarding shortcut)
@@ -12176,8 +12183,9 @@ interface UpdateVerificationInfo {
       });
     }
 
-    // Always show "Create AeroVault..." and "More" (except on vault/cryptomator files)
-    if (!isAeroVaultFile && !isCryptomatorMarker) {
+    // Always show "Create AeroVault..." / archive actions and "More"
+    // (except on container/cryptomator files).
+    if (!isAeroVaultFile && !isAeroVaultArchiveFile && !isCryptomatorMarker) {
       // Folder-specific: "Encrypt Folder as AeroVault..."
       if (count === 1 && file.is_dir) {
         items.push({
@@ -12197,6 +12205,17 @@ interface UpdateVerificationInfo {
             return f ? f.path : `${currentLocalPath}/${name}`;
           });
           setShowVaultPanel({ mode: 'create', files: paths });
+        },
+      });
+      items.push({
+        label: t('contextMenu.createAeroVaultZip') || 'Create AeroVault Zip...',
+        icon: <Archive size={14} />,
+        action: () => {
+          const paths = filesToUpload.map(name => {
+            const f = sortedLocalFiles.find(lf => lf.name === name);
+            return f ? f.path : `${currentLocalPath}/${name}`;
+          });
+          setShowVaultPanel({ mode: 'create', containerKind: 'zip', files: paths });
         },
       });
 
@@ -13437,7 +13456,7 @@ interface UpdateVerificationInfo {
           isOpen={showCloudPanel}
           onClose={() => setShowCloudPanel(false)}
         />
-        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
+        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialContainerKind={showVaultPanel.containerKind} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
         {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock

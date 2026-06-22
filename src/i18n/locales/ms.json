@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Kunci tindihan Rclone Crypt",
             "unlockRcloneCrypt": "Nyahsulit sebagai tindihan Rclone Crypt…",
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
-            "privacyEllipsis": "Privasi..."
+            "privacyEllipsis": "Privasi...",
+            "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
+            "createAeroVaultZip": "Cipta AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Kemas kini semula peti besi ini dengan tahap keselamatan, profil mampatan dan Pembetulan Ralat yang berbeza (kata laluan sama)",
             "changeModeNote": "Bilik kebal dipakej semula di tempat dengan tetapan baharu; kata laluan kekal sama.",
             "modeChanged": "Mod bilik kebal ditukar",
-            "changeModeCrossFormat": "Ini mengubah format peti besi dan menyulitkan semula setiap fail sepenuhnya."
+            "changeModeCrossFormat": "Ini mengubah format peti besi dan menyulitkan semula setiap fail sepenuhnya.",
+            "zipCreated": "AeroVault Zip berjaya dicipta",
+            "createZip": "Cipta AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip menyediakan pemampatan tinggi, pemeriksaan integriti dan pemulihan. Ia tidak disulitkan; sesiapa sahaja yang memiliki fail boleh membacanya.",
+            "zipBrowseNotice": "Pemampatan + integriti + pemulihan sahaja; bukan kerahsiaan.",
+            "dropFilesZip": "Lepaskan fail untuk menambahnya ke AeroVault Zip",
+            "zipEmpty": "AeroVault Zip kosong. Tambah fail untuk bermula.",
+            "zipEmptyHint": "Seret fail ke sini atau klik Tambah Fail untuk membina Zip",
+            "openZip": "Buka AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip ialah laluan teks biasa AeroVault Zip; bekas yang disulitkan mesti menggunakan .aerovault.",
+            "zipRecoveryHint": "Pariti pemulihan membantu membaiki bait yang rosak; ia tidak menyembunyikan kandungan.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

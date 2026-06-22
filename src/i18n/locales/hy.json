@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Կողպել Rclone Crypt ծածկույթը",
             "unlockRcloneCrypt": "Վերծանել որպես Rclone Crypt ծածկույթ…",
             "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay",
-            "privacyEllipsis": "Գաղտնիություն..."
+            "privacyEllipsis": "Գաղտնիություն...",
+            "openWithAeroVaultZip": "Բացել AeroVault Zip-ով",
+            "createAeroVaultZip": "Ստեղծել AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -2864,7 +2866,20 @@
             "changeModeHint": "Վերափաթաթեք այս պահոցը տարբեր անվտանգության մակարդակով, սեղմման պրոֆիլով և Սխալների ուղղմամբ (նույն գաղտնաբառ)",
             "changeModeNote": "Պահոցը տեղում վերափաթեթավորվում է նոր կարգավորումներով. գաղտնաբառը մնում է նույնը։",
             "modeChanged": "Պահոցի ռեժիմը փոխվեց",
-            "changeModeCrossFormat": "Սա փոխում է պահոցի ձևաչափը և ամբողջությամբ վերծածկագրում է յուրաքանչյուր ֆայլ։"
+            "changeModeCrossFormat": "Սա փոխում է պահոցի ձևաչափը և ամբողջությամբ վերծածկագրում է յուրաքանչյուր ֆայլ։",
+            "zipCreated": "AeroVault Zip-ը հաջողությամբ ստեղծվեց",
+            "createZip": "Ստեղծել AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip-ը ապահովում է բարձր սեղմում, ամբողջականության ստուգումներ և վերականգնում: Այն գաղտնագրված չէ. ֆայլն ունեցող ցանկացած ոք կարող է կարդալ այն:",
+            "zipBrowseNotice": "Միայն սեղմում + ամբողջականություն + վերականգնում; ոչ գաղտնիություն:",
+            "dropFilesZip": "Գցեք ֆայլերը AeroVault Zip-ին ավելացնելու համար",
+            "zipEmpty": "AeroVault Zip-ը դատարկ է: Ավելացրեք ֆայլեր՝ սկսելու համար:",
+            "zipEmptyHint": "Քաշեք ֆայլերն այստեղ կամ սեղմեք Ավելացնել ֆայլեր՝ Zip-ը կառուցելու համար",
+            "openZip": "Բացել AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip-ը AeroVault Zip-ի չգաղտնագրված ռեժիմն է. գաղտնագրված կոնտեյներները պետք է օգտագործեն .aerovault:",
+            "zipRecoveryHint": "Վերականգնման զույգականությունն օգնում է վերանորոգել վնասված բայթերը. այն չի թաքցնում բովանդակությունը:",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",

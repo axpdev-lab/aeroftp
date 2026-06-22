@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Funga uwekeleaji wa Rclone Crypt",
             "unlockRcloneCrypt": "Simbua kama uwekeleaji wa Rclone Crypt…",
             "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay",
-            "privacyEllipsis": "Faragha..."
+            "privacyEllipsis": "Faragha...",
+            "openWithAeroVaultZip": "Fungua kwa AeroVault Zip",
+            "createAeroVaultZip": "Unda AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Pakiti upya hazina hii chini ya kiwango tofauti cha usalama, wasifu wa ukandamizaji na Usahihishaji wa Makosa (nenosiri lile lile)",
             "changeModeNote": "Hazina inafungwa upya papo hapo kwa mipangilio mipya; nenosiri linabaki lile lile.",
             "modeChanged": "Hali ya hazina imebadilishwa",
-            "changeModeCrossFormat": "Hii inabadilisha muundo wa hazina na kusimba kwa njia fiche kila faili kwa ukamilifu."
+            "changeModeCrossFormat": "Hii inabadilisha muundo wa hazina na kusimba kwa njia fiche kila faili kwa ukamilifu.",
+            "zipCreated": "AeroVault Zip imeundwa kwa mafanikio",
+            "createZip": "Unda AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip hutoa mgandamizo wa hali ya juu, ukaguzi wa uadilifu, na urejeshaji. Haijasimbwa kwa njia fiche; yeyote aliye na faili anaweza kuisoma.",
+            "zipBrowseNotice": "Mgandamizo + uadilifu + urejeshaji pekee; si usiri.",
+            "dropFilesZip": "Dondosha faili ili kuziongeza kwenye AeroVault Zip",
+            "zipEmpty": "AeroVault Zip ni tupu. Ongeza faili ili kuanza.",
+            "zipEmptyHint": "Buruta faili hapa au bofya Ongeza Faili ili kujenga Zip",
+            "openZip": "Fungua AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip ni njia ya maandishi wazi ya AeroVault Zip; vyombo vilivyosimbwa lazima vitumie .aerovault.",
+            "zipRecoveryHint": "Usawa wa urejeshaji husaidia kurekebisha baiti zilizoharibika; haufichi maudhui.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

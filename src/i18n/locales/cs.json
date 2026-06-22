@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Zamknout překryv Rclone Crypt",
             "unlockRcloneCrypt": "Dešifrovat jako překryv Rclone Crypt…",
             "openAsAeroVaultOverlay": "Otevřít jako AeroVault Overlay",
-            "privacyEllipsis": "Soukromí..."
+            "privacyEllipsis": "Soukromí...",
+            "openWithAeroVaultZip": "Otevřít pomocí AeroVault Zip",
+            "createAeroVaultZip": "Vytvořit AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Přebalte tento trezor pod jinou úrovní zabezpečení, kompresním profilem a Korekcí chyb (stejné heslo)",
             "changeModeNote": "Trezor se znovu zabalí na místě s novým nastavením; heslo zůstává stejné.",
             "modeChanged": "Režim trezoru byl změněn",
-            "changeModeCrossFormat": "Toto změní formát trezoru a plně znovu zašifruje každý soubor."
+            "changeModeCrossFormat": "Toto změní formát trezoru a plně znovu zašifruje každý soubor.",
+            "zipCreated": "AeroVault Zip byl úspěšně vytvořen",
+            "createZip": "Vytvořit AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip poskytuje vysokou kompresi, kontroly integrity a obnovu. Není šifrovaný; kdokoli se souborem si jej může přečíst.",
+            "zipBrowseNotice": "Pouze komprese + integrita + obnova; žádná důvěrnost.",
+            "dropFilesZip": "Přetáhněte soubory pro přidání do AeroVault Zip",
+            "zipEmpty": "AeroVault Zip je prázdný. Začněte přidáním souborů.",
+            "zipEmptyHint": "Přetáhněte soubory sem nebo klikněte na Přidat soubory pro sestavení Zip",
+            "openZip": "Otevřít AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip je nešifrovaný režim AeroVault Zip; šifrované kontejnery musí používat .aerovault.",
+            "zipRecoveryHint": "Parita obnovy pomáhá opravit poškozené bajty; neskrývá obsah.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

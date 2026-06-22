@@ -429,7 +429,9 @@
             "lockRcloneCrypt": "Заблокировать наложение Rclone Crypt",
             "unlockRcloneCrypt": "Расшифровать как наложение Rclone Crypt…",
             "openAsAeroVaultOverlay": "Открыть как AeroVault Overlay",
-            "privacyEllipsis": "Конфиденциальность..."
+            "privacyEllipsis": "Конфиденциальность...",
+            "openWithAeroVaultZip": "Открыть с помощью AeroVault Zip",
+            "createAeroVaultZip": "Создать AeroVault Zip..."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -2871,7 +2873,20 @@
             "changeModeHint": "Переупакуйте это хранилище с другим уровнем безопасности, профилем сжатия и Коррекцией ошибок (тот же пароль)",
             "changeModeNote": "Хранилище переупаковывается на месте с новыми настройками; пароль остаётся прежним.",
             "modeChanged": "Режим хранилища изменён",
-            "changeModeCrossFormat": "Это изменяет формат хранилища и полностью повторно шифрует каждый файл."
+            "changeModeCrossFormat": "Это изменяет формат хранилища и полностью повторно шифрует каждый файл.",
+            "zipCreated": "AeroVault Zip успешно создан",
+            "createZip": "Создать AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextTitle": "AeroVault Zip",
+            "zipPlaintextDesc": ".aerozip обеспечивает высокое сжатие, проверки целостности и восстановление. Он не зашифрован; любой, у кого есть файл, может его прочитать.",
+            "zipBrowseNotice": "Только сжатие + целостность + восстановление; без конфиденциальности.",
+            "dropFilesZip": "Перетащите файлы, чтобы добавить их в AeroVault Zip",
+            "zipEmpty": "AeroVault Zip пуст. Добавьте файлы, чтобы начать.",
+            "zipEmptyHint": "Перетащите файлы сюда или нажмите «Добавить файлы», чтобы создать Zip",
+            "openZip": "Открыть AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip — это незашифрованный режим AeroVault Zip; зашифрованные контейнеры должны использовать .aerovault.",
+            "zipRecoveryHint": "Чётность восстановления помогает исправить повреждённые байты; она не скрывает содержимое.",
+            "zipBadge": "Zip"
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",

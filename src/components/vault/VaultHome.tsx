@@ -2,11 +2,10 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Lock, FolderPlus, Download, Loader2, Clock, X as XIcon, Trash2 } from 'lucide-react';
+import { Archive, Lock, FolderPlus, Download, Loader2, Clock, X as XIcon } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, IconProvider } from './useVaultState';
-import { formatSize } from '../../utils/formatters';
 
 interface VaultHomeProps {
     state: VaultState;
@@ -31,8 +30,14 @@ function relativeTime(timestamp: number): string {
 
 /** Map security_level string to SecurityLevel type */
 function toSecurityLevel(s: string): SecurityLevel {
+    if (s === 'archive') return 'experimental';
+    if (s === 'aerovault-zip' || s === 'plaintext-zip' || s === 'plaintext-archive' || s === 'zip') return 'experimental';
     if (s === 'standard' || s === 'advanced' || s === 'paranoid' || s === 'experimental') return s;
     return 'advanced';
+}
+
+function isAeroVaultZipHistoryLevel(s: string): boolean {
+    return s === 'aerovault-zip' || s === 'plaintext-zip' || s === 'plaintext-archive' || s === 'zip';
 }
 
 export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
@@ -64,9 +69,22 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                 })}
             </div>
 
-            <div className="flex gap-3 mt-1">
+            <div className="flex flex-wrap justify-center gap-3 mt-1">
                 <button onClick={() => { state.resetState(); state.setMode('create'); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium">
                     <FolderPlus size={16} /> {t('vault.createNew')}
+                </button>
+                <button
+                    onClick={() => {
+                        state.resetState();
+                        state.setContainerKind('zip');
+                        state.setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental', plaintext: true });
+                        state.setSecurityLevel('experimental');
+                        state.setCompressionProfile('archive');
+                        state.setMode('create');
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-medium"
+                >
+                    <Archive size={16} /> {t('vault.createZip')}
                 </button>
                 <button onClick={state.handleOpen} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium">
                     <Lock size={16} /> {t('vault.openExisting')}
@@ -92,6 +110,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                         {state.recentVaults.map((vault) => {
                             const level = toSecurityLevel(vault.security_level);
                             const config = securityLevels[level];
+                            const isZip = isAeroVaultZipHistoryLevel(vault.security_level);
                             return (
                                 <div
                                     key={vault.id}
@@ -100,6 +119,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                                         state.setVaultPath(vault.vault_path);
                                         try {
                                             const sec = await state.detectVaultVersion(vault.vault_path);
+                                            state.setContainerKind(sec.plaintext ? 'zip' : 'vault');
                                             state.setVaultSecurity(sec);
                                         } catch { /* ignore: VaultOpen will re-detect */ }
                                         state.setMode('open');
@@ -112,7 +132,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                                                 {vault.vault_name}
                                             </span>
                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${config.bgColor} bg-opacity-20 ${config.color}`}>
-                                                {config.label}
+                                                {isZip ? t('vault.zipTitle') : config.label}
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2 text-[10px] text-gray-400">
