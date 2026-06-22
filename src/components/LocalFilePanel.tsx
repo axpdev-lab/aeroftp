@@ -12,6 +12,7 @@
  */
 
 import React, { useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
   Copy, ArrowRightLeft,
@@ -320,17 +321,32 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   };
 
   // Handle file double-click
-  const handleDoubleClick = (file: LocalFile) => {
+  const handleDoubleClick = async (file: LocalFile) => {
     if (file.is_dir) {
       onNavigate(file.path);
-    } else if (/\.(aerovault|aerozip)$/i.test(file.name)) {
+      return;
+    }
+    if (/\.(aerovault|aerozip)$/i.test(file.name)) {
       // An AeroVault container (.aerovault encrypted, .aerozip plaintext Zip
       // lane) is an opaque custom format: never preview/upload it as a blob.
       // Open it in the AeroVault modal (same path as the OS file association)
       // so a double-click unlocks/browses it in-app. The panel auto-detects the
       // lane on open, so .aerozip skips the password prompt.
       onOpenVault(file.path);
-    } else if (/^(vault|masterkey)\.cryptomator$/i.test(file.name)) {
+      return;
+    }
+    // Open by CONTENT, not extension: an AeroVault container that was renamed or
+    // stripped of its extension still opens in the modal. The sniff reads only
+    // the header magic (a few bytes, cheap regardless of file size); on any
+    // error / non-container it silently falls through to normal handling.
+    try {
+      const kind = await invoke<string | null>('detect_aero_container', { path: file.path });
+      if (kind === 'zip' || kind === 'vault') {
+        onOpenVault(file.path);
+        return;
+      }
+    } catch { /* not a container or unreadable: continue with normal handling */ }
+    if (/^(vault|masterkey)\.cryptomator$/i.test(file.name)) {
       // Cryptomator marker file: open the vault (its parent dir) in CryptomatorBrowser,
       // mirroring the right-click "Open as Cryptomator Vault" action.
       onOpenCryptomator(file);

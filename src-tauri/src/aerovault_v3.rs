@@ -505,6 +505,31 @@ pub async fn aerovz_is_archive(path: String) -> Result<bool, String> {
     ))
 }
 
+/// Header-only container sniff for the GUI's "open by content, not extension"
+/// double-click path. Reads just the magic/flag bytes (cheap regardless of file
+/// size) and classifies the file as the plaintext Zip lane (`"zip"`), an
+/// encrypted AeroVault container (`"vault"`, v1/v2/v3), or not a container
+/// (`None`). The frontend uses this so a renamed/extensionless AeroVault file
+/// still opens in the modal, which then runs its finer-grained detection.
+#[tauri::command]
+pub async fn detect_aero_container(path: String) -> Result<Option<String>, String> {
+    let p = Path::new(&path);
+    // AEROVAULT3 family: the plaintext flag distinguishes the Zip lane from an
+    // encrypted v3 vault. A read error here is non-fatal (treat as "unknown").
+    match aerovz_plaintext_flag(p) {
+        Ok(Some(true)) => return Ok(Some("zip".to_string())),
+        Ok(Some(false)) => return Ok(Some("vault".to_string())),
+        Ok(None) => {}
+        Err(_) => return Ok(None),
+    }
+    // Encrypted AeroVault v3 (defensive; the flag read above already covers it),
+    // then v2/v1 via the crate's header check.
+    if aerovault::v3::VaultV3::is_vault_v3(&path) || aerovault::Vault::is_vault(&path) {
+        return Ok(Some("vault".to_string()));
+    }
+    Ok(None)
+}
+
 #[tauri::command]
 pub async fn aerovz_create_archive(
     vault_path: String,

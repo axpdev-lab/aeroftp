@@ -199,7 +199,7 @@ Var AeroFTPAppDataPresentPre
     WriteRegStr HKCU "Software\Classes\.aerozip" "Content Type" "application/x-aerozip"
     WriteRegStr HKCU "Software\Classes\.aerozip" "PerceivedType" "document"
 
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip" "" "AeroFTP Plaintext Recoverable Archive"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip" "" "AeroVault Zip Archive"
     WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerozip.ico,0"
     WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\shell\open" "" "Open with AeroFTP"
     WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'

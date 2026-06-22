@@ -16305,6 +16305,7 @@ pub fn run() {
             aerovault_v2::vault_v2_add_directory,
             // AeroVault v3 draft wrapper-stack backend
             aerovault_v3::aerovz_is_archive,
+            aerovault_v3::detect_aero_container,
             aerovault_v3::aerovz_create_archive,
             aerovault_v3::aerovz_open_archive,
             aerovault_v3::aerovz_recovery_status,
