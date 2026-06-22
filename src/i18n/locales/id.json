@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip berhasil dibuat",
             "createZip": "Buat AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Tidak terenkripsi, tanpa kerahasiaan. Tidak bisa dibuka dengan alat zip biasa: memerlukan AeroFTP atau crate sumber terbuka aerovault. Formatnya terbuka, jadi siapa pun yang berniat dapat memulihkan isinya.",
-            "zipBrowseNotice": "Hanya kompresi + integritas + pemulihan; bukan kerahasiaan.",
             "dropFilesZip": "Lepaskan file untuk menambahkannya ke AeroVault Zip",
             "zipEmpty": "AeroVault Zip kosong. Tambahkan file untuk memulai.",
             "zipEmptyHint": "Seret file ke sini atau klik Tambah File untuk membangun Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip adalah jalur teks biasa AeroVault Zip; kontainer terenkripsi harus menggunakan .aerovault.",
             "zipRecoveryHint": "Paritas pemulihan membantu memperbaiki byte yang rusak; ini tidak menyembunyikan konten.",
             "zipBadge": "Zip",
-            "openingZip": "Membuka AeroVault Zip…"
+            "openingZip": "Membuka AeroVault Zip…",
+            "encryptedBadge": "Terenkripsi",
+            "notEncryptedBadge": "Tidak terenkripsi",
+            "encryptedTooltip": "Terenkripsi dengan AES-256. Konten dan nama file bersifat rahasia; kata sandi diperlukan untuk membuka."
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

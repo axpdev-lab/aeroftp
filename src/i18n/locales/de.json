@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip erfolgreich erstellt",
             "createZip": "AeroVault Zip erstellen",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Nicht verschlüsselt, keine Vertraulichkeit. Es lässt sich nicht mit einem normalen Zip-Tool öffnen: Es benötigt AeroFTP oder das Open-Source-Crate aerovault. Das Format ist offen, daher kann jeder Motivierte die Inhalte wiederherstellen.",
-            "zipBrowseNotice": "Nur Komprimierung + Integrität + Wiederherstellung; keine Vertraulichkeit.",
             "dropFilesZip": "Dateien ablegen, um sie zum AeroVault Zip hinzuzufügen",
             "zipEmpty": "Das AeroVault Zip ist leer. Fügen Sie Dateien hinzu, um zu beginnen.",
             "zipEmptyHint": "Dateien hierher ziehen oder auf Dateien hinzufügen klicken, um das Zip zu erstellen",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip ist der unverschlüsselte Modus von AeroVault Zip; verschlüsselte Container müssen .aerovault verwenden.",
             "zipRecoveryHint": "Die Wiederherstellungsparität hilft, beschädigte Bytes zu reparieren; sie verbirgt den Inhalt nicht.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip wird geöffnet…"
+            "openingZip": "AeroVault Zip wird geöffnet…",
+            "encryptedBadge": "Verschlüsselt",
+            "notEncryptedBadge": "Unverschlüsselt",
+            "encryptedTooltip": "Mit AES-256 verschlüsselt. Inhalte und Dateinamen sind vertraulich; zum Öffnen ist das Passwort erforderlich."
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

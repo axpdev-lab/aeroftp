@@ -2880,9 +2880,7 @@
             "zipCreated": "Đã tạo AeroVault Zip thành công",
             "createZip": "Tạo AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Không mã hóa, không có tính bảo mật. Không mở được bằng công cụ zip thông thường: cần AeroFTP hoặc crate mã nguồn mở aerovault. Định dạng là mở, nên bất kỳ ai muốn đều có thể khôi phục nội dung.",
-            "zipBrowseNotice": "Chỉ nén + toàn vẹn + khôi phục; không bảo mật.",
             "dropFilesZip": "Thả tệp để thêm vào AeroVault Zip",
             "zipEmpty": "AeroVault Zip trống. Thêm tệp để bắt đầu.",
             "zipEmptyHint": "Kéo tệp vào đây hoặc nhấp Thêm tệp để tạo Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip là luồng văn bản thuần của AeroVault Zip; các vùng chứa được mã hóa phải dùng .aerovault.",
             "zipRecoveryHint": "Tính chẵn lẻ khôi phục giúp sửa các byte bị hỏng; nó không ẩn nội dung.",
             "zipBadge": "Zip",
-            "openingZip": "Đang mở AeroVault Zip…"
+            "openingZip": "Đang mở AeroVault Zip…",
+            "encryptedBadge": "Đã mã hóa",
+            "notEncryptedBadge": "Chưa mã hóa",
+            "encryptedTooltip": "Mã hóa bằng AES-256. Nội dung và tên tệp được bảo mật; cần mật khẩu để mở."
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

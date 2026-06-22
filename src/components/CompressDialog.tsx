@@ -148,14 +148,20 @@ const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => stri
     // "incompressible" rather than a confusing "+0% / Increased 148 B": the file
     // was already compressed and there is essentially no space to reclaim.
     const outcome: 'saved' | 'grew' | 'incompressible' = pct >= 1 ? 'saved' : pct <= -1 ? 'grew' : 'incompressible';
-    const afterFraction = inputBytes > 0 ? Math.max(0, Math.min(1.5, outputBytes / inputBytes)) : 1;
-    // Animate the "After" bar from full (100%) down to the real ratio on mount.
+    // Both bars are scaled against the larger of the two so they stay
+    // proportional in either direction: the bigger size fills the track, the
+    // smaller one is visibly shorter (a grown archive reads longer, not equal).
+    const maxBytes = Math.max(inputBytes, outputBytes, 1);
+    const beforeWidth = (inputBytes / maxBytes) * 100;
+    const afterTarget = (outputBytes / maxBytes) * 100;
+    // Animate the "After" bar from the "Before" length to its real length, so
+    // the change (shrink or grow) is shown as motion.
     const [settled, setSettled] = useState(false);
     useEffect(() => {
         const h = requestAnimationFrame(() => setSettled(true));
         return () => cancelAnimationFrame(h);
     }, []);
-    const afterWidth = settled ? Math.min(100, afterFraction * 100) : 100;
+    const afterWidth = settled ? afterTarget : beforeWidth;
     const afterFill = outcome === 'saved' ? 'linear-gradient(90deg,#10b981,#22c55e)'
         : outcome === 'grew' ? 'linear-gradient(90deg,#f97316,#ef4444)'
         : 'var(--compress-text-muted)';
@@ -178,7 +184,7 @@ const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => stri
             <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-[10px] w-12 shrink-0" style={{ color: 'var(--compress-text-muted)' }}>{t('compress.before') || 'Before'}</span>
                 <div className="tpb-track h-3 rounded-full overflow-hidden flex-1" style={{ background: 'var(--compress-bg-deep)' }}>
-                    <div className="h-full rounded-full" style={{ width: '100%', background: 'var(--compress-text-muted)' }} />
+                    <div className="h-full rounded-full" style={{ width: `${beforeWidth}%`, background: 'var(--compress-text-muted)' }} />
                 </div>
                 <span className="text-[10px] w-16 text-right shrink-0">{formatSize(inputBytes)}</span>
             </div>

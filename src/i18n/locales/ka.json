@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip წარმატebით შეიქმნა",
             "createZip": "AeroVault Zip-ის შექმნა",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "დაშიფრული არ არის, კონფიდენციალურობა არ აქვს. ჩვეულებრივი zip ხელსაწყოთი არ იხსნება: საჭიროა AeroFTP ან ღია კოდის aerovault crate. ფორმატი ღიაა, ამიტომ ნებისმიერ მსურველს შეუძლია შიგთავსის აღდგენა.",
-            "zipBrowseNotice": "მხოლოდ შეკუმშვა + მთლიანობა + აღდგენა; არა კონფიდენციალურობა.",
             "dropFilesZip": "ჩააგდეთ ფაილები AeroVault Zip-ში დასამატებლად",
             "zipEmpty": "AeroVault Zip ცარიელია. დასაწყებად დაამატეთ ფაილები.",
             "zipEmptyHint": "გადმოიტანეთ ფაილები აქ ან დააწკაპუნეთ ფაილების დამატებაზე Zip-ის ასაგებად",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip არის AeroVault Zip-ის დაუშიფრავი რეჟიმი; დაშიფრულმა კონტეინერებმა უნდა გამოიყენონ .aerovault.",
             "zipRecoveryHint": "აღდგენის პარიტეტი ეხმარება დაზიანებული ბაიტების შეკეთებაში; ის არ მალავს შინაარსს.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip იხსნება…"
+            "openingZip": "AeroVault Zip იხსნება…",
+            "encryptedBadge": "დაშიფრული",
+            "notEncryptedBadge": "დაუშიფრავი",
+            "encryptedTooltip": "დაშიფრულია AES-256-ით. შინაარსი და ფაილების სახელები კონფიდენციალურია; გასახსნელად საჭიროა პაროლი."
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

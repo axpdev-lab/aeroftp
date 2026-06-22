@@ -2880,9 +2880,7 @@
             "zipCreated": "Pomyślnie utworzono AeroVault Zip",
             "createZip": "Utwórz AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Bez szyfrowania, brak poufności. Nie otworzysz go zwykłym narzędziem zip: potrzebny jest AeroFTP lub otwarty crate aerovault. Format jest otwarty, więc każdy chętny może odzyskać zawartość.",
-            "zipBrowseNotice": "Tylko kompresja + integralność + odzyskiwanie; bez poufności.",
             "dropFilesZip": "Upuść pliki, aby dodać je do AeroVault Zip",
             "zipEmpty": "AeroVault Zip jest pusty. Dodaj pliki, aby rozpocząć.",
             "zipEmptyHint": "Przeciągnij pliki tutaj lub kliknij Dodaj pliki, aby zbudować Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip to niezaszyfrowany tryb AeroVault Zip; zaszyfrowane kontenery muszą używać .aerovault.",
             "zipRecoveryHint": "Parzystość odzyskiwania pomaga naprawić uszkodzone bajty; nie ukrywa zawartości.",
             "zipBadge": "Zip",
-            "openingZip": "Otwieranie AeroVault Zip…"
+            "openingZip": "Otwieranie AeroVault Zip…",
+            "encryptedBadge": "Zaszyfrowane",
+            "notEncryptedBadge": "Niezaszyfrowane",
+            "encryptedTooltip": "Zaszyfrowane AES-256. Zawartość i nazwy plików są poufne; do otwarcia wymagane jest hasło."
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

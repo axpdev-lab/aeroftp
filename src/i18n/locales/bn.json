@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip সফলভাবে তৈরি হয়েছে",
             "createZip": "AeroVault Zip তৈরি করুন",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "এনক্রিপ্ট করা নয়, কোনো গোপনীয়তা নেই। সাধারণ zip টুলে এটি খুলবে না: এর জন্য AeroFTP বা ওপেন-সোর্স aerovault crate দরকার। ফরম্যাটটি উন্মুক্ত, তাই আগ্রহী যে কেউ এর বিষয়বস্তু পুনরুদ্ধার করতে পারে।",
-            "zipBrowseNotice": "শুধুমাত্র সংকোচন + অখণ্ডতা + পুনরুদ্ধার; গোপনীয়তা নয়।",
             "dropFilesZip": "AeroVault Zip-এ যোগ করতে ফাইল ছেড়ে দিন",
             "zipEmpty": "AeroVault Zip খালি। শুরু করতে ফাইল যোগ করুন।",
             "zipEmptyHint": "এখানে ফাইল টেনে আনুন বা Zip তৈরি করতে ফাইল যোগ করুন ক্লিক করুন",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip হল AeroVault Zip-এর প্লেইনটেক্সট লেন; এনক্রিপ্ট করা কন্টেইনারগুলিকে অবশ্যই .aerovault ব্যবহার করতে হবে।",
             "zipRecoveryHint": "পুনরুদ্ধার প্যারিটি ক্ষতিগ্রস্ত বাইট মেরামত করতে সাহায্য করে; এটি বিষয়বস্তু লুকায় না।",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip খোলা হচ্ছে…"
+            "openingZip": "AeroVault Zip খোলা হচ্ছে…",
+            "encryptedBadge": "এনক্রিপ্টেড",
+            "notEncryptedBadge": "এনক্রিপ্ট করা নেই",
+            "encryptedTooltip": "AES-256 দিয়ে এনক্রিপ্ট করা। বিষয়বস্তু ও ফাইলের নাম গোপনীয়; খুলতে পাসওয়ার্ড প্রয়োজন।"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

@@ -2880,9 +2880,7 @@
             "zipCreated": "បានបង្កើត AeroVault Zip ដោយជោគជ័យ",
             "createZip": "បង្កើត AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "មិនបានអ៊ិនគ្រីប, គ្មានការសម្ងាត់ឡើយ។ វាមិនអាចបើកនៅក្នុងឧបករណ៍ zip ធម្មតាបានទេ៖ វាត្រូវការ AeroFTP ឬ crate ប្រភពបើកចំហ aerovault។ ទម្រង់នេះបើកចំហ ដូច្នេះអ្នកណាក៏ដោយដែលចង់ អាចស្ដារមាតិកាឡើងវិញបាន។",
-            "zipBrowseNotice": "តែការបង្ហាប់ + ភាពត្រឹមត្រូវ + ការសង្គ្រោះ; មិនមែនការសម្ងាត់ទេ។",
             "dropFilesZip": "ទម្លាក់ឯកសារដើម្បីបន្ថែមទៅ AeroVault Zip",
             "zipEmpty": "AeroVault Zip ទទេ។ បន្ថែមឯកសារដើម្បីចាប់ផ្តើម។",
             "zipEmptyHint": "អូសឯកសារនៅទីនេះ ឬចុចបន្ថែមឯកសារ ដើម្បីបង្កើត Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip គឺជាគន្លងអត្ថបទធម្មតារបស់ AeroVault Zip; កុងតឺន័រដែលបានអ៊ិនគ្រីបត្រូវប្រើ .aerovault។",
             "zipRecoveryHint": "ភាពស្មើគ្នានៃការសង្គ្រោះជួយជួសជុលបៃតដែលខូច; វាមិនលាក់មាតិកាទេ។",
             "zipBadge": "Zip",
-            "openingZip": "កំពុងបើក AeroVault Zip…"
+            "openingZip": "កំពុងបើក AeroVault Zip…",
+            "encryptedBadge": "បានអ៊ីនគ្រីប",
+            "notEncryptedBadge": "មិនបានអ៊ីនគ្រីប",
+            "encryptedTooltip": "អ៊ីនគ្រីបដោយ AES-256។ មាតិកា និងឈ្មោះឯកសារ​ជាការសម្ងាត់; ត្រូវការពាក្យសម្ងាត់ដើម្បីបើក។"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",

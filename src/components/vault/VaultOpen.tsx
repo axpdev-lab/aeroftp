@@ -30,13 +30,6 @@ export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
         <div className="p-4 flex flex-col gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{state.vaultPath}</p>
 
-            {isZip && (
-                <div className="px-3 py-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
-                    <div className="font-medium">{t('vault.zipPlaintextTitle')}</div>
-                    <div className="mt-0.5">{t('vault.zipPlaintextDesc')}</div>
-                </div>
-            )}
-
             {/* Show detected version and security level */}
             {state.vaultSecurity && !isZip && (() => {
                 const levelConfig = securityLevels[state.vaultSecurity.level];

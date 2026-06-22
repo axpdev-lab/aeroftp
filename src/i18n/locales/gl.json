@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip creado correctamente",
             "createZip": "Crear AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Sen cifrar, sen confidencialidade. Non se abre cunha ferramenta zip normal: precisa AeroFTP ou o crate de código aberto aerovault. O formato é aberto, así que calquera persoa interesada pode recuperar o contido.",
-            "zipBrowseNotice": "Só compresión + integridade + recuperación; sen confidencialidade.",
             "dropFilesZip": "Solta ficheiros para engadilos ao AeroVault Zip",
             "zipEmpty": "O AeroVault Zip está baleiro. Engade ficheiros para comezar.",
             "zipEmptyHint": "Arrastra ficheiros aquí ou fai clic en Engadir ficheiros para construír o Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip é o modo sen cifrar de AeroVault Zip; os contedores cifrados deben usar .aerovault.",
             "zipRecoveryHint": "A paridade de recuperación axuda a reparar bytes danados; non oculta o contido.",
             "zipBadge": "Zip",
-            "openingZip": "Abrindo AeroVault Zip…"
+            "openingZip": "Abrindo AeroVault Zip…",
+            "encryptedBadge": "Cifrado",
+            "notEncryptedBadge": "Sen cifrar",
+            "encryptedTooltip": "Cifrado con AES-256. O contido e os nomes de ficheiro son confidenciais; é necesario o contrasinal para abrir."
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

@@ -2880,9 +2880,7 @@
             "zipCreated": "สร้าง AeroVault Zip สำเร็จแล้ว",
             "createZip": "สร้าง AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "ไม่ได้เข้ารหัส, ไม่มีการรักษาความลับ เปิดด้วยเครื่องมือ zip ทั่วไปไม่ได้ ต้องใช้ AeroFTP หรือ crate โอเพนซอร์ส aerovault รูปแบบเป็นแบบเปิด ดังนั้นใครก็ตามที่ต้องการสามารถกู้คืนเนื้อหาได้",
-            "zipBrowseNotice": "เฉพาะการบีบอัด + ความสมบูรณ์ + การกู้คืน ไม่ใช่การรักษาความลับ",
             "dropFilesZip": "วางไฟล์เพื่อเพิ่มลงใน AeroVault Zip",
             "zipEmpty": "AeroVault Zip ว่างเปล่า เพิ่มไฟล์เพื่อเริ่มต้น",
             "zipEmptyHint": "ลากไฟล์มาที่นี่หรือคลิกเพิ่มไฟล์เพื่อสร้าง Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip คือเลนข้อความธรรมดาของ AeroVault Zip คอนเทนเนอร์ที่เข้ารหัสต้องใช้ .aerovault",
             "zipRecoveryHint": "พาริตีการกู้คืนช่วยซ่อมแซมไบต์ที่เสียหาย แต่ไม่ได้ซ่อนเนื้อหา",
             "zipBadge": "Zip",
-            "openingZip": "กำลังเปิด AeroVault Zip…"
+            "openingZip": "กำลังเปิด AeroVault Zip…",
+            "encryptedBadge": "เข้ารหัส",
+            "notEncryptedBadge": "ไม่ได้เข้ารหัส",
+            "encryptedTooltip": "เข้ารหัสด้วย AES-256 เนื้อหาและชื่อไฟล์เป็นความลับ ต้องใช้รหัสผ่านเพื่อเปิด"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",

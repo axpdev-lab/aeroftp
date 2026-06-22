@@ -20,14 +20,22 @@ export const ZipCompressionReport: React.FC<{ inputBytes: number; outputBytes: n
     const { savedBytes, savedPercent } = computeCompressionRatio(inputBytes, outputBytes);
     const pct = Math.round(savedPercent);
     const outcome: 'saved' | 'grew' | 'incompressible' = pct >= 1 ? 'saved' : pct <= -1 ? 'grew' : 'incompressible';
-    const afterFraction = inputBytes > 0 ? Math.max(0, Math.min(1, outputBytes / inputBytes)) : 1;
+    // Both bars are scaled against the larger of the two so they stay
+    // proportional in either direction: the bigger size fills the track, the
+    // smaller one is visibly shorter (a grown archive must read longer, not
+    // identical to the original).
+    const maxBytes = Math.max(inputBytes, outputBytes, 1);
+    const beforeWidth = (inputBytes / maxBytes) * 100;
+    const afterTarget = (outputBytes / maxBytes) * 100;
 
     const [settled, setSettled] = useState(false);
     useEffect(() => {
         const h = requestAnimationFrame(() => setSettled(true));
         return () => cancelAnimationFrame(h);
     }, []);
-    const afterWidth = settled ? afterFraction * 100 : 100;
+    // The "after" bar animates from the "before" length to its real length, so
+    // the change (shrink or grow) is shown as motion.
+    const afterWidth = settled ? afterTarget : beforeWidth;
     const afterFill = outcome === 'saved' ? 'bg-emerald-500' : outcome === 'grew' ? 'bg-orange-500' : 'bg-gray-400 dark:bg-gray-500';
     const badge = outcome === 'saved' ? 'text-emerald-500' : outcome === 'grew' ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400';
 
@@ -44,7 +52,7 @@ export const ZipCompressionReport: React.FC<{ inputBytes: number; outputBytes: n
             <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] w-12 shrink-0 text-gray-500 dark:text-gray-400">{t('compress.before')}</span>
                 <div className="flex-1 h-2.5 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
-                    <div className="h-full rounded-full bg-gray-400 dark:bg-gray-500" style={{ width: '100%' }} />
+                    <div className="h-full rounded-full bg-gray-400 dark:bg-gray-500" style={{ width: `${beforeWidth}%` }} />
                 </div>
                 <span className="text-[10px] w-16 text-right shrink-0 text-gray-600 dark:text-gray-300">{formatSize(inputBytes)}</span>
             </div>

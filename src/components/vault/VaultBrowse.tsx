@@ -110,12 +110,6 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     </div>
                 </div>
             )}
-            {isZip && (
-                <div className="px-4 py-2 border-b border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
-                    <span className="font-medium">{t('vault.zipPlaintextTitle')}</span>
-                    <span className="ml-2">{t('vault.zipBrowseNotice')}</span>
-                </div>
-            )}
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                 <button onClick={state.handleAddFiles} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">

@@ -4153,9 +4153,7 @@
             "zipCreated": "AeroVault Zip created successfully",
             "createZip": "Create AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Not encrypted, no confidentiality. It will not open in a normal zip tool: it needs AeroFTP or the open-source aerovault crate. The format is open, so anyone motivated can recover the contents.",
-            "zipBrowseNotice": "Compression + integrity + recovery only; not confidentiality.",
             "dropFilesZip": "Drop files to add to AeroVault Zip",
             "zipEmpty": "AeroVault Zip is empty. Add files to get started.",
             "zipEmptyHint": "Drag files here or click Add Files to build the Zip",
@@ -4163,7 +4161,10 @@
             "zipEncryptedRejected": ".aerozip is the AeroVault Zip plaintext lane; encrypted containers must use .aerovault.",
             "zipRecoveryHint": "Recovery parity helps repair damaged bytes; it does not hide contents.",
             "zipBadge": "Zip",
-            "openingZip": "Opening AeroVault Zip…"
+            "openingZip": "Opening AeroVault Zip…",
+            "encryptedBadge": "Encrypted",
+            "notEncryptedBadge": "Not encrypted",
+            "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open."
         },
         "vaultSync": {
             "title": "Vault Sync",

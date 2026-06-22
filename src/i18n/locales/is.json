@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip búið til",
             "createZip": "Búa til AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Ekki dulkóðað, engin leynd. Það opnast ekki í venjulegu zip-tóli: það þarf AeroFTP eða opna aerovault-crate-ið. Sniðið er opið, svo hver sem vill getur endurheimt innihaldið.",
-            "zipBrowseNotice": "Aðeins þjöppun + heilleiki + endurheimt; ekki trúnaður.",
             "dropFilesZip": "Slepptu skrám til að bæta þeim við AeroVault Zip",
             "zipEmpty": "AeroVault Zip er tómt. Bættu við skrám til að byrja.",
             "zipEmptyHint": "Dragðu skrár hingað eða smelltu á Bæta við skrám til að byggja Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip er ódulkóðaða leið AeroVault Zip; dulkóðuð ílát verða að nota .aerovault.",
             "zipRecoveryHint": "Endurheimtarjöfnuður hjálpar til við að gera við skemmd bæti; hann felur ekki innihaldið.",
             "zipBadge": "Zip",
-            "openingZip": "Opnar AeroVault Zip…"
+            "openingZip": "Opnar AeroVault Zip…",
+            "encryptedBadge": "Dulkóðað",
+            "notEncryptedBadge": "Ódulkóðað",
+            "encryptedTooltip": "Dulkóðað með AES-256. Innihald og skráarnöfn eru trúnaðarmál; lykilorð þarf til að opna."
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

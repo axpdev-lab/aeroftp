@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip créé avec succès",
             "createZip": "Créer AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Non chiffré, aucune confidentialité. Il ne s'ouvre pas avec un outil zip classique : il faut AeroFTP ou le crate open source aerovault. Le format est ouvert, donc quiconque le souhaite peut en récupérer le contenu.",
-            "zipBrowseNotice": "Compression + intégrité + récupération uniquement ; pas de confidentialité.",
             "dropFilesZip": "Déposez des fichiers pour les ajouter à l'AeroVault Zip",
             "zipEmpty": "L'AeroVault Zip est vide. Ajoutez des fichiers pour commencer.",
             "zipEmptyHint": "Glissez des fichiers ici ou cliquez sur Ajouter des fichiers pour construire le Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip est le mode non chiffré d'AeroVault Zip ; les conteneurs chiffrés doivent utiliser .aerovault.",
             "zipRecoveryHint": "La parité de récupération aide à réparer les octets endommagés ; elle ne masque pas le contenu.",
             "zipBadge": "Zip",
-            "openingZip": "Ouverture d'AeroVault Zip…"
+            "openingZip": "Ouverture d'AeroVault Zip…",
+            "encryptedBadge": "Chiffré",
+            "notEncryptedBadge": "Non chiffré",
+            "encryptedTooltip": "Chiffré avec AES-256. Le contenu et les noms de fichiers sont confidentiels ; le mot de passe est requis pour ouvrir."
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

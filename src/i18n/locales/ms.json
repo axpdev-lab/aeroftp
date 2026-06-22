@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip berjaya dicipta",
             "createZip": "Cipta AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Tidak disulitkan, tiada kerahsiaan. Ia tidak boleh dibuka dengan alat zip biasa: ia memerlukan AeroFTP atau crate sumber terbuka aerovault. Formatnya terbuka, jadi sesiapa yang berhasrat boleh memulihkan kandungannya.",
-            "zipBrowseNotice": "Pemampatan + integriti + pemulihan sahaja; bukan kerahsiaan.",
             "dropFilesZip": "Lepaskan fail untuk menambahnya ke AeroVault Zip",
             "zipEmpty": "AeroVault Zip kosong. Tambah fail untuk bermula.",
             "zipEmptyHint": "Seret fail ke sini atau klik Tambah Fail untuk membina Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip ialah laluan teks biasa AeroVault Zip; bekas yang disulitkan mesti menggunakan .aerovault.",
             "zipRecoveryHint": "Pariti pemulihan membantu membaiki bait yang rosak; ia tidak menyembunyikan kandungan.",
             "zipBadge": "Zip",
-            "openingZip": "Membuka AeroVault Zip…"
+            "openingZip": "Membuka AeroVault Zip…",
+            "encryptedBadge": "Disulitkan",
+            "notEncryptedBadge": "Tidak disulitkan",
+            "encryptedTooltip": "Disulitkan dengan AES-256. Kandungan dan nama fail adalah sulit; kata laluan diperlukan untuk membuka."
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

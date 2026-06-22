@@ -2880,9 +2880,7 @@
             "zipCreated": "Το AeroVault Zip δημιουργήθηκε με επιτυχία",
             "createZip": "Δημιουργία AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Χωρίς κρυπτογράφηση, καμία εμπιστευτικότητα. Δεν ανοίγει με κοινό εργαλείο zip: χρειάζεται το AeroFTP ή το ανοιχτού κώδικα crate aerovault. Η μορφή είναι ανοιχτή, οπότε όποιος θέλει μπορεί να ανακτήσει το περιεχόμενο.",
-            "zipBrowseNotice": "Μόνο συμπίεση + ακεραιότητα + ανάκτηση· όχι εμπιστευτικότητα.",
             "dropFilesZip": "Αποθέστε αρχεία για προσθήκη στο AeroVault Zip",
             "zipEmpty": "Το AeroVault Zip είναι κενό. Προσθέστε αρχεία για να ξεκινήσετε.",
             "zipEmptyHint": "Σύρετε αρχεία εδώ ή κάντε κλικ στο Προσθήκη αρχείων για να δημιουργήσετε το Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": "Το .aerozip είναι η μη κρυπτογραφημένη λειτουργία του AeroVault Zip· τα κρυπτογραφημένα κοντέινερ πρέπει να χρησιμοποιούν .aerovault.",
             "zipRecoveryHint": "Η ισοτιμία ανάκτησης βοηθά στην επιδιόρθωση κατεστραμμένων byte· δεν κρύβει το περιεχόμενο.",
             "zipBadge": "Zip",
-            "openingZip": "Άνοιγμα AeroVault Zip…"
+            "openingZip": "Άνοιγμα AeroVault Zip…",
+            "encryptedBadge": "Κρυπτογραφημένο",
+            "notEncryptedBadge": "Μη κρυπτογραφημένο",
+            "encryptedTooltip": "Κρυπτογραφημένο με AES-256. Το περιεχόμενο και τα ονόματα αρχείων είναι εμπιστευτικά· απαιτείται κωδικός για άνοιγμα."
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",

@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip a fost creat cu succes",
             "createZip": "Creează AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Necriptat, fără confidențialitate. Nu se deschide cu un utilitar zip obișnuit: necesită AeroFTP sau crate-ul open-source aerovault. Formatul este deschis, așa că oricine dorește poate recupera conținutul.",
-            "zipBrowseNotice": "Doar compresie + integritate + recuperare; nu confidențialitate.",
             "dropFilesZip": "Plasați fișiere pentru a le adăuga la AeroVault Zip",
             "zipEmpty": "AeroVault Zip este gol. Adăugați fișiere pentru a începe.",
             "zipEmptyHint": "Trageți fișiere aici sau faceți clic pe Adăugați fișiere pentru a construi Zip-ul",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip este modul necriptat al AeroVault Zip; containerele criptate trebuie să folosească .aerovault.",
             "zipRecoveryHint": "Paritatea de recuperare ajută la repararea octeților deteriorați; nu ascunde conținutul.",
             "zipBadge": "Zip",
-            "openingZip": "Se deschide AeroVault Zip…"
+            "openingZip": "Se deschide AeroVault Zip…",
+            "encryptedBadge": "Criptat",
+            "notEncryptedBadge": "Necriptat",
+            "encryptedTooltip": "Criptat cu AES-256. Conținutul și numele fișierelor sunt confidențiale; este necesară parola pentru deschidere."
         },
         "cryptomator": {
             "title": "Seif Cryptomator",

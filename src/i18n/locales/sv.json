@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip har skapats",
             "createZip": "Skapa AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Inte krypterad, ingen sekretess. Den öppnas inte i ett vanligt zip-verktyg: den kräver AeroFTP eller open source-craten aerovault. Formatet är öppet, så vem som helst som vill kan återskapa innehållet.",
-            "zipBrowseNotice": "Endast komprimering + integritet + återställning; inte konfidentialitet.",
             "dropFilesZip": "Släpp filer för att lägga till dem i AeroVault Zip",
             "zipEmpty": "AeroVault Zip är tom. Lägg till filer för att komma igång.",
             "zipEmptyHint": "Dra filer hit eller klicka på Lägg till filer för att bygga Zip-filen",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip är AeroVault Zips okrypterade läge; krypterade behållare måste använda .aerovault.",
             "zipRecoveryHint": "Återställningsparitet hjälper till att reparera skadade byte; den döljer inte innehållet.",
             "zipBadge": "Zip",
-            "openingZip": "Öppnar AeroVault Zip…"
+            "openingZip": "Öppnar AeroVault Zip…",
+            "encryptedBadge": "Krypterad",
+            "notEncryptedBadge": "Okrypterad",
+            "encryptedTooltip": "Krypterad med AES-256. Innehåll och filnamn är konfidentiella; lösenord krävs för att öppna."
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

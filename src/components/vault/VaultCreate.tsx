@@ -115,11 +115,6 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
 
             {isZip && (
                 <>
-                    <div className="px-3 py-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300">
-                        <div className="font-medium">{t('vault.zipPlaintextTitle')}</div>
-                        <div className="mt-0.5">{t('vault.zipPlaintextDesc')}</div>
-                    </div>
-
                     <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.compressionProfile')}</label>
                     <div className="grid grid-cols-3 gap-2">
                         {compressionProfiles.map((profile) => {

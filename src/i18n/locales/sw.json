@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip imeundwa kwa mafanikio",
             "createZip": "Unda AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Haijasimbwa, hakuna usiri. Haifunguki kwa zana ya kawaida ya zip: inahitaji AeroFTP au crate ya chanzo huria aerovault. Muundo uko wazi, kwa hivyo yeyote anayetaka anaweza kurejesha yaliyomo.",
-            "zipBrowseNotice": "Mgandamizo + uadilifu + urejeshaji pekee; si usiri.",
             "dropFilesZip": "Dondosha faili ili kuziongeza kwenye AeroVault Zip",
             "zipEmpty": "AeroVault Zip ni tupu. Ongeza faili ili kuanza.",
             "zipEmptyHint": "Buruta faili hapa au bofya Ongeza Faili ili kujenga Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip ni njia ya maandishi wazi ya AeroVault Zip; vyombo vilivyosimbwa lazima vitumie .aerovault.",
             "zipRecoveryHint": "Usawa wa urejeshaji husaidia kurekebisha baiti zilizoharibika; haufichi maudhui.",
             "zipBadge": "Zip",
-            "openingZip": "Inafungua AeroVault Zip…"
+            "openingZip": "Inafungua AeroVault Zip…",
+            "encryptedBadge": "Imesimbwa",
+            "notEncryptedBadge": "Haijasimbwa",
+            "encryptedTooltip": "Imesimbwa kwa AES-256. Maudhui na majina ya faili ni siri; nenosiri linahitajika kufungua."
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

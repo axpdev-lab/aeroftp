@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { X, Loader2, Archive } from 'lucide-react';
+import { X, Loader2, Archive, Lock, Unlock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { VaultIcon } from './icons/VaultIcon';
 import { useTranslation } from '../i18n';
@@ -181,6 +181,21 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             : <VaultIcon variant="outline" size={18} className="text-gray-600 dark:text-gray-300" />}
                         <span className="font-medium">
                             {state.mode === 'browse' ? vaultName : (state.isPlaintextZip ? t('vault.zipTitle') : t('vault.title'))}
+                        </span>
+                        {/* Encryption badge: amber open padlock (plaintext Zip) or
+                            green closed padlock (encrypted vault). Informational,
+                            not a warning; the full explanation is the tooltip.
+                            pointer-events-auto so the tooltip shows; data-modal-drag-ignore
+                            keeps a pointerdown on it from starting the modal drag. */}
+                        <span
+                            data-modal-drag-ignore
+                            className={`pointer-events-auto ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${state.isPlaintextZip
+                                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}
+                            title={state.isPlaintextZip ? t('vault.zipPlaintextDesc') : t('vault.encryptedTooltip')}
+                        >
+                            {state.isPlaintextZip ? <Unlock size={11} /> : <Lock size={11} />}
+                            {state.isPlaintextZip ? t('vault.notEncryptedBadge') : t('vault.encryptedBadge')}
                         </span>
                         {/* Security badge in browse mode */}
                         {state.mode === 'browse' && currentLevelConfig && (

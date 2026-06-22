@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip sėkmingai sukurtas",
             "createZip": "Kurti AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Nešifruota, jokio konfidencialumo. Įprastu zip įrankiu neatidaroma: reikia AeroFTP arba atvirojo kodo aerovault crate. Formatas atviras, todėl turinį gali atkurti bet kas, kas to nori.",
-            "zipBrowseNotice": "Tik glaudinimas + vientisumas + atkūrimas; ne konfidencialumas.",
             "dropFilesZip": "Vilkite failus, kad pridėtumėte juos prie AeroVault Zip",
             "zipEmpty": "AeroVault Zip tuščias. Pridėkite failų, kad pradėtumėte.",
             "zipEmptyHint": "Vilkite failus čia arba spustelėkite Pridėti failus, kad sukurtumėte Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip yra nešifruotas AeroVault Zip režimas; šifruoti konteineriai turi naudoti .aerovault.",
             "zipRecoveryHint": "Atkūrimo lygiškumas padeda taisyti sugadintus baitus; jis neslepia turinio.",
             "zipBadge": "Zip",
-            "openingZip": "Atveriama AeroVault Zip…"
+            "openingZip": "Atveriama AeroVault Zip…",
+            "encryptedBadge": "Užšifruota",
+            "notEncryptedBadge": "Neužšifruota",
+            "encryptedTooltip": "Užšifruota AES-256. Turinys ir failų pavadinimai konfidencialūs; norint atidaryti reikia slaptažodžio."
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

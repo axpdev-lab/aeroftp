@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip 创建成功",
             "createZip": "创建 AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "未加密, 不提供保密性。无法用普通的 zip 工具打开：需要 AeroFTP 或开源的 aerovault crate。格式是开放的，因此任何有意者都能还原其中的内容。",
-            "zipBrowseNotice": "仅压缩 + 完整性 + 恢复；不提供机密性。",
             "dropFilesZip": "拖放文件以添加到 AeroVault Zip",
             "zipEmpty": "AeroVault Zip 为空。添加文件即可开始。",
             "zipEmptyHint": "将文件拖到此处，或点击“添加文件”来构建 Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip 是 AeroVault Zip 的明文通道；加密容器必须使用 .aerovault。",
             "zipRecoveryHint": "恢复校验有助于修复损坏的字节；它不会隐藏内容。",
             "zipBadge": "Zip",
-            "openingZip": "正在打开 AeroVault Zip…"
+            "openingZip": "正在打开 AeroVault Zip…",
+            "encryptedBadge": "已加密",
+            "notEncryptedBadge": "未加密",
+            "encryptedTooltip": "使用 AES-256 加密。内容和文件名均为机密，打开需要密码。"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

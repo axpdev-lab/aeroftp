@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip을 만들었습니다",
             "createZip": "AeroVault Zip 만들기",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "암호화되지 않음, 기밀성 없음. 일반 zip 도구로는 열 수 없으며 AeroFTP 또는 오픈 소스 aerovault 크레이트가 필요합니다. 형식이 공개되어 있어 마음만 먹으면 누구나 내용을 복원할 수 있습니다.",
-            "zipBrowseNotice": "압축 + 무결성 + 복구만 제공하며, 기밀성은 없습니다.",
             "dropFilesZip": "AeroVault Zip에 추가할 파일을 놓으세요",
             "zipEmpty": "AeroVault Zip이 비어 있습니다. 파일을 추가하여 시작하세요.",
             "zipEmptyHint": "여기에 파일을 끌어다 놓거나 파일 추가를 클릭하여 Zip을 구성하세요",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip은 AeroVault Zip의 평문 레인입니다. 암호화된 컨테이너는 .aerovault를 사용해야 합니다.",
             "zipRecoveryHint": "복구 패리티는 손상된 바이트를 복구하는 데 도움이 되며, 내용을 숨기지 않습니다.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip 여는 중…"
+            "openingZip": "AeroVault Zip 여는 중…",
+            "encryptedBadge": "암호화됨",
+            "notEncryptedBadge": "암호화 안 됨",
+            "encryptedTooltip": "AES-256으로 암호화됨. 내용과 파일 이름은 기밀이며 열려면 비밀번호가 필요합니다."
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",

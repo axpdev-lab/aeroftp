@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip byl úspěšně vytvořen",
             "createZip": "Vytvořit AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Nešifrováno, žádná důvěrnost. Běžným nástrojem zip se neotevře: vyžaduje AeroFTP nebo open-source crate aerovault. Formát je otevřený, takže obsah si může obnovit kdokoli, kdo chce.",
-            "zipBrowseNotice": "Pouze komprese + integrita + obnova; žádná důvěrnost.",
             "dropFilesZip": "Přetáhněte soubory pro přidání do AeroVault Zip",
             "zipEmpty": "AeroVault Zip je prázdný. Začněte přidáním souborů.",
             "zipEmptyHint": "Přetáhněte soubory sem nebo klikněte na Přidat soubory pro sestavení Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip je nešifrovaný režim AeroVault Zip; šifrované kontejnery musí používat .aerovault.",
             "zipRecoveryHint": "Parita obnovy pomáhá opravit poškozené bajty; neskrývá obsah.",
             "zipBadge": "Zip",
-            "openingZip": "Otevírání AeroVault Zip…"
+            "openingZip": "Otevírání AeroVault Zip…",
+            "encryptedBadge": "Šifrováno",
+            "notEncryptedBadge": "Nešifrováno",
+            "encryptedTooltip": "Šifrováno pomocí AES-256. Obsah a názvy souborů jsou důvěrné; k otevření je nutné heslo."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

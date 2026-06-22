@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip luotiin onnistuneesti",
             "createZip": "Luo AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Ei salattu, ei luottamuksellisuutta. Ei avaudu tavallisella zip-työkalulla: tarvitaan AeroFTP tai avoimen lähdekoodin aerovault-crate. Muoto on avoin, joten kuka tahansa halukas voi palauttaa sisällön.",
-            "zipBrowseNotice": "Vain pakkaus + eheys + palautus; ei luottamuksellisuutta.",
             "dropFilesZip": "Pudota tiedostot lisätäksesi ne AeroVault Zipiin",
             "zipEmpty": "AeroVault Zip on tyhjä. Aloita lisäämällä tiedostoja.",
             "zipEmptyHint": "Vedä tiedostot tähän tai napsauta Lisää tiedostoja rakentaaksesi Zipin",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip on AeroVault Zipin salaamaton tila; salattujen säiliöiden on käytettävä .aerovault-muotoa.",
             "zipRecoveryHint": "Palautuspariteetti auttaa korjaamaan vahingoittuneita tavuja; se ei piilota sisältöä.",
             "zipBadge": "Zip",
-            "openingZip": "Avataan AeroVault Zip…"
+            "openingZip": "Avataan AeroVault Zip…",
+            "encryptedBadge": "Salattu",
+            "notEncryptedBadge": "Salaamaton",
+            "encryptedTooltip": "Salattu AES-256:lla. Sisältö ja tiedostonimet ovat luottamuksellisia; avaaminen vaatii salasanan."
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

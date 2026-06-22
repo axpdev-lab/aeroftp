@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip ondo sortu da",
             "createZip": "Sortu AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Zifratu gabe, konfidentzialtasunik ez. Ez da ohiko zip tresna batekin irekitzen: AeroFTP edo kode irekiko aerovault crate-a behar du. Formatua irekia da, beraz, nahi duen edonork berreskura dezake edukia.",
-            "zipBrowseNotice": "Konpresioa + osotasuna + berreskurapena soilik; ez konfidentzialtasuna.",
             "dropFilesZip": "Jaregin fitxategiak AeroVault Zip-era gehitzeko",
             "zipEmpty": "AeroVault Zip hutsik dago. Gehitu fitxategiak hasteko.",
             "zipEmptyHint": "Arrastatu fitxategiak hona edo egin klik Gehitu fitxategiak Zip-a eraikitzeko",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip AeroVault Zip-en testu soileko modua da; zifratutako edukiontziek .aerovault erabili behar dute.",
             "zipRecoveryHint": "Berreskurapen paritateak hondatutako byteak konpontzen laguntzen du; ez du edukia ezkutatzen.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip irekitzen…"
+            "openingZip": "AeroVault Zip irekitzen…",
+            "encryptedBadge": "Zifratuta",
+            "notEncryptedBadge": "Zifratu gabe",
+            "encryptedTooltip": "AES-256 bidez zifratuta. Edukia eta fitxategi-izenak konfidentzialak dira; pasahitza behar da irekitzeko."
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

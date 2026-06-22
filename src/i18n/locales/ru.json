@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip успешно создан",
             "createZip": "Создать AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Без шифрования, никакой конфиденциальности. Обычным zip-инструментом не открыть: нужен AeroFTP или открытый крейт aerovault. Формат открытый, поэтому при желании любой может восстановить содержимое.",
-            "zipBrowseNotice": "Только сжатие + целостность + восстановление; без конфиденциальности.",
             "dropFilesZip": "Перетащите файлы, чтобы добавить их в AeroVault Zip",
             "zipEmpty": "AeroVault Zip пуст. Добавьте файлы, чтобы начать.",
             "zipEmptyHint": "Перетащите файлы сюда или нажмите «Добавить файлы», чтобы создать Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip — это незашифрованный режим AeroVault Zip; зашифрованные контейнеры должны использовать .aerovault.",
             "zipRecoveryHint": "Чётность восстановления помогает исправить повреждённые байты; она не скрывает содержимое.",
             "zipBadge": "Zip",
-            "openingZip": "Открытие AeroVault Zip…"
+            "openingZip": "Открытие AeroVault Zip…",
+            "encryptedBadge": "Зашифровано",
+            "notEncryptedBadge": "Без шифрования",
+            "encryptedTooltip": "Зашифровано AES-256. Содержимое и имена файлов конфиденциальны; для открытия нужен пароль."
         },
         "cryptomator": {
             "title": "Хранилище Cryptomator",

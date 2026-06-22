@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip loodi edukalt",
             "createZip": "Loo AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Krüpteerimata, konfidentsiaalsust pole. Tavalise zip-tööriistaga ei avane: vajab AeroFTP-d või avatud lähtekoodiga aerovault crate'i. Vorming on avatud, seega võib sisu taastada igaüks, kes soovib.",
-            "zipBrowseNotice": "Ainult tihendamine + terviklikkus + taastamine; mitte konfidentsiaalsus.",
             "dropFilesZip": "Lohista failid AeroVault Zipi lisamiseks",
             "zipEmpty": "AeroVault Zip on tühi. Alustamiseks lisa faile.",
             "zipEmptyHint": "Lohista failid siia või klõpsa Lisa failid, et Zip üles ehitada",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip on AeroVault Zipi krüpteerimata režiim; krüpteeritud konteinerid peavad kasutama .aerovault.",
             "zipRecoveryHint": "Taastamise pariteet aitab parandada kahjustatud baite; see ei peida sisu.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip avamine…"
+            "openingZip": "AeroVault Zip avamine…",
+            "encryptedBadge": "Krüpteeritud",
+            "notEncryptedBadge": "Krüpteerimata",
+            "encryptedTooltip": "Krüpteeritud AES-256-ga. Sisu ja failinimed on konfidentsiaalsed; avamiseks on vaja parooli."
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

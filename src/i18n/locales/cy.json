@@ -2880,9 +2880,7 @@
             "zipCreated": "Crëwyd AeroVault Zip yn llwyddiannus",
             "createZip": "Creu AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Heb ei amgryptio, dim cyfrinachedd. Ni fydd yn agor mewn offeryn zip arferol: mae angen AeroFTP neu'r crate ffynhonnell agored aerovault. Mae'r fformat yn agored, felly gall unrhyw un sydd am wneud adfer y cynnwys.",
-            "zipBrowseNotice": "Cywasgu + cywirdeb + adfer yn unig; nid cyfrinachedd.",
             "dropFilesZip": "Gollwng ffeiliau i'w hychwanegu at AeroVault Zip",
             "zipEmpty": "Mae'r AeroVault Zip yn wag. Ychwanegwch ffeiliau i ddechrau.",
             "zipEmptyHint": "Llusgwch ffeiliau yma neu cliciwch Ychwanegu Ffeiliau i adeiladu'r Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip yw lôn testun plaen AeroVault Zip; rhaid i gynwysyddion wedi'u hamgryptio ddefnyddio .aerovault.",
             "zipRecoveryHint": "Mae paredd adfer yn helpu i drwsio beitiau wedi'u difrodi; nid yw'n cuddio'r cynnwys.",
             "zipBadge": "Zip",
-            "openingZip": "Yn agor AeroVault Zip…"
+            "openingZip": "Yn agor AeroVault Zip…",
+            "encryptedBadge": "Wedi amgryptio",
+            "notEncryptedBadge": "Heb amgryptio",
+            "encryptedTooltip": "Wedi amgryptio gydag AES-256. Mae cynnwys ac enwau ffeiliau yn gyfrinachol; mae angen cyfrinair i agor."
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",

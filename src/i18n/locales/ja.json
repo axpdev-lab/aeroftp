@@ -2845,9 +2845,7 @@
             "zipCreated": "AeroVault Zip を作成しました",
             "createZip": "AeroVault Zip を作成",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "暗号化されていません, 機密性はありません。通常の zip ツールでは開けません。AeroFTP またはオープンソースの aerovault クレートが必要です。フォーマットは公開されているため、その気になれば誰でも内容を復元できます。",
-            "zipBrowseNotice": "圧縮＋整合性＋復旧のみ。機密性はありません。",
             "dropFilesZip": "ファイルをドロップして AeroVault Zip に追加",
             "zipEmpty": "AeroVault Zip は空です。ファイルを追加して始めましょう。",
             "zipEmptyHint": "ここにファイルをドラッグするか、「ファイルを追加」をクリックして Zip を作成します",
@@ -2855,7 +2853,10 @@
             "zipEncryptedRejected": ".aerozip は AeroVault Zip の平文レーンです。暗号化コンテナには .aerovault を使用してください。",
             "zipRecoveryHint": "復旧パリティは破損したバイトの修復に役立ちますが、内容を隠すものではありません。",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip を開いています…"
+            "openingZip": "AeroVault Zip を開いています…",
+            "encryptedBadge": "暗号化済み",
+            "notEncryptedBadge": "暗号化なし",
+            "encryptedTooltip": "AES-256で暗号化。内容とファイル名は機密で、開くにはパスワードが必要です。"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",

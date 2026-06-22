@@ -2880,9 +2880,7 @@
             "zipCreated": "Az AeroVault Zip sikeresen létrejött",
             "createZip": "AeroVault Zip létrehozása",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Nem titkosított, nincs bizalmasság. Hagyományos zip eszközzel nem nyitható meg: AeroFTP vagy a nyílt forráskódú aerovault crate szükséges hozzá. A formátum nyílt, így a tartalmat bárki visszaállíthatja, aki akarja.",
-            "zipBrowseNotice": "Csak tömörítés + integritás + helyreállítás; nem bizalmasság.",
             "dropFilesZip": "Húzza ide a fájlokat az AeroVault Ziphez való hozzáadáshoz",
             "zipEmpty": "Az AeroVault Zip üres. Adjon hozzá fájlokat a kezdéshez.",
             "zipEmptyHint": "Húzza ide a fájlokat, vagy kattintson a Fájlok hozzáadása gombra a Zip felépítéséhez",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": "Az .aerozip az AeroVault Zip titkosítatlan módja; a titkosított tárolóknak a .aerovault formátumot kell használniuk.",
             "zipRecoveryHint": "A helyreállítási paritás segít kijavítani a sérült bájtokat; nem rejti el a tartalmat.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip megnyitása…"
+            "openingZip": "AeroVault Zip megnyitása…",
+            "encryptedBadge": "Titkosított",
+            "notEncryptedBadge": "Nem titkosított",
+            "encryptedTooltip": "AES-256 titkosítással. A tartalom és a fájlnevek bizalmasak; a megnyitáshoz jelszó szükséges."
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

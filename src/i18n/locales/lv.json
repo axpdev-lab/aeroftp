@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip veiksmīgi izveidots",
             "createZip": "Izveidot AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Nešifrēts, nav konfidencialitātes. Ar parastu zip rīku neatveras: nepieciešams AeroFTP vai atvērtā koda aerovault crate. Formāts ir atvērts, tāpēc saturu var atgūt ikviens, kas to vēlas.",
-            "zipBrowseNotice": "Tikai saspiešana + integritāte + atkopšana; ne konfidencialitāte.",
             "dropFilesZip": "Nometiet failus, lai pievienotu tos AeroVault Zip",
             "zipEmpty": "AeroVault Zip ir tukšs. Pievienojiet failus, lai sāktu.",
             "zipEmptyHint": "Velciet failus šeit vai noklikšķiniet uz Pievienot failus, lai izveidotu Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip ir AeroVault Zip nešifrētais režīms; šifrētiem konteineriem jāizmanto .aerovault.",
             "zipRecoveryHint": "Atkopšanas paritāte palīdz labot bojātus baitus; tā neslēpj saturu.",
             "zipBadge": "Zip",
-            "openingZip": "Atver AeroVault Zip…"
+            "openingZip": "Atver AeroVault Zip…",
+            "encryptedBadge": "Šifrēts",
+            "notEncryptedBadge": "Nešifrēts",
+            "encryptedTooltip": "Šifrēts ar AES-256. Saturs un failu nosaukumi ir konfidenciāli; lai atvērtu, nepieciešama parole."
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

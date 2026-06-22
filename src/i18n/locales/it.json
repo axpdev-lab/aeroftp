@@ -3129,9 +3129,7 @@
             "zipCreated": "AeroVault Zip creato correttamente",
             "createZip": "Crea AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Non cifrato, nessuna riservatezza. Non si apre con un normale strumento zip: serve AeroFTP o il crate open-source aerovault. Il formato è aperto, quindi chiunque sia motivato può recuperarne i contenuti.",
-            "zipBrowseNotice": "Solo compressione + integrità + recupero; nessuna riservatezza.",
             "dropFilesZip": "Trascina i file da aggiungere all'AeroVault Zip",
             "zipEmpty": "L'AeroVault Zip è vuoto. Aggiungi file per iniziare.",
             "zipEmptyHint": "Trascina i file qui o clicca Aggiungi file per costruire lo Zip",
@@ -3139,7 +3137,10 @@
             "zipEncryptedRejected": ".aerozip è la modalità in chiaro di AeroVault Zip; i contenitori cifrati devono usare .aerovault.",
             "zipRecoveryHint": "La parità di recupero aiuta a riparare i byte danneggiati; non nasconde i contenuti.",
             "zipBadge": "Zip",
-            "openingZip": "Apertura AeroVault Zip…"
+            "openingZip": "Apertura AeroVault Zip…",
+            "encryptedBadge": "Cifrato",
+            "notEncryptedBadge": "Non cifrato",
+            "encryptedTooltip": "Cifrato con AES-256. Contenuti e nomi file sono riservati; serve la password per aprire."
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

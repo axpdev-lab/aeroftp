@@ -2873,9 +2873,7 @@
             "zipCreated": "AeroVault Zip-ը հաջողությամբ ստեղծվեց",
             "createZip": "Ստեղծել AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Չծածկագրված, առանց գաղտնիության։ Սովորական zip գործիքով չի բացվում. անհրաժեշտ է AeroFTP կամ բաց կոդով aerovault crate-ը։ Ձևաչափը բաց է, ուստի ցանկացած ցանկացող կարող է վերականգնել բովանդակությունը։",
-            "zipBrowseNotice": "Միայն սեղմում + ամբողջականություն + վերականգնում; ոչ գաղտնիություն:",
             "dropFilesZip": "Գցեք ֆայլերը AeroVault Zip-ին ավելացնելու համար",
             "zipEmpty": "AeroVault Zip-ը դատարկ է: Ավելացրեք ֆայլեր՝ սկսելու համար:",
             "zipEmptyHint": "Քաշեք ֆայլերն այստեղ կամ սեղմեք Ավելացնել ֆայլեր՝ Zip-ը կառուցելու համար",
@@ -2883,7 +2881,10 @@
             "zipEncryptedRejected": ".aerozip-ը AeroVault Zip-ի չգաղտնագրված ռեժիմն է. գաղտնագրված կոնտեյներները պետք է օգտագործեն .aerovault:",
             "zipRecoveryHint": "Վերականգնման զույգականությունն օգնում է վերանորոգել վնասված բայթերը. այն չի թաքցնում բովանդակությունը:",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip-ը բացվում է…"
+            "openingZip": "AeroVault Zip-ը բացվում է…",
+            "encryptedBadge": "Գաղտնագրված",
+            "notEncryptedBadge": "Չգաղտնագրված",
+            "encryptedTooltip": "Գաղտնագրված է AES-256-ով։ Բովանդակությունն ու ֆայլերի անունները գաղտնի են; բացելու համար պահանջվում է գաղտնաբառ։"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",

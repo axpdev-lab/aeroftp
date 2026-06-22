@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip е успешно создаден",
             "createZip": "Создади AeroVault Zip",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Не е шифрирано, никаква доверливост. Не се отвора со обична zip алатка: потребен е AeroFTP или open-source crate aerovault. Форматот е отворен, па содржината може да ја врати секој што сака.",
-            "zipBrowseNotice": "Само компресија + интегритет + обновување; не доверливост.",
             "dropFilesZip": "Спуштете датотеки за да ги додадете во AeroVault Zip",
             "zipEmpty": "AeroVault Zip е празен. Додадете датотеки за да започнете.",
             "zipEmptyHint": "Повлечете датотеки овде или кликнете Додај датотеки за да го изградите Zip",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip е нешифрираниот режим на AeroVault Zip; шифрираните контејнери мора да користат .aerovault.",
             "zipRecoveryHint": "Паритетот на обновување помага да се поправат оштетените бајти; не ја крие содржината.",
             "zipBadge": "Zip",
-            "openingZip": "Отворање на AeroVault Zip…"
+            "openingZip": "Отворање на AeroVault Zip…",
+            "encryptedBadge": "Шифрирано",
+            "notEncryptedBadge": "Нешифрирано",
+            "encryptedTooltip": "Шифрирано со AES-256. Содржината и имињата на датотеките се доверливи; за отворање е потребна лозинка."
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

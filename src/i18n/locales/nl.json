@@ -2880,9 +2880,7 @@
             "zipCreated": "AeroVault Zip succesvol gemaakt",
             "createZip": "AeroVault Zip maken",
             "zipTitle": "AeroVault Zip",
-            "zipPlaintextTitle": "AeroVault Zip",
             "zipPlaintextDesc": "Niet versleuteld, geen vertrouwelijkheid. Het opent niet in een gewone zip-tool: het vereist AeroFTP of de open-source aerovault-crate. Het formaat is open, dus iedereen die wil kan de inhoud herstellen.",
-            "zipBrowseNotice": "Alleen compressie + integriteit + herstel; geen vertrouwelijkheid.",
             "dropFilesZip": "Sleep bestanden om ze aan de AeroVault Zip toe te voegen",
             "zipEmpty": "De AeroVault Zip is leeg. Voeg bestanden toe om te beginnen.",
             "zipEmptyHint": "Sleep bestanden hierheen of klik op Bestanden toevoegen om de Zip te bouwen",
@@ -2890,7 +2888,10 @@
             "zipEncryptedRejected": ".aerozip is de niet-versleutelde modus van AeroVault Zip; versleutelde containers moeten .aerovault gebruiken.",
             "zipRecoveryHint": "Herstelpariteit helpt beschadigde bytes te repareren; het verbergt de inhoud niet.",
             "zipBadge": "Zip",
-            "openingZip": "AeroVault Zip openen…"
+            "openingZip": "AeroVault Zip openen…",
+            "encryptedBadge": "Versleuteld",
+            "notEncryptedBadge": "Niet versleuteld",
+            "encryptedTooltip": "Versleuteld met AES-256. Inhoud en bestandsnamen zijn vertrouwelijk; het wachtwoord is vereist om te openen."
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
