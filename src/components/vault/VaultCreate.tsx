@@ -135,7 +135,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                     onClick={() => state.setCompressionProfile(profile.id)}
                                     className={`rounded border px-3 py-2 text-left ${selected
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
                                 >
                                     <div className="text-sm font-medium">{profile.label}</div>
                                     <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
@@ -161,7 +161,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                     onClick={() => state.setErrorCorrectionPct(lvl.id)}
                                     className={`rounded border px-1.5 py-1 text-center ${selected
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
                                 >
                                     <div className="text-[11px] font-medium">{lvl.label}</div>
                                     <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
@@ -270,7 +270,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                     onClick={() => state.setCompressionProfile(profile.id)}
                                     className={`rounded border px-3 py-2 text-left ${selected
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
                                 >
                                     <div className="text-sm font-medium">{profile.label}</div>
                                     <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
@@ -313,7 +313,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                             onClick={() => state.setRecoveryPlacement(p.id)}
                                             className={`rounded border px-2 py-1.5 text-left ${selected
                                                 ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
                                         >
                                             <div className="text-[12px] font-medium">{p.label}</div>
                                             <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.detail}</div>
@@ -344,7 +344,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                             onClick={() => state.setErrorCorrectionPct(lvl.id)}
                                             className={`rounded border px-1.5 py-1 text-center ${selected
                                                 ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-400 hover:bg-amber-500/10'} transition-colors`}
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
                                         >
                                             <div className="text-[11px] font-medium">{lvl.label}</div>
                                             <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
