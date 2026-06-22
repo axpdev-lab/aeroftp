@@ -278,8 +278,7 @@
             "unstableTitle": "实验性服务商",
             "unstableBody": "{provider} 尚不稳定，服务可能不可用。连接可能会失败，这并非您的过错。",
             "persistModeCredentials": "记住此账户每个协议的凭据",
-            "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。",
-            "filenApiKeyStored": "保险库中已保存了一个密钥。留空以保留它，或粘贴一个新密钥以替换。"
+            "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。"
         },
         "browser": {
             "remote": "远程",

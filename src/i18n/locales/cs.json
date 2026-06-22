@@ -278,8 +278,7 @@
             "unstableTitle": "Experimentální poskytovatel",
             "unstableBody": "{provider} zatím není stabilní a služba může být nedostupná. Připojení může selhat bez vašeho zavinění.",
             "persistModeCredentials": "Zapamatovat přihlašovací údaje pro každý protokol tohoto účtu",
-            "persistModeCredentialsHint": "Jeden profil na účet: uchová přihlašovací údaje každého protokolu (API, WebDAV, S3, ...), takže přepnutí režimu se už nezeptá, ani po restartu. Uloženo šifrovaně v trezoru. Ve výchozím nastavení vypnuto.",
-            "filenApiKeyStored": "Klíč je již uložen v trezoru. Ponechte prázdné pro jeho zachování, nebo vložte nový pro nahrazení."
+            "persistModeCredentialsHint": "Jeden profil na účet: uchová přihlašovací údaje každého protokolu (API, WebDAV, S3, ...), takže přepnutí režimu se už nezeptá, ani po restartu. Uloženo šifrovaně v trezoru. Ve výchozím nastavení vypnuto."
         },
         "browser": {
             "remote": "Vzdálený",

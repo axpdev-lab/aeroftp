@@ -278,8 +278,7 @@
             "unstableTitle": "Eksperimentinis tiekėjas",
             "unstableBody": "{provider} dar nėra stabilus ir paslauga gali būti nepasiekiama. Ryšys gali nepavykti ne dėl jūsų kaltės.",
             "persistModeCredentials": "Įsiminti kiekvieno šios paskyros protokolo prisijungimo duomenis",
-            "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta.",
-            "filenApiKeyStored": "Raktas jau išsaugotas saugykloje. Palikite tuščią, kad jį išlaikytumėte, arba įklijuokite naują, kad jį pakeistumėte."
+            "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta."
         },
         "browser": {
             "remote": "Nuotolinis",

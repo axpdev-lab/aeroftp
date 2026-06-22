@@ -278,8 +278,7 @@
             "unstableTitle": "Proveïdor experimental",
             "unstableBody": "{provider} encara no és estable i és possible que el servei no estigui disponible. La connexió pot fallar sense que sigui culpa teva.",
             "persistModeCredentials": "Recorda les credencials per a cada protocol d'aquest compte",
-            "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte.",
-            "filenApiKeyStored": "Ja hi ha una clau desada al cofre. Deixeu-ho en blanc per conservar-la, o enganxeu-ne una de nova per substituir-la."
+            "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte."
         },
         "browser": {
             "remote": "Remot",

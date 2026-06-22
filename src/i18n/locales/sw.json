@@ -278,8 +278,7 @@
             "unstableTitle": "Mtoa huduma wa majaribio",
             "unstableBody": "{provider} bado si thabiti na huduma huenda isipatikane. Muunganisho unaweza kushindwa bila kosa lako.",
             "persistModeCredentials": "Kumbuka kitambulisho cha kila itifaki ya akaunti hii",
-            "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi.",
-            "filenApiKeyStored": "Ufunguo tayari umehifadhiwa kwenye chumba cha hazina. Acha tupu ili kuuhifadhi, au bandika mpya ili kuubadilisha."
+            "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi."
         },
         "browser": {
             "remote": "Mbali",

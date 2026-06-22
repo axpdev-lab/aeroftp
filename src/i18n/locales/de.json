@@ -278,8 +278,7 @@
             "unstableTitle": "Experimenteller Anbieter",
             "unstableBody": "{provider} ist noch nicht stabil und der Dienst ist möglicherweise nicht verfügbar. Die Verbindung kann ohne Ihr Verschulden fehlschlagen.",
             "persistModeCredentials": "Anmeldedaten für jedes Protokoll dieses Kontos merken",
-            "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus.",
-            "filenApiKeyStored": "Ein Schlüssel ist bereits im Tresor gespeichert. Leer lassen, um ihn beizubehalten, oder einen neuen einfügen, um ihn zu ersetzen."
+            "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus."
         },
         "browser": {
             "remote": "Remote",

@@ -278,8 +278,7 @@
             "unstableTitle": "Proveedor experimental",
             "unstableBody": "{provider} aún no es estable y es posible que el servicio no esté disponible. La conexión puede fallar sin que sea culpa tuya.",
             "persistModeCredentials": "Recordar las credenciales para cada protocolo de esta cuenta",
-            "persistModeCredentialsHint": "Un perfil por cuenta: mantiene guardadas las credenciales de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo no las vuelva a pedir, incluso tras reiniciar. Se almacena cifrado en el vault. Desactivado de forma predeterminada.",
-            "filenApiKeyStored": "Ya hay una clave guardada en la bóveda. Déjalo en blanco para conservarla, o pega una nueva para reemplazarla."
+            "persistModeCredentialsHint": "Un perfil por cuenta: mantiene guardadas las credenciales de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo no las vuelva a pedir, incluso tras reiniciar. Se almacena cifrado en el vault. Desactivado de forma predeterminada."
         },
         "browser": {
             "remote": "Remoto",

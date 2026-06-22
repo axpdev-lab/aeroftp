@@ -585,11 +585,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // freely). Mirrors profile.persistModeCredentials; only meaningful for
     // profiles whose provider/protocol belongs to a mode group.
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
-    // Issue #215 (Ehud): when editing a saved Filen profile that already has a
-    // CLI API key in the vault, the field renders empty by design (the key is a
-    // long-lived secret, never re-shown). Track the stored flag so the form can
-    // tell the user a key is saved instead of looking like it "disappeared".
-    const [editingHasStoredFilenKey, setEditingHasStoredFilenKey] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     // Ehud #276 (17324431): a collapsible "Wrappers / Overlays" parent keeps the Quick
     // Connect page uncluttered. Collapsed by default, auto-opens when a binding exists.
@@ -1599,7 +1594,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Drop any per-mode credential snapshots from a previous edit (#215).
         modeCredentialSnapshotsRef.current = {};
         setPersistModeCredentials(!!profile.persistModeCredentials);
-        setEditingHasStoredFilenKey(!!profile.hasStoredFilenApiKey);
         setEditingProfileId(profile.id);
         editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
@@ -1705,27 +1699,55 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
 
-        // Then load password from OS keyring asynchronously (if stored)
+        // Then hydrate vaulted secrets (password + Filen API key) asynchronously.
+        // Both reads target the same profile id; we resolve them up front and apply
+        // ONE combined snapshot. onConnectionParamsChange is `setConnectionParams`
+        // (a full-snapshot setter, not a functional updater), so two independent
+        // setter calls would clobber each other — the second to resolve would drop
+        // the first's value (issue #215).
         const targetProfileId = profile.id;
+        let hydratedPassword = profile.password || '';
+        let hydratedOptions = profileOptions;
+
         if (!profile.password && profile.hasStoredCredential) {
             try {
                 const storedPassword = await invoke<string>('get_credential', { account: `server_${targetProfileId}` });
-                // Only update if we're still editing the same profile (prevents race condition
-                // where user switches to editing a different server before credential fetch completes)
-                if (storedPassword && editingProfileIdRef.current === targetProfileId) {
-                    onConnectionParamsChange({
-                        server: profile.host,
-                        port: profile.port,
-                        username: profile.username,
-                        password: storedPassword,
-                        protocol: effectiveProtocol,
-                        providerId: profile.providerId,
-                        options: profileOptions
-                    });
-                }
+                if (storedPassword) hydratedPassword = storedPassword;
             } catch {
                 // Credential not found, password stays empty
             }
+        }
+
+        // #215: reload the vaulted Filen API key into the form on edit so it
+        // behaves like the password and the 2FA secret and survives switching to
+        // WebDAV/S3 and back. #230 moved the key to filen_api_key_<id> and it was
+        // previously only read back at connect time, never on edit — so the field
+        // opened blank and the protocol-switch stash carried nothing.
+        if (profile.hasStoredFilenApiKey) {
+            try {
+                const storedFilenKey = await invoke<string>('get_credential', { account: `filen_api_key_${targetProfileId}` });
+                if (storedFilenKey) {
+                    hydratedOptions = { ...hydratedOptions, filen_api_key: storedFilenKey };
+                }
+            } catch {
+                // Key not retrievable: field stays blank, the stored-key hint still applies.
+            }
+        }
+
+        // Apply once, only if a secret actually hydrated and we're still editing
+        // the same profile (guards the same race the password load always guarded:
+        // the user may switch to another server mid-fetch).
+        if (editingProfileIdRef.current === targetProfileId
+            && (hydratedPassword !== (profile.password || '') || hydratedOptions !== profileOptions)) {
+            onConnectionParamsChange({
+                server: profile.host,
+                port: profile.port,
+                username: profile.username,
+                password: hydratedPassword,
+                protocol: effectiveProtocol,
+                providerId: profile.providerId,
+                options: hydratedOptions,
+            });
         }
 
         // Issue #215: when the profile opted into persistent per-mode
@@ -4339,12 +4361,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showFilenApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
-                                            {editingProfileId && editingHasStoredFilenKey && !connectionParams.options?.filen_api_key && (
-                                                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                                                    <Check size={13} />
-                                                    {t('connection.filenApiKeyStored')}
-                                                </p>
-                                            )}
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.filenApiKeyHelp')}</p>
                                         </div>
 

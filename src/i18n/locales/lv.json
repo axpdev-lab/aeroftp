@@ -278,8 +278,7 @@
             "unstableTitle": "Eksperimentāls pakalpojumu sniedzējs",
             "unstableBody": "{provider} vēl nav stabils, un pakalpojums var nebūt pieejams. Savienojums var neizdoties ne jūsu vainas dēļ.",
             "persistModeCredentials": "Atcerēties akreditācijas datus katram šī konta protokolam",
-            "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts.",
-            "filenApiKeyStored": "Atslēga jau ir saglabāta glabātavā. Atstājiet tukšu, lai to saglabātu, vai ielīmējiet jaunu, lai to aizstātu."
+            "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts."
         },
         "browser": {
             "remote": "Attālināts",

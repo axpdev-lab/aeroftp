@@ -278,8 +278,7 @@
             "unstableTitle": "Eksperimental na provider",
             "unstableBody": "Hindi pa stable ang {provider} at maaaring hindi available ang serbisyo. Maaaring mabigo ang koneksyon nang hindi mo kasalanan.",
             "persistModeCredentials": "Tandaan ang mga kredensyal para sa bawat protocol ng account na ito",
-            "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default.",
-            "filenApiKeyStored": "May naka-save nang susi sa vault. Iwanang blangko upang panatilihin ito, o mag-paste ng bago upang palitan ito."
+            "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default."
         },
         "browser": {
             "remote": "Remote",

@@ -278,8 +278,7 @@
             "unstableTitle": "Darparwr arbrofol",
             "unstableBody": "Nid yw {provider} yn sefydlog eto a gall y gwasanaeth fod yn anhygyrch. Gall y cysylltiad fethu heb fai arnoch chi.",
             "persistModeCredentials": "Cofio'r manylion ar gyfer pob protocol o'r cyfrif hwn",
-            "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn.",
-            "filenApiKeyStored": "Mae allwedd eisoes wedi'i chadw yn y gell. Gadewch yn wag i'w chadw, neu gludwch un newydd i'w disodli."
+            "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn."
         },
         "browser": {
             "remote": "Pell",
