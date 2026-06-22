@@ -2878,7 +2878,7 @@
             "createZip": "Loo AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Krüpteerimata — konfidentsiaalsust pole. Tavalise zip-tööriistaga ei avane: vajab AeroFTP-d või avatud lähtekoodiga aerovault crate'i. Vorming on avatud, seega võib sisu taastada igaüks, kes soovib.",
+            "zipPlaintextDesc": "Krüpteerimata, konfidentsiaalsust pole. Tavalise zip-tööriistaga ei avane: vajab AeroFTP-d või avatud lähtekoodiga aerovault crate'i. Vorming on avatud, seega võib sisu taastada igaüks, kes soovib.",
             "zipBrowseNotice": "Ainult tihendamine + terviklikkus + taastamine; mitte konfidentsiaalsus.",
             "dropFilesZip": "Lohista failid AeroVault Zipi lisamiseks",
             "zipEmpty": "AeroVault Zip on tühi. Alustamiseks lisa faile.",

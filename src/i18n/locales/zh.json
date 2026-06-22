@@ -2878,7 +2878,7 @@
             "createZip": "创建 AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "未加密 — 不提供保密性。无法用普通的 zip 工具打开：需要 AeroFTP 或开源的 aerovault crate。格式是开放的，因此任何有意者都能还原其中的内容。",
+            "zipPlaintextDesc": "未加密, 不提供保密性。无法用普通的 zip 工具打开：需要 AeroFTP 或开源的 aerovault crate。格式是开放的，因此任何有意者都能还原其中的内容。",
             "zipBrowseNotice": "仅压缩 + 完整性 + 恢复；不提供机密性。",
             "dropFilesZip": "拖放文件以添加到 AeroVault Zip",
             "zipEmpty": "AeroVault Zip 为空。添加文件即可开始。",

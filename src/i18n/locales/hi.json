@@ -2878,7 +2878,7 @@
             "createZip": "AeroVault Zip बनाएं",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "एन्क्रिप्टेड नहीं — कोई गोपनीयता नहीं। यह सामान्य zip टूल में नहीं खुलेगा: इसके लिए AeroFTP या ओपन-सोर्स aerovault crate चाहिए। प्रारूप खुला है, इसलिए कोई भी इच्छुक व्यक्ति सामग्री पुनर्प्राप्त कर सकता है।",
+            "zipPlaintextDesc": "एन्क्रिप्टेड नहीं, कोई गोपनीयता नहीं। यह सामान्य zip टूल में नहीं खुलेगा: इसके लिए AeroFTP या ओपन-सोर्स aerovault crate चाहिए। प्रारूप खुला है, इसलिए कोई भी इच्छुक व्यक्ति सामग्री पुनर्प्राप्त कर सकता है।",
             "zipBrowseNotice": "केवल संपीड़न + अखंडता + पुनर्प्राप्ति; गोपनीयता नहीं।",
             "dropFilesZip": "AeroVault Zip में जोड़ने के लिए फ़ाइलें छोड़ें",
             "zipEmpty": "AeroVault Zip खाली है। आरंभ करने के लिए फ़ाइलें जोड़ें।",

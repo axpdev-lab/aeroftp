@@ -2878,7 +2878,7 @@
             "createZip": "AeroVault Zip oluştur",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Şifrelenmemiş — gizlilik yok. Normal bir zip aracıyla açılmaz: AeroFTP veya açık kaynak aerovault crate gerekir. Biçim açıktır, bu yüzden isteyen herkes içeriği geri kurtarabilir.",
+            "zipPlaintextDesc": "Şifrelenmemiş, gizlilik yok. Normal bir zip aracıyla açılmaz: AeroFTP veya açık kaynak aerovault crate gerekir. Biçim açıktır, bu yüzden isteyen herkes içeriği geri kurtarabilir.",
             "zipBrowseNotice": "Yalnızca sıkıştırma + bütünlük + kurtarma; gizlilik değil.",
             "dropFilesZip": "AeroVault Zip'e eklemek için dosyaları bırakın",
             "zipEmpty": "AeroVault Zip boş. Başlamak için dosya ekleyin.",

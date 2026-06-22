@@ -2878,7 +2878,7 @@
             "createZip": "Tạo AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Không mã hóa — không có tính bảo mật. Không mở được bằng công cụ zip thông thường: cần AeroFTP hoặc crate mã nguồn mở aerovault. Định dạng là mở, nên bất kỳ ai muốn đều có thể khôi phục nội dung.",
+            "zipPlaintextDesc": "Không mã hóa, không có tính bảo mật. Không mở được bằng công cụ zip thông thường: cần AeroFTP hoặc crate mã nguồn mở aerovault. Định dạng là mở, nên bất kỳ ai muốn đều có thể khôi phục nội dung.",
             "zipBrowseNotice": "Chỉ nén + toàn vẹn + khôi phục; không bảo mật.",
             "dropFilesZip": "Thả tệp để thêm vào AeroVault Zip",
             "zipEmpty": "AeroVault Zip trống. Thêm tệp để bắt đầu.",

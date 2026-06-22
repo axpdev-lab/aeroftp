@@ -2878,7 +2878,7 @@
             "createZip": "Stvori AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Nije šifrirano — bez povjerljivosti. Ne otvara se običnim zip alatom: potreban je AeroFTP ili open-source crate aerovault. Format je otvoren pa sadržaj može obnoviti svatko tko želi.",
+            "zipPlaintextDesc": "Nije šifrirano, bez povjerljivosti. Ne otvara se običnim zip alatom: potreban je AeroFTP ili open-source crate aerovault. Format je otvoren pa sadržaj može obnoviti svatko tko želi.",
             "zipBrowseNotice": "Samo kompresija + integritet + oporavak; bez povjerljivosti.",
             "dropFilesZip": "Ispustite datoteke za dodavanje u AeroVault Zip",
             "zipEmpty": "AeroVault Zip je prazan. Dodajte datoteke za početak.",

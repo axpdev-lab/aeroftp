@@ -2878,7 +2878,7 @@
             "createZip": "Buat AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Tidak terenkripsi — tanpa kerahasiaan. Tidak bisa dibuka dengan alat zip biasa: memerlukan AeroFTP atau crate sumber terbuka aerovault. Formatnya terbuka, jadi siapa pun yang berniat dapat memulihkan isinya.",
+            "zipPlaintextDesc": "Tidak terenkripsi, tanpa kerahasiaan. Tidak bisa dibuka dengan alat zip biasa: memerlukan AeroFTP atau crate sumber terbuka aerovault. Formatnya terbuka, jadi siapa pun yang berniat dapat memulihkan isinya.",
             "zipBrowseNotice": "Hanya kompresi + integritas + pemulihan; bukan kerahasiaan.",
             "dropFilesZip": "Lepaskan file untuk menambahkannya ke AeroVault Zip",
             "zipEmpty": "AeroVault Zip kosong. Tambahkan file untuk memulai.",

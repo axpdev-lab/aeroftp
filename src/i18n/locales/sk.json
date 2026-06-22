@@ -2878,7 +2878,7 @@
             "createZip": "Vytvoriť AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Nešifrované — žiadna dôvernosť. Bežným nástrojom zip sa neotvorí: vyžaduje AeroFTP alebo open-source crate aerovault. Formát je otvorený, takže obsah si môže obnoviť ktokoľvek, kto chce.",
+            "zipPlaintextDesc": "Nešifrované, žiadna dôvernosť. Bežným nástrojom zip sa neotvorí: vyžaduje AeroFTP alebo open-source crate aerovault. Formát je otvorený, takže obsah si môže obnoviť ktokoľvek, kto chce.",
             "zipBrowseNotice": "Iba kompresia + integrita + obnova; žiadna dôvernosť.",
             "dropFilesZip": "Presuňte súbory na pridanie do AeroVault Zip",
             "zipEmpty": "AeroVault Zip je prázdny. Začnite pridaním súborov.",

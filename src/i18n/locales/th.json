@@ -2878,7 +2878,7 @@
             "createZip": "สร้าง AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "ไม่ได้เข้ารหัส — ไม่มีการรักษาความลับ เปิดด้วยเครื่องมือ zip ทั่วไปไม่ได้ ต้องใช้ AeroFTP หรือ crate โอเพนซอร์ส aerovault รูปแบบเป็นแบบเปิด ดังนั้นใครก็ตามที่ต้องการสามารถกู้คืนเนื้อหาได้",
+            "zipPlaintextDesc": "ไม่ได้เข้ารหัส, ไม่มีการรักษาความลับ เปิดด้วยเครื่องมือ zip ทั่วไปไม่ได้ ต้องใช้ AeroFTP หรือ crate โอเพนซอร์ส aerovault รูปแบบเป็นแบบเปิด ดังนั้นใครก็ตามที่ต้องการสามารถกู้คืนเนื้อหาได้",
             "zipBrowseNotice": "เฉพาะการบีบอัด + ความสมบูรณ์ + การกู้คืน ไม่ใช่การรักษาความลับ",
             "dropFilesZip": "วางไฟล์เพื่อเพิ่มลงใน AeroVault Zip",
             "zipEmpty": "AeroVault Zip ว่างเปล่า เพิ่มไฟล์เพื่อเริ่มต้น",

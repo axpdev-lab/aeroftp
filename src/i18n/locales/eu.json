@@ -2878,7 +2878,7 @@
             "createZip": "Sortu AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Zifratu gabe — konfidentzialtasunik ez. Ez da ohiko zip tresna batekin irekitzen: AeroFTP edo kode irekiko aerovault crate-a behar du. Formatua irekia da, beraz, nahi duen edonork berreskura dezake edukia.",
+            "zipPlaintextDesc": "Zifratu gabe, konfidentzialtasunik ez. Ez da ohiko zip tresna batekin irekitzen: AeroFTP edo kode irekiko aerovault crate-a behar du. Formatua irekia da, beraz, nahi duen edonork berreskura dezake edukia.",
             "zipBrowseNotice": "Konpresioa + osotasuna + berreskurapena soilik; ez konfidentzialtasuna.",
             "dropFilesZip": "Jaregin fitxategiak AeroVault Zip-era gehitzeko",
             "zipEmpty": "AeroVault Zip hutsik dago. Gehitu fitxategiak hasteko.",

@@ -2878,7 +2878,7 @@
             "createZip": "Opprett AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Ikke kryptert — ingen konfidensialitet. Den åpnes ikke i et vanlig zip-verktøy: den krever AeroFTP eller open source-craten aerovault. Formatet er åpent, så hvem som helst som vil kan gjenopprette innholdet.",
+            "zipPlaintextDesc": "Ikke kryptert, ingen konfidensialitet. Den åpnes ikke i et vanlig zip-verktøy: den krever AeroFTP eller open source-craten aerovault. Formatet er åpent, så hvem som helst som vil kan gjenopprette innholdet.",
             "zipBrowseNotice": "Kun komprimering + integritet + gjenoppretting; ikke konfidensialitet.",
             "dropFilesZip": "Slipp filer for å legge dem til i AeroVault Zip",
             "zipEmpty": "AeroVault Zip er tom. Legg til filer for å komme i gang.",

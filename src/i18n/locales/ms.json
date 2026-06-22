@@ -2878,7 +2878,7 @@
             "createZip": "Cipta AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Tidak disulitkan — tiada kerahsiaan. Ia tidak boleh dibuka dengan alat zip biasa: ia memerlukan AeroFTP atau crate sumber terbuka aerovault. Formatnya terbuka, jadi sesiapa yang berhasrat boleh memulihkan kandungannya.",
+            "zipPlaintextDesc": "Tidak disulitkan, tiada kerahsiaan. Ia tidak boleh dibuka dengan alat zip biasa: ia memerlukan AeroFTP atau crate sumber terbuka aerovault. Formatnya terbuka, jadi sesiapa yang berhasrat boleh memulihkan kandungannya.",
             "zipBrowseNotice": "Pemampatan + integriti + pemulihan sahaja; bukan kerahsiaan.",
             "dropFilesZip": "Lepaskan fail untuk menambahnya ke AeroVault Zip",
             "zipEmpty": "AeroVault Zip kosong. Tambah fail untuk bermula.",
