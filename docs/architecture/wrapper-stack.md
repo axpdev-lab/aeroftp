@@ -1,5 +1,7 @@
 # The AeroFTP Wrapper Stack
 
+> _Last updated: 2026-06-22_
+
 > Status: living document. Covers the at-rest transformation pipeline shared by
 > AeroVault (static container) and, progressively, AeroSync (streaming engine).
 >
@@ -264,10 +266,10 @@ unified format AeroSync uses), with the operational `scrub` / `repair` /
 
 ## Where this is today
 
-- **AeroVault v3 (Beta, opt-in):** packing, chunking, per-chunk zstd,
+- **AeroVault v3 (the "Archive" tier, opt-in):** packing, chunking, per-chunk zstd,
   per-chunk AES-256-GCM-SIV, BLAKE3 chunk id and cipher hash, the extension
-  slot reserved for v4 Error Correction. The format stays Beta and is not the default tier
-  until it has had a public spec review pass.
+  slot reserved for v4 Error Correction. The format stays opt-in (not the
+  default `advanced` tier) until it has had a public spec review pass.
 - **AeroSync:** the streaming surface inherits the wrappers progressively;
   chunk-first ordering is non-negotiable there because the whole product
   depends on "edit one byte, move one chunk".

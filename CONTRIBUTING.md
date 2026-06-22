@@ -1,5 +1,7 @@
 # Contributing to AeroFTP
 
+> _Last updated: 2026-06-22_
+
 First off, thank you for considering contributing to AeroFTP!
 
 ## Code of Conduct
@@ -103,7 +105,7 @@ All pull requests should include tests for new features and bug fixes where appl
 
 - **Backend (Rust)**: Add unit tests in `#[cfg(test)]` modules. Run with `cargo test` from the `src-tauri/` directory.
 - **Security checks**: Run `npm run security:regression` to verify security invariants.
-- **i18n**: Run `npm run i18n:validate` to ensure all translation keys are present in all 47 languages.
+- **i18n**: Run `npm run i18n:validate` to ensure every translation key in the English reference (`en.json`) is present in all 46 translation locales (the tool reports `46/46`).
 - **Type checking**: Run `npx tsc --noEmit` to verify TypeScript types.
 
 Pull requests that reduce test coverage or break existing tests will not be merged.

@@ -1,5 +1,7 @@
 # AI Transparency Statement
 
+> _Last updated: 2026-06-22_
+
 ## Overview
 
 AeroFTP is designed, architected and maintained by [axpnet](https://github.com/axpnet). AI tools were used extensively throughout development as productivity accelerators, always under strict human-defined specifications, patterns and review.

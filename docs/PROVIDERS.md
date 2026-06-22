@@ -1,5 +1,7 @@
 # Provider catalog
 
+> _Last updated: 2026-06-22_
+
 Authoritative, always-in-sync list of every storage company AeroFTP can connect
 to, with its HQ country, free tier and connection methods.
 

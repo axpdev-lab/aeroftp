@@ -30,7 +30,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "4.0.7"
+version = "4.0.8"
 dependencies = [
  "aerovault",
  "aes 0.8.4",
@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "aerovault"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6179dd755bbc8d940b7f479897ebc6170e1bc01409e8e2657ae4d2decbd7d92d"
+checksum = "690cffc2e8812e7c31d24017428f3c4164077374ad4fce4cae77f0df660596e3"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -4939,9 +4939,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.32"
+version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
+checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 dependencies = [
  "value-bag",
 ]

@@ -1,5 +1,7 @@
 # AeroFTP LLM Integration Guide
 
+> _Last updated: 2026-06-22_
+
 > Version: 1.1
 > Date: 2026-04-27
 > For: LLM/AI agent developers integrating with AeroFTP CLI or MCP server
@@ -264,9 +266,9 @@ The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-serv
 
 | Category | Limit | Examples |
 |----------|-------|----------|
-| ReadOnly | 60/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info`, `aeroftp_head`, `aeroftp_tail`, `aeroftp_tree`, `aeroftp_hashsum`, `aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`, `aeroftp_benchmark`, `aeroftp_debug_snapshot`, `aeroftp_debug_run_test`, `aeroftp_correct_verify` |
-| Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed`, `aeroftp_correct_gen`, `aeroftp_correct_repair` |
-| Destructive | 10/min | `aeroftp_delete`, `aeroftp_delete_many`, `aeroftp_cleanup` |
+| ReadOnly | 1200/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info`, `aeroftp_head`, `aeroftp_tail`, `aeroftp_tree`, `aeroftp_hashsum`, `aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`, `aeroftp_benchmark`, `aeroftp_debug_snapshot`, `aeroftp_debug_run_test`, `aeroftp_correct_verify` |
+| Mutative | 400/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed`, `aeroftp_correct_gen`, `aeroftp_correct_repair` |
+| Destructive | 100/min | `aeroftp_delete`, `aeroftp_delete_many`, `aeroftp_cleanup` |
 
 ### Available Tools (35+ canonical)
 
@@ -327,7 +329,7 @@ In addition to tools, the server exposes the resource URI `aeroftp://connections
 
 ## Batch Scripting for Agents
 
-Batch files (`.aeroftp`) are safer than shell scripts for agents:
+Batch files (`.aeroftp-script`) are safer than shell scripts for agents:
 
 ```
 SET SERVER=sftp://backup-server
@@ -364,9 +366,9 @@ aeroftp-cli agent-info --json 2>/dev/null
 ```
 
 Returns:
-- Available commands with syntax (77 top-level commands)
+- Available commands with syntax (82 top-level commands, grouped in the `commands` object as `safe` / `modify` / `destructive` / `advanced`)
 - Supported protocols and provider integrations (7 transport protocols + 25+ native provider integrations)
-- Per-protocol `protocol_features` map (`share_links`, `resume`, `server_copy`, `versions`, `thumbnails`, `change_tracking`)
+- Per-protocol `protocol_features` map (token vocabulary: `resume`, `find`, `server_copy`, `checksum`, `chmod`, `symlinks`, `permissions`, `share_links`, `versions`, `change_tracking`, `thumbnails`)
 - `agent_connect_supported_protocols` array for the live-connect allowlist
 - Exit code definitions
 - Safety rules

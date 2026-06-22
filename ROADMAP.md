@@ -1,5 +1,7 @@
 # AeroFTP Roadmap
 
+> _Last updated: 2026-06-22_
+
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
 
@@ -15,8 +17,51 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 |---|---|---|---|
 | Available in the latest release | Actively being worked on, ready to release soon | Confirmed for an upcoming release, design done | Planned but not yet started |
 
+### Status index
+
+Every roadmap item at a glance; the lanes below carry the full detail.
+
+| Status | Item | Target |
+|---|---|---|
+| 🟢 Shipped | AeroProgress transfer card + AeroCrypt first-class Crypt profile + Quick Connect polish | v4.0.8 |
+| 🟢 Shipped | AeroVault dual blind security audit + error-correction crate convergence | v4.0.7 |
+| 🟢 Shipped | AeroVault crate convergence (engine + ECC into the published crate) | v4.0.6 |
+| 🟢 Shipped | AeroVault v4 error correction + AeroCrypt encrypted overlay | v4.0.5 |
+| 🟢 Shipped | Reversible restricted-filename encoding + CLI polish | v4.0.4 |
+| 🟢 Shipped | Community catalog + two-stage CLI security audit | v4.0.3 |
+| 🟢 Shipped | Cross-machine keystore portability | v4.0.2 |
+| 🟢 Shipped | S3 native AssumeRole + AeroVault audit hardening | v4.0.1 |
+| 🟢 Shipped | Shaped Graph Transfer (DAG) + Multi-User Account Partition | v4.0.0 |
+| 🟢 Shipped | AeroVault wrapper-stack + full CLI vault parity + AeroRsync streaming | v3.8.0 |
+| 🟢 Shipped | AeroVault v3 (Archive tier) + AeroFile Dual Panel Slice A | v3.7.9 |
+| 🟢 Shipped | AeroCrypt overlay first-class + ImageKit / Uploadcare + CLI audit | v3.7.2 |
+| 🟢 Shipped | Persistent Mount Manager (GUI + CLI) | v3.7.1 |
+| 🟡 In Flight | P2P peer transfer (AeroShare) | next release |
+| 🟡 In Flight | Bitbucket / Gitea / Forgejo native integrations | next release |
+| 🟡 In Flight | Compression wrapper profile | next release |
+| 🟡 In Flight | Selectable XChaCha20 vault cipher | next release |
+| 🔵 Up Next | Share Link UX redesign (QR, analytics, team sharing) | planned |
+| 🔵 Up Next | VS Code Remote Explorer extension | planned |
+| 🔵 Up Next | Deploy Engine (one-click self-hosted server) | planned |
+| 🔵 Up Next | Photo & media services expansion | planned |
+| 🔵 Up Next | Agent Orchestration v2 (mutative remote ops) | planned |
+| 🔵 Up Next | AeroVault v2 enhancements (migration, key rotation) | planned |
+| 🔵 Up Next | Mobile-friendly window dimensions | planned |
+| ⚪ Horizon | AeroIndex (content-aware file intelligence) | exploring |
+| ⚪ Horizon | Mobile companion app (Android) | exploring |
+| ⚪ Horizon | Flathub publish | exploring |
+| ⚪ Horizon | IPFS / Web3 storage | exploring |
+| ⚪ Horizon | Tor support | exploring |
+| ⚪ Horizon | Biometric unlock | exploring |
+| ⚪ Horizon | Per-protocol comparison page in docs | exploring |
+| ⚪ Horizon | Keyboard accessibility: Tab traversal | exploring |
+
 ### 🟢 Just Shipped
 
+- **AeroProgress, Quick Connect polish and AeroCrypt as a first-class Crypt profile** (v4.0.8)
+  AeroProgress brings back the floating transfer card with a lane per file, live speed, ETA and bytes, a collapsible speed graph and per-theme styling, with real progress across the Transfer Queue, vault creation and cross-profile transfers instead of a bare spinner or a frozen "Streaming" state. AeroCrypt is promoted to a first-class `Crypt` profile type with a navigate-out encrypted scope ([#272](https://github.com/axpdev-lab/aeroftp/issues/272), **Ehud Kirsh**), Quick Connect absorbs the v4.0.6 connection review with a per-mode credential isolation fix ([#215](https://github.com/axpdev-lab/aeroftp/issues/215)), Change Mode re-packs an open vault between the v2 and v3 formats, and AeroFTP's Cryptomator vaults are now byte-for-byte interoperable with the official Cryptomator in both directions ([#322](https://github.com/axpdev-lab/aeroftp/issues/322)). Bundles the `aerovault` crate 0.6.3 (streaming seal/extract, progress callbacks, per-shard health).
+- **AeroVault dual blind security audit and error-correction crate convergence** (v4.0.7)
+  AeroVault went through an independent dual blind security audit (Claude Opus 4.8 and Codex GPT-5) followed by full remediation and a two-round adversarial controaudit that closed every finding (1 High, 1 Medium, 3 Low, 4 Info, 0 Critical, grade A), verified on both the crate and the app. The error-correction engine moved into the published `aerovault` crate (0.6.2) as a single audited implementation shared by the desktop app, the CLI and any Rust consumer, with a cross-implementation golden keeping the bytes byte-for-byte identical. AeroVault extract now refuses to follow a Windows reparse-point or junction out of the destination, an interrupted seal leaves no leftover temp or lock, a forged extension directory is rejected at open, and `correct repair --expect-sha256` adds an authenticity anchor. The My Servers grid got container-aware column layout fixes, and DOMPurify was bumped to 3.4.11. The kill-cleanup pair was surfaced by **Ehud Kirsh**'s V3 Beta test pass.
 - **AeroVault crate convergence** (v4.0.6)
   The AEROVAULT3 vault engine and its revision 4 Reed-Solomon error correction now live entirely in the published `aerovault` crate ([0.6.0 on crates.io](https://crates.io/crates/aerovault)): one audited implementation, shared byte-for-byte between the desktop app and the standalone CLI, with a cross-implementation fixture pinning the two to identical bytes so a vault made by either opens in the other. The app's vault commands became thin wrappers over the crate, around four thousand three hundred lines of duplicated cryptography removed. AEROVAULT3 design and the unified error-correction direction were driven by **Ehud Kirsh** ([#162](https://github.com/axpdev-lab/aeroftp/issues/162), [#276](https://github.com/axpdev-lab/aeroftp/discussions/276)). Also: cloud folder uploads now honor the skip and overwrite policy, and the benchmark profile picker marks selected rows with a checkmark ([#277](https://github.com/axpdev-lab/aeroftp/discussions/277), Ehud Kirsh).
 - **AeroVault v4 error correction and the AeroCrypt encrypted overlay** (v4.0.5)
@@ -41,7 +86,7 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   256 MiB cap removed on both ends, batch SSH session reuse, host-key pinning symmetric across transports, native delta engine enabled by default on fresh installs, and a local-to-local `LocalDeltaTransport` with a dedicated AeroSync panel and CLI auto-detection.
 - **AeroFile Dual Panel: Slice B + Slice C bridge** (v3.8.0)
   Unified panel controller with an endpoint selector and a transfer planner routing local/local, local/remote and remote/local through the correct engine; FreeFileSync-style compare panel (6-bucket classifier), sync presets, conflict policy with versioned backup, inline cross-profile transfer, terminal cwd follows the focused panel.
-- **AeroFile Dual Panel — Slice A** (v3.7.9)
+- **AeroFile Dual Panel - Slice A** (v3.7.9)
   Two local panels side by side in AeroFile mode, with full keyboard parity on the second panel (F2 / Delete / Enter / Backspace / clipboard / Quick Look / properties / arrows / Shift+arrow / Home / End all dispatch to the focused pane, Tab cycles between local and local2). Total-Commander shortcuts: F5 copy to other panel, F6 move to other panel, F7 new folder in the focused panel. Drag-and-drop between panes uses `rename_local_file` / `copy_local_file`; Ctrl+drag switches from move to copy. The separator is resizable from mouse and from keyboard (Arrow Left/Right ±10%, Home/End to extremes, Enter/Space to reset, `aria-valuenow` + `tabIndex=0`). Unified tab bar in the top strip with L/R markers and per-panel persistence. Slice B (each pane configurable as a local path or a saved remote profile) and Slice C (FreeFileSync-style mirror/backup/bisync workflows on top) follow in their own release windows.
 - **AeroVault v4 ECC (T-AEROVAULT-ECC)** (shipped on feat/aerovault-v4-ecc, v4 track): Reed-Solomon 10+2 error-correction wrapper as 4th first-class layer (compression→chunk→crypt→ECC last, per Ehud Kirsh #272/#276). v2 fixed-grid payload (~20% real overhead proven live on incompressible data), per-shard BLAKE3 cksums for localized damage (incl. parity), all-or-nothing repair gate (re-verify cipher_hash or leave vault untouched). scrub/repair (GUI draggable modals + full CLI via --profile safety), P3-03 receipt telemetry (shards/bytes/overhead/repairs), i18n, help polish. "v3 + ECC = v4" forward-compat (non-critical ext). 22 tests + live CLI/GUI. Phase 4 docs + CHANGELOG close. See docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/.
 - **AeroVault v3 (Experimental tier)** (v3.7.9)
@@ -107,8 +152,6 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Direct device-to-device transfers over an iroh-based peer connection (QUIC with hole-punching), no server in the middle: a send-file flow with progress, presence, and a received-files inbox. Nearing a first usable cut.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
-- **Crypt as a dedicated profile type**
-  The native AeroCrypt overlay (and the rclone-crypt interop overlay, at equal grade) is now a first-class saved profile: a `Crypt` class in My Servers and in `aeroftp-cli profiles` instead of living only in CLI commands and `.sh` / `.ps1` automation, transparent decryption inside the bound folder with the rest of the server visible in clear outside it, and public share links and server-side hashes disabled inside the encrypted area. Implemented and merged on `main`; lands in the next release.
 - **Compression wrapper profile**
   Symmetric to the Crypt overlay. A per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only), implemented as a provider wrapper that compresses on upload and decompresses on download. The UI warns when a user tries to compress an already-encrypted overlay, which would defeat compression.
 - **Selectable XChaCha20 vault cipher**
@@ -193,6 +236,19 @@ If you spot a bug, want a small feature, or want to nominate a provider for nati
 ## Detailed Release History
 
 The lane view above is what most users want. The tables below are kept for users who want to see exactly which feature landed in which release.
+
+### v4.0.7
+
+| Feature | Description |
+|---------|-------------|
+| **AeroVault dual blind security audit (grade A)** | An independent dual blind audit (Claude Opus 4.8 and Codex GPT-5) plus full remediation and a two-round adversarial controaudit closed 1 High, 1 Medium, 3 Low and 4 Info findings with zero Critical and zero open findings, verified on both the crate and the app. The kill-cleanup pair (M1 and M9) was surfaced by Ehud Kirsh's V3 Beta test pass. (@EhudKirsh) |
+| **Error correction converged onto the `aerovault` crate (0.6.2)** | The app's forked standalone `.aerocorrect` and AeroSync error-correction engine (about 3,500 lines) is removed and replaced by a logic-free re-export of the crate, so the `.aerocorrect` format has a single audited implementation shared by the desktop app, the CLI and any Rust consumer. A cross-implementation golden keeps the bytes byte-for-byte identical (M7). The capability string now reflects the real Reed-Solomon engine instead of reporting a Phase 1 stub (M5). |
+| **No leftover temp or lock after an interrupted seal** | Killing a vault operation mid-seal used to leave a `.aerovault.lock` that blocked the next writer and a plaintext temp beside the target; the container now writes through an auto-deleting temp on the error path, repair scrubs its temp on the persist-error branch (M1), and a lock orphaned by a crashed run is auto-reclaimed once its recorded owner PID is provably dead (M9). |
+| **AeroVault extract blocks reparse-point escape** | Extracting a vault could follow a pre-planted Windows directory junction out of the destination; each path component is now created refusing to follow a pre-existing reparse point, and the canonical parent is checked to stay inside the destination root (M2). |
+| **Authenticity anchor and forged-directory rejection** | `correct repair --expect-sha256` refuses a sidecar that declares a different hash before any byte is written, on the CLI, the library and the MCP tool (M3); a forged extension directory is now rejected at open before any recovery uses it, because the header MAC coverage was widened (M4). |
+| **AI local tools resolve absolute POSIX paths on Windows** | A `/`-rooted path was treated as relative on Windows and re-based under the tool working directory; a leading `/` is now treated as absolute on every operating system. |
+| **IntroHub My Servers grid layout** | The My Servers grid now uses container-aware column counts (3 to 9) with a full-height sidebar divider, symmetric grid gutters, and aligned toolbar and cards. |
+| **DOMPurify 3.4.11** | Clears a Dependabot advisory (GHSA-cmwh-pvxp-8882). A precautionary transitive bump; the affected configuration path is not exercised by AeroFTP. |
 
 ### v4.0.6
 

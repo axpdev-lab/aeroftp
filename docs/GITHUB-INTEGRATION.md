@@ -1,5 +1,7 @@
 # AeroFTP × GitHub Integration
 
+> _Last updated: 2026-06-22_
+
 > Browse repositories as filesystems. Upload files that become commits. Connect with Device Flow, PAT, or GitHub App installation tokens.
 
 ---

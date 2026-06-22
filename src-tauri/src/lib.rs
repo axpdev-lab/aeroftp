@@ -5936,6 +5936,51 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             version: env!("DEP_VERSION_IMAGE").into(),
             category: "Core".into(),
         },
+        DependencyInfo {
+            name: "tokio-util".into(),
+            version: env!("DEP_VERSION_TOKIO_UTIL").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "futures-util".into(),
+            version: env!("DEP_VERSION_FUTURES_UTIL").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "async-trait".into(),
+            version: env!("DEP_VERSION_ASYNC_TRAIT").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "tracing-subscriber".into(),
+            version: env!("DEP_VERSION_TRACING_SUBSCRIBER").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "toml".into(),
+            version: env!("DEP_VERSION_TOML").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "semver".into(),
+            version: env!("DEP_VERSION_SEMVER").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "uuid".into(),
+            version: env!("DEP_VERSION_UUID").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "regex".into(),
+            version: env!("DEP_VERSION_REGEX").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "notify-debouncer-full".into(),
+            version: env!("DEP_VERSION_NOTIFY_DEBOUNCER_FULL").into(),
+            category: "Core".into(),
+        },
         // Protocols
         DependencyInfo {
             name: "suppaftp".into(),
@@ -5970,6 +6015,51 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo {
             name: "rustls".into(),
             version: env!("DEP_VERSION_RUSTLS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "ssh2".into(),
+            version: env!("DEP_VERSION_SSH2").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "tokio-rustls".into(),
+            version: env!("DEP_VERSION_TOKIO_RUSTLS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "rustls-native-certs".into(),
+            version: env!("DEP_VERSION_RUSTLS_NATIVE_CERTS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "webpki-roots".into(),
+            version: env!("DEP_VERSION_WEBPKI_ROOTS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "axum".into(),
+            version: env!("DEP_VERSION_AXUM").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "http".into(),
+            version: env!("DEP_VERSION_HTTP").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "url".into(),
+            version: env!("DEP_VERSION_URL").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "urlencoding".into(),
+            version: env!("DEP_VERSION_URLENCODING").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "percent-encoding".into(),
+            version: env!("DEP_VERSION_PERCENT_ENCODING").into(),
             category: "Protocols".into(),
         },
         // Security
@@ -6048,6 +6138,91 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             version: env!("DEP_VERSION_AEROVAULT").into(),
             category: "Security".into(),
         },
+        DependencyInfo {
+            name: "keyring".into(),
+            version: env!("DEP_VERSION_KEYRING").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "aes".into(),
+            version: env!("DEP_VERSION_AES").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "cbc".into(),
+            version: env!("DEP_VERSION_CBC").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "ctr".into(),
+            version: env!("DEP_VERSION_CTR").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "crypto_secretbox".into(),
+            version: env!("DEP_VERSION_CRYPTO_SECRETBOX").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "pbkdf2".into(),
+            version: env!("DEP_VERSION_PBKDF2").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "sha1".into(),
+            version: env!("DEP_VERSION_SHA1").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "ripemd".into(),
+            version: env!("DEP_VERSION_RIPEMD").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "md-5".into(),
+            version: env!("DEP_VERSION_MD_5").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "zeroize".into(),
+            version: env!("DEP_VERSION_ZEROIZE").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "subtle".into(),
+            version: env!("DEP_VERSION_SUBTLE").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "data-encoding".into(),
+            version: env!("DEP_VERSION_DATA_ENCODING").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "base64".into(),
+            version: env!("DEP_VERSION_BASE64").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "hex".into(),
+            version: env!("DEP_VERSION_HEX").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "num-bigint-dig".into(),
+            version: env!("DEP_VERSION_NUM_BIGINT_DIG").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "totp-rs".into(),
+            version: env!("DEP_VERSION_TOTP_RS").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "sigstore".into(),
+            version: env!("DEP_VERSION_SIGSTORE").into(),
+            category: "Security".into(),
+        },
         // Archives
         DependencyInfo {
             name: "sevenz-rust".into(),
@@ -6083,6 +6258,158 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             name: "unrar".into(),
             version: env!("DEP_VERSION_UNRAR").into(),
             category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "zstd".into(),
+            version: env!("DEP_VERSION_ZSTD").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "reed-solomon-erasure".into(),
+            version: env!("DEP_VERSION_REED_SOLOMON_ERASURE").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "xxhash-rust".into(),
+            version: env!("DEP_VERSION_XXHASH_RUST").into(),
+            category: "Archives".into(),
+        },
+        // CLI & Tools
+        DependencyInfo {
+            name: "clap".into(),
+            version: env!("DEP_VERSION_CLAP").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "clap_complete".into(),
+            version: env!("DEP_VERSION_CLAP_COMPLETE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "indicatif".into(),
+            version: env!("DEP_VERSION_INDICATIF").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "rpassword".into(),
+            version: env!("DEP_VERSION_RPASSWORD").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "ctrlc".into(),
+            version: env!("DEP_VERSION_CTRLC").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "globset".into(),
+            version: env!("DEP_VERSION_GLOBSET").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "ratatui".into(),
+            version: env!("DEP_VERSION_RATATUI").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "crossterm".into(),
+            version: env!("DEP_VERSION_CROSSTERM").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "libunftp".into(),
+            version: env!("DEP_VERSION_LIBUNFTP").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "unftp-core".into(),
+            version: env!("DEP_VERSION_UNFTP_CORE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "rusqlite".into(),
+            version: env!("DEP_VERSION_RUSQLITE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "dirs".into(),
+            version: env!("DEP_VERSION_DIRS").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "filetime".into(),
+            version: env!("DEP_VERSION_FILETIME").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "tempfile".into(),
+            version: env!("DEP_VERSION_TEMPFILE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "walkdir".into(),
+            version: env!("DEP_VERSION_WALKDIR").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "mime_guess".into(),
+            version: env!("DEP_VERSION_MIME_GUESS").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "open".into(),
+            version: env!("DEP_VERSION_OPEN").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "similar".into(),
+            version: env!("DEP_VERSION_SIMILAR").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "trash".into(),
+            version: env!("DEP_VERSION_TRASH").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "arboard".into(),
+            version: env!("DEP_VERSION_ARBOARD").into(),
+            category: "CLI & Tools".into(),
+        },
+        // System
+        DependencyInfo {
+            name: "libc".into(),
+            version: env!("DEP_VERSION_LIBC").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "windows".into(),
+            version: env!("DEP_VERSION_WINDOWS").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "winreg".into(),
+            version: env!("DEP_VERSION_WINREG").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "fuser".into(),
+            version: env!("DEP_VERSION_FUSER").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "gtk".into(),
+            version: env!("DEP_VERSION_GTK").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "hound".into(),
+            version: env!("DEP_VERSION_HOUND").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "whisper-rs".into(),
+            version: env!("DEP_VERSION_WHISPER_RS").into(),
+            category: "System".into(),
         },
         // Tauri Plugins
         DependencyInfo {
@@ -6123,6 +6450,11 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo {
             name: "tauri-plugin-autostart".into(),
             version: env!("DEP_VERSION_TAURI_PLUGIN_AUTOSTART").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-window-state".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_WINDOW_STATE").into(),
             category: "Plugins".into(),
         },
     ]

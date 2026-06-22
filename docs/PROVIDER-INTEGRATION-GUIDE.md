@@ -5,7 +5,7 @@
 > **For storage providers and integrators**: this is the only public reference of its kind in the file-client space: a complete blueprint that lets a new cloud or self-hosted storage service ship a first-class native integration in AeroFTP without reverse-engineering the codebase. If you run a storage service and want a dedicated provider entry (instead of a generic preset), this guide is the contract. We're already collaborating with one provider on a native integration using exactly this document; we welcome more. Reach out via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues) and we'll review the API together.
 
 **Version**: 3.7
-**Last Updated**: 2026-06-16
+**Last Updated**: 2026-06-22
 **Codebase**: `src-tauri/src/providers/`
 
 ---
@@ -72,7 +72,7 @@ src-tauri/src/providers/
 ├── oauth2.rs               # OAuth2 PKCE flow (8 providers)
 ├── oauth1.rs               # OAuth 1.0 HMAC-SHA1 (4shared)
 ├── ftp.rs                  # FTP/FTPS via suppaftp
-├── sftp.rs                 # SFTP: russh (connection/listing/download) + ssh2/SCP (upload)
+├── sftp.rs                 # SFTP: russh + russh-sftp over a single SSH session (connection, listing, download, upload)
 ├── webdav.rs               # WebDAV with HTTP Digest/Basic auth
 ├── s3.rs                   # S3 + AWS SigV4 signing
 ├── swift.rs                # OpenStack Swift (Blomp, etc.)
@@ -112,7 +112,7 @@ src-tauri/src/providers/
 | Provider | File | Lines | Auth Method | Protocol |
 |----------|------|-------|-------------|----------|
 | FTP/FTPS | `ftp.rs` | ~1,050 | User/Pass + TLS | TCP socket |
-| SFTP | `sftp.rs` | ~1,200 | User/Pass/Key | SSH (hybrid: russh + ssh2/SCP) |
+| SFTP | `sftp.rs` | ~1,200 | User/Pass/Key | SSH (russh + russh-sftp, single session) |
 | WebDAV | `webdav.rs` | ~1,450 | HTTP Basic/Digest | HTTPS |
 | S3 | `s3.rs` | ~2,200 | AWS SigV4 | HTTPS |
 | Swift | `swift.rs` | - | OpenStack Keystone | REST |
@@ -123,17 +123,17 @@ src-tauri/src/providers/
 | Box | `box_provider.rs` | ~1,700 | OAuth2 PKCE | REST |
 | pCloud | `pcloud.rs` | ~1,050 | OAuth2 PKCE | REST |
 | Azure Blob | `azure.rs` | ~1,150 | Shared Key / SAS | REST |
-| Filen | `filen.rs` | ~1,600 | E2E (AES-256-GCM) | REST |
+| Filen | `filen/` | ~1,600 | E2E (AES-256-GCM) | REST |
 | 4shared | `fourshared.rs` | ~1,350 | OAuth 1.0 (HMAC-SHA1) | REST |
 | Zoho WorkDrive | `zoho_workdrive.rs` | ~2,100 | OAuth2 PKCE | REST |
-| Internxt | `internxt.rs` | ~2,150 | E2E (XChaCha20) | REST |
+| Internxt | `internxt.rs` | ~2,150 | E2E (AES-256-CTR) | REST |
 | kDrive | `kdrive.rs` | ~1,300 | Bearer Token | REST |
 | Jottacloud | `jottacloud.rs` | ~1,650 | Login Token | REST (XML) |
 | FileLu | `filelu.rs` | ~1,500 | API Key | REST |
 | Koofr | `koofr.rs` | ~1,750 | App Password (HTTP Basic) or OAuth2 Bearer | REST |
 | Drime Cloud | `drime_cloud.rs` | ~1,600 | Bearer Token | REST |
-| OpenDrive | `opendrive.rs` | ~1,211 | Session login (user/pass) | REST |
-| Yandex Disk | `yandex_disk.rs` | ~1,237 | OAuth2 token (`Authorization: OAuth`) | REST |
+| OpenDrive | `opendrive.rs` | ~2,600 | Session login (user/pass) | REST |
+| Yandex Disk | `yandex_disk.rs` | ~2,100 | OAuth2 token (`Authorization: OAuth`) | REST |
 | Backblaze B2 | `b2.rs` | - | B2 native (account auth) | REST |
 | ImageKit | `imagekit.rs` | - | API Key (Basic) | REST |
 | Cloudinary | `cloudinary.rs` | - | API Key/Secret | REST |
@@ -695,7 +695,7 @@ Three providers implement client-side encryption where the server never sees pla
 |----------|---------------|----------------|---------------------|
 | **MEGA** | PBKDF2 → AES-128 master key | AES-128-ECB (per-file key) | AES-128 (file attributes) |
 | **Filen** | PBKDF2 → master key | AES-256-GCM (per-file key) | AES-256-GCM (metadata) |
-| **Internxt** | - | XChaCha20-Poly1305 | Encrypted JSON metadata |
+| **Internxt** | OpenSSL-style key derivation | AES-256-CTR (per-file content) | AES-256-CBC (mnemonic/salt, OpenSSL Salted__) |
 
 #### MEGA Pattern
 
@@ -1058,7 +1058,7 @@ loop {
 
 ## 7. XML Parsing with quick-xml
 
-Three providers return XML instead of JSON: **WebDAV** (PROPFIND), **S3** (ListObjectsV2), and **Azure Blob** (EnumerateBlobs). AeroFTP uses `quick-xml 0.39` with event-based parsing.
+Three providers return XML instead of JSON: **WebDAV** (PROPFIND), **S3** (ListObjectsV2), and **Azure Blob** (EnumerateBlobs). AeroFTP uses `quick-xml 0.40` with event-based parsing.
 
 ### Pattern: State Machine Parser
 
@@ -1701,9 +1701,9 @@ mod tests {
 
 | Crate | Version | Purpose | Pin Note |
 |-------|---------|---------|----------|
-| `suppaftp` | **=8.0.1** | FTP/FTPS | **PINNED**: v8.0.2 uses `AsFd` (Unix-only), breaks Windows |
-| `russh` | 0.57 | SSH/SFTP | |
-| `quick-xml` | 0.39 | XML parsing (WebDAV, S3, Azure) | |
+| `suppaftp` | **=8.0.3** | FTP/FTPS | **PINNED** (exact): tracks the audited upstream release; the earlier =8.0.1 Windows `AsFd` concern was resolved by 8.0.3's upstream fixes |
+| `russh` / `russh-sftp` | 0.61 / 2.1 | SSH/SFTP | |
+| `quick-xml` | 0.40 | XML parsing (WebDAV, S3, Azure) | |
 | `oauth2` | 5 | OAuth2 PKCE flow | |
 | `hmac` / `sha1` / `sha2` | >=0.1 | HMAC signing (OAuth1, Azure, S3) | |
 | `base64` | >=0.20 | Encoding (Azure, S3, MEGA) | |
@@ -1757,7 +1757,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 ### Platform
 
-13. **suppaftp 8.0.2 breaks Windows**: Uses `std::os::fd::AsFd` which is Unix-only. Must pin to `=8.0.1` until upstream fixes cross-platform support.
+13. **suppaftp cross-platform pin**: An earlier 8.0.2 build used Unix-only `std::os::fd::AsFd`, so the dependency was exact-pinned. It is now pinned to `=8.0.3`, which carries the upstream cross-platform fixes; keep the exact pin to gate unreviewed upgrades.
 
 14. **SFTP symlink detection**: NAS devices (Synology, WD MyCloud) create symlinks for shared folders. `list()` must follow symlinks via `sftp.metadata()` to detect if target is a directory.
 

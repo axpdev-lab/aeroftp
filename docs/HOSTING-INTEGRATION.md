@@ -3,7 +3,7 @@
 > Generate `.aeroftp` connection profiles from your control panel so customers can import pre-configured connections with a single click.
 
 **Version**: 1.0
-**Last Updated**: 4 April 2026
+**Last Updated**: 2026-06-22
 
 ---
 
@@ -32,7 +32,7 @@ An `.aeroftp` file is a JSON document with the following structure:
   "encrypted_payload": [/* AES-256-GCM ciphertext */],
   "metadata": {
     "exportDate": "2026-04-04T20:00:00Z",
-    "aeroftpVersion": "3.5.0",
+    "aeroftpVersion": "4.0.7",
     "serverCount": 1,
     "hasCredentials": true
   }
@@ -131,9 +131,10 @@ The decrypted payload is a JSON object containing a `servers` array:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `authMethod` | string | `password`, `key`, `key_and_password` |
-| `privateKeyPath` | string | Path to SSH private key file |
+| `private_key_path` | string | Path to SSH private key file |
 | `key_passphrase` | string | Passphrase for encrypted private key |
+
+The SFTP authentication method is selected automatically from the credentials present: if `private_key_path` is set, AeroFTP uses key-based auth (with `key_passphrase` when the key is encrypted); otherwise it uses password auth with the `credential` field. There is no explicit auth-method selector in the profile.
 
 #### WebDAV
 
@@ -179,7 +180,7 @@ def generate_aeroftp_profile(servers, password):
         "encrypted_payload": list(ciphertext),
         "metadata": {
             "exportDate": datetime.now(timezone.utc).isoformat(),
-            "aeroftpVersion": "3.5.0",
+            "aeroftpVersion": "4.0.7",
             "serverCount": len(servers),
             "hasCredentials": any(s.get("credential") for s in servers)
         }
@@ -245,7 +246,7 @@ async function generateAeroftpProfile(servers, password) {
     encrypted_payload: [...encrypted],
     metadata: {
       exportDate: new Date().toISOString(),
-      aeroftpVersion: '3.5.0',
+      aeroftpVersion: '4.0.7',
       serverCount: servers.length,
       hasCredentials: servers.some(s => s.credential)
     }

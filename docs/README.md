@@ -1,5 +1,7 @@
 # AeroFTP Documentation
 
+> _Last updated: 2026-06-22_
+
 Welcome to the AeroFTP documentation folder. This contains all technical documentation, compatibility audits, and guides.
 
 ---
@@ -16,8 +18,8 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[MULTI-USER.md](./MULTI-USER.md)** | Multi-User Account Partition - per-user encrypted vault partitions, Account Lock Screen, admin role, CLI `--user` flag (v4.0.0) |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
 | **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant - architecture, tool catalog, safety system, CLI/MCP modes |
-| **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format - cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
-| **[AEROVAULT-V3-SPEC.md](./AEROVAULT-V3-SPEC.md)** | AeroVault v3 draft (Beta, v3.8.0) - chunk-then-compress pipeline (gear-CDC + zstd profiles + AES-256-GCM-SIV per chunk), BLAKE3-128 chunk id / BLAKE3-256 cipher hash, HMAC-SHA512 header, reserved extension directory + payload region for the future v4 Error Correction layer |
+| **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.2 encrypted container format - cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, entry lifecycle parity move/rename/copy, Tauri commands reference) |
+| **[AEROVAULT-V3-SPEC.md](./AEROVAULT-V3-SPEC.md)** | AeroVault v3 (Published, shipped in v3.8.0) - chunk-then-compress pipeline (gear-CDC + zstd profiles + AES-256-GCM-SIV per chunk), BLAKE3-128 chunk id / BLAKE3-256 cipher hash, HMAC-SHA512 header, reserved extension directory + payload region for the future v4 Error Correction layer |
 | **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI - command guide, profiles, batch scripting, aliases, completions, agent integration |
 | **[COMMUNITY-BENCHMARK.md](./COMMUNITY-BENCHMARK.md)** | Privacy-preserving community benchmark guide and report submission flow |
 | **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference - StorageProvider trait, auth patterns, upload/pagination/XML parsing, adding new providers |

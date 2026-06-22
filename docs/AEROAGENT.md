@@ -1,5 +1,7 @@
 # AeroAgent - AI Assistant Documentation
 
+> _Last updated: 2026-06-22_
+
 **Status**: Public architecture overview
 **Tool catalog**: Built-in tool suite + extensible via plugins
 
@@ -107,7 +109,7 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | `local_head` | medium | Read first N lines of file (max 500) |
 | `local_tail` | medium | Read last N lines of file (max 500) |
 | `local_stat_batch` | medium | Metadata for multiple paths (max 100) |
-| `local_diff` | safe | Unified diff between two files |
+| `local_diff` | medium | Unified diff between two files |
 | `local_tree` | medium | Recursive directory tree (max depth 10) |
 | `preview_edit` | safe | Preview find/replace without applying |
 
@@ -176,7 +178,7 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
-| `shell_execute` | high | Execute shell command (30s timeout, 1 MB output limit) |
+| `shell_execute` | high | Execute shell command (30s timeout, 512 KB output limit) |
 
 ---
 
@@ -207,7 +209,7 @@ All file operations validate paths against:
 
 - AI file downloads: 50 MB maximum
 - `cat`/`read` operations: 5 KB for AI context
-- Shell output: 1 MB capture limit
+- Shell output: 512 KB capture limit
 - Path length: 4096 characters
 - `local_stat_batch`: 100 paths maximum
 - `rag_index`: 200 files maximum
@@ -265,7 +267,6 @@ AeroAgent automatically detects project type and injects relevant context:
 | `pom.xml` | Java/Maven | Java |
 | `requirements.txt` | Python | Python |
 | `go.mod` | Go | Go |
-| `Gemfile` | Ruby/Rails | Ruby |
 | `composer.json` | PHP | PHP |
 | `*.csproj` | .NET/C# | C# |
 | `CMakeLists.txt` | C/C++ | C/C++ |
@@ -346,7 +347,7 @@ AeroAgent supports runtime plugins for custom tool extensions:
 
 - **Plugin manifest**: JSON file defining name, version, tools, hooks
 - **Plugin scripts**: Shell scripts executed by the tool engine
-- **Plugin registry**: GitHub-based discovery and installation
+- **Plugin registry**: GitHub-based discovery and installation (remote registry browse/install is temporarily disabled pending a signed, client-side-verified registry; locally installed plugins continue to work)
 - **Plugin hooks**: Event-driven execution (file:created, transfer:complete, sync:complete)
 - **SHA-256 integrity**: Verified at install and before each execution
 
@@ -431,7 +432,7 @@ MCP server mode exposes the AeroAgent tool catalog as standard MCP endpoints, en
 - **Chat history** in SQLite with FTS5 full-text search
 - **Export** to Markdown or JSON
 - **Cost tracking** per message and monthly budget
-- **Keyboard shortcuts**: Ctrl+L (clear), Shift+N (new), Shift+E (export)
+- **Keyboard shortcuts**: Ctrl+L (clear), Ctrl+Shift+N (new), Ctrl+Shift+E (export)
 
 ---
 

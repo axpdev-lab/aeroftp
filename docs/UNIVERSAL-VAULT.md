@@ -1,6 +1,6 @@
 # Universal Credential Vault - Technical Documentation
 
-> AeroFTP v3.8.0 - May 2026
+> AeroFTP v4.0.x - Last Updated 2026-06-22
 
 ---
 
@@ -431,11 +431,13 @@ Export flow:
   → Read all entries from vault.db
   → Serialize to JSON with category metadata
   → Argon2id(password, random_salt) → backup KEK
-  → AES-256-GCM encrypt(KEK, payload) → ciphertext
-  → HMAC-SHA256(KEK, ciphertext) → integrity tag
-  → Write .aeroftp-keystore file:
-    [magic: "AEROBKP\0"] [version: 1] [salt: 32B]
-    [nonce: 12B] [hmac: 32B] [ciphertext]
+  → AES-256-GCM encrypt(KEK, payload) → authenticated ciphertext
+    (the GCM tag is the integrity check; no separate HMAC step)
+  → Write .aeroftp-keystore file (JSON envelope):
+    { version: 2, salt: <32B base64>, nonce: <12B base64>,
+      encrypted_payload: <base64 AES-256-GCM ciphertext+tag>,
+      compression: "zstd", metadata: { manifestVersion, scope,
+      exportDate, aeroftpVersion, entriesCount, categories } }
 ```
 
 ### Import
@@ -446,7 +448,7 @@ Import flow:
   → Verify magic bytes and version
   → User enters backup password
   → Argon2id(password, salt) → backup KEK
-  → Verify HMAC-SHA256 integrity
+  → AES-256-GCM authenticated decryption verifies integrity (tampering causes decrypt to fail)
   → AES-256-GCM decrypt → JSON payload
   → Parse categories and entry count summary
   → User selects merge strategy:
@@ -461,12 +463,12 @@ Import flow:
 | Parameter | Value |
 |-----------|-------|
 | KDF | Argon2id |
-| Memory | 64 MB (65536 KiB) |
+| Memory | 128 MiB (131072 KiB) |
 | Iterations | 3 |
 | Parallelism | 4 |
 | Salt | 32 random bytes |
 | Encryption | AES-256-GCM (12-byte nonce) |
-| Integrity | HMAC-SHA256 over ciphertext |
+| Integrity | AES-256-GCM authentication tag |
 | File extension | `.aeroftp-keystore` |
 
 ---
@@ -501,6 +503,9 @@ These threats are out of scope for any client-side credential manager, including
 |---------|---------|-------------|
 | v2.2.4 | **TOTP 2FA** | Optional second factor for master password (RFC 6238). QR code setup, 6-digit verification, exponential rate limiting |
 | v2.2.4 | **Remote Vault** | Open `.aerovault` files on remote servers - download, operate locally, "Save & Close" uploads back |
+| v4.0.8 (in preparation, not yet released) | **Change Mode (v2 <-> v3 repack)** | Re-pack an open vault between the v2 and v3 formats under a new security level, keeping the same password; available next to Change Password in the GUI and as `aeroftp vault change-mode` in the CLI |
+| v4.0.5 | **AeroVault v4 (v3 + Error Correction)** | The v3 container plus a Reed-Solomon error-correction wrapper for self-healing vaults that survive bit-rot and partial corruption |
+| v3.8.0 | **AeroVault v3 format** | Wrapper-stack container with content-defined chunking, per-chunk zstd compression, content-addressed chunks and a forward-compatible extension directory; see AEROVAULT-V3-SPEC.md |
 | v2.9.4 | **Recent Vaults** | SQLite WAL-backed vault history with last-opened tracking and one-click reopen |
 | v2.9.4 | **Folder Encryption** | Encrypt entire directories as AeroVault containers with recursive scan and progress events |
 | v2.9.2 | **OS File Association** | `.aerovault` double-click open on Linux (.deb/Snap), Windows (NSIS), and macOS. Deep-link handler with single-instance forwarding |

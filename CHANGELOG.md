@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.0.8] - Unreleased
+## [4.0.8] - 2026-06-22
 
 ### AeroProgress, Quick Connect Polish and AeroCrypt as a First-Class Profile
 
@@ -25,6 +25,8 @@ A flagship pass on the transfer and encryption progress experience (AeroProgress
 
 #### Changed
 - **Archive vault preset lowered to zstd -15**: a better ratio-to-speed balance for the Archive compression preset.
+- **Bundled `aerovault` crate updated to 0.6.3**: the shared AEROVAULT3 core gains streaming seal and extract (constant-memory on large vaults), progress callbacks behind the new live vault progress bar, and per-shard error-correction health, all from a single audited implementation published on crates.io and pinned byte-for-byte with the app via the cross-implementation golden.
+- **Dependencies panel now covers every direct crate**: the in-app Help then Dependencies check expanded from 49 to 115 monitored crates (all direct dependencies of the desktop app and CLI), grouped into Core, Protocols, Security, Archives, CLI & Tools, System and Plugins, each resolved from `Cargo.lock` and checked live against crates.io so an available update or a major bump is visible at a glance. `log` was advanced to 0.4.33 (a safe patch); `tauri`, `suppaftp` and `aes-kw` are deliberately held at their pinned versions for compatibility.
 
 #### Fixed
 - **AeroProgress: the rich transfer card is back**: the floating card was demoted to a bare percentage pill by an earlier Transfer Queue refactor. It now shows a lane per file (parallel uploads and downloads at once), live speed, ETA and bytes, a collapsible speed graph and a minimize-to-chip control, all from the real data the backend already reported.
@@ -42,6 +44,9 @@ A flagship pass on the transfer and encryption progress experience (AeroProgress
 - **Visual consistency**: the floating transfer card and several dialogs (host key, permissions, insecure-certificate warning, keystore import result) share the same corner radius as the Transfer Queue panel and the other app dialogs.
 - **Cryptomator vaults are interoperable with the real Cryptomator**: "Create Cryptomator Vault..." from a selection now encrypts the selected files and folders into the vault instead of leaving it empty, and AeroFTP vaults round-trip byte-for-byte with the official Cryptomator in both directions. Two format defects were fixed alongside the empty-vault one: directory-ID hashing (AES-SIV with zero associated-data components per RFC 5297, not one empty component) and encrypted-filename encoding (padded base64url, not unpadded), both of which a real Cryptomator requires. Proven bidirectionally against `cryptomator-cli` 0.6.2 (cryptofs 2.8.0) with sha256 byte-identity, and covered by new round-trip, edge-case and reverse-read tests. (@EhudKirsh, #322)
 - **AeroVault v2 extract now preserves the directory tree**: extracting a whole v2 vault wrote every nested file into the destination root, so two files that shared a name across different folders (`a/x.txt` and `b/x.txt`) silently overwrote each other. Extraction rebuilds the full tree, including empty directories, and the Change Mode re-pack relies on the same fix to round-trip a v2 vault byte-for-byte. Covered by stress tests over duplicate basenames, deep nesting, empty files and directories, unicode paths and both the Standard and cascade modes.
+- **Used-storage quota falls back to a full scan**: the My Servers used-storage figure now falls back to a breadth-first directory walk when a provider's recursive fast path fails, so the quota bar fills in instead of staying blank on servers that reject the deep listing. (#277, `e33923e1d`)
+- **OpenDrive large-file upload returns a clear error**: a single file over OpenDrive's 100 MB ceiling now surfaces a dedicated, non-retryable `FileTooLarge` instead of being retried against a 403 that will never succeed. (`d688c9c85`)
+- **Koofr upload 404 is non-retryable**: Koofr returns a non-standard 404 on some uploads; it is now mapped to a clear non-retryable error rather than being retried as a transient failure. (`ec951b0a2`)
 
 #### Security
 - **Quick Connect credential isolation**: on the multi-mode Filen / MEGA / FileLu forms the S3 "Secret Access Key" field and the API "Password" field are the same input relabeled per protocol, so switching protocol tabs leaked the account password into the S3 Secret Access Key on the first visit to a bridge tab (and it then got saved or sent). Each mode now starts blank on its first visit unless the group genuinely shares one credential set (Koofr / OpenDrive), and a per-mode snapshot restores typed keys on return. (@EhudKirsh, #215)
@@ -49,6 +54,8 @@ A flagship pass on the transfer and encryption progress experience (AeroProgress
 #### Documentation
 - **Build prerequisites in CONTRIBUTING**: documented the dev-setup prerequisites after a contributor hit two from-source native builds with no guidance, namely that `ssh2`'s vendored OpenSSL needs Perl on PATH and `whisper-rs-sys`'s bindgen needs libclang from LLVM. Added the core toolchain (Node 20+, Rust 1.85+), the per-platform native build tools, and a note that the first build compiles OpenSSL and whisper.cpp from source and can take several minutes. (@timint, #344)
 - **`ROADMAP.md` recalibrated against shipped code**: Streaming Scan moved to Just Shipped; Crypt, Compression and XChaCha20 promoted to In Flight; Crypt-as-profile marked implemented and merged; and the Share Link and Photo & Media descriptions aligned with what already ships.
+- **OpenDrive maximum single-file size documented**, distinct from the API upload chunk ceiling, so the new `FileTooLarge` error maps to a documented provider limit. (`1a994ac6b`)
+- **Public documentation audit**: the user-facing `README`, `ROADMAP`, `SECURITY`, `PRIVACY` and the `docs/` set were swept against the live code, correcting drifted facts (CLI command counts, rate limits, provider crypto and crate versions, tool names) and refreshing the self-hosted security report to the current release.
 
 #### Contributors
 

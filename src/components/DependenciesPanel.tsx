@@ -23,7 +23,7 @@ interface DependenciesPanelProps {
     onClose: () => void;
 }
 
-const CATEGORIES_ORDER = ['Core', 'Protocols', 'Security', 'Archives', 'Plugins'];
+const CATEGORIES_ORDER = ['Core', 'Protocols', 'Security', 'Archives', 'CLI & Tools', 'System', 'Plugins'];
 
 const compareSemver = (current: string, latest: string): 'up_to_date' | 'update_available' | 'major_update' => {
     // Strip pre-release suffixes (e.g. "4.0.0-beta.3" -> "4.0.0")

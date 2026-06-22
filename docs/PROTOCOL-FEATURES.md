@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 16 June 2026
-> Version: v4.0.5
+> Last Updated: 22 June 2026
+> Version: v4.0.x
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
@@ -332,6 +332,14 @@ Box exposes management and collaboration features beyond generic file operations
 | **Header integrity** | SHA-512 | SHA-256 |
 | **Cascade encryption** | Optional | No |
 | **Chunk size** | 64 KB | 32 KB |
+
+### AeroVault v3 / v4 (current default)
+
+AeroVault v3 (AEROVAULT3) is the current default container format on the CLI (`vault create` defaults to `--vault-version v3`; v1 and v2 remain selectable). It restructures the container as a content-addressed store: small files are packed together, the data is split with gear content-defined chunking, each chunk is compressed with zstd and then encrypted with AES-256-GCM-SIV, chunks are identified by a keyed-BLAKE3-128 id (deduplication), and an authenticated manifest plus block table indexes the result. See [AEROVAULT-V3-SPEC.md](AEROVAULT-V3-SPEC.md) for the full format.
+
+AeroVault v4 is v3 plus a Reed-Solomon error-correction wrapper (`reed-solomon-erasure`, K=10 / P=2 grid) for self-healing vaults; enable it with `vault create --error-correction` (alias `--ec`) and maintain it with `vault scrub` / `vault repair`.
+
+Existing vaults can be repacked between v2 and v3 (keeping the same password) via the GUI "Change Mode" action or the CLI `aeroftp-cli vault change-mode <path> --security-level <standard|advanced|paranoid|archive>` command, where `standard`/`advanced`/`paranoid` target v2 and `archive` targets v3. The AeroVault v3 engine and the v4 error-correction layer ship in the published `aerovault` crate, with the app keeping thin wrappers.
 
 ### Cryptomator (Format 8)
 
@@ -733,6 +741,12 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v3.8.0 | **AeroVault wrapper-stack hardening + telemetry + full CLI vault parity** (`aeroftp-cli vault` for v1/v2/v3), **storage quota override + recursive used-storage scan + compression columns**, **AeroRsync native streaming default ON + local-to-local** (256 MiB cap removed, batch SSH session reuse), **AeroFile Dual Panel Slice B + Slice C** (any-endpoint panes, FreeFileSync-style compare/mirror/backup/bisync) | Done |
 | v4.0.0 | **Shaped Graph Transfer (DAG): single production path** for every transfer surface (capability-aware shapes: native multipart fan-out, server-side copy, segmented Range downloads; rollout flags and the JoinSet orchestrator removed; 25+ CLI runtime knobs), **Multi-User Account Partition** (per-user encrypted vault partitions, boot-time Account Lock Screen, opt-in admin role, CLI `--user`) | Done |
 | v4.0.1 | **S3 native AssumeRole** ([#301](https://github.com/axpdev-lab/aeroftp/issues/301), hand-rolled STS client, MFA, auto-refresh before expiry), **AeroVault dual-audit remediation** (crate hardened to v3), **unified profile bridge** (rclone/WinSCP/FileZilla through one dispatcher), **Servers tab folded into the Backup interoperability table** ([#270](https://github.com/axpdev-lab/aeroftp/issues/270)), community wishlist batch ([#300](https://github.com/axpdev-lab/aeroftp/issues/300)), embedded-rsync (WD MyCloud) download integrity fix | Done |
+| v4.0.2 | **Cross-Machine Keystore Portability** and agent-facing polish | Done |
+| v4.0.3 | Restricted-filename clear-rejection groundwork, CLI polish, stability fixes | Done |
+| v4.0.4 | **Reversible restricted-filename encoding** (Box, Dropbox, Jottacloud, OpenDrive; rclone-compatible scheme), CLI `profiles -i` polish, lightweight CI checks job, tray suspend/resume + macOS Tahoe ([#290](https://github.com/axpdev-lab/aeroftp/issues/290)) + OAuth reconnect fixes | Done |
+| v4.0.5 | **AeroCrypt native encrypted overlay (format AECR)**, **AeroVault v4 (v3 + Reed-Solomon error correction)** with `vault create --error-correction`/`scrub`/`repair`, **interactive CLI TUI** (`aeroftp tui`, alpha) and `profiles -i` shell, **Server Groups** ([#320](https://github.com/axpdev-lab/aeroftp/issues/320)), **Filen/MEGAcmd file versioning** + CLI `versions`, CLI `compress`/`extract`, russh 0.61.2 SSH advisory clearance | Done |
+| v4.0.6 | **AeroVault crate convergence** (AEROVAULT3 engine + revision 4 Reed-Solomon moved into the published `aerovault` crate 0.6.0; app keeps thin wrappers), folder-upload skip/overwrite policy fix | Done |
+| v4.0.7 | **AeroVault dual blind security audit (grade A)** + full remediation, error correction converged onto `aerovault` crate 0.6.2, interrupted-seal temp/lock cleanup, reparse-point extract hardening, IntroHub My Servers layout fixes | Done |
 
 ### Planned
 

@@ -1,5 +1,7 @@
 # AeroVault v2 Format Specification
 
+> _Last updated: 2026-06-22_
+
 **Version**: 2.2
 **Status**: Stable
 **Date**: 2026-05-01
@@ -509,7 +511,7 @@ Backend error messages are mapped to user-friendly descriptions before display. 
 AeroVault Pro uses a modular frontend architecture:
 
 ```
-VaultPanel.tsx (~90 lines, thin orchestrator)
+VaultPanel.tsx (orchestrator, ~200 lines)
   ├── useVaultState.ts (hook: 25+ state variables, all async logic, recent vaults)
   ├── VaultHome.tsx (home screen, recent vaults list, quick actions)
   ├── VaultCreate.tsx (create form, folder preview, password strength bar)
@@ -769,7 +771,7 @@ For a legacy version-2 vault the AAD is the 4-byte chunk index alone: `2a 00 00 
 
 | Language | Implementation | Status |
 |----------|---------------|--------|
-| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.4.2) |
+| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.6.2; the crate also carries the AeroVault v3 core since 0.6.0) |
 | **Rust** | [AeroFTP Desktop](https://github.com/axpdev-lab/aeroftp) (GUI integration) | Production |
 | **Java** | [AeroFTP Mobile](https://github.com/axpdev-lab/aeroftp-mobile) `VaultPlugin.java` | Production |
 
