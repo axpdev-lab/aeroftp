@@ -1,10 +1,10 @@
-# AeroFTP
-
-> _Last updated: 2026-06-22_
-
 <p align="center">
   <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/aeroftp_banner.png" alt="AeroFTP — FTP-First. Multi-Protocol. AI-Powered. Privacy-Enhanced." width="100%">
 </p>
+
+# AeroFTP
+
+> _Last updated: 2026-06-22_
 
 <p align="center">
   The modern FTP client that grew into a complete file management platform. Multi-protocol, 6 integrated product modules, 47 languages, one app.
