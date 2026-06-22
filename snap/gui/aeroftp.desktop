@@ -7,6 +7,6 @@ Terminal=false
 Type=Application
 Categories=Network;FileTransfer;Utility;
 Keywords=ftp;sftp;transfer;file;sync;
-MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;
+MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;application/x-aerozip;
 StartupNotify=true
 StartupWMClass=AeroFTP

@@ -45,7 +45,8 @@
         "resources": [
             "icons/mimetypes/aerovault.ico",
             "icons/mimetypes/aeroftp.ico",
-            "icons/mimetypes/aeroftp-keystore.ico"
+            "icons/mimetypes/aeroftp-keystore.ico",
+            "icons/mimetypes/aerozip.ico"
         ],
         "fileAssociations": [
             {
@@ -59,6 +60,10 @@
             {
                 "ext": ["aeroftp-keystore"],
                 "contentTypes": ["application/x-aeroftp-keystore"]
+            },
+            {
+                "ext": ["aerozip"],
+                "contentTypes": ["application/x-aerozip"]
             }
         ],
         "linux": {
@@ -106,7 +111,16 @@
                     "/usr/share/icons/hicolor/128x128/mimetypes/application-x-aeroftp-keystore.png": "icons/mimetypes/application-x-aeroftp-keystore-128.png",
                     "/usr/share/icons/hicolor/256x256/mimetypes/application-x-aeroftp-keystore.png": "icons/mimetypes/application-x-aeroftp-keystore-256.png",
                     "/usr/share/icons/hicolor/512x512/mimetypes/application-x-aeroftp-keystore.png": "icons/mimetypes/application-x-aeroftp-keystore-512.png",
-                    "/usr/share/icons/hicolor/scalable/mimetypes/application-x-aeroftp-keystore.svg": "icons/mimetypes/application-x-aeroftp-keystore.svg"
+                    "/usr/share/icons/hicolor/scalable/mimetypes/application-x-aeroftp-keystore.svg": "icons/mimetypes/application-x-aeroftp-keystore.svg",
+                    "/usr/share/icons/hicolor/16x16/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-16.png",
+                    "/usr/share/icons/hicolor/24x24/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-24.png",
+                    "/usr/share/icons/hicolor/32x32/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-32.png",
+                    "/usr/share/icons/hicolor/48x48/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-48.png",
+                    "/usr/share/icons/hicolor/64x64/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-64.png",
+                    "/usr/share/icons/hicolor/128x128/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-128.png",
+                    "/usr/share/icons/hicolor/256x256/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-256.png",
+                    "/usr/share/icons/hicolor/512x512/mimetypes/application-x-aerozip.png": "icons/mimetypes/application-x-aerozip-512.png",
+                    "/usr/share/icons/hicolor/scalable/mimetypes/application-x-aerozip.svg": "icons/mimetypes/application-x-aerozip.svg"
                 },
                 "postInstallScript": "scripts/deb-postinst.sh",
                 "postRemoveScript": "scripts/linux-postrm.sh"
