@@ -2919,7 +2919,8 @@
             "done": "Xong",
             "encryptingSelection": "Đang mã hóa các mục đã chọn...",
             "ingestSkipped": "Đã tạo kho, nhưng không thể thêm một số mục:",
-            "selectionInfo": "{count} mục sẽ được mã hóa vào kho"
+            "selectionInfo": "{count} mục sẽ được mã hóa vào kho",
+            "decrypting": "Đang giải mã…"
         },
         "compress": {
             "title": "Nén tệp",

@@ -2919,7 +2919,8 @@
             "done": "Ferdig",
             "encryptingSelection": "Krypterer valgte elementer...",
             "ingestSkipped": "Hvelvet ble opprettet, men noen elementer kunne ikke legges til:",
-            "selectionInfo": "{count} element(er) vil bli kryptert i hvelvet"
+            "selectionInfo": "{count} element(er) vil bli kryptert i hvelvet",
+            "decrypting": "Dekrypterer…"
         },
         "compress": {
             "title": "Komprimer filer",

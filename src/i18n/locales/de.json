@@ -2919,7 +2919,8 @@
             "done": "Fertig",
             "encryptingSelection": "Ausgewählte Elemente werden verschlüsselt...",
             "ingestSkipped": "Tresor erstellt, aber einige Elemente konnten nicht hinzugefügt werden:",
-            "selectionInfo": "{count} Element(e) werden in den Tresor verschlüsselt"
+            "selectionInfo": "{count} Element(e) werden in den Tresor verschlüsselt",
+            "decrypting": "Entschlüsseln…"
         },
         "compress": {
             "title": "Dateien komprimieren",

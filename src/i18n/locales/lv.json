@@ -2919,7 +2919,8 @@
             "done": "Gatavs",
             "encryptingSelection": "Notiek atlasīto vienumu šifrēšana...",
             "ingestSkipped": "Glabātava izveidota, taču dažus vienumus neizdevās pievienot:",
-            "selectionInfo": "{count} vienums tiks šifrēts glabātavā"
+            "selectionInfo": "{count} vienums tiks šifrēts glabātavā",
+            "decrypting": "Atšifrē…"
         },
         "compress": {
             "title": "Saspiest failus",

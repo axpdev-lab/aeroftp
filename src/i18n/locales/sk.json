@@ -2919,7 +2919,8 @@
             "done": "Hotovo",
             "encryptingSelection": "Šifrovanie vybraných položiek...",
             "ingestSkipped": "Trezor bol vytvorený, ale niektoré položky sa nepodarilo pridať:",
-            "selectionInfo": "{count} položiek bude zašifrovaných do trezora"
+            "selectionInfo": "{count} položiek bude zašifrovaných do trezora",
+            "decrypting": "Dešifrovanie…"
         },
         "compress": {
             "title": "Komprimovat subory",

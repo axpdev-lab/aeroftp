@@ -2919,7 +2919,8 @@
             "done": "Selesai",
             "encryptingSelection": "Menyulitkan item yang dipilih...",
             "ingestSkipped": "Bilik kebal dicipta, tetapi sesetengah item tidak dapat ditambah:",
-            "selectionInfo": "{count} item akan disulitkan ke dalam bilik kebal"
+            "selectionInfo": "{count} item akan disulitkan ke dalam bilik kebal",
+            "decrypting": "Menyahsulit…"
         },
         "compress": {
             "title": "Mampatkan Fail",

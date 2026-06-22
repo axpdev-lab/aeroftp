@@ -2919,7 +2919,8 @@
             "done": "Eginda",
             "encryptingSelection": "Hautatutako elementuak enkriptatzen...",
             "ingestSkipped": "Kutxa gotorra sortu da, baina elementu batzuk ezin izan dira gehitu:",
-            "selectionInfo": "{count} elementu enkriptatuko dira kutxa gotorrean"
+            "selectionInfo": "{count} elementu enkriptatuko dira kutxa gotorrean",
+            "decrypting": "Deszifratzen…"
         },
         "compress": {
             "title": "Konprimitu fitxategiak",

@@ -282,8 +282,14 @@ pub async fn vault_extract_entry(
     entry_name: String,
     output_path: String,
 ) -> Result<String, String> {
-    crate::archive_browse::extract_zip_entry(vault_path, entry_name, output_path, Some(password))
-        .await
+    crate::archive_browse::extract_zip_entry_impl(
+        vault_path,
+        entry_name,
+        output_path,
+        Some(password),
+        None,
+    )
+    .await
 }
 
 /// Change vault password (decrypt all, re-encrypt with new password)

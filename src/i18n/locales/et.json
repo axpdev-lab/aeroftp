@@ -2919,7 +2919,8 @@
             "done": "Valmis",
             "encryptingSelection": "Valitud üksuste krüpteerimine...",
             "ingestSkipped": "Hoidla loodi, kuid mõnda üksust ei õnnestunud lisada:",
-            "selectionInfo": "{count} üksust krüpteeritakse hoidlasse"
+            "selectionInfo": "{count} üksust krüpteeritakse hoidlasse",
+            "decrypting": "Dekrüpteerimine…"
         },
         "compress": {
             "title": "Paki failid",

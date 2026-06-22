@@ -2919,7 +2919,8 @@
             "done": "Fet",
             "encryptingSelection": "S'estan xifrant els elements seleccionats...",
             "ingestSkipped": "S'ha creat la caixa forta, però alguns elements no s'han pogut afegir:",
-            "selectionInfo": "{count} element(s) es xifraran a la caixa forta"
+            "selectionInfo": "{count} element(s) es xifraran a la caixa forta",
+            "decrypting": "S'està desxifrant…"
         },
         "compress": {
             "title": "Comprimir fitxers",

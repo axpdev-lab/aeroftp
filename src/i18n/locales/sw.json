@@ -2919,7 +2919,8 @@
             "done": "Imekamilika",
             "encryptingSelection": "Inasimba vipengele vilivyochaguliwa...",
             "ingestSkipped": "Hazina imeundwa, lakini baadhi ya vipengele havikuweza kuongezwa:",
-            "selectionInfo": "Vipengele {count} vitasimbwa kwenye hazina"
+            "selectionInfo": "Vipengele {count} vitasimbwa kwenye hazina",
+            "decrypting": "Inasimbua…"
         },
         "compress": {
             "title": "Bana Faili",

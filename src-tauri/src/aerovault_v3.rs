@@ -783,11 +783,47 @@ pub async fn aerovz_extract_entry(
     Ok(extracted.to_string_lossy().to_string())
 }
 
+/// Throttled `(bytes_done, bytes_total)` -> `vault_progress` emitter for the crate's
+/// `extract_all_with_progress`. Gated to >=10 MB extracts (matches the archive lane)
+/// and to the final 100% frame, so the VaultBrowse bar appears for substantial
+/// extracts and always closes at 100%. The crate invokes the callback after each file
+/// is written (per-file granularity), so a single huge file updates only at completion;
+/// no synthetic 0% frame is emitted, so the spinner covers the pre-first-file window
+/// rather than a determinate bar stuck at 0%.
+fn vault_extract_progress_emitter(app: tauri::AppHandle) -> impl FnMut(u64, u64) + Send {
+    let mut last_emit = Instant::now();
+    let mut last_pct: i64 = -1;
+    move |done: u64, total: u64| {
+        if total < crate::archive_progress::PROGRESS_THRESHOLD_BYTES {
+            return;
+        }
+        let done = done.min(total);
+        let pct = done.saturating_mul(100).checked_div(total).unwrap_or(100) as i64;
+        let final_frame = done >= total;
+        if final_frame
+            || last_emit.elapsed().as_millis() >= 150
+            || pct.saturating_sub(last_pct) >= 2
+        {
+            let _ = app.emit(
+                "vault_progress",
+                serde_json::json!({ "percentage": pct, "transferred": done, "total": total }),
+            );
+            last_emit = Instant::now();
+            last_pct = pct;
+        }
+    }
+}
+
 #[tauri::command]
-pub async fn aerovz_extract_all(vault_path: String, dest_path: String) -> Result<u64, String> {
+pub async fn aerovz_extract_all(
+    vault_path: String,
+    dest_path: String,
+    app: tauri::AppHandle,
+) -> Result<u64, String> {
+    let mut emit = vault_extract_progress_emitter(app);
     tokio::task::spawn_blocking(move || -> Result<u64, String> {
         let vault = open_aerovz_archive(Path::new(&vault_path))?;
-        aerovault::v3::VaultV3::extract_all(&vault, Path::new(&dest_path))
+        aerovault::v3::VaultV3::extract_all_with_progress(&vault, Path::new(&dest_path), &mut emit)
     })
     .await
     .map_err(|e| format!("archive extract task failed: {e}"))?
@@ -1803,10 +1839,32 @@ pub async fn vault_v3_extract_all(
     vault_path: String,
     password: String,
     dest_path: String,
+    app: tauri::AppHandle,
+) -> Result<u64, String> {
+    vault_v3_extract_all_impl(vault_path, password, dest_path, Some(app)).await
+}
+
+/// Implementation shared by the GUI command (`Some(app)` -> live `vault_progress`
+/// bar) and the headless CLI extract path (`None` -> no events).
+pub async fn vault_v3_extract_all_impl(
+    vault_path: String,
+    password: String,
+    dest_path: String,
+    app: Option<tauri::AppHandle>,
 ) -> Result<u64, String> {
     tokio::task::spawn_blocking(move || -> Result<u64, String> {
         let vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
-        aerovault::v3::VaultV3::extract_all(&vault, Path::new(&dest_path))
+        match app {
+            Some(a) => {
+                let mut emit = vault_extract_progress_emitter(a);
+                aerovault::v3::VaultV3::extract_all_with_progress(
+                    &vault,
+                    Path::new(&dest_path),
+                    &mut emit,
+                )
+            }
+            None => aerovault::v3::VaultV3::extract_all(&vault, Path::new(&dest_path)),
+        }
     })
     .await
     .map_err(|e| format!("vault extract task failed: {e}"))?

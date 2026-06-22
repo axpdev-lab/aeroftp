@@ -2919,7 +2919,8 @@
             "done": "Gotovo",
             "encryptingSelection": "Šifriranje odabranih stavki...",
             "ingestSkipped": "Trezor je stvoren, ali neke stavke nije bilo moguće dodati:",
-            "selectionInfo": "{count} stavki bit će šifrirano u trezor"
+            "selectionInfo": "{count} stavki bit će šifrirano u trezor",
+            "decrypting": "Dešifriranje…"
         },
         "compress": {
             "title": "Sažmi datoteke",

@@ -2919,7 +2919,8 @@
             "done": "Færdig",
             "encryptingSelection": "Krypterer valgte elementer...",
             "ingestSkipped": "Boksen blev oprettet, men nogle elementer kunne ikke tilføjes:",
-            "selectionInfo": "{count} element(er) vil blive krypteret i boksen"
+            "selectionInfo": "{count} element(er) vil blive krypteret i boksen",
+            "decrypting": "Dekrypterer…"
         },
         "compress": {
             "title": "Komprimer filer",

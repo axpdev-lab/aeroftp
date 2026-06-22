@@ -2919,7 +2919,8 @@
             "done": "Klar",
             "encryptingSelection": "Krypterar valda objekt...",
             "ingestSkipped": "Valvet skapades, men vissa objekt kunde inte läggas till:",
-            "selectionInfo": "{count} objekt kommer att krypteras till valvet"
+            "selectionInfo": "{count} objekt kommer att krypteras till valvet",
+            "decrypting": "Dekrypterar…"
         },
         "compress": {
             "title": "Komprimera filer",

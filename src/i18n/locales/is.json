@@ -2919,7 +2919,8 @@
             "done": "Lokið",
             "encryptingSelection": "Dulkóða valin atriði...",
             "ingestSkipped": "Hvelfingin var búin til, en ekki var hægt að bæta við sumum atriðum:",
-            "selectionInfo": "{count} atriði verða dulkóðuð í hvelfinguna"
+            "selectionInfo": "{count} atriði verða dulkóðuð í hvelfinguna",
+            "decrypting": "Afkóðun…"
         },
         "compress": {
             "title": "Þjappa Skrár",

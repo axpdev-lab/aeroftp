@@ -2919,7 +2919,8 @@
             "done": "Valmis",
             "encryptingSelection": "Salataan valittuja kohteita...",
             "ingestSkipped": "Holvi luotiin, mutta joitakin kohteita ei voitu lisätä:",
-            "selectionInfo": "{count} kohdetta salataan holviin"
+            "selectionInfo": "{count} kohdetta salataan holviin",
+            "decrypting": "Puretaan salausta…"
         },
         "compress": {
             "title": "Pakkaa tiedostot",

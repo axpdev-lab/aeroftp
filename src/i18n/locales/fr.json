@@ -2919,7 +2919,8 @@
             "done": "Terminé",
             "encryptingSelection": "Chiffrement des éléments sélectionnés...",
             "ingestSkipped": "Coffre créé, mais certains éléments n'ont pas pu être ajoutés :",
-            "selectionInfo": "{count} élément(s) seront chiffrés dans le coffre"
+            "selectionInfo": "{count} élément(s) seront chiffrés dans le coffre",
+            "decrypting": "Déchiffrement…"
         },
         "compress": {
             "title": "Compresser des fichiers",

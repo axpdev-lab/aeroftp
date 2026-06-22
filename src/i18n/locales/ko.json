@@ -2919,7 +2919,8 @@
             "done": "완료",
             "encryptingSelection": "선택한 항목을 암호화하는 중...",
             "ingestSkipped": "보관소가 생성되었지만 일부 항목을 추가할 수 없습니다:",
-            "selectionInfo": "{count}개 항목이 보관소에 암호화됩니다"
+            "selectionInfo": "{count}개 항목이 보관소에 암호화됩니다",
+            "decrypting": "복호화 중…"
         },
         "compress": {
             "title": "파일 압축",

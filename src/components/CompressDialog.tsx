@@ -7,6 +7,10 @@ import { Archive, Lock, Eye, EyeOff, X, File, Folder, Loader2, ChevronDown, Chev
 import { useTranslation } from '../i18n';
 import { formatBytes as formatSize } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useArchiveProgress } from '../hooks/useArchiveProgress';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { TransferProgressBar } from './TransferProgressBar';
 import './CompressDialog.css';
 
 type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2';
@@ -106,6 +110,12 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const [showPassword, setShowPassword] = useState(false);
     const [compressing, setCompressing] = useState(false);
     const [showFileList, setShowFileList] = useState(false);
+    // Real byte-level progress (>=10MB ops only); null for small/instant compressions.
+    const progress = useArchiveProgress(compressing);
+    // Lock the modal while compressing: inert backdrop + confirm on X, so a stray
+    // click can't abandon an in-flight big-file compression (same pattern as AeroSync,
+    // CrossProfile, AeroVault).
+    const guarded = useGuardedClose({ guard: compressing ? 'busy' : null, onClose });
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -155,7 +165,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => { if (e.target === e.currentTarget && !compressing) onClose(); }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}>
             <div
                 {...modalDrag.panelProps}
                 className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
@@ -167,7 +177,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         <Archive size={20} style={{ color: 'var(--compress-accent)' }} />
                         <span className="font-semibold text-base">{t('compress.title') || 'Compress Files'}</span>
                     </div>
-                    <button onClick={onClose} disabled={compressing} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--compress-text-secondary)' }}
+                    <button onClick={guarded.requestClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--compress-text-secondary)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-bg-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                         title={t('common.close')}>
@@ -330,9 +340,19 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                             <span className="text-sm font-medium">{t('compress.compressing') || 'Compressing...'}</span>
                             <span className="text-xs ml-auto" style={{ color: 'var(--compress-text-muted)' }}>{formatInfo.label}</span>
                         </div>
-                        <div className="compress-progress-bar">
-                            <div className="bar" />
-                        </div>
+                        {/* Real byte-true bar appears only for >=10MB ops; small ones are
+                            instant and show just the spinner above (no fake bar). */}
+                        {progress && (
+                            <TransferProgressBar
+                                percentage={progress.percentage}
+                                transferredBytes={progress.transferred}
+                                totalBytes={progress.total}
+                                speedBps={progress.speedBps}
+                                etaSeconds={progress.etaSeconds}
+                                variant={progress.indeterminate ? 'indeterminate' : 'gradient'}
+                                size="lg"
+                            />
+                        )}
                     </div>
                 ) : (
                     <div className="flex justify-end gap-2.5 px-5 py-3.5 border-t" style={{ borderColor: 'var(--compress-border)' }}>
@@ -359,6 +379,13 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                     </div>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

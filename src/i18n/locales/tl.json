@@ -2919,7 +2919,8 @@
             "done": "Tapos na",
             "encryptingSelection": "Ine-encrypt ang mga napiling item...",
             "ingestSkipped": "Nalikha ang vault, ngunit may ilang item na hindi naidagdag:",
-            "selectionInfo": "{count} item ang ie-encrypt sa vault"
+            "selectionInfo": "{count} item ang ie-encrypt sa vault",
+            "decrypting": "Dini-decrypt…"
         },
         "compress": {
             "title": "I-compress ang mga File",

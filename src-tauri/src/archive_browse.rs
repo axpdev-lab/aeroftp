@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::archive_progress::{phase, ArchiveProgress, ProgressReader};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 
@@ -124,6 +125,19 @@ pub async fn extract_zip_entry(
     entry_name: String,
     output_path: String,
     password: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    extract_zip_entry_impl(archive_path, entry_name, output_path, password, Some(app)).await
+}
+
+/// Implementation shared by the GUI command (passes `Some(app)` for the live progress
+/// bar) and internal Rust callers such as the legacy v1 vault extract (`None`).
+pub(crate) async fn extract_zip_entry_impl(
+    archive_path: String,
+    entry_name: String,
+    output_path: String,
+    password: Option<String>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     use std::fs::{self, File};
     use std::io::Read;
@@ -165,11 +179,16 @@ pub async fn extract_zip_entry(
     // stream that expands past what it declared), defusing a deflate bomb that
     // would otherwise stream unbounded data to disk (CLAUDE-AV-015).
     let declared = entry.size();
-    let written = match std::io::copy(&mut entry.by_ref().take(declared + 1), &mut outfile) {
-        Ok(n) => n,
-        Err(e) => {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(format!("Failed to extract entry: {}", e));
+    let mut progress = ArchiveProgress::for_optional_app(app, phase::EXTRACTING, declared);
+    let written = {
+        let mut limited = entry.by_ref().take(declared + 1);
+        let mut counted = ProgressReader::new(&mut limited, &mut progress);
+        match std::io::copy(&mut counted, &mut outfile) {
+            Ok(n) => n,
+            Err(e) => {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(format!("Failed to extract entry: {}", e));
+            }
         }
     };
     if written > declared {
@@ -182,6 +201,7 @@ pub async fn extract_zip_entry(
     drop(outfile);
     fs::rename(&tmp_path, out_path)
         .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
+    progress.finish();
 
     Ok(output_path)
 }
@@ -290,6 +310,7 @@ pub async fn extract_7z_entry(
     entry_name: String,
     output_path: String,
     password: Option<String>,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
     use sevenz_rust::*;
     use std::fs::{self, File};
@@ -331,8 +352,20 @@ pub async fn extract_7z_entry(
         .for_each_entries(|entry, reader| {
             if entry.name() == entry_name {
                 found = true;
+                // The entry's uncompressed size is the honest denominator; create the
+                // emitter here where it is known, count bytes streamed to disk.
+                let mut progress =
+                    ArchiveProgress::for_app(app.clone(), phase::EXTRACTING, entry.size());
                 let mut outfile = File::create(&tmp_path)?;
-                std::io::copy(reader, &mut outfile)?;
+                {
+                    let mut counted = ProgressReader::new(reader, &mut progress);
+                    std::io::copy(&mut counted, &mut outfile)?;
+                }
+                progress.finish();
+                // Stop iterating once our entry is extracted: continuing would keep
+                // decoding the rest of the solid stream for nothing, and a later-entry
+                // error would surface as a failure AFTER the bar already hit 100%.
+                return Ok(false);
             }
             Ok(true)
         })
@@ -418,6 +451,7 @@ pub async fn extract_tar_entry(
     archive_path: String,
     entry_name: String,
     output_path: String,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
     use std::fs::{self, File};
 
@@ -450,16 +484,22 @@ pub async fn extract_tar_entry(
 
         if path == entry_name {
             // Atomic write: extract to .tmp then rename to prevent partial files
+            let total = entry.header().size().unwrap_or(0);
+            let mut progress = ArchiveProgress::for_app(app, phase::EXTRACTING, total);
             let tmp_path = out_path.with_extension("aerotmp");
             let mut outfile =
                 File::create(&tmp_path).map_err(|e| format!("Failed to create file: {}", e))?;
-            if let Err(e) = std::io::copy(&mut entry, &mut outfile) {
-                let _ = fs::remove_file(&tmp_path);
-                return Err(format!("Failed to extract: {}", e));
+            {
+                let mut counted = ProgressReader::new(&mut entry, &mut progress);
+                if let Err(e) = std::io::copy(&mut counted, &mut outfile) {
+                    let _ = fs::remove_file(&tmp_path);
+                    return Err(format!("Failed to extract: {}", e));
+                }
             }
             drop(outfile);
             fs::rename(&tmp_path, out_path)
                 .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
+            progress.finish();
             return Ok(output_path);
         }
     }
@@ -497,6 +537,7 @@ pub async fn extract_rar_entry(
     entry_name: String,
     output_path: String,
     password: Option<String>,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
@@ -532,9 +573,14 @@ pub async fn extract_rar_entry(
     {
         let entry_path = header.entry().filename.to_string_lossy().to_string();
         if entry_path == entry_name {
+            // RAR extracts in a single opaque call (no byte hook), so show an honest
+            // indeterminate bar rather than a faked percentage (HANDOFF section 3.6).
+            let total = header.entry().unpacked_size;
+            let mut progress = ArchiveProgress::indeterminate_for_app(app, phase::EXTRACTING, total);
             header
                 .extract_to(&output_path)
                 .map_err(|e| format!("Failed to extract entry: {}", e))?;
+            progress.finish();
             return Ok(output_path);
         } else {
             archive = header

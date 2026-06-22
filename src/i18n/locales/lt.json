@@ -2919,7 +2919,8 @@
             "done": "Atlikta",
             "encryptingSelection": "Šifruojami pasirinkti elementai...",
             "ingestSkipped": "Saugykla sukurta, bet kai kurių elementų nepavyko pridėti:",
-            "selectionInfo": "{count} element(ai) bus užšifruoti į saugyklą"
+            "selectionInfo": "{count} element(ai) bus užšifruoti į saugyklą",
+            "decrypting": "Iššifruojama…"
         },
         "compress": {
             "title": "Suspausti failus",

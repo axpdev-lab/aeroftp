@@ -2919,7 +2919,8 @@
             "done": "Kész",
             "encryptingSelection": "Kijelölt elemek titkosítása...",
             "ingestSkipped": "A széf létrejött, de néhány elemet nem sikerült hozzáadni:",
-            "selectionInfo": "{count} elem titkosítva lesz a széfbe"
+            "selectionInfo": "{count} elem titkosítva lesz a széfbe",
+            "decrypting": "Visszafejtés…"
         },
         "compress": {
             "title": "Fájlok tömörítése",

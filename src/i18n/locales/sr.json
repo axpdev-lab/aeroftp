@@ -2919,7 +2919,8 @@
             "done": "Готово",
             "encryptingSelection": "Шифровање изабраних ставки...",
             "ingestSkipped": "Сеф је направљен, али неке ставке није било могуће додати:",
-            "selectionInfo": "{count} ставки ће бити шифровано у сеф"
+            "selectionInfo": "{count} ставки ће бити шифровано у сеф",
+            "decrypting": "Дешифровање…"
         },
         "compress": {
             "title": "Kompresuj fajlove",

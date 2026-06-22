@@ -1560,7 +1560,8 @@
             "done": "Done",
             "encryptingSelection": "Encrypting selected items...",
             "ingestSkipped": "Vault created, but some items could not be added:",
-            "selectionInfo": "{count} item(s) will be encrypted into the vault"
+            "selectionInfo": "{count} item(s) will be encrypted into the vault",
+            "decrypting": "Decrypting…"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",

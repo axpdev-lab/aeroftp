@@ -2884,7 +2884,8 @@
             "done": "完了",
             "encryptingSelection": "選択した項目を暗号化しています...",
             "ingestSkipped": "ボルトを作成しましたが、一部の項目を追加できませんでした:",
-            "selectionInfo": "{count} 個の項目がボルトに暗号化されます"
+            "selectionInfo": "{count} 個の項目がボルトに暗号化されます",
+            "decrypting": "復号しています…"
         },
         "compress": {
             "title": "ファイルを圧縮",

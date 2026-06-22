@@ -2919,7 +2919,8 @@
             "done": "Končano",
             "encryptingSelection": "Šifriranje izbranih elementov...",
             "ingestSkipped": "Trezor je ustvarjen, vendar nekaterih elementov ni bilo mogoče dodati:",
-            "selectionInfo": "{count} elementov bo šifriranih v trezor"
+            "selectionInfo": "{count} elementov bo šifriranih v trezor",
+            "decrypting": "Dešifriranje…"
         },
         "compress": {
             "title": "Stisni datoteke",

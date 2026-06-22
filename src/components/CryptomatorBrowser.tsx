@@ -9,6 +9,10 @@ import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useArchiveProgress } from '../hooks/useArchiveProgress';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { TransferProgressBar } from './TransferProgressBar';
 import { useModalFileView } from './modalview/useModalFileView';
 import { ModalViewToolbar } from './modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
@@ -47,8 +51,13 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const [entries, setEntries] = useState<CryptomatorEntry[]>([]);
     const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ name: t('cryptomator.root'), dirId: '' }]);
     const [loading, setLoading] = useState(false);
+    const [decrypting, setDecrypting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    // Real byte-true decrypt progress (>=10MB plaintext only).
+    const progress = useArchiveProgress(decrypting);
+    // Lock the modal during a decrypt so a reflexive X can't abandon a big-file decrypt.
+    const guarded = useGuardedClose({ guard: decrypting ? 'busy' : null, onClose });
 
     const currentDirId = breadcrumb[breadcrumb.length - 1].dirId;
 
@@ -123,6 +132,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         if (!savePath) return;
 
         setLoading(true);
+        setDecrypting(true);
         setError(null);
         try {
             await invoke('cryptomator_decrypt_file', {
@@ -136,6 +146,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
             setError(String(e));
         } finally {
             setLoading(false);
+            setDecrypting(false);
         }
     };
 
@@ -213,13 +224,27 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                 <Lock size={12} /> {t('cryptomator.lock')}
                             </button>
                         )}
-                        <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
+                        <button onClick={guarded.requestClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                     </div>
                 </div>
 
                 {/* Error / Success */}
                 {error && <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm">{error}</div>}
                 {success && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm">{success}</div>}
+                {/* Real byte-true decrypt bar; appears only for >=10MB plaintext. */}
+                {progress && (
+                    <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+                        <TransferProgressBar
+                            percentage={progress.percentage}
+                            transferredBytes={progress.transferred}
+                            totalBytes={progress.total}
+                            speedBps={progress.speedBps}
+                            etaSeconds={progress.etaSeconds}
+                            filename={t('cryptomator.decrypting') || 'Decrypting'}
+                            size="lg"
+                        />
+                    </div>
+                )}
 
                 {/* Unlock form */}
                 {!vaultInfo && (
@@ -390,6 +415,13 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                     </>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

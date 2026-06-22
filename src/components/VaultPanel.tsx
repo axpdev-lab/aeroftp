@@ -15,6 +15,8 @@ import { VaultReceipt } from './vault/VaultReceipt';
 import type { AeroVaultOverlaySession } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useActivityLog } from '../hooks/useActivityLog';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface VaultPanelProps {
     onClose: () => void;
@@ -45,6 +47,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         onClose,
         onActivityLog: (message, details) => log('SUCCESS', message, 'success', details),
     });
+
+    // Lock the modal while a vault operation runs (create/add/extract): the backdrop
+    // is inert and the X routes through a confirm, so a stray click or reflexive close
+    // can never abandon an in-flight big-file op (the user would lose track of it).
+    const guarded = useGuardedClose({ guard: state.loading ? 'busy' : null, onClose });
 
     const loggedReportRef = React.useRef<unknown>(null);
     React.useEffect(() => {
@@ -156,7 +163,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
             role="dialog"
             aria-modal="true"
             aria-label="AeroVault"
-            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}
         >
             <div
                 {...modalDrag.panelProps}
@@ -182,7 +189,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             </span>
                         )}
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
+                    <button onClick={guarded.requestClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                 </div>
 
                 {/* Error / Success */}
@@ -207,6 +214,13 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     <VaultReceipt report={state.lastReport} t={t} onClose={state.clearReport} />
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

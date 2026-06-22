@@ -3254,7 +3254,8 @@
             "done": "Fatto",
             "encryptingSelection": "Crittografia degli elementi selezionati in corso...",
             "ingestSkipped": "Cassaforte creata, ma non è stato possibile aggiungere alcuni elementi:",
-            "selectionInfo": "{count} elemento/i verranno crittografati nella cassaforte"
+            "selectionInfo": "{count} elemento/i verranno crittografati nella cassaforte",
+            "decrypting": "Decrittazione…"
         },
         "batchRename": {
             "title": "Rinomina Multipla",

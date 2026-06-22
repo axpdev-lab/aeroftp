@@ -2919,7 +2919,8 @@
             "done": "Gotowe",
             "encryptingSelection": "Szyfrowanie wybranych elementów...",
             "ingestSkipped": "Sejf utworzony, ale niektórych elementów nie udało się dodać:",
-            "selectionInfo": "{count} element(ów) zostanie zaszyfrowanych w sejfie"
+            "selectionInfo": "{count} element(ów) zostanie zaszyfrowanych w sejfie",
+            "decrypting": "Odszyfrowywanie…"
         },
         "compress": {
             "title": "Kompresuj pliki",

@@ -2919,7 +2919,8 @@
             "done": "Tamam",
             "encryptingSelection": "Seçili öğeler şifreleniyor...",
             "ingestSkipped": "Kasa oluşturuldu, ancak bazı öğeler eklenemedi:",
-            "selectionInfo": "{count} öğe kasaya şifrelenecek"
+            "selectionInfo": "{count} öğe kasaya şifrelenecek",
+            "decrypting": "Şifre çözülüyor…"
         },
         "compress": {
             "title": "Dosyaları Sıkıştır",

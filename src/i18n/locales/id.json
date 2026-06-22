@@ -2919,7 +2919,8 @@
             "done": "Selesai",
             "encryptingSelection": "Mengenkripsi item yang dipilih...",
             "ingestSkipped": "Brankas dibuat, tetapi beberapa item tidak dapat ditambahkan:",
-            "selectionInfo": "{count} item akan dienkripsi ke dalam brankas"
+            "selectionInfo": "{count} item akan dienkripsi ke dalam brankas",
+            "decrypting": "Mendekripsi…"
         },
         "compress": {
             "title": "Kompres File",

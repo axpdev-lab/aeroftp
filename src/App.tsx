@@ -11824,6 +11824,43 @@ interface UpdateVerificationInfo {
         icon: <Archive size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
+      // .aerozip: Extract Here / Extract to Folder (plaintext lane, no password)
+      ...(isAeroVaultArchiveFile ? [{
+        label: t('contextMenu.extractSubmenu'),
+        icon: <FolderOpen size={14} />,
+        action: () => { },
+        children: [
+          {
+            label: t('contextMenu.extractHere'),
+            icon: <FolderOpen size={14} />,
+            action: async () => {
+              try {
+                notify.info(t('contextMenu.extracting'), file.name);
+                const count = await invoke<number>('aerovz_extract_all', { vaultPath: file.path, destPath: currentLocalPath });
+                notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: currentLocalPath }));
+                await loadLocalFiles(currentLocalPath);
+              } catch (err) {
+                notify.error(t('contextMenu.extractionFailed'), String(err));
+              }
+            },
+          },
+          {
+            label: t('contextMenu.extractToFolder'),
+            icon: <FolderOpen size={14} />,
+            action: async () => {
+              const subFolder = `${currentLocalPath}/${file.name.replace(/\.aerozip$/i, '')}`;
+              try {
+                notify.info(t('contextMenu.extracting'), file.name);
+                const count = await invoke<number>('aerovz_extract_all', { vaultPath: file.path, destPath: subFolder });
+                notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: subFolder }));
+                await loadLocalFiles(currentLocalPath);
+              } catch (err) {
+                notify.error(t('contextMenu.extractionFailed'), String(err));
+              }
+            },
+          },
+        ],
+      }] : []),
       // .aerovault: Open as AeroVault Overlay (N3 onboarding shortcut)
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.openAsAeroVaultOverlay') || 'Open as AeroVault Overlay',

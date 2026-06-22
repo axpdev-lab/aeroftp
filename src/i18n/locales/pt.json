@@ -2919,7 +2919,8 @@
             "done": "Concluído",
             "encryptingSelection": "A encriptar os itens selecionados...",
             "ingestSkipped": "Cofre criado, mas alguns itens não puderam ser adicionados:",
-            "selectionInfo": "{count} item(ns) serão encriptados no cofre"
+            "selectionInfo": "{count} item(ns) serão encriptados no cofre",
+            "decrypting": "A descriptografar…"
         },
         "compress": {
             "title": "Compactar Arquivos",

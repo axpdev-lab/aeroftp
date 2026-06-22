@@ -538,11 +538,28 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
 }
 
 /// Decrypt a file from the vault
+/// No-progress convenience over `decrypt_file_inner_with_progress`, used by the unit
+/// tests (the GUI command path passes `Some(app)` directly).
+#[cfg(test)]
 fn decrypt_file_inner(
     vault: &UnlockedVault,
     dir_id: &str,
     filename: &str,
     output_path: &Path,
+) -> Result<(), String> {
+    decrypt_file_inner_with_progress(vault, dir_id, filename, output_path, None)
+}
+
+/// As `decrypt_file_inner`, but emits byte-true `archive_progress` while writing the
+/// plaintext when an `AppHandle` is supplied (GUI path). The CLI and tests pass
+/// `None`. The decrypt crypto is in-app (no crate dependency), so this is part of the
+/// app-only progress pass (HANDOFF section 3.3.A).
+fn decrypt_file_inner_with_progress(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    filename: &str,
+    output_path: &Path,
+    app: Option<tauri::AppHandle>,
 ) -> Result<(), String> {
     use std::io::Write;
 
@@ -588,6 +605,22 @@ fn decrypt_file_inner(
     let chunk_size = 32768 + 28;
     let content = &data[68..];
 
+    // Exact plaintext total: full 32 KiB chunks plus the last partial chunk's payload
+    // (each chunk is 12-byte nonce + ciphertext + 16-byte tag = 28 bytes of overhead).
+    let full_chunks = content.len() / chunk_size;
+    let rem = content.len() % chunk_size;
+    let last_plain = if rem > 0 { rem.saturating_sub(28) } else { 0 };
+    // u64 arithmetic so the intermediate cannot overflow `usize` on a 32-bit target
+    // for a very large (>128 GB) vault file.
+    let plaintext_total = full_chunks as u64 * 32768 + last_plain as u64;
+    let mut progress = app.map(|a| {
+        crate::archive_progress::ArchiveProgress::for_app(
+            a,
+            crate::archive_progress::phase::DECRYPTING,
+            plaintext_total,
+        )
+    });
+
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
@@ -628,9 +661,16 @@ fn decrypt_file_inner(
         outfile
             .write_all(&decrypted)
             .map_err(|e| format!("Failed to write chunk: {}", e))?;
+        if let Some(p) = progress.as_mut() {
+            p.add(decrypted.len() as u64);
+        }
 
         chunk_num += 1;
         offset = end;
+    }
+
+    if let Some(mut p) = progress {
+        p.finish();
     }
 
     Ok(())
@@ -907,11 +947,12 @@ pub async fn cryptomator_decrypt_file(
     dir_id: String,
     filename: String,
     output_path: String,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
     crate::filesystem::validate_path(&output_path)?;
     let vaults = state.vaults.lock().await;
     let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
-    decrypt_file_inner(vault, &dir_id, &filename, Path::new(&output_path))?;
+    decrypt_file_inner_with_progress(vault, &dir_id, &filename, Path::new(&output_path), Some(app))?;
     Ok(output_path)
 }
 

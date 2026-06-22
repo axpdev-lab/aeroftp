@@ -11,6 +11,10 @@ import { ArchiveEntry, ArchiveType } from '../types';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useArchiveProgress } from '../hooks/useArchiveProgress';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { TransferProgressBar } from './TransferProgressBar';
 import { useModalFileView } from './modalview/useModalFileView';
 import { ModalViewToolbar } from './modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
@@ -131,6 +135,11 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const [showPassword, setShowPassword] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(isEncrypted);
     const [extracting, setExtracting] = useState<string | null>(null);
+    // Real byte-true extract progress (>=10MB only); RAR reports indeterminate.
+    const progress = useArchiveProgress(extracting !== null);
+    // Lock the modal during an extraction so a stray click / reflexive X can't abandon
+    // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals).
+    const guarded = useGuardedClose({ guard: extracting !== null ? 'busy' : null, onClose });
     const tempPreviewPathsRef = useRef<string[]>([]);
 
     // Cleanup temp preview files on unmount (A7-03)
@@ -312,7 +321,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             role="dialog"
             aria-modal="true"
             aria-labelledby="archive-browser-title"
-            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}
         >
             <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[840px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
@@ -324,7 +333,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                     </div>
                     <div className="flex items-center gap-2">
                         {!loading && !needsPassword && entries.length > 0 && <ModalViewToolbar view={modalView} />}
-                        <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')} aria-label={t('common.close')}>
+                        <button onClick={guarded.requestClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')} aria-label={t('common.close')}>
                             <X size={18} />
                         </button>
                     </div>
@@ -457,11 +466,28 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                     </div>
                 )}
 
-                {/* Extracting indicator */}
+                {/* Extracting indicator: spinner for the instant case, a real byte-true
+                    bar once the backend reports (>=10MB); RAR shows an honest
+                    indeterminate bar since its extract is opaque. */}
                 {extracting && (
-                    <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-sm border-t border-gray-200 dark:border-gray-700 flex items-center gap-2">
-                        <Loader2 size={14} className="animate-spin" />
-                        {t('archive.extracting') || 'Extracting'} {extracting.split('/').pop()}...
+                    <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-sm border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-2">
+                            <Loader2 size={14} className="animate-spin shrink-0" />
+                            <span className="truncate">{t('archive.extracting') || 'Extracting'} {extracting.split('/').pop()}...</span>
+                        </div>
+                        {progress && (
+                            <div className="mt-2">
+                                <TransferProgressBar
+                                    percentage={progress.percentage}
+                                    transferredBytes={progress.indeterminate ? undefined : progress.transferred}
+                                    totalBytes={progress.indeterminate ? undefined : progress.total}
+                                    speedBps={progress.speedBps}
+                                    etaSeconds={progress.etaSeconds}
+                                    variant={progress.indeterminate ? 'indeterminate' : 'gradient'}
+                                    size="lg"
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -470,6 +496,13 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                     <span>{fileCount} {t('archive.files') || 'files'}, {formatSize(totalSize)}</span>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
