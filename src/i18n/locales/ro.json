@@ -2878,7 +2878,7 @@
             "createZip": "Creează AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip oferă compresie ridicată, verificări de integritate și recuperare. Nu este criptat; oricine are fișierul îl poate citi.",
+            "zipPlaintextDesc": "Necriptat — fără confidențialitate. Nu se deschide cu un utilitar zip obișnuit: necesită AeroFTP sau crate-ul open-source aerovault. Formatul este deschis, așa că oricine dorește poate recupera conținutul.",
             "zipBrowseNotice": "Doar compresie + integritate + recuperare; nu confidențialitate.",
             "dropFilesZip": "Plasați fișiere pentru a le adăuga la AeroVault Zip",
             "zipEmpty": "AeroVault Zip este gol. Adăugați fișiere pentru a începe.",

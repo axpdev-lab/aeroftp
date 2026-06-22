@@ -11677,6 +11677,14 @@ interface UpdateVerificationInfo {
         return;
       }
 
+      // .aerozip opens the plaintext AeroVault Zip lane; VaultPanel auto-detects
+      // the container kind on open (aerovz_is_archive header sniff), so no
+      // password is prompted and no encrypted-vault path is taken.
+      if (route.kind === 'aerozip') {
+        setShowVaultPanel({ mode: 'open', containerKind: 'zip', path });
+        return;
+      }
+
       if (route.kind === 'aeroftp-profile') {
         importAeroFtpProfileFile(path);
         return;

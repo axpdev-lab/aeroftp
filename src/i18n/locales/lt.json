@@ -2878,7 +2878,7 @@
             "createZip": "Kurti AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip suteikia didelį glaudinimą, vientisumo patikras ir atkūrimą. Jis nešifruotas; bet kas, turintis failą, gali jį perskaityti.",
+            "zipPlaintextDesc": "Nešifruota — jokio konfidencialumo. Įprastu zip įrankiu neatidaroma: reikia AeroFTP arba atvirojo kodo aerovault crate. Formatas atviras, todėl turinį gali atkurti bet kas, kas to nori.",
             "zipBrowseNotice": "Tik glaudinimas + vientisumas + atkūrimas; ne konfidencialumas.",
             "dropFilesZip": "Vilkite failus, kad pridėtumėte juos prie AeroVault Zip",
             "zipEmpty": "AeroVault Zip tuščias. Pridėkite failų, kad pradėtumėte.",

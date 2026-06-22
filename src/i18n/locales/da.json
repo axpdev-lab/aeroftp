@@ -2878,7 +2878,7 @@
             "createZip": "Opret AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip giver høj komprimering, integritetstjek og gendannelse. Den er ikke krypteret; enhver med filen kan læse den.",
+            "zipPlaintextDesc": "Ikke krypteret — ingen fortrolighed. Den åbnes ikke med et almindeligt zip-værktøj: den kræver AeroFTP eller open source-craten aerovault. Formatet er åbent, så enhver med interesse kan gendanne indholdet.",
             "zipBrowseNotice": "Kun komprimering + integritet + gendannelse; ikke fortrolighed.",
             "dropFilesZip": "Slip filer for at føje dem til AeroVault Zip",
             "zipEmpty": "AeroVault Zip er tom. Tilføj filer for at komme i gang.",

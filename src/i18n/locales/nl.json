@@ -2878,7 +2878,7 @@
             "createZip": "AeroVault Zip maken",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip biedt hoge compressie, integriteitscontroles en herstel. Het is niet versleuteld; iedereen met het bestand kan het lezen.",
+            "zipPlaintextDesc": "Niet versleuteld — geen vertrouwelijkheid. Het opent niet in een gewone zip-tool: het vereist AeroFTP of de open-source aerovault-crate. Het formaat is open, dus iedereen die wil kan de inhoud herstellen.",
             "zipBrowseNotice": "Alleen compressie + integriteit + herstel; geen vertrouwelijkheid.",
             "dropFilesZip": "Sleep bestanden om ze aan de AeroVault Zip toe te voegen",
             "zipEmpty": "De AeroVault Zip is leeg. Voeg bestanden toe om te beginnen.",

@@ -2878,7 +2878,7 @@
             "createZip": "Búa til AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip býður upp á mikla þjöppun, heilleikaprófanir og endurheimt. Það er ekki dulkóðað; hver sem hefur skrána getur lesið hana.",
+            "zipPlaintextDesc": "Ekki dulkóðað — engin leynd. Það opnast ekki í venjulegu zip-tóli: það þarf AeroFTP eða opna aerovault-crate-ið. Sniðið er opið, svo hver sem vill getur endurheimt innihaldið.",
             "zipBrowseNotice": "Aðeins þjöppun + heilleiki + endurheimt; ekki trúnaður.",
             "dropFilesZip": "Slepptu skrám til að bæta þeim við AeroVault Zip",
             "zipEmpty": "AeroVault Zip er tómt. Bættu við skrám til að byrja.",

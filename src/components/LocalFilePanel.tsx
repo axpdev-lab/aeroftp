@@ -323,10 +323,12 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   const handleDoubleClick = (file: LocalFile) => {
     if (file.is_dir) {
       onNavigate(file.path);
-    } else if (file.name.toLowerCase().endsWith('.aerovault')) {
-      // A vault is an opaque encrypted container: never preview/upload it as a
-      // blob. Open it in the AeroVault modal (same path as the OS file
-      // association) so a double-click unlocks and browses it in-app.
+    } else if (/\.(aerovault|aerozip)$/i.test(file.name)) {
+      // An AeroVault container (.aerovault encrypted, .aerozip plaintext Zip
+      // lane) is an opaque custom format: never preview/upload it as a blob.
+      // Open it in the AeroVault modal (same path as the OS file association)
+      // so a double-click unlocks/browses it in-app. The panel auto-detects the
+      // lane on open, so .aerozip skips the password prompt.
       onOpenVault(file.path);
     } else if (/^(vault|masterkey)\.cryptomator$/i.test(file.name)) {
       // Cryptomator marker file: open the vault (its parent dir) in CryptomatorBrowser,

@@ -2843,7 +2843,7 @@
             "createZip": "AeroVault Zip を作成",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip は高い圧縮率、整合性チェック、復旧を提供します。暗号化されていないため、ファイルを持つ人は誰でも読み取れます。",
+            "zipPlaintextDesc": "暗号化されていません — 機密性はありません。通常の zip ツールでは開けません。AeroFTP またはオープンソースの aerovault クレートが必要です。フォーマットは公開されているため、その気になれば誰でも内容を復元できます。",
             "zipBrowseNotice": "圧縮＋整合性＋復旧のみ。機密性はありません。",
             "dropFilesZip": "ファイルをドロップして AeroVault Zip に追加",
             "zipEmpty": "AeroVault Zip は空です。ファイルを追加して始めましょう。",

@@ -2878,7 +2878,7 @@
             "createZip": "Crea AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip ofereix una compressió alta, comprovacions d'integritat i recuperació. No està xifrat; qualsevol que tingui el fitxer el pot llegir.",
+            "zipPlaintextDesc": "Sense xifrar — cap confidencialitat. No s'obre amb una eina zip normal: necessita AeroFTP o el crate de codi obert aerovault. El format és obert, així que qualsevol persona interessada pot recuperar el contingut.",
             "zipBrowseNotice": "Només compressió + integritat + recuperació; sense confidencialitat.",
             "dropFilesZip": "Deixa anar els fitxers per afegir-los a l'AeroVault Zip",
             "zipEmpty": "L'AeroVault Zip és buit. Afegeix fitxers per començar.",

@@ -12,6 +12,7 @@ import {
 describe('openWithDefault routing', () => {
   it('routes AeroFTP-owned formats internally', () => {
     expect(getOpenWithDefaultRoute('/tmp/vault.aerovault').kind).toBe('aerovault');
+    expect(getOpenWithDefaultRoute('/tmp/bundle.aerozip').kind).toBe('aerozip');
     expect(getOpenWithDefaultRoute('/tmp/profiles.aeroftp').kind).toBe('aeroftp-profile');
     expect(getOpenWithDefaultRoute('/tmp/backup.aeroftp-keystore').kind).toBe('aeroftp-keystore');
   });

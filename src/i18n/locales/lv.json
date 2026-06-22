@@ -2878,7 +2878,7 @@
             "createZip": "Izveidot AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip nodrošina augstu saspiešanu, integritātes pārbaudes un atkopšanu. Tas nav šifrēts; ikviens, kuram ir fails, var to izlasīt.",
+            "zipPlaintextDesc": "Nešifrēts — nav konfidencialitātes. Ar parastu zip rīku neatveras: nepieciešams AeroFTP vai atvērtā koda aerovault crate. Formāts ir atvērts, tāpēc saturu var atgūt ikviens, kas to vēlas.",
             "zipBrowseNotice": "Tikai saspiešana + integritāte + atkopšana; ne konfidencialitāte.",
             "dropFilesZip": "Nometiet failus, lai pievienotu tos AeroVault Zip",
             "zipEmpty": "AeroVault Zip ir tukšs. Pievienojiet failus, lai sāktu.",

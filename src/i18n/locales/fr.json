@@ -2878,7 +2878,7 @@
             "createZip": "Créer AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip offre une compression élevée, des vérifications d'intégrité et une récupération. Il n'est pas chiffré ; quiconque possède le fichier peut le lire.",
+            "zipPlaintextDesc": "Non chiffré — aucune confidentialité. Il ne s'ouvre pas avec un outil zip classique : il faut AeroFTP ou le crate open source aerovault. Le format est ouvert, donc quiconque le souhaite peut en récupérer le contenu.",
             "zipBrowseNotice": "Compression + intégrité + récupération uniquement ; pas de confidentialité.",
             "dropFilesZip": "Déposez des fichiers pour les ajouter à l'AeroVault Zip",
             "zipEmpty": "L'AeroVault Zip est vide. Ajoutez des fichiers pour commencer.",

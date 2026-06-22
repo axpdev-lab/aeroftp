@@ -2878,7 +2878,7 @@
             "createZip": "AeroVault Zip létrehozása",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Az .aerozip magas tömörítést, integritás-ellenőrzéseket és helyreállítást biztosít. Nincs titkosítva; bárki, akinek megvan a fájl, elolvashatja.",
+            "zipPlaintextDesc": "Nem titkosított — nincs bizalmasság. Hagyományos zip eszközzel nem nyitható meg: AeroFTP vagy a nyílt forráskódú aerovault crate szükséges hozzá. A formátum nyílt, így a tartalmat bárki visszaállíthatja, aki akarja.",
             "zipBrowseNotice": "Csak tömörítés + integritás + helyreállítás; nem bizalmasság.",
             "dropFilesZip": "Húzza ide a fájlokat az AeroVault Ziphez való hozzáadáshoz",
             "zipEmpty": "Az AeroVault Zip üres. Adjon hozzá fájlokat a kezdéshez.",

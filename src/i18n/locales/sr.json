@@ -2878,7 +2878,7 @@
             "createZip": "Направи AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip пружа високу компресију, провере интегритета и опоравак. Није шифрован; свако ко има датотеку може да је прочита.",
+            "zipPlaintextDesc": "Није шифровано — без поверљивости. Не отвара се обичним zip алатом: потребан је AeroFTP или open-source crate aerovault. Формат је отворен, па садржај може да поврати свако ко жели.",
             "zipBrowseNotice": "Само компресија + интегритет + опоравак; не поверљивост.",
             "dropFilesZip": "Спустите датотеке да бисте их додали у AeroVault Zip",
             "zipEmpty": "AeroVault Zip је празан. Додајте датотеке да бисте почели.",

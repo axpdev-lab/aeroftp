@@ -2878,7 +2878,7 @@
             "createZip": "Luo AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": ".aerozip tarjoaa korkean pakkauksen, eheystarkistukset ja palautuksen. Sitä ei ole salattu; kuka tahansa, jolla on tiedosto, voi lukea sen.",
+            "zipPlaintextDesc": "Ei salattu — ei luottamuksellisuutta. Ei avaudu tavallisella zip-työkalulla: tarvitaan AeroFTP tai avoimen lähdekoodin aerovault-crate. Muoto on avoin, joten kuka tahansa halukas voi palauttaa sisällön.",
             "zipBrowseNotice": "Vain pakkaus + eheys + palautus; ei luottamuksellisuutta.",
             "dropFilesZip": "Pudota tiedostot lisätäksesi ne AeroVault Zipiin",
             "zipEmpty": "AeroVault Zip on tyhjä. Aloita lisäämällä tiedostoja.",

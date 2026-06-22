@@ -2878,7 +2878,7 @@
             "createZip": "Gumawa ng AeroVault Zip",
             "zipTitle": "AeroVault Zip",
             "zipPlaintextTitle": "AeroVault Zip",
-            "zipPlaintextDesc": "Nagbibigay ang .aerozip ng mataas na compression, mga pagsusuri sa integridad, at pagbawi. Hindi ito naka-encrypt; sinumang may file ay maaaring magbasa nito.",
+            "zipPlaintextDesc": "Hindi naka-encrypt — walang pagiging kumpidensyal. Hindi ito mabubuksan sa karaniwang zip tool: kailangan nito ang AeroFTP o ang open-source na aerovault crate. Bukas ang format, kaya kahit sino na gustong gawin ito ay maaaring mabawi ang mga nilalaman.",
             "zipBrowseNotice": "Compression + integridad + pagbawi lamang; hindi pagiging kumpidensyal.",
             "dropFilesZip": "I-drop ang mga file para idagdag sa AeroVault Zip",
             "zipEmpty": "Walang laman ang AeroVault Zip. Magdagdag ng mga file para magsimula.",
