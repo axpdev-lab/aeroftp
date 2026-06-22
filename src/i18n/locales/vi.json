@@ -2943,7 +2943,8 @@
             "after": "Sau",
             "saved": "Đã tiết kiệm",
             "increased": "Đã tăng",
-            "done": "Xong"
+            "done": "Xong",
+            "incompressible": "Đã nén, không còn dung lượng để tiết kiệm"
         },
         "batchRename": {
             "title": "Đổi tên hàng loạt",

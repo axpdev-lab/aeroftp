@@ -2943,7 +2943,8 @@
             "after": "Nachher",
             "saved": "Gespart",
             "increased": "Vergrößert",
-            "done": "Fertig"
+            "done": "Fertig",
+            "incompressible": "Bereits komprimiert, kein Platz zu sparen"
         },
         "batchRename": {
             "title": "Stapelumbenennung",

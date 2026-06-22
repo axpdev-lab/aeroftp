@@ -2943,7 +2943,8 @@
             "after": "Eftir",
             "saved": "Sparað",
             "increased": "Aukið",
-            "done": "Lokið"
+            "done": "Lokið",
+            "incompressible": "Þegar þjappað, ekkert pláss að spara"
         },
         "batchRename": {
             "title": "Hópendurnefning",

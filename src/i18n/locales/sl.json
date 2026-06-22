@@ -2943,7 +2943,8 @@
             "after": "Potem",
             "saved": "Prihranjeno",
             "increased": "Povečano",
-            "done": "Končano"
+            "done": "Končano",
+            "incompressible": "Že stisnjeno, ni prostora za prihranek"
         },
         "batchRename": {
             "title": "Skupinsko preimenovanje",

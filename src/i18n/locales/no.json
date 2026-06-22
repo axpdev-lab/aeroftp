@@ -2943,7 +2943,8 @@
             "after": "Etter",
             "saved": "Spart",
             "increased": "Økt",
-            "done": "Ferdig"
+            "done": "Ferdig",
+            "incompressible": "Allerede komprimert, ingen plass å spare"
         },
         "batchRename": {
             "title": "Masseomdøping",

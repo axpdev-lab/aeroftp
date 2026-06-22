@@ -2943,7 +2943,8 @@
             "after": "Pēc",
             "saved": "Ietaupīts",
             "increased": "Palielinājies",
-            "done": "Gatavs"
+            "done": "Gatavs",
+            "incompressible": "Jau saspiests, nav vietas, ko ietaupīt"
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",

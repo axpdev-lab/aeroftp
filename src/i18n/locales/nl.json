@@ -2943,7 +2943,8 @@
             "after": "Na",
             "saved": "Bespaard",
             "increased": "Vergroot",
-            "done": "Klaar"
+            "done": "Klaar",
+            "incompressible": "Al gecomprimeerd, geen ruimte te besparen"
         },
         "batchRename": {
             "title": "Batch hernoemen",

@@ -1109,7 +1109,8 @@
             "after": "After",
             "saved": "Saved",
             "increased": "Increased",
-            "done": "Done"
+            "done": "Done",
+            "incompressible": "Already compressed, no space to save"
         },
         "connection": {
             "accessKeyId": "Access Key ID",

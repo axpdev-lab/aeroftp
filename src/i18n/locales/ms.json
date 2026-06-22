@@ -2943,7 +2943,8 @@
             "after": "Selepas",
             "saved": "Dijimat",
             "increased": "Bertambah",
-            "done": "Selesai"
+            "done": "Selesai",
+            "incompressible": "Sudah dimampatkan, tiada ruang untuk dijimat"
         },
         "batchRename": {
             "title": "Nama Semula Kelompok",

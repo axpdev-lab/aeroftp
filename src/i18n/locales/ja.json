@@ -2908,7 +2908,8 @@
             "after": "後",
             "saved": "削減",
             "increased": "増加",
-            "done": "完了"
+            "done": "完了",
+            "incompressible": "既に圧縮済み、削減できる余地はありません"
         },
         "batchRename": {
             "title": "一括リネーム",

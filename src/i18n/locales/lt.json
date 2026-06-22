@@ -2943,7 +2943,8 @@
             "after": "Po",
             "saved": "Sutaupyta",
             "increased": "Padidėjo",
-            "done": "Atlikta"
+            "done": "Atlikta",
+            "incompressible": "Jau suglaudinta, nėra ką taupyti"
         },
         "batchRename": {
             "title": "Masinis pervadinimas",

@@ -2943,7 +2943,8 @@
             "after": "Po",
             "saved": "Ušetrené",
             "increased": "Zväčšené",
-            "done": "Hotovo"
+            "done": "Hotovo",
+            "incompressible": "Už komprimované, niet čo ušetriť"
         },
         "batchRename": {
             "title": "Hromadne premenovanie",

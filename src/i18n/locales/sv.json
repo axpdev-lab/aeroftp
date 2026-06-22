@@ -2943,7 +2943,8 @@
             "after": "Efter",
             "saved": "Sparat",
             "increased": "Ökat",
-            "done": "Klar"
+            "done": "Klar",
+            "incompressible": "Redan komprimerad, inget utrymme att spara"
         },
         "batchRename": {
             "title": "Massnamnsändring",

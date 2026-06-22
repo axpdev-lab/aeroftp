@@ -2943,7 +2943,8 @@
             "after": "이후",
             "saved": "절약됨",
             "increased": "증가됨",
-            "done": "완료"
+            "done": "완료",
+            "incompressible": "이미 압축됨, 절약할 공간 없음"
         },
         "batchRename": {
             "title": "일괄 이름 변경",

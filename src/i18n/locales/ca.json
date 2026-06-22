@@ -2943,7 +2943,8 @@
             "after": "Després",
             "saved": "Estalviat",
             "increased": "Augmentat",
-            "done": "Fet"
+            "done": "Fet",
+            "incompressible": "Ja comprimit, sense espai per estalviar"
         },
         "batchRename": {
             "title": "Reanomenament massiu",

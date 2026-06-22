@@ -2943,7 +2943,8 @@
             "after": "Jälkeen",
             "saved": "Säästetty",
             "increased": "Kasvanut",
-            "done": "Valmis"
+            "done": "Valmis",
+            "incompressible": "Jo pakattu, ei säästettävää tilaa"
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",

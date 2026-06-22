@@ -2943,7 +2943,8 @@
             "after": "Efter",
             "saved": "Sparet",
             "increased": "Forøget",
-            "done": "Færdig"
+            "done": "Færdig",
+            "incompressible": "Allerede komprimeret, ingen plads at spare"
         },
         "batchRename": {
             "title": "Masseomdøbning",

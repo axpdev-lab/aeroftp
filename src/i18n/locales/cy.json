@@ -2943,7 +2943,8 @@
             "after": "Ar ôl",
             "saved": "Arbedwyd",
             "increased": "Cynyddwyd",
-            "done": "Wedi gorffen"
+            "done": "Wedi gorffen",
+            "incompressible": "Eisoes wedi cywasgu, dim lle i arbed"
         },
         "batchRename": {
             "title": "Ailenwi Swp",

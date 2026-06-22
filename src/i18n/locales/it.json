@@ -3305,7 +3305,8 @@
             "after": "Dopo",
             "saved": "Risparmiati",
             "increased": "Aumentato",
-            "done": "Fatto"
+            "done": "Fatto",
+            "incompressible": "Già compresso, nessuno spazio da risparmiare"
         },
         "sidebar": {
             "places": "Posizioni",

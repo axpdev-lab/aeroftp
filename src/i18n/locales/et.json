@@ -2943,7 +2943,8 @@
             "after": "Pärast",
             "saved": "Säästetud",
             "increased": "Suurenes",
-            "done": "Valmis"
+            "done": "Valmis",
+            "incompressible": "Juba pakitud, ruumi pole säästa"
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",

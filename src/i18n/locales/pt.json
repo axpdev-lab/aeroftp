@@ -2943,7 +2943,8 @@
             "after": "Depois",
             "saved": "Poupado",
             "increased": "Aumentado",
-            "done": "Concluído"
+            "done": "Concluído",
+            "incompressible": "Já comprimido, sem espaço a poupar"
         },
         "batchRename": {
             "title": "Renomeação em Lote",

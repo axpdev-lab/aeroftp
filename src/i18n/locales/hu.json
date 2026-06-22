@@ -2943,7 +2943,8 @@
             "after": "Utána",
             "saved": "Megtakarítva",
             "increased": "Növekedett",
-            "done": "Kész"
+            "done": "Kész",
+            "incompressible": "Már tömörítve, nincs megtakarítható hely"
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

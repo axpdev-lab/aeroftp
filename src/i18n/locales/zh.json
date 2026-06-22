@@ -2943,7 +2943,8 @@
             "after": "之后",
             "saved": "已节省",
             "increased": "已增加",
-            "done": "完成"
+            "done": "完成",
+            "incompressible": "已压缩，无可节省空间"
         },
         "batchRename": {
             "title": "批量重命名",

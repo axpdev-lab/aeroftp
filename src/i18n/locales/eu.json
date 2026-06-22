@@ -2943,7 +2943,8 @@
             "after": "Ondoren",
             "saved": "Aurreztua",
             "increased": "Handitua",
-            "done": "Eginda"
+            "done": "Eginda",
+            "incompressible": "Jada konprimituta, ez dago aurrezteko lekurik"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

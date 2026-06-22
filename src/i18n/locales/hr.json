@@ -2943,7 +2943,8 @@
             "after": "Poslije",
             "saved": "Ušteđeno",
             "increased": "Povećano",
-            "done": "Gotovo"
+            "done": "Gotovo",
+            "incompressible": "Već sažeto, nema uštede prostora"
         },
         "batchRename": {
             "title": "Grupno preimenovanje",

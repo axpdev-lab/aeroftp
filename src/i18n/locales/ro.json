@@ -2943,7 +2943,8 @@
             "after": "După",
             "saved": "Economisit",
             "increased": "Mărit",
-            "done": "Gata"
+            "done": "Gata",
+            "incompressible": "Deja comprimat, fără spațiu de economisit"
         },
         "batchRename": {
             "title": "Redenumire în masă",

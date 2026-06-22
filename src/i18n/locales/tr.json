@@ -2943,7 +2943,8 @@
             "after": "Sonra",
             "saved": "Kazanılan",
             "increased": "Arttı",
-            "done": "Tamam"
+            "done": "Tamam",
+            "incompressible": "Zaten sıkıştırılmış, kazanılacak alan yok"
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",

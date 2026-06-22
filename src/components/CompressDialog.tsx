@@ -112,23 +112,19 @@ function getExtension(format: CompressFormat): string {
 
 /**
  * Inverse "drain" bar shown beneath the live progress bar during compression.
- * It starts full and empties as the operation proceeds, a visual mirror of the
- * top progress bar: the filled portion is the data still to process, the
- * emptied portion the effect of compression taking shape. The numbers stay on
- * the top bar (byte-true); this lower bar is the size-shrinking metaphor and
- * carries only an estimated target caption, so nothing here can be misread as a
- * measured saving. The real, measured saving is shown only at completion.
+ * It starts full and empties in step with the top progress bar: the filled
+ * width is the input still to read (`total - transferred`) and the caption next
+ * to it shows exactly that byte figure, so bar and number shrink together
+ * (byte-true, never a fixed estimate that disagrees with the bar). The measured
+ * saving is shown only at completion.
  */
-const InverseDrainBar: React.FC<{ percentage: number; estimatedLabel: string | null }> = ({ percentage, estimatedLabel }) => {
-    const clamped = Math.max(0, Math.min(100, percentage));
-    // Filled width mirrors remaining work; floor at a sliver so the bar reads as
-    // "draining" rather than vanishing the instant it starts.
-    const filled = Math.max(0, 100 - clamped);
+const InverseDrainBar: React.FC<{ transferred: number; total: number }> = ({ transferred, total }) => {
+    const remaining = Math.max(0, total - transferred);
+    const filled = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
     return (
         <div className="mt-3">
-            <div className="flex items-center justify-between text-[10px] mb-1" style={{ color: 'var(--compress-text-muted)' }}>
-                <span className="flex items-center gap-1"><TrendingDown size={11} style={{ color: 'var(--compress-accent)' }} /></span>
-                {estimatedLabel && <span>{estimatedLabel}</span>}
+            <div className="flex items-center justify-end text-[10px] mb-1" style={{ color: 'var(--compress-text-muted)' }}>
+                <span className="flex items-center gap-1"><TrendingDown size={11} style={{ color: 'var(--compress-accent)' }} />{formatSize(remaining)}</span>
             </div>
             <div className="tpb-track h-3.5 rounded-full overflow-hidden" style={{ background: 'var(--compress-bg-deep)', border: '1px solid var(--compress-border)' }}>
                 <div
@@ -147,9 +143,12 @@ const InverseDrainBar: React.FC<{ percentage: number; estimatedLabel: string | n
  */
 const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => string }> = ({ result, t }) => {
     const { inputBytes, outputBytes, savedBytes, savedPercent } = computeCompressionRatio(result.inputBytes, result.outputBytes);
-    const grew = savedBytes < 0;
     const pct = Math.round(savedPercent);
-    const afterFraction = inputBytes > 0 ? Math.max(0, Math.min(1.5, outputBytes / inputBytes)) : 0;
+    // Three honest outcomes. A sub-1% delta in either direction is reported as
+    // "incompressible" rather than a confusing "+0% / Increased 148 B": the file
+    // was already compressed and there is essentially no space to reclaim.
+    const outcome: 'saved' | 'grew' | 'incompressible' = pct >= 1 ? 'saved' : pct <= -1 ? 'grew' : 'incompressible';
+    const afterFraction = inputBytes > 0 ? Math.max(0, Math.min(1.5, outputBytes / inputBytes)) : 1;
     // Animate the "After" bar from full (100%) down to the real ratio on mount.
     const [settled, setSettled] = useState(false);
     useEffect(() => {
@@ -157,6 +156,10 @@ const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => stri
         return () => cancelAnimationFrame(h);
     }, []);
     const afterWidth = settled ? Math.min(100, afterFraction * 100) : 100;
+    const afterFill = outcome === 'saved' ? 'linear-gradient(90deg,#10b981,#22c55e)'
+        : outcome === 'grew' ? 'linear-gradient(90deg,#f97316,#ef4444)'
+        : 'var(--compress-text-muted)';
+    const badgeColor = outcome === 'saved' ? 'text-green-400' : outcome === 'grew' ? 'text-orange-400' : 'text-gray-400';
     return (
         <div className="px-5 py-4 border-t" style={{ borderColor: 'var(--compress-border)' }}>
             <div className="flex items-center gap-2 mb-3">
@@ -164,9 +167,10 @@ const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => stri
                     <Check size={14} style={{ color: '#22c55e' }} />
                 </span>
                 <span className="text-sm font-semibold">{t('compress.complete') || 'Compression complete'}</span>
-                <span className={`ml-auto text-sm font-bold flex items-center gap-1 ${grew ? 'text-orange-400' : 'text-green-400'}`}>
-                    {grew ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                    {grew ? '+' : '-'}{Math.abs(pct)}%
+                <span className={`ml-auto text-sm font-bold flex items-center gap-1 ${badgeColor}`}>
+                    {outcome === 'saved' && <><TrendingDown size={14} />-{pct}%</>}
+                    {outcome === 'grew' && <><TrendingUp size={14} />+{Math.abs(pct)}%</>}
+                    {outcome === 'incompressible' && <>≈0%</>}
                 </span>
             </div>
 
@@ -184,16 +188,16 @@ const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => stri
                 <div className="tpb-track h-3 rounded-full overflow-hidden flex-1" style={{ background: 'var(--compress-bg-deep)' }}>
                     <div
                         className="h-full rounded-full transition-all duration-700 ease-out"
-                        style={{ width: `${afterWidth}%`, background: grew ? 'linear-gradient(90deg,#f97316,#ef4444)' : 'linear-gradient(90deg,#10b981,#22c55e)' }}
+                        style={{ width: `${afterWidth}%`, background: afterFill }}
                     />
                 </div>
                 <span className="text-[10px] w-16 text-right shrink-0">{formatSize(outputBytes)}</span>
             </div>
 
             <div className="mt-3 text-center text-xs" style={{ color: 'var(--compress-text-secondary)' }}>
-                {grew
-                    ? `${t('compress.increased') || 'Increased'} ${formatSize(Math.abs(savedBytes))}`
-                    : `${t('compress.saved') || 'Saved'} ${formatSize(savedBytes)}`}
+                {outcome === 'saved' && `${t('compress.saved') || 'Saved'} ${formatSize(savedBytes)}`}
+                {outcome === 'grew' && `${t('compress.increased') || 'Increased'} ${formatSize(Math.abs(savedBytes))}`}
+                {outcome === 'incompressible' && (t('compress.incompressible') || 'Already compressed, no space to save')}
             </div>
         </div>
     );
@@ -231,14 +235,6 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const folderCount = files.filter(f => f.isDir).length;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     const estimatedRatio = getEstimatedRatio(format, compressionLevel);
-    // Estimated compressed size caption for the live inverse bar (clearly an
-    // estimate; the measured figure appears only in the completion panel).
-    const estimatedOutputLabel = useMemo(() => {
-        if (!estimatedRatio) return null;
-        const pctNum = parseInt(estimatedRatio.replace(/[^0-9]/g, ''), 10);
-        if (!pctNum) return null;
-        return `≈ ${formatSize(Math.round(totalSize * pctNum / 100))}`;
-    }, [estimatedRatio, totalSize]);
 
     const fullOutputPath = useMemo(() => {
         const ext = getExtension(format);
@@ -290,7 +286,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
             <div
                 {...modalDrag.panelProps}
                 className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
-                style={{ background: 'var(--compress-bg)', border: '1px solid var(--compress-border)', color: 'var(--compress-text)' }}>
+                style={{ ...modalDrag.panelProps.style, background: 'var(--compress-bg)', border: '1px solid var(--compress-border)', color: 'var(--compress-text)' }}>
 
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3.5 border-b cursor-grab active:cursor-grabbing" style={{ borderColor: 'var(--compress-border)' }}>
@@ -494,7 +490,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     size="lg"
                                 />
                                 {!progress.indeterminate && (
-                                    <InverseDrainBar percentage={progress.percentage} estimatedLabel={estimatedOutputLabel} />
+                                    <InverseDrainBar transferred={progress.transferred} total={progress.total} />
                                 )}
                             </>
                         )}

@@ -2943,7 +2943,8 @@
             "after": "Pagkatapos",
             "saved": "Naitipid",
             "increased": "Tumaas",
-            "done": "Tapos"
+            "done": "Tapos",
+            "incompressible": "Naka-compress na, walang espasyong matitipid"
         },
         "batchRename": {
             "title": "Batch Rename",

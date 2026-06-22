@@ -2943,7 +2943,8 @@
             "after": "Après",
             "saved": "Économisé",
             "increased": "Augmenté",
-            "done": "Terminé"
+            "done": "Terminé",
+            "incompressible": "Déjà compressé, aucun espace à gagner"
         },
         "batchRename": {
             "title": "Renommage par lot",

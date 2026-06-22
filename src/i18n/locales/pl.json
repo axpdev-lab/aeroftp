@@ -2943,7 +2943,8 @@
             "after": "Po",
             "saved": "Zaoszczędzono",
             "increased": "Zwiększono",
-            "done": "Gotowe"
+            "done": "Gotowe",
+            "incompressible": "Już skompresowane, brak miejsca do zaoszczędzenia"
         },
         "batchRename": {
             "title": "Zbiorcza zmiana nazw",

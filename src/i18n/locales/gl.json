@@ -2943,7 +2943,8 @@
             "after": "Despois",
             "saved": "Aforrado",
             "increased": "Aumentado",
-            "done": "Feito"
+            "done": "Feito",
+            "incompressible": "Xa comprimido, sen espazo que aforrar"
         },
         "batchRename": {
             "title": "Renomear por lotes",

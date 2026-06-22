@@ -2943,7 +2943,8 @@
             "after": "Baada",
             "saved": "Imehifadhiwa",
             "increased": "Imeongezeka",
-            "done": "Imekamilika"
+            "done": "Imekamilika",
+            "incompressible": "Tayari imegandamizwa, hakuna nafasi ya kuhifadhi"
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",
