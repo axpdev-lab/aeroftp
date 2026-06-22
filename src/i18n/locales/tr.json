@@ -2690,7 +2690,10 @@
             "actions": "Eylemler",
             "files": "dosya",
             "empty": "Arşiv boş",
-            "extracting": "Çıkarılıyor"
+            "extracting": "Çıkarılıyor",
+            "preview": "Önizleme",
+            "extract": "Çıkar",
+            "back": "Geri"
         },
         "vault": {
             "addDirectorySuccess": "{dirs} dizinde {files} dosya eklendi",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip'i aç",
             "zipEncryptedRejected": ".aerozip, AeroVault Zip'in şifrelenmemiş modudur; şifrelenmiş kapsayıcılar .aerovault kullanmalıdır.",
             "zipRecoveryHint": "Kurtarma eşliği hasarlı baytları onarmaya yardımcı olur; içeriği gizlemez.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip açılıyor…"
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

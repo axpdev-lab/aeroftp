@@ -2690,7 +2690,10 @@
             "actions": "操作",
             "files": "个文件",
             "empty": "压缩包为空",
-            "extracting": "正在解压"
+            "extracting": "正在解压",
+            "preview": "预览",
+            "extract": "提取",
+            "back": "返回"
         },
         "vault": {
             "addDirectorySuccess": "已在 {dirs} 个目录中添加 {files} 个文件",
@@ -2886,7 +2889,8 @@
             "openZip": "打开 AeroVault Zip",
             "zipEncryptedRejected": ".aerozip 是 AeroVault Zip 的明文通道；加密容器必须使用 .aerovault。",
             "zipRecoveryHint": "恢复校验有助于修复损坏的字节；它不会隐藏内容。",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "正在打开 AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

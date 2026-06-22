@@ -838,7 +838,10 @@
             "name": "Name",
             "passwordRequired": "This archive is password protected",
             "size": "Size",
-            "unlock": "Unlock"
+            "unlock": "Unlock",
+            "preview": "Preview",
+            "extract": "Extract",
+            "back": "Back"
         },
         "batchRename": {
             "addPrefix": "Add Prefix",
@@ -4151,7 +4154,8 @@
             "openZip": "Open AeroVault Zip",
             "zipEncryptedRejected": ".aerozip is the AeroVault Zip plaintext lane; encrypted containers must use .aerovault.",
             "zipRecoveryHint": "Recovery parity helps repair damaged bytes; it does not hide contents.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Opening AeroVault Zip…"
         },
         "vaultSync": {
             "title": "Vault Sync",

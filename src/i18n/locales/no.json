@@ -2690,7 +2690,10 @@
             "actions": "Handlinger",
             "files": "filer",
             "empty": "Arkivet er tomt",
-            "extracting": "Pakker ut"
+            "extracting": "Pakker ut",
+            "preview": "Forhåndsvisning",
+            "extract": "Pakk ut",
+            "back": "Tilbake"
         },
         "vault": {
             "addDirectorySuccess": "Lagt til {files} filer i {dirs} kataloger",
@@ -2886,7 +2889,8 @@
             "openZip": "Åpne AeroVault Zip",
             "zipEncryptedRejected": ".aerozip er den ukrypterte modusen til AeroVault Zip; krypterte beholdere må bruke .aerovault.",
             "zipRecoveryHint": "Gjenopprettingsparitet hjelper med å reparere skadede byte; den skjuler ikke innholdet.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Åpner AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",

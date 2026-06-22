@@ -2690,7 +2690,10 @@
             "actions": "Åtgärder",
             "files": "filer",
             "empty": "Arkivet är tomt",
-            "extracting": "Extraherar"
+            "extracting": "Extraherar",
+            "preview": "Förhandsvisa",
+            "extract": "Extrahera",
+            "back": "Tillbaka"
         },
         "vault": {
             "addDirectorySuccess": "Lade till {files} filer i {dirs} kataloger",
@@ -2886,7 +2889,8 @@
             "openZip": "Öppna AeroVault Zip",
             "zipEncryptedRejected": ".aerozip är AeroVault Zips okrypterade läge; krypterade behållare måste använda .aerovault.",
             "zipRecoveryHint": "Återställningsparitet hjälper till att reparera skadade byte; den döljer inte innehållet.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Öppnar AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

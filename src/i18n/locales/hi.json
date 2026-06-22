@@ -2690,7 +2690,10 @@
             "actions": "क्रियाएँ",
             "empty": "आर्काइव खाली है",
             "extracting": "निकाला जा रहा है",
-            "files": "फ़ाइलें"
+            "files": "फ़ाइलें",
+            "preview": "पूर्वावलोकन",
+            "extract": "निकालें",
+            "back": "वापस"
         },
         "vault": {
             "addDirectorySuccess": "{dirs} निर्देशिकाओं में {files} फ़ाइलें जोड़ी गईं",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip खोलें",
             "zipEncryptedRejected": ".aerozip, AeroVault Zip की बिना एन्क्रिप्शन वाली विधि है; एन्क्रिप्टेड कंटेनरों को .aerovault का उपयोग करना चाहिए।",
             "zipRecoveryHint": "रिकवरी पैरिटी क्षतिग्रस्त बाइट्स की मरम्मत में मदद करती है; यह सामग्री को नहीं छिपाती।",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip खोल रहे हैं…"
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",

@@ -2690,7 +2690,10 @@
             "actions": "작업",
             "files": "파일",
             "empty": "압축 파일이 비어 있습니다",
-            "extracting": "압축 해제 중"
+            "extracting": "압축 해제 중",
+            "preview": "미리 보기",
+            "extract": "추출",
+            "back": "뒤로"
         },
         "vault": {
             "addDirectorySuccess": "{dirs}개 디렉토리에 {files}개 파일 추가됨",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip 열기",
             "zipEncryptedRejected": ".aerozip은 AeroVault Zip의 평문 레인입니다. 암호화된 컨테이너는 .aerovault를 사용해야 합니다.",
             "zipRecoveryHint": "복구 패리티는 손상된 바이트를 복구하는 데 도움이 되며, 내용을 숨기지 않습니다.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip 여는 중…"
         },
         "cryptomator": {
             "title": "Cryptomator 저장소",

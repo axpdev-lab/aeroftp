@@ -2690,7 +2690,10 @@
             "actions": "Mga Aksyon",
             "files": "mga file",
             "empty": "Walang laman ang archive",
-            "extracting": "Nag-e-extract"
+            "extracting": "Nag-e-extract",
+            "preview": "I-preview",
+            "extract": "I-extract",
+            "back": "Bumalik"
         },
         "vault": {
             "addDirectorySuccess": "Naidagdag ang {files} file sa {dirs} direktoryo",
@@ -2886,7 +2889,8 @@
             "openZip": "Buksan ang AeroVault Zip",
             "zipEncryptedRejected": "Ang .aerozip ang plaintext na daanan ng AeroVault Zip; dapat gumamit ng .aerovault ang mga naka-encrypt na container.",
             "zipRecoveryHint": "Tumutulong ang recovery parity na ayusin ang mga sirang byte; hindi nito itinatago ang nilalaman.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Binubuksan ang AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

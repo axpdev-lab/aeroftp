@@ -2690,7 +2690,10 @@
             "actions": "ক্রিয়া",
             "files": "ফাইল",
             "empty": "আর্কাইভ খালি",
-            "extracting": "এক্সট্রাক্ট করা হচ্ছে..."
+            "extracting": "এক্সট্রাক্ট করা হচ্ছে...",
+            "preview": "প্রিভিউ",
+            "extract": "এক্সট্র্যাক্ট",
+            "back": "পিছনে"
         },
         "vault": {
             "addDirectorySuccess": "{dirs} ডিরেক্টরিতে {files}টি ফাইল যোগ করা হয়েছে",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip খুলুন",
             "zipEncryptedRejected": ".aerozip হল AeroVault Zip-এর প্লেইনটেক্সট লেন; এনক্রিপ্ট করা কন্টেইনারগুলিকে অবশ্যই .aerovault ব্যবহার করতে হবে।",
             "zipRecoveryHint": "পুনরুদ্ধার প্যারিটি ক্ষতিগ্রস্ত বাইট মেরামত করতে সাহায্য করে; এটি বিষয়বস্তু লুকায় না।",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip খোলা হচ্ছে…"
         },
         "cryptomator": {
             "title": "Cryptomator ভল্ট",

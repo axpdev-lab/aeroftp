@@ -2690,7 +2690,10 @@
             "actions": "Действия",
             "files": "файлове",
             "empty": "Архивът е празен",
-            "extracting": "Разархивиране"
+            "extracting": "Разархивиране",
+            "preview": "Преглед",
+            "extract": "Извличане",
+            "back": "Назад"
         },
         "vault": {
             "addDirectorySuccess": "Добавени {files} файла в {dirs} директории",
@@ -2886,7 +2889,8 @@
             "openZip": "Отвори AeroVault Zip",
             "zipEncryptedRejected": ".aerozip е некриптираният канал на AeroVault Zip; криптираните контейнери трябва да използват .aerovault.",
             "zipRecoveryHint": "Паритетът за възстановяване помага за поправка на повредени байтове; той не скрива съдържанието.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Отваряне на AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator трезор",

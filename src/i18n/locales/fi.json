@@ -2690,7 +2690,10 @@
             "actions": "Toiminnot",
             "files": "tiedostoa",
             "empty": "Arkisto on tyhjä",
-            "extracting": "Puretaan"
+            "extracting": "Puretaan",
+            "preview": "Esikatselu",
+            "extract": "Pura",
+            "back": "Takaisin"
         },
         "vault": {
             "addDirectorySuccess": "Lisätty {files} tiedostoa {dirs} hakemistossa",
@@ -2886,7 +2889,8 @@
             "openZip": "Avaa AeroVault Zip",
             "zipEncryptedRejected": ".aerozip on AeroVault Zipin salaamaton tila; salattujen säiliöiden on käytettävä .aerovault-muotoa.",
             "zipRecoveryHint": "Palautuspariteetti auttaa korjaamaan vahingoittuneita tavuja; se ei piilota sisältöä.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Avataan AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

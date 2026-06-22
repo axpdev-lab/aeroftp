@@ -2690,7 +2690,10 @@
             "actions": "Darbības",
             "files": "faili",
             "empty": "Arhīvs ir tukšs",
-            "extracting": "Izvelk"
+            "extracting": "Izvelk",
+            "preview": "Priekšskatījums",
+            "extract": "Izvilkt",
+            "back": "Atpakaļ"
         },
         "vault": {
             "addDirectorySuccess": "Pievienoti {files} faili {dirs} direktorijās",
@@ -2886,7 +2889,8 @@
             "openZip": "Atvērt AeroVault Zip",
             "zipEncryptedRejected": ".aerozip ir AeroVault Zip nešifrētais režīms; šifrētiem konteineriem jāizmanto .aerovault.",
             "zipRecoveryHint": "Atkopšanas paritāte palīdz labot bojātus baitus; tā neslēpj saturu.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Atver AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

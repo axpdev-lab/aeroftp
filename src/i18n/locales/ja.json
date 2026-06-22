@@ -2655,7 +2655,10 @@
             "actions": "操作",
             "files": "ファイル",
             "empty": "アーカイブは空です",
-            "extracting": "展開中"
+            "extracting": "展開中",
+            "preview": "プレビュー",
+            "extract": "抽出",
+            "back": "戻る"
         },
         "vault": {
             "addDirectorySuccess": "{dirs}ディレクトリの{files}ファイルを追加しました",
@@ -2851,7 +2854,8 @@
             "openZip": "AeroVault Zip を開く",
             "zipEncryptedRejected": ".aerozip は AeroVault Zip の平文レーンです。暗号化コンテナには .aerovault を使用してください。",
             "zipRecoveryHint": "復旧パリティは破損したバイトの修復に役立ちますが、内容を隠すものではありません。",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip を開いています…"
         },
         "cryptomator": {
             "title": "Cryptomator保管庫",

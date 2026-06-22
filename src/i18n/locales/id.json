@@ -2690,7 +2690,10 @@
             "actions": "Tindakan",
             "files": "file",
             "empty": "Arsip kosong",
-            "extracting": "Mengekstrak"
+            "extracting": "Mengekstrak",
+            "preview": "Pratinjau",
+            "extract": "Ekstrak",
+            "back": "Kembali"
         },
         "vault": {
             "addDirectorySuccess": "Ditambahkan {files} file di {dirs} direktori",
@@ -2886,7 +2889,8 @@
             "openZip": "Buka AeroVault Zip",
             "zipEncryptedRejected": ".aerozip adalah jalur teks biasa AeroVault Zip; kontainer terenkripsi harus menggunakan .aerovault.",
             "zipRecoveryHint": "Paritas pemulihan membantu memperbaiki byte yang rusak; ini tidak menyembunyikan konten.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Membuka AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

@@ -2690,7 +2690,10 @@
             "actions": "Dejanja",
             "files": "datotek",
             "empty": "Arhiv je prazen",
-            "extracting": "Razširjanje"
+            "extracting": "Razširjanje",
+            "preview": "Predogled",
+            "extract": "Izvleci",
+            "back": "Nazaj"
         },
         "vault": {
             "addDirectorySuccess": "Dodanih {files} datotek v {dirs} imenikih",
@@ -2886,7 +2889,8 @@
             "openZip": "Odpri AeroVault Zip",
             "zipEncryptedRejected": ".aerozip je nešifrirani način AeroVault Zip; šifrirani vsebniki morajo uporabljati .aerovault.",
             "zipRecoveryHint": "Pariteta obnovitve pomaga popraviti poškodovane bajte; ne skriva vsebine.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Odpiranje AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

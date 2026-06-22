@@ -2690,7 +2690,10 @@
             "actions": "Aðgerðir",
             "files": "skrár",
             "empty": "Skjalasafnið er tómt",
-            "extracting": "Afþjappar"
+            "extracting": "Afþjappar",
+            "preview": "Forskoðun",
+            "extract": "Afþjappa",
+            "back": "Til baka"
         },
         "vault": {
             "addDirectorySuccess": "Bætt við {files} skrám í {dirs} möppum",
@@ -2886,7 +2889,8 @@
             "openZip": "Opna AeroVault Zip",
             "zipEncryptedRejected": ".aerozip er ódulkóðaða leið AeroVault Zip; dulkóðuð ílát verða að nota .aerovault.",
             "zipRecoveryHint": "Endurheimtarjöfnuður hjálpar til við að gera við skemmd bæti; hann felur ekki innihaldið.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Opnar AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

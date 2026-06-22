@@ -2690,7 +2690,10 @@
             "actions": "Műveletek",
             "files": "fájl",
             "empty": "Az archívum üres",
-            "extracting": "Kibontás"
+            "extracting": "Kibontás",
+            "preview": "Előnézet",
+            "extract": "Kibontás",
+            "back": "Vissza"
         },
         "vault": {
             "addDirectorySuccess": "{files} fájl hozzáadva {dirs} könyvtárban",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip megnyitása",
             "zipEncryptedRejected": "Az .aerozip az AeroVault Zip titkosítatlan módja; a titkosított tárolóknak a .aerovault formátumot kell használniuk.",
             "zipRecoveryHint": "A helyreállítási paritás segít kijavítani a sérült bájtokat; nem rejti el a tartalmat.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip megnyitása…"
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

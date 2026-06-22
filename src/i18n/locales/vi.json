@@ -2690,7 +2690,10 @@
             "actions": "Hành động",
             "files": "tệp",
             "empty": "Tệp lưu trữ trống",
-            "extracting": "Đang giải nén"
+            "extracting": "Đang giải nén",
+            "preview": "Xem trước",
+            "extract": "Trích xuất",
+            "back": "Quay lại"
         },
         "vault": {
             "addDirectorySuccess": "Đã thêm {files} tệp trong {dirs} thư mục",
@@ -2886,7 +2889,8 @@
             "openZip": "Mở AeroVault Zip",
             "zipEncryptedRejected": ".aerozip là luồng văn bản thuần của AeroVault Zip; các vùng chứa được mã hóa phải dùng .aerovault.",
             "zipRecoveryHint": "Tính chẵn lẻ khôi phục giúp sửa các byte bị hỏng; nó không ẩn nội dung.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Đang mở AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

@@ -2690,7 +2690,10 @@
             "actions": "Accións",
             "empty": "O arquivo está baleiro",
             "extracting": "Extraendo",
-            "files": "ficheiros"
+            "files": "ficheiros",
+            "preview": "Vista previa",
+            "extract": "Extraer",
+            "back": "Atrás"
         },
         "vault": {
             "addDirectorySuccess": "Engadidos {files} ficheiros en {dirs} directorios",
@@ -2886,7 +2889,8 @@
             "openZip": "Abrir AeroVault Zip",
             "zipEncryptedRejected": ".aerozip é o modo sen cifrar de AeroVault Zip; os contedores cifrados deben usar .aerovault.",
             "zipRecoveryHint": "A paridade de recuperación axuda a reparar bytes danados; non oculta o contido.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Abrindo AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

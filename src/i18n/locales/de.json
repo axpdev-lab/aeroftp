@@ -2690,7 +2690,10 @@
             "actions": "Aktionen",
             "files": "Dateien",
             "empty": "Archiv ist leer",
-            "extracting": "Entpacke"
+            "extracting": "Entpacke",
+            "preview": "Vorschau",
+            "extract": "Extrahieren",
+            "back": "Zurück"
         },
         "vault": {
             "addDirectorySuccess": "{files} Dateien in {dirs} Verzeichnissen hinzugefügt",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip öffnen",
             "zipEncryptedRejected": ".aerozip ist der unverschlüsselte Modus von AeroVault Zip; verschlüsselte Container müssen .aerovault verwenden.",
             "zipRecoveryHint": "Die Wiederherstellungsparität hilft, beschädigte Bytes zu reparieren; sie verbirgt den Inhalt nicht.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip wird geöffnet…"
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

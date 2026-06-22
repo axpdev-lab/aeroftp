@@ -2683,7 +2683,10 @@
             "actions": "Գործողություններ",
             "empty": "Արխիվը դատարկ է",
             "extracting": "Արտահանում...",
-            "files": "ֆայլեր"
+            "files": "ֆայլեր",
+            "preview": "Նախադիտում",
+            "extract": "Արդյունահանել",
+            "back": "Հետ"
         },
         "vault": {
             "addDirectorySuccess": "Ավելացվել է {files} ֆայլ {dirs} գրացուցակում",
@@ -2879,7 +2882,8 @@
             "openZip": "Բացել AeroVault Zip",
             "zipEncryptedRejected": ".aerozip-ը AeroVault Zip-ի չգաղտնագրված ռեժիմն է. գաղտնագրված կոնտեյներները պետք է օգտագործեն .aerovault:",
             "zipRecoveryHint": "Վերականգնման զույգականությունն օգնում է վերանորոգել վնասված բայթերը. այն չի թաքցնում բովանդակությունը:",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip-ը բացվում է…"
         },
         "cryptomator": {
             "title": "Cryptomator Պահոց",

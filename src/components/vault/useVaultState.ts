@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -1775,6 +1775,22 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             }).catch(() => {});
         }
     }, [initialPath, t, vaultSecurity]);
+
+    // Plaintext Zip (.aerozip) needs no password: skip the open/confirm screen
+    // and browse immediately, so a double-click (or the "Open with AeroVault Zip"
+    // menu / Recent Vaults) lands straight on the contents. Encrypted containers
+    // still show the password prompt. The ref records the path we auto-opened so
+    // a failed unlock (error, mode stays 'open') does not retry in a loop.
+    // handleUnlock is intentionally not in the deps (recreated each render).
+    const autoOpenedZipRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (mode === 'open' && isPlaintextZip && vaultPath && !loading
+            && entries.length === 0 && autoOpenedZipRef.current !== vaultPath) {
+            autoOpenedZipRef.current = vaultPath;
+            void handleUnlock();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, isPlaintextZip, vaultPath, loading, entries.length]);
 
     // Listen for OS file drag-and-drop events via Tauri webview API
     useEffect(() => {

@@ -2690,7 +2690,10 @@
             "actions": "การดำเนินการ",
             "files": "ไฟล์",
             "empty": "ไฟล์เก็บถาวรว่างเปล่า",
-            "extracting": "กำลังแตกไฟล์"
+            "extracting": "กำลังแตกไฟล์",
+            "preview": "แสดงตัวอย่าง",
+            "extract": "แตกไฟล์",
+            "back": "ย้อนกลับ"
         },
         "vault": {
             "addDirectorySuccess": "เพิ่ม {files} ไฟล์ใน {dirs} ไดเรกทอรี",
@@ -2886,7 +2889,8 @@
             "openZip": "เปิด AeroVault Zip",
             "zipEncryptedRejected": ".aerozip คือเลนข้อความธรรมดาของ AeroVault Zip คอนเทนเนอร์ที่เข้ารหัสต้องใช้ .aerovault",
             "zipRecoveryHint": "พาริตีการกู้คืนช่วยซ่อมแซมไบต์ที่เสียหาย แต่ไม่ได้ซ่อนเนื้อหา",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "กำลังเปิด AeroVault Zip…"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",

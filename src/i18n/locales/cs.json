@@ -2690,7 +2690,10 @@
             "actions": "Akce",
             "files": "souboru",
             "empty": "Archiv je prazdny",
-            "extracting": "Rozbalovani"
+            "extracting": "Rozbalovani",
+            "preview": "Náhled",
+            "extract": "Rozbalit",
+            "back": "Zpět"
         },
         "vault": {
             "addDirectorySuccess": "Přidáno {files} souborů v {dirs} adresářích",
@@ -2886,7 +2889,8 @@
             "openZip": "Otevřít AeroVault Zip",
             "zipEncryptedRejected": ".aerozip je nešifrovaný režim AeroVault Zip; šifrované kontejnery musí používat .aerovault.",
             "zipRecoveryHint": "Parita obnovy pomáhá opravit poškozené bajty; neskrývá obsah.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Otevírání AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

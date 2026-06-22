@@ -2690,7 +2690,10 @@
             "actions": "Toimingud",
             "files": "faili",
             "empty": "Arhiiv on tühi",
-            "extracting": "Lahtipakkimine"
+            "extracting": "Lahtipakkimine",
+            "preview": "Eelvaade",
+            "extract": "Ekstrakti",
+            "back": "Tagasi"
         },
         "vault": {
             "addDirectorySuccess": "Lisati {files} faili {dirs} kataloogis",
@@ -2886,7 +2889,8 @@
             "openZip": "Ava AeroVault Zip",
             "zipEncryptedRejected": ".aerozip on AeroVault Zipi krüpteerimata režiim; krüpteeritud konteinerid peavad kasutama .aerovault.",
             "zipRecoveryHint": "Taastamise pariteet aitab parandada kahjustatud baite; see ei peida sisu.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip avamine…"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

@@ -2690,7 +2690,10 @@
             "actions": "Ações",
             "files": "arquivos",
             "empty": "O arquivo está vazio",
-            "extracting": "Extraindo"
+            "extracting": "Extraindo",
+            "preview": "Pré-visualizar",
+            "extract": "Extrair",
+            "back": "Voltar"
         },
         "vault": {
             "addDirectorySuccess": "Adicionados {files} ficheiros em {dirs} diretórios",
@@ -2886,7 +2889,8 @@
             "openZip": "Abrir AeroVault Zip",
             "zipEncryptedRejected": ".aerozip é o modo sem criptografia do AeroVault Zip; contêineres criptografados devem usar .aerovault.",
             "zipRecoveryHint": "A paridade de recuperação ajuda a reparar bytes danificados; ela não oculta o conteúdo.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "A abrir o AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

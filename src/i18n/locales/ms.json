@@ -2690,7 +2690,10 @@
             "actions": "Tindakan",
             "files": "fail",
             "empty": "Arkib kosong",
-            "extracting": "Mengekstrak"
+            "extracting": "Mengekstrak",
+            "preview": "Pratonton",
+            "extract": "Ekstrak",
+            "back": "Kembali"
         },
         "vault": {
             "addDirectorySuccess": "Ditambah {files} fail dalam {dirs} direktori",
@@ -2886,7 +2889,8 @@
             "openZip": "Buka AeroVault Zip",
             "zipEncryptedRejected": ".aerozip ialah laluan teks biasa AeroVault Zip; bekas yang disulitkan mesti menggunakan .aerovault.",
             "zipRecoveryHint": "Pariti pemulihan membantu membaiki bait yang rosak; ia tidak menyembunyikan kandungan.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Membuka AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

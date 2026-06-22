@@ -2690,7 +2690,10 @@
             "actions": "Acțiuni",
             "files": "fișiere",
             "empty": "Arhiva este goală",
-            "extracting": "Se extrage"
+            "extracting": "Se extrage",
+            "preview": "Previzualizare",
+            "extract": "Extrage",
+            "back": "Înapoi"
         },
         "vault": {
             "addDirectorySuccess": "S-au adăugat {files} fișiere în {dirs} directoare",
@@ -2886,7 +2889,8 @@
             "openZip": "Deschide AeroVault Zip",
             "zipEncryptedRejected": ".aerozip este modul necriptat al AeroVault Zip; containerele criptate trebuie să folosească .aerovault.",
             "zipRecoveryHint": "Paritatea de recuperare ajută la repararea octeților deteriorați; nu ascunde conținutul.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Se deschide AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Seif Cryptomator",

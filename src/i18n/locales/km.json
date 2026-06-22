@@ -2690,7 +2690,10 @@
             "actions": "សកម្មភាព",
             "files": "ឯកសារ",
             "empty": "បណ្ណសារគឺទទេ",
-            "extracting": "កំពុងស្រង់ចេញ"
+            "extracting": "កំពុងស្រង់ចេញ",
+            "preview": "មើលជាមុន",
+            "extract": "ស្រង់ចេញ",
+            "back": "ថយក្រោយ"
         },
         "vault": {
             "addDirectorySuccess": "បានបន្ថែម {files} ឯកសារក្នុង {dirs} ថត",
@@ -2886,7 +2889,8 @@
             "openZip": "បើក AeroVault Zip",
             "zipEncryptedRejected": ".aerozip គឺជាគន្លងអត្ថបទធម្មតារបស់ AeroVault Zip; កុងតឺន័រដែលបានអ៊ិនគ្រីបត្រូវប្រើ .aerovault។",
             "zipRecoveryHint": "ភាពស្មើគ្នានៃការសង្គ្រោះជួយជួសជុលបៃតដែលខូច; វាមិនលាក់មាតិកាទេ។",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "កំពុងបើក AeroVault Zip…"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",

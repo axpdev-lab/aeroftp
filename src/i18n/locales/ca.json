@@ -2690,7 +2690,10 @@
             "actions": "Accions",
             "files": "fitxers",
             "empty": "L'arxiu és buit",
-            "extracting": "Extraient"
+            "extracting": "Extraient",
+            "preview": "Vista prèvia",
+            "extract": "Extreu",
+            "back": "Enrere"
         },
         "vault": {
             "addDirectorySuccess": "S'han afegit {files} fitxers en {dirs} directoris",
@@ -2886,7 +2889,8 @@
             "openZip": "Obre AeroVault Zip",
             "zipEncryptedRejected": ".aerozip és el canal en text pla d'AeroVault Zip; els contenidors xifrats han d'usar .aerovault.",
             "zipRecoveryHint": "La paritat de recuperació ajuda a reparar bytes malmesos; no amaga el contingut.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "S'està obrint AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",

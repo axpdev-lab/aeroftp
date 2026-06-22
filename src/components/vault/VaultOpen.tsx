@@ -14,6 +14,18 @@ export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
     const t = useTranslation();
     const isZip = state.isPlaintextZip;
 
+    // Plaintext Zip needs no password: useVaultState auto-unlocks it straight to
+    // browse, so this screen would only flash a pointless confirm step. Show a
+    // brief loading state instead of the password-less "Open" form.
+    if (isZip) {
+        return (
+            <div className="p-8 flex flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
+                <Loader2 size={22} className="animate-spin" />
+                <span className="text-sm">{t('vault.openingZip') || t('vault.zipTitle')}</span>
+            </div>
+        );
+    }
+
     return (
         <div className="p-4 flex flex-col gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{state.vaultPath}</p>

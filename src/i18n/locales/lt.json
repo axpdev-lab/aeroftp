@@ -2690,7 +2690,10 @@
             "actions": "Veiksmai",
             "files": "failai",
             "empty": "Archyvas tuščias",
-            "extracting": "Išskleidžiama"
+            "extracting": "Išskleidžiama",
+            "preview": "Peržiūra",
+            "extract": "Išskleisti",
+            "back": "Atgal"
         },
         "vault": {
             "addDirectorySuccess": "Pridėta {files} failų {dirs} kataloguose",
@@ -2886,7 +2889,8 @@
             "openZip": "Atidaryti AeroVault Zip",
             "zipEncryptedRejected": ".aerozip yra nešifruotas AeroVault Zip režimas; šifruoti konteineriai turi naudoti .aerovault.",
             "zipRecoveryHint": "Atkūrimo lygiškumas padeda taisyti sugadintus baitus; jis neslepia turinio.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Atveriama AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

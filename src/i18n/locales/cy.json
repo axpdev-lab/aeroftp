@@ -2690,7 +2690,10 @@
             "actions": "Gweithredoedd",
             "files": "ffeiliau",
             "empty": "Mae'r archif yn wag",
-            "extracting": "Yn echdynnu"
+            "extracting": "Yn echdynnu",
+            "preview": "Rhagolwg",
+            "extract": "Echdynnu",
+            "back": "Yn ôl"
         },
         "vault": {
             "addDirectorySuccess": "Ychwanegwyd {files} ffeil mewn {dirs} cyfeiriadur",
@@ -2886,7 +2889,8 @@
             "openZip": "Agor AeroVault Zip",
             "zipEncryptedRejected": ".aerozip yw lôn testun plaen AeroVault Zip; rhaid i gynwysyddion wedi'u hamgryptio ddefnyddio .aerovault.",
             "zipRecoveryHint": "Mae paredd adfer yn helpu i drwsio beitiau wedi'u difrodi; nid yw'n cuddio'r cynnwys.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Yn agor AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",

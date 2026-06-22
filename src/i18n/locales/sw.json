@@ -2690,7 +2690,10 @@
             "actions": "Vitendo",
             "files": "faili",
             "empty": "Kumbukumbu ni tupu",
-            "extracting": "Inafungua"
+            "extracting": "Inafungua",
+            "preview": "Hakiki",
+            "extract": "Toa",
+            "back": "Rudi"
         },
         "vault": {
             "addDirectorySuccess": "Zimeongezwa faili {files} katika saraka {dirs}",
@@ -2886,7 +2889,8 @@
             "openZip": "Fungua AeroVault Zip",
             "zipEncryptedRejected": ".aerozip ni njia ya maandishi wazi ya AeroVault Zip; vyombo vilivyosimbwa lazima vitumie .aerovault.",
             "zipRecoveryHint": "Usawa wa urejeshaji husaidia kurekebisha baiti zilizoharibika; haufichi maudhui.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Inafungua AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

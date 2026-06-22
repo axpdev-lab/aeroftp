@@ -2873,7 +2873,10 @@
             "actions": "Azioni",
             "files": "file",
             "empty": "L'archivio è vuoto",
-            "extracting": "Estrazione"
+            "extracting": "Estrazione",
+            "preview": "Anteprima",
+            "extract": "Estrai",
+            "back": "Indietro"
         },
         "cyberTools": {
             "title": "Strumenti di Sicurezza",
@@ -3135,7 +3138,8 @@
             "openZip": "Apri AeroVault Zip",
             "zipEncryptedRejected": ".aerozip è la modalità in chiaro di AeroVault Zip; i contenitori cifrati devono usare .aerovault.",
             "zipRecoveryHint": "La parità di recupero aiuta a riparare i byte danneggiati; non nasconde i contenuti.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Apertura AeroVault Zip…"
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",

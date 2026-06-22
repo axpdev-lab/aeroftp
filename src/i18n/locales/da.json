@@ -2690,7 +2690,10 @@
             "actions": "Handlinger",
             "files": "filer",
             "empty": "Arkivet er tomt",
-            "extracting": "Udpakker"
+            "extracting": "Udpakker",
+            "preview": "Forhåndsvisning",
+            "extract": "Udpak",
+            "back": "Tilbage"
         },
         "vault": {
             "addDirectorySuccess": "Tilføjet {files} filer i {dirs} mapper",
@@ -2886,7 +2889,8 @@
             "openZip": "Åbn AeroVault Zip",
             "zipEncryptedRejected": ".aerozip er AeroVault Zips ukrypterede tilstand; krypterede containere skal bruge .aerovault.",
             "zipRecoveryHint": "Gendannelsesparitet hjælper med at reparere beskadigede bytes; den skjuler ikke indholdet.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Åbner AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Cryptomator-boks",

@@ -2690,7 +2690,10 @@
             "actions": "Дії",
             "files": "файлів",
             "empty": "Архів порожній",
-            "extracting": "Видобування"
+            "extracting": "Видобування",
+            "preview": "Перегляд",
+            "extract": "Витягти",
+            "back": "Назад"
         },
         "vault": {
             "addDirectorySuccess": "Додано {files} файлів у {dirs} каталогах",
@@ -2886,7 +2889,8 @@
             "openZip": "Відкрити AeroVault Zip",
             "zipEncryptedRejected": ".aerozip — це незашифрований режим AeroVault Zip; зашифровані контейнери повинні використовувати .aerovault.",
             "zipRecoveryHint": "Парність відновлення допомагає виправити пошкоджені байти; вона не приховує вміст.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Відкриття AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Сховище Cryptomator",

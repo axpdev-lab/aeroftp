@@ -2690,7 +2690,10 @@
             "actions": "Ενέργειες",
             "files": "αρχεία",
             "empty": "Το αρχείο είναι κενό",
-            "extracting": "Εξαγωγή"
+            "extracting": "Εξαγωγή",
+            "preview": "Προεπισκόπηση",
+            "extract": "Εξαγωγή",
+            "back": "Πίσω"
         },
         "vault": {
             "addDirectorySuccess": "Προστέθηκαν {files} αρχεία σε {dirs} καταλόγους",
@@ -2886,7 +2889,8 @@
             "openZip": "Άνοιγμα AeroVault Zip",
             "zipEncryptedRejected": "Το .aerozip είναι η μη κρυπτογραφημένη λειτουργία του AeroVault Zip· τα κρυπτογραφημένα κοντέινερ πρέπει να χρησιμοποιούν .aerovault.",
             "zipRecoveryHint": "Η ισοτιμία ανάκτησης βοηθά στην επιδιόρθωση κατεστραμμένων byte· δεν κρύβει το περιεχόμενο.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Άνοιγμα AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",

@@ -2690,7 +2690,10 @@
             "actions": "ქმედებები",
             "files": "ფაილები",
             "empty": "არქივი ცარიელია",
-            "extracting": "ამოღება"
+            "extracting": "ამოღება",
+            "preview": "გადახედვა",
+            "extract": "ამოღება",
+            "back": "უკან"
         },
         "vault": {
             "addDirectorySuccess": "დამატებულია {files} ფაილი {dirs} დირექტორიაში",
@@ -2886,7 +2889,8 @@
             "openZip": "AeroVault Zip-ის გახსნა",
             "zipEncryptedRejected": ".aerozip არის AeroVault Zip-ის დაუშიფრავი რეჟიმი; დაშიფრულმა კონტეინერებმა უნდა გამოიყენონ .aerovault.",
             "zipRecoveryHint": "აღდგენის პარიტეტი ეხმარება დაზიანებული ბაიტების შეკეთებაში; ის არ მალავს შინაარსს.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip იხსნება…"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

@@ -2690,7 +2690,10 @@
             "actions": "Actions",
             "files": "fichiers",
             "empty": "L'archive est vide",
-            "extracting": "Extraction"
+            "extracting": "Extraction",
+            "preview": "Aperçu",
+            "extract": "Extraire",
+            "back": "Retour"
         },
         "vault": {
             "addDirectorySuccess": "{files} fichiers ajoutés dans {dirs} répertoires",
@@ -2886,7 +2889,8 @@
             "openZip": "Ouvrir AeroVault Zip",
             "zipEncryptedRejected": ".aerozip est le mode non chiffré d'AeroVault Zip ; les conteneurs chiffrés doivent utiliser .aerovault.",
             "zipRecoveryHint": "La parité de récupération aide à réparer les octets endommagés ; elle ne masque pas le contenu.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "Ouverture d'AeroVault Zip…"
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

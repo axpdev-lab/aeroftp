@@ -2690,7 +2690,10 @@
             "actions": "Ekintzak",
             "empty": "Artxiboa hutsik dago",
             "extracting": "Erauzten...",
-            "files": "fitxategiak"
+            "files": "fitxategiak",
+            "preview": "Aurrebista",
+            "extract": "Atera",
+            "back": "Atzera"
         },
         "vault": {
             "addDirectorySuccess": "{files} fitxategi gehitu dira {dirs} direktoriotan",
@@ -2886,7 +2889,8 @@
             "openZip": "Ireki AeroVault Zip",
             "zipEncryptedRejected": ".aerozip AeroVault Zip-en testu soileko modua da; zifratutako edukiontziek .aerovault erabili behar dute.",
             "zipRecoveryHint": "Berreskurapen paritateak hondatutako byteak konpontzen laguntzen du; ez du edukia ezkutatzen.",
-            "zipBadge": "Zip"
+            "zipBadge": "Zip",
+            "openingZip": "AeroVault Zip irekitzen…"
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",
