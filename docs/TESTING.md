@@ -69,7 +69,6 @@ Legend:
 | Internxt | yes | - | pending | E2E encrypted |
 | 4shared | yes | - | pending | |
 | Drime | yes | - | pending | |
-| Google Photos | yes | - | pending | |
 | GitHub | yes | - | pending | |
 | GitLab | yes | - | pending | |
 | Immich | yes | - | pending | |
