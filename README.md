@@ -3,11 +3,7 @@
 > _Last updated: 2026-06-22_
 
 <p align="center">
-  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP Logo" width="128" height="128">
-</p>
-
-<p align="center">
-  <strong>FTP-First. Multi-Protocol. AI-Powered. Encrypted. Privacy-Enhanced.</strong>
+  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/aeroftp_banner.png" alt="AeroFTP — FTP-First. Multi-Protocol. AI-Powered. Privacy-Enhanced." width="100%">
 </p>
 
 <p align="center">
