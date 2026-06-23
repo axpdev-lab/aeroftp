@@ -65,6 +65,14 @@ fn validate_rel_path(rel_path: &str) -> Result<(), String> {
     if rel_path.is_empty() {
         return Err("empty entry path".to_string());
     }
+    // A NUL or a backslash never appears in a legitimate forward-slash vault path.
+    // Reject them explicitly: on Linux `\` is an ordinary character so `Path::components`
+    // would fold `a\..\b` into a single `Normal` segment and not catch the Windows-style
+    // traversal it becomes on an NTFS destination (defense-in-depth, matches the
+    // Cryptomator adapter's `is_safe_segment`).
+    if rel_path.contains('\\') || rel_path.contains('\0') {
+        return Err(format!("unsafe path component in '{rel_path}'"));
+    }
     for comp in Path::new(rel_path).components() {
         if !matches!(comp, Component::Normal(_)) {
             return Err(format!("unsafe path component in '{rel_path}'"));
@@ -134,7 +142,13 @@ pub fn export_to_folder(
         })();
         match write_res {
             Ok(_) => report.files += 1,
-            Err(e) => report.skipped.push(format!("{}: {e}", entry.rel_path)),
+            Err(e) => {
+                // A read/decrypt failure mid-file leaves a truncated plaintext on disk;
+                // remove it so the export never yields a corrupt partial file (the entry
+                // is reported as skipped instead).
+                let _ = fs::remove_file(&out);
+                report.skipped.push(format!("{}: {e}", entry.rel_path));
+            }
         }
         done_bytes = done_bytes.saturating_add(entry.size);
         on_progress(done_bytes, total_bytes);
@@ -285,13 +299,18 @@ mod tests {
     #[test]
     fn unsafe_paths_are_skipped_not_written() {
         let evil = FakeVault {
-            entries: vec![("../escape.txt".to_string(), false, b"x".to_vec())],
+            entries: vec![
+                ("../escape.txt".to_string(), false, b"x".to_vec()),
+                // Backslash traversal: a no-op filename on Linux but a separator on
+                // Windows; validate_rel_path must reject it on every platform.
+                ("a\\..\\b.txt".to_string(), false, b"y".to_vec()),
+            ],
         };
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("out");
         let report = export_to_folder(&evil, &dest, &mut |_, _| {}).unwrap();
         assert_eq!(report.files, 0);
-        assert_eq!(report.skipped.len(), 1);
+        assert_eq!(report.skipped.len(), 2);
         assert!(!tmp.path().join("escape.txt").exists());
     }
 }

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Download, Folder, FileArchive, Package, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
@@ -67,7 +68,10 @@ export const SaveAllMenu: React.FC<SaveAllMenuProps> = ({ disabled, onExport, cl
                     ))}
                 </div>
             )}
-            {confirmTarget && (
+            {confirmTarget && createPortal(
+                // Rendered into document.body, NOT the (transform-positioned) draggable
+                // modal that hosts this menu, so `fixed inset-0` resolves to the viewport
+                // and the backdrop covers the whole screen (mirrors GuardedCloseConfirm).
                 <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50" onClick={() => setConfirmTarget(null)}>
                     <div
                         className="w-[min(92vw,440px)] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-5"
@@ -93,7 +97,8 @@ export const SaveAllMenu: React.FC<SaveAllMenuProps> = ({ disabled, onExport, cl
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

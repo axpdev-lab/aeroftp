@@ -57,6 +57,22 @@ impl Drop for UnlockedVault {
     }
 }
 
+impl UnlockedVault {
+    /// A read-only snapshot (master-key material copied) that can be moved onto a
+    /// blocking thread for a long Save-All export, so the `CryptomatorState` mutex is
+    /// NOT held across the (potentially minutes-long) decrypt+IO. The copy zeroizes on
+    /// drop like the original, so it adds only a transient second key copy in memory
+    /// for the duration of the export (which already produces plaintext).
+    fn snapshot(&self) -> UnlockedVault {
+        UnlockedVault {
+            enc_key: self.enc_key,
+            mac_key: self.mac_key,
+            vault_path: self.vault_path.clone(),
+            shortening_threshold: self.shortening_threshold,
+        }
+    }
+}
+
 /// A decrypted directory entry
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -711,11 +727,19 @@ fn decrypt_file_inner_with_progress(
     let mut outfile = fs::File::create(output_path)
         .map_err(|e| format!("Failed to create output file: {}", e))?;
 
-    decrypt_data_to_writer(vault, &data, &mut outfile, |n| {
+    let res = decrypt_data_to_writer(vault, &data, &mut outfile, |n| {
         if let Some(p) = progress.as_mut() {
             p.add(n);
         }
-    })?;
+    });
+    // On a header/chunk-decrypt failure (corrupt, truncated or wrong-key file) the
+    // output holds partial or zero plaintext: drop the handle and remove it so a
+    // failed decrypt never leaves a misleading file behind.
+    drop(outfile);
+    if let Err(e) = res {
+        let _ = fs::remove_file(output_path);
+        return Err(e);
+    }
 
     if let Some(mut p) = progress {
         p.finish();
@@ -1150,35 +1174,51 @@ pub async fn cryptomator_save_all(
     app: tauri::AppHandle,
 ) -> Result<crate::readable_vault::ExportReport, String> {
     crate::filesystem::validate_path(&dest_path)?;
-    let vaults = state.vaults.lock().await;
-    let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
-    let adapter = CryptomatorReadable { vault };
-    let mut emit = crate::aerovault_v3::vault_extract_progress_emitter(app);
-    let dest = Path::new(&dest_path);
-
-    let report = match target.as_str() {
-        "folder" => crate::readable_vault::export_to_folder(&adapter, dest, &mut emit)?,
-        "zip" => crate::readable_vault::export_to_zip(&adapter, dest, &mut emit)?,
-        "aerozip" => {
-            // Stage the decrypted tree to an auto-scrubbed scratch dir, then pack it
-            // into a plaintext .aerozip via the existing create + add_directory path.
-            let scratch = tempfile::Builder::new()
-                .prefix(".aero-cm-saveall-")
-                .tempdir()
-                .map_err(|e| format!("Create scratch dir: {e}"))?;
-            let folder_report =
-                crate::readable_vault::export_to_folder(&adapter, scratch.path(), &mut emit)?;
-            let (_files, dirs) =
-                crate::aerovault_v3::create_aerozip_from_dir(scratch.path(), dest)?;
-            crate::readable_vault::ExportReport {
-                files: folder_report.files,
-                dirs: dirs as u64,
-                skipped: folder_report.skipped,
-            }
-        }
-        other => return Err(format!("Unknown save-all target: {other}")),
+    // Snapshot the unlocked vault and RELEASE the mutex before the long export, so other
+    // Cryptomator commands are not blocked and the decrypt runs off the async runtime.
+    let vault = {
+        let vaults = state.vaults.lock().await;
+        vaults
+            .get(&vault_id)
+            .ok_or("Vault not unlocked")?
+            .snapshot()
     };
-    Ok(report)
+
+    tokio::task::spawn_blocking(
+        move || -> Result<crate::readable_vault::ExportReport, String> {
+            let adapter = CryptomatorReadable { vault: &vault };
+            let mut emit = crate::aerovault_v3::vault_extract_progress_emitter(app);
+            let dest = Path::new(&dest_path);
+            let report = match target.as_str() {
+                "folder" => crate::readable_vault::export_to_folder(&adapter, dest, &mut emit)?,
+                "zip" => crate::readable_vault::export_to_zip(&adapter, dest, &mut emit)?,
+                "aerozip" => {
+                    // Stage the decrypted tree to an auto-scrubbed scratch dir, then pack it
+                    // into a plaintext .aerozip via the existing create + add_directory path.
+                    let scratch = tempfile::Builder::new()
+                        .prefix(".aero-cm-saveall-")
+                        .tempdir()
+                        .map_err(|e| format!("Create scratch dir: {e}"))?;
+                    let folder_report = crate::readable_vault::export_to_folder(
+                        &adapter,
+                        scratch.path(),
+                        &mut emit,
+                    )?;
+                    let (_files, dirs) =
+                        crate::aerovault_v3::create_aerozip_from_dir(scratch.path(), dest)?;
+                    crate::readable_vault::ExportReport {
+                        files: folder_report.files,
+                        dirs: dirs as u64,
+                        skipped: folder_report.skipped,
+                    }
+                }
+                other => return Err(format!("Unknown save-all target: {other}")),
+            };
+            Ok(report)
+        },
+    )
+    .await
+    .map_err(|e| format!("save-all task failed: {e}"))?
 }
 
 #[tauri::command]
