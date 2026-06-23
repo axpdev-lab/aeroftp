@@ -69,7 +69,8 @@
             "required": "vaadittu",
             "duplicate": "Kopioi",
             "current": "nykyinen",
-            "goToActiveSession": "Siirry aktiiviseen istuntoon"
+            "goToActiveSession": "Siirry aktiiviseen istuntoon",
+            "password": "Salasana"
         },
         "connection": {
             "title": "Yhdistä palvelimeen",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Pienet kuvakkeet",
             "iconMedium": "Keskikokoiset kuvakkeet",
             "iconLarge": "Suuret kuvakkeet"
+        },
+        "password": {
+            "match": "Salasanat täsmäävät",
+            "mismatch": "Salasanat eivät täsmää",
+            "confirm": "Vahvista salasana",
+            "confirmPlaceholder": "Toista salasana"
         }
     }
 }

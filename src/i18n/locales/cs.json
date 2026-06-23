@@ -69,7 +69,8 @@
             "required": "povinné",
             "duplicate": "Duplikovat",
             "current": "aktuální",
-            "goToActiveSession": "Přejít na aktivní relaci"
+            "goToActiveSession": "Přejít na aktivní relaci",
+            "password": "Heslo"
         },
         "connection": {
             "title": "Připojení k serveru",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Malé ikony",
             "iconMedium": "Střední ikony",
             "iconLarge": "Velké ikony"
+        },
+        "password": {
+            "match": "Hesla se shodují",
+            "mismatch": "Hesla se neshodují",
+            "confirm": "Potvrďte heslo",
+            "confirmPlaceholder": "Zopakujte heslo"
         }
     }
 }

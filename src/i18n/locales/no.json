@@ -69,7 +69,8 @@
             "required": "påkrevd",
             "duplicate": "Dupliser",
             "current": "gjeldende",
-            "goToActiveSession": "Gå til aktiv økt"
+            "goToActiveSession": "Gå til aktiv økt",
+            "password": "Passord"
         },
         "connection": {
             "title": "Koble til server",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Små ikoner",
             "iconMedium": "Mellomstore ikoner",
             "iconLarge": "Store ikoner"
+        },
+        "password": {
+            "match": "Passordene samsvarer",
+            "mismatch": "Passordene samsvarer ikke",
+            "confirm": "Bekreft passord",
+            "confirmPlaceholder": "Gjenta passord"
         }
     }
 }

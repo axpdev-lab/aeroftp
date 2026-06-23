@@ -69,7 +69,8 @@
             "required": "beharrezkoa",
             "duplicate": "Bikoiztu",
             "current": "uneko",
-            "goToActiveSession": "Joan saio aktibora"
+            "goToActiveSession": "Joan saio aktibora",
+            "password": "Pasahitza"
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Ikono txikiak",
             "iconMedium": "Ikono ertainak",
             "iconLarge": "Ikono handiak"
+        },
+        "password": {
+            "match": "Pasahitzak bat datoz",
+            "mismatch": "Pasahitzak ez datoz bat",
+            "confirm": "Berretsi pasahitza",
+            "confirmPlaceholder": "Errepikatu pasahitza"
         }
     }
 }

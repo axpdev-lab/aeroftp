@@ -27,6 +27,7 @@ import { UserAvatar } from './UserAvatar';
 import { IconPickerDialog } from './IconPickerDialog';
 import { DestructiveResetDialog } from './UsersAdmin/DestructiveResetDialog';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import {
     addUser,
     changeUserPassphrase,
@@ -93,6 +94,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [newAvatar, setNewAvatar] = React.useState(AVATAR_CHOICES[0]);
     const [newColor, setNewColor] = React.useState(COLOR_CHOICES[0]);
     const [newPassphrase, setNewPassphrase] = React.useState('');
+    const [newConfirmPassphrase, setNewConfirmPassphrase] = React.useState('');
     const [showNewPassphrase, setShowNewPassphrase] = React.useState(false);
     const [editingUserId, setEditingUserId] = React.useState<number | null>(null);
     const [editingName, setEditingName] = React.useState('');
@@ -100,6 +102,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         userId: number;
         oldPassphrase: string;
         newPassphrase: string;
+        confirmNewPassphrase: string;
         showOld: boolean;
         showNew: boolean;
     } | null>(null);
@@ -202,11 +205,18 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(t('manageUsers.errAckRequired'));
             return;
         }
+        // #322: a mistyped no-recovery password would lock the account out, so
+        // require the confirm to match when a password is being set.
+        if (newPassphrase && newConfirmPassphrase !== newPassphrase) {
+            setError(t('password.mismatch'));
+            return;
+        }
         setError('');
         try {
             await addUser(newName.trim(), newAvatar, newColor, newPassphrase || null);
             setNewName('');
             setNewPassphrase('');
+            setNewConfirmPassphrase('');
             setAcknowledgeNoRecoveryNew(false);
             setNewAvatar(AVATAR_CHOICES[0]);
             setNewColor(COLOR_CHOICES[0]);
@@ -291,6 +301,11 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         // First-time setup requires explicit acknowledgement.
         if (!user.hasPassphrase && passphraseForm.newPassphrase && !acknowledgeNoRecoveryForm) {
             setError(t('manageUsers.errAckRequired'));
+            return;
+        }
+        // #322: when a new password is being set, its confirm must match.
+        if (passphraseForm.newPassphrase && passphraseForm.confirmNewPassphrase !== passphraseForm.newPassphrase) {
+            setError(t('password.mismatch'));
             return;
         }
         setBusyUserId(user.id);
@@ -496,6 +511,22 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                     {t('manageUsers.noRecovery')}
                                 </div>
                             </div>
+                            {newPassphrase && (
+                                <div className="mt-2 sm:max-w-[calc(100%-0px)] sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
+                                    <div className="relative">
+                                        <input
+                                            type={showNewPassphrase ? 'text' : 'password'}
+                                            value={newConfirmPassphrase}
+                                            onChange={(event) => setNewConfirmPassphrase(event.target.value)}
+                                            placeholder={t('password.confirmPlaceholder')}
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                                            autoComplete="new-password"
+                                            aria-label={t('password.confirm')}
+                                        />
+                                        <PasswordMatchHint password={newPassphrase} confirm={newConfirmPassphrase} />
+                                    </div>
+                                </div>
+                            )}
                             <p className="mt-2 flex items-start gap-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
                                 <Info size={13} className="mt-0.5 flex-shrink-0" />
                                 <span>{t('manageUsers.passwordChoiceNote')}</span>
@@ -680,6 +711,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         userId: user.id,
                                                         oldPassphrase: '',
                                                         newPassphrase: '',
+                                                        confirmNewPassphrase: '',
                                                         showOld: false,
                                                         showNew: false,
                                                     })}
@@ -766,6 +798,20 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     {passphraseForm.showNew ? <EyeOff size={15} /> : <Eye size={15} />}
                                                 </button>
                                             </div>
+                                            {passphraseForm.newPassphrase && (
+                                                <div className="relative sm:col-span-3">
+                                                    <input
+                                                        type={passphraseForm.showNew ? 'text' : 'password'}
+                                                        value={passphraseForm.confirmNewPassphrase}
+                                                        onChange={(event) => setPassphraseForm({ ...passphraseForm, confirmNewPassphrase: event.target.value })}
+                                                        placeholder={t('password.confirmPlaceholder')}
+                                                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm dark:border-gray-600 dark:bg-gray-900"
+                                                        autoComplete="new-password"
+                                                        aria-label={t('password.confirm')}
+                                                    />
+                                                    <PasswordMatchHint password={passphraseForm.newPassphrase} confirm={passphraseForm.confirmNewPassphrase} />
+                                                </div>
+                                            )}
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="submit"

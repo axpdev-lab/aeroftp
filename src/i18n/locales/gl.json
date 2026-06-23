@@ -69,7 +69,8 @@
             "required": "obrigatorio",
             "duplicate": "Duplicar",
             "current": "actual",
-            "goToActiveSession": "Ir á sesión activa"
+            "goToActiveSession": "Ir á sesión activa",
+            "password": "Contrasinal"
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Iconas pequenas",
             "iconMedium": "Iconas medianas",
             "iconLarge": "Iconas grandes"
+        },
+        "password": {
+            "match": "Os contrasinais coinciden",
+            "mismatch": "Os contrasinais non coinciden",
+            "confirm": "Confirmar contrasinal",
+            "confirmPlaceholder": "Repetir o contrasinal"
         }
     }
 }

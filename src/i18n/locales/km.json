@@ -69,7 +69,8 @@
             "required": "ចាំបាច់",
             "duplicate": "ចម្លងទម្រង់",
             "current": "បច្ចុប្បន្ន",
-            "goToActiveSession": "ទៅកាន់វគ្គសកម្ម"
+            "goToActiveSession": "ទៅកាន់វគ្គសកម្ម",
+            "password": "ពាក្យសម្ងាត់"
         },
         "connection": {
             "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",
@@ -4995,6 +4996,12 @@
             "iconSmall": "រូបតំណាងតូច",
             "iconMedium": "រូបតំណាងមធ្យម",
             "iconLarge": "រូបតំណាងធំ"
+        },
+        "password": {
+            "match": "ពាក្យសម្ងាត់ត្រូវគ្នា",
+            "mismatch": "ពាក្យសម្ងាត់មិនត្រូវគ្នា",
+            "confirm": "បញ្ជាក់ពាក្យសម្ងាត់",
+            "confirmPlaceholder": "បញ្ចូលពាក្យសម្ងាត់ម្ដងទៀត"
         }
     }
 }

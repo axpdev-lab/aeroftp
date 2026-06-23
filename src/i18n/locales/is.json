@@ -69,7 +69,8 @@
             "required": "nauðsynlegt",
             "duplicate": "Afrita",
             "current": "núverandi",
-            "goToActiveSession": "Fara í virka lotu"
+            "goToActiveSession": "Fara í virka lotu",
+            "password": "Lykilorð"
         },
         "connection": {
             "title": "Tengjast þjóni",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Lítil tákn",
             "iconMedium": "Meðalstór tákn",
             "iconLarge": "Stór tákn"
+        },
+        "password": {
+            "match": "Lykilorðin passa saman",
+            "mismatch": "Lykilorðin passa ekki saman",
+            "confirm": "Staðfesta lykilorð",
+            "confirmPlaceholder": "Endurtaktu lykilorð"
         }
     }
 }

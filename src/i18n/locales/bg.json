@@ -69,7 +69,8 @@
             "required": "задължително",
             "duplicate": "Дублиране",
             "current": "текущ",
-            "goToActiveSession": "Към активната сесия"
+            "goToActiveSession": "Към активната сесия",
+            "password": "Парола"
         },
         "connection": {
             "title": "Свързване със сървър",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Малки икони",
             "iconMedium": "Средни икони",
             "iconLarge": "Големи икони"
+        },
+        "password": {
+            "match": "Паролите съвпадат",
+            "mismatch": "Паролите не съвпадат",
+            "confirm": "Потвърдете паролата",
+            "confirmPlaceholder": "Повторете паролата"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "wymagane",
             "duplicate": "Duplikuj",
             "current": "bieżący",
-            "goToActiveSession": "Przejdź do aktywnej sesji"
+            "goToActiveSession": "Przejdź do aktywnej sesji",
+            "password": "Hasło"
         },
         "connection": {
             "title": "Połącz z serwerem",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Małe ikony",
             "iconMedium": "Średnie ikony",
             "iconLarge": "Duże ikony"
+        },
+        "password": {
+            "match": "Hasła są zgodne",
+            "mismatch": "Hasła nie są zgodne",
+            "confirm": "Potwierdź hasło",
+            "confirmPlaceholder": "Powtórz hasło"
         }
     }
 }

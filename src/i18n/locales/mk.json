@@ -69,7 +69,8 @@
             "required": "задолжително",
             "duplicate": "Дуплирај",
             "current": "тековно",
-            "goToActiveSession": "Кон активната сесија"
+            "goToActiveSession": "Кон активната сесија",
+            "password": "Лозинка"
         },
         "connection": {
             "title": "Поврзи се на сервер",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Мали икони",
             "iconMedium": "Средни икони",
             "iconLarge": "Големи икони"
+        },
+        "password": {
+            "match": "Лозинките се совпаѓаат",
+            "mismatch": "Лозинките не се совпаѓаат",
+            "confirm": "Потврдете ја лозинката",
+            "confirmPlaceholder": "Повторете ја лозинката"
         }
     }
 }

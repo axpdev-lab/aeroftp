@@ -69,7 +69,8 @@
             "required": "обов'язково",
             "duplicate": "Дублювати",
             "current": "поточний",
-            "goToActiveSession": "Перейти до активної сесії"
+            "goToActiveSession": "Перейти до активної сесії",
+            "password": "Пароль"
         },
         "connection": {
             "title": "Підключення до сервера",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Малі значки",
             "iconMedium": "Середні значки",
             "iconLarge": "Великі значки"
+        },
+        "password": {
+            "match": "Паролі збігаються",
+            "mismatch": "Паролі не збігаються",
+            "confirm": "Підтвердьте пароль",
+            "confirmPlaceholder": "Повторіть пароль"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "필수",
             "duplicate": "복제",
             "current": "현재",
-            "goToActiveSession": "활성 세션으로 이동"
+            "goToActiveSession": "활성 세션으로 이동",
+            "password": "비밀번호"
         },
         "connection": {
             "title": "서버에 연결",
@@ -4976,6 +4977,12 @@
             "iconSmall": "작은 아이콘",
             "iconMedium": "중간 아이콘",
             "iconLarge": "큰 아이콘"
+        },
+        "password": {
+            "match": "비밀번호가 일치합니다",
+            "mismatch": "비밀번호가 일치하지 않습니다",
+            "confirm": "비밀번호 확인",
+            "confirmPlaceholder": "비밀번호 다시 입력"
         }
     }
 }

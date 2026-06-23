@@ -69,7 +69,8 @@
             "required": "จำเป็น",
             "duplicate": "ทำซ้ำ",
             "current": "ปัจจุบัน",
-            "goToActiveSession": "ไปยังเซสชันที่ใช้งานอยู่"
+            "goToActiveSession": "ไปยังเซสชันที่ใช้งานอยู่",
+            "password": "รหัสผ่าน"
         },
         "connection": {
             "title": "เชื่อมต่อเซิร์ฟเวอร์",
@@ -4976,6 +4977,12 @@
             "iconSmall": "ไอคอนเล็ก",
             "iconMedium": "ไอคอนกลาง",
             "iconLarge": "ไอคอนใหญ่"
+        },
+        "password": {
+            "match": "รหัสผ่านตรงกัน",
+            "mismatch": "รหัสผ่านไม่ตรงกัน",
+            "confirm": "ยืนยันรหัสผ่าน",
+            "confirmPlaceholder": "พิมพ์รหัสผ่านอีกครั้ง"
         }
     }
 }

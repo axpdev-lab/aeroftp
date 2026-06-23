@@ -69,7 +69,8 @@
             "required": "სავალდებულო",
             "duplicate": "დუბლირება",
             "current": "მიმდინარე",
-            "goToActiveSession": "აქტიურ სესიაზე გადასვლა"
+            "goToActiveSession": "აქტიურ სესიაზე გადასვლა",
+            "password": "პაროლი"
         },
         "connection": {
             "title": "სერვერთან დაკავშირება",
@@ -4976,6 +4977,12 @@
             "iconSmall": "პატარა ხატულები",
             "iconMedium": "საშუალო ხატულები",
             "iconLarge": "დიდი ხატულები"
+        },
+        "password": {
+            "match": "პაროლები ემთხვევა",
+            "mismatch": "პაროლები არ ემთხვევა",
+            "confirm": "დაადასტურეთ პაროლი",
+            "confirmPlaceholder": "გაიმეორეთ პაროლი"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "obligāts",
             "duplicate": "Dublēt",
             "current": "pašreizējais",
-            "goToActiveSession": "Pāriet uz aktīvo sesiju"
+            "goToActiveSession": "Pāriet uz aktīvo sesiju",
+            "password": "Parole"
         },
         "connection": {
             "title": "Savienoties ar serveri",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Mazas ikonas",
             "iconMedium": "Vidējas ikonas",
             "iconLarge": "Lielas ikonas"
+        },
+        "password": {
+            "match": "Paroles sakrīt",
+            "mismatch": "Paroles nesakrīt",
+            "confirm": "Apstipriniet paroli",
+            "confirmPlaceholder": "Atkārtojiet paroli"
         }
     }
 }

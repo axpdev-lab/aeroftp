@@ -69,7 +69,8 @@
             "required": "privalomas",
             "duplicate": "Dubliuoti",
             "current": "dabartinis",
-            "goToActiveSession": "Eiti į aktyvią sesiją"
+            "goToActiveSession": "Eiti į aktyvią sesiją",
+            "password": "Slaptažodis"
         },
         "connection": {
             "title": "Prisijungti prie serverio",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Mažos piktogramos",
             "iconMedium": "Vidutinės piktogramos",
             "iconLarge": "Didelės piktogramos"
+        },
+        "password": {
+            "match": "Slaptažodžiai sutampa",
+            "mismatch": "Slaptažodžiai nesutampa",
+            "confirm": "Patvirtinkite slaptažodį",
+            "confirmPlaceholder": "Pakartokite slaptažodį"
         }
     }
 }

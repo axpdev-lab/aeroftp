@@ -12,6 +12,8 @@ import { useGuardedClose } from '../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { TransferProgressBar } from './TransferProgressBar';
 import { computeCompressionRatio } from '../utils/archiveSizeReport';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import './CompressDialog.css';
 
 type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2';
@@ -216,6 +218,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const [archiveName, setArchiveName] = useState(defaultName);
     const [compressionLevel, setCompressionLevel] = useState(6);
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [compressing, setCompressing] = useState(false);
     const [showFileList, setShowFileList] = useState(false);
@@ -258,6 +261,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
         }
         if (!FORMAT_OPTIONS.find(f => f.value === newFormat)?.supportsPassword) {
             setPassword('');
+            setConfirmPassword('');
         }
     };
 
@@ -447,6 +451,31 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
                             </div>
+                            {password && <div className="mt-1.5"><PasswordStrengthBar password={password} /></div>}
+                            {password && (
+                                <div className="relative mt-2">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={confirmPassword}
+                                        onChange={e => setConfirmPassword(e.target.value)}
+                                        disabled={compressing}
+                                        placeholder={t('password.confirmPlaceholder')}
+                                        aria-label={t('password.confirm')}
+                                        className="w-full rounded-lg px-3 py-2 text-sm pr-9 outline-none transition-colors"
+                                        style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                                        onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
+                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                                    />
+                                    <button
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
+                                        style={{ color: 'var(--compress-text-muted)' }}
+                                    >
+                                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                    <PasswordMatchHint password={password} confirm={confirmPassword} />
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -514,7 +543,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         </button>
                         <button
                             onClick={handleConfirm}
-                            disabled={!archiveName.trim()}
+                            disabled={!archiveName.trim() || (!!password && confirmPassword !== password)}
                             className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
                             style={{ background: 'var(--compress-accent)' }}
                             onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--compress-accent-hover)'; }}

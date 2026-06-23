@@ -69,7 +69,8 @@
             "required": "obligatorio",
             "duplicate": "Duplicar",
             "current": "actual",
-            "goToActiveSession": "Ir a la sesión activa"
+            "goToActiveSession": "Ir a la sesión activa",
+            "password": "Contraseña"
         },
         "connection": {
             "title": "Conectar al Servidor",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Iconos pequeños",
             "iconMedium": "Iconos medianos",
             "iconLarge": "Iconos grandes"
+        },
+        "password": {
+            "match": "Las contraseñas coinciden",
+            "mismatch": "Las contraseñas no coinciden",
+            "confirm": "Confirmar contraseña",
+            "confirmPlaceholder": "Repetir contraseña"
         }
     }
 }

@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye, Trash2, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { PasswordInput } from './common/PasswordInput';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { ProviderType } from '../types';
@@ -564,12 +565,12 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
                         <Key size={12} />
                         {t('shareLinkModal.setPassword')}
                       </label>
-                      <input
-                        type="text"
+                      <PasswordInput
                         value={optPassword}
-                        onChange={e => setOptPassword(e.target.value)}
+                        onChange={setOptPassword}
                         placeholder={t('shareLinkModal.passwordPlaceholder')}
-                        className="w-full text-xs px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+                        ariaLabel={t('shareLinkModal.setPassword')}
+                        className="w-full text-xs px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
                       />
                       <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
                         {t('shareLinkModal.passwordHint')}

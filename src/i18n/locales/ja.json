@@ -69,7 +69,8 @@
             "required": "必須",
             "duplicate": "複製",
             "current": "現在",
-            "goToActiveSession": "アクティブなセッションへ移動"
+            "goToActiveSession": "アクティブなセッションへ移動",
+            "password": "パスワード"
         },
         "connection": {
             "title": "サーバーに接続",
@@ -4976,6 +4977,12 @@
             "iconSmall": "小アイコン",
             "iconMedium": "中アイコン",
             "iconLarge": "大アイコン"
+        },
+        "password": {
+            "match": "パスワードが一致しています",
+            "mismatch": "パスワードが一致しません",
+            "confirm": "パスワードの確認",
+            "confirmPlaceholder": "パスワードを再入力"
         }
     }
 }

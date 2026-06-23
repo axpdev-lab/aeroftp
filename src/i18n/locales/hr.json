@@ -69,7 +69,8 @@
             "required": "obavezno",
             "duplicate": "Dupliciraj",
             "current": "trenutno",
-            "goToActiveSession": "Idi na aktivnu sesiju"
+            "goToActiveSession": "Idi na aktivnu sesiju",
+            "password": "Lozinka"
         },
         "connection": {
             "title": "Poveži se na poslužitelj",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Male ikone",
             "iconMedium": "Srednje ikone",
             "iconLarge": "Velike ikone"
+        },
+        "password": {
+            "match": "Lozinke se podudaraju",
+            "mismatch": "Lozinke se ne podudaraju",
+            "confirm": "Potvrdite lozinku",
+            "confirmPlaceholder": "Ponovite lozinku"
         }
     }
 }

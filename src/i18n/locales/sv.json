@@ -69,7 +69,8 @@
             "required": "obligatorisk",
             "duplicate": "Duplicera",
             "current": "aktuell",
-            "goToActiveSession": "Gå till aktiv session"
+            "goToActiveSession": "Gå till aktiv session",
+            "password": "Lösenord"
         },
         "connection": {
             "title": "Anslut till server",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Små ikoner",
             "iconMedium": "Medelstora ikoner",
             "iconLarge": "Stora ikoner"
+        },
+        "password": {
+            "match": "Lösenorden matchar",
+            "mismatch": "Lösenorden matchar inte",
+            "confirm": "Bekräfta lösenord",
+            "confirmPlaceholder": "Upprepa lösenord"
         }
     }
 }

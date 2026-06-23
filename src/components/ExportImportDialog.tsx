@@ -8,6 +8,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput, Search } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { ServerProfile } from '../types';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { useTranslation } from '../i18n';
@@ -586,6 +587,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                             />
+                            <PasswordMatchHint password={password} confirm={confirmPassword} />
 
                             {/* Password strength indicator (0-100 score, parity with AeroVault) */}
                             {password.length > 0 && (

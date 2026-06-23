@@ -13,6 +13,8 @@ import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
@@ -603,6 +605,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // rewrap, tracked as a separate feature.
     const [overlayBindingLocked, setOverlayBindingLocked] = useState(false);
     const [aeroCryptPassword, setAeroCryptPassword] = useState('');
+    // Confirm field for the set-once overlay password: a typo here permanently
+    // locks the encrypted blobs, so a live match check is worth the extra field.
+    const [aeroCryptConfirm, setAeroCryptConfirm] = useState('');
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
@@ -893,6 +898,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // as an undecryptable mix under the overlay. Warn (do not block: a brand-new
     // empty remote is a legitimate case).
     const overlayNewlyBound = !!editingProfileId && aeroCryptEnabled && !overlayBindingLocked;
+    // #322: when binding a new crypt overlay, the set-once password's confirm
+    // must match before the profile can be saved (a typo locks the blobs forever).
+    const aeroCryptConfirmMismatch = aeroCryptEnabled && overlayEligible && !overlayFieldsLocked && !!aeroCryptPassword && aeroCryptConfirm !== aeroCryptPassword;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -977,6 +985,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const saveToServers = async () => {
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
+
+        // #322: the crypt-overlay password is set-once; block a save where the
+        // freshly-typed password and its confirm disagree (a typo would lock the
+        // encrypted blobs forever). The save button is already disabled on
+        // mismatch (aeroCryptConfirmMismatch); this is defense-in-depth.
+        if (aeroCryptConfirmMismatch) return;
 
         const normalizedParams = protocol === 'uploadcare'
             ? {
@@ -1696,6 +1710,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // starts unselected so the user must actively choose on enable.
         setAeroCryptKind(overlayBinding?.enabled ? (overlayBinding.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt') : null);
         setAeroCryptPassword('');
+        setAeroCryptConfirm('');
         // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
@@ -1781,6 +1796,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setOverlayBindingLocked(false);
         setAeroCryptKind(null);
         setAeroCryptPassword('');
+        setAeroCryptConfirm('');
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc('standard');
         setAeroCryptDirNameEnc(true);
@@ -2439,6 +2455,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </button>
                                     </div>
                                 </div>
+                                {/* #322: strength meter + a set-once confirm with live match.
+                                    The overlay credentials are immutable once data exists, so a
+                                    confirm guards against a typo that would lock the blobs forever.
+                                    Both hidden when editing a locked binding. */}
+                                {!overlayFieldsLocked && aeroCryptPassword.length > 0 && (
+                                    <PasswordStrengthBar password={aeroCryptPassword} />
+                                )}
+                                {!overlayFieldsLocked && (
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('password.confirm')}</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showAeroCryptPassword ? 'text' : 'password'}
+                                                value={aeroCryptConfirm}
+                                                onChange={(e) => setAeroCryptConfirm(e.target.value)}
+                                                placeholder={t('password.confirmPlaceholder')}
+                                                className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAeroCryptPassword((v) => !v)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                            >
+                                                {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+                                        <PasswordMatchHint password={aeroCryptPassword} confirm={aeroCryptConfirm} />
+                                    </div>
+                                )}
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
                                     encryption so the bound profile auto-unlocks like native.
                                     Native AeroCrypt reads these from .aeroftp-crypt.json. */}
@@ -2611,7 +2656,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={handleConnectAndSave}
-                            disabled={loading || btnDisabled}
+                            disabled={loading || btnDisabled || aeroCryptConfirmMismatch}
                             className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (

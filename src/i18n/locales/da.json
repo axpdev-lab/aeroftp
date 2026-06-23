@@ -69,7 +69,8 @@
             "required": "påkrævet",
             "duplicate": "Dupliker",
             "current": "aktuel",
-            "goToActiveSession": "Gå til aktiv session"
+            "goToActiveSession": "Gå til aktiv session",
+            "password": "Adgangskode"
         },
         "connection": {
             "title": "Forbind til server",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Små ikoner",
             "iconMedium": "Mellemstore ikoner",
             "iconLarge": "Store ikoner"
+        },
+        "password": {
+            "match": "Adgangskoderne stemmer overens",
+            "mismatch": "Adgangskoderne stemmer ikke overens",
+            "confirm": "Bekræft adgangskode",
+            "confirmPlaceholder": "Gentag adgangskode"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "obligatori",
             "duplicate": "Duplicar",
             "current": "actual",
-            "goToActiveSession": "Vés a la sessió activa"
+            "goToActiveSession": "Vés a la sessió activa",
+            "password": "Contrasenya"
         },
         "connection": {
             "title": "Connectar al Servidor",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Icones petites",
             "iconMedium": "Icones mitjanes",
             "iconLarge": "Icones grans"
+        },
+        "password": {
+            "match": "Les contrasenyes coincideixen",
+            "mismatch": "Les contrasenyes no coincideixen",
+            "confirm": "Confirmeu la contrasenya",
+            "confirmPlaceholder": "Repetiu la contrasenya"
         }
     }
 }

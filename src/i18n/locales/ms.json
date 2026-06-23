@@ -69,7 +69,8 @@
             "required": "diperlukan",
             "duplicate": "Gandakan",
             "current": "semasa",
-            "goToActiveSession": "Pergi ke sesi aktif"
+            "goToActiveSession": "Pergi ke sesi aktif",
+            "password": "Kata laluan"
         },
         "connection": {
             "title": "Sambung ke Pelayan",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Ikon kecil",
             "iconMedium": "Ikon sederhana",
             "iconLarge": "Ikon besar"
+        },
+        "password": {
+            "match": "Kata laluan sepadan",
+            "mismatch": "Kata laluan tidak sepadan",
+            "confirm": "Sahkan kata laluan",
+            "confirmPlaceholder": "Ulang kata laluan"
         }
     }
 }

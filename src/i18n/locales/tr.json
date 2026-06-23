@@ -69,7 +69,8 @@
             "required": "gerekli",
             "duplicate": "Çoğalt",
             "current": "geçerli",
-            "goToActiveSession": "Etkin oturuma git"
+            "goToActiveSession": "Etkin oturuma git",
+            "password": "Parola"
         },
         "connection": {
             "title": "Sunucuya Bağlan",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Küçük simgeler",
             "iconMedium": "Orta simgeler",
             "iconLarge": "Büyük simgeler"
+        },
+        "password": {
+            "match": "Parolalar eşleşiyor",
+            "mismatch": "Parolalar eşleşmiyor",
+            "confirm": "Parolayı onayla",
+            "confirmPlaceholder": "Parolayı tekrarla"
         }
     }
 }

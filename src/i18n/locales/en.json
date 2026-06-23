@@ -1084,7 +1084,8 @@
             "version": "Version",
             "warning": "Warning",
             "yes": "Yes",
-            "goToActiveSession": "Go to active session"
+            "goToActiveSession": "Go to active session",
+            "password": "Password"
         },
         "compare": {
             "title": "Compare panels",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Small icons",
             "iconMedium": "Medium icons",
             "iconLarge": "Large icons"
+        },
+        "password": {
+            "match": "Passwords match",
+            "mismatch": "Passwords do not match",
+            "confirm": "Confirm password",
+            "confirmPlaceholder": "Repeat password"
         }
     }
 }

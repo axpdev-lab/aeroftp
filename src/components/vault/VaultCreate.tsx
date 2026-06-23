@@ -8,6 +8,7 @@ import { TransferProgressBar } from '../TransferProgressBar';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
+import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { formatSize } from '../../utils/formatters';
 
 interface VaultCreateProps {
@@ -405,6 +406,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
             <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.confirmPassword')}</label>
             <input type={state.showPassword ? 'text' : 'password'} value={state.confirmPassword} onChange={e => state.setConfirmPassword(e.target.value)}
                 className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" />
+            <PasswordMatchHint password={state.password} confirm={state.confirmPassword} />
                 </>
             )}
 

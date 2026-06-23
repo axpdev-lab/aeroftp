@@ -69,7 +69,8 @@
             "required": "obligatoriu",
             "duplicate": "Duplică",
             "current": "curent",
-            "goToActiveSession": "Mergi la sesiunea activă"
+            "goToActiveSession": "Mergi la sesiunea activă",
+            "password": "Parolă"
         },
         "connection": {
             "title": "Conectare la server",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Pictograme mici",
             "iconMedium": "Pictograme medii",
             "iconLarge": "Pictograme mari"
+        },
+        "password": {
+            "match": "Parolele se potrivesc",
+            "mismatch": "Parolele nu se potrivesc",
+            "confirm": "Confirmați parola",
+            "confirmPlaceholder": "Repetați parola"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "wajib",
             "duplicate": "Duplikat",
             "current": "saat ini",
-            "goToActiveSession": "Buka sesi aktif"
+            "goToActiveSession": "Buka sesi aktif",
+            "password": "Kata sandi"
         },
         "connection": {
             "title": "Hubungkan ke Server",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Ikon kecil",
             "iconMedium": "Ikon sedang",
             "iconLarge": "Ikon besar"
+        },
+        "password": {
+            "match": "Kata sandi cocok",
+            "mismatch": "Kata sandi tidak cocok",
+            "confirm": "Konfirmasi kata sandi",
+            "confirmPlaceholder": "Ulangi kata sandi"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "obrigatório",
             "duplicate": "Duplicar",
             "current": "atual",
-            "goToActiveSession": "Ir para a sessão ativa"
+            "goToActiveSession": "Ir para a sessão ativa",
+            "password": "Palavra-passe"
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Ícones pequenos",
             "iconMedium": "Ícones médios",
             "iconLarge": "Ícones grandes"
+        },
+        "password": {
+            "match": "As palavras-passe coincidem",
+            "mismatch": "As palavras-passe não coincidem",
+            "confirm": "Confirmar palavra-passe",
+            "confirmPlaceholder": "Repetir palavra-passe"
         }
     }
 }

@@ -69,7 +69,8 @@
             "required": "vereist",
             "duplicate": "Dupliceren",
             "current": "huidig",
-            "goToActiveSession": "Naar actieve sessie"
+            "goToActiveSession": "Naar actieve sessie",
+            "password": "Wachtwoord"
         },
         "connection": {
             "title": "Verbinden met Server",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Kleine pictogrammen",
             "iconMedium": "Middelgrote pictogrammen",
             "iconLarge": "Grote pictogrammen"
+        },
+        "password": {
+            "match": "Wachtwoorden komen overeen",
+            "mismatch": "Wachtwoorden komen niet overeen",
+            "confirm": "Wachtwoord bevestigen",
+            "confirmPlaceholder": "Herhaal wachtwoord"
         }
     }
 }

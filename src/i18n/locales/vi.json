@@ -69,7 +69,8 @@
             "required": "bắt buộc",
             "duplicate": "Nhân bản",
             "current": "hiện tại",
-            "goToActiveSession": "Đến phiên đang hoạt động"
+            "goToActiveSession": "Đến phiên đang hoạt động",
+            "password": "Mật khẩu"
         },
         "connection": {
             "title": "Kết nối đến máy chủ",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Biểu tượng nhỏ",
             "iconMedium": "Biểu tượng vừa",
             "iconLarge": "Biểu tượng lớn"
+        },
+        "password": {
+            "match": "Mật khẩu khớp",
+            "mismatch": "Mật khẩu không khớp",
+            "confirm": "Xác nhận mật khẩu",
+            "confirmPlaceholder": "Nhập lại mật khẩu"
         }
     }
 }

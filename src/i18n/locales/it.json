@@ -69,7 +69,8 @@
             "selectAll": "Select All",
             "required": "obbligatorio",
             "duplicate": "Duplica",
-            "goToActiveSession": "Vai alla sessione attiva"
+            "goToActiveSession": "Vai alla sessione attiva",
+            "password": "Password"
         },
         "accountLock": {
             "title": "Scegli un account",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Icone piccole",
             "iconMedium": "Icone medie",
             "iconLarge": "Icone grandi"
+        },
+        "password": {
+            "match": "Le password corrispondono",
+            "mismatch": "Le password non corrispondono",
+            "confirm": "Conferma password",
+            "confirmPlaceholder": "Ripeti password"
         }
     }
 }

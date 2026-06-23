@@ -12,6 +12,7 @@ import { ModalViewToolbar } from '../modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from '../modalview/ModalFileGrid';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
+import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { formatSize } from '../../utils/formatters';
 import { TransferProgressBar } from '../TransferProgressBar';
 
@@ -329,6 +330,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                 {state.showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
                             </button>
                         </div>
+                        <PasswordMatchHint password={state.newPassword} confirm={state.confirmNewPassword} />
                     </div>
                     <button onClick={state.handleChangePassword} disabled={state.loading} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs shrink-0">
                         {t('vault.apply')}

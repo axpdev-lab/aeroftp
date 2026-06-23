@@ -69,7 +69,8 @@
             "required": "erforderlich",
             "duplicate": "Duplizieren",
             "current": "aktuell",
-            "goToActiveSession": "Zur aktiven Sitzung"
+            "goToActiveSession": "Zur aktiven Sitzung",
+            "password": "Passwort"
         },
         "connection": {
             "title": "Mit Server verbinden",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Kleine Symbole",
             "iconMedium": "Mittlere Symbole",
             "iconLarge": "Große Symbole"
+        },
+        "password": {
+            "match": "Passwörter stimmen überein",
+            "mismatch": "Passwörter stimmen nicht überein",
+            "confirm": "Passwort bestätigen",
+            "confirmPlaceholder": "Passwort wiederholen"
         }
     }
 }

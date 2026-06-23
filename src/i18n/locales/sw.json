@@ -69,7 +69,8 @@
             "required": "inahitajika",
             "duplicate": "Nakili",
             "current": "ya sasa",
-            "goToActiveSession": "Nenda kwenye kipindi kinachoendelea"
+            "goToActiveSession": "Nenda kwenye kipindi kinachoendelea",
+            "password": "Nywila"
         },
         "connection": {
             "title": "Unganisha na Seva",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Aikoni ndogo",
             "iconMedium": "Aikoni za wastani",
             "iconLarge": "Aikoni kubwa"
+        },
+        "password": {
+            "match": "Nywila zinalingana",
+            "mismatch": "Nywila hazilingani",
+            "confirm": "Thibitisha nywila",
+            "confirmPlaceholder": "Rudia nywila"
         }
     }
 }

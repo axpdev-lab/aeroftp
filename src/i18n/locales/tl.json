@@ -69,7 +69,8 @@
             "required": "kinakailangan",
             "duplicate": "Doblehin",
             "current": "kasalukuyan",
-            "goToActiveSession": "Pumunta sa aktibong session"
+            "goToActiveSession": "Pumunta sa aktibong session",
+            "password": "Password"
         },
         "connection": {
             "title": "Kumonekta sa Server",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Maliliit na icon",
             "iconMedium": "Katamtamang icon",
             "iconLarge": "Malalaking icon"
+        },
+        "password": {
+            "match": "Magkatugma ang mga password",
+            "mismatch": "Hindi magkatugma ang mga password",
+            "confirm": "Kumpirmahin ang password",
+            "confirmPlaceholder": "Ulitin ang password"
         }
     }
 }

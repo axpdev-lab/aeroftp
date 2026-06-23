@@ -69,7 +69,8 @@
             "required": "обязательно",
             "duplicate": "Дублировать",
             "current": "текущий",
-            "goToActiveSession": "Перейти к активной сессии"
+            "goToActiveSession": "Перейти к активной сессии",
+            "password": "Пароль"
         },
         "connection": {
             "title": "Подключение к серверу",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Маленькие значки",
             "iconMedium": "Средние значки",
             "iconLarge": "Большие значки"
+        },
+        "password": {
+            "match": "Пароли совпадают",
+            "mismatch": "Пароли не совпадают",
+            "confirm": "Подтвердите пароль",
+            "confirmPlaceholder": "Повторите пароль"
         }
     }
 }

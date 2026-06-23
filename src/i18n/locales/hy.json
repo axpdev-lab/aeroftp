@@ -69,7 +69,8 @@
             "required": "պարտադիր",
             "duplicate": "Կրկնակ",
             "current": "ընթացիկ",
-            "goToActiveSession": "Անցնել ակտիվ նիստին"
+            "goToActiveSession": "Անցնել ակտիվ նիստին",
+            "password": "Գաղտնաբառ"
         },
         "connection": {
             "title": "Կապվել սերվերուհն",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Փոքր պատկերակներ",
             "iconMedium": "Միջին պատկերակներ",
             "iconLarge": "Մեծ պատկերակներ"
+        },
+        "password": {
+            "match": "Գաղտնաբառերը համընկնում են",
+            "mismatch": "Գաղտնաբառերը չեն համընկնում",
+            "confirm": "Հաստատեք գաղտնաբառը",
+            "confirmPlaceholder": "Կրկնեք գաղտնաբառը"
         }
     }
 }

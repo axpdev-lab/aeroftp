@@ -69,7 +69,8 @@
             "required": "প্রয়োজনীয়",
             "duplicate": "ডুপ্লিকেট",
             "current": "বর্তমান",
-            "goToActiveSession": "সক্রিয় সেশনে যান"
+            "goToActiveSession": "সক্রিয় সেশনে যান",
+            "password": "পাসওয়ার্ড"
         },
         "connection": {
             "title": "সার্ভারে সংযোগ করুন",
@@ -4976,6 +4977,12 @@
             "iconSmall": "ছোট আইকন",
             "iconMedium": "মাঝারি আইকন",
             "iconLarge": "বড় আইকন"
+        },
+        "password": {
+            "match": "পাসওয়ার্ড মিলেছে",
+            "mismatch": "পাসওয়ার্ড মিলছে না",
+            "confirm": "পাসওয়ার্ড নিশ্চিত করুন",
+            "confirmPlaceholder": "পাসওয়ার্ড পুনরায় লিখুন"
         }
     }
 }

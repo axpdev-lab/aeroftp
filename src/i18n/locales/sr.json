@@ -69,7 +69,8 @@
             "required": "обавезно",
             "duplicate": "Дуплирај",
             "current": "тренутно",
-            "goToActiveSession": "Иди на активну сесију"
+            "goToActiveSession": "Иди на активну сесију",
+            "password": "Лозинка"
         },
         "connection": {
             "title": "Повежи се на сервер",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Мале иконе",
             "iconMedium": "Средње иконе",
             "iconLarge": "Велике иконе"
+        },
+        "password": {
+            "match": "Лозинке се подударају",
+            "mismatch": "Лозинке се не подударају",
+            "confirm": "Потврдите лозинку",
+            "confirmPlaceholder": "Поновите лозинку"
         }
     }
 }

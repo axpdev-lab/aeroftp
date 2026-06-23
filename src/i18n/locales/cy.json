@@ -69,7 +69,8 @@
             "required": "gofynnol",
             "duplicate": "Dyblygu",
             "current": "cyfredol",
-            "goToActiveSession": "Mynd i'r sesiwn weithredol"
+            "goToActiveSession": "Mynd i'r sesiwn weithredol",
+            "password": "Cyfrinair"
         },
         "connection": {
             "title": "Cysylltu a'r Gweinydd",
@@ -4995,6 +4996,12 @@
             "iconSmall": "Eiconau bach",
             "iconMedium": "Eiconau canolig",
             "iconLarge": "Eiconau mawr"
+        },
+        "password": {
+            "match": "Mae'r cyfrineiriau'n cyd-fynd",
+            "mismatch": "Nid yw'r cyfrineiriau'n cyd-fynd",
+            "confirm": "Cadarnhau cyfrinair",
+            "confirmPlaceholder": "Ailadrodd cyfrinair"
         }
     }
 }

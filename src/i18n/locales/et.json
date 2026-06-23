@@ -69,7 +69,8 @@
             "required": "nõutav",
             "duplicate": "Dubleeri",
             "current": "praegune",
-            "goToActiveSession": "Ava aktiivne seanss"
+            "goToActiveSession": "Ava aktiivne seanss",
+            "password": "Parool"
         },
         "connection": {
             "title": "Ühenda serveriga",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Väikesed ikoonid",
             "iconMedium": "Keskmised ikoonid",
             "iconLarge": "Suured ikoonid"
+        },
+        "password": {
+            "match": "Paroolid kattuvad",
+            "mismatch": "Paroolid ei kattu",
+            "confirm": "Kinnita parool",
+            "confirmPlaceholder": "Korda parooli"
         }
     }
 }

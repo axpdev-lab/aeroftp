@@ -69,7 +69,8 @@
             "required": "kötelező",
             "duplicate": "Másolat",
             "current": "jelenlegi",
-            "goToActiveSession": "Ugrás az aktív munkamenethez"
+            "goToActiveSession": "Ugrás az aktív munkamenethez",
+            "password": "Jelszó"
         },
         "connection": {
             "title": "Csatlakozás szerverhez",
@@ -4976,6 +4977,12 @@
             "iconSmall": "Kis ikonok",
             "iconMedium": "Közepes ikonok",
             "iconLarge": "Nagy ikonok"
+        },
+        "password": {
+            "match": "A jelszavak egyeznek",
+            "mismatch": "A jelszavak nem egyeznek",
+            "confirm": "Jelszó megerősítése",
+            "confirmPlaceholder": "Jelszó megismétlése"
         }
     }
 }

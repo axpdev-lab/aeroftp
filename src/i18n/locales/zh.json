@@ -69,7 +69,8 @@
             "required": "必填",
             "duplicate": "复制",
             "current": "当前",
-            "goToActiveSession": "前往活动会话"
+            "goToActiveSession": "前往活动会话",
+            "password": "密码"
         },
         "connection": {
             "title": "连接到服务器",
@@ -4976,6 +4977,12 @@
             "iconSmall": "小图标",
             "iconMedium": "中图标",
             "iconLarge": "大图标"
+        },
+        "password": {
+            "match": "密码匹配",
+            "mismatch": "密码不匹配",
+            "confirm": "确认密码",
+            "confirmPlaceholder": "再次输入密码"
         }
     }
 }
