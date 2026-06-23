@@ -1472,6 +1472,59 @@ pub fn export_rclone(
             }
             "jottacloud" => {
                 output.push_str("type = jottacloud\n");
+                // The password slot carries the Jotta OIDC refresh blob
+                // (`{refresh_token, token_endpoint, username}`), the same shape
+                // AeroFTP persists under `jottacloud_refresh_<id>`. rclone
+                // accepts a token with only a refresh_token: it has no
+                // access_token and a zero expiry, so rclone refreshes on first
+                // use against the OIDC endpoint and authenticates without an
+                // interactive re-login. Device and mountpoint are rediscovered
+                // by rclone at runtime.
+                if let Some(blob) = password {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(blob) {
+                        let refresh = v
+                            .get("refresh_token")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
+                        let endpoint = v
+                            .get("token_endpoint")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
+                        let user = v
+                            .get("username")
+                            .and_then(|x| x.as_str())
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or(&server.username);
+                        if !user.is_empty() {
+                            output.push_str(&format!("user = {}\n", user));
+                        }
+                        if !refresh.is_empty() {
+                            // rclone's jottacloud backend expects a full
+                            // oauth2.Token. A bare `{"refresh_token":...}` is
+                            // reported as "no refresh token", and an EMPTY
+                            // access_token makes rclone discard the token the
+                            // same way. Emit a non-empty placeholder access
+                            // token with an already-past expiry so rclone treats
+                            // it as expired-but-refreshable and refreshes
+                            // against the OIDC endpoint on first use.
+                            let token = serde_json::json!({
+                                "access_token": "expired",
+                                "token_type": "Bearer",
+                                "refresh_token": refresh,
+                                "expiry": "2000-01-01T00:00:00Z",
+                            });
+                            output.push_str(&format!("token = {}\n", token));
+                        }
+                        if !endpoint.is_empty() {
+                            output.push_str(&format!("token_endpoint = {}\n", endpoint));
+                        }
+                        // rclone refuses a jottacloud remote without a known
+                        // config schema version ("outdated config - please
+                        // reconfigure this backend"). Version 1 is the current
+                        // schema for the standard auth flow.
+                        output.push_str("configVersion = 1\n");
+                    }
+                }
             }
             "opendrive" => {
                 output.push_str("type = opendrive\n");
@@ -1896,6 +1949,45 @@ user = t
         let s3 = result.servers.iter().find(|s| s.name == "my-s3").unwrap();
         assert_eq!(s3.protocol.as_deref(), Some("s3"));
         assert_eq!(s3.credential.as_deref(), Some("s3secret"));
+    }
+
+    #[test]
+    fn test_export_rclone_jottacloud_emits_refreshable_token() {
+        // Jotta authenticates via an OIDC refresh blob, passed in through the
+        // password slot in the shape AeroFTP persists. The exported remote must
+        // carry a full oauth2 token (non-empty access_token placeholder +
+        // refresh_token + past expiry) and `configVersion = 1`, otherwise
+        // rclone rejects it ("outdated config" / "no refresh token").
+        let servers = vec![RcloneExportServer {
+            name: "Jotta".to_string(),
+            host: "jfs.jottacloud.com".to_string(),
+            port: 443,
+            username: "deviceuser".to_string(),
+            protocol: Some("jottacloud".to_string()),
+            options: None,
+            provider_id: Some("jottacloud".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert(
+            "Jotta".to_string(),
+            r#"{"refresh_token":"rt-secret","token_endpoint":"https://id.jottacloud.com/auth/realms/jottacloud/protocol/openid-connect/token","username":"deviceuser"}"#
+                .to_string(),
+        );
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-rclone-jotta.conf");
+        let exported = export_rclone(&servers, &passwords, &tmp).expect("should export");
+        assert_eq!(exported, 1);
+        let content = std::fs::read_to_string(&tmp).expect("read export");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(content.contains("type = jottacloud"));
+        assert!(content.contains("user = deviceuser"));
+        assert!(content.contains("\"refresh_token\":\"rt-secret\""));
+        assert!(content.contains("\"access_token\":\"expired\""));
+        assert!(content.contains(
+            "token_endpoint = https://id.jottacloud.com/auth/realms/jottacloud/protocol/openid-connect/token"
+        ));
+        assert!(content.contains("configVersion = 1"));
     }
 
     #[test]
