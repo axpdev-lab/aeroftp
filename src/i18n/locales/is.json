@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay",
             "privacyEllipsis": "Persónuvernd...",
             "openWithAeroVaultZip": "Opna með AeroVault Zip",
-            "createAeroVaultZip": "Búa til AeroVault Zip..."
+            "createAeroVaultZip": "Búa til AeroVault Zip...",
+            "importToAeroFTP": "Flytja inn í AeroFTP"
         },
         "transfer": {
             "transferring": "Flytur...",

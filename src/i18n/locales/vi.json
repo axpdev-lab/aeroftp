@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay",
             "privacyEllipsis": "Quyền riêng tư...",
             "openWithAeroVaultZip": "Mở bằng AeroVault Zip",
-            "createAeroVaultZip": "Tạo AeroVault Zip..."
+            "createAeroVaultZip": "Tạo AeroVault Zip...",
+            "importToAeroFTP": "Nhập vào AeroFTP"
         },
         "transfer": {
             "transferring": "Đang truyền...",

@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay",
             "privacyEllipsis": "Faragha...",
             "openWithAeroVaultZip": "Fungua kwa AeroVault Zip",
-            "createAeroVaultZip": "Unda AeroVault Zip..."
+            "createAeroVaultZip": "Unda AeroVault Zip...",
+            "importToAeroFTP": "Ingiza kwenye AeroFTP"
         },
         "transfer": {
             "transferring": "Inahamisha...",

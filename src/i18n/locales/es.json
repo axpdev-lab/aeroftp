@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidad...",
             "openWithAeroVaultZip": "Abrir con AeroVault Zip",
-            "createAeroVaultZip": "Crear AeroVault Zip..."
+            "createAeroVaultZip": "Crear AeroVault Zip...",
+            "importToAeroFTP": "Importar a AeroFTP"
         },
         "transfer": {
             "transferring": "Transfiriendo...",

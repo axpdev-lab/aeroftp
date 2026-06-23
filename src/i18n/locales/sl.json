@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Odpri kot AeroVault Overlay",
             "privacyEllipsis": "Zasebnost...",
             "openWithAeroVaultZip": "Odpri z AeroVault Zip",
-            "createAeroVaultZip": "Ustvari AeroVault Zip..."
+            "createAeroVaultZip": "Ustvari AeroVault Zip...",
+            "importToAeroFTP": "Uvozi v AeroFTP"
         },
         "transfer": {
             "transferring": "Prenašanje...",

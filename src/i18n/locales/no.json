@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Åpne som AeroVault Overlay",
             "privacyEllipsis": "Personvern...",
             "openWithAeroVaultZip": "Åpne med AeroVault Zip",
-            "createAeroVaultZip": "Opprett AeroVault Zip..."
+            "createAeroVaultZip": "Opprett AeroVault Zip...",
+            "importToAeroFTP": "Importer til AeroFTP"
         },
         "transfer": {
             "transferring": "Overfører...",

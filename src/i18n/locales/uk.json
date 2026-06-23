@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay",
             "privacyEllipsis": "Приватність...",
             "openWithAeroVaultZip": "Відкрити за допомогою AeroVault Zip",
-            "createAeroVaultZip": "Створити AeroVault Zip..."
+            "createAeroVaultZip": "Створити AeroVault Zip...",
+            "importToAeroFTP": "Імпортувати в AeroFTP"
         },
         "transfer": {
             "transferring": "Передача...",

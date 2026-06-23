@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
             "privacyEllipsis": "Privaatsus...",
             "openWithAeroVaultZip": "Ava rakendusega AeroVault Zip",
-            "createAeroVaultZip": "Loo AeroVault Zip..."
+            "createAeroVaultZip": "Loo AeroVault Zip...",
+            "importToAeroFTP": "Impordi AeroFTP-sse"
         },
         "transfer": {
             "transferring": "Ülekanne...",

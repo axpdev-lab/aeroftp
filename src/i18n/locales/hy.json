@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay",
             "privacyEllipsis": "Գաղտնիություն...",
             "openWithAeroVaultZip": "Բացել AeroVault Zip-ով",
-            "createAeroVaultZip": "Ստեղծել AeroVault Zip..."
+            "createAeroVaultZip": "Ստեղծել AeroVault Zip...",
+            "importToAeroFTP": "Ներմուծել AeroFTP"
         },
         "transfer": {
             "transferring": "Փոխանցում...",

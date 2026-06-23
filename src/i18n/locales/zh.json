@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开",
             "privacyEllipsis": "隐私…",
             "openWithAeroVaultZip": "用 AeroVault Zip 打开",
-            "createAeroVaultZip": "创建 AeroVault Zip..."
+            "createAeroVaultZip": "创建 AeroVault Zip...",
+            "importToAeroFTP": "导入到 AeroFTP"
         },
         "transfer": {
             "transferring": "传输中...",

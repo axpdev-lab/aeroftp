@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Buksan bilang AeroVault Overlay",
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Buksan gamit ang AeroVault Zip",
-            "createAeroVaultZip": "Gumawa ng AeroVault Zip..."
+            "createAeroVaultZip": "Gumawa ng AeroVault Zip...",
+            "importToAeroFTP": "I-import sa AeroFTP"
         },
         "transfer": {
             "transferring": "Naglilipat...",

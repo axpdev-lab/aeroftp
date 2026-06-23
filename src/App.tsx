@@ -273,7 +273,7 @@ import { ScanningToast, INITIAL_SCANNING_STATE } from './components/ScanningToas
 import type { ScanningState } from './components/ScanningToast';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
-  FolderUp, RefreshCw, FolderPlus, FolderOpen,
+  FolderUp, RefreshCw, FolderPlus, FolderOpen, FolderInput,
   Download, Upload, Pencil, Trash2, X, ShieldCheck, ShieldQuestion, ShieldAlert, Loader2,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
@@ -455,6 +455,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTransferEvents, TRANSFER_EVENT_BRIDGE } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
+import { useBridgeConfigDetection } from './hooks/useBridgeConfigDetection';
 import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
@@ -914,6 +915,10 @@ const App: React.FC = () => {
   const [showMcpDialog, setShowMcpDialog] = useState(false);
   const [showExportImport, setShowExportImport] = useState(false);
   const [exportImportServers, setExportImportServers] = useState<ServerProfile[]>([]);
+  // Optional starting mode + preset bridge-config file for the Export/Import
+  // dialog (set by AeroFile "Import to AeroFTP"); reset whenever it closes.
+  const [exportImportInitialMode, setExportImportInitialMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | undefined>(undefined);
+  const [exportImportBridgeFile, setExportImportBridgeFile] = useState<string | null>(null);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
@@ -3316,6 +3321,33 @@ interface UpdateVerificationInfo {
     return localFiles2.filter(f => f.name.toLowerCase().includes(q));
   }, [localFiles2, localSearchFilter2]);
   const sortedLocalFiles2 = useMemo(() => sortFiles(filteredLocalFiles2, localSortField, localSortOrder), [filteredLocalFiles2, localSortField, localSortOrder, sortFiles]);
+
+  // AeroFile: recognize third-party client configs (rclone/WinSCP/FileZilla/...)
+  // in the local panels so a row can show a badge and the right-click menu can
+  // offer "Import to AeroFTP". Panel 2 only scans when the dual panel is open.
+  const bridgeConfigsLocal = useBridgeConfigDetection(sortedLocalFiles, true);
+  const bridgeConfigsLocal2 = useBridgeConfigDetection(sortedLocalFiles2, showDualLocalPanel);
+  const getLocalBridgeConfig = useCallback(
+    (file: LocalFile) => (file.is_dir ? null : bridgeConfigsLocal.get(file.path) ?? null),
+    [bridgeConfigsLocal],
+  );
+  const getLocal2BridgeConfig = useCallback(
+    (file: LocalFile) => (file.is_dir ? null : bridgeConfigsLocal2.get(file.path) ?? null),
+    [bridgeConfigsLocal2],
+  );
+  // Open the Export/Import dialog straight into the bridge import flow for a
+  // recognized config file (reuses the dialog's identify+route logic).
+  const openBridgeImportForFile = useCallback(async (filePath: string) => {
+    try {
+      setExportImportServers(await loadSavedServerProfiles());
+    } catch {
+      setExportImportServers([]);
+    }
+    setExportImportInitialMode('bridge-import');
+    setExportImportBridgeFile(filePath);
+    setShowExportImport(true);
+  }, []);
+
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
   sortedLocalFilesRef.current = sortedLocalFiles;
   sortedRemoteFilesRef.current = sortedRemoteFiles;
@@ -11922,6 +11954,10 @@ interface UpdateVerificationInfo {
     // Detect AeroFTP container files early for context menu ordering.
     const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
     const isAeroVaultArchiveFile = count === 1 && !file.is_dir && /\.aerozip$/i.test(file.name);
+    // AeroFile: is this single file a recognized third-party client config?
+    const bridgeCfg = count === 1 && !file.is_dir
+      ? (localPanelId === 'local2' ? bridgeConfigsLocal2 : bridgeConfigsLocal).get(file.path)
+      : undefined;
 
     const isAeroFileDualActive = (!isConnected || !showRemotePanel) && showDualLocalPanel;
     const items: ContextMenuItem[] = [
@@ -11997,6 +12033,13 @@ interface UpdateVerificationInfo {
         icon: <Archive size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
+      // AeroFile: a recognized client config (rclone/WinSCP/FileZilla/...) can
+      // be imported into AeroFTP via the existing bridge import flow.
+      ...(bridgeCfg ? [{
+        label: t('contextMenu.importToAeroFTP'),
+        icon: <FolderInput size={14} />,
+        action: () => { void openBridgeImportForFile(file.path); },
+      } as ContextMenuItem] : []),
       // .aerozip: Extract Here / Extract to Folder (plaintext lane, no password)
       ...(isAeroVaultArchiveFile ? [{
         label: t('contextMenu.extractSubmenu'),
@@ -13520,6 +13563,8 @@ interface UpdateVerificationInfo {
         {showExportImport && (
           <ExportImportDialog
             servers={exportImportServers}
+            initialMode={exportImportInitialMode}
+            initialBridgeFilePath={exportImportBridgeFile ?? undefined}
             onImport={(newServers) => {
               const merged = [...exportImportServers, ...newServers];
               setExportImportServers(merged);
@@ -13527,8 +13572,14 @@ interface UpdateVerificationInfo {
                 .then(() => setServersRefreshKey(k => k + 1))
                 .catch(() => {});
               setShowExportImport(false);
+              setExportImportInitialMode(undefined);
+              setExportImportBridgeFile(null);
             }}
-            onClose={() => setShowExportImport(false)}
+            onClose={() => {
+              setShowExportImport(false);
+              setExportImportInitialMode(undefined);
+              setExportImportBridgeFile(null);
+            }}
           />
         )}
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
@@ -15622,6 +15673,7 @@ interface UpdateVerificationInfo {
                   iconProvider={iconProvider}
                   displayName={displayName}
                   getSyncBadge={getSyncBadge}
+                  getBridgeConfig={getLocalBridgeConfig}
                   getTagsForFile={fileTags.getTagsForFile}
                   labelCounts={fileTags.labelCounts}
                   activeTagFilter={fileTags.activeTagFilter}
@@ -15758,6 +15810,7 @@ interface UpdateVerificationInfo {
                     iconProvider={iconProvider}
                     displayName={displayName}
                     getSyncBadge={() => null}
+                    getBridgeConfig={getLocal2BridgeConfig}
                     getTagsForFile={fileTags.getTagsForFile}
                     labelCounts={fileTags.labelCounts}
                     activeTagFilter={null}

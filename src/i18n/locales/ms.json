@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
             "privacyEllipsis": "Privasi...",
             "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
-            "createAeroVaultZip": "Cipta AeroVault Zip..."
+            "createAeroVaultZip": "Cipta AeroVault Zip...",
+            "importToAeroFTP": "Import ke AeroFTP"
         },
         "transfer": {
             "transferring": "Memindahkan...",

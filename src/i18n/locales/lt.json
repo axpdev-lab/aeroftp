@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay",
             "privacyEllipsis": "Privatumas...",
             "openWithAeroVaultZip": "Atidaryti su AeroVault Zip",
-            "createAeroVaultZip": "Kurti AeroVault Zip..."
+            "createAeroVaultZip": "Kurti AeroVault Zip...",
+            "importToAeroFTP": "Importuoti į AeroFTP"
         },
         "transfer": {
             "transferring": "Perduodama...",

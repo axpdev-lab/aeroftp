@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Avaa AeroVault Overlayna",
             "privacyEllipsis": "Yksityisyys...",
             "openWithAeroVaultZip": "Avaa sovelluksella AeroVault Zip",
-            "createAeroVaultZip": "Luo AeroVault Zip..."
+            "createAeroVaultZip": "Luo AeroVault Zip...",
+            "importToAeroFTP": "Tuo AeroFTP:hen"
         },
         "transfer": {
             "transferring": "Siirretään...",

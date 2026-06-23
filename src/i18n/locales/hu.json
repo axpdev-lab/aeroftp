@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként",
             "privacyEllipsis": "Adatvédelem...",
             "openWithAeroVaultZip": "Megnyitás ezzel: AeroVault Zip",
-            "createAeroVaultZip": "AeroVault Zip létrehozása..."
+            "createAeroVaultZip": "AeroVault Zip létrehozása...",
+            "importToAeroFTP": "Importálás az AeroFTP-be"
         },
         "transfer": {
             "transferring": "Átvitel...",

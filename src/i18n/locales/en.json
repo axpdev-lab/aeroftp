@@ -1454,7 +1454,8 @@
             "shareLinkDeleted": "Share link deleted",
             "newDocumentName": "Document name:",
             "openWithAeroVaultZip": "Open with AeroVault Zip",
-            "createAeroVaultZip": "Create AeroVault Zip..."
+            "createAeroVaultZip": "Create AeroVault Zip...",
+            "importToAeroFTP": "Import to AeroFTP"
         },
         "aerocrypt": {
             "title": "Rclone Crypt overlay",

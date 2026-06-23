@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Otevřít jako AeroVault Overlay",
             "privacyEllipsis": "Soukromí...",
             "openWithAeroVaultZip": "Otevřít pomocí AeroVault Zip",
-            "createAeroVaultZip": "Vytvořit AeroVault Zip..."
+            "createAeroVaultZip": "Vytvořit AeroVault Zip...",
+            "importToAeroFTP": "Importovat do AeroFTP"
         },
         "transfer": {
             "transferring": "Přenášení...",

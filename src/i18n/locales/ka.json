@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay",
             "privacyEllipsis": "კონფიდენციალურობა...",
             "openWithAeroVaultZip": "გახსნა AeroVault Zip-ით",
-            "createAeroVaultZip": "AeroVault Zip-ის შექმნა..."
+            "createAeroVaultZip": "AeroVault Zip-ის შექმნა...",
+            "importToAeroFTP": "AeroFTP-ში იმპორტი"
         },
         "transfer": {
             "transferring": "გადაცემა...",

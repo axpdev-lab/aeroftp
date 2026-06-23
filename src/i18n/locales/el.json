@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Άνοιγμα ως AeroVault Overlay",
             "privacyEllipsis": "Απόρρητο...",
             "openWithAeroVaultZip": "Άνοιγμα με AeroVault Zip",
-            "createAeroVaultZip": "Δημιουργία AeroVault Zip..."
+            "createAeroVaultZip": "Δημιουργία AeroVault Zip...",
+            "importToAeroFTP": "Εισαγωγή στο AeroFTP"
         },
         "transfer": {
             "transferring": "Μεταφορά...",

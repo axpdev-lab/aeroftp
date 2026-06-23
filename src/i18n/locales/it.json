@@ -824,7 +824,8 @@
             "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…",
             "openAsAeroVaultOverlay": "Apri come AeroVault Overlay",
             "openWithAeroVaultZip": "Apri con AeroVault Zip",
-            "createAeroVaultZip": "Crea AeroVault Zip..."
+            "createAeroVaultZip": "Crea AeroVault Zip...",
+            "importToAeroFTP": "Importa in AeroFTP"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",

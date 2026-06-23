@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa",
             "privacyEllipsis": "Pribatutasuna...",
             "openWithAeroVaultZip": "Ireki AeroVault Zip-ekin",
-            "createAeroVaultZip": "Sortu AeroVault Zip..."
+            "createAeroVaultZip": "Sortu AeroVault Zip...",
+            "importToAeroFTP": "Inportatu AeroFTPra"
         },
         "transfer": {
             "transferring": "Transferitzen...",

@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
             "privacyEllipsis": "개인정보...",
             "openWithAeroVaultZip": "AeroVault Zip으로 열기",
-            "createAeroVaultZip": "AeroVault Zip 만들기..."
+            "createAeroVaultZip": "AeroVault Zip 만들기...",
+            "importToAeroFTP": "AeroFTP로 가져오기"
         },
         "transfer": {
             "transferring": "전송 중...",

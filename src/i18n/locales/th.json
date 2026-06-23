@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "เปิดเป็น AeroVault Overlay",
             "privacyEllipsis": "ความเป็นส่วนตัว...",
             "openWithAeroVaultZip": "เปิดด้วย AeroVault Zip",
-            "createAeroVaultZip": "สร้าง AeroVault Zip..."
+            "createAeroVaultZip": "สร้าง AeroVault Zip...",
+            "importToAeroFTP": "นำเข้าไปยัง AeroFTP"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",

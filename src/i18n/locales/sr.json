@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Отвори као AeroVault Overlay",
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори помоћу AeroVault Zip",
-            "createAeroVaultZip": "Направи AeroVault Zip..."
+            "createAeroVaultZip": "Направи AeroVault Zip...",
+            "importToAeroFTP": "Увези у AeroFTP"
         },
         "transfer": {
             "transferring": "Пренос...",

@@ -431,7 +431,8 @@
             "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay",
             "privacyEllipsis": "Privātums...",
             "openWithAeroVaultZip": "Atvērt ar AeroVault Zip",
-            "createAeroVaultZip": "Izveidot AeroVault Zip..."
+            "createAeroVaultZip": "Izveidot AeroVault Zip...",
+            "importToAeroFTP": "Importēt uz AeroFTP"
         },
         "transfer": {
             "transferring": "Pārsūta...",
