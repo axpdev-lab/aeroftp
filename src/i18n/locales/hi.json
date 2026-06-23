@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "आवश्यक",
             "duplicate": "डुप्लिकेट",
-            "current": "वर्तमान"
+            "current": "वर्तमान",
+            "goToActiveSession": "सक्रिय सत्र पर जाएं"
         },
         "connection": {
             "title": "सर्वर से कनेक्ट करें",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay के रूप में खोलें",
             "privacyEllipsis": "गोपनीयता...",
             "openWithAeroVaultZip": "AeroVault Zip से खोलें",
-            "createAeroVaultZip": "AeroVault Zip बनाएं..."
+            "createAeroVaultZip": "AeroVault Zip बनाएं...",
+            "importToAeroFTP": "AeroFTP में आयात करें"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} {destination} में कॉपी किया गया",
             "overlay_opening": "एन्क्रिप्टेड ओवरले खोला जा रहा है, नाम डिक्रिप्ट किए जा रहे हैं",
             "overlay_unlocked": "एन्क्रिप्टेड ओवरले अनलॉक किया गया",
-            "overlay_failed": "एन्क्रिप्टेड ओवरले अनलॉक नहीं किया जा सका"
+            "overlay_failed": "एन्क्रिप्टेड ओवरले अनलॉक नहीं किया जा सका",
+            "session_resumed": "{server} के लिए सक्रिय सत्र फिर से शुरू हुआ"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -4519,7 +4522,8 @@
             "connecting": "कनेक्ट हो रहा है...",
             "autoRetryCountdown": "एक नए प्रमाणक कोड की प्रतीक्षा हो रही है, {seconds} सेकंड में {account} से पुनः कनेक्ट हो रहा है",
             "autoRetryFailedTitle": "दो-कारक प्रमाणीकरण विफल रहा",
-            "autoRetryFailedBody": "AeroFTP सहेजे गए 2FA गुप्त के साथ प्रमाणित नहीं कर सका। प्रोफ़ाइल का संपादन फ़ॉर्म खोलें और 2FA गुप्त सत्यापित करें।"
+            "autoRetryFailedBody": "AeroFTP सहेजे गए 2FA गुप्त के साथ प्रमाणित नहीं कर सका। प्रोफ़ाइल का संपादन फ़ॉर्म खोलें और 2FA गुप्त सत्यापित करें।",
+            "codeVerified": "दो-कारक कोड सत्यापित"
         },
         "table": {
             "manageColumns": "कॉलम प्रबंधित करें",

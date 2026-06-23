@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "պարտադիր",
             "duplicate": "Կրկնակ",
-            "current": "ընթացիկ"
+            "current": "ընթացիկ",
+            "goToActiveSession": "Անցնել ակտիվ նիստին"
         },
         "connection": {
             "title": "Կապվել սերվերուհն",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay",
             "privacyEllipsis": "Գաղտնիություն...",
             "openWithAeroVaultZip": "Բացել AeroVault Zip-ով",
-            "createAeroVaultZip": "Ստեղծել AeroVault Zip..."
+            "createAeroVaultZip": "Ստեղծել AeroVault Zip...",
+            "importToAeroFTP": "Ներմուծել AeroFTP"
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -1471,7 +1473,8 @@
             "copy_success": "[{location}] {filename} պատճենված է {destination}-ում",
             "overlay_opening": "Գաղտնագրված շերտի բացում, անունների վերծանում",
             "overlay_unlocked": "Գաղտնագրված շերտը ապակողպվեց",
-            "overlay_failed": "Չհաջողվեց ապակողպել գաղտնագրված շերտը"
+            "overlay_failed": "Չհաջողվեց ապակողպել գաղտնագրված շերտը",
+            "session_resumed": "{server}-ի ակտիվ նիստը վերսկսվեց"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -4519,7 +4522,8 @@
             "connecting": "Միանում է...",
             "autoRetryCountdown": "Սպասում ենք նույնականացուցիչի նոր կոդին, {seconds} վրկ-ից նորից կապ կհաստատվի {account} հաշվի հետ",
             "autoRetryFailedTitle": "Երկգործոն նույնականացումը ձախողվեց",
-            "autoRetryFailedBody": "AeroFTP-ն չկարողացավ նույնականացվել պահված 2FA գաղտնիքով։ Բացեք պրոֆիլի խմբագրման ձևը և ստուգեք 2FA գաղտնիքը։"
+            "autoRetryFailedBody": "AeroFTP-ն չկարողացավ նույնականացվել պահված 2FA գաղտնիքով։ Բացեք պրոֆիլի խմբագրման ձևը և ստուգեք 2FA գաղտնիքը։",
+            "codeVerified": "Երկգործոն կոդը հաստատվեց"
         },
         "table": {
             "manageColumns": "Կառավարել սյունակները",

@@ -611,9 +611,13 @@ export const ServerCard = React.memo(function ServerCard({
                     <button
                         onClick={(e) => { e.stopPropagation(); onConnect(server); }}
                         disabled={isConnecting}
-                        className="rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait"
+                        className={`rounded-lg flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait ${
+                            hasActiveSession
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-400/70 dark:border-emerald-500/60 ring-1 ring-emerald-400/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:ring-2 hover:ring-emerald-400/60'
+                                : 'bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500'
+                        }`}
                         style={{ width: connectButtonSize, height: connectButtonSize }}
-                        title={t('common.connect')}
+                        title={hasActiveSession ? t('common.goToActiveSession') : t('common.connect')}
                     >
                         {isConnecting ? <Loader2 size={connectSpinnerSize} className="animate-spin text-blue-500" /> : getServerIcon(server, connectIconSize)}
                     </button>

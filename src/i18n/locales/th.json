@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "จำเป็น",
             "duplicate": "ทำซ้ำ",
-            "current": "ปัจจุบัน"
+            "current": "ปัจจุบัน",
+            "goToActiveSession": "ไปยังเซสชันที่ใช้งานอยู่"
         },
         "connection": {
             "title": "เชื่อมต่อเซิร์ฟเวอร์",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "เปิดเป็น AeroVault Overlay",
             "privacyEllipsis": "ความเป็นส่วนตัว...",
             "openWithAeroVaultZip": "เปิดด้วย AeroVault Zip",
-            "createAeroVaultZip": "สร้าง AeroVault Zip..."
+            "createAeroVaultZip": "สร้าง AeroVault Zip...",
+            "importToAeroFTP": "นำเข้าไปยัง AeroFTP"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] คัดลอก {filename} ไปยัง {destination} แล้ว",
             "overlay_opening": "กำลังเปิดเลเยอร์ที่เข้ารหัส กำลังถอดรหัสชื่อ",
             "overlay_unlocked": "ปลดล็อกเลเยอร์ที่เข้ารหัสแล้ว",
-            "overlay_failed": "ไม่สามารถปลดล็อกเลเยอร์ที่เข้ารหัสได้"
+            "overlay_failed": "ไม่สามารถปลดล็อกเลเยอร์ที่เข้ารหัสได้",
+            "session_resumed": "กลับสู่เซสชันที่ใช้งานอยู่ของ {server}"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -4519,7 +4522,8 @@
             "connecting": "กำลังเชื่อมต่อ...",
             "autoRetryCountdown": "กำลังรอรหัสตัวตรวจสอบสิทธิ์ใหม่ จะเชื่อมต่อกับ {account} อีกครั้งใน {seconds} วินาที",
             "autoRetryFailedTitle": "การตรวจสอบสิทธิ์แบบสองปัจจัยล้มเหลว",
-            "autoRetryFailedBody": "AeroFTP ไม่สามารถตรวจสอบสิทธิ์ด้วยรหัสลับ 2FA ที่บันทึกไว้ได้ เปิดฟอร์มแก้ไขของโปรไฟล์แล้วตรวจสอบรหัสลับ 2FA"
+            "autoRetryFailedBody": "AeroFTP ไม่สามารถตรวจสอบสิทธิ์ด้วยรหัสลับ 2FA ที่บันทึกไว้ได้ เปิดฟอร์มแก้ไขของโปรไฟล์แล้วตรวจสอบรหัสลับ 2FA",
+            "codeVerified": "ยืนยันรหัสสองปัจจัยแล้ว"
         },
         "table": {
             "manageColumns": "จัดการคอลัมน์",

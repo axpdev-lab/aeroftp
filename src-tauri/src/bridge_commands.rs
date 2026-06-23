@@ -625,6 +625,55 @@ mod tests {
     }
 
     #[test]
+    fn identify_sources_recognizes_common_configs() {
+        // The AeroFile bridge-config badge + "Import to AeroFTP" menu entry
+        // route through `bridge_identify` -> identify_sources, so the realistic
+        // config shapes it must recognize are pinned here.
+        assert!(
+            identify_sources("rclone.conf", "[remote]\ntype = sftp\nhost = h\n")
+                .contains(&"rclone"),
+            "rclone.conf by name",
+        );
+        assert!(
+            identify_sources(
+                "WinSCP.ini",
+                "[Configuration\\Interface]\n[Sessions\\Demo]\nHostName=h\n"
+            )
+            .contains(&"winscp"),
+            "winscp by session markers",
+        );
+        assert!(
+            identify_sources(
+                "sitemanager.xml",
+                "<?xml version=\"1.0\"?>\n<FileZilla3 version=\"3.66\"><Servers/></FileZilla3>",
+            )
+            .contains(&"filezilla"),
+            "filezilla by root element",
+        );
+        assert!(
+            identify_sources(
+                "credentials",
+                "[default]\naws_access_key_id = AKIAEXAMPLE\n"
+            )
+            .contains(&"aws"),
+            "aws by key marker",
+        );
+    }
+
+    #[test]
+    fn identify_sources_ignores_non_configs() {
+        // Negatives: ordinary files must yield zero candidates so the badge
+        // never appears on them (the frontend pre-filter already skips most,
+        // but a content probe must also stay quiet).
+        assert!(identify_sources("notes.txt", "just some notes, not a config\n").is_empty());
+        assert!(identify_sources(
+            "random.json",
+            "{\"hello\":\"world\",\"not\":\"a bridge config\"}"
+        )
+        .is_empty());
+    }
+
+    #[test]
     fn legacy_export_servers_deserialize_from_profile_json() {
         // The run_export! macro deserializes each profile entry into the
         // source's *ExportServer type; verify the three migrated sources

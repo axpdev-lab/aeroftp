@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obrigatorio",
             "duplicate": "Duplicar",
-            "current": "actual"
+            "current": "actual",
+            "goToActiveSession": "Ir á sesión activa"
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidade...",
             "openWithAeroVaultZip": "Abrir con AeroVault Zip",
-            "createAeroVaultZip": "Crear AeroVault Zip..."
+            "createAeroVaultZip": "Crear AeroVault Zip...",
+            "importToAeroFTP": "Importar a AeroFTP"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} copiado en {destination}",
             "overlay_opening": "Abrindo a capa cifrada, descifrando os nomes",
             "overlay_unlocked": "Capa cifrada desbloqueada",
-            "overlay_failed": "Non se puido desbloquear a capa cifrada"
+            "overlay_failed": "Non se puido desbloquear a capa cifrada",
+            "session_resumed": "Sesión activa retomada con {server}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -4538,7 +4541,8 @@
             "connecting": "Conectando...",
             "autoRetryCountdown": "Agardando un novo código do autenticador, reconectando a {account} en {seconds} s",
             "autoRetryFailedTitle": "Produciuse un erro na autenticación en dous pasos",
-            "autoRetryFailedBody": "AeroFTP non puido autenticarse co segredo 2FA gardado. Abre o formulario de edición do perfil e verifica o segredo 2FA."
+            "autoRetryFailedBody": "AeroFTP non puido autenticarse co segredo 2FA gardado. Abre o formulario de edición do perfil e verifica o segredo 2FA.",
+            "codeVerified": "Código de dous factores verificado"
         },
         "table": {
             "manageColumns": "Xestionar columnas",

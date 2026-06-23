@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "სავალდებულო",
             "duplicate": "დუბლირება",
-            "current": "მიმდინარე"
+            "current": "მიმდინარე",
+            "goToActiveSession": "აქტიურ სესიაზე გადასვლა"
         },
         "connection": {
             "title": "სერვერთან დაკავშირება",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay",
             "privacyEllipsis": "კონფიდენციალურობა...",
             "openWithAeroVaultZip": "გახსნა AeroVault Zip-ით",
-            "createAeroVaultZip": "AeroVault Zip-ის შექმნა..."
+            "createAeroVaultZip": "AeroVault Zip-ის შექმნა...",
+            "importToAeroFTP": "AeroFTP-ში იმპორტი"
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} დაკოპირდა {destination}-ში",
             "overlay_opening": "დაშიფრული შრის გახსნა, სახელების გაშიფვრა",
             "overlay_unlocked": "დაშიფრული შრე განბლოკილია",
-            "overlay_failed": "დაშიფრული შრის განბლოკვა ვერ მოხერხდა"
+            "overlay_failed": "დაშიფრული შრის განბლოკვა ვერ მოხერხდა",
+            "session_resumed": "განახლდა აქტიური სესია: {server}"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -4519,7 +4522,8 @@
             "connecting": "დაკავშირება...",
             "autoRetryCountdown": "ახალი ავთენტიფიკატორის კოდის მოლოდინში, {account}-თან ხელახლა დაკავშირება {seconds} წმ-ში",
             "autoRetryFailedTitle": "ორფაქტორიანი ავთენტიფიკაცია ვერ შესრულდა",
-            "autoRetryFailedBody": "AeroFTP-მ ვერ მოახერხა ავთენტიფიკაცია შენახული 2FA საიდუმლოთი. გახსენით პროფილის რედაქტირების ფორმა და გადაამოწმეთ 2FA საიდუმლო."
+            "autoRetryFailedBody": "AeroFTP-მ ვერ მოახერხა ავთენტიფიკაცია შენახული 2FA საიდუმლოთი. გახსენით პროფილის რედაქტირების ფორმა და გადაამოწმეთ 2FA საიდუმლო.",
+            "codeVerified": "ორფაქტორიანი კოდი დადასტურდა"
         },
         "table": {
             "manageColumns": "სვეტების მართვა",

@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "задолжително",
             "duplicate": "Дуплирај",
-            "current": "тековно"
+            "current": "тековно",
+            "goToActiveSession": "Кон активната сесија"
         },
         "connection": {
             "title": "Поврзи се на сервер",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Отвори како AeroVault Overlay",
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори со AeroVault Zip",
-            "createAeroVaultZip": "Создади AeroVault Zip..."
+            "createAeroVaultZip": "Создади AeroVault Zip...",
+            "importToAeroFTP": "Увези во AeroFTP"
         },
         "transfer": {
             "transferring": "Се пренесува...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} копиран во {destination}",
             "overlay_opening": "Се отвора шифрираниот слој, се дешифрираат имињата",
             "overlay_unlocked": "Шифрираниот слој е отклучен",
-            "overlay_failed": "Шифрираниот слој не може да се отклучи"
+            "overlay_failed": "Шифрираниот слој не може да се отклучи",
+            "session_resumed": "Продолжена активна сесија кон {server}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -4538,7 +4541,8 @@
             "connecting": "Поврзување...",
             "autoRetryCountdown": "Се чека нов код од автентикаторот, повторно поврзување со {account} за {seconds} с",
             "autoRetryFailedTitle": "Двофакторската автентикација не успеа",
-            "autoRetryFailedBody": "AeroFTP не можеше да се автентицира со зачуваната 2FA тајна. Отворете го формуларот за уредување на профилот и проверете ја 2FA тајната."
+            "autoRetryFailedBody": "AeroFTP не можеше да се автентицира со зачуваната 2FA тајна. Отворете го формуларот за уредување на профилот и проверете ја 2FA тајната.",
+            "codeVerified": "Двофакторскиот код е потврден"
         },
         "table": {
             "manageColumns": "Управувај со колони",

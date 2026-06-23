@@ -27,6 +27,8 @@ interface MyServersTableProps {
     columns: MyServersTableColumnsResult;
     favorites: Set<string>;
     connectingId: string | null;
+    /** Profile id whose connect is in flight incl. the post-2FA retry (#128-C). */
+    connectingProfileId?: string | null;
     oauthConnecting: string | null;
     credentialsMasked: boolean;
     hideUsername: boolean;
@@ -108,6 +110,7 @@ export function MyServersTable({
     columns,
     favorites,
     connectingId,
+    connectingProfileId,
     oauthConnecting,
     credentialsMasked,
     hideUsername,
@@ -277,7 +280,7 @@ export function MyServersTable({
                                 server={server}
                                 index={idx}
                                 orderedColumns={orderedVisibleColumns}
-                                isConnecting={connectingId === server.id || oauthConnecting === server.id}
+                                isConnecting={connectingId === server.id || oauthConnecting === server.id || connectingProfileId === server.id}
                                 credentialsMasked={credentialsMasked}
                                 hideUsername={hideUsername}
                                 isFavorite={favorites.has(server.id)}

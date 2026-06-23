@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "povinné",
             "duplicate": "Duplikovať",
-            "current": "aktuálny"
+            "current": "aktuálny",
+            "goToActiveSession": "Prejsť na aktívnu reláciu"
         },
         "connection": {
             "title": "Pripojenie k serveru",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Otvoriť ako AeroVault Overlay",
             "privacyEllipsis": "Súkromie...",
             "openWithAeroVaultZip": "Otvoriť pomocou AeroVault Zip",
-            "createAeroVaultZip": "Vytvoriť AeroVault Zip..."
+            "createAeroVaultZip": "Vytvoriť AeroVault Zip...",
+            "importToAeroFTP": "Importovať do AeroFTP"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} skopírovaný do {destination}",
             "overlay_opening": "Otvára sa šifrovaná vrstva, dešifrujú sa názvy",
             "overlay_unlocked": "Šifrovaná vrstva odomknutá",
-            "overlay_failed": "Šifrovanú vrstvu sa nepodarilo odomknúť"
+            "overlay_failed": "Šifrovanú vrstvu sa nepodarilo odomknúť",
+            "session_resumed": "Obnovené aktívne pripojenie k {server}"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Pripája sa...",
             "autoRetryCountdown": "Čaká sa na nový kód autentifikátora, opätovné pripojenie k účtu {account} o {seconds} s",
             "autoRetryFailedTitle": "Dvojfaktorové overenie zlyhalo",
-            "autoRetryFailedBody": "AeroFTP sa nepodarilo overiť pomocou uloženého tajného kľúča 2FA. Otvorte formulár úprav profilu a skontrolujte tajný kľúč 2FA."
+            "autoRetryFailedBody": "AeroFTP sa nepodarilo overiť pomocou uloženého tajného kľúča 2FA. Otvorte formulár úprav profilu a skontrolujte tajný kľúč 2FA.",
+            "codeVerified": "Dvojfaktorový kód overený"
         },
         "table": {
             "manageColumns": "Spravovať stĺpce",

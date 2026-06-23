@@ -32,6 +32,8 @@ import { LocalFile } from '../types';
 import type { ServerProfile } from '../types';
 import type { TrashItem, FileTag, PanelEndpoint } from '../types/aerofile';
 import { FileTagBadge } from './FileTagBadge';
+import { BridgeConfigBadge } from './BridgeConfigBadge';
+import type { BridgeSourceDescriptor } from './bridge/bridgeSources';
 import type { PanelKey } from '../hooks/useDragAndDrop';
 import { PanelEndpointSelector } from './PanelEndpointSelector';
 
@@ -208,6 +210,9 @@ export interface LocalFilePanelProps {
   iconProvider: IconProvider;
   displayName: (name: string, isDir: boolean) => string;
   getSyncBadge: (filePath: string, fileModified: string | undefined, isLocal: boolean) => React.ReactNode;
+  /** AeroFile bridge-config recognition: returns the matching bridge source
+   *  for a recognized third-party client config (rclone/WinSCP/...), else null. */
+  getBridgeConfig?: (file: LocalFile) => BridgeSourceDescriptor | null;
   t: (key: string, params?: Record<string, string | number>) => string;
   notify: { success: (title: string, message: string) => void };
 }
@@ -311,9 +316,18 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   iconProvider,
   displayName,
   getSyncBadge,
+  getBridgeConfig,
   t,
   notify,
 }) => {
+  // AeroFile: render the bridge-config badge for a recognized client config.
+  const bridgeBadge = (file: LocalFile): React.ReactNode => {
+    if (!getBridgeConfig || file.is_dir) return null;
+    const source = getBridgeConfig(file);
+    if (!source) return null;
+    return <BridgeConfigBadge source={source} title={`${source.label} - ${t('contextMenu.importToAeroFTP')}`} />;
+  };
+
   // Navigate to parent directory
   const navigateUp = () => {
     const parent = currentPath.split(/[\\/]/).slice(0, -1).join('/') || '/';
@@ -916,6 +930,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                       </span>
                     )}
                     <FileTagBadge tags={getTagsForFile(file.path)} />
+                    {bridgeBadge(file)}
                     {getSyncBadge(file.path, file.modified || undefined, true)}
                   </td>
                   {orderedExtras.map((c) => visibility[c.id] ? renderFileExtra(c.id, file) : null)}
@@ -1001,6 +1016,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   </span>
                 )}
                 <FileTagBadge tags={getTagsForFile(file.path)} />
+                {bridgeBadge(file)}
                 {!file.is_dir && file.size !== null && file.size > 0 && (
                   <span className="file-grid-size">{formatBytes(file.size)}</span>
                 )}

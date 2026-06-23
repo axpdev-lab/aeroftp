@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "필수",
             "duplicate": "복제",
-            "current": "현재"
+            "current": "현재",
+            "goToActiveSession": "활성 세션으로 이동"
         },
         "connection": {
             "title": "서버에 연결",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
             "privacyEllipsis": "개인정보...",
             "openWithAeroVaultZip": "AeroVault Zip으로 열기",
-            "createAeroVaultZip": "AeroVault Zip 만들기..."
+            "createAeroVaultZip": "AeroVault Zip 만들기...",
+            "importToAeroFTP": "AeroFTP로 가져오기"
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename}을(를) {destination}(으)로 복사했습니다",
             "overlay_opening": "암호화 오버레이 여는 중, 이름 복호화 중",
             "overlay_unlocked": "암호화 오버레이 잠금 해제됨",
-            "overlay_failed": "암호화 오버레이의 잠금을 해제할 수 없습니다"
+            "overlay_failed": "암호화 오버레이의 잠금을 해제할 수 없습니다",
+            "session_resumed": "{server}의 활성 세션을 다시 시작했습니다"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -4519,7 +4522,8 @@
             "connecting": "연결 중...",
             "autoRetryCountdown": "새 인증 코드를 기다리는 중, {seconds}초 후 {account}에 다시 연결합니다",
             "autoRetryFailedTitle": "2단계 인증 실패",
-            "autoRetryFailedBody": "AeroFTP가 저장된 2FA 비밀로 인증하지 못했습니다. 프로필의 편집 양식을 열고 2FA 비밀을 확인하세요."
+            "autoRetryFailedBody": "AeroFTP가 저장된 2FA 비밀로 인증하지 못했습니다. 프로필의 편집 양식을 열고 2FA 비밀을 확인하세요.",
+            "codeVerified": "2단계 인증 코드가 확인되었습니다"
         },
         "table": {
             "manageColumns": "열 관리",

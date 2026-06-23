@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "nõutav",
             "duplicate": "Dubleeri",
-            "current": "praegune"
+            "current": "praegune",
+            "goToActiveSession": "Ava aktiivne seanss"
         },
         "connection": {
             "title": "Ühenda serveriga",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
             "privacyEllipsis": "Privaatsus...",
             "openWithAeroVaultZip": "Ava rakendusega AeroVault Zip",
-            "createAeroVaultZip": "Loo AeroVault Zip..."
+            "createAeroVaultZip": "Loo AeroVault Zip...",
+            "importToAeroFTP": "Impordi AeroFTP-sse"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} kopeeritud asukohta {destination}",
             "overlay_opening": "Krüpteeritud kihi avamine, nimede dekrüpteerimine",
             "overlay_unlocked": "Krüpteeritud kiht avati",
-            "overlay_failed": "Krüpteeritud kihti ei õnnestunud avada"
+            "overlay_failed": "Krüpteeritud kihti ei õnnestunud avada",
+            "session_resumed": "Aktiivne seanss taastatud: {server}"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -4519,7 +4522,8 @@
             "connecting": "Ühendamine...",
             "autoRetryCountdown": "Ootan uut autentija koodi, taasühendamine kontoga {account} {seconds} s pärast",
             "autoRetryFailedTitle": "Kaheastmeline autentimine ebaõnnestus",
-            "autoRetryFailedBody": "AeroFTP ei suutnud salvestatud 2FA saladusega autentida. Avage profiili muutmisvorm ja kontrollige 2FA saladust."
+            "autoRetryFailedBody": "AeroFTP ei suutnud salvestatud 2FA saladusega autentida. Avage profiili muutmisvorm ja kontrollige 2FA saladust.",
+            "codeVerified": "Kaheastmeline kood kinnitatud"
         },
         "table": {
             "manageColumns": "Halda veerge",

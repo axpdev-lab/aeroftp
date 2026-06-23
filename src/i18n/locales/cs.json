@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "povinné",
             "duplicate": "Duplikovat",
-            "current": "aktuální"
+            "current": "aktuální",
+            "goToActiveSession": "Přejít na aktivní relaci"
         },
         "connection": {
             "title": "Připojení k serveru",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Otevřít jako AeroVault Overlay",
             "privacyEllipsis": "Soukromí...",
             "openWithAeroVaultZip": "Otevřít pomocí AeroVault Zip",
-            "createAeroVaultZip": "Vytvořit AeroVault Zip..."
+            "createAeroVaultZip": "Vytvořit AeroVault Zip...",
+            "importToAeroFTP": "Importovat do AeroFTP"
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} zkopírován do {destination}",
             "overlay_opening": "Otevírání šifrované vrstvy, dešifrování názvů",
             "overlay_unlocked": "Šifrovaná vrstva odemčena",
-            "overlay_failed": "Šifrovanou vrstvu se nepodařilo odemknout"
+            "overlay_failed": "Šifrovanou vrstvu se nepodařilo odemknout",
+            "session_resumed": "Obnoveno aktivní připojení k {server}"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Připojování...",
             "autoRetryCountdown": "Čekání na nový kód z autentizátoru, opětovné připojení k {account} za {seconds} s",
             "autoRetryFailedTitle": "Dvoufázové ověření selhalo",
-            "autoRetryFailedBody": "AeroFTP se nepodařilo ověřit pomocí uloženého tajného klíče 2FA. Otevřete formulář úprav profilu a zkontrolujte tajný klíč 2FA."
+            "autoRetryFailedBody": "AeroFTP se nepodařilo ověřit pomocí uloženého tajného klíče 2FA. Otevřete formulář úprav profilu a zkontrolujte tajný klíč 2FA.",
+            "codeVerified": "Dvoufaktorový kód ověřen"
         },
         "table": {
             "manageColumns": "Spravovat sloupce",

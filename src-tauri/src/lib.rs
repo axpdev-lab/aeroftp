@@ -16598,6 +16598,7 @@ pub fn run() {
             provider_commands::cancel_connection,
             provider_commands::provider_disconnect,
             provider_commands::provider_check_connection,
+            provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
             provider_commands::provider_go_up,

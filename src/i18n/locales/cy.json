@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "gofynnol",
             "duplicate": "Dyblygu",
-            "current": "cyfredol"
+            "current": "cyfredol",
+            "goToActiveSession": "Mynd i'r sesiwn weithredol"
         },
         "connection": {
             "title": "Cysylltu a'r Gweinydd",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay",
             "privacyEllipsis": "Preifatrwydd...",
             "openWithAeroVaultZip": "Agor gydag AeroVault Zip",
-            "createAeroVaultZip": "Creu AeroVault Zip..."
+            "createAeroVaultZip": "Creu AeroVault Zip...",
+            "importToAeroFTP": "Mewnforio i AeroFTP"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] Copïwyd {filename} i {destination}",
             "overlay_opening": "Agor yr haen wedi'i hamgryptio, dadgryptio'r enwau",
             "overlay_unlocked": "Datglowyd yr haen wedi'i hamgryptio",
-            "overlay_failed": "Methwyd datgloi'r haen wedi'i hamgryptio"
+            "overlay_failed": "Methwyd datgloi'r haen wedi'i hamgryptio",
+            "session_resumed": "Ailddechreuwyd sesiwn fyw i {server}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -4538,7 +4541,8 @@
             "connecting": "Cysylltu...",
             "autoRetryCountdown": "Yn aros am god dilysydd newydd, yn ailgysylltu â {account} ymhen {seconds} eiliad",
             "autoRetryFailedTitle": "Methodd y dilysu dau ffactor",
-            "autoRetryFailedBody": "Ni allai AeroFTP ddilysu gyda'r gyfrinach 2FA a gadwyd. Agorwch ffurflen Golygu'r proffil a gwiriwch y gyfrinach 2FA."
+            "autoRetryFailedBody": "Ni allai AeroFTP ddilysu gyda'r gyfrinach 2FA a gadwyd. Agorwch ffurflen Golygu'r proffil a gwiriwch y gyfrinach 2FA.",
+            "codeVerified": "Cod dau ffactor wedi'i wirio"
         },
         "table": {
             "manageColumns": "Rheoli colofnau",

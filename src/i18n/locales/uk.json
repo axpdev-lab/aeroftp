@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "обов'язково",
             "duplicate": "Дублювати",
-            "current": "поточний"
+            "current": "поточний",
+            "goToActiveSession": "Перейти до активної сесії"
         },
         "connection": {
             "title": "Підключення до сервера",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay",
             "privacyEllipsis": "Приватність...",
             "openWithAeroVaultZip": "Відкрити за допомогою AeroVault Zip",
-            "createAeroVaultZip": "Створити AeroVault Zip..."
+            "createAeroVaultZip": "Створити AeroVault Zip...",
+            "importToAeroFTP": "Імпортувати в AeroFTP"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} скопійовано до {destination}",
             "overlay_opening": "Відкриття шифрованого шару, розшифрування імен",
             "overlay_unlocked": "Шифрований шар розблоковано",
-            "overlay_failed": "Не вдалося розблокувати шифрований шар"
+            "overlay_failed": "Не вдалося розблокувати шифрований шар",
+            "session_resumed": "Відновлено активну сесію з {server}"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -4519,7 +4522,8 @@
             "connecting": "Підключення...",
             "autoRetryCountdown": "Очікування нового коду автентифікатора, повторне підключення до {account} за {seconds} с",
             "autoRetryFailedTitle": "Помилка двофакторної автентифікації",
-            "autoRetryFailedBody": "AeroFTP не вдалося пройти автентифікацію зі збереженим секретом 2FA. Відкрийте форму редагування профілю та перевірте секрет 2FA."
+            "autoRetryFailedBody": "AeroFTP не вдалося пройти автентифікацію зі збереженим секретом 2FA. Відкрийте форму редагування профілю та перевірте секрет 2FA.",
+            "codeVerified": "Двофакторний код підтверджено"
         },
         "table": {
             "manageColumns": "Керування колонками",

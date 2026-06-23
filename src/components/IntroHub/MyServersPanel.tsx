@@ -278,6 +278,15 @@ interface MyServersPanelProps {
     /** Profile ids that have at least one open session in the tab strip.
      *  Drives the pulsing health indicator on cards / rows (issue #222). */
     activeProfileIds?: ReadonlySet<string>;
+    /** Jump to a profile's already-open session instead of starting a parallel
+     *  connect, when its card shows the pulsing "active session" dot. Lets the
+     *  card's connect button flip its action (connect vs go-to session) so a
+     *  still-connected account is not re-logged-in / re-prompted for 2FA.
+     *  Returns true when a session was found and activated. Issue #128-C. */
+    onActivateSession?: (savedServerId: string) => boolean;
+    /** Saved-server profile id whose connect is in flight (incl. the post-2FA
+     *  retry), so its card connect button keeps spinning. Issue #128-C. */
+    connectingProfileId?: string | null;
     /** Close every open session for the given saved profile. Wired to the
      *  Disconnect context-menu entry, gated on `activeProfileIds`. #222. */
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
@@ -303,6 +312,8 @@ export function MyServersPanel({
     onOpenCrossProfile,
     onOpenMountManager,
     activeProfileIds,
+    onActivateSession,
+    connectingProfileId,
     onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
@@ -806,6 +817,8 @@ export function MyServersPanel({
             result = result.filter(s => favorites.has(s.id));
         } else if (activeFilter === 'encrypted') {
             result = result.filter(s => getServerCryptOverlay(s) !== null);
+        } else if (activeFilter === 'active') {
+            result = result.filter(s => activeProfileIds?.has(s.id) ?? false);
         } else if (activeFilter !== 'all') {
             const chip = FILTER_CHIPS.find(c => c.id === activeFilter);
             if (chip) {
@@ -813,7 +826,7 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts]);
+    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts, activeProfileIds]);
 
     // Per-group count of members that still resolve to an existing server.
     const groupCounts = useMemo(() => {
@@ -918,11 +931,13 @@ export function MyServersPanel({
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
             ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0, encrypted: 0,
+            // Open-session count: a profile-id set, not a protocol predicate.
+            active: activeProfileIds?.size ?? 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
             for (const chip of FILTER_CHIPS) {
-                if (chip.id === 'all') continue;
+                if (chip.id === 'all' || chip.id === 'active') continue;
                 if (chip.id === 'favorites') {
                     if (favorites.has(s.id)) counts.favorites++;
                 } else if (chip.id === 'encrypted') {
@@ -933,12 +948,33 @@ export function MyServersPanel({
             }
         }
         return counts;
-    }, [servers, favorites]);
+    }, [servers, favorites, activeProfileIds]);
+
+    // The "Active Sessions" filter only exists while at least one session is
+    // open. If the last session closes (or a stale 'active' was persisted from a
+    // prior run), fall back to 'all' so the list never strands on an empty,
+    // unselectable filter once its sidebar row disappears.
+    React.useEffect(() => {
+        if (activeFilter === 'active' && (activeProfileIds?.size ?? 0) === 0) {
+            setActiveFilter('all');
+            localStorage.setItem('aeroftp_myservers_filter', 'all');
+        }
+    }, [activeFilter, activeProfileIds]);
 
     // Connection handler - full logic from original SavedServers.tsx
     // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
     const handleConnect = useCallback(async (server: ServerProfile) => {
         if (connectingId) return;
+
+        // #128-C: dual-action connect button. When this card already owns an
+        // open session (the pulsing "active session" dot), jump to that live
+        // tab instead of starting a parallel connection, so a still-connected
+        // account is never re-logged-in or re-prompted for 2FA. Falls through
+        // to a normal connect when no open session is found.
+        if (activeProfileIds?.has(server.id) && onActivateSession?.(server.id)) {
+            return;
+        }
+
         setConnectingId(server.id);
 
         // OAuth2 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho, kDrive)
@@ -1506,7 +1542,7 @@ export function MyServersPanel({
                                 <ServerCard
                                     key={server.id}
                                     server={server}
-                                    isConnecting={connectingId === server.id || oauthConnecting === server.id}
+                                    isConnecting={connectingId === server.id || oauthConnecting === server.id || connectingProfileId === server.id}
                                     credentialsMasked={credentialsMasked}
                                     hideUsername={hideUsername}
                                     isFavorite={favorites.has(server.id)}
@@ -1577,6 +1613,7 @@ export function MyServersPanel({
                         columns={tableColumns}
                         favorites={favorites}
                         connectingId={connectingId}
+                        connectingProfileId={connectingProfileId}
                         oauthConnecting={oauthConnecting}
                         credentialsMasked={credentialsMasked}
                         hideUsername={hideUsername}

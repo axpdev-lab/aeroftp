@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obligatoriu",
             "duplicate": "Duplică",
-            "current": "curent"
+            "current": "curent",
+            "goToActiveSession": "Mergi la sesiunea activă"
         },
         "connection": {
             "title": "Conectare la server",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Deschide ca AeroVault Overlay",
             "privacyEllipsis": "Confidențialitate...",
             "openWithAeroVaultZip": "Deschide cu AeroVault Zip",
-            "createAeroVaultZip": "Creează AeroVault Zip..."
+            "createAeroVaultZip": "Creează AeroVault Zip...",
+            "importToAeroFTP": "Importă în AeroFTP"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} copiat în {destination}",
             "overlay_opening": "Se deschide stratul criptat, se decriptează numele",
             "overlay_unlocked": "Strat criptat deblocat",
-            "overlay_failed": "Stratul criptat nu a putut fi deblocat"
+            "overlay_failed": "Stratul criptat nu a putut fi deblocat",
+            "session_resumed": "Sesiune activă reluată la {server}"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Se conectează...",
             "autoRetryCountdown": "Se așteaptă un cod nou de autentificare, reconectare la {account} în {seconds} s",
             "autoRetryFailedTitle": "Autentificarea în doi pași a eșuat",
-            "autoRetryFailedBody": "AeroFTP nu s-a putut autentifica cu secretul 2FA salvat. Deschide formularul de editare al profilului și verifică secretul 2FA."
+            "autoRetryFailedBody": "AeroFTP nu s-a putut autentifica cu secretul 2FA salvat. Deschide formularul de editare al profilului și verifică secretul 2FA.",
+            "codeVerified": "Cod în doi factori verificat"
         },
         "table": {
             "manageColumns": "Gestionați coloanele",

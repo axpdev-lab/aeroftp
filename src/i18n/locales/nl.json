@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "vereist",
             "duplicate": "Dupliceren",
-            "current": "huidig"
+            "current": "huidig",
+            "goToActiveSession": "Naar actieve sessie"
         },
         "connection": {
             "title": "Verbinden met Server",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Openen als AeroVault Overlay",
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Openen met AeroVault Zip",
-            "createAeroVaultZip": "AeroVault Zip maken..."
+            "createAeroVaultZip": "AeroVault Zip maken...",
+            "importToAeroFTP": "Importeren in AeroFTP"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} gekopieerd naar {destination}",
             "overlay_opening": "Versleutelde laag openen, namen ontsleutelen",
             "overlay_unlocked": "Versleutelde laag ontgrendeld",
-            "overlay_failed": "Versleutelde laag kon niet worden ontgrendeld"
+            "overlay_failed": "Versleutelde laag kon niet worden ontgrendeld",
+            "session_resumed": "Actieve sessie naar {server} hervat"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Verbinden...",
             "autoRetryCountdown": "Wachten op een nieuwe verificatiecode, opnieuw verbinden met {account} over {seconds} s",
             "autoRetryFailedTitle": "Tweestapsverificatie mislukt",
-            "autoRetryFailedBody": "AeroFTP kon zich niet verifiëren met het opgeslagen 2FA-geheim. Open het bewerkingsformulier van het profiel en controleer het 2FA-geheim."
+            "autoRetryFailedBody": "AeroFTP kon zich niet verifiëren met het opgeslagen 2FA-geheim. Open het bewerkingsformulier van het profiel en controleer het 2FA-geheim.",
+            "codeVerified": "Tweefactorcode geverifieerd"
         },
         "table": {
             "manageColumns": "Kolommen beheren",

@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "задължително",
             "duplicate": "Дублиране",
-            "current": "текущ"
+            "current": "текущ",
+            "goToActiveSession": "Към активната сесия"
         },
         "connection": {
             "title": "Свързване със сървър",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Отвори като AeroVault Overlay",
             "privacyEllipsis": "Поверителност...",
             "openWithAeroVaultZip": "Отвори с AeroVault Zip",
-            "createAeroVaultZip": "Създай AeroVault Zip..."
+            "createAeroVaultZip": "Създай AeroVault Zip...",
+            "importToAeroFTP": "Импортиране в AeroFTP"
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} е копиран в {destination}",
             "overlay_opening": "Отваряне на шифрования слой, дешифриране на имената",
             "overlay_unlocked": "Шифрованият слой е отключен",
-            "overlay_failed": "Шифрованият слой не може да бъде отключен"
+            "overlay_failed": "Шифрованият слой не може да бъде отключен",
+            "session_resumed": "Възобновена активна сесия към {server}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -4519,7 +4522,8 @@
             "connecting": "Свързване...",
             "autoRetryCountdown": "Изчакване на нов код от удостоверителя, повторно свързване към {account} след {seconds} с",
             "autoRetryFailedTitle": "Двуфакторното удостоверяване е неуспешно",
-            "autoRetryFailedBody": "AeroFTP не успя да се удостовери със запазената 2FA тайна. Отворете формуляра за редактиране на профила и проверете 2FA тайната."
+            "autoRetryFailedBody": "AeroFTP не успя да се удостовери със запазената 2FA тайна. Отворете формуляра за редактиране на профила и проверете 2FA тайната.",
+            "codeVerified": "Двуфакторният код е потвърден"
         },
         "table": {
             "manageColumns": "Управление на колоните",

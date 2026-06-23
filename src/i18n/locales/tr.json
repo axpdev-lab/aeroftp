@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "gerekli",
             "duplicate": "Çoğalt",
-            "current": "geçerli"
+            "current": "geçerli",
+            "goToActiveSession": "Etkin oturuma git"
         },
         "connection": {
             "title": "Sunucuya Bağlan",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay olarak aç",
             "privacyEllipsis": "Gizlilik...",
             "openWithAeroVaultZip": "AeroVault Zip ile aç",
-            "createAeroVaultZip": "AeroVault Zip oluştur..."
+            "createAeroVaultZip": "AeroVault Zip oluştur...",
+            "importToAeroFTP": "AeroFTP'ye içe aktar"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename}, {destination} konumuna kopyalandı",
             "overlay_opening": "Şifreli katman açılıyor, adlar şifresi çözülüyor",
             "overlay_unlocked": "Şifreli katman kilidi açıldı",
-            "overlay_failed": "Şifreli katmanın kilidi açılamadı"
+            "overlay_failed": "Şifreli katmanın kilidi açılamadı",
+            "session_resumed": "{server} için etkin oturuma dönüldü"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -4519,7 +4522,8 @@
             "connecting": "Bağlanıyor...",
             "autoRetryCountdown": "Yeni bir kimlik doğrulayıcı kodu bekleniyor, {seconds} sn içinde {account} hesabına yeniden bağlanılıyor",
             "autoRetryFailedTitle": "İki faktörlü kimlik doğrulama başarısız oldu",
-            "autoRetryFailedBody": "AeroFTP, kaydedilen 2FA gizli anahtarıyla kimlik doğrulaması yapamadı. Profilin Düzenleme formunu açın ve 2FA gizli anahtarını doğrulayın."
+            "autoRetryFailedBody": "AeroFTP, kaydedilen 2FA gizli anahtarıyla kimlik doğrulaması yapamadı. Profilin Düzenleme formunu açın ve 2FA gizli anahtarını doğrulayın.",
+            "codeVerified": "İki faktörlü kod doğrulandı"
         },
         "table": {
             "manageColumns": "Sütunları yönet",

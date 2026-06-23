@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "påkrævet",
             "duplicate": "Dupliker",
-            "current": "aktuel"
+            "current": "aktuel",
+            "goToActiveSession": "Gå til aktiv session"
         },
         "connection": {
             "title": "Forbind til server",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay",
             "privacyEllipsis": "Privatliv...",
             "openWithAeroVaultZip": "Åbn med AeroVault Zip",
-            "createAeroVaultZip": "Opret AeroVault Zip..."
+            "createAeroVaultZip": "Opret AeroVault Zip...",
+            "importToAeroFTP": "Importer til AeroFTP"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} kopieret til {destination}",
             "overlay_opening": "Åbner krypteret lag, dekrypterer navne",
             "overlay_unlocked": "Krypteret lag låst op",
-            "overlay_failed": "Det krypterede lag kunne ikke låses op"
+            "overlay_failed": "Det krypterede lag kunne ikke låses op",
+            "session_resumed": "Genoptog aktiv session til {server}"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Tilslutter...",
             "autoRetryCountdown": "Venter på en ny godkendelseskode, genopretter forbindelse til {account} om {seconds} s",
             "autoRetryFailedTitle": "Tofaktorgodkendelse mislykkedes",
-            "autoRetryFailedBody": "AeroFTP kunne ikke godkende med den gemte 2FA-hemmelighed. Åbn profilens redigeringsformular, og kontrollér 2FA-hemmeligheden."
+            "autoRetryFailedBody": "AeroFTP kunne ikke godkende med den gemte 2FA-hemmelighed. Åbn profilens redigeringsformular, og kontrollér 2FA-hemmeligheden.",
+            "codeVerified": "Tofaktorkode bekræftet"
         },
         "table": {
             "manageColumns": "Administrer kolonner",

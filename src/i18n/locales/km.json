@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "ចាំបាច់",
             "duplicate": "ចម្លងទម្រង់",
-            "current": "បច្ចុប្បន្ន"
+            "current": "បច្ចុប្បន្ន",
+            "goToActiveSession": "ទៅកាន់វគ្គសកម្ម"
         },
         "connection": {
             "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "បើកជា AeroVault Overlay",
             "privacyEllipsis": "ឯកជនភាព...",
             "openWithAeroVaultZip": "បើកជាមួយ AeroVault Zip",
-            "createAeroVaultZip": "បង្កើត AeroVault Zip..."
+            "createAeroVaultZip": "បង្កើត AeroVault Zip...",
+            "importToAeroFTP": "នាំចូលទៅ AeroFTP"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] បានចម្លង {filename} ទៅ {destination}",
             "overlay_opening": "កំពុងបើកស្រទាប់អ៊ិនគ្រីប កំពុងឌិគ្រីបឈ្មោះ",
             "overlay_unlocked": "បានដោះសោស្រទាប់អ៊ិនគ្រីប",
-            "overlay_failed": "មិនអាចដោះសោស្រទាប់អ៊ិនគ្រីបបានទេ"
+            "overlay_failed": "មិនអាចដោះសោស្រទាប់អ៊ិនគ្រីបបានទេ",
+            "session_resumed": "បានបន្តវគ្គសកម្មទៅ {server}"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -4538,7 +4541,8 @@
             "connecting": "កំពុងភ្ជាប់...",
             "autoRetryCountdown": "កំពុងរង់ចាំកូដផ្ទៀងផ្ទាត់ថ្មី តភ្ជាប់ឡើងវិញទៅ {account} ក្នុងរយៈពេល {seconds} វិនាទី",
             "autoRetryFailedTitle": "ការផ្ទៀងផ្ទាត់ពីរកត្តាបានបរាជ័យ",
-            "autoRetryFailedBody": "AeroFTP មិនអាចផ្ទៀងផ្ទាត់ជាមួយសម្ងាត់ 2FA ដែលបានរក្សាទុកបានទេ។ បើកទម្រង់កែសម្រួលរបស់ប្រវត្តិរូប ហើយផ្ទៀងផ្ទាត់សម្ងាត់ 2FA។"
+            "autoRetryFailedBody": "AeroFTP មិនអាចផ្ទៀងផ្ទាត់ជាមួយសម្ងាត់ 2FA ដែលបានរក្សាទុកបានទេ។ បើកទម្រង់កែសម្រួលរបស់ប្រវត្តិរូប ហើយផ្ទៀងផ្ទាត់សម្ងាត់ 2FA។",
+            "codeVerified": "បានផ្ទៀងផ្ទាត់លេខកូដពីរកត្តា"
         },
         "table": {
             "manageColumns": "គ្រប់គ្រងជួរឈរ",

@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "প্রয়োজনীয়",
             "duplicate": "ডুপ্লিকেট",
-            "current": "বর্তমান"
+            "current": "বর্তমান",
+            "goToActiveSession": "সক্রিয় সেশনে যান"
         },
         "connection": {
             "title": "সার্ভারে সংযোগ করুন",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন",
             "privacyEllipsis": "গোপনীয়তা...",
             "openWithAeroVaultZip": "AeroVault Zip দিয়ে খুলুন",
-            "createAeroVaultZip": "AeroVault Zip তৈরি করুন..."
+            "createAeroVaultZip": "AeroVault Zip তৈরি করুন...",
+            "importToAeroFTP": "AeroFTP-তে ইম্পোর্ট করুন"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} {destination}-এ কপি করা হয়েছে",
             "overlay_opening": "এনক্রিপ্টেড ওভারলে খোলা হচ্ছে, নাম ডিক্রিপ্ট করা হচ্ছে",
             "overlay_unlocked": "এনক্রিপ্টেড ওভারলে আনলক করা হয়েছে",
-            "overlay_failed": "এনক্রিপ্টেড ওভারলে আনলক করা যায়নি"
+            "overlay_failed": "এনক্রিপ্টেড ওভারলে আনলক করা যায়নি",
+            "session_resumed": "{server} এ সক্রিয় সেশন পুনরায় শুরু হয়েছে"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -4519,7 +4522,8 @@
             "connecting": "সংযোগ করা হচ্ছে...",
             "autoRetryCountdown": "একটি নতুন প্রমাণীকরণ কোডের অপেক্ষায়, {seconds} সেকেন্ডের মধ্যে {account}-এ পুনরায় সংযুক্ত হচ্ছে",
             "autoRetryFailedTitle": "দ্বি-পদক্ষেপ প্রমাণীকরণ ব্যর্থ হয়েছে",
-            "autoRetryFailedBody": "AeroFTP সংরক্ষিত 2FA গোপন তথ্য দিয়ে প্রমাণীকরণ করতে পারেনি। প্রোফাইলের সম্পাদনা ফর্মটি খুলুন এবং 2FA গোপন তথ্য যাচাই করুন।"
+            "autoRetryFailedBody": "AeroFTP সংরক্ষিত 2FA গোপন তথ্য দিয়ে প্রমাণীকরণ করতে পারেনি। প্রোফাইলের সম্পাদনা ফর্মটি খুলুন এবং 2FA গোপন তথ্য যাচাই করুন।",
+            "codeVerified": "দুই-ফ্যাক্টর কোড যাচাই করা হয়েছে"
         },
         "table": {
             "manageColumns": "কলাম পরিচালনা",

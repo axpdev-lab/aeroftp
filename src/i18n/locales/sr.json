@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "обавезно",
             "duplicate": "Дуплирај",
-            "current": "тренутно"
+            "current": "тренутно",
+            "goToActiveSession": "Иди на активну сесију"
         },
         "connection": {
             "title": "Повежи се на сервер",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Отвори као AeroVault Overlay",
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори помоћу AeroVault Zip",
-            "createAeroVaultZip": "Направи AeroVault Zip..."
+            "createAeroVaultZip": "Направи AeroVault Zip...",
+            "importToAeroFTP": "Увези у AeroFTP"
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} копиран у {destination}",
             "overlay_opening": "Отварање шифрованог слоја, дешифровање имена",
             "overlay_unlocked": "Шифровани слој откључан",
-            "overlay_failed": "Шифровани слој није могуће откључати"
+            "overlay_failed": "Шифровани слој није могуће откључати",
+            "session_resumed": "Настављена активна сесија ка {server}"
         },
         "protocol": {
             "selectProtocol": "Izaberi protokol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Повезивање...",
             "autoRetryCountdown": "Чека се нови код аутентификатора, поновно повезивање са налогом {account} за {seconds} с",
             "autoRetryFailedTitle": "Двофакторска аутентификација није успела",
-            "autoRetryFailedBody": "AeroFTP није могао да се аутентификује сачуваном 2FA тајном. Отворите образац за уређивање профила и проверите 2FA тајну."
+            "autoRetryFailedBody": "AeroFTP није могао да се аутентификује сачуваном 2FA тајном. Отворите образац за уређивање профила и проверите 2FA тајну.",
+            "codeVerified": "Двофакторски код потврђен"
         },
         "table": {
             "manageColumns": "Управљање колонама",

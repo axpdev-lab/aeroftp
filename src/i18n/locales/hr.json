@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obavezno",
             "duplicate": "Dupliciraj",
-            "current": "trenutno"
+            "current": "trenutno",
+            "goToActiveSession": "Idi na aktivnu sesiju"
         },
         "connection": {
             "title": "Poveži se na poslužitelj",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Otvori kao AeroVault Overlay",
             "privacyEllipsis": "Privatnost...",
             "openWithAeroVaultZip": "Otvori s AeroVault Zip",
-            "createAeroVaultZip": "Stvori AeroVault Zip..."
+            "createAeroVaultZip": "Stvori AeroVault Zip...",
+            "importToAeroFTP": "Uvezi u AeroFTP"
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] Kopirano {filename} u {destination}",
             "overlay_opening": "Otvaranje šifriranog sloja, dešifriranje naziva",
             "overlay_unlocked": "Šifrirani sloj otključan",
-            "overlay_failed": "Šifrirani sloj nije moguće otključati"
+            "overlay_failed": "Šifrirani sloj nije moguće otključati",
+            "session_resumed": "Nastavljena aktivna sesija na {server}"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -4519,7 +4522,8 @@
             "connecting": "Povezivanje...",
             "autoRetryCountdown": "Čekanje novog koda autentifikatora, ponovno povezivanje s računom {account} za {seconds} s",
             "autoRetryFailedTitle": "Dvofaktorska autentifikacija nije uspjela",
-            "autoRetryFailedBody": "AeroFTP se nije mogao autentificirati spremljenom 2FA tajnom. Otvorite obrazac za uređivanje profila i provjerite 2FA tajnu."
+            "autoRetryFailedBody": "AeroFTP se nije mogao autentificirati spremljenom 2FA tajnom. Otvorite obrazac za uređivanje profila i provjerite 2FA tajnu.",
+            "codeVerified": "Dvofaktorski kod potvrđen"
         },
         "table": {
             "manageColumns": "Upravljaj stupcima",

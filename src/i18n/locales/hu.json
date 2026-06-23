@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "kötelező",
             "duplicate": "Másolat",
-            "current": "jelenlegi"
+            "current": "jelenlegi",
+            "goToActiveSession": "Ugrás az aktív munkamenethez"
         },
         "connection": {
             "title": "Csatlakozás szerverhez",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként",
             "privacyEllipsis": "Adatvédelem...",
             "openWithAeroVaultZip": "Megnyitás ezzel: AeroVault Zip",
-            "createAeroVaultZip": "AeroVault Zip létrehozása..."
+            "createAeroVaultZip": "AeroVault Zip létrehozása...",
+            "importToAeroFTP": "Importálás az AeroFTP-be"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} másolva ide: {destination}",
             "overlay_opening": "Titkosított réteg megnyitása, nevek visszafejtése",
             "overlay_unlocked": "Titkosított réteg feloldva",
-            "overlay_failed": "A titkosított réteget nem sikerült feloldani"
+            "overlay_failed": "A titkosított réteget nem sikerült feloldani",
+            "session_resumed": "Aktív munkamenet folytatva: {server}"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -4519,7 +4522,8 @@
             "connecting": "Kapcsolódás...",
             "autoRetryCountdown": "Várakozás új hitelesítő kódra, újracsatlakozás a(z) {account} fiókhoz {seconds} mp múlva",
             "autoRetryFailedTitle": "A kétlépcsős hitelesítés sikertelen",
-            "autoRetryFailedBody": "Az AeroFTP nem tudott hitelesíteni a mentett 2FA titokkal. Nyissa meg a profil Szerkesztés űrlapját, és ellenőrizze a 2FA titkot."
+            "autoRetryFailedBody": "Az AeroFTP nem tudott hitelesíteni a mentett 2FA titokkal. Nyissa meg a profil Szerkesztés űrlapját, és ellenőrizze a 2FA titkot.",
+            "codeVerified": "Kétfaktoros kód ellenőrizve"
         },
         "table": {
             "manageColumns": "Oszlopok kezelése",

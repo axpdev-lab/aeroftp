@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obligāts",
             "duplicate": "Dublēt",
-            "current": "pašreizējais"
+            "current": "pašreizējais",
+            "goToActiveSession": "Pāriet uz aktīvo sesiju"
         },
         "connection": {
             "title": "Savienoties ar serveri",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay",
             "privacyEllipsis": "Privātums...",
             "openWithAeroVaultZip": "Atvērt ar AeroVault Zip",
-            "createAeroVaultZip": "Izveidot AeroVault Zip..."
+            "createAeroVaultZip": "Izveidot AeroVault Zip...",
+            "importToAeroFTP": "Importēt uz AeroFTP"
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} nokopēts uz {destination}",
             "overlay_opening": "Atver šifrēto slāni, atšifrē nosaukumus",
             "overlay_unlocked": "Šifrētais slānis atbloķēts",
-            "overlay_failed": "Neizdevās atbloķēt šifrēto slāni"
+            "overlay_failed": "Neizdevās atbloķēt šifrēto slāni",
+            "session_resumed": "Atsākta aktīvā sesija ar {server}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -4519,7 +4522,8 @@
             "connecting": "Savienojas...",
             "autoRetryCountdown": "Tiek gaidīts jauns autentificētāja kods, atkārtota savienošanās ar {account} pēc {seconds} s",
             "autoRetryFailedTitle": "Divfaktoru autentifikācija neizdevās",
-            "autoRetryFailedBody": "AeroFTP nevarēja autentificēties ar saglabāto 2FA noslēpumu. Atveriet profila rediģēšanas veidlapu un pārbaudiet 2FA noslēpumu."
+            "autoRetryFailedBody": "AeroFTP nevarēja autentificēties ar saglabāto 2FA noslēpumu. Atveriet profila rediģēšanas veidlapu un pārbaudiet 2FA noslēpumu.",
+            "codeVerified": "Divfaktoru kods apstiprināts"
         },
         "table": {
             "manageColumns": "Pārvaldīt kolonnas",

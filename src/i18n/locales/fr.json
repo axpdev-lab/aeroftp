@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obligatoire",
             "duplicate": "Dupliquer",
-            "current": "actuel"
+            "current": "actuel",
+            "goToActiveSession": "Aller à la session active"
         },
         "connection": {
             "title": "Connexion au Serveur",
@@ -430,7 +431,8 @@
             "openAsAeroVaultOverlay": "Ouvrir en tant qu'AeroVault Overlay",
             "privacyEllipsis": "Confidentialité...",
             "openWithAeroVaultZip": "Ouvrir avec AeroVault Zip",
-            "createAeroVaultZip": "Créer AeroVault Zip..."
+            "createAeroVaultZip": "Créer AeroVault Zip...",
+            "importToAeroFTP": "Importer dans AeroFTP"
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1478,7 +1480,8 @@
             "copy_success": "[{location}] {filename} copié vers {destination}",
             "overlay_opening": "Ouverture de la surcouche chiffrée, déchiffrement des noms",
             "overlay_unlocked": "Surcouche chiffrée déverrouillée",
-            "overlay_failed": "Impossible de déverrouiller la surcouche chiffrée"
+            "overlay_failed": "Impossible de déverrouiller la surcouche chiffrée",
+            "session_resumed": "Session active reprise vers {server}"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -4519,7 +4522,8 @@
             "connecting": "Connexion...",
             "autoRetryCountdown": "En attente d'un nouveau code d'authentification, reconnexion à {account} dans {seconds} s",
             "autoRetryFailedTitle": "Échec de l'authentification à deux facteurs",
-            "autoRetryFailedBody": "AeroFTP n'a pas pu s'authentifier avec le secret 2FA enregistré. Ouvrez le formulaire de modification du profil et vérifiez le secret 2FA."
+            "autoRetryFailedBody": "AeroFTP n'a pas pu s'authentifier avec le secret 2FA enregistré. Ouvrez le formulaire de modification du profil et vérifiez le secret 2FA.",
+            "codeVerified": "Code à deux facteurs vérifié"
         },
         "table": {
             "manageColumns": "Gérer les colonnes",
