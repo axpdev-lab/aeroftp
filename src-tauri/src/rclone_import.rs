@@ -1594,11 +1594,17 @@ pub fn export_rclone(
                 }
             }
             "filen" => {
-                // rclone's `filen` backend needs `email` + obscured `password`;
-                // from those it logs in and derives the api_key and master keys
-                // itself (prompting for the 2FA code on first use if the account
-                // has it enabled). The account password is what unlocks the E2E
-                // material, so it is the field that makes the remote usable.
+                // rclone's `filen` backend marks `email`, `password` AND
+                // `api_key` all Required, and obtains the api_key only via the
+                // Filen CLI `export-api-key` command: it does NOT derive it from
+                // email + password. So a remote without an api_key is unusable
+                // (it fails at first use with "failed to reveal api key: input
+                // too short"). AeroFTP keeps the optional Filen CLI API key in
+                // the vault under `filen_api_key_<id>` (issue #230); the export
+                // path injects it into `options.filen_api_key`. When it is
+                // present we emit a usable remote; when it is absent we emit a
+                // commented scaffold telling the user to add the api_key rather
+                // than a broken `type = filen` block.
                 output.push_str("type = filen\n");
                 output.push_str(&format!("email = {}\n", server.username));
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
@@ -1607,21 +1613,30 @@ pub fn export_rclone(
                         obscure_password(pw).unwrap_or_default()
                     ));
                 }
-                // An inline api_key (a pre-#230 profile, or one the caller
-                // injected) lets rclone skip its own login + 2FA. The api_key is
-                // an rclone `IsPassword` field, so it is emitted obscured like
-                // `password`. The separately vaulted api_key is not exported
-                // here; rclone re-derives it from email + password on first use.
-                if let Some(api_key) = options
+                let api_key = options
                     .and_then(|o| o.get("filen_api_key"))
                     .and_then(|v| v.as_str())
                     .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                {
+                    .filter(|s| !s.is_empty());
+                if let Some(api_key) = api_key {
+                    // The api_key is an rclone `IsPassword` field, so it is
+                    // emitted obscured like `password`.
                     output.push_str(&format!(
                         "api_key = {}\n",
                         obscure_password(api_key).unwrap_or_default()
                     ));
+                } else {
+                    // No api_key available: rclone's filen backend Requires it
+                    // and cannot derive it from the password, so the remote is
+                    // incomplete. Emit a guidance comment (mirroring the OAuth
+                    // "reconnect" path) instead of a silently broken remote.
+                    output.push_str(
+                        "# api_key required but unavailable: rclone's filen backend\n\
+                         # cannot derive it from your password. Get one with the Filen\n\
+                         # CLI `export-api-key` command, obscure it (`rclone obscure`),\n\
+                         # and add `api_key = <obscured>` here, or set a `Filen CLI API\n\
+                         # Key` on this profile in AeroFTP and re-export.\n",
+                    );
                 }
             }
             "box" => {
@@ -2354,6 +2369,53 @@ user = t
                 .and_then(|v| v.as_str()),
             Some("secret-cli-key"),
             "api_key must round-trip into options.filen_api_key"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_filen_without_api_key_emits_guidance_comment() {
+        // #128-D: rclone's `filen` backend marks `api_key` Required and cannot
+        // derive it from the password. A Filen profile saved with only
+        // email+password (no Filen CLI API Key) must export `type = filen` +
+        // email + password PLUS a guidance comment, NEVER a half-remote with a
+        // missing api_key that fails at use with "input too short".
+        let servers = vec![RcloneExportServer {
+            name: "filen-noapikey".to_string(),
+            host: "filen.io".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("filen".to_string()),
+            options: None,
+            provider_id: Some("filen".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("filen-noapikey".to_string(), "S3cr3tPass!".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-filen-noapikey.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = filen"), "missing type:\n{conf}");
+        assert!(
+            conf.contains("email = me@example.com"),
+            "missing email:\n{conf}"
+        );
+        assert!(
+            conf.contains("password = ") && !conf.contains("password = S3cr3tPass!"),
+            "password must be present and obscured:\n{conf}"
+        );
+        // No api_key value line, but a guidance comment must appear.
+        let has_real_api_key_line = conf
+            .lines()
+            .any(|l| l.trim_start().starts_with("api_key ="));
+        assert!(
+            !has_real_api_key_line,
+            "must NOT emit a broken api_key line:\n{conf}"
+        );
+        assert!(
+            conf.contains("# api_key required but unavailable"),
+            "must emit the api_key guidance comment:\n{conf}"
         );
     }
 

@@ -26367,6 +26367,15 @@ async fn cmd_export_rclone(
                 &p.protocol,
                 &p.id,
             );
+            // #128-D: same for the vaulted Filen CLI API key (issue #230), which
+            // rclone's `filen` backend requires and cannot derive from the
+            // password.
+            ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
+                &mut options,
+                &store,
+                &p.protocol,
+                &p.id,
+            );
             RcloneExportServer {
                 name: p.name.clone(),
                 host: p.host.clone(),

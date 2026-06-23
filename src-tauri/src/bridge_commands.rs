@@ -503,6 +503,72 @@ pub fn inject_rclone_oauth_export_options(
     if let Some(c) = client_secret {
         opts.insert("__aeroftp_oauth_client_secret".into(), Value::String(c));
     }
+    // #128-D: pCloud is region-split (US -> api.pcloud.com, EU -> eapi.pcloud.com)
+    // and the OAuth token only validates against the host it was minted for. The
+    // region is NOT on the profile options: AeroFTP keeps it as the vault
+    // singleton `oauth_pcloud_region` (the export arm reads `options.region` to
+    // decide the rclone `hostname`). Inject it so an EU remote exports with
+    // `hostname = eapi.pcloud.com` instead of silently defaulting to US and
+    // failing at use with pcloud error 2094 "Invalid 'access_token'".
+    if protocol == "pcloud" && !opts.contains_key("region") {
+        if let Some(region) = store
+            .get("oauth_pcloud_region")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            opts.insert("region".into(), Value::String(region));
+        }
+    }
+}
+
+/// #128-D: for an rclone `filen` export, pull the per-profile Filen CLI API key
+/// out of the vault (`filen_api_key_<id>`, issue #230) and inject it into the
+/// profile `options` under `filen_api_key`, which `rclone_import::export_rclone`
+/// already obscures into the remote. rclone's `filen` backend marks `api_key`
+/// Required and obtains it via the Filen CLI `export-api-key` command: it does
+/// NOT derive it from email + password, so without this an exported remote fails
+/// at use with "failed to reveal api key: input too short". Shared by the GUI
+/// bridge export and the CLI `cmd_export_rclone` so the two paths never diverge.
+pub fn inject_rclone_filen_export_options(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
+    protocol: &str,
+    id: &str,
+) {
+    if protocol != "filen" || id.is_empty() {
+        return;
+    }
+    // An api_key already present on the profile options (a caller-injected or
+    // pre-#230 inline key) wins; never overwrite it from the vault.
+    if options
+        .as_ref()
+        .and_then(|o| o.as_object())
+        .and_then(|o| o.get("filen_api_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let api_key =
+        crate::user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", id))
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty());
+    let api_key = match api_key {
+        Some(k) => k,
+        None => return,
+    };
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    let opts = options
+        .as_mut()
+        .and_then(|o| o.as_object_mut())
+        .expect("options object");
+    opts.insert("filen_api_key".into(), Value::String(api_key));
 }
 
 /// Export the GUI's selected profiles to a third-party config file.
@@ -581,6 +647,7 @@ pub async fn export_bridge_config(
                             .to_string();
                         let mut opts = e.get("options").cloned();
                         inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
+                        inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
                         if let Some(o) = opts {
                             e["options"] = o;
                         }
