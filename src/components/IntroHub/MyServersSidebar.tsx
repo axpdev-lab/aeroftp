@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {
     Search, X, Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
-    HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight,
+    HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from '../../i18n';
@@ -18,6 +18,7 @@ const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     all: Server,
     favorites: Star,
     encrypted: ShieldCheck,
+    active: Activity,
     ftp: Globe,
     s3: Database,
     webdav: Server,
@@ -71,6 +72,10 @@ export function MyServersSidebar({
     // two narrowings are mutually exclusive (mirrors the old toolbar behaviour).
     const filterActive = (id: MyServersFilterBy) => activeGroupId === null && activeFilter === id;
 
+    // The "Active Sessions" filter is contextual: it only shows while at least
+    // one saved server has an open session (chipCounts.active > 0). Issue #128-C.
+    const showActive = (chipCounts.active ?? 0) > 0;
+
     const borderSide = side === 'left' ? 'border-r' : 'border-l';
 
     // Collapsed rail: icon-only buttons with tooltips, ~52px wide. Keeps the
@@ -108,6 +113,11 @@ export function MyServersSidebar({
                 >
                     {side === 'left' ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
                 </button>
+                {showActive && railBtn(
+                    'active', Activity, filterActive('active'), () => onFilterChange('active'),
+                    `${t(labelKeyOf('active'))} (${chipCounts.active ?? 0})`, undefined,
+                    filterActive('active') ? undefined : 'text-green-500',
+                )}
                 {[...QUICK_IDS, ...PROTOCOL_IDS].map((id) =>
                     railBtn(id, FILTER_ICON[id], filterActive(id), () => onFilterChange(id), `${t(labelKeyOf(id))} (${chipCounts[id] ?? 0})`),
                 )}
@@ -205,6 +215,23 @@ export function MyServersSidebar({
 
             {/* Scrollable filter list */}
             <div className="flex-1 overflow-y-auto px-1.5 pb-2">
+                {/* Active Sessions: contextual filter, shown only while a session
+                    is open. Green accent + pulsing dot tie it to the header badge. */}
+                {showActive && (
+                    <button
+                        onClick={() => onFilterChange('active')}
+                        className={`flex items-center gap-2.5 w-full mt-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                            filterActive('active')
+                                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 font-medium'
+                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                        <span className="w-2 h-2 shrink-0 rounded-full bg-green-500 animate-pulse" />
+                        <span className="flex-1 text-left truncate">{t(labelKeyOf('active'))}</span>
+                        <span className={`text-[11px] tabular-nums ${filterActive('active') ? 'text-green-500 dark:text-green-300' : 'text-gray-400 dark:text-gray-500'}`}>{chipCounts.active ?? 0}</span>
+                    </button>
+                )}
+
                 {renderSectionLabel(t('introHub.sidebar.quick'))}
                 {QUICK_IDS.map(renderFilterRow)}
 

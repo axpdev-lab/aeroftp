@@ -817,6 +817,8 @@ export function MyServersPanel({
             result = result.filter(s => favorites.has(s.id));
         } else if (activeFilter === 'encrypted') {
             result = result.filter(s => getServerCryptOverlay(s) !== null);
+        } else if (activeFilter === 'active') {
+            result = result.filter(s => activeProfileIds?.has(s.id) ?? false);
         } else if (activeFilter !== 'all') {
             const chip = FILTER_CHIPS.find(c => c.id === activeFilter);
             if (chip) {
@@ -824,7 +826,7 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts]);
+    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts, activeProfileIds]);
 
     // Per-group count of members that still resolve to an existing server.
     const groupCounts = useMemo(() => {
@@ -929,11 +931,13 @@ export function MyServersPanel({
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
             ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0, encrypted: 0,
+            // Open-session count: a profile-id set, not a protocol predicate.
+            active: activeProfileIds?.size ?? 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
             for (const chip of FILTER_CHIPS) {
-                if (chip.id === 'all') continue;
+                if (chip.id === 'all' || chip.id === 'active') continue;
                 if (chip.id === 'favorites') {
                     if (favorites.has(s.id)) counts.favorites++;
                 } else if (chip.id === 'encrypted') {
@@ -944,7 +948,18 @@ export function MyServersPanel({
             }
         }
         return counts;
-    }, [servers, favorites]);
+    }, [servers, favorites, activeProfileIds]);
+
+    // The "Active Sessions" filter only exists while at least one session is
+    // open. If the last session closes (or a stale 'active' was persisted from a
+    // prior run), fall back to 'all' so the list never strands on an empty,
+    // unselectable filter once its sidebar row disappears.
+    React.useEffect(() => {
+        if (activeFilter === 'active' && (activeProfileIds?.size ?? 0) === 0) {
+            setActiveFilter('all');
+            localStorage.setItem('aeroftp_myservers_filter', 'all');
+        }
+    }, [activeFilter, activeProfileIds]);
 
     // Connection handler - full logic from original SavedServers.tsx
     // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
