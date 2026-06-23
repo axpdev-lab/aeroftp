@@ -568,7 +568,11 @@ fn recovery_report(path: &Path, overhead_pct: u32) -> Result<AerovzRecoveryRepor
         detached: status.detached,
         manifest_parity: status.manifest_parity,
         header_parity: status.header_parity,
-        overhead_pct,
+        // `recovery_status` exposes only presence flags, not the real parity
+        // level, so `overhead_pct` is the caller's best estimate (the requested
+        // pct on create, the default on inspect). Never report a non-zero
+        // overhead for an archive that has no recovery data at all.
+        overhead_pct: if status.any { overhead_pct } else { 0 },
     })
 }
 

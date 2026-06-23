@@ -23,6 +23,8 @@ export const PasswordMatchHint: React.FC<PasswordMatchHintProps> = ({ password, 
     const matches = password === confirm;
     return (
         <p
+            role="status"
+            aria-live="polite"
             className={`mt-1 flex items-center gap-1 text-xs ${
                 matches ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
             } ${className ?? ''}`}

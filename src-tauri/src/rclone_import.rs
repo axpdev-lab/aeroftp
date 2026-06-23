@@ -1546,8 +1546,25 @@ pub fn export_rclone(
         exported += 1;
     }
 
-    // Atomic write + secure permissions
+    // Atomic write + secure permissions. Create the temp file 0600 *before*
+    // writing so the OAuth refresh blob / obscured passwords are never world-
+    // readable, not even in the window between write and the post-rename chmod.
     let tmp_path = file_path.with_extension("tmp");
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .map_err(|e| format!("Write rclone.conf: {}", e))?;
+        f.write_all(output.as_bytes())
+            .map_err(|e| format!("Write rclone.conf: {}", e))?;
+    }
+    #[cfg(not(unix))]
     std::fs::write(&tmp_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
     std::fs::rename(&tmp_path, file_path).map_err(|e| format!("Rename temp file: {}", e))?;

@@ -900,8 +900,12 @@ pub(crate) fn create_aerozip_from_dir(
     )
     .map_err(|e| format!("Create .aerozip: {e}"))?;
     let mut vault = open_aerovz_archive(dest)?;
-    aerovault::v3::VaultV3::add_directory(&mut vault, scratch, None)
-        .map_err(|e| format!("Add to .aerozip: {e}"))
+    aerovault::v3::VaultV3::add_directory(&mut vault, scratch, None).map_err(|e| {
+        // Match the folder/.zip exporters: never leave a truncated product
+        // file at the user's chosen path when packing fails midway.
+        let _ = std::fs::remove_file(dest);
+        format!("Add to .aerozip: {e}")
+    })
 }
 
 /// Open a v3 container for reading: encrypted `.aerovault` when a password is
