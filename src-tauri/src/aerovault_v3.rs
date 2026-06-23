@@ -547,11 +547,17 @@ pub async fn aerovz_create_archive(
     let vp = vault_path.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let _lock = acquire_vault_write_lock(Path::new(&vp))?;
-        aerovault::v3::VaultV3::create_with_error_correction(
-            &opts,
-            aerovault::v3::RecoveryPlacement::Embedded,
-            pct,
-        )
+        if pct == 0 {
+            // Recovery (Reed-Solomon parity) explicitly disabled: create a plain
+            // archive with no parity so .aerozip can match canonical compression ratios.
+            aerovault::v3::VaultV3::create(&opts)
+        } else {
+            aerovault::v3::VaultV3::create_with_error_correction(
+                &opts,
+                aerovault::v3::RecoveryPlacement::Embedded,
+                pct,
+            )
+        }
     })
     .await
     .map_err(|e| format!("archive create task failed: {e}"))??;

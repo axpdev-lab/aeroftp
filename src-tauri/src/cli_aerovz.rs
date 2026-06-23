@@ -33,7 +33,8 @@ pub(crate) enum ArchiveCommands {
         #[arg(long = "compression-profile", alias = "profile", default_value = "archive", value_parser = ["fast", "balanced", "archive"])]
         profile: String,
         /// Reed-Solomon recovery overhead percentage: low, medium, quartile,
-        /// high, or a number from 5 to 50. Default 20.
+        /// high, or a number from 5 to 50. Default 20. Use 0 (or `off`/`none`)
+        /// to disable recovery entirely for the smallest possible archive.
         #[arg(long = "recovery-level", default_value = "20")]
         recovery_level: String,
         /// Refused: `.aerozip` is an unencrypted lane and has no password.
@@ -377,7 +378,7 @@ fn create_archive(
         mime: PRODUCT_ARCHIVE_MIME,
         encrypted: false,
         confidential: false,
-        integrity_recovery: true,
+        integrity_recovery: recovery_pct != 0,
         output: out_string,
         inputs: sources.len(),
         file_count: summary.file_count,
@@ -404,12 +405,18 @@ fn create_archive_inner(
         aerovault::v3::CreateOptionsV3::new_plaintext(out_path.to_path_buf()),
         profile,
     )?;
-    aerovault::v3::VaultV3::create_with_error_correction(
-        &opts,
-        aerovault::v3::RecoveryPlacement::Embedded,
-        recovery_pct,
-    )
-    .map_err(aerovz_error)?;
+    if recovery_pct == 0 {
+        // Recovery (Reed-Solomon parity) explicitly disabled: create a plain archive
+        // with no parity so .aerozip can match canonical compression ratios.
+        aerovault::v3::VaultV3::create(&opts).map_err(aerovz_error)?;
+    } else {
+        aerovault::v3::VaultV3::create_with_error_correction(
+            &opts,
+            aerovault::v3::RecoveryPlacement::Embedded,
+            recovery_pct,
+        )
+        .map_err(aerovz_error)?;
+    }
 
     let mut vault = open_plaintext_archive(out_path)?;
     for source in sources {
@@ -642,6 +649,7 @@ fn archive_entry_basename(path: &Path) -> Result<String, String> {
 
 fn parse_recovery_level(raw: &str) -> Result<u32, String> {
     let pct = match raw.trim().to_ascii_lowercase().as_str() {
+        "off" | "none" => 0,
         "low" => 7,
         "medium" | "med" => 15,
         "quartile" => 25,
@@ -651,9 +659,11 @@ fn parse_recovery_level(raw: &str) -> Result<u32, String> {
             .parse::<u32>()
             .map_err(|_| format!("Invalid .aerozip --recovery-level: {raw}"))?,
     };
-    if !(5..=50).contains(&pct) {
+    // 0 (or "off"/"none") fully disables recovery so the archive can match canonical
+    // compression ratios; positive parity stays in the 5-50% band (sub-5 is rejected).
+    if pct != 0 && !(5..=50).contains(&pct) {
         return Err(format!(
-            "Invalid .aerozip --recovery-level {pct}: expected 5-50"
+            "Invalid .aerozip --recovery-level {pct}: expected 0 (off) or 5-50"
         ));
     }
     Ok(pct)
@@ -723,6 +733,11 @@ mod tests {
         assert_eq!(parse_recovery_level("low").unwrap(), 7);
         assert_eq!(parse_recovery_level("medium").unwrap(), 15);
         assert_eq!(parse_recovery_level("25%").unwrap(), 25);
+        // 0 / off / none fully disable recovery (opt-out for maximum compression).
+        assert_eq!(parse_recovery_level("0").unwrap(), 0);
+        assert_eq!(parse_recovery_level("off").unwrap(), 0);
+        assert_eq!(parse_recovery_level("none").unwrap(), 0);
+        // Sub-5 positive parity is still rejected; only 0 is a valid below-5 value.
         assert!(parse_recovery_level("4").is_err());
         assert!(parse_recovery_level("51").is_err());
     }

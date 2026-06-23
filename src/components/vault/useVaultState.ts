@@ -765,7 +765,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 await invoke('aerovz_create_archive', {
                     vaultPath: savePath,
                     compressionProfile,
-                    errorCorrectionPct: Math.min(50, Math.max(5, Math.round(errorCorrectionPct))),
+                    errorCorrectionPct: errorCorrectionEnabled
+                        ? Math.min(50, Math.max(5, Math.round(errorCorrectionPct)))
+                        : 0,
                 });
                 setContainerKind('zip');
                 setVaultPath(savePath);
@@ -799,7 +801,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 const info = await invoke<VaultV3Info>('aerovz_open_archive', { vaultPath: savePath });
                 setEntries(mapV3InfoToEntries(info, false));
                 setMeta(mapV3InfoToMeta(info));
-                setHasErrorCorrection(true);
+                setHasErrorCorrection(errorCorrectionEnabled);
                 setHasDetachedRecovery(false);
                 setHasDetachedHeaderRecovery(false);
                 setSuccess(t('vault.zipCreated') + `: ${info.file_count} ${info.file_count === 1 ? 'file' : 'files'}`);
