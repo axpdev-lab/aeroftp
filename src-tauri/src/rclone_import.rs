@@ -448,6 +448,43 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             jotta_refresh: None,
         }),
 
+        // ---- Filen ----
+        // rclone's `filen` backend stores `email` + obscured `password` +
+        // obscured `api_key` (all three required), plus advanced keys it derives
+        // during `rclone config` (`master_keys`, `auth_version`, ...). AeroFTP
+        // needs the account password (it re-derives the master keys / E2E
+        // material from it on connect) and can optionally take the CLI api_key,
+        // which skips the /v3/login 2FA window (issue #230). We import both; the
+        // advanced rclone keys are ignored because AeroFTP re-derives them. The
+        // api_key lands in `options.filen_api_key`, which the save path relocates
+        // to the vault under `filen_api_key_<id>`.
+        "filen" => {
+            let email = get_str("email").unwrap_or("").to_string();
+            if email.is_empty() {
+                return None;
+            }
+            let mut options = serde_json::Map::new();
+            if let Some(api_key) = get_password("api_key").filter(|k| !k.is_empty()) {
+                options.insert("filen_api_key".into(), serde_json::Value::String(api_key));
+            }
+            Some(MappedProfile {
+                protocol: "filen".to_string(),
+                provider_id: Some("filen".to_string()),
+                host: "filen.io".to_string(),
+                port: 443,
+                username: email,
+                password: get_password("password"),
+                options: if options.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(options))
+                },
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+            })
+        }
+
         // ---- Box ----
         "box" => Some(MappedProfile {
             protocol: "box".to_string(),
@@ -1404,6 +1441,37 @@ pub fn export_rclone(
                     ));
                 }
             }
+            "filen" => {
+                // rclone's `filen` backend needs `email` + obscured `password`;
+                // from those it logs in and derives the api_key and master keys
+                // itself (prompting for the 2FA code on first use if the account
+                // has it enabled). The account password is what unlocks the E2E
+                // material, so it is the field that makes the remote usable.
+                output.push_str("type = filen\n");
+                output.push_str(&format!("email = {}\n", server.username));
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    output.push_str(&format!(
+                        "password = {}\n",
+                        obscure_password(pw).unwrap_or_default()
+                    ));
+                }
+                // An inline api_key (a pre-#230 profile, or one the caller
+                // injected) lets rclone skip its own login + 2FA. The api_key is
+                // an rclone `IsPassword` field, so it is emitted obscured like
+                // `password`. The separately vaulted api_key is not exported
+                // here; rclone re-derives it from email + password on first use.
+                if let Some(api_key) = options
+                    .and_then(|o| o.get("filen_api_key"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    output.push_str(&format!(
+                        "api_key = {}\n",
+                        obscure_password(api_key).unwrap_or_default()
+                    ));
+                }
+            }
             "box" => {
                 output.push_str("type = box\n");
             }
@@ -1483,6 +1551,19 @@ pub fn export_rclone(
                     ));
                 }
             }
+            "backblaze" => {
+                // AeroFTP's native Backblaze protocol maps to rclone's `b2`
+                // backend: `account` (the key ID) + `key` (the application key).
+                // `key` is NOT an rclone IsPassword field, so it is emitted plain
+                // (same as S3 secret_access_key / Swift key). The bucket is part
+                // of the remote path in rclone (`remote:bucket`), not a config
+                // key, so it is intentionally not emitted here.
+                output.push_str("type = b2\n");
+                output.push_str(&format!("account = {}\n", server.username));
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    output.push_str(&format!("key = {}\n", pw));
+                }
+            }
             // Protocols without rclone equivalent: skip
             _ => {
                 continue;
@@ -1510,6 +1591,13 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Write `conf` to a uniquely-named temp file and return its path.
+    fn tmp_write(conf: &str, name: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(name);
+        std::fs::write(&path, conf).expect("write temp conf");
+        path
+    }
 
     #[test]
     fn test_parse_ini() {
@@ -2034,6 +2122,131 @@ user = t
             swift.credential.as_deref(),
             Some("148%BlomPass"),
             "swift key must round-trip as plaintext"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_filen_roundtrip() {
+        // #128: a Filen profile exports to rclone's `filen` backend as
+        // `email` + obscured `password` + obscured `api_key`, and imports back
+        // to the same account (password as the credential, api_key relocated
+        // into options.filen_api_key for the vault).
+        let servers = vec![RcloneExportServer {
+            name: "filen-acct".to_string(),
+            host: "filen.io".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("filen".to_string()),
+            options: Some(serde_json::json!({ "filen_api_key": "secret-cli-key" })),
+            provider_id: Some("filen".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("filen-acct".to_string(), "S3cr3tPass!".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-filen.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = filen"), "missing type:\n{conf}");
+        assert!(
+            conf.contains("email = me@example.com"),
+            "missing email:\n{conf}"
+        );
+        assert!(
+            conf.contains("password = ") && !conf.contains("password = S3cr3tPass!"),
+            "password must be present and obscured:\n{conf}"
+        );
+        assert!(
+            conf.contains("api_key = ") && !conf.contains("api_key = secret-cli-key"),
+            "api_key must be present and obscured:\n{conf}"
+        );
+
+        let result = import_rclone(&tmp_write(&conf, "aeroftp-test-import-filen.conf")).unwrap();
+        let filen = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("filen"))
+            .expect("filen server present");
+        assert_eq!(filen.username, "me@example.com");
+        assert_eq!(
+            filen.credential.as_deref(),
+            Some("S3cr3tPass!"),
+            "password must round-trip"
+        );
+        assert_eq!(
+            filen
+                .options
+                .as_ref()
+                .and_then(|o| o.get("filen_api_key"))
+                .and_then(|v| v.as_str()),
+            Some("secret-cli-key"),
+            "api_key must round-trip into options.filen_api_key"
+        );
+    }
+
+    #[test]
+    fn test_import_rclone_filen_reveals_real_rclone_obscured() {
+        // The obscured values below were produced by the real rclone binary
+        // (`rclone obscure`), so this pins our reveal codec to rclone's actual
+        // output for the `filen` backend's IsPassword fields.
+        let conf = "\
+[filen-real]
+type = filen
+email = real@example.com
+password = MohwAn6swmCQmBhRD-iaWciNBrBXM-ph2axM
+api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
+";
+        let path = tmp_write(conf, "aeroftp-test-import-filen-real.conf");
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let filen = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("filen"))
+            .expect("filen server present");
+        assert_eq!(filen.username, "real@example.com");
+        assert_eq!(filen.credential.as_deref(), Some("TestPass123"));
+        assert_eq!(
+            filen
+                .options
+                .as_ref()
+                .and_then(|o| o.get("filen_api_key"))
+                .and_then(|v| v.as_str()),
+            Some("fake-api-key-abc"),
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_backblaze_key_is_plaintext() {
+        // AeroFTP's native Backblaze protocol exports to rclone's `b2` backend.
+        // `key` is NOT an rclone IsPassword field, so it must be emitted plain
+        // (verified against `rclone config providers`: b2.key IsPassword=false).
+        let servers = vec![RcloneExportServer {
+            name: "b2-acct".to_string(),
+            host: "api.backblazeb2.com".to_string(),
+            port: 443,
+            username: "0011deadbeef".to_string(),
+            protocol: Some("backblaze".to_string()),
+            options: Some(serde_json::json!({ "bucket": "my-bucket" })),
+            provider_id: Some("backblaze-native".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("b2-acct".to_string(), "K001abcdEFG키".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-b2.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = b2"), "missing type:\n{conf}");
+        assert!(
+            conf.contains("account = 0011deadbeef"),
+            "missing account:\n{conf}"
+        );
+        assert!(
+            conf.contains("key = K001abcdEFG키"),
+            "b2 key must be emitted plain, not obscured:\n{conf}"
         );
     }
 
