@@ -56,6 +56,14 @@ export interface IntroHubProps {
      *  Pulses the per-server health indicator so users can tell at a glance
      *  which saved server they are currently connected to. Issue #222. */
     activeProfileIds?: ReadonlySet<string>;
+    /** Jump to the already-open session of a saved profile instead of opening a
+     *  parallel connection, when its card shows the pulsing "active session"
+     *  dot. Lets the card's connect button switch action (connect vs go-to
+     *  session) and avoids a needless re-login / 2FA. Issue #128-C. */
+    onActivateSession?: (savedServerId: string) => boolean;
+    /** Saved-server profile id whose connect is in flight (incl. the post-2FA
+     *  retry), so the card connect button keeps its spinner up. Issue #128-C. */
+    connectingProfileId?: string | null;
     /** Close every open session for the given saved profile. Surfaces as the
      *  Disconnect entry in the server card context menu, gated on the profile
      *  being present in `activeProfileIds`. Issue #222. */
@@ -88,6 +96,8 @@ export function IntroHub(props: IntroHubProps) {
         serversRefreshKey,
         onServersChanged,
         activeProfileIds,
+        onActivateSession,
+        connectingProfileId,
         onDisconnectProfile,
     } = props;
 
@@ -395,6 +405,8 @@ export function IntroHub(props: IntroHubProps) {
                         onOpenCrossProfile={onOpenCrossProfile}
                         onOpenMountManager={onOpenMountManager}
                         activeProfileIds={activeProfileIds}
+                        onActivateSession={onActivateSession}
+                        connectingProfileId={connectingProfileId}
                         onDisconnectProfile={onDisconnectProfile}
                     />
                 </div>

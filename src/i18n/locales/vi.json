@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "bắt buộc",
             "duplicate": "Nhân bản",
-            "current": "hiện tại"
+            "current": "hiện tại",
+            "goToActiveSession": "Đến phiên đang hoạt động"
         },
         "connection": {
             "title": "Kết nối đến máy chủ",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] Đã sao chép {filename} vào {destination}",
             "overlay_opening": "Đang mở lớp phủ mã hóa, đang giải mã tên",
             "overlay_unlocked": "Đã mở khóa lớp phủ mã hóa",
-            "overlay_failed": "Không thể mở khóa lớp phủ mã hóa"
+            "overlay_failed": "Không thể mở khóa lớp phủ mã hóa",
+            "session_resumed": "Đã tiếp tục phiên đang hoạt động tới {server}"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -4519,7 +4521,8 @@
             "connecting": "Đang kết nối...",
             "autoRetryCountdown": "Đang chờ mã xác thực mới, kết nối lại với {account} sau {seconds} giây",
             "autoRetryFailedTitle": "Xác thực hai yếu tố không thành công",
-            "autoRetryFailedBody": "AeroFTP không thể xác thực bằng khóa bí mật 2FA đã lưu. Mở biểu mẫu Chỉnh sửa của hồ sơ và kiểm tra khóa bí mật 2FA."
+            "autoRetryFailedBody": "AeroFTP không thể xác thực bằng khóa bí mật 2FA đã lưu. Mở biểu mẫu Chỉnh sửa của hồ sơ và kiểm tra khóa bí mật 2FA.",
+            "codeVerified": "Đã xác minh mã hai yếu tố"
         },
         "table": {
             "manageColumns": "Quản lý cột",

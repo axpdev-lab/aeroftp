@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "inahitajika",
             "duplicate": "Nakili",
-            "current": "ya sasa"
+            "current": "ya sasa",
+            "goToActiveSession": "Nenda kwenye kipindi kinachoendelea"
         },
         "connection": {
             "title": "Unganisha na Seva",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} imenakiliwa kwenda {destination}",
             "overlay_opening": "Inafungua safu iliyosimbwa, inasimbua majina",
             "overlay_unlocked": "Safu iliyosimbwa imefunguliwa",
-            "overlay_failed": "Safu iliyosimbwa haikuweza kufunguliwa"
+            "overlay_failed": "Safu iliyosimbwa haikuweza kufunguliwa",
+            "session_resumed": "Imeendelea kipindi kinachoendelea hadi {server}"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -4519,7 +4521,8 @@
             "connecting": "Inaunganisha...",
             "autoRetryCountdown": "Inasubiri msimbo mpya wa kithibitishaji, inaunganisha tena kwenye {account} baada ya sekunde {seconds}",
             "autoRetryFailedTitle": "Uthibitishaji wa hatua mbili umeshindwa",
-            "autoRetryFailedBody": "AeroFTP haikuweza kuthibitisha kwa kutumia siri ya 2FA iliyohifadhiwa. Fungua fomu ya Kuhariri ya wasifu na uthibitishe Siri ya 2FA."
+            "autoRetryFailedBody": "AeroFTP haikuweza kuthibitisha kwa kutumia siri ya 2FA iliyohifadhiwa. Fungua fomu ya Kuhariri ya wasifu na uthibitishe Siri ya 2FA.",
+            "codeVerified": "Msimbo wa hatua mbili umethibitishwa"
         },
         "table": {
             "manageColumns": "Dhibiti safuwima",

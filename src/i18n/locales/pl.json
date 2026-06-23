@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "wymagane",
             "duplicate": "Duplikuj",
-            "current": "bieżący"
+            "current": "bieżący",
+            "goToActiveSession": "Przejdź do aktywnej sesji"
         },
         "connection": {
             "title": "Połącz z serwerem",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] Skopiowano {filename} do {destination}",
             "overlay_opening": "Otwieranie zaszyfrowanej warstwy, odszyfrowywanie nazw",
             "overlay_unlocked": "Zaszyfrowana warstwa odblokowana",
-            "overlay_failed": "Nie można odblokować zaszyfrowanej warstwy"
+            "overlay_failed": "Nie można odblokować zaszyfrowanej warstwy",
+            "session_resumed": "Wznowiono aktywną sesję z {server}"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -4519,7 +4521,8 @@
             "connecting": "Łączenie...",
             "autoRetryCountdown": "Oczekiwanie na nowy kod uwierzytelniający, ponowne łączenie z kontem {account} za {seconds} s",
             "autoRetryFailedTitle": "Uwierzytelnianie dwuskładnikowe nie powiodło się",
-            "autoRetryFailedBody": "AeroFTP nie mógł uwierzytelnić się przy użyciu zapisanego sekretu 2FA. Otwórz formularz edycji profilu i zweryfikuj sekret 2FA."
+            "autoRetryFailedBody": "AeroFTP nie mógł uwierzytelnić się przy użyciu zapisanego sekretu 2FA. Otwórz formularz edycji profilu i zweryfikuj sekret 2FA.",
+            "codeVerified": "Kod dwuskładnikowy zweryfikowany"
         },
         "table": {
             "manageColumns": "Zarządzaj kolumnami",

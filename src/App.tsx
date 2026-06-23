@@ -5516,7 +5516,19 @@ interface UpdateVerificationInfo {
     lastError: string | null;
     pendingParams: ConnectionParams;
     loading: boolean;
+    // The activity-log entry of the connect attempt that triggered this
+    // prompt (#128). The retry reuses it so the single line flows
+    // Connecting -> "enter your 2FA code" (live) -> "2FA code verified"
+    // (done), instead of leaving a stranded entry and minting a new one.
+    logId?: string;
   } | null>(null);
+
+  // Saved-server profile id whose connect is currently in flight, INCLUDING the
+  // post-2FA retry that runs after the modal closes (#128-C). The per-card local
+  // `connectingId` only covers the first click and is cleared the moment the 2FA
+  // modal appears; this keeps the card connect button's spinner spinning through
+  // the (multi-second) retry so the wait is visible for every server.
+  const [connectingProfileId, setConnectingProfileId] = useState<string | null>(null);
 
   // Auto-retry banner for the saved-2FA-secret reconnect case (issue #128).
   // When a profile stores a totp_secret the backend regenerates the code
@@ -5528,6 +5540,9 @@ interface UpdateVerificationInfo {
     accountLabel: string;
     secondsLeft: number;
     params: ConnectionParams;
+    // Reuse the original connect attempt's activity-log entry (#128) so the
+    // saved-secret auto-retry resolves the same line to done on success.
+    logId?: string;
   } | null>(null);
   // Caps the saved-secret auto-retry at a single attempt: a second 2FA
   // failure means the stored secret itself is wrong, not a reused code.
@@ -5543,6 +5558,7 @@ interface UpdateVerificationInfo {
     error: unknown,
     params: ConnectionParams,
     accountLabel: string,
+    logId?: string,
   ): boolean => {
     const protocol = params.protocol;
     if (protocol !== 'mega' && protocol !== 'filen' && protocol !== 'internxt') return false;
@@ -5564,14 +5580,23 @@ interface UpdateVerificationInfo {
       if (totpRetryCountRef.current >= 1) {
         totpRetryCountRef.current = 0;
         setTotpAutoRetry(null);
+        // The saved secret itself is wrong: this IS a genuine failure, so the
+        // activity-log line turns red (unlike the calm "enter your code" state).
+        if (logId) humanLog.updateEntry(logId, { status: 'error', message: t('twoFactor.autoRetryFailedTitle') });
         notify.error(t('twoFactor.autoRetryFailedTitle'), t('twoFactor.autoRetryFailedBody'));
         return true;
       }
       totpRetryCountRef.current += 1;
-      void scheduleTotpAutoRetry(params, accountLabel, savedSecret);
+      // Leave the log entry in its calm "running" state (it reads "Connecting"):
+      // the saved-secret path reconnects itself, so there is nothing to type.
+      void scheduleTotpAutoRetry(params, accountLabel, savedSecret, logId);
       return true;
     }
 
+    // Manual prompt: the connect is not an error, the account is just 2FA-
+    // protected by the user's own choice. Show a calm, live (blue) line asking
+    // for the code, never a red failure. The retry resolves this same entry.
+    if (logId) humanLog.updateEntry(logId, { status: 'running', message: t('lockScreen.enter2FAHint') });
     setTwoFactorPrompt({
       open: true,
       providerKey: protocol,
@@ -5579,6 +5604,7 @@ interface UpdateVerificationInfo {
       lastError: msg,
       pendingParams: params,
       loading: false,
+      logId,
     });
     return true;
   };
@@ -5590,6 +5616,7 @@ interface UpdateVerificationInfo {
     params: ConnectionParams,
     accountLabel: string,
     secret: string,
+    logId?: string,
   ) => {
     let waitSeconds = 30;
     try {
@@ -5601,7 +5628,7 @@ interface UpdateVerificationInfo {
     } catch {
       // Keep the 30s worst-case default if the preview call fails.
     }
-    setTotpAutoRetry({ accountLabel, secondsLeft: waitSeconds, params });
+    setTotpAutoRetry({ accountLabel, secondsLeft: waitSeconds, params, logId });
   };
 
   /** Modal callback. Closes the prompt; if the retry triggers another 2FA
@@ -5615,8 +5642,20 @@ interface UpdateVerificationInfo {
         two_factor_code: code,
       },
     };
+    const retryLogId = twoFactorPrompt.logId;
+    const retryProfileId = twoFactorPrompt.pendingParams.savedServerId ?? null;
     setTwoFactorPrompt(null);
-    await connectToFtp(newParams);
+    // Keep the saved-server card's connect button spinning through the retry
+    // (the modal cleared the per-card local spinner). #128-C.
+    setConnectingProfileId(retryProfileId);
+    try {
+      // Reuse the original entry so it resolves to "2FA code verified" on
+      // success, or flips back to the calm "enter your code" line on a wrong
+      // code, without ever leaving a stranded log entry behind (#128).
+      await connectToFtp(newParams, { existingLogId: retryLogId });
+    } finally {
+      setConnectingProfileId(null);
+    }
   };
 
   // Drives the saved-secret auto-retry countdown. Ticks once a second and,
@@ -5625,8 +5664,9 @@ interface UpdateVerificationInfo {
     if (!totpAutoRetry) return;
     if (totpAutoRetry.secondsLeft <= 0) {
       const retryParams = totpAutoRetry.params;
+      const retryLogId = totpAutoRetry.logId;
       setTotpAutoRetry(null);
-      void connectToFtp(retryParams, { isAutoRetry: true });
+      void connectToFtp(retryParams, { isAutoRetry: true, existingLogId: retryLogId });
       return;
     }
     const id = window.setTimeout(() => {
@@ -5638,7 +5678,7 @@ interface UpdateVerificationInfo {
   // FTP operations
   const connectToFtp = async (
     overrideParams?: ConnectionParams,
-    opts?: { isAutoRetry?: boolean },
+    opts?: { isAutoRetry?: boolean; existingLogId?: string },
   ) => {
     // #128 item E: a user-initiated connect cancels any pending saved-secret 2FA
     // auto-retry. Without this, entering the API key (or any manual reconnect)
@@ -5817,7 +5857,9 @@ interface UpdateVerificationInfo {
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
         ? providerName.replace(effectiveParams.username, maskCredential(effectiveParams.username))
         : providerName;
-      const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
+      // On a 2FA retry, reuse the original attempt's entry (#128) instead of
+      // minting a new one, so the single line carries the whole lifecycle.
+      const logId = opts?.existingLogId ?? humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
       try {
         // Disconnect any existing provider first
@@ -5876,7 +5918,14 @@ interface UpdateVerificationInfo {
           private_key_path: effectiveParams.options?.private_key_path || undefined,
         });
         setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-        humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
+        // A 2FA retry reuses the original entry: resolve it to a calm "code
+        // verified" done state (#128) rather than the generic connect line, so
+        // the user sees their 2FA step explicitly succeed.
+        if (opts?.existingLogId) {
+          humanLog.updateEntry(logId, { status: 'success', message: t('twoFactor.codeVerified') });
+        } else {
+          humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
+        }
         notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
         // Load files using provider API. Re-use the {username}-resolved
@@ -5942,8 +5991,7 @@ interface UpdateVerificationInfo {
         // Replace the "Check credentials" log line with a 2FA-specific one
         // so the activity log doesn't mislead the user into thinking the
         // password is wrong when the server is just asking for a TOTP.
-        if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName)) {
-          humanLog.updateEntry(logId, { status: 'error', message: t('auth.enter2FAHint') });
+        if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName, logId)) {
           setLoading(false);
           return;
         }
@@ -6214,7 +6262,33 @@ interface UpdateVerificationInfo {
     try {
       let response: FileListResponse;
 
-      if (isOAuth) {
+      // #128-C: returning to a session whose account the single-slot backend
+      // STILL holds alive (the only open session after 🏠 Home, or the tab that
+      // currently owns the slot) must not disconnect + log in again, which for
+      // Filen / MEGA / Internxt would force a fresh 2FA code. Probe the live
+      // slot (identity-checked against this exact protocol + account); if it is
+      // still alive, just re-list in place. When another tab has since displaced
+      // the slot, or the link dropped, the probe returns false and we fall
+      // through to the normal reconnect, so tab-to-tab switching is unchanged.
+      let stillAlive = false;
+      if (!targetSession.cryptOverlay) {
+        try {
+          stillAlive = await invoke<boolean>('provider_probe_alive', {
+            protocol: protocol ?? null,
+            username: targetSession.connectionParams?.username || null,
+          });
+        } catch {
+          stillAlive = false;
+        }
+      }
+
+      if (stillAlive) {
+        logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
+        if (targetSession.remotePath && targetSession.remotePath !== '/') {
+          try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch { /* keep the backend cwd */ }
+        }
+        response = await invoke('provider_list_files', { path: null });
+      } else if (isOAuth) {
         // OAuth providers - need to reconnect because ProviderState may have a different provider
         logger.debug('[switchSession] OAuth provider, reconnecting...');
 
@@ -6449,7 +6523,11 @@ interface UpdateVerificationInfo {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
       activityLog.updateEntry(reconnectLogId, {
         status: 'success',
-        message: t('activity.reconnect_success', { server: targetSession.serverName })
+        // Honest wording: a live-slot reuse never reconnected (#128-C), so don't
+        // claim it did; a real reconnect keeps the "Reconnected" line.
+        message: stillAlive
+          ? t('activity.session_resumed', { server: targetSession.serverName })
+          : t('activity.reconnect_success', { server: targetSession.serverName })
       });
 
       // Refresh remote files with real data
@@ -6498,8 +6576,31 @@ interface UpdateVerificationInfo {
       // Issue #128: when reconnect fails because the saved session is stale
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
-      tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName);
+      tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName, reconnectLogId);
     }
+  };
+
+  /**
+   * Dual-action entry for a saved-server card whose pulsing dot says it already
+   * has an open session (#128-C). Instead of opening a parallel connection (a
+   * fresh login, and a fresh 2FA code for Filen / MEGA / Internxt), jump to the
+   * existing tab via switchSession, which reuses the live backend slot when it
+   * is still alive and only reconnects if another tab has displaced it. Returns
+   * true when an open session was found and activated.
+   */
+  const goToActiveSession = (savedServerId: string): boolean => {
+    if (!savedServerId) return false;
+    const existing = sessions.find(s => s.connectionParams?.savedServerId === savedServerId);
+    if (!existing) return false;
+    // switchSession only switches the active tab; when invoked from the My
+    // Servers grid (the connection screen is up) we must also leave that screen
+    // and show the file panels, mirroring connectToFtp's own reuse path.
+    setShowConnectionScreen(false);
+    setShowRemotePanel(true);
+    setShowLocalPreview(false);
+    setIsConnected(true);
+    void switchSession(existing.id);
+    return true;
   };
 
   const closeSession = async (sessionId: string) => {
@@ -14068,6 +14169,8 @@ interface UpdateVerificationInfo {
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
               activeProfileIds={activeProfileIds}
+              onActivateSession={goToActiveSession}
+              connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
@@ -14301,8 +14404,7 @@ interface UpdateVerificationInfo {
                     // activity panel shows the "enter 2FA hint" line instead of the misleading
                     // "Check credentials" toast (the password is fine, the server just wants
                     // a TOTP). Mirrors the order used in connectToFtp.
-                    if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName)) {
-                      humanLog.updateEntry(logId, { status: 'error', message: t('auth.enter2FAHint') });
+                    if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName, logId)) {
                       setLoading(false);
                       return;
                     }

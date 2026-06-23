@@ -68,7 +68,8 @@
             "check": "Verifica",
             "selectAll": "Select All",
             "required": "obbligatorio",
-            "duplicate": "Duplica"
+            "duplicate": "Duplica",
+            "goToActiveSession": "Vai alla sessione attiva"
         },
         "accountLock": {
             "title": "Scegli un account",
@@ -403,7 +404,8 @@
             "connecting": "Connessione...",
             "autoRetryCountdown": "In attesa di un nuovo codice dell'autenticatore, riconnessione a {account} tra {seconds} s",
             "autoRetryFailedTitle": "Autenticazione a due fattori non riuscita",
-            "autoRetryFailedBody": "AeroFTP non è riuscito ad autenticarsi con il segreto 2FA salvato. Apri il modulo di modifica del profilo e verifica il segreto 2FA."
+            "autoRetryFailedBody": "AeroFTP non è riuscito ad autenticarsi con il segreto 2FA salvato. Apri il modulo di modifica del profilo e verifica il segreto 2FA.",
+            "codeVerified": "Codice 2FA inserito e verificato"
         },
         "protocol": {
             "selectProtocol": "Seleziona protocollo...",
@@ -1970,7 +1972,8 @@
             "release_asset_delete_success": "[{provider}] Asset rimosso {filename}",
             "release_asset_download_start": "[{provider}] Scaricamento release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset scaricato {filename}",
-            "release_asset_download_error": "[{provider}] Scaricamento release asset fallito {filename}"
+            "release_asset_download_error": "[{provider}] Scaricamento release asset fallito {filename}",
+            "session_resumed": "Sessione attiva ripresa su {server}"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",

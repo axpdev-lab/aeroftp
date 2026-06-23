@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "wajib",
             "duplicate": "Duplikat",
-            "current": "saat ini"
+            "current": "saat ini",
+            "goToActiveSession": "Buka sesi aktif"
         },
         "connection": {
             "title": "Hubungkan ke Server",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} disalin ke {destination}",
             "overlay_opening": "Membuka lapisan terenkripsi, mendekripsi nama",
             "overlay_unlocked": "Lapisan terenkripsi terbuka",
-            "overlay_failed": "Lapisan terenkripsi tidak dapat dibuka"
+            "overlay_failed": "Lapisan terenkripsi tidak dapat dibuka",
+            "session_resumed": "Melanjutkan sesi aktif ke {server}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -4519,7 +4521,8 @@
             "connecting": "Menghubungkan...",
             "autoRetryCountdown": "Menunggu kode autentikator baru, menyambungkan kembali ke {account} dalam {seconds} dtk",
             "autoRetryFailedTitle": "Autentikasi dua faktor gagal",
-            "autoRetryFailedBody": "AeroFTP tidak dapat melakukan autentikasi dengan rahasia 2FA yang tersimpan. Buka formulir Edit profil dan verifikasi Rahasia 2FA."
+            "autoRetryFailedBody": "AeroFTP tidak dapat melakukan autentikasi dengan rahasia 2FA yang tersimpan. Buka formulir Edit profil dan verifikasi Rahasia 2FA.",
+            "codeVerified": "Kode dua faktor terverifikasi"
         },
         "table": {
             "manageColumns": "Kelola kolom",

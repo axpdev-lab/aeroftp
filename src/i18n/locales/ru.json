@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "обязательно",
             "duplicate": "Дублировать",
-            "current": "текущий"
+            "current": "текущий",
+            "goToActiveSession": "Перейти к активной сессии"
         },
         "connection": {
             "title": "Подключение к серверу",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} скопирован в {destination}",
             "overlay_opening": "Открытие шифрованного слоя, расшифровка имён",
             "overlay_unlocked": "Шифрованный слой разблокирован",
-            "overlay_failed": "Не удалось разблокировать шифрованный слой"
+            "overlay_failed": "Не удалось разблокировать шифрованный слой",
+            "session_resumed": "Возобновлена активная сессия с {server}"
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -4519,7 +4521,8 @@
             "connecting": "Подключение...",
             "autoRetryCountdown": "Ожидание нового кода аутентификатора, повторное подключение к {account} через {seconds} с",
             "autoRetryFailedTitle": "Сбой двухфакторной аутентификации",
-            "autoRetryFailedBody": "AeroFTP не удалось пройти аутентификацию с сохранённым секретом 2FA. Откройте форму редактирования профиля и проверьте секрет 2FA."
+            "autoRetryFailedBody": "AeroFTP не удалось пройти аутентификацию с сохранённым секретом 2FA. Откройте форму редактирования профиля и проверьте секрет 2FA.",
+            "codeVerified": "Двухфакторный код подтверждён"
         },
         "table": {
             "manageColumns": "Управление колонками",

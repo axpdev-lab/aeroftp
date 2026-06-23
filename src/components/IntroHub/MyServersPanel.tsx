@@ -278,6 +278,15 @@ interface MyServersPanelProps {
     /** Profile ids that have at least one open session in the tab strip.
      *  Drives the pulsing health indicator on cards / rows (issue #222). */
     activeProfileIds?: ReadonlySet<string>;
+    /** Jump to a profile's already-open session instead of starting a parallel
+     *  connect, when its card shows the pulsing "active session" dot. Lets the
+     *  card's connect button flip its action (connect vs go-to session) so a
+     *  still-connected account is not re-logged-in / re-prompted for 2FA.
+     *  Returns true when a session was found and activated. Issue #128-C. */
+    onActivateSession?: (savedServerId: string) => boolean;
+    /** Saved-server profile id whose connect is in flight (incl. the post-2FA
+     *  retry), so its card connect button keeps spinning. Issue #128-C. */
+    connectingProfileId?: string | null;
     /** Close every open session for the given saved profile. Wired to the
      *  Disconnect context-menu entry, gated on `activeProfileIds`. #222. */
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
@@ -303,6 +312,8 @@ export function MyServersPanel({
     onOpenCrossProfile,
     onOpenMountManager,
     activeProfileIds,
+    onActivateSession,
+    connectingProfileId,
     onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
@@ -939,6 +950,16 @@ export function MyServersPanel({
     // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
     const handleConnect = useCallback(async (server: ServerProfile) => {
         if (connectingId) return;
+
+        // #128-C: dual-action connect button. When this card already owns an
+        // open session (the pulsing "active session" dot), jump to that live
+        // tab instead of starting a parallel connection, so a still-connected
+        // account is never re-logged-in or re-prompted for 2FA. Falls through
+        // to a normal connect when no open session is found.
+        if (activeProfileIds?.has(server.id) && onActivateSession?.(server.id)) {
+            return;
+        }
+
         setConnectingId(server.id);
 
         // OAuth2 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho, kDrive)
@@ -1506,7 +1527,7 @@ export function MyServersPanel({
                                 <ServerCard
                                     key={server.id}
                                     server={server}
-                                    isConnecting={connectingId === server.id || oauthConnecting === server.id}
+                                    isConnecting={connectingId === server.id || oauthConnecting === server.id || connectingProfileId === server.id}
                                     credentialsMasked={credentialsMasked}
                                     hideUsername={hideUsername}
                                     isFavorite={favorites.has(server.id)}
@@ -1577,6 +1598,7 @@ export function MyServersPanel({
                         columns={tableColumns}
                         favorites={favorites}
                         connectingId={connectingId}
+                        connectingProfileId={connectingProfileId}
                         oauthConnecting={oauthConnecting}
                         credentialsMasked={credentialsMasked}
                         hideUsername={hideUsername}

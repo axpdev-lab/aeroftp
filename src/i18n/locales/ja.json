@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "必須",
             "duplicate": "複製",
-            "current": "現在"
+            "current": "現在",
+            "goToActiveSession": "アクティブなセッションへ移動"
         },
         "connection": {
             "title": "サーバーに接続",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} を {destination} にコピーしました",
             "overlay_opening": "暗号化オーバーレイを開いています。名前を復号しています",
             "overlay_unlocked": "暗号化オーバーレイのロックを解除しました",
-            "overlay_failed": "暗号化オーバーレイのロックを解除できませんでした"
+            "overlay_failed": "暗号化オーバーレイのロックを解除できませんでした",
+            "session_resumed": "{server} のアクティブなセッションを再開しました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -4519,7 +4521,8 @@
             "connecting": "接続中...",
             "autoRetryCountdown": "新しい認証コードを待機中、{seconds}秒後に{account}へ再接続します",
             "autoRetryFailedTitle": "二要素認証に失敗しました",
-            "autoRetryFailedBody": "AeroFTPは保存された2FAシークレットで認証できませんでした。プロフィールの編集フォームを開き、2FAシークレットを確認してください。"
+            "autoRetryFailedBody": "AeroFTPは保存された2FAシークレットで認証できませんでした。プロフィールの編集フォームを開き、2FAシークレットを確認してください。",
+            "codeVerified": "二要素認証コードを確認しました"
         },
         "table": {
             "manageColumns": "列を管理",

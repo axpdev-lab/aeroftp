@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obligatori",
             "duplicate": "Duplicar",
-            "current": "actual"
+            "current": "actual",
+            "goToActiveSession": "Vés a la sessió activa"
         },
         "connection": {
             "title": "Connectar al Servidor",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} copiat a {destination}",
             "overlay_opening": "Obrint la capa xifrada, desxifrant els noms",
             "overlay_unlocked": "Capa xifrada desbloquejada",
-            "overlay_failed": "No s'ha pogut desbloquejar la capa xifrada"
+            "overlay_failed": "No s'ha pogut desbloquejar la capa xifrada",
+            "session_resumed": "Sessió activa represa a {server}"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -4538,7 +4540,8 @@
             "connecting": "Connectant...",
             "autoRetryCountdown": "Esperant un codi nou de l'autenticador, tornant a connectar a {account} en {seconds} s",
             "autoRetryFailedTitle": "L'autenticació de dos factors ha fallat",
-            "autoRetryFailedBody": "AeroFTP no ha pogut autenticar-se amb el secret 2FA desat. Obre el formulari d'edició del perfil i verifica el secret 2FA."
+            "autoRetryFailedBody": "AeroFTP no ha pogut autenticar-se amb el secret 2FA desat. Obre el formulari d'edició del perfil i verifica el secret 2FA.",
+            "codeVerified": "Codi de dos factors verificat"
         },
         "table": {
             "manageColumns": "Gestionar columnes",

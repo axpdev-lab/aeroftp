@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "nauðsynlegt",
             "duplicate": "Afrita",
-            "current": "núverandi"
+            "current": "núverandi",
+            "goToActiveSession": "Fara í virka lotu"
         },
         "connection": {
             "title": "Tengjast þjóni",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} afritað í {destination}",
             "overlay_opening": "Opna dulkóðað yfirlag, afkóða nöfn",
             "overlay_unlocked": "Dulkóðað yfirlag aflæst",
-            "overlay_failed": "Ekki tókst að aflæsa dulkóðaða yfirlaginu"
+            "overlay_failed": "Ekki tókst að aflæsa dulkóðaða yfirlaginu",
+            "session_resumed": "Hélt áfram virkri lotu við {server}"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -4538,7 +4540,8 @@
             "connecting": "Tengist...",
             "autoRetryCountdown": "Bíð eftir nýjum auðkennikóða, tengist aftur við {account} eftir {seconds} sek",
             "autoRetryFailedTitle": "Tveggja þrepa auðkenning mistókst",
-            "autoRetryFailedBody": "AeroFTP gat ekki auðkennt sig með vistaða 2FA leyndarmálinu. Opnaðu breytingaeyðublað sniðsins og staðfestu 2FA leyndarmálið."
+            "autoRetryFailedBody": "AeroFTP gat ekki auðkennt sig með vistaða 2FA leyndarmálinu. Opnaðu breytingaeyðublað sniðsins og staðfestu 2FA leyndarmálið.",
+            "codeVerified": "Tveggja þátta kóði staðfestur"
         },
         "table": {
             "manageColumns": "Stjórna dálkum",

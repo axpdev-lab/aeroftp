@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "kinakailangan",
             "duplicate": "Doblehin",
-            "current": "kasalukuyan"
+            "current": "kasalukuyan",
+            "goToActiveSession": "Pumunta sa aktibong session"
         },
         "connection": {
             "title": "Kumonekta sa Server",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] Nakopya ang {filename} sa {destination}",
             "overlay_opening": "Binubuksan ang naka-encrypt na overlay, dini-decrypt ang mga pangalan",
             "overlay_unlocked": "Na-unlock ang naka-encrypt na overlay",
-            "overlay_failed": "Hindi ma-unlock ang naka-encrypt na overlay"
+            "overlay_failed": "Hindi ma-unlock ang naka-encrypt na overlay",
+            "session_resumed": "Ipinagpatuloy ang aktibong session sa {server}"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -4538,7 +4540,8 @@
             "connecting": "Kumokonekta...",
             "autoRetryCountdown": "Naghihintay ng bagong code ng authenticator, muling kumokonekta sa {account} sa loob ng {seconds} s",
             "autoRetryFailedTitle": "Nabigo ang two-factor authentication",
-            "autoRetryFailedBody": "Hindi ma-authenticate ng AeroFTP gamit ang naka-save na 2FA secret. Buksan ang Edit form ng profile at i-verify ang 2FA Secret."
+            "autoRetryFailedBody": "Hindi ma-authenticate ng AeroFTP gamit ang naka-save na 2FA secret. Buksan ang Edit form ng profile at i-verify ang 2FA Secret.",
+            "codeVerified": "Na-verify ang two-factor code"
         },
         "table": {
             "manageColumns": "Pamahalaan ang mga column",

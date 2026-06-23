@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obvezno",
             "duplicate": "Podvoji",
-            "current": "trenutno"
+            "current": "trenutno",
+            "goToActiveSession": "Pojdi na aktivno sejo"
         },
         "connection": {
             "title": "Poveži se s strežnikom",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} kopirano v {destination}",
             "overlay_opening": "Odpiranje šifrirane plasti, dešifriranje imen",
             "overlay_unlocked": "Šifrirana plast odklenjena",
-            "overlay_failed": "Šifrirane plasti ni bilo mogoče odkleniti"
+            "overlay_failed": "Šifrirane plasti ni bilo mogoče odkleniti",
+            "session_resumed": "Obnovljena aktivna seja s {server}"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -4519,7 +4521,8 @@
             "connecting": "Povezovanje...",
             "autoRetryCountdown": "Čakanje na novo kodo overitelja, ponovno povezovanje z računom {account} čez {seconds} s",
             "autoRetryFailedTitle": "Dvostopenjsko preverjanje pristnosti ni uspelo",
-            "autoRetryFailedBody": "AeroFTP se ni mogel overiti s shranjeno skrivnostjo 2FA. Odprite obrazec za urejanje profila in preverite skrivnost 2FA."
+            "autoRetryFailedBody": "AeroFTP se ni mogel overiti s shranjeno skrivnostjo 2FA. Odprite obrazec za urejanje profila in preverite skrivnost 2FA.",
+            "codeVerified": "Dvofaktorska koda preverjena"
         },
         "table": {
             "manageColumns": "Upravljanje stolpcev",

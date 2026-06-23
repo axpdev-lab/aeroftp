@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "diperlukan",
             "duplicate": "Gandakan",
-            "current": "semasa"
+            "current": "semasa",
+            "goToActiveSession": "Pergi ke sesi aktif"
         },
         "connection": {
             "title": "Sambung ke Pelayan",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} disalin ke {destination}",
             "overlay_opening": "Membuka lapisan tersulit, menyahsulit nama",
             "overlay_unlocked": "Lapisan tersulit dibuka kunci",
-            "overlay_failed": "Lapisan tersulit tidak dapat dibuka kunci"
+            "overlay_failed": "Lapisan tersulit tidak dapat dibuka kunci",
+            "session_resumed": "Menyambung semula sesi aktif ke {server}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -4519,7 +4521,8 @@
             "connecting": "Menyambung...",
             "autoRetryCountdown": "Menunggu kod pengesah baharu, menyambung semula ke {account} dalam {seconds} saat",
             "autoRetryFailedTitle": "Pengesahan dua faktor gagal",
-            "autoRetryFailedBody": "AeroFTP tidak dapat mengesahkan dengan rahsia 2FA yang disimpan. Buka borang Edit profil dan sahkan Rahsia 2FA."
+            "autoRetryFailedBody": "AeroFTP tidak dapat mengesahkan dengan rahsia 2FA yang disimpan. Buka borang Edit profil dan sahkan Rahsia 2FA.",
+            "codeVerified": "Kod dua faktor disahkan"
         },
         "table": {
             "manageColumns": "Urus lajur",

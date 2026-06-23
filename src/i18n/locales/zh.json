@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "必填",
             "duplicate": "复制",
-            "current": "当前"
+            "current": "当前",
+            "goToActiveSession": "前往活动会话"
         },
         "connection": {
             "title": "连接到服务器",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] 已将 {filename} 复制到 {destination}",
             "overlay_opening": "正在打开加密叠加层，正在解密名称",
             "overlay_unlocked": "加密叠加层已解锁",
-            "overlay_failed": "无法解锁加密叠加层"
+            "overlay_failed": "无法解锁加密叠加层",
+            "session_resumed": "已恢复到 {server} 的活动会话"
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -4519,7 +4521,8 @@
             "connecting": "正在连接...",
             "autoRetryCountdown": "正在等待新的身份验证器代码，将在 {seconds} 秒后重新连接到 {account}",
             "autoRetryFailedTitle": "双重身份验证失败",
-            "autoRetryFailedBody": "AeroFTP 无法使用已保存的 2FA 密钥进行身份验证。请打开配置文件的编辑表单并核对 2FA 密钥。"
+            "autoRetryFailedBody": "AeroFTP 无法使用已保存的 2FA 密钥进行身份验证。请打开配置文件的编辑表单并核对 2FA 密钥。",
+            "codeVerified": "双重验证码已验证"
         },
         "table": {
             "manageColumns": "管理列",

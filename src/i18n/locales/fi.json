@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "vaadittu",
             "duplicate": "Kopioi",
-            "current": "nykyinen"
+            "current": "nykyinen",
+            "goToActiveSession": "Siirry aktiiviseen istuntoon"
         },
         "connection": {
             "title": "Yhdistä palvelimeen",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} kopioitu kohteeseen {destination}",
             "overlay_opening": "Avataan salattua kerrosta, puretaan nimien salaus",
             "overlay_unlocked": "Salattu kerros avattu",
-            "overlay_failed": "Salatun kerroksen avaaminen epäonnistui"
+            "overlay_failed": "Salatun kerroksen avaaminen epäonnistui",
+            "session_resumed": "Jatkettiin aktiivista istuntoa: {server}"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -4519,7 +4521,8 @@
             "connecting": "Yhdistetään...",
             "autoRetryCountdown": "Odotetaan uutta todennuskoodia, yhdistetään uudelleen tiliin {account} {seconds} s kuluttua",
             "autoRetryFailedTitle": "Kaksivaiheinen todennus epäonnistui",
-            "autoRetryFailedBody": "AeroFTP ei voinut todentaa tallennetulla 2FA-salaisuudella. Avaa profiilin muokkauslomake ja tarkista 2FA-salaisuus."
+            "autoRetryFailedBody": "AeroFTP ei voinut todentaa tallennetulla 2FA-salaisuudella. Avaa profiilin muokkauslomake ja tarkista 2FA-salaisuus.",
+            "codeVerified": "Kaksivaiheinen koodi vahvistettu"
         },
         "table": {
             "manageColumns": "Hallitse sarakkeita",

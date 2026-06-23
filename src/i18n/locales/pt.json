@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obrigatório",
             "duplicate": "Duplicar",
-            "current": "atual"
+            "current": "atual",
+            "goToActiveSession": "Ir para a sessão ativa"
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} copiado para {destination}",
             "overlay_opening": "A abrir a camada cifrada, a decifrar os nomes",
             "overlay_unlocked": "Camada cifrada desbloqueada",
-            "overlay_failed": "Não foi possível desbloquear a camada cifrada"
+            "overlay_failed": "Não foi possível desbloquear a camada cifrada",
+            "session_resumed": "Sessão ativa retomada para {server}"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -4519,7 +4521,8 @@
             "connecting": "Conectando...",
             "autoRetryCountdown": "Aguardando um novo código do autenticador, reconectando a {account} em {seconds} s",
             "autoRetryFailedTitle": "Falha na autenticação de dois fatores",
-            "autoRetryFailedBody": "O AeroFTP não conseguiu autenticar com o segredo 2FA salvo. Abra o formulário de edição do perfil e verifique o segredo 2FA."
+            "autoRetryFailedBody": "O AeroFTP não conseguiu autenticar com o segredo 2FA salvo. Abra o formulário de edição do perfil e verifique o segredo 2FA.",
+            "codeVerified": "Código de dois fatores verificado"
         },
         "table": {
             "manageColumns": "Gerenciar colunas",

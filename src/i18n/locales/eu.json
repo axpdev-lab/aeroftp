@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "beharrezkoa",
             "duplicate": "Bikoiztu",
-            "current": "uneko"
+            "current": "uneko",
+            "goToActiveSession": "Joan saio aktibora"
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} {destination}-(e)ra kopiatu da",
             "overlay_opening": "Zifratutako geruza irekitzen, izenak deszifratzen",
             "overlay_unlocked": "Zifratutako geruza desblokeatuta",
-            "overlay_failed": "Ezin izan da zifratutako geruza desblokeatu"
+            "overlay_failed": "Ezin izan da zifratutako geruza desblokeatu",
+            "session_resumed": "{server}(e)rako saio aktiboa berrekin da"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -4538,7 +4540,8 @@
             "connecting": "Konektatzen...",
             "autoRetryCountdown": "Autentifikatzaile-kode berri baten zain, {account} kontura berriz konektatzen {seconds} s barru",
             "autoRetryFailedTitle": "Bi faktoreko autentifikazioak huts egin du",
-            "autoRetryFailedBody": "AeroFTP-k ezin izan du autentifikatu gordetako 2FA sekretuarekin. Ireki profilaren Editatu inprimakia eta egiaztatu 2FA sekretua."
+            "autoRetryFailedBody": "AeroFTP-k ezin izan du autentifikatu gordetako 2FA sekretuarekin. Ireki profilaren Editatu inprimakia eta egiaztatu 2FA sekretua.",
+            "codeVerified": "Bi faktoreko kodea egiaztatuta"
         },
         "table": {
             "manageColumns": "Kudeatu zutabeak",

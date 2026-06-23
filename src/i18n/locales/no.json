@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "påkrevd",
             "duplicate": "Dupliser",
-            "current": "gjeldende"
+            "current": "gjeldende",
+            "goToActiveSession": "Gå til aktiv økt"
         },
         "connection": {
             "title": "Koble til server",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} kopiert til {destination}",
             "overlay_opening": "Åpner kryptert lag, dekrypterer navn",
             "overlay_unlocked": "Kryptert lag låst opp",
-            "overlay_failed": "Kunne ikke låse opp det krypterte laget"
+            "overlay_failed": "Kunne ikke låse opp det krypterte laget",
+            "session_resumed": "Gjenopptok aktiv økt til {server}"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -4538,7 +4540,8 @@
             "connecting": "Kobler til...",
             "autoRetryCountdown": "Venter på en ny autentiseringskode, kobler til {account} på nytt om {seconds} s",
             "autoRetryFailedTitle": "Tofaktorautentisering mislyktes",
-            "autoRetryFailedBody": "AeroFTP kunne ikke autentisere med den lagrede 2FA-hemmeligheten. Åpne profilens redigeringsskjema og kontroller 2FA-hemmeligheten."
+            "autoRetryFailedBody": "AeroFTP kunne ikke autentisere med den lagrede 2FA-hemmeligheten. Åpne profilens redigeringsskjema og kontroller 2FA-hemmeligheten.",
+            "codeVerified": "Tofaktorkode bekreftet"
         },
         "table": {
             "manageColumns": "Administrer kolonner",

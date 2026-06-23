@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "privalomas",
             "duplicate": "Dubliuoti",
-            "current": "dabartinis"
+            "current": "dabartinis",
+            "goToActiveSession": "Eiti į aktyvią sesiją"
         },
         "connection": {
             "title": "Prisijungti prie serverio",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} nukopijuotas į {destination}",
             "overlay_opening": "Atveriamas šifruotas sluoksnis, iššifruojami pavadinimai",
             "overlay_unlocked": "Šifruotas sluoksnis atrakintas",
-            "overlay_failed": "Nepavyko atrakinti šifruoto sluoksnio"
+            "overlay_failed": "Nepavyko atrakinti šifruoto sluoksnio",
+            "session_resumed": "Atnaujinta aktyvi sesija su {server}"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -4519,7 +4521,8 @@
             "connecting": "Jungiamasi...",
             "autoRetryCountdown": "Laukiama naujo autentifikatoriaus kodo, iš naujo jungiamasi prie {account} po {seconds} s",
             "autoRetryFailedTitle": "Dviejų veiksnių autentifikavimas nepavyko",
-            "autoRetryFailedBody": "„AeroFTP“ nepavyko autentifikuoti naudojant įrašytą 2FA paslaptį. Atidarykite profilio redagavimo formą ir patikrinkite 2FA paslaptį."
+            "autoRetryFailedBody": "„AeroFTP“ nepavyko autentifikuoti naudojant įrašytą 2FA paslaptį. Atidarykite profilio redagavimo formą ir patikrinkite 2FA paslaptį.",
+            "codeVerified": "Dviejų veiksnių kodas patvirtintas"
         },
         "table": {
             "manageColumns": "Tvarkyti stulpelius",

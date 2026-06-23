@@ -188,7 +188,8 @@
             "release_asset_delete_success": "[{provider}] Removed asset {filename}",
             "release_asset_download_start": "[{provider}] Downloading release asset {filename}...",
             "release_asset_download_success": "[{provider}] Downloaded release asset {filename}",
-            "release_asset_download_error": "[{provider}] Failed to download release asset {filename}"
+            "release_asset_download_error": "[{provider}] Failed to download release asset {filename}",
+            "session_resumed": "Resumed live session to {server}"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -1082,7 +1083,8 @@
             "upload": "Upload",
             "version": "Version",
             "warning": "Warning",
-            "yes": "Yes"
+            "yes": "Yes",
+            "goToActiveSession": "Go to active session"
         },
         "compare": {
             "title": "Compare panels",
@@ -1330,7 +1332,8 @@
             "connecting": "Connecting...",
             "autoRetryCountdown": "Waiting for a fresh authenticator code, reconnecting to {account} in {seconds}s",
             "autoRetryFailedTitle": "Two-factor authentication failed",
-            "autoRetryFailedBody": "AeroFTP could not authenticate with the saved 2FA secret. Open Edit on the profile and verify the 2FA Secret."
+            "autoRetryFailedBody": "AeroFTP could not authenticate with the saved 2FA secret. Open Edit on the profile and verify the 2FA Secret.",
+            "codeVerified": "Two-factor code verified"
         },
         "commandPalette": {
             "category": {

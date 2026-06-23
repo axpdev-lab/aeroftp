@@ -68,7 +68,8 @@
             "selectAll": "Select All",
             "required": "obligatorio",
             "duplicate": "Duplicar",
-            "current": "actual"
+            "current": "actual",
+            "goToActiveSession": "Ir a la sesión activa"
         },
         "connection": {
             "title": "Conectar al Servidor",
@@ -1478,7 +1479,8 @@
             "copy_success": "[{location}] {filename} copiado a {destination}",
             "overlay_opening": "Abriendo la capa cifrada, descifrando los nombres",
             "overlay_unlocked": "Capa cifrada desbloqueada",
-            "overlay_failed": "No se pudo desbloquear la capa cifrada"
+            "overlay_failed": "No se pudo desbloquear la capa cifrada",
+            "session_resumed": "Sesión activa reanudada con {server}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -4519,7 +4521,8 @@
             "connecting": "Conectando...",
             "autoRetryCountdown": "Esperando un código de autenticador nuevo, reconectando a {account} en {seconds} s",
             "autoRetryFailedTitle": "Error en la autenticación de dos factores",
-            "autoRetryFailedBody": "AeroFTP no pudo autenticarse con el secreto 2FA guardado. Abre el formulario de edición del perfil y verifica el secreto 2FA."
+            "autoRetryFailedBody": "AeroFTP no pudo autenticarse con el secreto 2FA guardado. Abre el formulario de edición del perfil y verifica el secreto 2FA.",
+            "codeVerified": "Código de dos factores verificado"
         },
         "table": {
             "manageColumns": "Gestionar columnas",
