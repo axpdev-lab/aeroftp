@@ -5721,6 +5721,61 @@ interface UpdateVerificationInfo {
         return;
       }
 
+      // #128-C: re-entering an account that is still connected in the backend
+      // must not tear the session down and force a fresh 2FA/TOTP login. The 🏠
+      // Home button (handleNewTabFromSavedServer) caches the active tab WITHOUT
+      // calling provider_disconnect, so the single-slot backend still holds the
+      // live provider. If a cached, overlay-free session for the same account
+      // exists and a liveness probe confirms the backend still holds that exact
+      // account alive, re-activate the cached tab from its snapshot and skip the
+      // reconnect entirely. A genuine auto-retry (isAutoRetry), a crypt-overlay
+      // tab, or a different account falls through to the normal reconnect below.
+      if (!opts?.isAutoRetry) {
+        const reusable = sessions.find(s => {
+          if (s.cryptOverlay) return false;
+          const p = s.connectionParams;
+          if (!p || p.protocol !== protocol) return false;
+          return (p.savedServerId && effectiveParams.savedServerId)
+            ? p.savedServerId === effectiveParams.savedServerId
+            : (p.username || '') === (effectiveParams.username || '')
+            && (p.server || '') === (effectiveParams.server || '');
+        });
+        if (reusable) {
+          let alive = false;
+          try {
+            alive = await invoke<boolean>('provider_probe_alive', {
+              protocol,
+              username: effectiveParams.username || null,
+            });
+          } catch { alive = false; }
+          if (alive) {
+            logger.debug('[connectToFtp] #128-C: backend session still alive, reusing tab without reconnect (no 2FA)');
+            setActiveSessionId(reusable.id);
+            setConnectionParams(reusable.connectionParams);
+            setSessions(prev => prev.map(s => s.id === reusable.id ? { ...s, status: 'connected' } : s));
+            setIsConnected(true);
+            setShowRemotePanel(true);
+            setShowLocalPreview(false);
+            setShowConnectionScreen(false);
+            setIsSyncNavigation(reusable.isSyncNavigation ?? false);
+            setSyncBasePaths(reusable.syncBasePaths ?? null);
+            setRemoteFiles(reusable.remoteFiles);
+            setCurrentRemotePath(reusable.remotePath);
+            setSelectedRemoteFiles(new Set());
+            try {
+              const localFilesData: LocalFile[] = await invoke('get_local_files', {
+                path: reusable.localPath,
+                showHidden: showHiddenFiles,
+              });
+              setLocalFiles(localFilesData);
+            } catch { /* keep the current local pane on failure */ }
+            setCurrentLocalPath(reusable.localPath);
+            fetchStorageQuota(protocol, reusable.connectionParams);
+            return;
+          }
+        }
+      }
+
       setLoading(true);
       setIsSyncNavigation(false);
       setSyncBasePaths(null);

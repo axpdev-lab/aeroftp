@@ -1034,6 +1034,60 @@ pub async fn provider_check_connection(
     }
 }
 
+/// Lightweight liveness probe for the currently connected provider (#128-C).
+///
+/// Runs a bare `list(".")` on the active session and reports whether it
+/// succeeds, WITHOUT the silent-reconnect retry that `provider_list_files`
+/// performs. That reconnect would re-run the provider login (for Filen / MEGA /
+/// Internxt a fresh TOTP window), which is exactly what the caller wants to
+/// avoid: re-entering an already-connected 2FA account through the 🏠 Home
+/// button must not force a new 2FA code. `Ok(false)` (no provider, not
+/// connected, or the list failed) tells the UI to fall back to the normal
+/// disconnect + reconnect flow.
+#[tauri::command]
+pub async fn provider_probe_alive(
+    state: State<'_, ProviderState>,
+    protocol: Option<String>,
+    username: Option<String>,
+) -> Result<bool, String> {
+    // The backend keeps only the most-recently-connected provider (single slot).
+    // Confirm that slot still holds THIS account before probing, so a probe can
+    // never make the UI reuse a different account's live session.
+    {
+        let config_lock = state.config.lock().await;
+        let Some(config) = config_lock.as_ref() else {
+            return Ok(false);
+        };
+        // Normalize to lowercase alphanumerics so `filen`/`Filen`, `s3`/`S3`,
+        // `googledrive`/`GoogleDrive` all compare equal across the IPC boundary.
+        let norm = |s: &str| -> String {
+            s.chars()
+                .filter(char::is_ascii_alphanumeric)
+                .flat_map(char::to_lowercase)
+                .collect()
+        };
+        if let Some(expected) = protocol.as_deref() {
+            let actual = format!("{:?}", config.provider_type);
+            if norm(&actual) != norm(expected) {
+                return Ok(false);
+            }
+        }
+        if let (Some(expected), Some(actual)) = (username.as_deref(), config.username.as_deref()) {
+            if !expected.is_empty() && !expected.eq_ignore_ascii_case(actual) {
+                return Ok(false);
+            }
+        }
+    }
+    let mut provider_lock = state.provider.lock().await;
+    let Some(provider) = provider_lock.as_mut() else {
+        return Ok(false);
+    };
+    if !provider.is_connected() {
+        return Ok(false);
+    }
+    Ok(provider.list(".").await.is_ok())
+}
+
 /// List files in the specified path
 #[tauri::command]
 pub async fn provider_list_files(
