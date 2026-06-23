@@ -13622,8 +13622,14 @@ fn interactive_profiles_loop(
         let raw_owned: String = if let Some(cmd) = pending_command.take() {
             cmd
         } else {
+            // Labeled action vocabulary (Ehud #311 comment): spell out what each
+            // key does so the prompt is self-explanatory instead of a cryptic
+            // `l/t/d/f/c/r/e`. Mirrors the `tui` action-bar labels and the
+            // profile-table column order; the syntax line below keeps the
+            // selector/target details.
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nActions: re-index(#) · Rename(R) · Edit(E) · Copy(C) · Delete(D) · Fav{}(F) · Groups(G) · Users(U) · List/ls(L) · Tree(T) · Refresh(.) · Help(H) · Quit(Q/0)\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
+                fav_marker
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -13650,7 +13656,7 @@ fn interactive_profiles_loop(
         if lower == "q" || lower == "quit" || lower == "exit" || lower == "0" || lower == "-1" {
             return 0;
         }
-        if lower == "help" || lower == "?" {
+        if lower == "help" || lower == "h" || lower == "?" {
             eprintln!("  l <selectors>   list root of each profile");
             eprintln!("  t <selectors> [:N]  tree of each profile (default depth 2; :N sets depth, :0 = full)");
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
@@ -13670,12 +13676,16 @@ fn interactive_profiles_loop(
                 "  u [N|name]      switch active user (lists accounts when bare); reloads profiles (compact 'u3'/'3u' also work)"
             );
             eprintln!(
+                "  g <sel> <group> add/remove  ·  g rename <old> <new>  ·  g delete <group>   manage profile groups"
+            );
+            eprintln!(
                 "  tui / nav       inline action menu: pick an action (single key or arrows + Enter), then type the target"
             );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!(
                 "  refresh / .     clear screen + reprint table (reloads from vault; 'clear' also works)"
             );
+            eprintln!("  h / help / ?    show this help");
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
