@@ -281,6 +281,25 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
                 }
             }
         }
+        // #128-D: recover the BYO OAuth app client_id/secret into the
+        // per-provider vault singletons so a fresh device can refresh the
+        // imported token. Store only when the singleton is not already set, so
+        // importing a config never clobbers an app the user already configured.
+        if let Some(cred_key) = rclone_oauth_client_cred_key(protocol) {
+            let put_if_absent = |suffix: &str, value: &Option<String>| {
+                if let Some(v) = value.as_ref().filter(|s| !s.is_empty()) {
+                    let key = format!("oauth_{}_{}", cred_key, suffix);
+                    let already = store.get(&key).map(|s| !s.is_empty()).unwrap_or(false);
+                    if !already {
+                        if let Err(e) = store.store(&key, v) {
+                            log::warn!("rclone bridge: {key} store failed: {e}");
+                        }
+                    }
+                }
+            };
+            put_if_absent("client_id", &secrets.oauth_client_id);
+            put_if_absent("client_secret", &secrets.oauth_client_secret);
+        }
     }
 }
 
@@ -398,6 +417,92 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     }))
 }
 
+/// The vault singleton key prefix that holds a provider's BYO OAuth app
+/// `client_id`/`client_secret`. The GUI stores them under the raw protocol
+/// (`oauth_googledrive_client_id`, ...) with Google Photos aliased onto Google
+/// Drive's app, distinct from the per-profile token slug used by
+/// `oauth_vault_slug_for_protocol`. Returns `None` for non-OAuth protocols and
+/// for the ones we deliberately do not export to rclone (jottacloud/zoho).
+fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
+    match protocol.to_lowercase().as_str() {
+        "googledrive" | "googlephotos" => Some("googledrive"),
+        "dropbox" => Some("dropbox"),
+        "onedrive" => Some("onedrive"),
+        "box" => Some("box"),
+        "pcloud" => Some("pcloud"),
+        "yandexdisk" => Some("yandexdisk"),
+        _ => None,
+    }
+}
+
+/// #128-D: for an rclone OAuth-token export, gather the per-profile OAuth token
+/// (`oauth_<slug>_<id>`, legacy `oauth_<slug>` fallback) and the BYO
+/// `client_id`/`client_secret` singletons from the vault and inject them into
+/// the profile's `options` under private `__aeroftp_oauth_*` keys that
+/// `rclone_import::export_rclone` consumes. All three travel together because
+/// rclone refreshes an AeroFTP-minted token only with the same OAuth app; the
+/// export arm emits a `rclone config reconnect` comment instead of a broken
+/// remote when any piece is missing.
+fn inject_rclone_oauth_export_secrets(
+    entry: &mut Value,
+    store: Option<&CredentialStore>,
+    protocol: &str,
+) {
+    let store = match store {
+        Some(s) => s,
+        None => return,
+    };
+    let slug = match crate::oauth_vault_slug_for_protocol(protocol) {
+        Some(s) => s,
+        None => return,
+    };
+    // Only the providers we actually export to rclone get the client-cred keys.
+    let cred_key = match rclone_oauth_client_cred_key(protocol) {
+        Some(k) => k,
+        None => return,
+    };
+    let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+    let token = if id.is_empty() {
+        None
+    } else {
+        crate::user_partitions::resolve_active_credential(store, &format!("oauth_{}_{}", slug, id))
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+    }
+    .or_else(|| store.get(&format!("oauth_{}", slug)).ok())
+    .filter(|s| !s.is_empty());
+
+    let client_id = store
+        .get(&format!("oauth_{}_client_id", cred_key))
+        .ok()
+        .filter(|s| !s.is_empty());
+    let client_secret = store
+        .get(&format!("oauth_{}_client_secret", cred_key))
+        .ok()
+        .filter(|s| !s.is_empty());
+
+    if token.is_none() && client_id.is_none() && client_secret.is_none() {
+        return;
+    }
+
+    // Ensure options is an object we can write the private keys into.
+    if !entry.get("options").map(|o| o.is_object()).unwrap_or(false) {
+        entry["options"] = json!({});
+    }
+    let opts = entry["options"].as_object_mut().expect("options object");
+    if let Some(t) = token {
+        opts.insert("__aeroftp_oauth_token".into(), Value::String(t));
+    }
+    if let Some(c) = client_id {
+        opts.insert("__aeroftp_oauth_client_id".into(), Value::String(c));
+    }
+    if let Some(c) = client_secret {
+        opts.insert("__aeroftp_oauth_client_secret".into(), Value::String(c));
+    }
+}
+
 /// Export the GUI's selected profiles to a third-party config file.
 /// Profiles whose protocol the target tool cannot carry are filtered
 /// out and reported in `skipped` (the "filter by support" contract);
@@ -459,6 +564,19 @@ pub async fn export_bridge_config(
                     }));
                     continue;
                 }
+                // #128-D: rclone OAuth-token exports need the vaulted token plus
+                // the BYO client_id/secret injected into `options` before the
+                // entry is deserialized, so `export_rclone` can emit a usable,
+                // refreshable remote. Other sources are untouched.
+                let injected_entry;
+                let entry: &Value = if source == "rclone" && include_credentials {
+                    let mut e = entry.clone();
+                    inject_rclone_oauth_export_secrets(&mut e, store.as_ref(), &proto);
+                    injected_entry = e;
+                    &injected_entry
+                } else {
+                    entry
+                };
                 let one: $ty = serde_json::from_value(entry.clone())
                     .map_err(|e| format!("Invalid server data: {e}"))?;
                 if include_credentials {

@@ -429,10 +429,13 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         // and whose rclone backend takes that same secret directly: the cloud
         // accounts authenticated by a stored password / access key (Filen, MEGA,
         // Azure, Swift, Koofr, OpenDrive, Backblaze B2) on top of the standard
-        // ftp/sftp/s3/webdav set (issue #128). OAuth-token providers
-        // (Drive/Dropbox/OneDrive/Box/pCloud/Yandex/Jottacloud) are NOT listed
-        // yet: their export arms emit metadata only, so enabling them without
-        // emitting the rclone `token` blob would produce an unusable remote.
+        // ftp/sftp/s3/webdav set (issue #128). #128-D adds the OAuth-token
+        // providers (Drive/Dropbox/OneDrive/Box/pCloud/Yandex): their export
+        // arms now emit the rclone `token` blob plus the BYO client_id/secret
+        // that minted it, so rclone can refresh and the remote is usable.
+        // Jottacloud stays OUT: its rclone backend needs a token+configVersion
+        // we cannot reconstruct losslessly from AeroFTP's refresh-only OIDC
+        // flow, so an exported remote would be silently broken.
         "rclone" => &[
             "ftp",
             "ftps",
@@ -446,6 +449,12 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
             "koofr",
             "opendrive",
             "backblaze",
+            "googledrive",
+            "dropbox",
+            "onedrive",
+            "box",
+            "pcloud",
+            "yandexdisk",
         ],
         "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
         "filezilla" => &["ftp", "ftps", "sftp", "s3"],

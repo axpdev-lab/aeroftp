@@ -86,6 +86,17 @@ pub struct ProviderSecrets {
     /// leaves it unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aerocrypt_overlay_salt: Option<String>,
+    /// #128-D: the BYO OAuth app `client_id` recovered from an imported rclone
+    /// remote (`oauth_<provider>_client_id` vault singleton). AeroFTP mints its
+    /// OAuth tokens with the user's own app, so rclone can only refresh them
+    /// when it carries the same client_id/secret; recovering them on import
+    /// lets a fresh device reconnect without re-entering the app credentials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_client_id: Option<String>,
+    /// #128-D: the BYO OAuth app `client_secret` recovered from an imported
+    /// rclone remote (`oauth_<provider>_client_secret` vault singleton).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_client_secret: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
