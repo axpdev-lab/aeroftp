@@ -5625,7 +5625,7 @@ interface UpdateVerificationInfo {
     if (totpAutoRetry.secondsLeft <= 0) {
       const retryParams = totpAutoRetry.params;
       setTotpAutoRetry(null);
-      void connectToFtp(retryParams);
+      void connectToFtp(retryParams, { isAutoRetry: true });
       return;
     }
     const id = window.setTimeout(() => {
@@ -5635,7 +5635,21 @@ interface UpdateVerificationInfo {
   }, [totpAutoRetry]);
 
   // FTP operations
-  const connectToFtp = async (overrideParams?: ConnectionParams) => {
+  const connectToFtp = async (
+    overrideParams?: ConnectionParams,
+    opts?: { isAutoRetry?: boolean },
+  ) => {
+    // #128 item E: a user-initiated connect cancels any pending saved-secret 2FA
+    // auto-retry. Without this, entering the API key (or any manual reconnect)
+    // mid-countdown leaves the bottom-right countdown popup up and its 1s timer
+    // still fires a stale 2FA reconnect. The auto-retry's own fire passes
+    // isAutoRetry and is exempt: it already cleared the popup (see the countdown
+    // effect), and resetting its one-shot budget here would let a persistently
+    // failing secret loop forever.
+    if (!opts?.isAutoRetry) {
+      setTotpAutoRetry(null);
+      totpRetryCountRef.current = 0;
+    }
     // Parse host:port from server field if user entered it inline
     // Use a local copy to avoid direct React state mutation (C3 audit fix)
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
