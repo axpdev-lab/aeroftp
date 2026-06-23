@@ -46,7 +46,7 @@ const McpDialog: React.FC<McpDialogProps> = ({ isOpen, onClose }) => {
 }`;
 
     const targets = [
-        { tool: 'Claude Code', path: '~/.claude/.mcp.json' },
+        { tool: 'Claude Code', path: 'claude mcp add -s user aeroftp -- aeroftp-cli mcp' },
         { tool: 'Claude Desktop (Win)', path: '%APPDATA%\\Claude\\claude_desktop_config.json' },
         { tool: 'Claude Desktop (Mac)', path: '~/Library/Application Support/Claude/claude_desktop_config.json' },
         { tool: 'Cursor', path: '~/.cursor/mcp.json' },
