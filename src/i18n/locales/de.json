@@ -4987,6 +4987,20 @@
             "mismatch": "Passwörter stimmen nicht überein",
             "confirm": "Passwort bestätigen",
             "confirmPlaceholder": "Passwort wiederholen"
+        },
+        "saveAll": {
+            "button": "Alles speichern...",
+            "hint": "Den gesamten entschlüsselten Inhalt auf einmal exportieren",
+            "folder": "In Ordner...",
+            "zip": "Als Zip (.zip)...",
+            "aerozip": "Als Archiv (.aerozip)...",
+            "confirmTitle": "Entschlüsselten Inhalt exportieren",
+            "confirmBody": "Dadurch wird der entschlüsselte Klartext-Inhalt an den von Ihnen gewählten Ort geschrieben. Jeder, der diesen Ort lesen kann, kann Ihre Dateien lesen.",
+            "confirmZipNote": "Eine .zip ist weder verschlüsselt noch passwortgeschützt.",
+            "cancel": "Abbrechen",
+            "continue": "Fortfahren",
+            "done": "{count} Datei(en) in {path} gespeichert",
+            "skipped": "{count} Element(e) übersprungen"
         }
     }
 }

@@ -4987,6 +4987,20 @@
             "mismatch": "Wachtwoorden komen niet overeen",
             "confirm": "Wachtwoord bevestigen",
             "confirmPlaceholder": "Herhaal wachtwoord"
+        },
+        "saveAll": {
+            "button": "Alles opslaan...",
+            "hint": "Exporteer de hele ontsleutelde inhoud in één keer",
+            "folder": "Naar map...",
+            "zip": "Naar Zip (.zip)...",
+            "aerozip": "Naar Archief (.aerozip)...",
+            "confirmTitle": "Ontsleutelde inhoud exporteren",
+            "confirmBody": "Hiermee wordt de ontsleutelde inhoud in platte tekst naar de door u gekozen locatie geschreven. Iedereen die die locatie kan lezen, kan uw bestanden lezen.",
+            "confirmZipNote": "Een .zip is niet versleuteld of met een wachtwoord beveiligd.",
+            "cancel": "Annuleren",
+            "continue": "Doorgaan",
+            "done": "{count} bestand(en) opgeslagen in {path}",
+            "skipped": "{count} item(s) overgeslagen"
         }
     }
 }

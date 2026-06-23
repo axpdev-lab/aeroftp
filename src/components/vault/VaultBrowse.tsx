@@ -13,6 +13,7 @@ import { ModalFileGrid, ModalGridItem } from '../modalview/ModalFileGrid';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
+import { SaveAllMenu } from '../common/SaveAllMenu';
 import { formatSize } from '../../utils/formatters';
 import { TransferProgressBar } from '../TransferProgressBar';
 
@@ -126,10 +127,8 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <FolderPlus size={14} /> {t('vault.newFolder')}
                     </button>
                 )}
-                {state.vaultSecurity?.version === 3 && state.entries.length > 0 && (
-                    <button onClick={state.handleExtractAll} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded" title={t('vault.extractAllHint')}>
-                        <Download size={14} /> {t('vault.extractAll')}
-                    </button>
+                {(state.vaultSecurity?.version === 3 || isZip) && state.entries.length > 0 && (
+                    <SaveAllMenu disabled={state.loading} onExport={state.handleSaveAll} />
                 )}
                 {!isZip && (
                     <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">

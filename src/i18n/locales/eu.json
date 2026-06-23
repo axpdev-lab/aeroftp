@@ -5006,6 +5006,20 @@
             "mismatch": "Pasahitzak ez datoz bat",
             "confirm": "Berretsi pasahitza",
             "confirmPlaceholder": "Errepikatu pasahitza"
+        },
+        "saveAll": {
+            "button": "Gorde dena...",
+            "hint": "Esportatu deszifratutako eduki osoa aldi berean",
+            "folder": "Karpeta batera...",
+            "zip": "Zip-era (.zip)...",
+            "aerozip": "Artxibora (.aerozip)...",
+            "confirmTitle": "Esportatu deszifratutako edukia",
+            "confirmBody": "Honek deszifratutako edukia, testu lauan, aukeratzen duzun kokapenean idazten du. Kokapen hori irakur dezakeen edonork zure fitxategiak irakur ditzake.",
+            "confirmZipNote": ".zip bat ez dago zifratuta ezta pasahitzez babestuta ere.",
+            "cancel": "Utzi",
+            "continue": "Jarraitu",
+            "done": "{count} fitxategi gorde dira hemen: {path}",
+            "skipped": "{count} elementu saltatu dira"
         }
     }
 }

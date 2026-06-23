@@ -4987,6 +4987,20 @@
             "mismatch": "Le password non corrispondono",
             "confirm": "Conferma password",
             "confirmPlaceholder": "Ripeti password"
+        },
+        "saveAll": {
+            "button": "Salva tutto...",
+            "hint": "Esporta tutto il contenuto decifrato in una volta",
+            "folder": "In una cartella...",
+            "zip": "In Zip (.zip)...",
+            "aerozip": "In Archivio (.aerozip)...",
+            "confirmTitle": "Esporta contenuto decifrato",
+            "confirmBody": "Questo scrive il contenuto decifrato, in testo non protetto, nella posizione che scegli. Chiunque possa leggere quella posizione può leggere i tuoi file.",
+            "confirmZipNote": "Un .zip non è cifrato né protetto da password.",
+            "cancel": "Annulla",
+            "continue": "Continua",
+            "done": "Salvati {count} file in {path}",
+            "skipped": "{count} elemento/i saltato/i"
         }
     }
 }

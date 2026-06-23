@@ -4987,6 +4987,20 @@
             "mismatch": "비밀번호가 일치하지 않습니다",
             "confirm": "비밀번호 확인",
             "confirmPlaceholder": "비밀번호 다시 입력"
+        },
+        "saveAll": {
+            "button": "모두 저장...",
+            "hint": "복호화된 전체 내용을 한 번에 내보내기",
+            "folder": "폴더로...",
+            "zip": "Zip으로 (.zip)...",
+            "aerozip": "아카이브로 (.aerozip)...",
+            "confirmTitle": "복호화된 내용 내보내기",
+            "confirmBody": "이렇게 하면 복호화된 평문 내용이 선택한 위치에 기록됩니다. 그 위치를 읽을 수 있는 사람은 누구나 파일을 읽을 수 있습니다.",
+            "confirmZipNote": ".zip은 암호화되거나 비밀번호로 보호되지 않습니다.",
+            "cancel": "취소",
+            "continue": "계속",
+            "done": "{count}개 파일을 {path}에 저장했습니다",
+            "skipped": "{count}개 항목을 건너뛰었습니다"
         }
     }
 }

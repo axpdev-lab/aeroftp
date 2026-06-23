@@ -4987,6 +4987,20 @@
             "mismatch": "As palavras-passe não coincidem",
             "confirm": "Confirmar palavra-passe",
             "confirmPlaceholder": "Repetir palavra-passe"
+        },
+        "saveAll": {
+            "button": "Guardar tudo...",
+            "hint": "Exportar todo o conteúdo descriptografado de uma vez",
+            "folder": "Para pasta...",
+            "zip": "Para Zip (.zip)...",
+            "aerozip": "Para Arquivo (.aerozip)...",
+            "confirmTitle": "Exportar conteúdo descriptografado",
+            "confirmBody": "Isto escreve o conteúdo descriptografado, em texto simples, no local que escolher. Qualquer pessoa que consiga ler esse local pode ler os seus ficheiros.",
+            "confirmZipNote": "Um .zip não está encriptado nem protegido por palavra-passe.",
+            "cancel": "Cancelar",
+            "continue": "Continuar",
+            "done": "Guardados {count} ficheiro(s) em {path}",
+            "skipped": "{count} item(ns) ignorado(s)"
         }
     }
 }

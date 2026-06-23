@@ -4987,6 +4987,20 @@
             "mismatch": "Parolele nu se potrivesc",
             "confirm": "Confirmați parola",
             "confirmPlaceholder": "Repetați parola"
+        },
+        "saveAll": {
+            "button": "Salvează tot...",
+            "hint": "Exportă tot conținutul decriptat dintr-o dată",
+            "folder": "Într-un folder...",
+            "zip": "În Zip (.zip)...",
+            "aerozip": "În Arhivă (.aerozip)...",
+            "confirmTitle": "Exportă conținutul decriptat",
+            "confirmBody": "Aceasta scrie conținutul decriptat, în text simplu, în locația pe care o alegi. Oricine poate citi acea locație îți poate citi fișierele.",
+            "confirmZipNote": "Un .zip nu este criptat și nici protejat cu parolă.",
+            "cancel": "Anulează",
+            "continue": "Continuă",
+            "done": "S-au salvat {count} fișier(e) în {path}",
+            "skipped": "{count} element(e) omis(e)"
         }
     }
 }

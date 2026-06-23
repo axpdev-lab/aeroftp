@@ -5006,6 +5006,20 @@
             "mismatch": "Les contrasenyes no coincideixen",
             "confirm": "Confirmeu la contrasenya",
             "confirmPlaceholder": "Repetiu la contrasenya"
+        },
+        "saveAll": {
+            "button": "Desa-ho tot...",
+            "hint": "Exporta tot el contingut desxifrat alhora",
+            "folder": "A una carpeta...",
+            "zip": "A Zip (.zip)...",
+            "aerozip": "A Arxiu (.aerozip)...",
+            "confirmTitle": "Exporta el contingut desxifrat",
+            "confirmBody": "Això escriu el contingut desxifrat, en text pla, a la ubicació que trieu. Qualsevol que pugui llegir aquesta ubicació podrà llegir els teus fitxers.",
+            "confirmZipNote": "Un .zip no està xifrat ni protegit amb contrasenya.",
+            "cancel": "Cancel·la",
+            "continue": "Continua",
+            "done": "S'han desat {count} fitxer(s) a {path}",
+            "skipped": "{count} element(s) omès(os)"
         }
     }
 }

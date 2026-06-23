@@ -4987,6 +4987,20 @@
             "mismatch": "Gesli se ne ujemata",
             "confirm": "Potrdite geslo",
             "confirmPlaceholder": "Ponovite geslo"
+        },
+        "saveAll": {
+            "button": "Shrani vse...",
+            "hint": "Izvozi celotno dešifrirano vsebino naenkrat",
+            "folder": "V mapo...",
+            "zip": "V Zip (.zip)...",
+            "aerozip": "V Arhiv (.aerozip)...",
+            "confirmTitle": "Izvoz dešifrirane vsebine",
+            "confirmBody": "S tem se dešifrirana vsebina v navadnem besedilu zapiše na mesto, ki ga izberete. Kdor koli lahko bere to mesto, lahko prebere vaše datoteke.",
+            "confirmZipNote": ".zip ni šifriran niti zaščiten z geslom.",
+            "cancel": "Prekliči",
+            "continue": "Nadaljuj",
+            "done": "Shranjenih {count} datotek v {path}",
+            "skipped": "{count} elementov preskočenih"
         }
     }
 }

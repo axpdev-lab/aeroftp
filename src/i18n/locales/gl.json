@@ -5006,6 +5006,20 @@
             "mismatch": "Os contrasinais non coinciden",
             "confirm": "Confirmar contrasinal",
             "confirmPlaceholder": "Repetir o contrasinal"
+        },
+        "saveAll": {
+            "button": "Gardar todo...",
+            "hint": "Exporta todo o contido descifrado dunha vez",
+            "folder": "A un cartafol...",
+            "zip": "A Zip (.zip)...",
+            "aerozip": "A Arquivo (.aerozip)...",
+            "confirmTitle": "Exportar contido descifrado",
+            "confirmBody": "Isto escribe o contido descifrado, en texto plano, na localización que elixas. Calquera que poida ler esa localización poderá ler os teus ficheiros.",
+            "confirmZipNote": "Un .zip non está cifrado nin protexido con contrasinal.",
+            "cancel": "Cancelar",
+            "continue": "Continuar",
+            "done": "Gardáronse {count} ficheiro(s) en {path}",
+            "skipped": "{count} elemento(s) omitido(s)"
         }
     }
 }

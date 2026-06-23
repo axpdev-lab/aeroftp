@@ -4987,6 +4987,20 @@
             "mismatch": "Paroolid ei kattu",
             "confirm": "Kinnita parool",
             "confirmPlaceholder": "Korda parooli"
+        },
+        "saveAll": {
+            "button": "Salvesta kõik...",
+            "hint": "Ekspordi kogu dekrüpteeritud sisu korraga",
+            "folder": "Kausta...",
+            "zip": "Zip-failina (.zip)...",
+            "aerozip": "Arhiivina (.aerozip)...",
+            "confirmTitle": "Dekrüpteeritud sisu eksportimine",
+            "confirmBody": "See kirjutab dekrüpteeritud lihttekstsisu teie valitud asukohta. Igaüks, kes saab seda asukohta lugeda, saab lugeda ka teie faile.",
+            "confirmZipNote": ".zip ei ole krüpteeritud ega parooliga kaitstud.",
+            "cancel": "Tühista",
+            "continue": "Jätka",
+            "done": "Salvestati {count} fail(i) asukohta {path}",
+            "skipped": "{count} üksus(t) vahele jäetud"
         }
     }
 }

@@ -4987,6 +4987,20 @@
             "mismatch": "Les mots de passe ne correspondent pas",
             "confirm": "Confirmer le mot de passe",
             "confirmPlaceholder": "Répéter le mot de passe"
+        },
+        "saveAll": {
+            "button": "Tout enregistrer...",
+            "hint": "Exporter tout le contenu déchiffré en une fois",
+            "folder": "Vers un dossier...",
+            "zip": "Vers Zip (.zip)...",
+            "aerozip": "Vers Archive (.aerozip)...",
+            "confirmTitle": "Exporter le contenu déchiffré",
+            "confirmBody": "Cela écrit le contenu déchiffré, en texte clair, à l'emplacement que vous choisissez. Quiconque peut lire cet emplacement peut lire vos fichiers.",
+            "confirmZipNote": "Un .zip n'est ni chiffré ni protégé par mot de passe.",
+            "cancel": "Annuler",
+            "continue": "Continuer",
+            "done": "{count} fichier(s) enregistré(s) dans {path}",
+            "skipped": "{count} élément(s) ignoré(s)"
         }
     }
 }

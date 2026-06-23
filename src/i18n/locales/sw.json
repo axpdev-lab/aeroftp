@@ -4987,6 +4987,20 @@
             "mismatch": "Nywila hazilingani",
             "confirm": "Thibitisha nywila",
             "confirmPlaceholder": "Rudia nywila"
+        },
+        "saveAll": {
+            "button": "Hifadhi vyote...",
+            "hint": "Hamisha maudhui yote yaliyofumbuliwa kwa mara moja",
+            "folder": "Kwenye folda...",
+            "zip": "Kwenye Zip (.zip)...",
+            "aerozip": "Kwenye Kumbukumbu (.aerozip)...",
+            "confirmTitle": "Hamisha maudhui yaliyofumbuliwa",
+            "confirmBody": "Hii inaandika maudhui yaliyofumbuliwa, kama maandishi wazi, kwenye eneo unalochagua. Mtu yeyote anayeweza kusoma eneo hilo anaweza kusoma faili zako.",
+            "confirmZipNote": ".zip haijasimbwa wala kulindwa kwa nenosiri.",
+            "cancel": "Ghairi",
+            "continue": "Endelea",
+            "done": "Imehifadhi faili {count} kwenye {path}",
+            "skipped": "Vipengele {count} vimerukwa"
         }
     }
 }

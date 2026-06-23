@@ -4987,6 +4987,20 @@
             "mismatch": "Slaptažodžiai nesutampa",
             "confirm": "Patvirtinkite slaptažodį",
             "confirmPlaceholder": "Pakartokite slaptažodį"
+        },
+        "saveAll": {
+            "button": "Įrašyti viską...",
+            "hint": "Vienu metu eksportuoti visą iššifruotą turinį",
+            "folder": "Į aplanką...",
+            "zip": "Į Zip (.zip)...",
+            "aerozip": "Į Archyvą (.aerozip)...",
+            "confirmTitle": "Eksportuoti iššifruotą turinį",
+            "confirmBody": "Tai įrašo iššifruotą, grynojo teksto turinį į jūsų pasirinktą vietą. Bet kas, galintis skaityti tą vietą, gali perskaityti jūsų failus.",
+            "confirmZipNote": ".zip nėra užšifruotas ar apsaugotas slaptažodžiu.",
+            "cancel": "Atšaukti",
+            "continue": "Tęsti",
+            "done": "Įrašyta {count} failų į {path}",
+            "skipped": "Praleista {count} elementų"
         }
     }
 }

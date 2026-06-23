@@ -4987,6 +4987,20 @@
             "mismatch": "Lozinke se ne podudaraju",
             "confirm": "Potvrdite lozinku",
             "confirmPlaceholder": "Ponovite lozinku"
+        },
+        "saveAll": {
+            "button": "Spremi sve...",
+            "hint": "Izvezi cijeli dešifrirani sadržaj odjednom",
+            "folder": "U mapu...",
+            "zip": "U Zip (.zip)...",
+            "aerozip": "U Arhivu (.aerozip)...",
+            "confirmTitle": "Izvoz dešifriranog sadržaja",
+            "confirmBody": "Ovime se dešifrirani sadržaj u običnom tekstu zapisuje na mjesto koje odaberete. Svatko tko može čitati to mjesto može pročitati vaše datoteke.",
+            "confirmZipNote": ".zip nije šifriran niti zaštićen lozinkom.",
+            "cancel": "Odustani",
+            "continue": "Nastavi",
+            "done": "Spremljeno {count} datoteka u {path}",
+            "skipped": "{count} stavki preskočeno"
         }
     }
 }

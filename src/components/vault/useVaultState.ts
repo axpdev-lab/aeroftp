@@ -452,6 +452,7 @@ export interface VaultState {
     handleRemove: (entryName: string, isDir: boolean) => Promise<void>;
     handleExtract: (entryName: string) => Promise<void>;
     handleExtractAll: () => Promise<void>;
+    handleSaveAll: (target: 'folder' | 'zip' | 'aerozip') => Promise<void>;
     handleExportVaultReport: (format: 'txt' | 'json') => Promise<void>;
     handleCopyVaultReport: () => Promise<void>;
     handleChangePassword: () => Promise<void>;
@@ -1506,6 +1507,36 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
+    // AeroMount Save-All (#322, Ehud idea #1): export the whole decrypted tree in
+    // one shot. Folder reuses the existing extract-all; Zip / Archive stream the
+    // contents into a single plaintext .zip / .aerozip via the ReadableVault seam.
+    // SECURITY: this writes PLAINTEXT to the chosen path; the SaveAllMenu confirms
+    // that intent (with an extra "not encrypted" note for the .zip target) first.
+    const handleSaveAll = async (target: 'folder' | 'zip' | 'aerozip') => {
+        if (target === 'folder') { await handleExtractAll(); return; }
+        const base = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.(aerovault|aerozip)$/i, '');
+        const destPath = await save({
+            defaultPath: target === 'zip' ? `${base}.zip` : `${base}.aerozip`,
+            filters: target === 'zip'
+                ? [{ name: 'Zip', extensions: ['zip'] }]
+                : [{ name: 'AeroZip', extensions: ['aerozip'] }],
+        });
+        if (!destPath) return;
+
+        setLoading(true);
+        try {
+            const report = isPlaintextZip
+                ? await invoke<{ files: number; dirs: number; skipped: string[] }>('aerovz_save_all', { vaultPath, destPath, target })
+                : await invoke<{ files: number; dirs: number; skipped: string[] }>('vault_v3_save_all', { vaultPath, password, destPath, target });
+            const skippedNote = report.skipped.length ? ` ${t('saveAll.skipped', { count: String(report.skipped.length) })}` : '';
+            setSuccess(`${t('saveAll.done', { count: String(report.files), path: destPath })}${skippedNote}`);
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Ehud #2: a complete technical report of the open vault — metadata,
     // encryption pipeline, error-correction state, chunk-level stats (re-fetched
     // from the backend, richer than the UI-mapped entries) and the full file
@@ -2070,6 +2101,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         handleRemove,
         handleExtract,
         handleExtractAll,
+        handleSaveAll,
         handleExportVaultReport,
         handleCopyVaultReport,
         handleChangePassword,

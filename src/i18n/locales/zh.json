@@ -4987,6 +4987,20 @@
             "mismatch": "密码不匹配",
             "confirm": "确认密码",
             "confirmPlaceholder": "再次输入密码"
+        },
+        "saveAll": {
+            "button": "全部保存...",
+            "hint": "一次性导出全部已解密的内容",
+            "folder": "到文件夹...",
+            "zip": "到 Zip (.zip)...",
+            "aerozip": "到归档 (.aerozip)...",
+            "confirmTitle": "导出已解密的内容",
+            "confirmBody": "此操作会将已解密的明文内容写入您选择的位置。任何能够读取该位置的人都可以读取您的文件。",
+            "confirmZipNote": ".zip 未加密，也没有密码保护。",
+            "cancel": "取消",
+            "continue": "继续",
+            "done": "已将 {count} 个文件保存到 {path}",
+            "skipped": "已跳过 {count} 个项目"
         }
     }
 }

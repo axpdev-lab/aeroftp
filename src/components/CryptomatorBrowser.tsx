@@ -2,8 +2,9 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2, Key } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -16,6 +17,7 @@ import { TransferProgressBar } from './TransferProgressBar';
 import { useModalFileView } from './modalview/useModalFileView';
 import { ModalViewToolbar } from './modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
+import { SaveAllMenu, SaveAllTarget } from './common/SaveAllMenu';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
@@ -54,10 +56,24 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const [decrypting, setDecrypting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    // Save-All (#322): live export of the whole decrypted tree to folder/zip/.aerozip.
+    const [savingAll, setSavingAll] = useState(false);
+    const [saveProgress, setSaveProgress] = useState<{ percentage: number; transferred: number; total: number } | null>(null);
     // Real byte-true decrypt progress (>=10MB plaintext only).
     const progress = useArchiveProgress(decrypting);
-    // Lock the modal during a decrypt so a reflexive X can't abandon a big-file decrypt.
-    const guarded = useGuardedClose({ guard: decrypting ? 'busy' : null, onClose });
+
+    // Drive the Save-All bar from the backend's `vault_progress` events while a
+    // bulk export runs (the single-file path uses `archive_progress` above).
+    useEffect(() => {
+        if (!savingAll) { setSaveProgress(null); return; }
+        let un: (() => void) | undefined;
+        let alive = true;
+        listen<{ percentage: number; transferred: number; total: number }>('vault_progress', e => setSaveProgress(e.payload))
+            .then(u => { if (alive) un = u; else u(); });
+        return () => { alive = false; un?.(); };
+    }, [savingAll]);
+    // Lock the modal during a decrypt or bulk export so a reflexive X can't abandon it.
+    const guarded = useGuardedClose({ guard: (decrypting || savingAll) ? 'busy' : null, onClose });
 
     const currentDirId = breadcrumb[breadcrumb.length - 1].dirId;
 
@@ -147,6 +163,44 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } finally {
             setLoading(false);
             setDecrypting(false);
+        }
+    };
+
+    // Save-All (#322, Ehud idea #1): export the whole decrypted vault tree in one
+    // shot. SECURITY: this writes PLAINTEXT to the chosen location; SaveAllMenu
+    // confirms that intent (with a "not encrypted" note for the .zip target) first.
+    const handleSaveAll = async (target: SaveAllTarget) => {
+        if (!vaultInfo) return;
+        const base = vaultInfo.name.replace(/\.[^.]+$/, '') || 'vault';
+        let destPath: string | null;
+        if (target === 'folder') {
+            destPath = await open({ directory: true }) as string | null;
+        } else {
+            destPath = await save({
+                defaultPath: target === 'zip' ? `${base}.zip` : `${base}.aerozip`,
+                filters: target === 'zip'
+                    ? [{ name: 'Zip', extensions: ['zip'] }]
+                    : [{ name: 'AeroZip', extensions: ['aerozip'] }],
+            });
+        }
+        if (!destPath) return;
+
+        setLoading(true);
+        setSavingAll(true);
+        setError(null);
+        try {
+            const report = await invoke<{ files: number; dirs: number; skipped: string[] }>('cryptomator_save_all', {
+                vaultId: vaultInfo.vaultId,
+                destPath,
+                target,
+            });
+            const skippedNote = report.skipped.length ? ` ${t('saveAll.skipped', { count: String(report.skipped.length) })}` : '';
+            setSuccess(`${t('saveAll.done', { count: String(report.files), path: destPath })}${skippedNote}`);
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setLoading(false);
+            setSavingAll(false);
         }
     };
 
@@ -241,6 +295,18 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                             speedBps={progress.speedBps}
                             etaSeconds={progress.etaSeconds}
                             filename={t('cryptomator.decrypting') || 'Decrypting'}
+                            size="lg"
+                        />
+                    </div>
+                )}
+                {/* Save-All export bar (whole-tree decrypt to folder/zip/.aerozip). */}
+                {savingAll && saveProgress && (
+                    <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+                        <TransferProgressBar
+                            percentage={saveProgress.percentage}
+                            transferredBytes={saveProgress.transferred}
+                            totalBytes={saveProgress.total}
+                            filename={t('saveAll.button')}
                             size="lg"
                         />
                     </div>
@@ -346,6 +412,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                             <button onClick={handleEncrypt} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 rounded">
                                 <Upload size={12} /> {t('cryptomator.encrypt')}
                             </button>
+                            <SaveAllMenu disabled={loading} onExport={handleSaveAll} />
                             <ModalViewToolbar view={modalView} />
                         </div>
 

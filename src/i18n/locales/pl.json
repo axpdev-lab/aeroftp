@@ -4987,6 +4987,20 @@
             "mismatch": "Hasła nie są zgodne",
             "confirm": "Potwierdź hasło",
             "confirmPlaceholder": "Powtórz hasło"
+        },
+        "saveAll": {
+            "button": "Zapisz wszystko...",
+            "hint": "Wyeksportuj całą odszyfrowaną zawartość naraz",
+            "folder": "Do folderu...",
+            "zip": "Do Zip (.zip)...",
+            "aerozip": "Do Archiwum (.aerozip)...",
+            "confirmTitle": "Eksport odszyfrowanej zawartości",
+            "confirmBody": "Spowoduje to zapisanie odszyfrowanej zawartości w postaci zwykłego tekstu w wybranej lokalizacji. Każdy, kto może odczytać tę lokalizację, może odczytać Twoje pliki.",
+            "confirmZipNote": "Plik .zip nie jest zaszyfrowany ani chroniony hasłem.",
+            "cancel": "Anuluj",
+            "continue": "Kontynuuj",
+            "done": "Zapisano {count} plik(ów) w {path}",
+            "skipped": "Pominięto {count} element(ów)"
         }
     }
 }

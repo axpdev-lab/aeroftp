@@ -4987,6 +4987,20 @@
             "mismatch": "Passwords do not match",
             "confirm": "Confirm password",
             "confirmPlaceholder": "Repeat password"
+        },
+        "saveAll": {
+            "button": "Save all...",
+            "hint": "Export the whole decrypted contents at once",
+            "folder": "To folder...",
+            "zip": "To Zip (.zip)...",
+            "aerozip": "To Archive (.aerozip)...",
+            "confirmTitle": "Export decrypted contents",
+            "confirmBody": "This writes the decrypted, plaintext contents to the location you choose. Anyone who can read that location can read your files.",
+            "confirmZipNote": "A .zip is not encrypted or password-protected.",
+            "cancel": "Cancel",
+            "continue": "Continue",
+            "done": "Saved {count} file(s) to {path}",
+            "skipped": "{count} item(s) skipped"
         }
     }
 }

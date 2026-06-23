@@ -5006,6 +5006,20 @@
             "mismatch": "Hindi magkatugma ang mga password",
             "confirm": "Kumpirmahin ang password",
             "confirmPlaceholder": "Ulitin ang password"
+        },
+        "saveAll": {
+            "button": "I-save lahat...",
+            "hint": "I-export ang buong na-decrypt na nilalaman nang sabay-sabay",
+            "folder": "Sa folder...",
+            "zip": "Sa Zip (.zip)...",
+            "aerozip": "Sa Archive (.aerozip)...",
+            "confirmTitle": "I-export ang na-decrypt na nilalaman",
+            "confirmBody": "Isinusulat nito ang na-decrypt na nilalaman bilang plain text sa lokasyong pipiliin mo. Ang sinumang makakabasa sa lokasyong iyon ay makakabasa ng iyong mga file.",
+            "confirmZipNote": "Ang isang .zip ay hindi naka-encrypt o protektado ng password.",
+            "cancel": "Kanselahin",
+            "continue": "Magpatuloy",
+            "done": "Na-save ang {count} (na) file sa {path}",
+            "skipped": "{count} (na) item ang nalaktawan"
         }
     }
 }

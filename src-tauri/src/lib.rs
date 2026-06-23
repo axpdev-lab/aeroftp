@@ -62,6 +62,7 @@ pub mod lftp_import;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod putty_import;
+pub mod readable_vault;
 pub mod s3cmd_import;
 pub mod vault_telemetry;
 // `pub` only so `tests/integration_delta_sync.rs` (separate crate) can
@@ -16695,6 +16696,7 @@ pub fn run() {
             aerovault_v3::aerovz_delete_entries,
             aerovault_v3::aerovz_extract_entry,
             aerovault_v3::aerovz_extract_all,
+            aerovault_v3::aerovz_save_all,
             aerovault_v3::aerovz_scrub,
             aerovault_v3::aerovz_repair,
             aerovault_v3::vault_v3_create,
@@ -16705,6 +16707,7 @@ pub fn run() {
             aerovault_v3::vault_v3_add_files_to_dir,
             aerovault_v3::vault_v3_extract_entry,
             aerovault_v3::vault_v3_extract_all,
+            aerovault_v3::vault_v3_save_all,
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,
@@ -16733,6 +16736,7 @@ pub fn run() {
             cryptomator::cryptomator_encrypt_file,
             cryptomator::cryptomator_encrypt_paths,
             cryptomator::cryptomator_create,
+            cryptomator::cryptomator_save_all,
             // Rclone crypt compatibility support
             rclone_crypt::rclone_crypt_unlock,
             rclone_crypt::rclone_crypt_lock,

@@ -5006,6 +5006,20 @@
             "mismatch": "Passordene samsvarer ikke",
             "confirm": "Bekreft passord",
             "confirmPlaceholder": "Gjenta passord"
+        },
+        "saveAll": {
+            "button": "Lagre alt...",
+            "hint": "Eksporter hele det dekrypterte innholdet på én gang",
+            "folder": "Til mappe...",
+            "zip": "Til Zip (.zip)...",
+            "aerozip": "Til Arkiv (.aerozip)...",
+            "confirmTitle": "Eksporter dekryptert innhold",
+            "confirmBody": "Dette skriver det dekrypterte innholdet i klartekst til plasseringen du velger. Alle som kan lese den plasseringen, kan lese filene dine.",
+            "confirmZipNote": "En .zip er verken kryptert eller passordbeskyttet.",
+            "cancel": "Avbryt",
+            "continue": "Fortsett",
+            "done": "Lagret {count} fil(er) til {path}",
+            "skipped": "{count} element(er) hoppet over"
         }
     }
 }

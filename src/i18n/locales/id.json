@@ -4987,6 +4987,20 @@
             "mismatch": "Kata sandi tidak cocok",
             "confirm": "Konfirmasi kata sandi",
             "confirmPlaceholder": "Ulangi kata sandi"
+        },
+        "saveAll": {
+            "button": "Simpan semua...",
+            "hint": "Ekspor seluruh konten yang didekripsi sekaligus",
+            "folder": "Ke folder...",
+            "zip": "Ke Zip (.zip)...",
+            "aerozip": "Ke Arsip (.aerozip)...",
+            "confirmTitle": "Ekspor konten yang didekripsi",
+            "confirmBody": "Ini menulis konten yang didekripsi dalam teks biasa ke lokasi yang Anda pilih. Siapa pun yang dapat membaca lokasi tersebut dapat membaca file Anda.",
+            "confirmZipNote": "Sebuah .zip tidak dienkripsi atau dilindungi kata sandi.",
+            "cancel": "Batal",
+            "continue": "Lanjutkan",
+            "done": "Menyimpan {count} file ke {path}",
+            "skipped": "{count} item dilewati"
         }
     }
 }

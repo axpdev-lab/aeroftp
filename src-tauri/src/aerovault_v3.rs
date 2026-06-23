@@ -798,7 +798,7 @@ pub async fn aerovz_extract_entry(
 /// is written (per-file granularity), so a single huge file updates only at completion;
 /// no synthetic 0% frame is emitted, so the spinner covers the pre-first-file window
 /// rather than a determinate bar stuck at 0%.
-fn vault_extract_progress_emitter(app: tauri::AppHandle) -> impl FnMut(u64, u64) + Send {
+pub(crate) fn vault_extract_progress_emitter(app: tauri::AppHandle) -> impl FnMut(u64, u64) + Send {
     let mut last_emit = Instant::now();
     let mut last_pct: i64 = -1;
     move |done: u64, total: u64| {
@@ -835,6 +835,163 @@ pub async fn aerovz_extract_all(
     })
     .await
     .map_err(|e| format!("archive extract task failed: {e}"))?
+}
+
+// ─── Save-All: VaultV3 adapter + exporters (#322, Ehud idea #1) ──────────────────
+
+/// Read-only adapter exposing an opened `VaultV3` (encrypted `.aerovault` or
+/// plaintext `.aerozip`) through the shared
+/// [`crate::readable_vault::ReadableVault`] trait, for the generic Save-All
+/// `.zip` exporter. `walk` derives the tree from the crate summary; `read_file`
+/// extracts one entry into a transient temp file inside an auto-removed temp dir
+/// (the crate has no read-to-writer API) then streams it into the sink.
+struct VaultV3Readable {
+    vault: aerovault::v3::OpenVaultV3,
+}
+
+impl crate::readable_vault::ReadableVault for VaultV3Readable {
+    fn walk(&self) -> Result<Vec<crate::readable_vault::ReadableEntry>, String> {
+        let summary = aerovault::v3::VaultV3::summary(&self.vault);
+        Ok(summary
+            .entries
+            .iter()
+            .map(|e| crate::readable_vault::ReadableEntry {
+                rel_path: e.path.clone(),
+                is_dir: e.is_dir,
+                size: e.size,
+                handle: String::new(),
+            })
+            .collect())
+    }
+
+    fn read_file(
+        &self,
+        entry: &crate::readable_vault::ReadableEntry,
+        sink: &mut dyn std::io::Write,
+    ) -> Result<(), String> {
+        let tmp_dir = tempfile::Builder::new()
+            .prefix(".aerovz-export-")
+            .tempdir()
+            .map_err(|e| format!("temp dir: {e}"))?;
+        // A non-existing exact path -> extract_entry writes the single file there.
+        let tmp_path = tmp_dir.path().join("entry.bin");
+        aerovault::v3::VaultV3::extract_entry(&self.vault, &entry.rel_path, &tmp_path)?;
+        let mut f =
+            std::fs::File::open(&tmp_path).map_err(|e| format!("reopen extracted entry: {e}"))?;
+        std::io::copy(&mut f, sink).map_err(|e| format!("stream extracted entry: {e}"))?;
+        Ok(())
+    }
+}
+
+/// Pack an already-extracted plaintext tree at `scratch` into a fresh `.aerozip`
+/// at `dest` (plaintext lane, default embedded recovery, matching
+/// `aerovz_create_archive`). Shared by every Save-All ".aerozip" target. The
+/// `dest` is overwritten if it already exists (the user picked it via Save).
+pub(crate) fn create_aerozip_from_dir(
+    scratch: &Path,
+    dest: &Path,
+) -> Result<(usize, usize), String> {
+    let _ = std::fs::remove_file(dest);
+    let opts = aerovault::v3::CreateOptionsV3::new_plaintext(dest.to_path_buf());
+    aerovault::v3::VaultV3::create_with_error_correction(
+        &opts,
+        aerovault::v3::RecoveryPlacement::Embedded,
+        ERROR_CORRECTION_DEFAULT_PCT,
+    )
+    .map_err(|e| format!("Create .aerozip: {e}"))?;
+    let mut vault = open_aerovz_archive(dest)?;
+    aerovault::v3::VaultV3::add_directory(&mut vault, scratch, None)
+        .map_err(|e| format!("Add to .aerozip: {e}"))
+}
+
+/// Open a v3 container for reading: encrypted `.aerovault` when a password is
+/// given, else the plaintext `.aerozip` lane.
+fn open_v3_for_read(
+    vault_path: &str,
+    password: Option<&str>,
+) -> Result<aerovault::v3::OpenVaultV3, String> {
+    match password {
+        Some(p) => aerovault::v3::VaultV3::open(vault_path, p),
+        None => open_aerovz_archive(Path::new(vault_path)),
+    }
+}
+
+/// Shared Save-All impl for a v3 container. `target` is `"zip"` | `"aerozip"`
+/// (the folder target keeps using the existing `extract_all` path). Runs the
+/// blocking export off the async runtime; the `.zip` target drives a live
+/// `vault_progress` bar.
+async fn save_all_v3_impl(
+    vault_path: String,
+    password: Option<String>,
+    dest_path: String,
+    target: String,
+    app: tauri::AppHandle,
+) -> Result<crate::readable_vault::ExportReport, String> {
+    match target.as_str() {
+        "zip" => tokio::task::spawn_blocking(
+            move || -> Result<crate::readable_vault::ExportReport, String> {
+                let vault = open_v3_for_read(&vault_path, password.as_deref())?;
+                let adapter = VaultV3Readable { vault };
+                let mut emit = vault_extract_progress_emitter(app);
+                crate::readable_vault::export_to_zip(&adapter, Path::new(&dest_path), &mut emit)
+            },
+        )
+        .await
+        .map_err(|e| format!("zip export task failed: {e}"))?,
+        "aerozip" => {
+            ensure_aerovz_product_path(&dest_path)?;
+            let _ = &app; // the single packing call has no incremental progress
+            tokio::task::spawn_blocking(
+                move || -> Result<crate::readable_vault::ExportReport, String> {
+                    let scratch = tempfile::Builder::new()
+                        .prefix(".aerovault-saveall-")
+                        .tempdir()
+                        .map_err(|e| format!("Create scratch dir: {e}"))?;
+                    {
+                        let vault = open_v3_for_read(&vault_path, password.as_deref())?;
+                        aerovault::v3::VaultV3::extract_all(&vault, scratch.path())?;
+                    }
+                    let (files, dirs) =
+                        create_aerozip_from_dir(scratch.path(), Path::new(&dest_path))?;
+                    Ok(crate::readable_vault::ExportReport {
+                        files: files as u64,
+                        dirs: dirs as u64,
+                        skipped: Vec::new(),
+                    })
+                },
+            )
+            .await
+            .map_err(|e| format!("aerozip export task failed: {e}"))?
+        }
+        other => Err(format!("Unknown save-all target: {other}")),
+    }
+}
+
+/// Save-All for an encrypted `.aerovault` (#322): export the whole decrypted tree
+/// to a single `.zip` or `.aerozip`. SECURITY: writes PLAINTEXT to `dest_path`.
+#[tauri::command]
+pub async fn vault_v3_save_all(
+    vault_path: String,
+    password: String,
+    dest_path: String,
+    target: String,
+    app: tauri::AppHandle,
+) -> Result<crate::readable_vault::ExportReport, String> {
+    crate::filesystem::validate_path(&dest_path)?;
+    save_all_v3_impl(vault_path, Some(password), dest_path, target, app).await
+}
+
+/// Save-All for a plaintext `.aerozip` (#322): repack the archive contents to a
+/// single `.zip` or a fresh `.aerozip`.
+#[tauri::command]
+pub async fn aerovz_save_all(
+    vault_path: String,
+    dest_path: String,
+    target: String,
+    app: tauri::AppHandle,
+) -> Result<crate::readable_vault::ExportReport, String> {
+    crate::filesystem::validate_path(&dest_path)?;
+    save_all_v3_impl(vault_path, None, dest_path, target, app).await
 }
 
 #[tauri::command]

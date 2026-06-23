@@ -4987,6 +4987,20 @@
             "mismatch": "Mật khẩu không khớp",
             "confirm": "Xác nhận mật khẩu",
             "confirmPlaceholder": "Nhập lại mật khẩu"
+        },
+        "saveAll": {
+            "button": "Lưu tất cả...",
+            "hint": "Xuất toàn bộ nội dung đã giải mã cùng một lúc",
+            "folder": "Vào thư mục...",
+            "zip": "Vào Zip (.zip)...",
+            "aerozip": "Vào Kho lưu trữ (.aerozip)...",
+            "confirmTitle": "Xuất nội dung đã giải mã",
+            "confirmBody": "Thao tác này ghi nội dung đã giải mã ở dạng văn bản thuần vào vị trí bạn chọn. Bất kỳ ai có thể đọc vị trí đó đều có thể đọc tệp của bạn.",
+            "confirmZipNote": "Tệp .zip không được mã hóa hoặc bảo vệ bằng mật khẩu.",
+            "cancel": "Hủy",
+            "continue": "Tiếp tục",
+            "done": "Đã lưu {count} tệp vào {path}",
+            "skipped": "Đã bỏ qua {count} mục"
         }
     }
 }

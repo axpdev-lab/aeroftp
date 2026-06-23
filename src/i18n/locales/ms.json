@@ -4987,6 +4987,20 @@
             "mismatch": "Kata laluan tidak sepadan",
             "confirm": "Sahkan kata laluan",
             "confirmPlaceholder": "Ulang kata laluan"
+        },
+        "saveAll": {
+            "button": "Simpan semua...",
+            "hint": "Eksport keseluruhan kandungan yang dinyahsulit sekali gus",
+            "folder": "Ke folder...",
+            "zip": "Ke Zip (.zip)...",
+            "aerozip": "Ke Arkib (.aerozip)...",
+            "confirmTitle": "Eksport kandungan yang dinyahsulit",
+            "confirmBody": "Ini menulis kandungan yang dinyahsulit dalam teks biasa ke lokasi yang anda pilih. Sesiapa sahaja yang boleh membaca lokasi itu boleh membaca fail anda.",
+            "confirmZipNote": "Sesebuah .zip tidak disulitkan atau dilindungi kata laluan.",
+            "cancel": "Batal",
+            "continue": "Teruskan",
+            "done": "Menyimpan {count} fail ke {path}",
+            "skipped": "{count} item dilangkau"
         }
     }
 }

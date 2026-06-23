@@ -4987,6 +4987,20 @@
             "mismatch": "Adgangskoderne stemmer ikke overens",
             "confirm": "Bekræft adgangskode",
             "confirmPlaceholder": "Gentag adgangskode"
+        },
+        "saveAll": {
+            "button": "Gem alt...",
+            "hint": "Eksportér hele det dekrypterede indhold på én gang",
+            "folder": "Til mappe...",
+            "zip": "Til Zip (.zip)...",
+            "aerozip": "Til Arkiv (.aerozip)...",
+            "confirmTitle": "Eksportér dekrypteret indhold",
+            "confirmBody": "Dette skriver det dekrypterede indhold i klartekst til den placering, du vælger. Alle, der kan læse den placering, kan læse dine filer.",
+            "confirmZipNote": "En .zip er hverken krypteret eller adgangskodebeskyttet.",
+            "cancel": "Annuller",
+            "continue": "Fortsæt",
+            "done": "Gemte {count} fil(er) til {path}",
+            "skipped": "{count} element(er) sprunget over"
         }
     }
 }

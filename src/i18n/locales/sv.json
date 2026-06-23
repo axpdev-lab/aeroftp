@@ -4987,6 +4987,20 @@
             "mismatch": "Lösenorden matchar inte",
             "confirm": "Bekräfta lösenord",
             "confirmPlaceholder": "Upprepa lösenord"
+        },
+        "saveAll": {
+            "button": "Spara allt...",
+            "hint": "Exportera hela det dekrypterade innehållet på en gång",
+            "folder": "Till mapp...",
+            "zip": "Till Zip (.zip)...",
+            "aerozip": "Till Arkiv (.aerozip)...",
+            "confirmTitle": "Exportera dekrypterat innehåll",
+            "confirmBody": "Detta skriver det dekrypterade innehållet i klartext till den plats du väljer. Alla som kan läsa den platsen kan läsa dina filer.",
+            "confirmZipNote": "En .zip är varken krypterad eller lösenordsskyddad.",
+            "cancel": "Avbryt",
+            "continue": "Fortsätt",
+            "done": "Sparade {count} fil(er) till {path}",
+            "skipped": "{count} objekt hoppades över"
         }
     }
 }

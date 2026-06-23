@@ -5006,6 +5006,20 @@
             "mismatch": "Nid yw'r cyfrineiriau'n cyd-fynd",
             "confirm": "Cadarnhau cyfrinair",
             "confirmPlaceholder": "Ailadrodd cyfrinair"
+        },
+        "saveAll": {
+            "button": "Cadw popeth...",
+            "hint": "Allforio'r holl gynnwys datgryptiedig ar unwaith",
+            "folder": "I ffolder...",
+            "zip": "I Zip (.zip)...",
+            "aerozip": "I Archif (.aerozip)...",
+            "confirmTitle": "Allforio cynnwys datgryptiedig",
+            "confirmBody": "Mae hyn yn ysgrifennu'r cynnwys datgryptiedig, testun plaen, i'r lleoliad a ddewiswch. Gall unrhyw un sy'n gallu darllen y lleoliad hwnnw ddarllen eich ffeiliau.",
+            "confirmZipNote": "Nid yw .zip wedi'i amgryptio na'i ddiogelu â chyfrinair.",
+            "cancel": "Canslo",
+            "continue": "Parhau",
+            "done": "Cadwyd {count} ffeil i {path}",
+            "skipped": "{count} eitem wedi'u hepgor"
         }
     }
 }

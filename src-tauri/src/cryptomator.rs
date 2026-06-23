@@ -550,30 +550,36 @@ fn decrypt_file_inner(
     decrypt_file_inner_with_progress(vault, dir_id, filename, output_path, None)
 }
 
-/// As `decrypt_file_inner`, but emits byte-true `archive_progress` while writing the
-/// plaintext when an `AppHandle` is supplied (GUI path). The CLI and tests pass
-/// `None`. The decrypt crypto is in-app (no crate dependency), so this is part of the
-/// app-only progress pass (HANDOFF section 3.3.A).
-fn decrypt_file_inner_with_progress(
+/// Resolve the on-disk path of an encrypted `.c9r` file from its plaintext
+/// `dir_id`/`filename`, erroring if it is absent. Shortened (`.c9s`) names are
+/// not resolved here (the single-file decrypt path never supported them); such
+/// entries surface as a "not found" skip during a Save-All export.
+fn locate_encrypted_file(
     vault: &UnlockedVault,
     dir_id: &str,
     filename: &str,
-    output_path: &Path,
-    app: Option<tauri::AppHandle>,
-) -> Result<(), String> {
-    use std::io::Write;
-
-    // Find the encrypted file
+) -> Result<PathBuf, String> {
     let encrypted_name = encrypt_filename(vault, dir_id, filename)?;
     let dir_path = hash_dir_id(vault, dir_id)?;
     let file_path = dir_path.join(&encrypted_name);
-
     if !file_path.exists() {
         return Err(format!("Encrypted file not found: {:?}", file_path));
     }
+    Ok(file_path)
+}
 
-    let data = fs::read(&file_path).map_err(|e| format!("Failed to read encrypted file: {}", e))?;
-
+/// Decrypt an encrypted `.c9r` file body (`data`) into `sink`, invoking
+/// `on_bytes(plaintext_len)` after each chunk so a caller can drive a progress
+/// bar. The Cryptomator content crypto (GCM header -> content key -> 32 KiB GCM
+/// chunks) lives ONLY here, shared by the GUI single-file download
+/// (`decrypt_file_inner_with_progress`) and the Save-All exporter
+/// (`decrypt_file_to_writer`).
+fn decrypt_data_to_writer(
+    vault: &UnlockedVault,
+    data: &[u8],
+    sink: &mut dyn std::io::Write,
+    mut on_bytes: impl FnMut(u64),
+) -> Result<(), String> {
     if data.len() < 68 {
         return Err("File too small to contain a valid header".to_string());
     }
@@ -605,30 +611,6 @@ fn decrypt_file_inner_with_progress(
     let chunk_size = 32768 + 28;
     let content = &data[68..];
 
-    // Exact plaintext total: full 32 KiB chunks plus the last partial chunk's payload
-    // (each chunk is 12-byte nonce + ciphertext + 16-byte tag = 28 bytes of overhead).
-    let full_chunks = content.len() / chunk_size;
-    let rem = content.len() % chunk_size;
-    let last_plain = if rem > 0 { rem.saturating_sub(28) } else { 0 };
-    // u64 arithmetic so the intermediate cannot overflow `usize` on a 32-bit target
-    // for a very large (>128 GB) vault file.
-    let plaintext_total = full_chunks as u64 * 32768 + last_plain as u64;
-    let mut progress = app.map(|a| {
-        crate::archive_progress::ArchiveProgress::for_app(
-            a,
-            crate::archive_progress::phase::DECRYPTING,
-            plaintext_total,
-        )
-    });
-
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create output directory: {}", e))?;
-    }
-
-    let mut outfile = fs::File::create(output_path)
-        .map_err(|e| format!("Failed to create output file: {}", e))?;
-
     let mut chunk_num: u64 = 0;
     let mut offset = 0;
 
@@ -658,22 +640,173 @@ fn decrypt_file_inner_with_progress(
             )
             .map_err(|_| format!("Failed to decrypt chunk {}", chunk_num))?;
 
-        outfile
-            .write_all(&decrypted)
+        sink.write_all(&decrypted)
             .map_err(|e| format!("Failed to write chunk: {}", e))?;
-        if let Some(p) = progress.as_mut() {
-            p.add(decrypted.len() as u64);
-        }
+        on_bytes(decrypted.len() as u64);
 
         chunk_num += 1;
         offset = end;
     }
+
+    Ok(())
+}
+
+/// Exact plaintext byte total of an encrypted `.c9r` body, derived from its
+/// on-disk length (used to size a determinate progress bar before decrypt).
+fn plaintext_total_from_encrypted_len(encrypted_len: usize) -> u64 {
+    if encrypted_len < 68 {
+        return 0;
+    }
+    let chunk_size = 32768 + 28;
+    let content_len = encrypted_len - 68;
+    let full_chunks = content_len / chunk_size;
+    let rem = content_len % chunk_size;
+    let last_plain = if rem > 0 { rem.saturating_sub(28) } else { 0 };
+    // u64 arithmetic so the intermediate cannot overflow `usize` on a 32-bit target
+    // for a very large (>128 GB) vault file.
+    full_chunks as u64 * 32768 + last_plain as u64
+}
+
+/// Decrypt a vault file straight into a generic writer (no plaintext temp file),
+/// used by the Save-All `.zip` / folder exporters (#322).
+fn decrypt_file_to_writer(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    filename: &str,
+    sink: &mut dyn std::io::Write,
+) -> Result<(), String> {
+    let file_path = locate_encrypted_file(vault, dir_id, filename)?;
+    let data = fs::read(&file_path).map_err(|e| format!("Failed to read encrypted file: {}", e))?;
+    decrypt_data_to_writer(vault, &data, sink, |_| {})
+}
+
+/// As `decrypt_file_inner`, but emits byte-true `archive_progress` while writing the
+/// plaintext when an `AppHandle` is supplied (GUI path). The CLI and tests pass
+/// `None`. The decrypt crypto is in-app (no crate dependency), so this is part of the
+/// app-only progress pass (HANDOFF section 3.3.A).
+fn decrypt_file_inner_with_progress(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    filename: &str,
+    output_path: &Path,
+    app: Option<tauri::AppHandle>,
+) -> Result<(), String> {
+    let file_path = locate_encrypted_file(vault, dir_id, filename)?;
+    let data = fs::read(&file_path).map_err(|e| format!("Failed to read encrypted file: {}", e))?;
+
+    let plaintext_total = plaintext_total_from_encrypted_len(data.len());
+    let mut progress = app.map(|a| {
+        crate::archive_progress::ArchiveProgress::for_app(
+            a,
+            crate::archive_progress::phase::DECRYPTING,
+            plaintext_total,
+        )
+    });
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    }
+
+    let mut outfile = fs::File::create(output_path)
+        .map_err(|e| format!("Failed to create output file: {}", e))?;
+
+    decrypt_data_to_writer(vault, &data, &mut outfile, |n| {
+        if let Some(p) = progress.as_mut() {
+            p.add(n);
+        }
+    })?;
 
     if let Some(mut p) = progress {
         p.finish();
     }
 
     Ok(())
+}
+
+// ─── Save-All: ReadableVault adapter + recursive export (#322) ──────────────────
+
+/// Read-only adapter exposing an `UnlockedVault` through the shared
+/// [`crate::readable_vault::ReadableVault`] trait, for the Save-All exporters
+/// (#322, Ehud idea #1). `walk` recurses the decrypted tree (Cryptomator's
+/// `dir_id`-based model); `read_file` decrypts one file via the shared streaming
+/// chunk decryptor, with no plaintext temp file.
+struct CryptomatorReadable<'a> {
+    vault: &'a UnlockedVault,
+}
+
+/// Reject vault entry names that are not a single safe path segment, so a hostile
+/// or corrupt vault cannot inject `..`, separators or empty/dot names into an
+/// export path.
+fn is_safe_segment(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains('\0')
+}
+
+/// Recursively collect the decrypted tree under `dir_id` (prefixed by
+/// `rel_prefix`). Best-effort: an unreadable/undecryptable subdirectory is
+/// skipped rather than aborting the whole walk, and unsafe names are dropped.
+fn collect_tree(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    rel_prefix: &str,
+    out: &mut Vec<crate::readable_vault::ReadableEntry>,
+) {
+    let entries = match list_dir_inner(vault, dir_id) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for e in entries {
+        if !is_safe_segment(&e.name) {
+            continue;
+        }
+        let rel = if rel_prefix.is_empty() {
+            e.name.clone()
+        } else {
+            format!("{rel_prefix}/{}", e.name)
+        };
+        if e.is_dir {
+            out.push(crate::readable_vault::ReadableEntry {
+                rel_path: rel.clone(),
+                is_dir: true,
+                size: 0,
+                handle: String::new(),
+            });
+            if let Some(child) = e.dir_id {
+                collect_tree(vault, &child, &rel, out);
+            }
+        } else {
+            out.push(crate::readable_vault::ReadableEntry {
+                rel_path: rel,
+                is_dir: false,
+                size: e.size,
+                // The handle carries the PARENT dir_id so read_file can decrypt
+                // without re-resolving the path.
+                handle: dir_id.to_string(),
+            });
+        }
+    }
+}
+
+impl crate::readable_vault::ReadableVault for CryptomatorReadable<'_> {
+    fn walk(&self) -> Result<Vec<crate::readable_vault::ReadableEntry>, String> {
+        let mut out = Vec::new();
+        collect_tree(self.vault, "", "", &mut out);
+        Ok(out)
+    }
+
+    fn read_file(
+        &self,
+        entry: &crate::readable_vault::ReadableEntry,
+        sink: &mut dyn std::io::Write,
+    ) -> Result<(), String> {
+        let filename = entry.rel_path.rsplit('/').next().unwrap_or(&entry.rel_path);
+        decrypt_file_to_writer(self.vault, &entry.handle, filename, sink)
+    }
 }
 
 /// Encrypt a file into the vault
@@ -996,6 +1129,55 @@ pub async fn cryptomator_encrypt_paths(
     for p in &input_paths {
         ingest_path_inner(vault, &dir_id, Path::new(p), &mut report);
     }
+    Ok(report)
+}
+
+/// Save-All for an unlocked Cryptomator vault (#322, Ehud idea #1): write the
+/// whole decrypted tree out in one shot to a folder, a single `.zip`, or a single
+/// `.aerozip`, instead of decrypting files one by one. `target` is
+/// `"folder"` | `"zip"` | `"aerozip"`. Live `vault_progress` events drive the bar.
+///
+/// SECURITY: this writes DECRYPTED plaintext to the user-chosen `dest_path`. The
+/// GUI confirms that intent before calling. The `.zip` path streams entry-by-entry
+/// (no plaintext temp dir); the `.aerozip` path stages through an auto-scrubbed
+/// `TempDir` (its output is plaintext anyway).
+#[tauri::command]
+pub async fn cryptomator_save_all(
+    state: tauri::State<'_, CryptomatorState>,
+    vault_id: String,
+    dest_path: String,
+    target: String,
+    app: tauri::AppHandle,
+) -> Result<crate::readable_vault::ExportReport, String> {
+    crate::filesystem::validate_path(&dest_path)?;
+    let vaults = state.vaults.lock().await;
+    let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
+    let adapter = CryptomatorReadable { vault };
+    let mut emit = crate::aerovault_v3::vault_extract_progress_emitter(app);
+    let dest = Path::new(&dest_path);
+
+    let report = match target.as_str() {
+        "folder" => crate::readable_vault::export_to_folder(&adapter, dest, &mut emit)?,
+        "zip" => crate::readable_vault::export_to_zip(&adapter, dest, &mut emit)?,
+        "aerozip" => {
+            // Stage the decrypted tree to an auto-scrubbed scratch dir, then pack it
+            // into a plaintext .aerozip via the existing create + add_directory path.
+            let scratch = tempfile::Builder::new()
+                .prefix(".aero-cm-saveall-")
+                .tempdir()
+                .map_err(|e| format!("Create scratch dir: {e}"))?;
+            let folder_report =
+                crate::readable_vault::export_to_folder(&adapter, scratch.path(), &mut emit)?;
+            let (_files, dirs) =
+                crate::aerovault_v3::create_aerozip_from_dir(scratch.path(), dest)?;
+            crate::readable_vault::ExportReport {
+                files: folder_report.files,
+                dirs: dirs as u64,
+                skipped: folder_report.skipped,
+            }
+        }
+        other => return Err(format!("Unknown save-all target: {other}")),
+    };
     Ok(report)
 }
 
@@ -1452,5 +1634,84 @@ mod tests {
 
         // The overlong file must NOT have leaked into the vault root.
         assert!(!entries.iter().any(|e| e.name.starts_with("xxxx")));
+    }
+
+    // Save-All end-to-end (#322, Ehud idea #1): build a real vault with a nested
+    // tree, then drive the `CryptomatorReadable` adapter through both generic
+    // exporters and prove every file comes out byte-identical. This locks the new
+    // walk + decrypt-to-writer path (the seam the GUI `cryptomator_save_all` uses).
+    #[tokio::test]
+    async fn save_all_adapter_exports_folder_and_zip_byte_identical() {
+        use crate::readable_vault::ReadableVault;
+        use std::io::Read;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let password = "correcthorse";
+
+        // Source selection: a root file, a binary file, and nested/gamma.txt.
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        let bytes_a = b"hello save-all".to_vec();
+        let bytes_b: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
+        let bytes_c = b"deep inside".to_vec();
+        fs::write(src.join("alpha.txt"), &bytes_a).unwrap();
+        fs::write(src.join("beta.bin"), &bytes_b).unwrap();
+        let sub = src.join("nested");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(sub.join("gamma.txt"), &bytes_c).unwrap();
+
+        let vault_root = tmp.path().join("Vault");
+        cryptomator_create(
+            vault_root.to_string_lossy().to_string(),
+            password.to_string(),
+        )
+        .await
+        .expect("vault creation");
+        let (vault, _c) = unlock_vault_inner(&vault_root, password).expect("unlock");
+        let mut report = CryptomatorIngestReport::default();
+        for p in [src.join("alpha.txt"), src.join("beta.bin"), sub.clone()] {
+            ingest_path_inner(&vault, "", &p, &mut report);
+        }
+        assert!(report.skipped.is_empty(), "skips: {:?}", report.skipped);
+
+        let adapter = CryptomatorReadable { vault: &vault };
+
+        // The adapter walk must list every file with its full relative path.
+        let walked = adapter.walk().expect("walk");
+        let mut paths: Vec<String> = walked
+            .iter()
+            .filter(|e| !e.is_dir)
+            .map(|e| e.rel_path.clone())
+            .collect();
+        paths.sort();
+        assert_eq!(paths, vec!["alpha.txt", "beta.bin", "nested/gamma.txt"]);
+
+        // Folder export: every file byte-identical to the original.
+        let folder_dest = tmp.path().join("out-folder");
+        let fr = crate::readable_vault::export_to_folder(&adapter, &folder_dest, &mut |_, _| {})
+            .expect("folder export");
+        assert_eq!(fr.files, 3);
+        assert!(fr.skipped.is_empty(), "folder skips: {:?}", fr.skipped);
+        assert_eq!(fs::read(folder_dest.join("alpha.txt")).unwrap(), bytes_a);
+        assert_eq!(fs::read(folder_dest.join("beta.bin")).unwrap(), bytes_b);
+        assert_eq!(
+            fs::read(folder_dest.join("nested/gamma.txt")).unwrap(),
+            bytes_c
+        );
+
+        // Zip export: read members back via the zip crate, byte-identical.
+        let zip_dest = tmp.path().join("out.zip");
+        let zr = crate::readable_vault::export_to_zip(&adapter, &zip_dest, &mut |_, _| {})
+            .expect("zip export");
+        assert_eq!(zr.files, 3);
+        assert!(zr.skipped.is_empty(), "zip skips: {:?}", zr.skipped);
+        let mut archive = zip::ZipArchive::new(fs::File::open(&zip_dest).unwrap()).unwrap();
+        let mut got = Vec::new();
+        archive
+            .by_name("nested/gamma.txt")
+            .unwrap()
+            .read_to_end(&mut got)
+            .unwrap();
+        assert_eq!(got, bytes_c, "zip nested round-trip");
     }
 }

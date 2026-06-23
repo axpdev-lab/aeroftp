@@ -4987,6 +4987,20 @@
             "mismatch": "Hesla se neshodují",
             "confirm": "Potvrďte heslo",
             "confirmPlaceholder": "Zopakujte heslo"
+        },
+        "saveAll": {
+            "button": "Uložit vše...",
+            "hint": "Exportovat celý dešifrovaný obsah najednou",
+            "folder": "Do složky...",
+            "zip": "Do Zip (.zip)...",
+            "aerozip": "Do Archivu (.aerozip)...",
+            "confirmTitle": "Exportovat dešifrovaný obsah",
+            "confirmBody": "Tímto se zapíše dešifrovaný obsah v prostém textu do umístění, které zvolíte. Kdokoli, kdo má přístup k tomuto umístění, si může vaše soubory přečíst.",
+            "confirmZipNote": "Soubor .zip není šifrovaný ani chráněný heslem.",
+            "cancel": "Zrušit",
+            "continue": "Pokračovat",
+            "done": "Uloženo {count} souborů do {path}",
+            "skipped": "{count} položek přeskočeno"
         }
     }
 }

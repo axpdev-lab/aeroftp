@@ -4987,6 +4987,20 @@
             "mismatch": "Parolalar eşleşmiyor",
             "confirm": "Parolayı onayla",
             "confirmPlaceholder": "Parolayı tekrarla"
+        },
+        "saveAll": {
+            "button": "Tümünü kaydet...",
+            "hint": "Şifresi çözülmüş içeriğin tamamını tek seferde dışa aktar",
+            "folder": "Klasöre...",
+            "zip": "Zip'e (.zip)...",
+            "aerozip": "Arşive (.aerozip)...",
+            "confirmTitle": "Şifresi çözülmüş içeriği dışa aktar",
+            "confirmBody": "Bu işlem, şifresi çözülmüş düz metin içeriği seçtiğiniz konuma yazar. O konumu okuyabilen herkes dosyalarınızı okuyabilir.",
+            "confirmZipNote": "Bir .zip dosyası şifrelenmemiş veya parola korumalı değildir.",
+            "cancel": "İptal",
+            "continue": "Devam et",
+            "done": "{count} dosya {path} konumuna kaydedildi",
+            "skipped": "{count} öğe atlandı"
         }
     }
 }

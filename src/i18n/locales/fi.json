@@ -4987,6 +4987,20 @@
             "mismatch": "Salasanat eivät täsmää",
             "confirm": "Vahvista salasana",
             "confirmPlaceholder": "Toista salasana"
+        },
+        "saveAll": {
+            "button": "Tallenna kaikki...",
+            "hint": "Vie koko purettu sisältö kerralla",
+            "folder": "Kansioon...",
+            "zip": "Zip-tiedostoon (.zip)...",
+            "aerozip": "Arkistoon (.aerozip)...",
+            "confirmTitle": "Vie purettu sisältö",
+            "confirmBody": "Tämä kirjoittaa puretun, salaamattoman sisällön valitsemaasi sijaintiin. Kuka tahansa, joka voi lukea tuon sijainnin, voi lukea tiedostosi.",
+            "confirmZipNote": ".zip-tiedostoa ei ole salattu eikä suojattu salasanalla.",
+            "cancel": "Peruuta",
+            "continue": "Jatka",
+            "done": "Tallennettiin {count} tiedosto(a) sijaintiin {path}",
+            "skipped": "{count} kohde(tta) ohitettu"
         }
     }
 }

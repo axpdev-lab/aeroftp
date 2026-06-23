@@ -4987,6 +4987,20 @@
             "mismatch": "Paroles nesakrīt",
             "confirm": "Apstipriniet paroli",
             "confirmPlaceholder": "Atkārtojiet paroli"
+        },
+        "saveAll": {
+            "button": "Saglabāt visu...",
+            "hint": "Eksportēt visu atšifrēto saturu uzreiz",
+            "folder": "Uz mapi...",
+            "zip": "Uz Zip (.zip)...",
+            "aerozip": "Uz Arhīvu (.aerozip)...",
+            "confirmTitle": "Eksportēt atšifrēto saturu",
+            "confirmBody": "Tas ieraksta atšifrēto, vienkāršā teksta saturu jūsu izvēlētajā vietā. Ikviens, kas var lasīt šo vietu, var izlasīt jūsu failus.",
+            "confirmZipNote": ".zip nav šifrēts vai aizsargāts ar paroli.",
+            "cancel": "Atcelt",
+            "continue": "Turpināt",
+            "done": "Saglabāti {count} faili mapē {path}",
+            "skipped": "Izlaisti {count} vienumi"
         }
     }
 }

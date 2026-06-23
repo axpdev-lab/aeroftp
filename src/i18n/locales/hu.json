@@ -4987,6 +4987,20 @@
             "mismatch": "A jelszavak nem egyeznek",
             "confirm": "Jelszó megerősítése",
             "confirmPlaceholder": "Jelszó megismétlése"
+        },
+        "saveAll": {
+            "button": "Összes mentése...",
+            "hint": "A teljes visszafejtett tartalom egyszerre történő exportálása",
+            "folder": "Mappába...",
+            "zip": "Zip-be (.zip)...",
+            "aerozip": "Archívumba (.aerozip)...",
+            "confirmTitle": "Visszafejtett tartalom exportálása",
+            "confirmBody": "Ez a visszafejtett, sima szöveges tartalmat az Ön által választott helyre írja. Bárki, aki olvasni tudja azt a helyet, elolvashatja a fájljait.",
+            "confirmZipNote": "A .zip nincs titkosítva, és nincs jelszóval védve.",
+            "cancel": "Mégse",
+            "continue": "Folytatás",
+            "done": "{count} fájl mentve ide: {path}",
+            "skipped": "{count} elem kihagyva"
         }
     }
 }

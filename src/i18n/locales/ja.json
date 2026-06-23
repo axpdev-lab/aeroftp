@@ -4987,6 +4987,20 @@
             "mismatch": "パスワードが一致しません",
             "confirm": "パスワードの確認",
             "confirmPlaceholder": "パスワードを再入力"
+        },
+        "saveAll": {
+            "button": "すべて保存...",
+            "hint": "復号した内容全体を一度にエクスポート",
+            "folder": "フォルダへ...",
+            "zip": "Zip へ (.zip)...",
+            "aerozip": "アーカイブへ (.aerozip)...",
+            "confirmTitle": "復号した内容をエクスポート",
+            "confirmBody": "これにより、復号された平文の内容が選択した場所に書き込まれます。その場所を読み取れる人は誰でも、あなたのファイルを読み取ることができます。",
+            "confirmZipNote": ".zip は暗号化もパスワード保護もされていません。",
+            "cancel": "キャンセル",
+            "continue": "続行",
+            "done": "{count} 個のファイルを {path} に保存しました",
+            "skipped": "{count} 個の項目をスキップしました"
         }
     }
 }

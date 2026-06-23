@@ -5006,6 +5006,20 @@
             "mismatch": "Lykilorðin passa ekki saman",
             "confirm": "Staðfesta lykilorð",
             "confirmPlaceholder": "Endurtaktu lykilorð"
+        },
+        "saveAll": {
+            "button": "Vista allt...",
+            "hint": "Flytja út allt afkóðaða efnið í einu",
+            "folder": "Í möppu...",
+            "zip": "Í Zip (.zip)...",
+            "aerozip": "Í Safnskrá (.aerozip)...",
+            "confirmTitle": "Flytja út afkóðað efni",
+            "confirmBody": "Þetta skrifar afkóðaða efnið, í ódulkóðuðum texta, á staðsetninguna sem þú velur. Hver sem getur lesið þá staðsetningu getur lesið skrárnar þínar.",
+            "confirmZipNote": "Ein .zip er hvorki dulkóðuð né varin með lykilorði.",
+            "cancel": "Hætta við",
+            "continue": "Halda áfram",
+            "done": "Vistaði {count} skrá(r) í {path}",
+            "skipped": "{count} atriði sleppt"
         }
     }
 }
