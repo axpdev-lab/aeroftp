@@ -67,6 +67,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
             />
             <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => setVisible((v) => !v)}
                 title={visible ? t('accountLock.hidePassword') : t('accountLock.showPassword')}
                 aria-label={visible ? t('accountLock.hidePassword') : t('accountLock.showPassword')}

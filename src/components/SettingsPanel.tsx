@@ -1409,7 +1409,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.cloudProviderSettings')}</h3>
                                     <div className="flex items-center justify-between">
                                         <p className="text-sm text-gray-500">{t('settings.cloudProviderDesc')}</p>
-                                        <button type="button" onClick={() => setShowOAuthSecrets(!showOAuthSecrets)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                                        <button tabIndex={-1} type="button" onClick={() => setShowOAuthSecrets(!showOAuthSecrets)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
                                             {showOAuthSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
                                             {showOAuthSecrets ? t('settings.hideSecrets') : t('settings.showSecrets')}
                                         </button>

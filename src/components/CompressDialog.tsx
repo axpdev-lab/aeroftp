@@ -476,6 +476,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
                                 />
                                 <button
+                                    type="button"
+                                    tabIndex={-1}
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
                                     style={{ color: 'var(--compress-text-muted)' }}
@@ -499,6 +501,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
                                     />
                                     <button
+                                        type="button"
+                                        tabIndex={-1}
                                         onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
                                         style={{ color: 'var(--compress-text-muted)' }}

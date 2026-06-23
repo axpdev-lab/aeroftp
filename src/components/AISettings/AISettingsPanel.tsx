@@ -883,7 +883,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     placeholder={provider.type === 'ollama' ? 'ollama' : t('ai.settings.enterApiKey')}
                                                                     className={`w-full px-3 py-2 pr-9 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 ${provider.type === 'ollama' ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                                 />
-                                                                <button
+                                                                <button tabIndex={-1}
                                                                     type="button"
                                                                     onClick={() =>
                                                                         setShowApiKey((prev) => ({

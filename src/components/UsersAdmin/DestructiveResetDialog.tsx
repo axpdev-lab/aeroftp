@@ -193,7 +193,7 @@ export const DestructiveResetDialog: React.FC<DestructiveResetDialogProps> = ({
                                     autoComplete="new-password"
                                     disabled={submitting}
                                 />
-                                <button
+                                <button tabIndex={-1}
                                     type="button"
                                     onClick={() => setShowPassphrase((value) => !value)}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
