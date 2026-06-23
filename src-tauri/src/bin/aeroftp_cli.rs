@@ -13547,16 +13547,28 @@ fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
 /// for bit-identical output.
 fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
     if use_color() {
-        // ESC[2J clears the visible screen, ESC[3J also clears the scrollback
-        // buffer, ESC[H homes the cursor. Without ESC[3J most terminals
-        // (Alacritty, pwsh, Windows Terminal) keep every previous table in
-        // scrollback, so repeated refreshes appear to "stack" and scroll back,
-        // while WezTerm wiped them: the result was inconsistent across
-        // terminals (#341). ESC[3J is the xterm scrollback-clear, supported by
-        // every modern terminal, so the refresh now behaves the same way
-        // everywhere: one clean table per refresh.
-        eprint!("\x1b[2J\x1b[3J\x1b[H");
-        let _ = std::io::Write::flush(&mut std::io::stderr());
+        // Clear the screen + scrollback and home the cursor, one clean table per
+        // refresh. We go through crossterm rather than a raw `ESC[2J ESC[3J ESC[H`
+        // so the wipe is consistent on EVERY host (#341). On legacy Windows
+        // consoles (classic blue PowerShell, standalone CMD, pwsh in conhost)
+        // ENABLE_VIRTUAL_TERMINAL_PROCESSING is off by default, so a raw ANSI clear
+        // is ignored and the tables just stack; crossterm enables VT first (or
+        // falls back to the WinAPI console clear when VT is unavailable), so modern
+        // terminals (WezTerm, Alacritty, Windows Terminal) and legacy consoles all
+        // clear the same way. On Linux/macOS this emits the identical ANSI as
+        // before. ClearType::Purge is the scrollback wipe (the ESC[3J equivalent).
+        use crossterm::{
+            cursor::MoveTo,
+            execute,
+            terminal::{Clear, ClearType},
+        };
+        let mut err = std::io::stderr();
+        let _ = execute!(
+            err,
+            Clear(ClearType::All),
+            Clear(ClearType::Purge),
+            MoveTo(0, 0)
+        );
     }
     let args = profiles_view_args(ov);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
