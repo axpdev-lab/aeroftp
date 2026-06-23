@@ -14,7 +14,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect, buildOperations } from '../types';
 import type { ImageResult } from '../types';
 import { useI18n } from '../../../i18n';
@@ -27,6 +27,12 @@ interface ImageViewerProps extends ViewerBaseProps {
     className?: string;
     /** Reports unsaved AeroImage edits so the host can guard accidental close. */
     onDirtyChange?: (dirty: boolean) => void;
+    /** Gallery paging (#128): toolbar prev/next buttons that mirror the modal's
+     *  hover arrows and the ← → keys. Disabled when there is nothing to page. */
+    onNext?: () => void;
+    onPrevious?: () => void;
+    hasNext?: boolean;
+    hasPrevious?: boolean;
 }
 
 // Zoom limits
@@ -39,6 +45,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     onError,
     className = '',
     onDirtyChange,
+    onNext,
+    onPrevious,
+    hasNext,
+    hasPrevious,
 }) => {
     const { t } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -329,6 +339,30 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {/* Toolbar: theme-aware chrome (the image viewport below stays black) */}
             <div className="flex items-center justify-between px-4 py-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
                 <div className="flex items-center gap-2">
+                    {/* Gallery paging (#128): prev/next mirror the modal hover
+                        arrows and the ← → keys; disabled when there is no other
+                        same-kind image in the folder. */}
+                    {(onPrevious || onNext) && (
+                        <>
+                            <button
+                                onClick={onPrevious}
+                                disabled={!hasPrevious}
+                                className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={t('preview.common.previous')}
+                            >
+                                <ChevronLeft size={18} className="text-[var(--color-text-secondary)]" />
+                            </button>
+                            <button
+                                onClick={onNext}
+                                disabled={!hasNext}
+                                className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={t('preview.common.next')}
+                            >
+                                <ChevronRight size={18} className="text-[var(--color-text-secondary)]" />
+                            </button>
+                            <div className="w-px h-6 bg-[var(--color-border)] mx-2" />
+                        </>
+                    )}
                     {/* Zoom controls */}
                     <button
                         onClick={zoomOut}

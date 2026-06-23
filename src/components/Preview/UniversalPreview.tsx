@@ -119,7 +119,8 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     const renderViewer = () => {
         switch (category) {
             case 'image':
-                return <ImageViewer file={file} onError={handleViewerError} onDirtyChange={setPreviewDirty} />;
+                return <ImageViewer file={file} onError={handleViewerError} onDirtyChange={setPreviewDirty}
+                    onNext={onNext} onPrevious={onPrevious} hasNext={hasNext} hasPrevious={hasPrevious} />;
 
             case 'audio':
                 return <AudioPlayer file={file} onError={handleViewerError} />;
@@ -238,35 +239,53 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                 </div>
 
                 {/* Content area */}
-                <div className="flex-1 relative overflow-hidden">
-                    {/* Loading overlay */}
-                    {isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-primary)]/80 z-10">
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-[var(--color-text-secondary)]">{t('preview.common.loading')}</span>
-                            </div>
+                <div className="group flex-1 relative overflow-hidden">
+                    {file.loading ? (
+                        /* Loading skeleton: the modal opens immediately on click
+                           and shows a pulsing placeholder while the bytes are
+                           fetched, then swaps to the content. Far more responsive
+                           than waiting for the whole download with no feedback,
+                           and uses the app-wide animate-pulse idiom (#128). */
+                        <div className="absolute inset-0 z-10 flex items-center justify-center p-8 bg-[var(--color-bg-primary)]">
+                            <div className="w-full h-full max-w-4xl rounded-xl bg-[var(--color-bg-tertiary)] animate-pulse" />
                         </div>
-                    )}
-
-                    {/* Error overlay */}
-                    {error && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-primary)]/80 z-10">
-                            <div className="flex flex-col items-center gap-3 text-red-400">
+                    ) : (error || file.error) ? (
+                        /* Preview failure (too large / fetch error) shown inside
+                           the modal, not only as a transient toast that lands in
+                           the hidden activity log (#128). */
+                        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-primary)]/80 z-10 p-8">
+                            <div className="flex flex-col items-center gap-3 text-red-400 text-center max-w-xl">
                                 <div className="text-4xl">⚠️</div>
-                                <span>{error}</span>
+                                <span>{error || file.error}</span>
                             </div>
                         </div>
+                    ) : (
+                        <>
+                            {/* Viewer-internal loading (e.g. decode) keeps a spinner */}
+                            {isLoading && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-primary)]/80 z-10">
+                                    <div className="flex flex-col items-center gap-3">
+                                        <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-[var(--color-text-secondary)]">{t('preview.common.loading')}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Viewer. Keyed by path so each gallery slide remounts
+                                fresh (zoom resets) with a light fade-in (#128). */}
+                            <div key={file.path} className="absolute inset-0 animate-fade-in">
+                                {renderViewer()}
+                            </div>
+                        </>
                     )}
 
-                    {/* Viewer */}
-                    {renderViewer()}
-
-                    {/* Navigation arrows (for gallery mode) */}
+                    {/* Gallery navigation: classic slideshow chevrons that fade in
+                        on hover, shown only when the folder has other same-kind
+                        images to page through (#128). Keyboard ← → also work. */}
                     {hasPrevious && (
                         <button
                             onClick={onPrevious}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-colors"
+                            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-all opacity-0 group-hover:opacity-100 z-20"
                             title={t('preview.common.previous')}
                         >
                             <ChevronLeft size={24} className="text-[var(--color-text-primary)]" />
@@ -275,7 +294,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                     {hasNext && (
                         <button
                             onClick={onNext}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-colors"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-all opacity-0 group-hover:opacity-100 z-20"
                             title={t('preview.common.next')}
                         >
                             <ChevronRight size={24} className="text-[var(--color-text-primary)]" />
@@ -308,6 +327,13 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                 }
                 .animate-scale-in {
                     animation: scale-in 0.2s ease-out;
+                }
+                @keyframes fade-in {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                .animate-fade-in {
+                    animation: fade-in 0.18s ease-out;
                 }
             `}</style>
         </div>

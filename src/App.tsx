@@ -2034,6 +2034,7 @@ interface UpdateVerificationInfo {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
     universalPreviewOpen, universalPreviewFile, openUniversalPreview, closeUniversalPreview,
+    previewNext, previewPrevious, hasPreviewNext, hasPreviewPrevious,
     viewMode, setViewMode,
   } = preview;
   const [devToolsMaximized, setDevToolsMaximized] = useState(false);
@@ -2389,7 +2390,7 @@ interface UpdateVerificationInfo {
           if (file && !file.is_dir) {
             const category = getPreviewCategory(file.name);
             if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-              openUniversalPreview(file, true);
+              openUniversalPreview(file, true, sortedRemoteFilesRef.current);
             } else if (isPreviewable(file.name)) {
               openDevToolsPreview(file, true);
             }
@@ -10624,7 +10625,7 @@ interface UpdateVerificationInfo {
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
       // Media files (images, audio, video, pdf) use Universal Preview modal
-      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
+      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true, sortedRemoteFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true, file.is_dir), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
@@ -11939,7 +11940,7 @@ interface UpdateVerificationInfo {
         ],
       }] : []),
       // Media files (images, audio, video, pdf) use Universal Preview modal
-      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
+      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false, sortedLocalFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1, shortcut: 'F2' },
@@ -12558,7 +12559,7 @@ interface UpdateVerificationInfo {
       if (doubleClickAction === 'preview') {
         const category = getPreviewCategory(file.name);
         if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-          await openUniversalPreview(file, true);
+          await openUniversalPreview(file, true, sortedRemoteFilesRef.current);
         } else if (isPreviewable(file.name)) {
           openDevToolsPreview(file, true);
         }
@@ -12576,7 +12577,7 @@ interface UpdateVerificationInfo {
     } else if (doubleClickAction === 'preview') {
       const category = getPreviewCategory(file.name);
       if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-        openUniversalPreview(file, false);
+        openUniversalPreview(file, false, sortedLocalFilesRef.current);
       } else if (isPreviewable(file.name)) {
         openDevToolsPreview(file, false);
       }
@@ -13511,6 +13512,10 @@ interface UpdateVerificationInfo {
           isOpen={universalPreviewOpen}
           file={universalPreviewFile}
           onClose={closeUniversalPreview}
+          onNext={previewNext}
+          onPrevious={previewPrevious}
+          hasNext={hasPreviewNext}
+          hasPrevious={hasPreviewPrevious}
           onEdit={universalPreviewFile ? () => {
             const pf = universalPreviewFile;
             closeUniversalPreview();
