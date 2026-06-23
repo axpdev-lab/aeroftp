@@ -26219,6 +26219,19 @@ fn collect_export_scaffold(
         // MUV-3: active user's partition with fallback to the legacy vault.
         let secret = if id.is_empty() {
             String::new()
+        } else if protocol == "jottacloud" {
+            // Jotta authenticates via its OIDC refresh blob ({refresh_token,
+            // token_endpoint, username}), not a `server_<id>` password. The
+            // provider persists it under the per-profile key
+            // `jottacloud_refresh_<id>` when a profile id is set, or the
+            // singleton `jottacloud_refresh` otherwise (see
+            // `JottacloudProvider::refresh_token_account`). Try per-profile
+            // first, then fall back to the singleton, so export_rclone can
+            // rebuild the rclone `token` line from it.
+            let uid = active_credential_user_id(store);
+            read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
+                .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
+                .unwrap_or_default()
         } else {
             match read_server_cred(
                 store,
@@ -26341,7 +26354,20 @@ async fn cmd_export_rclone(
     // Swift/Koofr) and S3 (access_key/secret). OAuth backends need their
     // own `rclone config` flow and are reported as skipped.
     let supported = [
-        "ftp", "ftps", "sftp", "s3", "webdav", "mega", "azure", "swift", "koofr",
+        "ftp",
+        "ftps",
+        "sftp",
+        "s3",
+        "webdav",
+        "mega",
+        "azure",
+        "swift",
+        "koofr",
+        // Jottacloud is OAuth/OIDC but, unlike the other OAuth backends, AeroFTP
+        // persists its refresh token (`jottacloud_refresh_<id>`). That is enough
+        // to emit a working rclone remote that refreshes on first use, so it is
+        // exportable. `collect_export_scaffold` loads the refresh blob for it.
+        "jottacloud",
     ];
     let oauth = [
         "googledrive",
@@ -26356,7 +26382,6 @@ async fn cmd_export_rclone(
         "fourshared",
         "drime",
         "filen",
-        "jottacloud",
         "filelu",
         "opendrive",
     ];
