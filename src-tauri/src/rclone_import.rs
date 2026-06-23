@@ -1552,9 +1552,14 @@ pub fn export_rclone(
             }
             "onedrive" => {
                 output.push_str("type = onedrive\n");
-                // region/drive hints when AeroFTP captured them. rclone marks
-                // none of these `Required`, and AeroFTP operates on the default
-                // `/me/drive`, so their absence still yields a working remote.
+                // rclone's `onedrive` backend needs `drive_id` + `drive_type`
+                // (it fails at use with "unable to get drive_id and drive_type"),
+                // even though the schema does not mark them Required. AeroFTP runs
+                // on the `/me/drive` shortcut and captures both at connect time
+                // into the vault; the bridge injects them into options here. If a
+                // profile was never connected after this fix, they are absent and
+                // the user must run `rclone config reconnect` / reconnect once in
+                // AeroFTP to populate them. `region` is emitted when captured.
                 if let Some(opts) = options {
                     if let Some(region) = opts
                         .get("region")
@@ -2416,6 +2421,42 @@ user = t
         assert!(
             conf.contains("# api_key required but unavailable"),
             "must emit the api_key guidance comment:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_onedrive_emits_drive_id_and_type() {
+        // #128-D: rclone's `onedrive` backend needs `drive_id` + `drive_type`
+        // (it fails at use with "unable to get drive_id and drive_type"). AeroFTP
+        // captures both at connect and the bridge injects them into options; the
+        // export arm must emit them verbatim.
+        let servers = vec![RcloneExportServer {
+            name: "onedrive-acct".to_string(),
+            host: "graph.microsoft.com".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("onedrive".to_string()),
+            options: Some(serde_json::json!({
+                "drive_id": "D980DD4FB1784A97",
+                "drive_type": "personal",
+                "__aeroftp_oauth_token": "{\"access_token\":\"tok\",\"token_type\":\"Bearer\"}",
+                "__aeroftp_oauth_client_id": "cid",
+                "__aeroftp_oauth_client_secret": "csec",
+            })),
+            provider_id: Some("onedrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-onedrive.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("type = onedrive"), "type:\n{conf}");
+        assert!(
+            conf.contains("drive_id = D980DD4FB1784A97"),
+            "must emit drive_id:\n{conf}"
+        );
+        assert!(
+            conf.contains("drive_type = personal"),
+            "must emit drive_type:\n{conf}"
         );
     }
 

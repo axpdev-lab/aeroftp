@@ -571,6 +571,54 @@ pub fn inject_rclone_filen_export_options(
     opts.insert("filen_api_key".into(), Value::String(api_key));
 }
 
+/// #128-D: for an rclone `onedrive` export, pull the per-profile Graph drive id
+/// and driveType out of the vault (`onedrive_drive_id_<id>` /
+/// `onedrive_drive_type_<id>`, captured at connect time) and inject them into
+/// the profile `options` under `drive_id`/`drive_type`, which the export arm
+/// already emits. rclone's `onedrive` backend needs both (it fails at use with
+/// "unable to get drive_id and drive_type"); AeroFTP runs on the `/me/drive`
+/// shortcut and never put them on the profile. Shared by the GUI bridge export
+/// and the CLI `cmd_export_rclone` so the two paths never diverge.
+pub fn inject_rclone_onedrive_export_options(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
+    protocol: &str,
+    id: &str,
+) {
+    if protocol != "onedrive" || id.is_empty() {
+        return;
+    }
+    let read = |key: &str| {
+        crate::user_partitions::resolve_active_credential(store, key)
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty())
+    };
+    let drive_id = read(&format!("onedrive_drive_id_{}", id));
+    let drive_type = read(&format!("onedrive_drive_type_{}", id));
+    if drive_id.is_none() && drive_type.is_none() {
+        return;
+    }
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    let opts = options
+        .as_mut()
+        .and_then(|o| o.as_object_mut())
+        .expect("options object");
+    if let Some(v) = drive_id {
+        if !opts.contains_key("drive_id") {
+            opts.insert("drive_id".into(), Value::String(v));
+        }
+    }
+    if let Some(v) = drive_type {
+        if !opts.contains_key("drive_type") {
+            opts.insert("drive_type".into(), Value::String(v));
+        }
+    }
+}
+
 /// Export the GUI's selected profiles to a third-party config file.
 /// Profiles whose protocol the target tool cannot carry are filtered
 /// out and reported in `skipped` (the "filter by support" contract);
@@ -648,6 +696,7 @@ pub async fn export_bridge_config(
                         let mut opts = e.get("options").cloned();
                         inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
+                        inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
                         if let Some(o) = opts {
                             e["options"] = o;
                         }
