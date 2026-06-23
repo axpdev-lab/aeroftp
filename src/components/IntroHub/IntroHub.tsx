@@ -50,6 +50,9 @@ export interface IntroHubProps {
     onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
     onOpenMountManager?: () => void;
     hasExistingSessions?: boolean;
+    /** Number of open session tabs, shown as a count chip on the
+     *  "Active Sessions" button. Issue #128-C. */
+    sessionCount?: number;
     serversRefreshKey?: number;
     onServersChanged?: () => void;
     /** Profile ids that have at least one open session in the tab strip.
@@ -93,6 +96,7 @@ export function IntroHub(props: IntroHubProps) {
         onOpenCrossProfile,
         onOpenMountManager,
         hasExistingSessions,
+        sessionCount,
         serversRefreshKey,
         onServersChanged,
         activeProfileIds,
@@ -363,6 +367,7 @@ export function IntroHub(props: IntroHubProps) {
                 onCloseFormTab={handleCloseFormTab}
                 onCloseAllFormTabs={handleCloseAllFormTabs}
                 hasExistingSessions={hasExistingSessions}
+                sessionCount={sessionCount}
                 onSkipToFileManager={onSkipToFileManager}
                 onAeroCloud={onAeroCloud}
                 onAeroFile={onAeroFile}
@@ -463,6 +468,7 @@ export function IntroHub(props: IntroHubProps) {
                             isAeroCloudConnected={isAeroCloudConnected}
                             onOpenCloudPanel={onOpenCloudPanel}
                             hasExistingSessions={hasExistingSessions}
+                            sessionCount={sessionCount}
                             serversRefreshKey={serversRefreshKey}
                         />
                     </div>

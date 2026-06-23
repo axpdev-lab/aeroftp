@@ -24,6 +24,9 @@ interface IntroHubHeaderProps {
     onCloseFormTab: (tabId: string) => void;
     onCloseAllFormTabs?: () => void;
     hasExistingSessions?: boolean;
+    /** Number of open session tabs, shown as a count chip inside the
+     *  "Active Sessions" button. Issue #128-C. */
+    sessionCount?: number;
     onSkipToFileManager?: () => void;
     onAeroCloud?: () => void;
     onAeroFile?: () => void;
@@ -55,6 +58,7 @@ export function IntroHubHeader({
     onCloseFormTab,
     onCloseAllFormTabs,
     hasExistingSessions,
+    sessionCount = 0,
     onSkipToFileManager,
     onAeroCloud,
     onAeroFile,
@@ -149,6 +153,9 @@ export function IntroHubHeader({
                     >
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                         <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
+                        {sessionCount > 0 && (
+                            <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-green-200/70 dark:bg-green-800/50 text-green-800 dark:text-green-300">{sessionCount}</span>
+                        )}
                     </button>
                 )}
 

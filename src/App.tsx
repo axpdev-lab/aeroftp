@@ -14168,6 +14168,7 @@ interface UpdateVerificationInfo {
               onConnect={connectToFtp}
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
+              sessionCount={sessions.length}
               activeProfileIds={activeProfileIds}
               onActivateSession={goToActiveSession}
               connectingProfileId={connectingProfileId}

@@ -96,6 +96,7 @@ interface ConnectionScreenProps {
     isAeroCloudConnected?: boolean;
     onOpenCloudPanel?: () => void;
     hasExistingSessions?: boolean;  // Show active sessions badge next to QuickConnect
+    sessionCount?: number;  // Number of open session tabs, shown as a count chip on the badge (#128-C)
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
     formOnly?: boolean;  // IntroHub: hide SavedServers panel, center form at max-w-640px
     editingProfile?: ServerProfile;  // IntroHub: auto-enter edit mode on mount for this profile
@@ -473,6 +474,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     isAeroCloudConnected,
     onOpenCloudPanel,
     hasExistingSessions = false,
+    sessionCount = 0,
     serversRefreshKey = 0,
     formOnly = false,
     editingProfile,
@@ -2744,6 +2746,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 >
                                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                                     <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
+                                    {sessionCount > 0 && (
+                                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-green-200/70 dark:bg-green-800/50 text-green-800 dark:text-green-300">{sessionCount}</span>
+                                    )}
                                 </button>
                             )}
                         </div>
