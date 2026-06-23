@@ -26122,6 +26122,7 @@ async fn cmd_import_bridge(src: &str, path: Option<String>, json: bool) -> i32 {
 /// `rclone_import` / `winscp_import` / `filezilla_import` (the same
 /// functions called by the GUI Export modal).
 struct ProfileExportScaffold {
+    id: String,
     name: String,
     host: String,
     port: u32,
@@ -26250,7 +26251,14 @@ fn collect_export_scaffold(
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
 
-        if secret.is_empty() && !has_sftp_key {
+        // #128-D: OAuth-token providers (Drive/Dropbox/OneDrive/Box/pCloud/
+        // Yandex) carry no `server_<id>` password; their token + BYO
+        // client_id/secret are injected from the vault at export time, so an
+        // empty vault password is legitimate (like key-auth SFTP).
+        let is_rclone_oauth =
+            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol).is_some();
+
+        if secret.is_empty() && !has_sftp_key && !is_rclone_oauth {
             out.skipped
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
@@ -26260,6 +26268,7 @@ fn collect_export_scaffold(
             out.passwords.insert(name.to_string(), secret.clone());
         }
         out.profiles.push(ProfileExportScaffold {
+            id: id.to_string(),
             name: name.to_string(),
             host,
             port,
@@ -26315,39 +26324,29 @@ async fn cmd_export_rclone(
     };
     let filter = parse_profile_name_filter(profiles);
 
-    // rclone supports password-auth backends (FTP/SFTP/WebDAV/Mega/Azure/
-    // Swift/Koofr) and S3 (access_key/secret). OAuth backends need their
-    // own `rclone config` flow and are reported as skipped.
-    let supported = [
-        "ftp", "ftps", "sftp", "s3", "webdav", "mega", "azure", "swift", "koofr",
-    ];
-    let oauth = [
-        "googledrive",
-        "dropbox",
-        "onedrive",
-        "box",
-        "pcloud",
-        "yandexdisk",
-        "zohoworkdrive",
-        "internxt",
-        "kdrive",
-        "fourshared",
-        "drime",
-        "filen",
-        "jottacloud",
-        "filelu",
-        "opendrive",
-    ];
+    // Single source of truth shared with the GUI bridge: the credential
+    // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Azure/Swift/Koofr/OpenDrive/
+    // Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
+    // OneDrive/Box/pCloud/Yandex), whose token + BYO client_id/secret are
+    // injected below. Jottacloud stays gated: rclone needs a token +
+    // configVersion we cannot reconstruct losslessly from AeroFTP's
+    // refresh-only OIDC flow.
+    let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("rclone");
+    let oauth = ["jottacloud"];
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
-        {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
 
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
@@ -26357,14 +26356,26 @@ async fn cmd_export_rclone(
     let exportable: Vec<RcloneExportServer> = collected
         .profiles
         .iter()
-        .map(|p| RcloneExportServer {
-            name: p.name.clone(),
-            host: p.host.clone(),
-            port: p.port,
-            username: p.username.clone(),
-            protocol: Some(p.protocol.clone()),
-            options: p.options.clone(),
-            provider_id: p.provider_id.clone(),
+        .map(|p| {
+            // #128-D: inject the vaulted OAuth token + BYO client_id/secret so
+            // OAuth remotes export usable (refreshable) from the CLI too, using
+            // the exact same helper the GUI bridge calls.
+            let mut options = p.options.clone();
+            ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
+                &mut options,
+                &store,
+                &p.protocol,
+                &p.id,
+            );
+            RcloneExportServer {
+                name: p.name.clone(),
+                host: p.host.clone(),
+                port: p.port,
+                username: p.username.clone(),
+                protocol: Some(p.protocol.clone()),
+                options,
+                provider_id: p.provider_id.clone(),
+            }
         })
         .collect();
 

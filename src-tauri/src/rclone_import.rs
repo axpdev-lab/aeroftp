@@ -584,18 +584,34 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
         }),
 
         // ---- pCloud ----
-        "pcloud" => Some(MappedProfile {
-            protocol: "pcloud".to_string(),
-            provider_id: Some("pcloud".to_string()),
-            host: get_str("hostname").unwrap_or("eapi.pcloud.com").to_string(),
-            port: 443,
-            username: name.to_string(),
-            password: None,
-            options: None,
-            initial_path: None,
-            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
-            jotta_refresh: None,
-        }),
+        // rclone's pcloud `hostname` defaults to api.pcloud.com (US); only EU
+        // accounts carry eapi.pcloud.com. Derive the region so the imported
+        // profile dials the right API instead of silently defaulting to US.
+        "pcloud" => {
+            let hostname = get_str("hostname").unwrap_or("api.pcloud.com");
+            let region = if hostname.to_ascii_lowercase().contains("eapi") {
+                "eu"
+            } else {
+                "us"
+            };
+            let mut options = serde_json::Map::new();
+            options.insert(
+                "region".into(),
+                serde_json::Value::String(region.to_string()),
+            );
+            Some(MappedProfile {
+                protocol: "pcloud".to_string(),
+                provider_id: Some("pcloud".to_string()),
+                host: hostname.to_string(),
+                port: 443,
+                username: name.to_string(),
+                password: None,
+                options: Some(serde_json::Value::Object(options)),
+                initial_path: None,
+                oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+                jotta_refresh: None,
+            })
+        }
 
         // ---- Azure Blob Storage ----
         "azureblob" => {
@@ -1614,8 +1630,23 @@ pub fn export_rclone(
             }
             "pcloud" => {
                 output.push_str("type = pcloud\n");
-                if server.host != "eapi.pcloud.com" {
-                    output.push_str(&format!("hostname = {}\n", server.host));
+                // rclone's pcloud `hostname` must be a real API host:
+                // api.pcloud.com (US, the default) or eapi.pcloud.com (EU).
+                // AeroFTP stores the region in options.region ("us"/"eu") or, on
+                // OAuth profiles, only as a display label in `host`
+                // ("pCloud (US)"/"pCloud (EU)"), never a hostname. Emitting that
+                // label verbatim produced an unusable remote. Map it: emit the
+                // EU host only for EU; omit for US (rclone defaults to it).
+                let is_eu = options
+                    .and_then(|o| o.get("region"))
+                    .and_then(|v| v.as_str())
+                    .map(|r| r.eq_ignore_ascii_case("eu"))
+                    .unwrap_or_else(|| {
+                        let h = server.host.to_ascii_lowercase();
+                        h.contains("eu") || h.contains("eapi")
+                    });
+                if is_eu {
+                    output.push_str("hostname = eapi.pcloud.com\n");
                 }
                 push_oauth_credentials(&mut output, options);
             }
@@ -2510,6 +2541,87 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
                 "{protocol}: client_secret must round-trip"
             );
         }
+    }
+
+    /// #128-D: pCloud's rclone `hostname` must be a real API host, not the
+    /// display label AeroFTP stores in `host`. US omits it (rclone default
+    /// api.pcloud.com); EU emits eapi.pcloud.com. Region may arrive via the
+    /// host label or `options.region`.
+    #[test]
+    fn test_export_rclone_pcloud_region_hostname() {
+        // US profile: host is a display label, no options.region -> no hostname.
+        let us = vec![RcloneExportServer {
+            name: "pcloud-us".to_string(),
+            host: "pCloud (US)".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("pcloud".to_string()),
+            options: None,
+            provider_id: Some("pcloud".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-pcloud-us.conf");
+        export_rclone(&us, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("type = pcloud"), "type:\n{conf}");
+        assert!(
+            !conf.contains("hostname ="),
+            "US must omit hostname (rclone defaults to api.pcloud.com):\n{conf}"
+        );
+        assert!(
+            !conf.contains("pCloud (US)"),
+            "the display label must never be emitted as a hostname:\n{conf}"
+        );
+
+        // EU via the host label.
+        let eu = vec![RcloneExportServer {
+            name: "pcloud-eu".to_string(),
+            host: "pCloud (EU)".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("pcloud".to_string()),
+            options: None,
+            provider_id: Some("pcloud".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-pcloud-eu.conf");
+        export_rclone(&eu, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            conf.contains("hostname = eapi.pcloud.com"),
+            "EU must emit eapi.pcloud.com:\n{conf}"
+        );
+
+        // EU via options.region, and the import maps the hostname back to region.
+        let eu2 = vec![RcloneExportServer {
+            name: "pcloud-eu2".to_string(),
+            host: "anything".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("pcloud".to_string()),
+            options: Some(serde_json::json!({ "region": "EU" })),
+            provider_id: Some("pcloud".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-pcloud-eu2.conf");
+        export_rclone(&eu2, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("hostname = eapi.pcloud.com"), "EU2:\n{conf}");
+        let result = import_rclone(&tmp_write(&conf, "aeroftp-reimport-pcloud-eu.conf")).unwrap();
+        let p = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("pcloud"))
+            .expect("pcloud server");
+        assert_eq!(p.host, "eapi.pcloud.com", "host maps to EU API");
+        assert_eq!(
+            p.options
+                .as_ref()
+                .and_then(|o| o.get("region"))
+                .and_then(|v| v.as_str()),
+            Some("eu"),
+            "imported region must be EU"
+        );
     }
 
     /// Without injected secrets the OAuth arm must emit a `reconnect` guidance

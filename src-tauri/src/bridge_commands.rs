@@ -421,9 +421,11 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
 /// `client_id`/`client_secret`. The GUI stores them under the raw protocol
 /// (`oauth_googledrive_client_id`, ...) with Google Photos aliased onto Google
 /// Drive's app, distinct from the per-profile token slug used by
-/// `oauth_vault_slug_for_protocol`. Returns `None` for non-OAuth protocols and
-/// for the ones we deliberately do not export to rclone (jottacloud/zoho).
-fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
+/// `oauth_vault_slug_for_protocol`. Returns `Some` only for the OAuth-token
+/// providers AeroFTP actually exports to rclone, so callers can also use it as
+/// the "is this an rclone-exportable OAuth provider?" predicate. `None` for
+/// non-OAuth protocols and for the ones we deliberately gate (jottacloud/zoho).
+pub fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
         "googledrive" | "googlephotos" => Some("googledrive"),
         "dropbox" => Some("dropbox"),
@@ -438,20 +440,18 @@ fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
 /// #128-D: for an rclone OAuth-token export, gather the per-profile OAuth token
 /// (`oauth_<slug>_<id>`, legacy `oauth_<slug>` fallback) and the BYO
 /// `client_id`/`client_secret` singletons from the vault and inject them into
-/// the profile's `options` under private `__aeroftp_oauth_*` keys that
+/// the profile `options` under private `__aeroftp_oauth_*` keys that
 /// `rclone_import::export_rclone` consumes. All three travel together because
 /// rclone refreshes an AeroFTP-minted token only with the same OAuth app; the
 /// export arm emits a `rclone config reconnect` comment instead of a broken
-/// remote when any piece is missing.
-fn inject_rclone_oauth_export_secrets(
-    entry: &mut Value,
-    store: Option<&CredentialStore>,
+/// remote when any piece is missing. Shared by the GUI bridge export and the
+/// CLI `cmd_export_rclone` so the two paths never diverge.
+pub fn inject_rclone_oauth_export_options(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
     protocol: &str,
+    id: &str,
 ) {
-    let store = match store {
-        Some(s) => s,
-        None => return,
-    };
     let slug = match crate::oauth_vault_slug_for_protocol(protocol) {
         Some(s) => s,
         None => return,
@@ -461,7 +461,6 @@ fn inject_rclone_oauth_export_secrets(
         Some(k) => k,
         None => return,
     };
-    let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
     let token = if id.is_empty() {
         None
@@ -488,10 +487,13 @@ fn inject_rclone_oauth_export_secrets(
     }
 
     // Ensure options is an object we can write the private keys into.
-    if !entry.get("options").map(|o| o.is_object()).unwrap_or(false) {
-        entry["options"] = json!({});
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
     }
-    let opts = entry["options"].as_object_mut().expect("options object");
+    let opts = options
+        .as_mut()
+        .and_then(|o| o.as_object_mut())
+        .expect("options object");
     if let Some(t) = token {
         opts.insert("__aeroftp_oauth_token".into(), Value::String(t));
     }
@@ -571,7 +573,18 @@ pub async fn export_bridge_config(
                 let injected_entry;
                 let entry: &Value = if source == "rclone" && include_credentials {
                     let mut e = entry.clone();
-                    inject_rclone_oauth_export_secrets(&mut e, store.as_ref(), &proto);
+                    if let Some(st) = store.as_ref() {
+                        let id = e
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let mut opts = e.get("options").cloned();
+                        inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
+                        if let Some(o) = opts {
+                            e["options"] = o;
+                        }
+                    }
                     injected_entry = e;
                     &injected_entry
                 } else {
