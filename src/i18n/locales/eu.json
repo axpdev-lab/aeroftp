@@ -278,8 +278,7 @@
             "unstableTitle": "Hornitzaile esperimentala",
             "unstableBody": "{provider} oraindik ez da egonkorra eta zerbitzua eskuragarri ez egotea gerta daiteke. Konexioak huts egin dezake zure errurik gabe.",
             "persistModeCredentials": "Gogoratu kontu honetako protokolo bakoitzaren kredentzialak",
-            "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta.",
-            "filenApiKeyStored": "Gako bat dagoeneko gordeta dago kutxan. Utzi hutsik mantentzeko, edo itsatsi berri bat ordezkatzeko."
+            "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta."
         },
         "browser": {
             "remote": "Urrunekoa",

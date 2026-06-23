@@ -278,8 +278,7 @@
             "unstableTitle": "Penyedia eksperimental",
             "unstableBody": "{provider} belum stabil dan layanan mungkin tidak tersedia. Koneksi bisa gagal bukan karena kesalahan Anda.",
             "persistModeCredentials": "Ingat kredensial untuk setiap protokol akun ini",
-            "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default.",
-            "filenApiKeyStored": "Kunci sudah disimpan di brankas. Biarkan kosong untuk mempertahankannya, atau tempel yang baru untuk menggantinya."
+            "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default."
         },
         "browser": {
             "remote": "Jarak Jauh",

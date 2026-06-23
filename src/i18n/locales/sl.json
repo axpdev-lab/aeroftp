@@ -278,8 +278,7 @@
             "unstableTitle": "Eksperimentalni ponudnik",
             "unstableBody": "{provider} še ni stabilen in storitev morda ni na voljo. Povezava lahko spodleti brez vaše krivde.",
             "persistModeCredentials": "Zapomni si poverilnice za vsak protokol tega računa",
-            "persistModeCredentialsHint": "En profil na račun: ohrani shranjene poverilnice vsakega protokola (API, WebDAV, S3, ...), tako da preklop načina ne sprašuje več, tudi po ponovnem zagonu. Shranjeno šifrirano v trezorju. Privzeto izklopljeno.",
-            "filenApiKeyStored": "Ključ je že shranjen v trezorju. Pustite prazno, da ga obdržite, ali prilepite novega, da ga zamenjate."
+            "persistModeCredentialsHint": "En profil na račun: ohrani shranjene poverilnice vsakega protokola (API, WebDAV, S3, ...), tako da preklop načina ne sprašuje več, tudi po ponovnem zagonu. Shranjeno šifrirano v trezorju. Privzeto izklopljeno."
         },
         "browser": {
             "remote": "Oddaljeno",

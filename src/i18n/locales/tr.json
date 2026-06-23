@@ -278,8 +278,7 @@
             "unstableTitle": "Deneysel sağlayıcı",
             "unstableBody": "{provider} henüz kararlı değil ve hizmet kullanılamayabilir. Bağlantı, sizin bir hatanız olmadan başarısız olabilir.",
             "persistModeCredentials": "Bu hesabın her protokolü için kimlik bilgilerini hatırla",
-            "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı.",
-            "filenApiKeyStored": "Kasada zaten bir anahtar kayıtlı. Korumak için boş bırakın veya değiştirmek için yenisini yapıştırın."
+            "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı."
         },
         "browser": {
             "remote": "Uzak",

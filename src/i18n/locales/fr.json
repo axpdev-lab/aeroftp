@@ -278,8 +278,7 @@
             "unstableTitle": "Fournisseur expérimental",
             "unstableBody": "{provider} n'est pas encore stable et le service peut être indisponible. La connexion peut échouer sans que ce soit de votre faute.",
             "persistModeCredentials": "Mémoriser les identifiants pour chaque protocole de ce compte",
-            "persistModeCredentialsHint": "Un profil par compte : conserve les identifiants de chaque protocole (API, WebDAV, S3, ...) afin que changer de mode ne les redemande plus, même après un redémarrage. Stocké chiffré dans le coffre. Désactivé par défaut.",
-            "filenApiKeyStored": "Une clé est déjà enregistrée dans le coffre. Laissez vide pour la conserver, ou collez-en une nouvelle pour la remplacer."
+            "persistModeCredentialsHint": "Un profil par compte : conserve les identifiants de chaque protocole (API, WebDAV, S3, ...) afin que changer de mode ne les redemande plus, même après un redémarrage. Stocké chiffré dans le coffre. Désactivé par défaut."
         },
         "browser": {
             "remote": "Distant",

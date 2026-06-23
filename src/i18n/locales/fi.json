@@ -278,8 +278,7 @@
             "unstableTitle": "Kokeellinen palveluntarjoaja",
             "unstableBody": "{provider} ei ole vielä vakaa, ja palvelu voi olla poissa käytöstä. Yhteys voi epäonnistua ilman sinun syytäsi.",
             "persistModeCredentials": "Muista jokaisen tämän tilin protokollan tunnistetiedot",
-            "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä.",
-            "filenApiKeyStored": "Avain on jo tallennettu holviin. Jätä tyhjäksi säilyttääksesi sen tai liitä uusi korvataksesi sen."
+            "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä."
         },
         "browser": {
             "remote": "Etä",

@@ -278,8 +278,7 @@
             "unstableTitle": "Eksperimentell leverandør",
             "unstableBody": "{provider} er ikke stabil ennå, og tjenesten kan være utilgjengelig. Tilkoblingen kan mislykkes uten at det er din feil.",
             "persistModeCredentials": "Husk legitimasjon for hver protokoll på denne kontoen",
-            "persistModeCredentialsHint": "Én profil per konto: beholder hver protokolls legitimasjon (API, WebDAV, S3, ...) lagret, slik at bytte av modus ikke spør igjen, selv etter en omstart. Lagres kryptert i hvelvet. Av som standard.",
-            "filenApiKeyStored": "En nøkkel er allerede lagret i hvelvet. La feltet stå tomt for å beholde den, eller lim inn en ny for å erstatte den."
+            "persistModeCredentialsHint": "Én profil per konto: beholder hver protokolls legitimasjon (API, WebDAV, S3, ...) lagret, slik at bytte av modus ikke spør igjen, selv etter en omstart. Lagres kryptert i hvelvet. Av som standard."
         },
         "browser": {
             "remote": "Ekstern",

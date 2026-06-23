@@ -278,8 +278,7 @@
             "unstableTitle": "Furnizor experimental",
             "unstableBody": "{provider} nu este încă stabil, iar serviciul ar putea fi indisponibil. Conexiunea poate eșua fără să fie vina ta.",
             "persistModeCredentials": "Reține datele de autentificare pentru fiecare protocol al acestui cont",
-            "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit.",
-            "filenApiKeyStored": "O cheie este deja salvată în seif. Lăsați gol pentru a o păstra sau lipiți una nouă pentru a o înlocui."
+            "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit."
         },
         "browser": {
             "remote": "La distanță",

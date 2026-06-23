@@ -278,8 +278,7 @@
             "unstableTitle": "Kísérleti szolgáltató",
             "unstableBody": "A(z) {provider} még nem stabil, és a szolgáltatás elérhetetlen lehet. A kapcsolat a te hibádon kívül is meghiúsulhat.",
             "persistModeCredentials": "Jegyezze meg a hitelesítő adatokat a fiók minden protokolljához",
-            "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva.",
-            "filenApiKeyStored": "Egy kulcs már el van mentve a széfben. Hagyja üresen a megtartásához, vagy illesszen be egy újat a cseréjéhez."
+            "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva."
         },
         "browser": {
             "remote": "Távoli",

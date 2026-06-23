@@ -278,8 +278,7 @@
             "unstableTitle": "Eksperimentaalne teenusepakkuja",
             "unstableBody": "{provider} ei ole veel stabiilne ja teenus võib olla kättesaamatu. Ühendus võib ebaõnnestuda ilma teie süüta.",
             "persistModeCredentials": "Jäta meelde selle konto iga protokolli mandaadid",
-            "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas.",
-            "filenApiKeyStored": "Võti on hoidlas juba salvestatud. Selle säilitamiseks jätke tühjaks või kleepige asendamiseks uus."
+            "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas."
         },
         "browser": {
             "remote": "Kaugserver",

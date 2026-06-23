@@ -278,8 +278,7 @@
             "unstableTitle": "Nhà cung cấp thử nghiệm",
             "unstableBody": "{provider} chưa ổn định và dịch vụ có thể không khả dụng. Kết nối có thể thất bại mà không phải do lỗi của bạn.",
             "persistModeCredentials": "Ghi nhớ thông tin đăng nhập cho mọi giao thức của tài khoản này",
-            "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt.",
-            "filenApiKeyStored": "Một khóa đã được lưu trong kho. Để trống để giữ lại, hoặc dán khóa mới để thay thế."
+            "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt."
         },
         "browser": {
             "remote": "Từ xa",

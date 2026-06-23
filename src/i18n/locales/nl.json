@@ -278,8 +278,7 @@
             "unstableTitle": "Experimentele provider",
             "unstableBody": "{provider} is nog niet stabiel en de service is mogelijk niet beschikbaar. De verbinding kan mislukken zonder dat het uw schuld is.",
             "persistModeCredentials": "Onthoud inloggegevens voor elk protocol van dit account",
-            "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit.",
-            "filenApiKeyStored": "Er is al een sleutel opgeslagen in de kluis. Laat leeg om hem te behouden, of plak een nieuwe om hem te vervangen."
+            "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit."
         },
         "browser": {
             "remote": "Extern",

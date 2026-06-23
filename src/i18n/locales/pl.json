@@ -278,8 +278,7 @@
             "unstableTitle": "Dostawca eksperymentalny",
             "unstableBody": "{provider} nie jest jeszcze stabilny, a usługa może być niedostępna. Połączenie może się nie powieść nie z Twojej winy.",
             "persistModeCredentials": "Zapamiętaj poświadczenia dla każdego protokołu tego konta",
-            "persistModeCredentialsHint": "Jeden profil na konto: przechowuje poświadczenia każdego protokołu (API, WebDAV, S3, ...), więc przełączanie trybu już o nie nie pyta, nawet po ponownym uruchomieniu. Przechowywane zaszyfrowane w sejfie. Domyślnie wyłączone.",
-            "filenApiKeyStored": "Klucz jest już zapisany w sejfie. Pozostaw puste, aby go zachować, lub wklej nowy, aby go zastąpić."
+            "persistModeCredentialsHint": "Jeden profil na konto: przechowuje poświadczenia każdego protokołu (API, WebDAV, S3, ...), więc przełączanie trybu już o nie nie pyta, nawet po ponownym uruchomieniu. Przechowywane zaszyfrowane w sejfie. Domyślnie wyłączone."
         },
         "browser": {
             "remote": "Zdalny",
