@@ -2949,7 +2949,11 @@
             "saved": "Imehifadhiwa",
             "increased": "Imeongezeka",
             "done": "Imekamilika",
-            "incompressible": "Tayari imegandamizwa, hakuna nafasi ya kuhifadhi"
+            "incompressible": "Tayari imegandamizwa, hakuna nafasi ya kuhifadhi",
+            "estimating": "Inakadiria…",
+            "spaceSaved": "{pct}% ndogo",
+            "estimateExact": "kamili",
+            "estimateApprox": "makadirio"
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",

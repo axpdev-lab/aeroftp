@@ -2949,7 +2949,11 @@
             "saved": "बचाया गया",
             "increased": "बढ़ा",
             "done": "पूर्ण",
-            "incompressible": "पहले से संपीड़ित, बचाने के लिए जगह नहीं"
+            "incompressible": "पहले से संपीड़ित, बचाने के लिए जगह नहीं",
+            "estimating": "अनुमान लगाया जा रहा है…",
+            "spaceSaved": "{pct}% छोटा",
+            "estimateExact": "सटीक",
+            "estimateApprox": "अनुमान"
         },
         "batchRename": {
             "title": "बैच नाम बदलना",

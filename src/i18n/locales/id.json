@@ -2949,7 +2949,11 @@
             "saved": "Dihemat",
             "increased": "Bertambah",
             "done": "Selesai",
-            "incompressible": "Sudah dikompresi, tidak ada ruang untuk dihemat"
+            "incompressible": "Sudah dikompresi, tidak ada ruang untuk dihemat",
+            "estimating": "Memperkirakan…",
+            "spaceSaved": "{pct}% lebih kecil",
+            "estimateExact": "tepat",
+            "estimateApprox": "perkiraan"
         },
         "batchRename": {
             "title": "Ganti Nama Batch",

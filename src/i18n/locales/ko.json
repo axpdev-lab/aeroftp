@@ -2949,7 +2949,11 @@
             "saved": "절약됨",
             "increased": "증가됨",
             "done": "완료",
-            "incompressible": "이미 압축됨, 절약할 공간 없음"
+            "incompressible": "이미 압축됨, 절약할 공간 없음",
+            "estimating": "추정 중…",
+            "spaceSaved": "{pct}% 더 작음",
+            "estimateExact": "정확",
+            "estimateApprox": "추정치"
         },
         "batchRename": {
             "title": "일괄 이름 변경",

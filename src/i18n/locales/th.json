@@ -2949,7 +2949,11 @@
             "saved": "ประหยัด",
             "increased": "เพิ่มขึ้น",
             "done": "เสร็จ",
-            "incompressible": "บีบอัดอยู่แล้ว ไม่มีพื้นที่ให้ประหยัด"
+            "incompressible": "บีบอัดอยู่แล้ว ไม่มีพื้นที่ให้ประหยัด",
+            "estimating": "กำลังประมาณ…",
+            "spaceSaved": "เล็กลง {pct}%",
+            "estimateExact": "แม่นยำ",
+            "estimateApprox": "ประมาณ"
         },
         "batchRename": {
             "title": "เปลี่ยนชื่อแบบกลุ่ม",

@@ -2949,7 +2949,11 @@
             "saved": "Kazanılan",
             "increased": "Arttı",
             "done": "Tamam",
-            "incompressible": "Zaten sıkıştırılmış, kazanılacak alan yok"
+            "incompressible": "Zaten sıkıştırılmış, kazanılacak alan yok",
+            "estimating": "Tahmin ediliyor…",
+            "spaceSaved": "%{pct} daha küçük",
+            "estimateExact": "kesin",
+            "estimateApprox": "tahmin"
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",

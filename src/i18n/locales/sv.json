@@ -2949,7 +2949,11 @@
             "saved": "Sparat",
             "increased": "Ökat",
             "done": "Klar",
-            "incompressible": "Redan komprimerad, inget utrymme att spara"
+            "incompressible": "Redan komprimerad, inget utrymme att spara",
+            "estimating": "Beräknar…",
+            "spaceSaved": "{pct}% mindre",
+            "estimateExact": "exakt",
+            "estimateApprox": "uppskattning"
         },
         "batchRename": {
             "title": "Massnamnsändring",

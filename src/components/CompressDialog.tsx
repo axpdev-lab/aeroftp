@@ -3,9 +3,11 @@
 
 import * as React from 'react';
 import { useState, useMemo, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Archive, Lock, Eye, EyeOff, X, File, Folder, Loader2, ChevronDown, ChevronUp, Shield, Check, TrendingDown, TrendingUp } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes as formatSize } from '../utils/formatters';
+import { CompressionEstimateBar } from './common/CompressionEstimateBar';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useArchiveProgress } from '../hooks/useArchiveProgress';
 import { useGuardedClose } from '../hooks/useGuardedClose';
@@ -91,18 +93,18 @@ const LEVEL_OPTIONS: Record<string, LevelOption[]> = {
     ],
 };
 
-// Estimated compression ratio by format+level (approximate, for display only)
-function getEstimatedRatio(format: CompressFormat, level: number): string | null {
-    if (format === 'tar') return null; // no compression
-    if (level === 0) return null; // store mode
-    const ratios: Record<string, Record<number, string>> = {
-        zip: { 1: '~70%', 6: '~55%', 9: '~50%' },
-        '7z': { 1: '~55%', 6: '~40%', 9: '~35%' },
-        'tar.gz': { 1: '~65%', 6: '~50%', 9: '~45%' },
-        'tar.xz': { 1: '~50%', 6: '~35%', 9: '~30%' },
-        'tar.bz2': { 1: '~60%', 6: '~45%', 9: '~40%' },
-    };
-    return ratios[format]?.[level] || null;
+// Map a UI format + level onto the backend canary codec. The backend then
+// compresses a real sample with that codec to measure the true ratio.
+function formatToCodec(format: CompressFormat, level: number): { codec: string; level: number } {
+    switch (format) {
+        case 'zip': return { codec: level === 0 ? 'store' : 'deflate', level };
+        case '7z': return { codec: 'xz', level }; // 7z is LZMA2; xz estimates it well
+        case 'tar': return { codec: 'store', level: 0 };
+        case 'tar.gz': return { codec: 'gzip', level };
+        case 'tar.xz': return { codec: 'xz', level };
+        case 'tar.bz2': return { codec: 'bzip2', level };
+        default: return { codec: 'store', level: 0 };
+    }
 }
 
 function getExtension(format: CompressFormat): string {
@@ -243,7 +245,33 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const fileCount = files.filter(f => !f.isDir).length;
     const folderCount = files.filter(f => f.isDir).length;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-    const estimatedRatio = getEstimatedRatio(format, compressionLevel);
+
+    // Real (canary) compression-size estimate: recomputed, debounced, whenever
+    // the input, format or level changes. The backend compresses a bounded
+    // sample with the actual codec and extrapolates, so this reflects measured
+    // behaviour rather than the old per-format ratio guess.
+    const [estimate, setEstimate] = useState<{ original: number; estimated: number; exact: boolean } | null>(null);
+    const [estimateLoading, setEstimateLoading] = useState(false);
+    useEffect(() => {
+        if (totalSize <= 0) { setEstimate(null); return; }
+        const { codec, level } = formatToCodec(format, compressionLevel);
+        let cancelled = false;
+        setEstimateLoading(true);
+        const handle = setTimeout(async () => {
+            try {
+                const paths = files.map(f => f.path);
+                const r = await invoke<{ input_bytes: number; estimated_bytes: number; exact: boolean }>(
+                    'estimate_compressed_size', { paths, codec, level },
+                );
+                if (!cancelled) setEstimate({ original: r.input_bytes, estimated: r.estimated_bytes, exact: r.exact });
+            } catch {
+                if (!cancelled) setEstimate(null);
+            } finally {
+                if (!cancelled) setEstimateLoading(false);
+            }
+        }, 250);
+        return () => { cancelled = true; clearTimeout(handle); };
+    }, [files, format, compressionLevel, totalSize]);
 
     const fullOutputPath = useMemo(() => {
         const ext = getExtension(format);
@@ -413,10 +441,14 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     </button>
                                 ))}
                             </div>
-                            {estimatedRatio && (
-                                <div className="text-[10px] mt-1.5 flex items-center gap-1" style={{ color: 'var(--compress-text-muted)' }}>
-                                    <Archive size={10} />
-                                    {t('compress.estimatedSize') || 'Estimated'}: {estimatedRatio} ({formatSize(Math.round(totalSize * parseInt(estimatedRatio.replace(/[^0-9]/g, '')) / 100))})
+                            {totalSize > 0 && format !== 'tar' && (estimate || estimateLoading) && (
+                                <div className="mt-2">
+                                    <CompressionEstimateBar
+                                        originalBytes={estimate?.original ?? totalSize}
+                                        estimatedBytes={estimate?.estimated ?? totalSize}
+                                        exact={estimate?.exact ?? false}
+                                        loading={estimateLoading && !estimate}
+                                    />
                                 </div>
                             )}
                         </div>

@@ -2949,7 +2949,11 @@
             "saved": "Megtakarítva",
             "increased": "Növekedett",
             "done": "Kész",
-            "incompressible": "Már tömörítve, nincs megtakarítható hely"
+            "incompressible": "Már tömörítve, nincs megtakarítható hely",
+            "estimating": "Becslés…",
+            "spaceSaved": "{pct}%-kal kisebb",
+            "estimateExact": "pontos",
+            "estimateApprox": "becslés"
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

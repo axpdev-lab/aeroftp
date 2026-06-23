@@ -2949,7 +2949,11 @@
             "saved": "Arbedwyd",
             "increased": "Cynyddwyd",
             "done": "Wedi gorffen",
-            "incompressible": "Eisoes wedi cywasgu, dim lle i arbed"
+            "incompressible": "Eisoes wedi cywasgu, dim lle i arbed",
+            "estimating": "Amcangyfrif…",
+            "spaceSaved": "{pct}% llai",
+            "estimateExact": "union",
+            "estimateApprox": "amcangyfrif"
         },
         "batchRename": {
             "title": "Ailenwi Swp",

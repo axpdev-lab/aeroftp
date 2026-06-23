@@ -2949,7 +2949,11 @@
             "saved": "Ietaupīts",
             "increased": "Palielinājies",
             "done": "Gatavs",
-            "incompressible": "Jau saspiests, nav vietas, ko ietaupīt"
+            "incompressible": "Jau saspiests, nav vietas, ko ietaupīt",
+            "estimating": "Aprēķina…",
+            "spaceSaved": "par {pct}% mazāks",
+            "estimateExact": "precīzs",
+            "estimateApprox": "aplēse"
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",

@@ -2949,7 +2949,11 @@
             "saved": "সাশ্রয়",
             "increased": "বেড়েছে",
             "done": "সম্পন্ন",
-            "incompressible": "ইতিমধ্যে সংকুচিত, সাশ্রয়ের জায়গা নেই"
+            "incompressible": "ইতিমধ্যে সংকুচিত, সাশ্রয়ের জায়গা নেই",
+            "estimating": "অনুমান করা হচ্ছে…",
+            "spaceSaved": "{pct}% ছোট",
+            "estimateExact": "সঠিক",
+            "estimateApprox": "আনুমানিক"
         },
         "batchRename": {
             "title": "ব্যাচ রিনেম",

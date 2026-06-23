@@ -2949,7 +2949,11 @@
             "saved": "Sutaupyta",
             "increased": "Padidėjo",
             "done": "Atlikta",
-            "incompressible": "Jau suglaudinta, nėra ką taupyti"
+            "incompressible": "Jau suglaudinta, nėra ką taupyti",
+            "estimating": "Skaičiuojama…",
+            "spaceSaved": "{pct}% mažesnis",
+            "estimateExact": "tikslus",
+            "estimateApprox": "įvertis"
         },
         "batchRename": {
             "title": "Masinis pervadinimas",

@@ -2942,7 +2942,11 @@
             "saved": "Խնայված",
             "increased": "Ավելացել է",
             "done": "Պատրաստ է",
-            "incompressible": "Արդեն սեղմված է, խնայելու տեղ չկա"
+            "incompressible": "Արդեն սեղմված է, խնայելու տեղ չկա",
+            "estimating": "Հաշվարկ…",
+            "spaceSaved": "{pct}%-ով փոքր",
+            "estimateExact": "ճշգրիտ",
+            "estimateApprox": "գնահատական"
         },
         "batchRename": {
             "title": "Խմբային անվանափոխում",

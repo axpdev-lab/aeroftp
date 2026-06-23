@@ -1113,7 +1113,11 @@
             "saved": "Saved",
             "increased": "Increased",
             "done": "Done",
-            "incompressible": "Already compressed, no space to save"
+            "incompressible": "Already compressed, no space to save",
+            "estimating": "Estimating…",
+            "spaceSaved": "{pct}% smaller",
+            "estimateExact": "exact",
+            "estimateApprox": "estimate"
         },
         "connection": {
             "accessKeyId": "Access Key ID",

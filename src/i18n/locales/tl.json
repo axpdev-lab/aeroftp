@@ -2949,7 +2949,11 @@
             "saved": "Naitipid",
             "increased": "Tumaas",
             "done": "Tapos",
-            "incompressible": "Naka-compress na, walang espasyong matitipid"
+            "incompressible": "Naka-compress na, walang espasyong matitipid",
+            "estimating": "Tinatantya…",
+            "spaceSaved": "{pct}% mas maliit",
+            "estimateExact": "eksakto",
+            "estimateApprox": "tantya"
         },
         "batchRename": {
             "title": "Batch Rename",

@@ -2949,7 +2949,11 @@
             "saved": "Sparað",
             "increased": "Aukið",
             "done": "Lokið",
-            "incompressible": "Þegar þjappað, ekkert pláss að spara"
+            "incompressible": "Þegar þjappað, ekkert pláss að spara",
+            "estimating": "Áætla…",
+            "spaceSaved": "{pct}% minni",
+            "estimateExact": "nákvæmt",
+            "estimateApprox": "áætlun"
         },
         "batchRename": {
             "title": "Hópendurnefning",

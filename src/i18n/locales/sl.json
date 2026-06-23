@@ -2949,7 +2949,11 @@
             "saved": "Prihranjeno",
             "increased": "Povečano",
             "done": "Končano",
-            "incompressible": "Že stisnjeno, ni prostora za prihranek"
+            "incompressible": "Že stisnjeno, ni prostora za prihranek",
+            "estimating": "Ocenjevanje…",
+            "spaceSaved": "{pct}% manjše",
+            "estimateExact": "natančno",
+            "estimateApprox": "ocena"
         },
         "batchRename": {
             "title": "Skupinsko preimenovanje",

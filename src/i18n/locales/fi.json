@@ -2949,7 +2949,11 @@
             "saved": "Säästetty",
             "increased": "Kasvanut",
             "done": "Valmis",
-            "incompressible": "Jo pakattu, ei säästettävää tilaa"
+            "incompressible": "Jo pakattu, ei säästettävää tilaa",
+            "estimating": "Arvioidaan…",
+            "spaceSaved": "{pct}% pienempi",
+            "estimateExact": "tarkka",
+            "estimateApprox": "arvio"
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",

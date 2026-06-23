@@ -2949,7 +2949,11 @@
             "saved": "Zaoszczędzono",
             "increased": "Zwiększono",
             "done": "Gotowe",
-            "incompressible": "Już skompresowane, brak miejsca do zaoszczędzenia"
+            "incompressible": "Już skompresowane, brak miejsca do zaoszczędzenia",
+            "estimating": "Szacowanie…",
+            "spaceSaved": "mniejszy o {pct}%",
+            "estimateExact": "dokładnie",
+            "estimateApprox": "szacunek"
         },
         "batchRename": {
             "title": "Zbiorcza zmiana nazw",

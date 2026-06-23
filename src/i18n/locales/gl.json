@@ -2949,7 +2949,11 @@
             "saved": "Aforrado",
             "increased": "Aumentado",
             "done": "Feito",
-            "incompressible": "Xa comprimido, sen espazo que aforrar"
+            "incompressible": "Xa comprimido, sen espazo que aforrar",
+            "estimating": "Estimando…",
+            "spaceSaved": "{pct}% máis pequeno",
+            "estimateExact": "exacto",
+            "estimateApprox": "estimación"
         },
         "batchRename": {
             "title": "Renomear por lotes",

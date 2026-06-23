@@ -2949,7 +2949,11 @@
             "saved": "Spart",
             "increased": "Økt",
             "done": "Ferdig",
-            "incompressible": "Allerede komprimert, ingen plass å spare"
+            "incompressible": "Allerede komprimert, ingen plass å spare",
+            "estimating": "Beregner…",
+            "spaceSaved": "{pct}% mindre",
+            "estimateExact": "nøyaktig",
+            "estimateApprox": "anslag"
         },
         "batchRename": {
             "title": "Masseomdøping",

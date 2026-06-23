@@ -2949,7 +2949,11 @@
             "saved": "Bespaard",
             "increased": "Vergroot",
             "done": "Klaar",
-            "incompressible": "Al gecomprimeerd, geen ruimte te besparen"
+            "incompressible": "Al gecomprimeerd, geen ruimte te besparen",
+            "estimating": "Schatten…",
+            "spaceSaved": "{pct}% kleiner",
+            "estimateExact": "exact",
+            "estimateApprox": "schatting"
         },
         "batchRename": {
             "title": "Batch hernoemen",

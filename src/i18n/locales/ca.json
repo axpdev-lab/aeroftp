@@ -2949,7 +2949,11 @@
             "saved": "Estalviat",
             "increased": "Augmentat",
             "done": "Fet",
-            "incompressible": "Ja comprimit, sense espai per estalviar"
+            "incompressible": "Ja comprimit, sense espai per estalviar",
+            "estimating": "Estimant…",
+            "spaceSaved": "{pct}% més petit",
+            "estimateExact": "exacte",
+            "estimateApprox": "estimació"
         },
         "batchRename": {
             "title": "Reanomenament massiu",

@@ -3312,7 +3312,11 @@
             "saved": "Risparmiati",
             "increased": "Aumentato",
             "done": "Fatto",
-            "incompressible": "Già compresso, nessuno spazio da risparmiare"
+            "incompressible": "Già compresso, nessuno spazio da risparmiare",
+            "estimating": "Stima in corso…",
+            "spaceSaved": "{pct}% più piccolo",
+            "estimateExact": "esatto",
+            "estimateApprox": "stima"
         },
         "sidebar": {
             "places": "Posizioni",

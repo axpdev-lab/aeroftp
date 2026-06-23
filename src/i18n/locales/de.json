@@ -2949,7 +2949,11 @@
             "saved": "Gespart",
             "increased": "Vergrößert",
             "done": "Fertig",
-            "incompressible": "Bereits komprimiert, kein Platz zu sparen"
+            "incompressible": "Bereits komprimiert, kein Platz zu sparen",
+            "estimating": "Schätze…",
+            "spaceSaved": "{pct}% kleiner",
+            "estimateExact": "exakt",
+            "estimateApprox": "Schätzung"
         },
         "batchRename": {
             "title": "Stapelumbenennung",

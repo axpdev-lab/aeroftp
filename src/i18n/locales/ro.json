@@ -2949,7 +2949,11 @@
             "saved": "Economisit",
             "increased": "Mărit",
             "done": "Gata",
-            "incompressible": "Deja comprimat, fără spațiu de economisit"
+            "incompressible": "Deja comprimat, fără spațiu de economisit",
+            "estimating": "Se estimează…",
+            "spaceSaved": "cu {pct}% mai mic",
+            "estimateExact": "exact",
+            "estimateApprox": "estimare"
         },
         "batchRename": {
             "title": "Redenumire în masă",

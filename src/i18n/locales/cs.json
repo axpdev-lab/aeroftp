@@ -2949,7 +2949,11 @@
             "saved": "Ušetřeno",
             "increased": "Zvětšeno",
             "done": "Hotovo",
-            "incompressible": "Již komprimováno, není co ušetřit"
+            "incompressible": "Již komprimováno, není co ušetřit",
+            "estimating": "Odhaduji…",
+            "spaceSaved": "o {pct}% menší",
+            "estimateExact": "přesné",
+            "estimateApprox": "odhad"
         },
         "batchRename": {
             "title": "Hromadne prejmenovani",

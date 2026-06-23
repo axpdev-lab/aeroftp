@@ -2949,7 +2949,11 @@
             "saved": "Заощаджено",
             "increased": "Збільшено",
             "done": "Готово",
-            "incompressible": "Уже стиснуто, немає що заощаджувати"
+            "incompressible": "Уже стиснуто, немає що заощаджувати",
+            "estimating": "Оцінювання…",
+            "spaceSaved": "на {pct}% менше",
+            "estimateExact": "точно",
+            "estimateApprox": "оцінка"
         },
         "batchRename": {
             "title": "Групове перейменування",

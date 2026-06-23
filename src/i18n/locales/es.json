@@ -2949,7 +2949,11 @@
             "saved": "Ahorrado",
             "increased": "Aumentado",
             "done": "Listo",
-            "incompressible": "Ya comprimido, sin espacio que ahorrar"
+            "incompressible": "Ya comprimido, sin espacio que ahorrar",
+            "estimating": "Estimando…",
+            "spaceSaved": "{pct}% más pequeño",
+            "estimateExact": "exacto",
+            "estimateApprox": "estimación"
         },
         "batchRename": {
             "title": "Renombrado masivo",

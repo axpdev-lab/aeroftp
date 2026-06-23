@@ -2949,7 +2949,11 @@
             "saved": "Заштедено",
             "increased": "Зголемено",
             "done": "Готово",
-            "incompressible": "Веќе компресирано, нема простор за заштеда"
+            "incompressible": "Веќе компресирано, нема простор за заштеда",
+            "estimating": "Пресметување…",
+            "spaceSaved": "{pct}% помало",
+            "estimateExact": "точно",
+            "estimateApprox": "проценка"
         },
         "batchRename": {
             "title": "Групно преименување",

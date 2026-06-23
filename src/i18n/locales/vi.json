@@ -2949,7 +2949,11 @@
             "saved": "Đã tiết kiệm",
             "increased": "Đã tăng",
             "done": "Xong",
-            "incompressible": "Đã nén, không còn dung lượng để tiết kiệm"
+            "incompressible": "Đã nén, không còn dung lượng để tiết kiệm",
+            "estimating": "Đang ước tính…",
+            "spaceSaved": "nhỏ hơn {pct}%",
+            "estimateExact": "chính xác",
+            "estimateApprox": "ước tính"
         },
         "batchRename": {
             "title": "Đổi tên hàng loạt",

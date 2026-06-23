@@ -2949,7 +2949,11 @@
             "saved": "Aurreztua",
             "increased": "Handitua",
             "done": "Eginda",
-            "incompressible": "Jada konprimituta, ez dago aurrezteko lekurik"
+            "incompressible": "Jada konprimituta, ez dago aurrezteko lekurik",
+            "estimating": "Kalkulatzen…",
+            "spaceSaved": "% {pct} txikiagoa",
+            "estimateExact": "zehatza",
+            "estimateApprox": "zenbatespena"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

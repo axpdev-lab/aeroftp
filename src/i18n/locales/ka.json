@@ -2949,7 +2949,11 @@
             "saved": "დაზოგილი",
             "increased": "გაიზარდა",
             "done": "მზადაა",
-            "incompressible": "უკვე შეკუმშულია, დასაზოგი ადგილი არ არის"
+            "incompressible": "უკვე შეკუმშულია, დასაზოგი ადგილი არ არის",
+            "estimating": "შეფასება…",
+            "spaceSaved": "{pct}%-ით ნაკლები",
+            "estimateExact": "ზუსტი",
+            "estimateApprox": "შეფასება"
         },
         "batchRename": {
             "title": "ჯგუფური სახელების შეცვლა",

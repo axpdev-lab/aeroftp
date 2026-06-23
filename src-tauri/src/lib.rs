@@ -7943,6 +7943,199 @@ fn sum_compress_input_bytes(paths: &[String]) -> u64 {
     total
 }
 
+/// Real (canary) compression-size estimate.
+///
+/// Rather than a fixed per-format ratio table, this compresses a bounded
+/// SAMPLE of the actual input with the real codec at the chosen level and
+/// extrapolates the measured ratio to the full input. When the whole input
+/// fits under the sample cap it is compressed in full, so the result is exact
+/// (`exact = true`). The sample is capped so the call stays near-instant even
+/// for very large inputs.
+#[derive(serde::Serialize)]
+struct CompressEstimate {
+    /// Total uncompressed size of the input (recursive, symlinks skipped).
+    input_bytes: u64,
+    /// Estimated size of the compressed output.
+    estimated_bytes: u64,
+    /// estimated_bytes / input_bytes * 100.
+    ratio_pct: f64,
+    /// How many bytes were actually read+compressed to derive the ratio.
+    sampled_bytes: u64,
+    /// True when the entire input was compressed (no extrapolation).
+    exact: bool,
+}
+
+/// Maximum bytes read+compressed for the canary sample (keeps the call fast).
+const CANARY_SAMPLE_CAP: u64 = 4 * 1024 * 1024;
+
+/// Collect every regular file (recursive) under the given paths, with sizes.
+/// Zero-byte files and symlinks are skipped.
+fn collect_input_files(paths: &[String]) -> Vec<(std::path::PathBuf, u64)> {
+    use walkdir::WalkDir;
+    let mut out = Vec::new();
+    for path in paths {
+        let p = std::path::Path::new(path);
+        if p.is_file() {
+            if let Ok(md) = std::fs::metadata(p) {
+                if md.len() > 0 {
+                    out.push((p.to_path_buf(), md.len()));
+                }
+            }
+        } else if p.is_dir() {
+            for entry in WalkDir::new(p).into_iter().filter_map(|e| e.ok()) {
+                if let Ok(md) = std::fs::symlink_metadata(entry.path()) {
+                    if md.file_type().is_symlink() || !md.is_file() || md.len() == 0 {
+                        continue;
+                    }
+                    out.push((entry.path().to_path_buf(), md.len()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Append up to `len` bytes from `path` starting at `offset` into `buf`.
+fn read_region_append(path: &std::path::Path, offset: u64, len: usize, buf: &mut Vec<u8>) {
+    use std::io::{Read, Seek, SeekFrom};
+    if len == 0 {
+        return;
+    }
+    if let Ok(mut f) = std::fs::File::open(path) {
+        if f.seek(SeekFrom::Start(offset)).is_ok() {
+            let _ = f.take(len as u64).read_to_end(buf);
+        }
+    }
+}
+
+/// Build the canary sample. If the whole input fits the cap, read it all
+/// (exact); otherwise read three spread regions of the largest file plus the
+/// heads of the remaining files, bounded by the cap, for representativeness.
+fn build_canary_sample(files: &[(std::path::PathBuf, u64)], total: u64, cap: u64) -> Vec<u8> {
+    let mut buf = Vec::new();
+    if total <= cap {
+        for (p, _) in files {
+            read_region_append(p, 0, usize::MAX, &mut buf);
+        }
+        return buf;
+    }
+    let largest = files
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, (_, s))| *s)
+        .map(|(i, _)| i);
+    let mut remaining = cap as usize;
+    if let Some(i) = largest {
+        let (p, size) = &files[i];
+        let want = (cap / 2).min(*size) as usize;
+        let region = (want / 3).max(1);
+        let positions = [
+            0u64,
+            size.saturating_sub(region as u64) / 2,
+            size.saturating_sub(region as u64),
+        ];
+        for off in positions {
+            if remaining == 0 {
+                break;
+            }
+            let take = region.min(remaining);
+            read_region_append(p, off, take, &mut buf);
+            remaining = remaining.saturating_sub(take);
+        }
+    }
+    for (idx, (p, size)) in files.iter().enumerate() {
+        if Some(idx) == largest || remaining == 0 {
+            continue;
+        }
+        let take = (*size as usize).min(remaining).min(256 * 1024);
+        read_region_append(p, 0, take, &mut buf);
+        remaining = remaining.saturating_sub(take);
+    }
+    buf
+}
+
+/// Compress `buf` in memory with the codec the frontend maps each format to.
+fn compress_sample(buf: &[u8], codec: &str, level: i32) -> Result<usize, String> {
+    use std::io::Write;
+    match codec {
+        "store" => Ok(buf.len()),
+        // zip and tar.gz both deflate; the few-byte gzip header is immaterial here.
+        "deflate" | "gzip" => {
+            let lvl = level.clamp(0, 9) as u32;
+            let mut e =
+                flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(lvl));
+            e.write_all(buf).map_err(|e| e.to_string())?;
+            Ok(e.finish().map_err(|e| e.to_string())?.len())
+        }
+        // 7z (LZMA2) is estimated with xz, which is also LZMA2-based.
+        "xz" => {
+            let lvl = level.clamp(0, 9) as u32;
+            let mut e = xz2::write::XzEncoder::new(Vec::new(), lvl);
+            e.write_all(buf).map_err(|e| e.to_string())?;
+            Ok(e.finish().map_err(|e| e.to_string())?.len())
+        }
+        "bzip2" => {
+            let lvl = level.clamp(1, 9) as u32;
+            let mut e = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::new(lvl));
+            e.write_all(buf).map_err(|e| e.to_string())?;
+            Ok(e.finish().map_err(|e| e.to_string())?.len())
+        }
+        "zstd" => {
+            let out = zstd::stream::encode_all(buf, level).map_err(|e| e.to_string())?;
+            Ok(out.len())
+        }
+        other => Err(format!("Unknown codec: {other}")),
+    }
+}
+
+/// Estimate the compressed size of `paths` for a given codec/level via a
+/// bounded canary sample. Runs on a blocking thread (I/O + CPU bound).
+#[tauri::command]
+async fn estimate_compressed_size(
+    paths: Vec<String>,
+    codec: String,
+    level: i64,
+) -> Result<CompressEstimate, String> {
+    for p in &paths {
+        validate_path(p)?;
+    }
+    tokio::task::spawn_blocking(move || {
+        let files = collect_input_files(&paths);
+        let total: u64 = files.iter().map(|(_, s)| *s).sum();
+        if total == 0 {
+            return Ok(CompressEstimate {
+                input_bytes: 0,
+                estimated_bytes: 0,
+                ratio_pct: 0.0,
+                sampled_bytes: 0,
+                exact: true,
+            });
+        }
+        let sample = build_canary_sample(&files, total, CANARY_SAMPLE_CAP);
+        if sample.is_empty() {
+            return Ok(CompressEstimate {
+                input_bytes: total,
+                estimated_bytes: total,
+                ratio_pct: 100.0,
+                sampled_bytes: 0,
+                exact: false,
+            });
+        }
+        let out = compress_sample(&sample, &codec, level as i32)?;
+        let ratio = out as f64 / sample.len() as f64;
+        let estimated = (total as f64 * ratio).round() as u64;
+        Ok(CompressEstimate {
+            input_bytes: total,
+            estimated_bytes: estimated,
+            ratio_pct: ratio * 100.0,
+            sampled_bytes: sample.len() as u64,
+            exact: total <= CANARY_SAMPLE_CAP,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
 async fn compress_files(
@@ -16225,6 +16418,7 @@ pub fn run() {
             read_file_base64,
             calculate_checksum,
             compress_files,
+            estimate_compressed_size,
             extract_archive,
             compress_7z,
             extract_7z,

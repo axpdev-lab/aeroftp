@@ -2949,7 +2949,11 @@
             "saved": "Dijimat",
             "increased": "Bertambah",
             "done": "Selesai",
-            "incompressible": "Sudah dimampatkan, tiada ruang untuk dijimat"
+            "incompressible": "Sudah dimampatkan, tiada ruang untuk dijimat",
+            "estimating": "Menganggar…",
+            "spaceSaved": "{pct}% lebih kecil",
+            "estimateExact": "tepat",
+            "estimateApprox": "anggaran"
         },
         "batchRename": {
             "title": "Nama Semula Kelompok",

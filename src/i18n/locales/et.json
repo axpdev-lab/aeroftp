@@ -2949,7 +2949,11 @@
             "saved": "Säästetud",
             "increased": "Suurenes",
             "done": "Valmis",
-            "incompressible": "Juba pakitud, ruumi pole säästa"
+            "incompressible": "Juba pakitud, ruumi pole säästa",
+            "estimating": "Hindamine…",
+            "spaceSaved": "{pct}% väiksem",
+            "estimateExact": "täpne",
+            "estimateApprox": "hinnang"
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",
