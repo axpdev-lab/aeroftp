@@ -257,7 +257,10 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
         if (category === 'text' || category === 'markdown' || category === 'code') {
           content = await invoke<string>('preview_remote_file', { path: filePath });
         } else if (category === 'image') {
-          const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath });
+          // #128 item B: pass the UI's preview cap so the backend uses the same
+          // 25 MB limit (it previously hard-capped at 10 MB, rejecting full-res
+          // photos the UI had already accepted).
+          const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_BYTES / (1024 * 1024) });
           // H27: Sanitize SVG content from remote sources
           if (ext === 'svg') {
             const rawSvg = atob(base64);

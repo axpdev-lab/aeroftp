@@ -8883,11 +8883,16 @@ async fn ftp_read_file_base64(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    max_size_mb: Option<u32>,
 ) -> Result<String, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
-    // Limit size for preview (10MB should be enough for most media files)
-    let max_size: u64 = 10 * 1024 * 1024;
+    // Preview size cap, supplied by the caller so backend and frontend share one
+    // limit. The preview path passes the UI's MAX_PREVIEW_SIZE_BYTES (25 MB);
+    // thumbnails pass a smaller value. Defaults to 25 MB. Previously hard-coded to
+    // 10 MB, which rejected full-resolution photos (10-25 MB) the UI allowed
+    // (issue #128 item B).
+    let max_size: u64 = (max_size_mb.unwrap_or(25) as u64) * 1024 * 1024;
 
     // Try provider path first (cloud providers, GitHub, etc.).
     // Mirrors `preview_remote_file` so image / binary preview works on every
@@ -8903,8 +8908,9 @@ async fn ftp_read_file_base64(
             let file_size = provider.size(&path).await.unwrap_or(0);
             if file_size > max_size {
                 return Err(format!(
-                    "File too large for preview ({:.1} MB). Max: 10 MB",
-                    file_size as f64 / 1024.0 / 1024.0
+                    "File too large for preview ({:.1} MB). Max: {} MB",
+                    file_size as f64 / 1024.0 / 1024.0,
+                    max_size / (1024 * 1024)
                 ));
             }
 
@@ -8923,8 +8929,9 @@ async fn ftp_read_file_base64(
 
     if file_size > max_size {
         return Err(format!(
-            "File too large for preview ({:.1} MB). Max: 10 MB",
-            file_size as f64 / 1024.0 / 1024.0
+            "File too large for preview ({:.1} MB). Max: {} MB",
+            file_size as f64 / 1024.0 / 1024.0,
+            max_size / (1024 * 1024)
         ));
     }
 
