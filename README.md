@@ -269,6 +269,8 @@ AeroFTP bridges server profiles with **15 third-party tools**, bidirectionally (
 
 > **Credentials:** *Full* = the secret is recovered and upgraded into the vault; *Limited* = only part of the secret material (host-bound or optional); *Metadata only* = connection metadata is imported but the secret stays in the OS keychain / SSH agent / an interactive prompt. The three original tools keep dedicated bridge pages: **[rclone](https://docs.aeroftp.app/features/rclone)**, **[WinSCP](https://docs.aeroftp.app/features/winscp)**, **[FileZilla](https://docs.aeroftp.app/features/filezilla)**.
 
+> **Full compatibility matrix:** for the per-protocol and per-provider breakdown of every bridge (including which native cloud providers travel only through rclone), see the [Bridge compatibility matrix](docs/BRIDGE-COMPATIBILITY.md).
+
 > **rclone crypt interop (full read/write):** in addition to profile import/export, AeroFTP can browse, decrypt **and re-encrypt** existing `rclone crypt` remotes natively. Upload, download, rename, and delete all stream through a transparent crypto overlay session: the underlying provider sees only encrypted blobs and obfuscated filenames, while the UI shows plaintext paths. See the **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
 
 > **rclone filter conversion:** `aeroftp-cli import rclone-filter <path>` converts an rclone `--filter-from` file (with `+`/`-` rules and `#` comments) into an `.aeroignore` file. Rule order is reversed automatically to preserve rclone's first-match-wins semantics under gitignore last-match-wins. Brace alternation `{a,b}` and `!` reset directives are reported as warnings since they have no direct gitignore equivalent.
