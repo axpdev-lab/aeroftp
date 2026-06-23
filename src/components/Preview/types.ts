@@ -21,6 +21,14 @@ export interface PreviewFileData {
     content?: string | ArrayBuffer;
     blobUrl?: string;
     modified?: string;
+    /** True while the bytes are still being fetched. The modal opens
+     *  immediately and shows a pulsing skeleton until the content is ready,
+     *  so a click feels responsive instead of "nothing happening" (#128). */
+    loading?: boolean;
+    /** Preview-load failure (too large / fetch error) rendered inside the
+     *  modal, rather than only a transient toast that lands in the hidden
+     *  activity log (#128). */
+    error?: string;
 }
 
 // Media metadata (audio/video)
