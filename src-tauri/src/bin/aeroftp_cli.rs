@@ -13594,7 +13594,12 @@ fn interactive_profiles_loop(
     } else {
         None
     };
-    let mut direct_tui = start_in_tui;
+    // `--tui` is session-sticky (issue #311): direct_tui stays set for the whole
+    // session, so an explicit Quit exits while completing or cancelling an action
+    // loops back to the menu (via reopen_tui) instead of dropping into the `-i`
+    // line prompt the user never asked for.
+    let direct_tui = start_in_tui;
+    let mut reopen_tui = false;
 
     loop {
         if !tombstones.is_empty() {
@@ -13604,6 +13609,14 @@ fn interactive_profiles_loop(
         if current.is_empty() {
             eprintln!("\nNo profiles left. Exiting interactive mode.");
             return 0;
+        }
+
+        // Re-open the --tui menu once the previous action has drained, so the
+        // navigator loops back to itself instead of falling into the line prompt
+        // (issue #311). Armed only under --tui; plain `-i` never sets reopen_tui.
+        if reopen_tui && pending_command.is_none() {
+            reopen_tui = false;
+            pending_command = Some("tui".to_string());
         }
 
         let raw_owned: String = if let Some(cmd) = pending_command.take() {
@@ -13692,17 +13705,25 @@ fn interactive_profiles_loop(
                 eprintln!("The inline action menu needs an interactive terminal.");
                 continue;
             }
-            // A `--tui`-opened menu (direct_tui) exits on Quit instead of dropping
-            // into the line prompt the user never asked for; a `tui` typed at the
-            // prompt returns there as before. The flag is consumed on first open.
-            let was_direct = std::mem::take(&mut direct_tui);
+            // A `--tui`-opened menu (direct_tui) is session-sticky: an explicit
+            // Quit exits the program, while completing or cancelling an action
+            // loops back to the menu (reopen_tui) instead of dropping into the line
+            // prompt the user never asked for. A `tui` typed at the `-i` prompt is
+            // one-shot: every outcome returns to that prompt, as before. (#311)
+            let was_direct = direct_tui;
             match profiles_tui_pick(&current, fav_marker) {
                 Ok(ProfilesTuiOutcome::Quit) => {
                     if was_direct {
                         return 0;
                     }
                 }
-                Ok(ProfilesTuiOutcome::Command(cmd)) => pending_command = Some(cmd),
+                Ok(ProfilesTuiOutcome::Command(cmd)) => {
+                    pending_command = Some(cmd);
+                    reopen_tui = was_direct;
+                }
+                Ok(ProfilesTuiOutcome::Cancel) => {
+                    reopen_tui = was_direct;
+                }
                 Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
             }
             continue;
@@ -14609,6 +14630,10 @@ fn interactive_profiles_loop(
 enum ProfilesTuiOutcome {
     /// User picked an action for a profile: the equivalent line-mode command.
     Command(String),
+    /// User picked an action but left the target blank: cancel this action only,
+    /// with no change. Under `--tui` this re-opens the menu instead of exiting the
+    /// program (issue #311); at the `-i` prompt it returns to the prompt.
+    Cancel,
     /// User left the navigator (q/Esc) without choosing an action.
     Quit,
 }
@@ -14879,8 +14904,9 @@ fn profiles_tui_pick(
     }
     let line = line.trim();
     if line.is_empty() {
-        // Nothing typed: treat as cancel, back to the prompt with no change.
-        return Ok(ProfilesTuiOutcome::Quit);
+        // Nothing typed: cancel this action only, no change. Distinct from Quit so
+        // a blank target under --tui re-opens the menu rather than exiting (#311).
+        return Ok(ProfilesTuiOutcome::Cancel);
     }
 
     Ok(ProfilesTuiOutcome::Command(format!("{} {}", key, line)))
