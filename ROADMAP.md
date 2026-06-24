@@ -23,6 +23,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 | Status | Item | Target |
 |---|---|---|
+| 🟢 Shipped | AeroVault create redesign + AeroVault Zip plaintext lane + universal rclone export | v4.0.9 |
 | 🟢 Shipped | AeroProgress transfer card + AeroCrypt first-class Crypt profile + Quick Connect polish | v4.0.8 |
 | 🟢 Shipped | AeroVault dual blind security audit + error-correction crate convergence | v4.0.7 |
 | 🟢 Shipped | AeroVault crate convergence (engine + ECC into the published crate) | v4.0.6 |
@@ -38,7 +39,6 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | 🟢 Shipped | Persistent Mount Manager (GUI + CLI) | v3.7.1 |
 | 🟡 In Flight | P2P peer transfer (AeroShare) | next release |
 | 🟡 In Flight | Bitbucket / Gitea / Forgejo native integrations | next release |
-| 🟡 In Flight | Compression wrapper profile | next release |
 | 🟡 In Flight | Selectable XChaCha20 vault cipher | next release |
 | 🔵 Up Next | Share Link UX redesign (QR, analytics, team sharing) | planned |
 | 🔵 Up Next | VS Code Remote Explorer extension | planned |
@@ -58,6 +58,8 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟢 Just Shipped
 
+- **AeroVault create redesign, the AeroVault Zip plaintext lane and universal rclone export** (v4.0.9)
+  AeroVault create is rebuilt Compressor-style: a named vault, mode cards with a conditional password, a result receipt instead of a jump into the browser, and a single tabbed shell (Home, Recent, Files) shared by the standalone modal and the browser ([#322](https://github.com/axpdev-lab/aeroftp/issues/322), **Ehud Kirsh**). A new AeroVault Zip plaintext lane adds a fast, honestly-unencrypted `.aerozip` archive format with optional recovery parity and a real measured size estimate, plus grid and list views and live progress bars across the vault and archive browsers. AeroMount gains a read-only mount and a one-shot Save-All for unlocked vaults (Ehud Kirsh's idea #1). On the bridge, rclone export now reaches Filen and every OAuth cloud provider, not just Jottacloud ([#128](https://github.com/axpdev-lab/aeroftp/issues/128)), the crypt overlay reads as a padlock at every site ([#272](https://github.com/axpdev-lab/aeroftp/issues/272)), and interactive `aeroftp groups` and `aeroftp users` join `profiles -i` on one engine ([#311](https://github.com/axpdev-lab/aeroftp/discussions/311)). Hardening: rclone config export strips CR/LF from every value (Backblaze B2 included) and the quinn-proto advisory RUSTSEC-2026-0185 is patched. A pre-release audit of all 86 changes closed 12 findings before tagging.
 - **AeroProgress, Quick Connect polish and AeroCrypt as a first-class Crypt profile** (v4.0.8)
   AeroProgress brings back the floating transfer card with a lane per file, live speed, ETA and bytes, a collapsible speed graph and per-theme styling, with real progress across the Transfer Queue, vault creation and cross-profile transfers instead of a bare spinner or a frozen "Streaming" state. AeroCrypt is promoted to a first-class `Crypt` profile type with a navigate-out encrypted scope ([#272](https://github.com/axpdev-lab/aeroftp/issues/272), **Ehud Kirsh**), Quick Connect absorbs the v4.0.6 connection review with a per-mode credential isolation fix ([#215](https://github.com/axpdev-lab/aeroftp/issues/215)), Change Mode re-packs an open vault between the v2 and v3 formats, and AeroFTP's Cryptomator vaults are now byte-for-byte interoperable with the official Cryptomator in both directions ([#322](https://github.com/axpdev-lab/aeroftp/issues/322)). Bundles the `aerovault` crate 0.6.3 (streaming seal/extract, progress callbacks, per-shard health).
 - **AeroVault dual blind security audit and error-correction crate convergence** (v4.0.7)
