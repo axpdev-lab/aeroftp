@@ -21,6 +21,9 @@ import { useTranslation } from '../../i18n';
 import { VaultState } from './useVaultState';
 import { ZipCompressionReport } from './ZipCompressionReport';
 import { VaultReceipt } from './VaultReceipt';
+// Same Compressor --compress-* theme as the create surface, so create + receipt
+// read as one Compressor-style flow (the owner's redesign, Phase 2).
+import '../CompressDialog.css';
 
 interface VaultCreateReceiptProps {
     state: VaultState;
@@ -47,19 +50,19 @@ export const VaultCreateReceipt: React.FC<VaultCreateReceiptProps> = ({ state, o
     const heading = state.isPlaintextZip ? t('vault.zipCreated') : t('vault.created');
 
     return (
-        <div className="flex flex-col">
+        <div className="compress-dialog flex flex-col" style={{ color: 'var(--compress-text)' }}>
             <div className="px-6 pt-6 pb-2 flex flex-col items-center text-center">
                 <span className="flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/15 mb-3">
                     <Check size={24} className="text-emerald-500" />
                 </span>
-                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{heading}</h3>
+                <h3 className="text-base font-semibold" style={{ color: 'var(--compress-text)' }}>{heading}</h3>
                 {fileName && (
-                    <div className="mt-1 max-w-full truncate font-mono text-xs text-gray-600 dark:text-gray-300" title={state.vaultPath}>
+                    <div className="mt-1 max-w-full truncate font-mono text-xs" style={{ color: 'var(--compress-text-secondary)' }} title={state.vaultPath}>
                         {fileName}
                     </div>
                 )}
                 {fileCount > 0 && (
-                    <div className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    <div className="mt-0.5 text-[11px]" style={{ color: 'var(--compress-text-muted)' }}>
                         {fileCount} {t('vault.receipt.files')}
                     </div>
                 )}
@@ -67,18 +70,22 @@ export const VaultCreateReceipt: React.FC<VaultCreateReceiptProps> = ({ state, o
 
             {bars && <ZipCompressionReport inputBytes={bars.inputBytes} outputBytes={bars.outputBytes} />}
 
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t" style={{ borderColor: 'var(--compress-border)' }}>
                 {state.lastReport && (
                     <button
                         onClick={() => setShowTechnical(true)}
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        style={{ background: 'var(--compress-bg-hover)', color: 'var(--compress-text-secondary)' }}
                     >
                         {t('vault.receipt.title')}
                     </button>
                 )}
                 <button
                     onClick={onClose}
-                    className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                    style={{ background: 'var(--compress-accent)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-accent-hover)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--compress-accent)')}
                 >
                     <Check size={15} />
                     {t('compress.done')}

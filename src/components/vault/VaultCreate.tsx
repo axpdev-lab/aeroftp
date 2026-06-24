@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus, Lock, Unlock, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus, Lock, Unlock, RotateCcw } from 'lucide-react';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
@@ -13,6 +13,9 @@ import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { CompressionEstimateBar } from '../common/CompressionEstimateBar';
 import { formatSize } from '../../utils/formatters';
+// Reuse the Compressor's scoped --compress-* theme so the AeroVault create
+// surface reads as one Compressor-style flow (the owner's redesign, Phase 2).
+import '../CompressDialog.css';
 
 /** AeroVault compression profile -> zstd level used by the canary estimator. */
 const PROFILE_ZSTD_LEVEL: Record<VaultV3CompressionProfile, number> = {
@@ -20,6 +23,9 @@ const PROFILE_ZSTD_LEVEL: Record<VaultV3CompressionProfile, number> = {
     balanced: 9,
     archive: 15,
 };
+
+/** Security levels offered on create (v1/Standard is open-only, dropped here). */
+const CREATE_SECURITY_LEVELS: SecurityLevel[] = ['advanced', 'paranoid', 'experimental'];
 
 interface VaultCreateProps {
     state: VaultState;
@@ -30,13 +36,18 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     const isZip = state.isPlaintextZip;
     const firstFieldRef = useRef<HTMLInputElement>(null);
 
-    // Focus the first text field when the create form opens, so the user can type
+    // Advanced disclosure: the security level (and its Error Correction options)
+    // are folded away by default so the create surface fronts the 7z-like choice
+    // (encrypted vs plaintext); the sane default (Advanced) needs no interaction.
+    const [showSecurity, setShowSecurity] = useState(false);
+
+    // Focus the name field when the create form opens, so the user can type
     // straight away instead of clicking it first.
     useEffect(() => {
         const id = window.setTimeout(() => firstFieldRef.current?.focus(), 50);
         return () => window.clearTimeout(id);
     }, []);
-    const availableSecurityLevels = Object.keys(securityLevels) as SecurityLevel[];
+
     const compressionProfiles: { id: VaultV3CompressionProfile; label: string; detail: string }[] = [
         { id: 'fast', label: 'Fast', detail: 'zstd -3' },
         { id: 'balanced', label: 'Balanced', detail: 'zstd -9' },
@@ -107,8 +118,75 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
         state.setDescription('');
     };
 
+    // ── Compressor-themed sub-renderers (shared between encrypted/plaintext) ──
+
+    const renderCompressionProfiles = () => (
+        <div className="grid grid-cols-3 gap-2">
+            {compressionProfiles.map((profile) => (
+                <button
+                    key={profile.id}
+                    onClick={() => state.setCompressionProfile(profile.id)}
+                    className={`compress-format-card ${state.compressionProfile === profile.id ? 'active' : ''} rounded-lg px-3 py-2 text-left transition-all`}
+                >
+                    <div className="text-sm font-medium">{profile.label}</div>
+                    <div className="text-[11px]" style={{ color: 'var(--compress-text-muted)' }}>{profile.detail}</div>
+                </button>
+            ))}
+        </div>
+    );
+
+    // Reed-Solomon overhead selector (named presets + slider), shared by the
+    // plaintext-zip and encrypted-Archive Error Correction blocks.
+    const renderRecoveryLevel = () => (
+        <>
+            <label className="text-[11px] mt-1 block" style={{ color: 'var(--compress-text-secondary)' }}>
+                {t('vault.recoveryLevel')}
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+                {([
+                    { id: 7, label: t('vault.recoveryLevelLow') },
+                    { id: 15, label: t('vault.recoveryLevelMedium') },
+                    { id: 25, label: t('vault.recoveryLevelQuartile') },
+                    { id: 30, label: t('vault.recoveryLevelHigh') },
+                ] as const).map(lvl => (
+                    <button
+                        key={lvl.id}
+                        onClick={() => state.setErrorCorrectionPct(lvl.id)}
+                        className={`compress-format-card ${state.errorCorrectionPct === lvl.id ? 'active' : ''} rounded px-1.5 py-1 text-center transition-all`}
+                    >
+                        <div className="text-[11px] font-medium">{lvl.label}</div>
+                        <div className="text-[10px]" style={{ color: 'var(--compress-text-muted)' }}>~{lvl.id}%</div>
+                    </button>
+                ))}
+            </div>
+            <div className="flex items-center gap-2">
+                <input
+                    type="range" min={5} max={50} step={1}
+                    value={state.errorCorrectionPct}
+                    onChange={e => state.setErrorCorrectionPct(Number(e.target.value))}
+                    className="flex-1 accent-amber-600"
+                    aria-label={t('vault.recoveryLevel')}
+                />
+                <div className="flex items-center gap-1">
+                    <input
+                        type="number" min={5} max={50}
+                        value={state.errorCorrectionPct}
+                        onChange={e => state.setErrorCorrectionPct(Math.min(50, Math.max(5, Math.round(Number(e.target.value) || 5))))}
+                        className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right outline-none"
+                        style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                    />
+                    <span className="text-[11px]" style={{ color: 'var(--compress-text-muted)' }}>%</span>
+                </div>
+            </div>
+        </>
+    );
+
     return (
-        <div className="p-4 flex flex-col gap-3">
+        <div className="compress-dialog flex flex-col min-h-0 flex-1" style={{ color: 'var(--compress-text)' }}>
+            {/* Scrollable body: with the Archive (v3) Error Correction options
+                expanded the form can exceed a short window, so the body scrolls
+                while the footer stays pinned (mirrors the Compressor). */}
+            <div className="p-4 flex flex-col gap-3 overflow-y-auto">
             {/* Staged contents: files + folders to include in the new vault.
                 Seeded from the opening selection, grown by drag&drop (Ehud #2)
                 and the Add files / Add folders pickers (Ehud #8). */}
@@ -181,48 +259,224 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
             )}
 
             {/* Vault / Archive name (Ehud #322 follow-up D): a required name that
-                drives the saved filename, shown for every security level AND the
-                .aerozip archive. Mirrors the Compressor's "Archive Name" field
-                (label + extension suffix). Autofocused on open; Create stays
-                disabled until it is non-empty. The value is also stored as the
-                v1/v2 `description` metadata. */}
-            <label className="text-sm text-gray-500 dark:text-gray-400">
-                {isZip ? t('compress.archiveName') : t('vault.vaultName')}
-                <span className="text-red-400 ml-0.5">*</span>
-            </label>
-            <div className="flex gap-2 items-center">
-                <input ref={firstFieldRef} value={state.description} onChange={e => state.setDescription(e.target.value)}
-                    className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm"
-                    placeholder={isZip ? 'My archive' : 'My secure vault'} />
-                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{isZip ? '.aerozip' : '.aerovault'}</span>
+                drives the saved filename, shown for every mode. Mirrors the
+                Compressor's "Archive Name" field (label + extension suffix).
+                Autofocused on open; Create stays disabled until it is non-empty.
+                The value is also stored as the v1/v2 `description` metadata. */}
+            <div>
+                <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
+                    {isZip ? t('compress.archiveName') : t('vault.vaultName')}
+                    <span className="text-red-400 ml-0.5">*</span>
+                </label>
+                <div className="flex gap-2 items-center">
+                    <input
+                        ref={firstFieldRef}
+                        value={state.description}
+                        onChange={e => state.setDescription(e.target.value)}
+                        className="flex-1 rounded-lg px-3 py-2 text-sm outline-none transition-colors"
+                        style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                        onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
+                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                        placeholder={isZip ? 'My archive' : 'My secure vault'}
+                    />
+                    <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--compress-text-muted)' }}>{isZip ? '.aerozip' : '.aerovault'}</span>
+                </div>
             </div>
 
+            {/* Mode cards (7z-like format grid): encrypted (.aerovault, password
+                protected) vs plaintext (.aerozip, no password). Selecting a card
+                only flips `containerKind`; handleCreate routes to the existing
+                per-format command (Option C, no backend change). */}
+            <div>
+                <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
+                    {t('compress.format')}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        onClick={() => state.setContainerKind('vault')}
+                        className={`compress-format-card ${!isZip ? 'active' : ''} rounded-lg px-3 py-2.5 text-left transition-all`}
+                    >
+                        <div className="flex items-center gap-1.5">
+                            <Lock size={13} style={{ color: 'var(--compress-accent)' }} />
+                            <span className="text-sm font-semibold">{t('vault.encryptedBadge')}</span>
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: 'var(--compress-text-muted)' }}>.aerovault · AES-256</div>
+                    </button>
+                    <button
+                        onClick={() => state.setContainerKind('zip')}
+                        className={`compress-format-card ${isZip ? 'active' : ''} rounded-lg px-3 py-2.5 text-left transition-all`}
+                    >
+                        <div className="flex items-center gap-1.5">
+                            <Unlock size={13} className="text-amber-500" />
+                            <span className="text-sm font-semibold">{t('vault.notEncryptedBadge')}</span>
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: 'var(--compress-text-muted)' }}>.aerozip · {t('vault.zipBadge')}</div>
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Encrypted mode: password (always) + Security Level (Advanced) ── */}
+            {!isZip && (
+                <>
+                    <div>
+                        <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
+                            {t('vault.password')}
+                        </label>
+                        <div className="relative">
+                            <input
+                                type={state.showPassword ? 'text' : 'password'}
+                                value={state.password}
+                                onChange={e => state.setPassword(e.target.value)}
+                                className="w-full rounded-lg px-3 py-2 text-sm pr-9 outline-none transition-colors"
+                                style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                                onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
+                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                            />
+                            <button tabIndex={-1} type="button" onClick={() => state.setShowPassword(!state.showPassword)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--compress-text-muted)' }}>
+                                {state.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                        </div>
+                        <div className="mt-1.5"><PasswordStrengthBar password={state.password} /></div>
+                        <div className="relative mt-2">
+                            <input
+                                type={state.showPassword ? 'text' : 'password'}
+                                value={state.confirmPassword}
+                                onChange={e => state.setConfirmPassword(e.target.value)}
+                                placeholder={t('vault.confirmPassword')}
+                                aria-label={t('vault.confirmPassword')}
+                                className="w-full rounded-lg px-3 py-2 text-sm outline-none transition-colors"
+                                style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                                onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
+                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                            />
+                            <PasswordMatchHint password={state.password} confirm={state.confirmPassword} />
+                        </div>
+                    </div>
+
+                    {/* Advanced disclosure: the security level + its Error Correction
+                        options. Collapsed by default (the Advanced default is sane);
+                        the toggle shows the current level so it is never hidden. */}
+                    <div>
+                        <button
+                            onClick={() => setShowSecurity(!showSecurity)}
+                            className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-left transition-colors"
+                            style={{ background: 'var(--compress-bg-deep)', border: '1px solid var(--compress-border)' }}
+                        >
+                            <span className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--compress-text-secondary)' }}>
+                                <SlidersHorizontal size={13} style={{ color: 'var(--compress-accent)' }} />
+                                {t('vault.securityLevel')}
+                                <span style={{ color: 'var(--compress-text-muted)' }}>· {securityLevels[state.securityLevel].label}</span>
+                            </span>
+                            {showSecurity
+                                ? <ChevronUp size={14} style={{ color: 'var(--compress-text-muted)' }} />
+                                : <ChevronDown size={14} style={{ color: 'var(--compress-text-muted)' }} />}
+                        </button>
+
+                        {showSecurity && (
+                            <div className="mt-2 flex flex-col gap-2">
+                                <div className="grid grid-cols-3 gap-2">
+                                    {CREATE_SECURITY_LEVELS.map((level) => {
+                                        const config = securityLevels[level];
+                                        const Icon = config.icon;
+                                        const selected = level === state.securityLevel;
+                                        return (
+                                            <button
+                                                key={level}
+                                                onClick={() => state.setSecurityLevel(level)}
+                                                className={`compress-format-card ${selected ? 'active' : ''} rounded-lg px-3 py-2.5 text-left transition-all`}
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <Icon size={14} className={config.color} />
+                                                    <span className="text-sm font-semibold">{config.label}</span>
+                                                </div>
+                                                <div className="text-[10px] mt-0.5" style={{ color: 'var(--compress-text-muted)' }}>{config.description}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {state.securityLevel === 'advanced' && (
+                                    <div className="text-[11px]" style={{ color: 'var(--compress-text-muted)' }}>
+                                        {securityLevels.advanced.label} · {t('vault.securityRecommended')}
+                                    </div>
+                                )}
+
+                                {/* Archive (v3): compression profile + opt-in Error Correction. */}
+                                {state.securityLevel === 'experimental' && (
+                                    <>
+                                        <label className="text-xs font-medium block" style={{ color: 'var(--compress-text-secondary)' }}>
+                                            {t('vault.compressionProfile')}
+                                        </label>
+                                        {renderCompressionProfiles()}
+
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id="ecc-enabled"
+                                                checked={state.errorCorrectionEnabled}
+                                                onChange={e => state.setErrorCorrectionEnabled(e.target.checked)}
+                                                className="accent-amber-600"
+                                            />
+                                            <label htmlFor="ecc-enabled" className="text-sm cursor-pointer" style={{ color: 'var(--compress-text-secondary)' }}>
+                                                {t('vault.enableErrorCorrection')}
+                                            </label>
+                                        </div>
+                                        {state.errorCorrectionEnabled && (
+                                            <div className="pl-6 flex flex-col gap-2">
+                                                <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                                                    {t('vault.errorCorrectionDesc')}
+                                                </div>
+                                                <label className="text-[11px]" style={{ color: 'var(--compress-text-secondary)' }}>{t('vault.recoveryPlacement')}</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {([
+                                                        { id: 'embedded', label: t('vault.placementEmbedded'), detail: t('vault.placementEmbeddedDesc') },
+                                                        { id: 'detached', label: t('vault.placementDetached'), detail: t('vault.placementDetachedDesc') },
+                                                        { id: 'both', label: t('vault.placementBoth'), detail: t('vault.placementBothDesc') },
+                                                    ] as const).map(p => (
+                                                        <button
+                                                            key={p.id}
+                                                            onClick={() => state.setRecoveryPlacement(p.id)}
+                                                            className={`compress-format-card ${state.recoveryPlacement === p.id ? 'active' : ''} rounded-lg px-2 py-1.5 text-left transition-all`}
+                                                        >
+                                                            <div className="text-[12px] font-medium">{p.label}</div>
+                                                            <div className="text-[10px]" style={{ color: 'var(--compress-text-muted)' }}>{p.detail}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {state.recoveryPlacement !== 'embedded' && (
+                                                    <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                                                        {t('vault.detachedStableStorageNote')}
+                                                    </div>
+                                                )}
+                                                {renderRecoveryLevel()}
+                                                <div className="text-[10px]" style={{ color: 'var(--compress-text-muted)' }}>
+                                                    {t('vault.recoveryLevelHint')}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+
+            {/* ── Plaintext mode: compression profile + opt-out Error Correction ── */}
             {isZip && (
                 <>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.compressionProfile')}</label>
-                    <div className="grid grid-cols-3 gap-2">
-                        {compressionProfiles.map((profile) => {
-                            const selected = state.compressionProfile === profile.id;
-                            return (
-                                <button
-                                    key={profile.id}
-                                    onClick={() => state.setCompressionProfile(profile.id)}
-                                    className={`rounded border px-3 py-2 text-left ${selected
-                                        ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
-                                >
-                                    <div className="text-sm font-medium">{profile.label}</div>
-                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
-                                </button>
-                            );
-                        })}
+                    <div>
+                        <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
+                            {t('vault.compressionProfile')}
+                        </label>
+                        {renderCompressionProfiles()}
                     </div>
 
                     {/* Recovery (Reed-Solomon parity) is opt-out for .aerozip: ON by
                         default so existing behaviour is unchanged, but disablable so the
                         archive can match canonical compression ratios. When unchecked we
                         send pct=0 and the backend creates a plain archive with no parity. */}
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                         <input
                             type="checkbox"
                             id="zip-ecc-enabled"
@@ -230,61 +484,14 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                             onChange={e => state.setErrorCorrectionEnabled(e.target.checked)}
                             className="accent-amber-600"
                         />
-                        <label htmlFor="zip-ecc-enabled" className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer">
+                        <label htmlFor="zip-ecc-enabled" className="text-sm cursor-pointer" style={{ color: 'var(--compress-text-secondary)' }}>
                             {t('vault.enableErrorCorrection')}
                         </label>
                     </div>
                     {state.errorCorrectionEnabled && (
                         <>
-                            <label className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                                {t('vault.recoveryLevel')}
-                            </label>
-                            <div className="grid grid-cols-4 gap-1.5">
-                                {([
-                                    { id: 7, label: t('vault.recoveryLevelLow') },
-                                    { id: 15, label: t('vault.recoveryLevelMedium') },
-                                    { id: 25, label: t('vault.recoveryLevelQuartile') },
-                                    { id: 30, label: t('vault.recoveryLevelHigh') },
-                                ] as const).map(lvl => {
-                                    const selected = state.errorCorrectionPct === lvl.id;
-                                    return (
-                                        <button
-                                            key={lvl.id}
-                                            onClick={() => state.setErrorCorrectionPct(lvl.id)}
-                                            className={`rounded border px-1.5 py-1 text-center ${selected
-                                                ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
-                                        >
-                                            <div className="text-[11px] font-medium">{lvl.label}</div>
-                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="range"
-                                    min={5}
-                                    max={50}
-                                    step={1}
-                                    value={state.errorCorrectionPct}
-                                    onChange={e => state.setErrorCorrectionPct(Number(e.target.value))}
-                                    className="flex-1 accent-amber-600"
-                                    aria-label={t('vault.recoveryLevel')}
-                                />
-                                <div className="flex items-center gap-1">
-                                    <input
-                                        type="number"
-                                        min={5}
-                                        max={50}
-                                        value={state.errorCorrectionPct}
-                                        onChange={e => state.setErrorCorrectionPct(Math.min(50, Math.max(5, Math.round(Number(e.target.value) || 5))))}
-                                        className="w-14 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-[12px] text-right"
-                                    />
-                                    <span className="text-[11px] text-gray-500 dark:text-gray-400">%</span>
-                                </div>
-                            </div>
-                            <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                            {renderRecoveryLevel()}
+                            <div className="text-[10px]" style={{ color: 'var(--compress-text-muted)' }}>
                                 {t('vault.zipRecoveryHint')}
                             </div>
                         </>
@@ -300,209 +507,6 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                             />
                         </div>
                     )}
-                </>
-            )}
-
-            {!isZip && (
-                <>
-            {/* Security Level Selector */}
-            <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.securityLevel')}</label>
-            <div className="relative">
-                <button
-                    onClick={() => state.setShowLevelDropdown(!state.showLevelDropdown)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded border ${securityLevels[state.securityLevel].borderColor} bg-gray-50 dark:bg-gray-800 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
-                >
-                    <div className="flex items-center gap-2">
-                        {React.createElement(securityLevels[state.securityLevel].icon, {
-                            size: 16,
-                            className: securityLevels[state.securityLevel].color
-                        })}
-                        <div>
-                            <div className={`text-sm font-medium ${securityLevels[state.securityLevel].color}`}>
-                                {securityLevels[state.securityLevel].label}
-                                {state.securityLevel === 'advanced' && <span className="ml-2 text-xs text-emerald-300">({t('vault.securityRecommended')})</span>}
-                            </div>
-                            <div className="text-xs text-gray-500">{securityLevels[state.securityLevel].description}</div>
-                        </div>
-                    </div>
-                    <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
-                </button>
-
-                {/* Dropdown */}
-                {state.showLevelDropdown && (
-                    <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl overflow-hidden">
-                        {availableSecurityLevels.map((level) => {
-                            const config = securityLevels[level];
-                            const Icon = config.icon;
-                            const isSelected = level === state.securityLevel;
-                            return (
-                                <button
-                                    key={level}
-                                    onClick={() => { state.setSecurityLevel(level); state.setShowLevelDropdown(false); }}
-                                    className={`w-full flex items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'bg-gray-100 dark:bg-gray-700/60' : ''}`}
-                                >
-                                    <Icon size={18} className={`mt-0.5 ${config.color}`} />
-                                    <div className="flex-1">
-                                        <div className={`text-sm font-medium ${config.color}`}>
-                                            {config.label}
-                                            {level === 'advanced' && <span className="ml-2 text-xs text-emerald-300">({t('vault.securityRecommended')})</span>}
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-0.5">{config.description}</div>
-                                        <div className="flex flex-wrap gap-1 mt-1.5">
-                                            {config.features.map((feature, i) => (
-                                                <span key={i} className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[10px] text-gray-600 dark:text-gray-300">
-                                                    {feature}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-
-            {state.securityLevel === 'experimental' && (
-                <>
-                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.compressionProfile')}</label>
-                    <div className="grid grid-cols-3 gap-2">
-                        {compressionProfiles.map((profile) => {
-                            const selected = state.compressionProfile === profile.id;
-                            return (
-                                <button
-                                    key={profile.id}
-                                    onClick={() => state.setCompressionProfile(profile.id)}
-                                    className={`rounded border px-3 py-2 text-left ${selected
-                                        ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
-                                >
-                                    <div className="text-sm font-medium">{profile.label}</div>
-                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Error Correction (Reed-Solomon) toggle for v3 vaults.
-                        Uses dedicated backend create_with_error_correction (non-critical extension).
-                        Enables scrub/repair actions and badge in the vault UI. */}
-                    <div className="mt-2 flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            id="ecc-enabled"
-                            checked={state.errorCorrectionEnabled}
-                            onChange={e => state.setErrorCorrectionEnabled(e.target.checked)}
-                            className="accent-amber-600"
-                        />
-                        <label htmlFor="ecc-enabled" className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer">
-                            {t('vault.enableErrorCorrection')}
-                        </label>
-                    </div>
-                    {state.errorCorrectionEnabled && (
-                        <div className="pl-6 flex flex-col gap-2">
-                            <div className="text-[11px] text-amber-600 dark:text-amber-400">
-                                {t('vault.errorCorrectionDesc')}
-                            </div>
-                            <label className="text-[11px] text-gray-500 dark:text-gray-400">{t('vault.recoveryPlacement')}</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                {([
-                                    { id: 'embedded', label: t('vault.placementEmbedded'), detail: t('vault.placementEmbeddedDesc') },
-                                    { id: 'detached', label: t('vault.placementDetached'), detail: t('vault.placementDetachedDesc') },
-                                    { id: 'both', label: t('vault.placementBoth'), detail: t('vault.placementBothDesc') },
-                                ] as const).map(p => {
-                                    const selected = state.recoveryPlacement === p.id;
-                                    return (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => state.setRecoveryPlacement(p.id)}
-                                            className={`rounded border px-2 py-1.5 text-left ${selected
-                                                ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
-                                        >
-                                            <div className="text-[12px] font-medium">{p.label}</div>
-                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.detail}</div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {state.recoveryPlacement !== 'embedded' && (
-                                <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                                    {t('vault.detachedStableStorageNote')}
-                                </div>
-                            )}
-                            {/* QR-style overhead level (#276): named presets + slider + numeric input. */}
-                            <label className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                                {t('vault.recoveryLevel')}
-                            </label>
-                            <div className="grid grid-cols-4 gap-1.5">
-                                {([
-                                    { id: 7, label: t('vault.recoveryLevelLow') },
-                                    { id: 15, label: t('vault.recoveryLevelMedium') },
-                                    { id: 25, label: t('vault.recoveryLevelQuartile') },
-                                    { id: 30, label: t('vault.recoveryLevelHigh') },
-                                ] as const).map(lvl => {
-                                    const selected = state.errorCorrectionPct === lvl.id;
-                                    return (
-                                        <button
-                                            key={lvl.id}
-                                            onClick={() => state.setErrorCorrectionPct(lvl.id)}
-                                            className={`rounded border px-1.5 py-1 text-center ${selected
-                                                ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-500/20 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'} transition-colors cursor-pointer`}
-                                        >
-                                            <div className="text-[11px] font-medium">{lvl.label}</div>
-                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">~{lvl.id}%</div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="range"
-                                    min={5}
-                                    max={50}
-                                    step={1}
-                                    value={state.errorCorrectionPct}
-                                    onChange={e => state.setErrorCorrectionPct(Number(e.target.value))}
-                                    className="flex-1 accent-amber-600"
-                                    aria-label={t('vault.recoveryLevel')}
-                                />
-                                <div className="flex items-center gap-1">
-                                    <input
-                                        type="number"
-                                        min={5}
-                                        max={50}
-                                        value={state.errorCorrectionPct}
-                                        onChange={e => state.setErrorCorrectionPct(Math.min(50, Math.max(5, Math.round(Number(e.target.value) || 5))))}
-                                        className="w-14 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-[12px] text-right"
-                                    />
-                                    <span className="text-[11px] text-gray-500 dark:text-gray-400">%</span>
-                                </div>
-                            </div>
-                            <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                                {t('vault.recoveryLevelHint')}
-                            </div>
-                        </div>
-                    )}
-                </>
-            )}
-
-            <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
-            <div className="relative">
-                <input type={state.showPassword ? 'text' : 'password'} value={state.password} onChange={e => state.setPassword(e.target.value)}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
-                <button tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                    {state.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-            </div>
-
-            <PasswordStrengthBar password={state.password} />
-
-            <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.confirmPassword')}</label>
-            <input type={state.showPassword ? 'text' : 'password'} value={state.confirmPassword} onChange={e => state.setConfirmPassword(e.target.value)}
-                className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" />
-            <PasswordMatchHint password={state.password} confirm={state.confirmPassword} />
                 </>
             )}
 
@@ -527,9 +531,9 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
             )}
 
             {state.loading && state.vaultProgress && (
-                <div className="mt-3 space-y-1">
+                <div className="mt-1 space-y-1">
                     <TransferProgressBar percentage={state.vaultProgress.percentage} size="lg" />
-                    <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                    <div className="flex justify-between text-[11px] tabular-nums" style={{ color: 'var(--compress-text-muted)' }}>
                         <span>{formatSize(state.vaultProgress.transferred)} / {formatSize(state.vaultProgress.total)}</span>
                         <span>{state.vaultProgress.percentage}%</span>
                     </div>
@@ -541,10 +545,10 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                         const filled = Math.max(0, Math.min(100, (remaining / state.vaultProgress.total) * 100));
                         return (
                             <>
-                                <div className="w-full h-2.5 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
+                                <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--compress-bg-deep)' }}>
                                     <div className="h-full rounded-full bg-amber-500 transition-all duration-300" style={{ width: `${filled}%` }} />
                                 </div>
-                                <div className="flex justify-end text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                                <div className="flex justify-end text-[11px] tabular-nums" style={{ color: 'var(--compress-text-muted)' }}>
                                     {formatSize(remaining)}
                                 </div>
                             </>
@@ -553,16 +557,27 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                 </div>
             )}
 
-            <div className="flex gap-2 items-center mt-2">
+            </div>
+
+            <div className="flex gap-2 items-center px-4 py-3 border-t" style={{ borderColor: 'var(--compress-border)' }}>
                 <button onClick={resetToDefaults} disabled={state.loading}
-                    className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors disabled:opacity-50">
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs rounded transition-colors disabled:opacity-50"
+                    style={{ color: 'var(--compress-text-secondary)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-bg-hover)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <RotateCcw size={13} /> {t('vault.resetDefaults')}
                 </button>
                 <div className="flex gap-2 ml-auto">
-                    <button onClick={() => state.setMode('home')} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">
+                    <button onClick={() => state.setMode('home')}
+                        className="px-3 py-1.5 text-sm rounded transition-colors"
+                        style={{ color: 'var(--compress-text-secondary)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-bg-hover)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         {t('vault.cancel')}
                     </button>
-                    <button onClick={state.handleCreate} disabled={state.loading || !state.description.trim()} className={`flex items-center gap-2 px-4 py-1.5 ${isZip ? 'bg-amber-600' : securityLevels[state.securityLevel].bgColor} hover:opacity-90 rounded text-sm disabled:opacity-50 transition-opacity`}>
+                    <button onClick={state.handleCreate} disabled={state.loading || !state.description.trim()}
+                        className="flex items-center gap-2 px-4 py-1.5 rounded text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        style={{ background: isZip ? '#d97706' : 'var(--compress-accent)' }}>
                         {state.loading ? <Loader2 size={14} className="animate-spin" /> : (isZip ? <Unlock size={14} /> : <Lock size={14} />)}
                         {t('vault.create')} {isZip ? '.aerozip' : '.aerovault'}
                     </button>

@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Archive, Lock, FolderPlus, Download, Loader2, Clock, X as XIcon } from 'lucide-react';
+import { Archive, Lock, Unlock, KeyRound, Download, Loader2, Clock, X as XIcon } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, SecurityLevel, IconProvider } from './useVaultState';
@@ -71,7 +71,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
 
             <div className="flex flex-wrap justify-center gap-3 mt-1">
                 <button onClick={() => { state.resetState(); state.setMode('create'); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-medium">
-                    <FolderPlus size={16} /> {t('vault.createNew')}
+                    <Lock size={16} /> {t('vault.create')} .aerovault
                 </button>
                 <button
                     onClick={() => {
@@ -84,10 +84,10 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                     }}
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-medium"
                 >
-                    <Archive size={16} /> {t('vault.createZip')}
+                    <Unlock size={16} /> {t('vault.create')} .aerozip
                 </button>
                 <button onClick={state.handleOpen} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium">
-                    <Lock size={16} /> {t('vault.openExisting')}
+                    <KeyRound size={16} /> {t('vault.openExisting')}
                 </button>
             </div>
 
