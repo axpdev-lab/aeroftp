@@ -46,13 +46,14 @@ SharePoint / Fastmail / Koofr-dav) likewise ride WebDAV.
 These have a dedicated AeroFTP provider and a matching rclone backend. No other
 tool's format can carry them, so every non-rclone column would be `--`.
 
-Whether a provider also **exports** depends on what its credential needs. Ones
-that authenticate with a recoverable secret (user + password or account + key)
-export fully. The OAuth providers cannot: rclone refreshes them with its own
-provider-issued client, so AeroFTP cannot emit a usable token and they are
-import-only. Jottacloud is the exception: it is not classic OAuth (AeroFTP
-classifies it as an API provider) and AeroFTP persists its OIDC refresh token, so
-the exported remote refreshes on rclone's first use (added in v4.0.9).
+Every provider in this table now both **imports and exports**. Recoverable-secret
+backends (user + password, account + key) export their secret directly. The OAuth
+backends (Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex) export the OAuth
+token AeroFTP persists for the profile; rclone refreshes it on first use, so no
+provider-issued client setup is needed. Jottacloud follows the same token model
+via its persisted OIDC refresh token, and Filen exports its email, password and
+Filen CLI api key. (Token and credential export across these providers landed for
+v4.0.9.)
 
 | Provider | rclone | rclone backend | Credentials carried |
 |----------|:--:|----|----|
@@ -61,15 +62,15 @@ the exported remote refreshes on rclone's first use (added in v4.0.9).
 | OpenStack Swift | IE | swift      | user + key |
 | Koofr           | IE | koofr      | user + password |
 | Jottacloud      | IE | jottacloud | OIDC refresh token (AeroFTP-persisted); the exported remote refreshes on first use (v4.0.9) |
-| Filen           | I. | filen      | import only: export needs the provider's own auth client |
-| OpenDrive       | I. | opendrive  | import only |
-| Backblaze B2    | I. | b2         | import only (native B2, not S3) |
-| Google Drive    | I. | drive      | import only: OAuth, needs rclone's own auth flow |
-| Dropbox         | I. | dropbox    | import only: OAuth |
-| OneDrive        | I. | onedrive   | import only: OAuth |
-| Box             | I. | box        | import only: OAuth |
-| pCloud          | I. | pcloud     | import only: OAuth |
-| Yandex Disk     | I. | yandex     | import only: OAuth |
+| Filen           | IE | filen      | email + password + Filen CLI api key |
+| OpenDrive       | IE | opendrive  | username + password |
+| Backblaze B2    | IE | b2         | account (key ID) + application key (native B2, not S3) |
+| Google Drive    | IE | drive      | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
+| Dropbox         | IE | dropbox    | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
+| OneDrive        | IE | onedrive   | OAuth token + drive_id/drive_type captured at connect |
+| Box             | IE | box        | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
+| pCloud          | IE | pcloud     | OAuth token (AeroFTP-persisted) + hostname for the EU region |
+| Yandex Disk     | IE | yandex     | OAuth token (AeroFTP-persisted); refreshes on rclone's first use |
 
 ## Per-tool exportable protocols
 
@@ -78,7 +79,7 @@ way: an importer reads whatever connection types it recognizes in the file.)
 
 | Tool | Exportable protocols |
 |-----|----------------------|
-| rclone | FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Swift, Koofr, Jottacloud |
+| rclone | FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Swift, Koofr, Jottacloud, Filen, Google Drive, Dropbox, OneDrive, Box, pCloud, Yandex, OpenDrive, Backblaze B2 |
 | WinSCP | FTP, FTPS, SFTP, WebDAV, S3 |
 | FileZilla | FTP, FTPS, SFTP, S3 |
 | Cyberduck | FTP, FTPS, SFTP, WebDAV, S3 |
@@ -92,10 +93,12 @@ way: an importer reads whatever connection types it recognizes in the file.)
 ## Asymmetries worth knowing
 
 - **rclone OAuth providers** (Google Drive, Dropbox, OneDrive, Box, pCloud,
-  Yandex, plus Filen) are import-only: rclone re-authenticates them through its
-  own provider-issued client, so AeroFTP cannot hand it a working token. The
-  recoverable-secret providers (MEGA, Azure, Swift, Koofr) and Jottacloud do
-  export.
+  Yandex) now export too: AeroFTP emits the OAuth token it persists for the
+  profile, which rclone refreshes on first use, so no provider-issued client
+  setup is needed. OneDrive also carries the captured drive_id/drive_type. The
+  recoverable-secret providers (MEGA, Azure, Swift, Koofr, OpenDrive, Backblaze
+  B2), Jottacloud, and Filen (email + password + api key) export their secrets
+  directly.
 - **Cyberduck** imports Backblaze B2 by routing it onto S3, and skips Azure and
   the OAuth providers it can read but cannot represent.
 - **Kopia, Duplicacy and restic** import B2 URLs onto S3 (tagged as Backblaze),
