@@ -370,6 +370,9 @@ Flags: `-R`/`--recursive`, `--files-only`, `--dirs-only` (mutually exclusive wit
 # Create a passwordless archive with compression + recovery parity
 aeroftp-cli archive create backup.aerozip ./docs ./photos
 
+# Recovery parity is on by default; disable it for a smaller, parity-free file
+aeroftp-cli archive create backup.aerozip ./docs --recovery-level 0   # also: off / none
+
 # Tune archive-local compression; --profile remains a hidden compatibility alias
 aeroftp-cli archive create backup.aerozip ./docs --compression-profile archive
 
@@ -1611,6 +1614,10 @@ aeroftp-cli users rename alice alicia
 aeroftp-cli users sort alice bob carol    # order for the GUI dropdown / lock screen
 aeroftp-cli users delete alice
 aeroftp-cli users lock                    # lock the in-memory session
+
+# Interactive prompt (TTY): re-index (#), Rename (R), Copy (C), Delete (D),
+# Fav (F, marks the default user auto-unlocked on launch), List (L), Tree (T)
+aeroftp-cli users -i
 ```
 
 Each user keeps an isolated set of server profiles and AeroSync settings inside its own partition. An opt-in admin role gates user management, with a last-admin guard so an installation cannot lock itself out.
@@ -1623,6 +1630,21 @@ aeroftp-cli --user alice sync --profile "Backup" /local /remote
 ```
 
 When the selected partition is passphrase-protected, supply it with `--user-passphrase`, `--passphrase-file`, or the `AEROFTP_USER_PASSPHRASE` environment variable; otherwise the CLI prompts on a TTY. `--user` is optional everywhere and defaults to the active user, so existing scripts keep working unchanged.
+
+### groups - Server-Profile Groups
+
+`groups` manages the named group labels on saved profiles (the My Servers group chips). Membership lives in the vault under `config_server_groups`, shared with the GUI, so a change made in the CLI shows up in My Servers and vice versa. The GUI list is drag-reorderable; the CLI exposes the same order via re-index.
+
+```bash
+# List the group chips (optionally as JSON)
+aeroftp-cli groups
+aeroftp-cli groups --json
+
+# Interactive prompt (TTY): re-index (#), Rename (R), Copy (C), Delete (D), List (L)
+aeroftp-cli groups -i
+```
+
+The interactive prompt shares the same `-i` engine as `profiles -i` and `users -i`: select a target by index or name, `.` refreshes the screen, `h` shows help, and only an explicit Quit exits the sticky loop.
 
 ### profiles - List Saved Profiles
 

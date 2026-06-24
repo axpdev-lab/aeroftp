@@ -295,7 +295,7 @@ AeroFTP defines five user-facing file formats. Each has a single purpose and a d
 | <img src="src-tauri/icons/mimetypes/application-x-aerozip-64.png" width="32" height="32" alt="" /><br>`.aerozip` | Plaintext recoverable archive (`aeroftp-cli archive create/list/extract`) | None - integrity + Reed-Solomon recovery, **not confidentiality** | Arbitrary files and folders inside a compressed, self-healing archive readable by anyone with the file |
 | <img src="src-tauri/icons/mimetypes/application-x-aeroftp-script-64.png" width="32" height="32" alt="" /><br>`.aeroftp-script` | Portable batch script for `aeroftp-cli batch` (safer alternative to `.sh` / `.ps1`, runs on every OS where AeroFTP is supported) | None (no secrets) | AeroFTP CLI command lines; references saved profiles by name, never inline credentials |
 
-The first three are encrypted with a user-chosen password at export time. `.aerozip` is plaintext on purpose: it provides integrity and recovery, not secrecy. `.aeroftp-script` is also plaintext on purpose: it never carries secrets, so it can be checked into a repository, scheduled by cron / Task Scheduler, or shared with a teammate without any vault round-trip.
+The first three are encrypted with a user-chosen password at export time. `.aerozip` is plaintext on purpose: it provides integrity and recovery (Reed-Solomon parity is on by default and opt-out, `--recovery-level 0` for a smaller parity-free archive), not secrecy. `.aeroftp-script` is also plaintext on purpose: it never carries secrets, so it can be checked into a repository, scheduled by cron / Task Scheduler, or shared with a teammate without any vault round-trip.
 
 ---
 
@@ -346,6 +346,7 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 - **Cross-platform autostart**: installs `~/.config/systemd/user/aeroftp-mount-<id>.service` units on Linux (Type=simple, Restart=on-failure) and Task Scheduler ONLOGON entries on Windows. Master-password vault mode blocks autostart with a clear UI explanation since the daemon cannot prompt for a password.
 - **Open mount in file manager**: a one-click action on the My Servers context menu that auto-creates a sensible default mount for the selected profile when none exists yet, waits 800 ms for the FUSE / WebDAV layer to settle, then opens the OS file manager at the mountpoint.
 - **No secrets in mount configs**: credentials are always resolved by the spawned `aeroftp-cli` through `--profile` against the same vault the GUI uses, mount configs only carry the profile id.
+- **Read-only vault mount + Save-All (v4.0.9, Linux first)**: mount an *unlocked* Cryptomator vault, `.aerovault` or `.aerozip` as a read-only filesystem to browse its decrypted contents in your OS file manager, or run **Save-All** to export the whole decrypted tree in one shot to a folder, a `.zip` or a `.aerozip`. The password is passed to the mount process over stdin and never stored, and the mount auto-unmounts when you lock the vault or quit. macOS and Windows are a later step.
 
 ---
 
@@ -481,7 +482,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 83 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`) across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 83 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 > **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
 
