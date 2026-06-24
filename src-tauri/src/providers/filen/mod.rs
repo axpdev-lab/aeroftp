@@ -695,11 +695,31 @@ impl FilenProvider {
         CHARSET[idx] as char
     }
 
-    /// Derive AES key from file key: hex-decode 64-char hex string to 32 raw bytes
-    /// (Filen SDK v3 format for file data encryption)
+    /// Derive the 32-byte AES-256 key from a Filen file key.
+    ///
+    /// Filen file keys come in two on-disk formats, and a container can hold
+    /// files in either (depending on which client uploaded them):
+    ///  - **v3 metadata**: a 64-char hex string that decodes to 32 raw bytes.
+    ///    This is also the format AeroFTP itself emits on upload (a 64-char hex
+    ///    string), so AeroFTP-uploaded files always take this path.
+    ///  - **v2 metadata**: a 32-char string used *directly* as the 32-byte
+    ///    AES-256 key (its UTF-8 bytes). Files stored by other Filen clients
+    ///    (the official app, rclone, RSAF) commonly use v2.
+    ///
+    /// The previous hex-only path rejected every v2 key with
+    /// "Invalid file key hex: Invalid character ... at position ...", which is
+    /// why previewing/downloading images uploaded elsewhere failed (#128). The
+    /// length is unambiguous: a v2 key is always 32 chars, a v3 key 64 hex chars.
     fn derive_file_key(file_key: &str) -> Result<Vec<u8>, ProviderError> {
-        hex::decode(file_key)
-            .map_err(|e| ProviderError::Other(format!("Invalid file key hex: {}", e)))
+        match file_key.len() {
+            64 => hex::decode(file_key)
+                .map_err(|e| ProviderError::Other(format!("Invalid file key hex: {}", e))),
+            32 => Ok(file_key.as_bytes().to_vec()),
+            n => Err(ProviderError::Other(format!(
+                "Unsupported Filen file key length {} (expected 32 raw or 64 hex)",
+                n
+            ))),
+        }
     }
 
     /// Encrypt file content with AES-256-GCM using a per-file key
@@ -3023,6 +3043,38 @@ mod tests {
         let decrypted =
             FilenProvider::decrypt_file_content(&encrypted, &file_key).expect("decrypt");
         assert_eq!(decrypted, plaintext, "round-trip must be byte-exact");
+    }
+
+    /// Regression for #128: a Filen v2 file key is a 32-char string used
+    /// directly as the 32-byte AES-256 key (its UTF-8 bytes), not hex. The old
+    /// hex-only `derive_file_key` rejected these with "Invalid file key hex",
+    /// which broke previewing/downloading files uploaded by other Filen clients
+    /// (the official app, rclone, RSAF). Both key formats must derive to 32
+    /// bytes, and a v2 key must survive a full encrypt -> decrypt round-trip.
+    #[test]
+    fn derive_file_key_accepts_v2_and_v3_formats() {
+        // v3: 64 hex chars -> 32 raw bytes (also AeroFTP's own upload format).
+        let v3: String = (0..32).map(|i| format!("{:02x}", i as u8)).collect();
+        assert_eq!(v3.len(), 64);
+        assert_eq!(
+            FilenProvider::derive_file_key(&v3).expect("v3 hex").len(),
+            32
+        );
+
+        // v2: 32-char alphanumeric key used as raw UTF-8 (the case #128 hit).
+        let v2 = "aB3xZ9kLmN0pQ7rS4tU1vW6yC2dE5fG8"; // 32 chars, includes non-hex letters
+        assert_eq!(v2.len(), 32);
+        let derived = FilenProvider::derive_file_key(v2).expect("v2 raw must not be hex-decoded");
+        assert_eq!(derived, v2.as_bytes(), "a v2 key is its own 32 raw bytes");
+
+        // A v2 key must round-trip through the real encrypt/decrypt path.
+        let plaintext = b"\x00\x01\x02 the quick brown fox \xff\xfe".to_vec();
+        let enc = FilenProvider::encrypt_file_content(&plaintext, v2).expect("encrypt v2");
+        let dec = FilenProvider::decrypt_file_content(&enc, v2).expect("decrypt v2");
+        assert_eq!(dec, plaintext, "v2 round-trip must be byte-exact");
+
+        // An unsupported length is a clear error, not a panic or a wrong key.
+        assert!(FilenProvider::derive_file_key("tooshort").is_err());
     }
 
     /// Two chunks encrypted with the same file_key must produce different
