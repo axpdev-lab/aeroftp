@@ -66,7 +66,7 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
 
 // --- Exported types ---
 
-export type VaultMode = 'home' | 'create' | 'open' | 'browse';
+export type VaultMode = 'home' | 'create' | 'open' | 'browse' | 'receipt';
 
 export type VaultContainerKind = 'vault' | 'zip';
 
@@ -809,7 +809,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 } catch {
                     setZipReport(null);
                 }
-                setMode('browse');
+                setMode('receipt');
 
                 const vName = savePath.split(/[\\/]/).pop() || 'AeroVault Zip';
                 await saveToHistory(savePath, vName, 'aerovault-zip', 3, false, info.file_count);
@@ -879,7 +879,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         fileCount: 0,
                     });
                 }
-                setMode('browse');
+                setMode('receipt');
 
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
                 await saveToHistory(savePath, vName, 'experimental', 3, false, effFiles.length || 0);
@@ -932,7 +932,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         fileCount: 0
                     });
                 }
-                setMode('browse');
+                setMode('receipt');
 
                 // Save to history: use meta.fileCount (not stale entries.length)
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
@@ -943,7 +943,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 1, cascadeMode: false, level: 'standard' });
                 setSuccess(t('vault.created'));
-                setMode('browse');
+                setMode('receipt');
                 setEntries([]);
                 const m = await invoke<AeroVaultMeta>('vault_get_meta', { vaultPath: savePath, password });
                 setMeta(m);

@@ -11,6 +11,7 @@ import { VaultHome } from './vault/VaultHome';
 import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
 import { VaultBrowse } from './vault/VaultBrowse';
+import { VaultCreateReceipt } from './vault/VaultCreateReceipt';
 import { VaultReceipt } from './vault/VaultReceipt';
 import { ZipCompressionReport } from './vault/ZipCompressionReport';
 import type { AeroVaultOverlaySession } from '../types';
@@ -187,7 +188,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                             ? <Archive size={18} className="text-amber-500" />
                             : <VaultIcon variant="outline" size={18} className="text-gray-600 dark:text-gray-300" />}
                         <span className="font-medium">
-                            {state.mode === 'browse' ? vaultName : (state.isPlaintextZip ? t('vault.zipTitle') : t('vault.title'))}
+                            {(state.mode === 'browse' || state.mode === 'receipt') ? vaultName : (state.isPlaintextZip ? t('vault.zipTitle') : t('vault.title'))}
                         </span>
                         {/* Encryption badge: amber open padlock (plaintext Zip) or
                             green closed padlock (encrypted vault). Informational,
@@ -217,7 +218,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
                 {/* Error / Success */}
                 {state.error && <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm">{state.error}</div>}
-                {state.success && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-sm">{state.success}</div>}
+                {state.success && state.mode !== 'receipt' && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-sm">{state.success}</div>}
                 {state.zipReport && state.mode === 'browse' && <ZipCompressionReport inputBytes={state.zipReport.inputBytes} outputBytes={state.zipReport.outputBytes} />}
 
                 {/* Content */}
@@ -225,6 +226,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                 {state.mode === 'create' && <VaultCreate state={state} />}
                 {state.mode === 'open' && <VaultOpen state={state} />}
                 {state.mode === 'browse' && <VaultBrowse state={state} iconProvider={iconProvider} />}
+                {state.mode === 'receipt' && <VaultCreateReceipt state={state} onClose={guarded.requestClose} />}
 
                 {/* Loading overlay */}
                 {state.loading && state.mode === 'browse' && (
@@ -233,8 +235,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     </div>
                 )}
 
-                {/* Behind-the-scenes technical receipt (create/add) */}
-                {state.lastReport && (
+                {/* Behind-the-scenes technical receipt for an ADD during browse.
+                    After a create the terminal receipt (VaultCreateReceipt, mode
+                    'receipt') owns the technical-receipt toggle, so this auto-overlay
+                    is scoped to browse to avoid stacking two receipts. */}
+                {state.lastReport && state.mode === 'browse' && (
                     <VaultReceipt report={state.lastReport} t={t} onClose={state.clearReport} />
                 )}
             </div>
