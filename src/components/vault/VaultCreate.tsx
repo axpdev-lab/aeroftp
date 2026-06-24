@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus, Lock, Unlock, RotateCcw } from 'lucide-react';
@@ -28,6 +28,14 @@ interface VaultCreateProps {
 export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     const t = useTranslation();
     const isZip = state.isPlaintextZip;
+    const firstFieldRef = useRef<HTMLInputElement>(null);
+
+    // Focus the first text field when the create form opens, so the user can type
+    // straight away instead of clicking it first.
+    useEffect(() => {
+        const id = window.setTimeout(() => firstFieldRef.current?.focus(), 50);
+        return () => window.clearTimeout(id);
+    }, []);
     const availableSecurityLevels = Object.keys(securityLevels) as SecurityLevel[];
     const compressionProfiles: { id: VaultV3CompressionProfile; label: string; detail: string }[] = [
         { id: 'fast', label: 'Fast', detail: 'zstd -3' },
@@ -466,7 +474,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
             {state.securityLevel !== 'experimental' && (
                 <>
                     <label className="text-sm text-gray-500 dark:text-gray-400 mt-2">{t('vault.description_label')}</label>
-                    <input value={state.description} onChange={e => state.setDescription(e.target.value)}
+                    <input ref={firstFieldRef} value={state.description} onChange={e => state.setDescription(e.target.value)}
                         className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
                 </>
             )}

@@ -164,7 +164,14 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
             role="dialog"
             aria-modal="true"
             aria-label="AeroVault"
-            onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}
+            onClick={(e) => {
+                // A click outside closes the modal ONLY on the home screen. Once the
+                // user is opening, creating or browsing a vault (password entered /
+                // unlocked session), the backdrop is inert so a stray click cannot
+                // discard the work and force re-entering the password. The X (or ESC)
+                // is the only way out of those states.
+                if (e.target === e.currentTarget && state.mode === 'home') guarded.requestBackdropClose();
+            }}
         >
             <div
                 {...modalDrag.panelProps}

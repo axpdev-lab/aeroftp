@@ -320,7 +320,12 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => {
+            // Once a password has been typed (encrypted archive) the backdrop is
+            // inert, so a stray click outside cannot discard it and force retyping.
+            // The X is the only way out then. Other states still close on click.
+            if (e.target === e.currentTarget && !password) guarded.requestBackdropClose();
+        }}>
             <div
                 {...modalDrag.panelProps}
                 className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
