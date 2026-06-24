@@ -207,6 +207,38 @@ impl Drop for ConnectTokenGuard<'_> {
     }
 }
 
+/// Run a connect future, abortable via the shared [`ConnectionCancelRegistry`]
+/// under `connect_token`, returning `CONNECT_CANCELLED` if an Esc / "still
+/// connecting" Cancel fires first. Registers the token for the future's
+/// lifetime (de-registered by a drop guard on every exit path) and races it
+/// against `token.cancelled()` with `tokio::select!`; dropping the future on
+/// cancel tears down the in-flight work (HTTP connect, subprocess) cleanly.
+///
+/// When `connect_token` is `None` the future simply runs to completion with no
+/// cancellation point. This is the same plumbing `provider_connect` does inline
+/// (#270.5), factored out so the OAuth connect path and the MEGAcmd WebDAV URL
+/// preflight, which run outside `provider_connect`, become cancellable too
+/// (#360).
+pub(crate) async fn run_cancellable_connect<T, F>(
+    cancel_registry: &ConnectionCancelRegistry,
+    connect_token: Option<&str>,
+    fut: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    let cancel_token = connect_token.map(|key| cancel_registry.register(key));
+    let _cancel_guard =
+        connect_token.map(|key| ConnectTokenGuard::new(cancel_registry, key.to_string()));
+    match cancel_token.as_ref() {
+        Some(token) => tokio::select! {
+            res = fut => res,
+            _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
+        },
+        None => fut.await,
+    }
+}
+
 /// RAII guard around `ProviderState::in_flight_transfers`. Acquired by the
 /// command-level entry points before they hand a `SharedProvider` clone to
 /// a spawned DAG transfer task and dropped only when that task returns,
@@ -3708,6 +3740,12 @@ pub struct OAuthConnectionParams {
     /// When omitted the legacy singleton key is used. Issue #214.
     #[serde(default)]
     pub profile_id: String,
+    /// #360: frontend-generated token identifying this connect attempt. When
+    /// present, `oauth2_full_auth` / `oauth2_connect` register a cancellation
+    /// token under it so an Esc / "still connecting" Cancel can abort them via
+    /// `cancel_connection`. Absent for callers that opt out.
+    #[serde(default, alias = "connectToken")]
+    pub connect_token: Option<String>,
 }
 
 fn default_region() -> String {
@@ -3818,6 +3856,7 @@ pub struct OAuth2ConnectResult {
 #[tauri::command]
 pub async fn oauth2_connect(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{
@@ -3829,6 +3868,10 @@ pub async fn oauth2_connect(
 
     info!("Connecting to OAuth2 provider: {}", params.provider);
 
+    // #360: build + connect the provider under the connect token so an Esc /
+    // "still connecting" Cancel aborts a slow OAuth API connect (the My Servers
+    // OAuth path previously could not be cancelled at all).
+    let build_provider = async {
     let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
@@ -3915,6 +3958,15 @@ pub async fn oauth2_connect(
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
+        Ok::<Box<dyn StorageProvider>, String>(provider)
+    };
+
+    let provider = run_cancellable_connect(
+        &cancel_registry,
+        params.connect_token.as_deref(),
+        build_provider,
+    )
+    .await?;
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
@@ -3936,13 +3988,28 @@ pub async fn oauth2_connect(
 
 /// Full OAuth2 authentication flow - starts server, opens browser, waits for callback, completes auth
 #[tauri::command]
-pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, String> {
+pub async fn oauth2_full_auth(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    params: OAuthConnectionParams,
+) -> Result<String, String> {
     use crate::providers::{
         oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
         OAuth2Manager, OAuthConfig,
     };
 
     info!("Starting full OAuth2 flow for {}", params.provider);
+
+    // #360: register the connect token so an Esc / "still connecting" Cancel can
+    // abort the browser-callback wait below (the longest phase of the flow).
+    // The guard de-registers it on every exit path.
+    let cancel_token = params
+        .connect_token
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = params
+        .connect_token
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     // Some providers require exact redirect_uri matching, so use a fixed port
     let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
@@ -4029,6 +4096,16 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
             .map_err(|e| format!("Callback error: {}", e))?,
         _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
             return Err("OAuth timeout: no response within 5 minutes".to_string());
+        }
+        // #360: Esc / Cancel aborts the wait; dropping callback_task (AbortOnDrop)
+        // releases the bound listener port.
+        _ = async {
+            match cancel_token.as_ref() {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => {
+            return Err(CONNECT_CANCELLED.to_string());
         }
     };
 
@@ -4380,10 +4457,20 @@ pub async fn mega_df_query(profile_id: String) -> Result<(u64, u64), String> {
 /// Endpoint URL field can auto-fill instead of the user copying it from the
 /// MEGAcmd terminal (#215).
 #[tauri::command]
-pub async fn mega_webdav_url() -> Result<String, String> {
-    crate::providers::mega_df::mega_webdav_url_query()
-        .await
-        .map_err(|e| format!("{}", e))
+pub async fn mega_webdav_url(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    connect_token: Option<String>,
+) -> Result<String, String> {
+    // #360: this `mega-webdav /` blocks (up to its 30s timeout) when the MEGAcmd
+    // daemon is not running. The My Servers connect runs it as a preflight, so
+    // make it cancellable: an Esc / "still connecting" Cancel drops the future
+    // (which, with kill_on_drop, also tears down the blocked subprocess).
+    run_cancellable_connect(&cancel_registry, connect_token.as_deref(), async {
+        crate::providers::mega_df::mega_webdav_url_query()
+            .await
+            .map_err(|e| format!("{}", e))
+    })
+    .await
 }
 
 /// Get disk usage for a path in bytes
@@ -5016,6 +5103,10 @@ pub async fn provider_compare_directories(
 pub struct FourSharedAuthParams {
     pub consumer_key: String,
     pub consumer_secret: String,
+    /// #360: connect token for Esc / "still connecting" Cancel (see
+    /// `OAuthConnectionParams::connect_token`).
+    #[serde(default, alias = "connectToken")]
+    pub connect_token: Option<String>,
 }
 
 /// Result from starting 4shared OAuth flow
@@ -5142,10 +5233,23 @@ pub async fn fourshared_complete_auth(
 
 /// Full 4shared OAuth 1.0 flow: start server, open browser, wait for callback, exchange tokens
 #[tauri::command]
-pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String, String> {
+pub async fn fourshared_full_auth(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    params: FourSharedAuthParams,
+) -> Result<String, String> {
     use crate::providers::oauth1;
 
     info!("Starting full 4shared OAuth 1.0 flow");
+
+    // #360: register the connect token so Esc / Cancel can abort the callback wait.
+    let cancel_token = params
+        .connect_token
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = params
+        .connect_token
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -5184,14 +5288,23 @@ pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String
         port
     );
 
-    // Step 3: Wait for callback
-    let (token, verifier) = tokio::time::timeout(
-        tokio::time::Duration::from_secs(300),
-        wait_for_oauth1_callback(listener),
-    )
-    .await
-    .map_err(|_| "OAuth timeout: no response within 5 minutes".to_string())?
-    .map_err(|e| format!("Callback error: {}", e))?;
+    // Step 3: Wait for callback (cancellable via Esc / "still connecting", #360)
+    let (token, verifier) = tokio::select! {
+        res = tokio::time::timeout(
+            tokio::time::Duration::from_secs(300),
+            wait_for_oauth1_callback(listener),
+        ) => res
+            .map_err(|_| "OAuth timeout: no response within 5 minutes".to_string())?
+            .map_err(|e| format!("Callback error: {}", e))?,
+        _ = async {
+            match cancel_token.as_ref() {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => {
+            return Err(CONNECT_CANCELLED.to_string());
+        }
+    };
 
     if token != request_token {
         return Err("OAuth token mismatch: possible CSRF attack".to_string());
@@ -5422,12 +5535,14 @@ Connection: close
 #[tauri::command]
 pub async fn fourshared_connect(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: FourSharedAuthParams,
 ) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{types::FourSharedConfig, FourSharedProvider};
 
     info!("Connecting to 4shared...");
 
+    let connect_token = params.connect_token.clone();
     let (access_token, access_token_secret) = load_fourshared_tokens()?;
 
     let config = FourSharedConfig {
@@ -5438,10 +5553,14 @@ pub async fn fourshared_connect(
     };
 
     let mut provider = FourSharedProvider::new(config);
-    provider
-        .connect()
-        .await
-        .map_err(|e| format!("4shared connection failed: {}", e))?;
+    // #360: cancellable connect (Esc / "still connecting" Cancel).
+    run_cancellable_connect(&cancel_registry, connect_token.as_deref(), async {
+        provider
+            .connect()
+            .await
+            .map_err(|e| format!("4shared connection failed: {}", e))
+    })
+    .await?;
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
@@ -10342,7 +10461,7 @@ pub async fn b2_permanent_delete(
 #[cfg(test)]
 mod tests {
     use super::{
-        drain_in_flight_transfers, remote_matches_repo, ConnectTokenGuard,
+        drain_in_flight_transfers, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
         ConnectionCancelRegistry, ProviderConnectionParams, ProviderState, TransferOperationGuard,
         CONNECT_CANCELLED,
     };
@@ -10468,6 +10587,39 @@ mod tests {
             0,
             "guard must de-register the token on drop"
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_cancellable_connect_cancel_returns_marker() {
+        // #360: an in-flight connect phase (here a never-resolving future)
+        // aborts with CONNECT_CANCELLED once its token is cancelled, and the
+        // token is de-registered afterwards.
+        let registry = ConnectionCancelRegistry::new();
+        let key = "conn-helper-cancel";
+        let fut = run_cancellable_connect::<(), _>(&registry, Some(key), async {
+            std::future::pending::<Result<(), String>>().await
+        });
+        tokio::pin!(fut);
+        // Let the helper register + start polling, then cancel.
+        tokio::select! {
+            _ = &mut fut => panic!("future must not resolve before cancel"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert_eq!(registry.active_count(), 1);
+        assert!(registry.cancel(key));
+        assert_eq!(fut.await.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(registry.active_count(), 0, "guard must de-register on drop");
+    }
+
+    #[tokio::test]
+    async fn test_run_cancellable_connect_without_token_runs_to_completion() {
+        // No token: the future simply runs and its result passes through, with
+        // nothing registered (the OAuth/MEGAcmd opt-out path).
+        let registry = ConnectionCancelRegistry::new();
+        let outcome: Result<u32, String> =
+            run_cancellable_connect(&registry, None, async { Ok(42) }).await;
+        assert_eq!(outcome.unwrap(), 42);
+        assert_eq!(registry.active_count(), 0);
     }
 
     #[test]

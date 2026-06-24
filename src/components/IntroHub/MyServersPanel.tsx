@@ -16,6 +16,7 @@ import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureSt
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
+import { isConnectCancelledError } from '../../utils/connectCancel';
 import { ServerHealthCheck } from '../ServerHealthCheck';
 import { SpeedTestDialog } from '../SpeedTestDialog';
 import { AlertDialog } from '../Dialogs';
@@ -265,6 +266,12 @@ function wait(ms: number) {
 
 interface MyServersPanelProps {
     onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void | Promise<void>;
+    /** Run a connect phase under a cancel token so Esc / "still connecting"
+     *  Cancel aborts it. The OAuth / 4shared connects below dispatch their
+     *  backend invokes through this so Esc cancels them like the credential
+     *  providers already do (#360). Optional: when absent the invokes run
+     *  bare (non-cancellable), preserving the prior behavior. */
+    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>) => Promise<T>;
     onEdit: (profile: ServerProfile) => void;
     onQuickConnect: () => void;
     /** Jump to Discover tab pre-filtered on a specific category. */
@@ -304,6 +311,7 @@ const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: R
 
 export function MyServersPanel({
     onConnect,
+    cancellableConnect,
     onEdit,
     onQuickConnect,
     onJumpToCategory,
@@ -1006,22 +1014,31 @@ export function MyServersPanel({
                         try { region = await invoke<string>('get_credential', { account: `oauth_${server.protocol}_region` }); } catch { /* default */ }
                     }
                 }
-                const params = { provider: oauthProvider, client_id: credentials.clientId, client_secret: credentials.clientSecret, profile_id: server.id, ...(region && { region }) };
+                const baseParams = { provider: oauthProvider, client_id: credentials.clientId, client_secret: credentials.clientSecret, profile_id: server.id, ...(region && { region }) };
 
                 const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profileId: server.id });
-                if (!hasTokens) await invoke('oauth2_full_auth', { params });
 
-                let result: { display_name: string; account_email: string | null };
-                try {
-                    result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
-                } catch (connectErr) {
-                    const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
-                    const lower = errMsg.toLowerCase();
-                    if (lower.includes('token expired') || (lower.includes('token') && lower.includes('refresh')) || lower.includes('authentication failed') || (lower.includes('invalid') && lower.includes('access_token'))) {
-                        await invoke('oauth2_full_auth', { params });
-                        result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
-                    } else throw connectErr;
-                }
+                // #360: dispatch the OAuth auth + connect under a connect token
+                // (when available) so Esc / "still connecting" Cancel aborts the
+                // in-flight backend call, matching the credential providers.
+                const doOAuthConnect = async (connectToken?: string) => {
+                    const params = connectToken ? { ...baseParams, connect_token: connectToken } : baseParams;
+                    if (!hasTokens) await invoke('oauth2_full_auth', { params });
+                    try {
+                        return await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                    } catch (connectErr) {
+                        const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+                        const lower = errMsg.toLowerCase();
+                        if (lower.includes('token expired') || (lower.includes('token') && lower.includes('refresh')) || lower.includes('authentication failed') || (lower.includes('invalid') && lower.includes('access_token'))) {
+                            await invoke('oauth2_full_auth', { params });
+                            return await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                        }
+                        throw connectErr;
+                    }
+                };
+                const result = cancellableConnect
+                    ? await cancellableConnect(doOAuthConnect)
+                    : await doOAuthConnect();
 
                 // Yandex Disk doesn't expose account_email() from the backend
                 // (the username field is OAuth-config, not a profile email):
@@ -1039,7 +1056,9 @@ export function MyServersPanel({
 
                 await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
-                logger.error('OAuth connection failed', e);
+                // #360: a user cancel is not a failure (cancellableConnect already
+                // surfaced the calm toast); just clear the spinner below.
+                if (!isConnectCancelledError(e)) logger.error('OAuth connection failed', e);
             } finally {
                 setOauthConnecting(null);
                 setConnectingId(null);
@@ -1058,17 +1077,25 @@ export function MyServersPanel({
 
             setOauthConnecting(server.id);
             try {
-                const params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
                 const hasTokens = await invoke<boolean>('fourshared_has_tokens');
-                if (!hasTokens) await invoke('fourshared_full_auth', { params });
 
-                let result: { display_name: string; account_email: string | null };
-                try {
-                    result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
-                } catch {
-                    await invoke('fourshared_full_auth', { params });
-                    result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
-                }
+                // #360: run the 4shared auth + connect under a connect token so
+                // Esc / "still connecting" Cancel can abort the in-flight call.
+                const doFourSharedConnect = async (connectToken?: string) => {
+                    const params = connectToken
+                        ? { consumer_key: consumerKey, consumer_secret: consumerSecret, connect_token: connectToken }
+                        : { consumer_key: consumerKey, consumer_secret: consumerSecret };
+                    if (!hasTokens) await invoke('fourshared_full_auth', { params });
+                    try {
+                        return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                    } catch {
+                        await invoke('fourshared_full_auth', { params });
+                        return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                    }
+                };
+                const result = cancellableConnect
+                    ? await cancellableConnect(doFourSharedConnect)
+                    : await doFourSharedConnect();
 
                 const updatedUsername = result.account_email || server.username;
                 const connectedAt = new Date().toISOString();
@@ -1082,7 +1109,8 @@ export function MyServersPanel({
 
                 await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
-                logger.error('4shared connection failed', e);
+                // #360: a user cancel is not a failure (calm toast already shown).
+                if (!isConnectCancelledError(e)) logger.error('4shared connection failed', e);
             } finally {
                 setOauthConnecting(null);
                 setConnectingId(null);
@@ -1165,7 +1193,7 @@ export function MyServersPanel({
         } finally {
             setConnectingId(null);
         }
-    }, [servers, connectingId, onConnect, t]);
+    }, [servers, connectingId, onConnect, cancellableConnect, t]);
 
     const handleDuplicate = useCallback((server: ServerProfile) => {
         const dup: ServerProfile = {

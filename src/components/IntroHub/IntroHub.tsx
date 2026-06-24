@@ -40,6 +40,10 @@ export interface IntroHubProps {
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
     onConnect: (overrideParams?: ConnectionParams) => void;
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
+    /** Run a connect phase under a cancel token so Esc / "still connecting"
+     *  Cancel aborts it. Threaded down to the My Servers OAuth connect path,
+     *  which dispatches OAuth full-auth + connect itself (#360). */
+    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>) => Promise<T>;
     onSkipToFileManager: () => void;
     onAeroFile?: () => void;
     onAeroCloud?: () => void;
@@ -86,6 +90,7 @@ export function IntroHub(props: IntroHubProps) {
         onQuickConnectDirsChange,
         onConnect,
         onSavedServerConnect,
+        cancellableConnect,
         onSkipToFileManager,
         onAeroFile,
         onAeroCloud,
@@ -394,6 +399,7 @@ export function IntroHub(props: IntroHubProps) {
                 <div className={activeTab === 'my-servers' ? 'h-full' : 'hidden'}>
                     <MyServersPanel
                         onConnect={onSavedServerConnect}
+                        cancellableConnect={cancellableConnect}
                         onEdit={handleEdit}
                         onQuickConnect={handleNewConnection}
                         onJumpToCategory={handleJumpToCategory}

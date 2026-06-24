@@ -187,6 +187,7 @@ import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
+import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './utils/connectCancel';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -469,13 +470,8 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 // connect catch blocks match on it to surface a calm "connection cancelled"
 // flow instead of a "connection failed" error, and to skip the saved-server
 // connect-failure marker (a deliberate cancel is not a failure).
-const CONNECT_CANCELLED_MARKER = 'CONNECT_CANCELLED';
-
-function isConnectCancelledError(error: unknown): boolean {
-  if (error == null) return false;
-  if (error instanceof Error) return error.message.includes(CONNECT_CANCELLED_MARKER);
-  return String(error).includes(CONNECT_CANCELLED_MARKER);
-}
+// CONNECT_CANCELLED_MARKER / isConnectCancelledError now live in
+// ./utils/connectCancel so the My Servers OAuth path can share them (#360).
 
 // Generate a per-attempt connection token threaded to the backend connect
 // command and used by `cancel_connection` to abort that exact attempt. Prefer
@@ -1963,15 +1959,12 @@ interface UpdateVerificationInfo {
     }
   }, []);
 
-  // Central cancellable connect wrapper. Every connect invoke funnels through
-  // here so the token plumbing, Esc handling, still-connecting modal, and the
-  // cancelled-vs-failed toast distinction live in ONE place instead of nine
-  // ad-hoc try/catches. `command` picks the backend connect; `params` is the
-  // existing payload object, which we extend with the connect token.
-  const runConnect = useCallback(async <T,>(
-    command: 'provider_connect' | 'connect_ftp',
-    params: Record<string, unknown>,
-  ): Promise<T> => {
+  // Arm a fresh connect attempt: mint a token, register it as the live attempt
+  // so the Esc handler / "still connecting" Cancel can abort it, and start the
+  // still-connecting timer. Returns the token to thread to the backend. Pairs
+  // with `endConnectAttempt` in a finally so the ref never leaks (a leaked ref
+  // would keep Esc armed and let it cancel an unrelated later attempt).
+  const beginConnectAttempt = useCallback((): string => {
     const token = makeConnectToken();
     activeConnectTokenRef.current = token;
     connectCancelledRef.current = false;
@@ -1980,8 +1973,33 @@ interface UpdateVerificationInfo {
       // Only show the modal if this very attempt is still the live one.
       if (activeConnectTokenRef.current === token) setStillConnecting(true);
     }, STILL_CONNECTING_DELAY_MS);
+    return token;
+  }, []);
+
+  const endConnectAttempt = useCallback((token: string) => {
+    if (stillConnectingTimerRef.current) {
+      clearTimeout(stillConnectingTimerRef.current);
+      stillConnectingTimerRef.current = null;
+    }
+    if (activeConnectTokenRef.current === token) {
+      activeConnectTokenRef.current = null;
+      setStillConnecting(false);
+    }
+  }, []);
+
+  // Central cancellable connect wrapper. Every connect phase funnels through
+  // here so the token plumbing, Esc handling, still-connecting modal, and the
+  // cancelled-vs-failed toast distinction live in ONE place instead of ad-hoc
+  // try/catches. `run` receives the live connect token and threads it into
+  // whatever backend command(s) it invokes (#360: a single provider_connect, or
+  // the OAuth full-auth + connect pair, or the MEGAcmd URL preflight) so each
+  // one registers under it and a cancel reaches whichever phase is in flight.
+  const cancellableConnect = useCallback(async <T,>(
+    run: (connectToken: string) => Promise<T>,
+  ): Promise<T> => {
+    const token = beginConnectAttempt();
     try {
-      return await invoke<T>(command, { params: { ...params, connectToken: token } });
+      return await run(token);
     } catch (error) {
       // A user cancel surfaces a calm toast here (single point), then re-throws
       // so the connect flow's success path is aborted. The per-flow catch sees
@@ -1992,16 +2010,18 @@ interface UpdateVerificationInfo {
       }
       throw error;
     } finally {
-      if (stillConnectingTimerRef.current) {
-        clearTimeout(stillConnectingTimerRef.current);
-        stillConnectingTimerRef.current = null;
-      }
-      if (activeConnectTokenRef.current === token) {
-        activeConnectTokenRef.current = null;
-        setStillConnecting(false);
-      }
+      endConnectAttempt(token);
     }
-  }, [notify, t]);
+  }, [beginConnectAttempt, endConnectAttempt, notify, t]);
+
+  // Thin wrapper for the common single-invoke connect (`provider_connect` /
+  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
+  const runConnect = useCallback(<T,>(
+    command: 'provider_connect' | 'connect_ftp',
+    params: Record<string, unknown>,
+  ): Promise<T> => cancellableConnect<T>((token) =>
+    invoke<T>(command, { params: { ...params, connectToken: token } })
+  ), [cancellableConnect]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -5107,7 +5127,12 @@ interface UpdateVerificationInfo {
     // surfaces a clear error.
     if (effectiveParams.providerId === 'megacmd-webdav') {
       try {
-        const url = await invoke<string>('mega_webdav_url');
+        // #360: `mega-webdav /` blocks (up to its 30s timeout) when the MEGAcmd
+        // daemon is not running, and this preflight runs BEFORE runConnect's
+        // token is armed, so Esc could not abort it. Run it under a connect
+        // token so the backend honors a cancel and the Esc handler is live.
+        const url = await cancellableConnect<string>((connectToken) =>
+          invoke<string>('mega_webdav_url', { connectToken }));
         if (url) {
           let port = effectiveParams.port || 4443;
           try {
@@ -5123,7 +5148,10 @@ interface UpdateVerificationInfo {
             options: { ...(effectiveParams.options || {}), anonymous: true },
           };
         }
-      } catch {
+      } catch (e) {
+        // A user cancel (Esc) must abort the whole connect, not silently fall
+        // through to a connect against the saved endpoint (#360).
+        if (isConnectCancelledError(e)) throw e;
         // Bridge not reachable (MEGAcmd missing / not logged in): fall back to
         // the saved endpoint.
       }
@@ -14231,6 +14259,7 @@ interface UpdateVerificationInfo {
               onConnectionParamsChange={setConnectionParams}
               onQuickConnectDirsChange={setQuickConnectDirs}
               onConnect={connectToFtp}
+              cancellableConnect={cancellableConnect}
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
               sessionCount={sessions.length}
