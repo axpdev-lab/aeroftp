@@ -15573,15 +15573,24 @@ fn cmd_profile_add(
         "gitlab",
         "immich",
         "pixelunion",
-        "blomp",
     ];
-    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) {
+    // Dev-only providers: kept working in debug builds for development but
+    // hidden from the release CLI's allowlist and "Supported:" advertisement,
+    // mirroring the GUI's isDevOnlyProvider (import.meta.env.DEV) rule so the
+    // CLI does not surface providers the release intentionally hides.
+    const DEV_ONLY_PROTOCOLS: &[&str] = &["blomp"];
+    let dev_known = cfg!(debug_assertions) && DEV_ONLY_PROTOCOLS.contains(&proto_lower.as_str());
+    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) && !dev_known {
+        let mut supported: Vec<&str> = KNOWN_PROTOCOLS.to_vec();
+        if cfg!(debug_assertions) {
+            supported.extend_from_slice(DEV_ONLY_PROTOCOLS);
+        }
         print_error(
             format,
             &format!(
                 "Unknown protocol '{}'. Supported: {}",
                 protocol,
-                KNOWN_PROTOCOLS.join(", ")
+                supported.join(", ")
             ),
             5,
         );
@@ -17729,7 +17738,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
     profile_protocols_seen.sort();
     profile_protocols_seen.dedup();
 
-    let info = serde_json::json!({
+    let mut info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "description": "AeroFTP CLI - multi-protocol file transfer with encrypted vault profiles",
         "usage": "aeroftp-cli <command> --profile \"Server Name\" [args]",
@@ -17897,6 +17906,19 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "aeroftp-cli profiles --json"
         ]
     });
+
+    // Hide dev-only providers from the release capability catalog, mirroring the
+    // GUI's isDevOnlyProvider rule; kept in debug builds for development. Using
+    // `cfg!` (not a `#[cfg]` attribute) keeps the mutable borrow in the AST in
+    // every build so `mut info` never reads as unused.
+    if !cfg!(debug_assertions) {
+        if let Some(features) = info
+            .get_mut("protocol_features")
+            .and_then(|v| v.as_object_mut())
+        {
+            features.remove("googlephotos");
+        }
+    }
 
     println!(
         "{}",

@@ -972,7 +972,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
 // ============ Export to rclone.conf ============
 
 /// A server profile to export as rclone remote.
-#[derive(serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcloneExportServer {
     pub name: String,
@@ -1063,6 +1063,36 @@ fn endpoint_is_loopback(endpoint: &str) -> bool {
 
 /// Export server profiles to rclone.conf INI format.
 /// Passwords are obscured using rclone's AES-256-CTR scheme for compatibility.
+/// Strip CR/LF from a value bound for an rclone INI `key = value` line.
+///
+/// rclone's INI does not support multi-line values for these keys, so a profile
+/// field containing a newline could otherwise inject a second `[section]` into
+/// the generated `rclone.conf` (e.g. a host of `h\n[evil]\ntype = local`).
+/// Stripping is loss-free for any value rclone could actually load and closes
+/// the injection vector for the bridge import -> re-export round-trip.
+fn ini_value(s: &str) -> String {
+    s.replace(['\r', '\n'], "")
+}
+
+/// Return a copy of `server` with every free-text field (host, username, and
+/// each string value in `options`) stripped of CR/LF, so the rest of the export
+/// can write them verbatim without risk of `[section]` forgery. The remote name
+/// is handled separately by `sanitize_rclone_remote_name`; secrets pulled from
+/// the password map are wrapped with `ini_value` at their write sites.
+fn sanitize_export_server(server: &RcloneExportServer) -> RcloneExportServer {
+    let mut out = server.clone();
+    out.host = ini_value(&server.host);
+    out.username = ini_value(&server.username);
+    if let Some(serde_json::Value::Object(map)) = out.options.as_mut() {
+        for value in map.values_mut() {
+            if let serde_json::Value::String(s) = value {
+                *s = ini_value(s);
+            }
+        }
+    }
+    out
+}
+
 pub fn export_rclone(
     servers: &[RcloneExportServer],
     passwords: &HashMap<String, String>,
@@ -1078,6 +1108,10 @@ pub fn export_rclone(
     let mut exported = 0;
 
     for server in servers {
+        // INI value safety: clean every free-text field before it is written so
+        // a crafted host/username/option can never forge a new [section].
+        let server = sanitize_export_server(server);
+        let server = &server;
         let proto = server.protocol.as_deref().unwrap_or("ftp");
         let options = server.options.as_ref();
         let password = passwords.get(&server.name);
@@ -1204,7 +1238,7 @@ pub fn export_rclone(
                     // `AWS4-HMAC-SHA256` signature mismatch on every
                     // request because rclone hashes the obscured string
                     // verbatim instead of reversing it first.
-                    output.push_str(&format!("secret_access_key = {}\n", pw));
+                    output.push_str(&format!("secret_access_key = {}\n", ini_value(pw)));
                 }
                 let mut pinned_bucket: Option<String> = None;
                 let mut endpoint_from_opts: Option<String> = None;
@@ -1421,7 +1455,7 @@ pub fn export_rclone(
                     // (base64). rclone's azureblob backend does NOT mark
                     // this field as `IsPassword: true`, so it must be
                     // emitted plain (same reasoning as S3 secret_access_key).
-                    output.push_str(&format!("key = {}\n", pw));
+                    output.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
@@ -1439,7 +1473,7 @@ pub fn export_rclone(
                     // reasoning as S3 secret_access_key and Azure key). Emitting
                     // an obscured value makes rclone send the obscured string as
                     // the password, which fails authentication.
-                    output.push_str(&format!("key = {}\n", pw));
+                    output.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
                     if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
@@ -1496,7 +1530,7 @@ pub fn export_rclone(
                             .filter(|s| !s.is_empty())
                             .unwrap_or(&server.username);
                         if !user.is_empty() {
-                            output.push_str(&format!("user = {}\n", user));
+                            output.push_str(&format!("user = {}\n", ini_value(user)));
                         }
                         if !refresh.is_empty() {
                             // rclone's jottacloud backend expects a full
@@ -1516,7 +1550,7 @@ pub fn export_rclone(
                             output.push_str(&format!("token = {}\n", token));
                         }
                         if !endpoint.is_empty() {
-                            output.push_str(&format!("token_endpoint = {}\n", endpoint));
+                            output.push_str(&format!("token_endpoint = {}\n", ini_value(endpoint)));
                         }
                         // rclone refuses a jottacloud remote without a known
                         // config schema version ("outdated config - please
@@ -2396,6 +2430,55 @@ user = t
         assert!(
             !conf.contains("no_check_certificate"),
             "public endpoint must keep cert verification:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_rejects_ini_section_injection() {
+        // A profile whose host/username/options carry CR/LF must not be able to
+        // forge a second [section] in the generated rclone.conf.
+        let servers = vec![RcloneExportServer {
+            name: "victim".to_string(),
+            host: "h\n[evil]\ntype = local".to_string(),
+            port: 21,
+            username: "u\r\n[evil2]\ntype = local".to_string(),
+            protocol: Some("ftp".to_string()),
+            options: Some(serde_json::json!({ "bucket": "b\n[evil3]\ntype = local" })),
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("victim".to_string(), "p\n[evil4]\ntype = local".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-ini-injection.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        // The injected text may survive as an inline substring of a value line
+        // (e.g. `host = h[evil]type = local`), which is harmless; what must NOT
+        // happen is a forged section header or backend line of its own. Check
+        // line-anchored.
+        for line in conf.lines() {
+            let t = line.trim();
+            assert!(
+                !t.starts_with("[evil"),
+                "forged section header must not be its own line: {line:?}\n{conf}"
+            );
+            assert_ne!(
+                t, "type = local",
+                "forged backend line must not appear: {line:?}\n{conf}"
+            );
+        }
+        // Exactly one real section header for the single exported remote.
+        let headers: Vec<&str> = conf
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with('[') && l.ends_with(']'))
+            .collect();
+        assert_eq!(
+            headers,
+            ["[victim]"],
+            "exactly one real section header expected:\n{conf}"
         );
     }
 }
