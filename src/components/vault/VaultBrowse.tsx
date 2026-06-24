@@ -128,10 +128,10 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <FolderPlus size={14} /> {t('vault.newFolder')}
                     </button>
                 )}
-                {(state.vaultSecurity?.version === 3 || isZip) && state.entries.length > 0 && (
+                {((state.vaultSecurity && state.vaultSecurity.version >= 2) || isZip) && state.entries.length > 0 && (
                     <SaveAllMenu disabled={state.loading} onExport={state.handleSaveAll} />
                 )}
-                {(state.vaultSecurity?.version === 3 || isZip) && (
+                {((state.vaultSecurity && state.vaultSecurity.version >= 2) || isZip) && (
                     <MountVaultButton
                         kind="aerovault"
                         vaultKey={state.vaultPath}

@@ -349,7 +349,7 @@ fn is_aerovz_product_path(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn ensure_aerovz_product_path(path: &str) -> Result<(), String> {
+pub(crate) fn ensure_aerovz_product_path(path: &str) -> Result<(), String> {
     if is_aerovz_product_path(path) {
         Ok(())
     } else {
@@ -908,17 +908,36 @@ pub(crate) fn create_aerozip_from_dir(
     })
 }
 
-/// Open a v3 container (encrypted `.aerovault` with a password, or plaintext
-/// `.aerozip` without) and wrap it in a [`VaultV3Readable`] for the read-only
-/// mount (Deliverable B, #322). The crate reads whole-file today, so the adapter
-/// keeps `supports_seek() == false`; the mount serves large files through a
-/// first-access plaintext temp cache instead of re-reading per `read`.
+/// Open an `.aerovault`/`.aerozip` container and wrap it in a
+/// [`crate::readable_vault::ReadableVault`] for the read-only mount (Deliverable
+/// B, #322). The container format is detected so the SAME mount path serves a v3
+/// vault, a plaintext `.aerozip`, or a legacy v2/v1 `.aerovault`:
+/// - no password -> the plaintext `.aerozip` lane (v3 plaintext);
+/// - a password + a v3 header -> the encrypted v3 vault;
+/// - a password + a non-v3 header -> the v2/v1 [`crate::aerovault_v2::VaultV2Readable`].
+///
+/// Every backend the crate exposes reads whole-file today, so the adapters keep
+/// `supports_seek() == false`; the mount serves large files through a first-access
+/// plaintext temp cache instead of re-reading per `read`.
 pub fn open_aerovault_for_mount(
     vault_path: &str,
     password: Option<&str>,
-) -> Result<VaultV3Readable, String> {
-    let vault = open_v3_for_read(vault_path, password)?;
-    Ok(VaultV3Readable { vault })
+) -> Result<Box<dyn crate::readable_vault::ReadableVault>, String> {
+    match password {
+        // Plaintext `.aerozip` lane (no decryption key).
+        None => {
+            let vault = open_aerovz_archive(Path::new(vault_path))?;
+            Ok(Box::new(VaultV3Readable { vault }))
+        }
+        Some(pw) if aerovault::v3::VaultV3::is_vault_v3(vault_path) => {
+            let vault = aerovault::v3::VaultV3::open(vault_path, pw)?;
+            Ok(Box::new(VaultV3Readable { vault }))
+        }
+        // A password on a non-v3 header: the legacy v2 (or v1) container.
+        Some(pw) => Ok(Box::new(crate::aerovault_v2::VaultV2Readable::open(
+            vault_path, pw,
+        )?)),
+    }
 }
 
 /// Open a v3 container for reading: encrypted `.aerovault` when a password is

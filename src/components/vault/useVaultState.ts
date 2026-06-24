@@ -1489,16 +1489,20 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         setLoading(true);
         try {
-            const count = isPlaintextZip
-                ? await invoke<number>('aerovz_extract_all', {
-                    vaultPath,
-                    destPath,
-                })
-                : await invoke<number>('vault_v3_extract_all', {
+            let count: number;
+            if (isPlaintextZip) {
+                count = await invoke<number>('aerovz_extract_all', { vaultPath, destPath });
+            } else if (vaultSecurity?.version === 2) {
+                // v2 returns { extracted, dest } (the crate names the param `destDir`).
+                const res = await invoke<{ extracted: number }>('vault_v2_extract_all', {
                     vaultPath,
                     password,
-                    destPath,
+                    destDir: destPath,
                 });
+                count = res.extracted;
+            } else {
+                count = await invoke<number>('vault_v3_extract_all', { vaultPath, password, destPath });
+            }
             setSuccess(t('vault.extractedAll', { count: String(count), path: destPath }));
         } catch (e) {
             setError(mapVaultError(e, t));
@@ -1527,7 +1531,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         try {
             const report = isPlaintextZip
                 ? await invoke<{ files: number; dirs: number; skipped: string[] }>('aerovz_save_all', { vaultPath, destPath, target })
-                : await invoke<{ files: number; dirs: number; skipped: string[] }>('vault_v3_save_all', { vaultPath, password, destPath, target });
+                : vaultSecurity?.version === 2
+                    ? await invoke<{ files: number; dirs: number; skipped: string[] }>('vault_v2_save_all', { vaultPath, password, destPath, target })
+                    : await invoke<{ files: number; dirs: number; skipped: string[] }>('vault_v3_save_all', { vaultPath, password, destPath, target });
             const skippedNote = report.skipped.length ? ` ${t('saveAll.skipped', { count: String(report.skipped.length) })}` : '';
             setSuccess(`${t('saveAll.done', { count: String(report.files), path: destPath })}${skippedNote}`);
         } catch (e) {

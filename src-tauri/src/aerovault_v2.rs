@@ -334,6 +334,122 @@ pub async fn vault_v2_extract_all(
     }))
 }
 
+// ─── AeroMount read-only mount + Save-All for v2 (#322, Ehud idea #1) ─────────
+
+/// Read-only adapter exposing an opened v2 (or legacy v1) `aerovault::Vault`
+/// through the shared [`crate::readable_vault::ReadableVault`] trait, so a v2
+/// `.aerovault` mounts and exports through the SAME `VaultStorageProvider` and
+/// Save-All exporters as v3 (Deliverable B). The crate's v2 engine has no
+/// seekable range read, so `supports_seek()` keeps the default `false` and the
+/// mount serves large files through its first-access plaintext temp cache.
+/// `read_file` extracts one entry into an auto-removed temp dir (the crate writes
+/// each entry under its basename there) then streams it into the sink.
+pub struct VaultV2Readable {
+    vault: Vault,
+}
+
+impl VaultV2Readable {
+    /// Open an encrypted v2 (or v1) `.aerovault` for read-only access.
+    pub fn open(vault_path: &str, password: &str) -> Result<Self, String> {
+        let vault = Vault::open(vault_path, password).map_err(|e| e.to_string())?;
+        Ok(Self { vault })
+    }
+}
+
+impl crate::readable_vault::ReadableVault for VaultV2Readable {
+    fn walk(&self) -> Result<Vec<crate::readable_vault::ReadableEntry>, String> {
+        let entries = self.vault.list().map_err(|e| e.to_string())?;
+        Ok(entries
+            .iter()
+            .map(|e| crate::readable_vault::ReadableEntry {
+                rel_path: e.name.clone(),
+                is_dir: e.is_dir,
+                size: e.size,
+                handle: String::new(),
+            })
+            .collect())
+    }
+
+    fn read_file(
+        &self,
+        entry: &crate::readable_vault::ReadableEntry,
+        sink: &mut dyn std::io::Write,
+    ) -> Result<(), String> {
+        let tmp_dir = tempfile::Builder::new()
+            .prefix(".aerovault-v2-export-")
+            .tempdir()
+            .map_err(|e| format!("temp dir: {e}"))?;
+        // The crate writes the entry under its basename inside `tmp_dir` and
+        // returns the produced path; stream that back into the sink.
+        let extracted = self
+            .vault
+            .extract(&entry.rel_path, tmp_dir.path())
+            .map_err(|e| e.to_string())?;
+        let mut f =
+            std::fs::File::open(&extracted).map_err(|e| format!("reopen extracted entry: {e}"))?;
+        std::io::copy(&mut f, sink).map_err(|e| format!("stream extracted entry: {e}"))?;
+        Ok(())
+    }
+}
+
+/// Save-All for an encrypted v2 `.aerovault` (#322, Ehud idea #1): export the
+/// whole decrypted tree to a single `.zip` or `.aerozip`. `folder` keeps using
+/// the existing `vault_v2_extract_all`. SECURITY: writes PLAINTEXT to `dest_path`.
+#[tauri::command]
+pub async fn vault_v2_save_all(
+    vault_path: String,
+    password: String,
+    dest_path: String,
+    target: String,
+    app: tauri::AppHandle,
+) -> Result<crate::readable_vault::ExportReport, String> {
+    crate::filesystem::validate_path(&dest_path)?;
+    match target.as_str() {
+        "zip" => tokio::task::spawn_blocking(
+            move || -> Result<crate::readable_vault::ExportReport, String> {
+                let adapter = VaultV2Readable::open(&vault_path, &password)?;
+                let mut emit = crate::aerovault_v3::vault_extract_progress_emitter(app);
+                crate::readable_vault::export_to_zip(
+                    &adapter,
+                    std::path::Path::new(&dest_path),
+                    &mut emit,
+                )
+            },
+        )
+        .await
+        .map_err(|e| format!("zip export task failed: {e}"))?,
+        "aerozip" => {
+            crate::aerovault_v3::ensure_aerovz_product_path(&dest_path)?;
+            let _ = &app; // the single packing call has no incremental progress
+            tokio::task::spawn_blocking(
+                move || -> Result<crate::readable_vault::ExportReport, String> {
+                    let scratch = tempfile::Builder::new()
+                        .prefix(".aerovault-saveall-")
+                        .tempdir()
+                        .map_err(|e| format!("Create scratch dir: {e}"))?;
+                    {
+                        let vault =
+                            Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
+                        extract_all_v2_tree(&vault, scratch.path())?;
+                    }
+                    let (files, dirs) = crate::aerovault_v3::create_aerozip_from_dir(
+                        scratch.path(),
+                        std::path::Path::new(&dest_path),
+                    )?;
+                    Ok(crate::readable_vault::ExportReport {
+                        files: files as u64,
+                        dirs: dirs as u64,
+                        skipped: Vec::new(),
+                    })
+                },
+            )
+            .await
+            .map_err(|e| format!("aerozip export task failed: {e}"))?
+        }
+        other => Err(format!("Unknown save-all target: {other}")),
+    }
+}
+
 /// Create a directory inside a vault
 #[tauri::command]
 pub async fn vault_v2_create_directory(
@@ -1514,6 +1630,50 @@ mod tests {
             snap.get("d1/x.txt").unwrap(),
             snap.get("d2/x.txt").unwrap(),
             "duplicate basenames collapsed via core path"
+        );
+    }
+
+    /// AeroMount (#322): the v2 `ReadableVault` adapter must walk the full tree and
+    /// stream each file byte-identical, including the worst cases (duplicate
+    /// basenames across dirs, deep nesting, a multi-chunk file, an empty file, an
+    /// empty dir, unicode). This is the seam the read-only mount and Save-All ride.
+    #[test]
+    fn v2_readable_adapter_walks_and_reads_byte_identical() {
+        use crate::readable_vault::ReadableVault;
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("mountme.aerovault");
+        let scratch = dir.path().join("scratch");
+        fs::create_dir_all(&scratch).unwrap();
+        let pw = "v2-readable-pw-123456";
+        let (dirs, files) = stress_tree();
+        build_v2_vault(&vault, pw, false, &dirs, &files, &scratch);
+
+        let adapter = super::VaultV2Readable::open(&vault.to_string_lossy(), pw).unwrap();
+        let entries = adapter.walk().unwrap();
+
+        for (rel, bytes) in &files {
+            let e = entries
+                .iter()
+                .find(|e| e.rel_path == *rel && !e.is_dir)
+                .unwrap_or_else(|| panic!("walk missing file '{rel}'"));
+            assert_eq!(e.size, bytes.len() as u64, "size mismatch for '{rel}'");
+            let mut buf = Vec::new();
+            adapter.read_file(e, &mut buf).unwrap();
+            assert_eq!(&buf, bytes, "content mismatch for '{rel}'");
+        }
+        // Duplicate basenames across directories stay distinct (the v2 data-loss trap).
+        let d1x = entries.iter().find(|e| e.rel_path == "d1/x.txt").unwrap();
+        let d2x = entries.iter().find(|e| e.rel_path == "d2/x.txt").unwrap();
+        let (mut b1, mut b2) = (Vec::new(), Vec::new());
+        adapter.read_file(d1x, &mut b1).unwrap();
+        adapter.read_file(d2x, &mut b2).unwrap();
+        assert_ne!(b1, b2, "adapter collapsed duplicate basenames: data loss");
+        // Directory entries (incl. empty ones) are surfaced for the mount tree.
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.is_dir && e.rel_path == "empty_dir"),
+            "walk dropped an empty directory"
         );
     }
 }

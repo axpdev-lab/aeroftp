@@ -38202,13 +38202,11 @@ mod fuse_mount {
                     } else {
                         Some(password.as_str())
                     };
+                    // Detects v3 / plaintext `.aerozip` / legacy v2 internally and
+                    // returns the right boxed `ReadableVault` for each.
                     let readable =
                         ftp_client_gui_lib::aerovault_v3::open_aerovault_for_mount(vault_path, pw)?;
-                    (
-                        Box::new(readable)
-                            as Box<dyn ftp_client_gui_lib::readable_vault::ReadableVault>,
-                        "AeroVault",
-                    )
+                    (readable, "AeroVault")
                 }
                 other => return Err(format!("Unknown vault kind: {other}")),
             };

@@ -16705,6 +16705,7 @@ pub fn run() {
             aerovault_v2::vault_v2_add_files,
             aerovault_v2::vault_v2_extract_entry,
             aerovault_v2::vault_v2_extract_all,
+            aerovault_v2::vault_v2_save_all,
             aerovault_v2::vault_v2_change_password,
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
