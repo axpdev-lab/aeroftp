@@ -383,7 +383,6 @@ import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
-import { OverlayIcon } from './components/icons/OverlayIcon';
 import { DecryptingText } from './components/DecryptingText';
 import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
@@ -12676,12 +12675,12 @@ interface UpdateVerificationInfo {
       ...(providerSupportsCryptOverlay(currentProtocol) && !aeroCryptVaultId && !rcloneCryptVaultId ? [
         {
           label: `${t('aerocryptNative.title')} (${t('aerocryptNative.recommended')})`,
-          icon: <OverlayIcon size={14} className="text-emerald-500" />,
+          icon: <Lock size={14} className="text-emerald-500" />,
           action: () => setShowAeroCryptUnlock(true),
         } as ContextMenuItem,
         {
           label: t('aerocrypt.title'),
-          icon: <OverlayIcon size={14} className="text-blue-500" />,
+          icon: <Lock size={14} className="text-blue-500" />,
           action: () => setShowRcloneCryptUnlock(true),
           divider: true,
         } as ContextMenuItem,
@@ -14968,7 +14967,7 @@ interface UpdateVerificationInfo {
                           title={title}
                           aria-label={title}
                         >
-                          <OverlayIcon size={11} className={iconCls} />
+                          <Lock size={11} className={iconCls} />
                           {label}
                         </button>
                       );

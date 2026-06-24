@@ -2,7 +2,6 @@ import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
-import { OverlayIcon } from '../icons/OverlayIcon';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
 import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
@@ -227,7 +226,7 @@ export function ServerBadges({ server, cryptDetailed = false }: { server: Server
                     className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 whitespace-nowrap ${cryptTint}`}
                     title={identityTitle}
                 >
-                    <OverlayIcon size={10} />
+                    <Lock size={10} />
                     {cryptIsRclone ? t('introHub.cryptBadge.rclone') : t('introHub.cryptBadge.aerocrypt')}
                 </span>
                 {cryptDetailed && (

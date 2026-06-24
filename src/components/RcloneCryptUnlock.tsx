@@ -5,7 +5,6 @@ import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Lock, Unlock, Loader2, X, Download, FileText, Folder, FolderUp, Upload } from 'lucide-react';
-import { OverlayIcon } from './icons/OverlayIcon';
 import { useTranslation } from '../i18n';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { PasswordInput } from './common/PasswordInput';
@@ -283,7 +282,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
-                        <OverlayIcon size={20} className="text-gray-600 dark:text-gray-300" />
+                        <Lock size={20} className="text-gray-600 dark:text-gray-300" />
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                             {t('aerocrypt.title')}
                         </h2>
