@@ -147,8 +147,8 @@ export function MyServersSidebar({
                     <div
                         key={group.id}
                         draggable
-                        onDragStart={() => setDragGroupId(group.id)}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverGroupId(group.id); }}
+                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', group.id); e.dataTransfer.effectAllowed = 'move'; setDragGroupId(group.id); }}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverGroupId(group.id); }}
                         onDrop={(e) => { e.preventDefault(); handleGroupDrop(group.id); }}
                         onDragEnd={() => { setDragGroupId(null); setDragOverGroupId(null); }}
                         className={dragOverGroupId === group.id && dragGroupId !== group.id ? 'rounded-lg ring-2 ring-emerald-400' : undefined}
@@ -278,8 +278,8 @@ export function MyServersSidebar({
                         <button
                             key={group.id}
                             draggable
-                            onDragStart={() => setDragGroupId(group.id)}
-                            onDragOver={(e) => { e.preventDefault(); setDragOverGroupId(group.id); }}
+                            onDragStart={(e) => { e.dataTransfer.setData('text/plain', group.id); e.dataTransfer.effectAllowed = 'move'; setDragGroupId(group.id); }}
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverGroupId(group.id); }}
                             onDrop={(e) => { e.preventDefault(); handleGroupDrop(group.id); }}
                             onDragEnd={() => { setDragGroupId(null); setDragOverGroupId(null); }}
                             onClick={() => onGroupSelect(group.id)}

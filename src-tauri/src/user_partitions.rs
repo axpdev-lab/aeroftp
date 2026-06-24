@@ -59,6 +59,13 @@ pub struct UserMetadata {
     /// install upgraded to MU keeps full control over the new account
     /// surface. There must always be at least one admin in the table.
     pub is_admin: bool,
+    /// Default / favourite user: the account auto-unlocked on launch (a
+    /// single-winner flag, so at most one user is default at a time). Set from
+    /// the CLI `users -i` Fav verb or the GUI Manage Users star, and honoured by
+    /// the boot account selection (`decideBootAccountAction`). Only password-free
+    /// accounts can be default, since a protected account always shows its
+    /// prompt rather than auto-unlocking. Per Ehud #311 (D1).
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,12 +198,52 @@ fn ensure_users_is_admin_column(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Idempotent migration adding the `is_default` column to an existing `users`
+/// table. The default/favourite user is the account auto-unlocked on launch
+/// (CLI `users -i` Fav, GUI Manage Users star); it is a single-winner flag, so
+/// no user starts as default after the migration (the GUI/CLI set it on
+/// demand). Mirrors [`ensure_users_is_admin_column`]: a no-op on fresh installs
+/// (the CREATE TABLE below already carries the column) and on already-migrated
+/// databases. Per Ehud #311 (D1).
+fn ensure_users_is_default_column(conn: &Connection) -> Result<(), String> {
+    let mut stmt = match conn.prepare("PRAGMA table_info(users)") {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let mut rows = match stmt.query([]) {
+        Ok(r) => r,
+        Err(_) => return Ok(()),
+    };
+    let mut table_exists = false;
+    let mut has_is_default = false;
+    while let Some(row) = rows
+        .next()
+        .map_err(|e| format!("ensure_users_is_default_column row: {e}"))?
+    {
+        table_exists = true;
+        let name: String = row.get(1).map_err(|e| format!("read column name: {e}"))?;
+        if name == "is_default" {
+            has_is_default = true;
+            break;
+        }
+    }
+    if table_exists && !has_is_default {
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("ALTER TABLE users ADD is_default: {e}"))?;
+    }
+    Ok(())
+}
+
 pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
     // Idempotent schema migration: if a pre-v3 `users` table already exists
     // without the is_admin column, add it before CREATE TABLE IF NOT EXISTS
     // becomes a no-op. Safe to run on fresh installs (PRAGMA returns 0 rows
     // until CREATE TABLE runs, so the check just skips).
     ensure_users_is_admin_column(conn)?;
+    ensure_users_is_default_column(conn)?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -218,6 +265,7 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              updated_at        INTEGER NOT NULL,
              last_unlocked_at  INTEGER,
              is_admin          INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
+             is_default        INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
              CHECK (
                  (has_passphrase = 0 AND kdf_salt IS NULL AND kdf_params IS NULL)
                  OR
@@ -959,7 +1007,7 @@ pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, name, avatar_emoji, avatar_color, has_passphrase, sort_order,
-                    created_at, updated_at, last_unlocked_at, is_admin
+                    created_at, updated_at, last_unlocked_at, is_admin, is_default
              FROM users
              ORDER BY sort_order ASC, name_canonical ASC",
         )
@@ -969,6 +1017,7 @@ pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
             let id: i64 = row.get(0)?;
             let has_passphrase: i64 = row.get(4)?;
             let is_admin: i64 = row.get(9)?;
+            let is_default: i64 = row.get(10)?;
             Ok(UserMetadata {
                 id,
                 name: row.get(1)?,
@@ -981,6 +1030,7 @@ pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
                 last_unlocked_at: row.get(8)?,
                 is_active: active == Some(id),
                 is_admin: is_admin != 0,
+                is_default: is_default != 0,
             })
         })
         .map_err(|e| format!("Query list users: {e}"))?;
@@ -2452,6 +2502,9 @@ pub fn create_user(
         // Promotion to admin is an explicit action via
         // user_partitions_set_admin, gated on the caller being admin.
         is_admin: false,
+        // A freshly created user is never the default/favourite account; the
+        // flag is set on demand via user_partitions_set_default_user.
+        is_default: false,
     })
 }
 
@@ -3037,6 +3090,69 @@ pub fn reorder_users(conn: &mut Connection, user_ids: &[i64]) -> Result<(), Stri
     Ok(())
 }
 
+/// Set or clear the default / favourite user (the account auto-unlocked on
+/// launch). Single-winner: when `make_default` is true the flag is cleared on
+/// every other user first, so at most one default exists; when false only the
+/// target row is cleared. The default is the auto-unlock account, so it must be
+/// password-free (a protected account always shows its prompt): marking a
+/// passphrase-protected user returns `DEFAULT_REQUIRES_NO_PASSPHRASE`. Shared by
+/// the GUI Manage Users star and the CLI `users -i` Fav verb. Per Ehud #311.
+pub fn set_default_user(
+    conn: &mut Connection,
+    user_id: i64,
+    make_default: bool,
+) -> Result<(), String> {
+    if make_default {
+        let has_passphrase: Option<i64> = conn
+            .query_row(
+                "SELECT has_passphrase FROM users WHERE id = ?1",
+                params![user_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Read user has_passphrase: {e}"))?;
+        match has_passphrase {
+            None => return Err("USER_NOT_FOUND".to_string()),
+            Some(flag) if flag != 0 => return Err("DEFAULT_REQUIRES_NO_PASSPHRASE".to_string()),
+            Some(_) => {}
+        }
+    }
+    let now = now_ms();
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start set default user: {e}"))?;
+    if make_default {
+        // Single-winner: drop the flag everywhere, then stamp the target.
+        tx.execute(
+            "UPDATE users SET is_default = 0, updated_at = ?1 WHERE is_default = 1",
+            params![now],
+        )
+        .map_err(|e| format!("Clear previous default user: {e}"))?;
+        let changed = tx
+            .execute(
+                "UPDATE users SET is_default = 1, updated_at = ?1 WHERE id = ?2",
+                params![now, user_id],
+            )
+            .map_err(|e| format!("Set default user: {e}"))?;
+        if changed == 0 {
+            return Err("USER_NOT_FOUND".to_string());
+        }
+    } else {
+        let changed = tx
+            .execute(
+                "UPDATE users SET is_default = 0, updated_at = ?1 WHERE id = ?2",
+                params![now, user_id],
+            )
+            .map_err(|e| format!("Clear default user: {e}"))?;
+        if changed == 0 {
+            return Err("USER_NOT_FOUND".to_string());
+        }
+    }
+    tx.commit()
+        .map_err(|e| format!("Commit set default user: {e}"))?;
+    Ok(())
+}
+
 pub fn delete_user(conn: &mut Connection, user_id: i64) -> Result<(), String> {
     if active_user_id(conn)? == Some(user_id) {
         clear_user_session();
@@ -3302,6 +3418,19 @@ pub fn cli_delete_user(store: &CredentialStore, user_id: i64) -> Result<(), Stri
     init_or_migrate_cli(store)?;
     let mut conn = open_or_init_cli()?;
     delete_user(&mut conn, user_id)
+}
+
+/// CLI front-end for [`set_default_user`]: mark (or clear) the default /
+/// favourite user that auto-unlocks on launch. Shared vault, so the flag
+/// round-trips with the GUI Manage Users star. Per Ehud #311 (D1).
+pub fn cli_set_default_user(
+    store: &CredentialStore,
+    user_id: i64,
+    make_default: bool,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    set_default_user(&mut conn, user_id, make_default)
 }
 
 pub fn cli_storage_stats(store: &CredentialStore) -> Result<Vec<UserStorageStats>, String> {
@@ -4163,6 +4292,22 @@ pub async fn user_partitions_set_admin(
     init_or_migrate(&app)?;
     let mut conn = open_or_init(&app)?;
     set_user_admin(&mut conn, user_id, is_admin)
+}
+
+/// Mark (or clear) the default / favourite user auto-unlocked on launch. Stored
+/// in the shared user-partitions DB so it round-trips with the CLI `users -i`
+/// Fav verb (no longer browser-local localStorage). Self-or-admin, matching the
+/// other Manage Users mutations. Per Ehud #311 (D1).
+#[tauri::command]
+pub async fn user_partitions_set_default_user(
+    app: AppHandle,
+    user_id: i64,
+    is_default: bool,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let mut conn = open_or_init(&app)?;
+    ensure_user_can_modify(&conn, user_id)?;
+    set_default_user(&mut conn, user_id, is_default)
 }
 
 #[tauri::command]
@@ -5453,6 +5598,73 @@ mod tests {
         assert_eq!(
             set_user_admin(&mut conn, default.id, false),
             Err("CANNOT_DEMOTE_LAST_ADMIN".to_string())
+        );
+    }
+
+    #[test]
+    fn set_default_user_is_single_winner_and_passphrase_gated() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+        let bob = create_user(
+            &mut conn,
+            &root,
+            "bob",
+            Some("B"),
+            Some("#6366f1"),
+            Some("correct horse battery staple"),
+        )
+        .expect("bob");
+
+        let is_default = |conn: &Connection, id: i64| -> bool {
+            list_users(conn)
+                .expect("list")
+                .into_iter()
+                .find(|u| u.id == id)
+                .expect("user")
+                .is_default
+        };
+
+        // No user is default after migration.
+        assert!(!is_default(&conn, default.id));
+        assert!(!is_default(&conn, alice.id));
+
+        // Mark the migration default.
+        set_default_user(&mut conn, default.id, true).expect("set default");
+        assert!(is_default(&conn, default.id));
+
+        // Single-winner: marking alice clears the previous default.
+        set_default_user(&mut conn, alice.id, true).expect("set alice default");
+        assert!(is_default(&conn, alice.id));
+        assert!(!is_default(&conn, default.id));
+        assert_eq!(
+            list_users(&conn)
+                .expect("list")
+                .iter()
+                .filter(|u| u.is_default)
+                .count(),
+            1,
+            "at most one default at a time"
+        );
+
+        // Clearing alice leaves no default.
+        set_default_user(&mut conn, alice.id, false).expect("clear alice");
+        assert!(!is_default(&conn, alice.id));
+
+        // A passphrase-protected account cannot auto-unlock, so it cannot be default.
+        assert_eq!(
+            set_default_user(&mut conn, bob.id, true),
+            Err("DEFAULT_REQUIRES_NO_PASSPHRASE".to_string())
+        );
+
+        // Unknown id is rejected.
+        assert_eq!(
+            set_default_user(&mut conn, 99_999, true),
+            Err("USER_NOT_FOUND".to_string())
         );
     }
 

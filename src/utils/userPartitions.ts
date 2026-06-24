@@ -16,6 +16,11 @@ export interface UserMetadata {
     lastUnlockedAt?: number | null;
     isActive: boolean;
     isAdmin: boolean;
+    // Default / favourite user: the account auto-unlocked on launch. Persisted
+    // in the shared user-partitions DB (single-winner), so it round-trips with
+    // the CLI `users -i` Fav verb. Only password-free accounts can be default.
+    // Per Ehud #311 (D1).
+    isDefault: boolean;
 }
 
 export interface UserPartitionMigrationReport {
@@ -113,6 +118,12 @@ export const deleteUser = (userId: number): Promise<void> =>
 
 export const setUserAdmin = (userId: number, isAdmin: boolean): Promise<void> =>
     invoke<void>('user_partitions_set_admin', { userId, isAdmin });
+
+// Mark (or clear) the default / favourite user auto-unlocked on launch. Stored
+// in the shared user-partitions DB so it round-trips with the CLI `users -i`
+// Fav verb (single-winner: setting one clears the others). Per Ehud #311 (D1).
+export const setDefaultUser = (userId: number, isDefault: boolean): Promise<void> =>
+    invoke<void>('user_partitions_set_default_user', { userId, isDefault });
 
 export const setUserAvatar = (
     userId: number,
@@ -342,12 +353,32 @@ export const dispatchAccountLockScreenRequested = (): void => {
     }
 };
 
-// Default account for the welcome-screen skip (discussion #270). When set,
-// the boot flow auto-opens this account and bypasses the AccountLockScreen,
-// but ONLY for password-free accounts: an account with a passphrase always
-// shows the prompt, so authentication is never skipped. The explicit
-// "switch account" action (ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT) still forces
-// the picker regardless of this preference.
+// The default account for the welcome-screen skip (discussion #270) now lives
+// in the shared user-partitions DB as `UserMetadata.isDefault`, so it
+// round-trips with the CLI `users -i` Fav verb (#311). This pure helper reads
+// it off the user list the boot flow already loads.
+export const defaultUserIdFromList = (users: { id: number; isDefault: boolean }[]): number | null =>
+    users.find((u) => u.isDefault)?.id ?? null;
+
+// One-time upgrade path: the default account used to be browser-local
+// localStorage (`aeroftp_default_account`). When the DB carries no default yet
+// but a valid legacy id points to an existing password-free user, return that
+// id so the boot flow can persist it into the DB once (then clear the legacy
+// key). Returns null when there is nothing to migrate (DB already has a default,
+// no legacy value, or the legacy id is stale / now passphrase-protected).
+export const legacyDefaultToMigrate = (
+    users: { id: number; hasPassphrase: boolean; isDefault: boolean }[],
+    legacyId: number | null,
+): number | null => {
+    if (legacyId == null) return null;
+    if (users.some((u) => u.isDefault)) return null;
+    const target = users.find((u) => u.id === legacyId);
+    return target && !target.hasPassphrase ? legacyId : null;
+};
+
+// Legacy localStorage key for the welcome-screen skip default (pre-#311).
+// Retained only for the one-time migration into the DB (see above) and to clear
+// stale values; new writes go through `setDefaultUser` (the DB command).
 const DEFAULT_ACCOUNT_KEY = 'aeroftp_default_account';
 
 export const readDefaultAccountId = (): number | null => {

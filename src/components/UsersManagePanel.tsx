@@ -34,11 +34,14 @@ import {
     deleteUser,
     getUserStorageStats,
     getUnlockStatus,
+    defaultUserIdFromList,
     initUserPartitions,
+    legacyDefaultToMigrate,
     listUsers,
     readDefaultAccountId,
     renameUser,
     reorderUsers,
+    setDefaultUser,
     setUserAdmin,
     setUserAvatar,
     writeDefaultAccountId,
@@ -116,7 +119,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     // N3 (#270): the default account that skips the welcome screen on next
     // boot. Mirrors the AccountLockScreen checkbox and shares the same
     // localStorage helpers; only applies to password-free accounts.
-    const [defaultAccountId, setDefaultAccountId] = React.useState<number | null>(() => readDefaultAccountId());
+    const [defaultAccountId, setDefaultAccountId] = React.useState<number | null>(null);
     // No-recovery acknowledgement gates submit when an account password is
     // being set for the first time (add-user with passphrase, or set
     // passphrase on an existing user). MU-LS gate decision: warn at setup,
@@ -150,20 +153,29 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 getUserStorageStats(),
                 getUnlockStatus(),
             ]);
-            setUsers(nextUsers);
             setStats(nextStats);
             setUnlockStatus(nextStatus);
-            // Reconcile the stored default against reality: a deleted or now
-            // passphrase-protected account must not stay the silent-boot target.
-            const storedDefault = readDefaultAccountId();
-            const validDefault = nextUsers.find(
-                (u) => u.id === storedDefault && !u.hasPassphrase,
-            );
-            if (storedDefault != null && !validDefault) {
+            // The default/favourite account is now a DB flag (#311), shared with
+            // the CLI `users -i` Fav verb. One-time upgrade: migrate a legacy
+            // localStorage default into the DB, then forget the localStorage key.
+            const legacyId = legacyDefaultToMigrate(nextUsers, readDefaultAccountId());
+            if (legacyId != null) {
+                try {
+                    await setDefaultUser(legacyId, true);
+                    const migrated = nextUsers.map((u) => ({ ...u, isDefault: u.id === legacyId }));
+                    setUsers(migrated);
+                    setDefaultAccountId(legacyId);
+                } catch {
+                    // Migration is best-effort; fall back to the DB state as read.
+                    setUsers(nextUsers);
+                    setDefaultAccountId(defaultUserIdFromList(nextUsers));
+                }
                 writeDefaultAccountId(null);
-                setDefaultAccountId(null);
             } else {
-                setDefaultAccountId(storedDefault);
+                setUsers(nextUsers);
+                setDefaultAccountId(defaultUserIdFromList(nextUsers));
+                // Drop any stale localStorage value now that the DB is the source.
+                if (readDefaultAccountId() != null) writeDefaultAccountId(null);
             }
         } catch (err) {
             setError(mapUserPartitionError(err, t));
@@ -172,16 +184,26 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         }
     }, [t]);
 
-    const toggleDefaultAccount = React.useCallback((user: UserMetadata) => {
-        // Only password-free accounts can skip the welcome screen (a protected
-        // account always shows its prompt), matching the AccountLockScreen rule.
-        if (user.hasPassphrase) return;
-        setDefaultAccountId((current) => {
-            const next = current === user.id ? null : user.id;
-            writeDefaultAccountId(next);
-            return next;
-        });
-    }, []);
+    const toggleDefaultAccount = React.useCallback(
+        async (user: UserMetadata) => {
+            // Only password-free accounts can skip the welcome screen (a protected
+            // account always shows its prompt), matching the AccountLockScreen rule.
+            if (user.hasPassphrase) return;
+            const makeDefault = defaultAccountId !== user.id;
+            setBusyUserId(user.id);
+            setError('');
+            try {
+                // Single-winner DB flag, shared with the CLI `users -i` Fav verb.
+                await setDefaultUser(user.id, makeDefault);
+                await refresh();
+            } catch (err) {
+                setError(mapUserPartitionError(err, t));
+            } finally {
+                setBusyUserId(null);
+            }
+        },
+        [defaultAccountId, refresh, t],
+    );
 
     React.useEffect(() => {
         if (isOpen) void refresh();
@@ -678,7 +700,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             {!user.hasPassphrase && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleDefaultAccount(user)}
+                                                    onClick={() => void toggleDefaultAccount(user)}
                                                     disabled={busyUserId === user.id}
                                                     className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
                                                         defaultAccountId === user.id

@@ -252,12 +252,16 @@ import { AccountLockScreen } from './components/AccountLockScreen';
 import {
     ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
     decideBootAccountAction,
+    defaultUserIdFromList,
     getUnlockStatus,
     initUserPartitions,
+    legacyDefaultToMigrate,
     listUsers,
     readDefaultAccountId,
     readUsersListCache,
+    setDefaultUser,
     unlockUser,
+    writeDefaultAccountId,
     writeUsersListCache,
 } from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
@@ -1589,7 +1593,23 @@ const App: React.FC = () => {
         // or silently unlock a password-free default account. Keeping the policy
         // in a pure helper lets it be unit-tested; see its doc comment for why
         // the already-unlocked case must be handled explicitly.
-        const action = decideBootAccountAction(users, status, readDefaultAccountId());
+        //
+        // The default user is now a DB flag shared with the CLI (#311). One-time
+        // upgrade: migrate a legacy localStorage default into the DB, then forget
+        // the localStorage key so the DB stays the single source of truth.
+        let defaultId = defaultUserIdFromList(users);
+        const legacyId = legacyDefaultToMigrate(users, readDefaultAccountId());
+        if (legacyId != null) {
+          try {
+            await setDefaultUser(legacyId, true);
+            defaultId = legacyId;
+          } catch (err) {
+            console.warn('[mu] default-account migration failed:', err);
+          }
+          writeDefaultAccountId(null);
+          if (cancelled) return;
+        }
+        const action = decideBootAccountAction(users, status, defaultId);
         if (action.kind === 'unlockDefault') {
           try {
             await unlockUser(action.userId, null);

@@ -2411,7 +2411,13 @@ enum Commands {
     /// vault on this device and are not tied to any online account or login.
     Users {
         #[command(subcommand)]
-        command: UsersCommands,
+        command: Option<UsersCommands>,
+
+        /// Drop into an interactive prompt after the table (rclone-config-style):
+        /// re-index(#), Rename(R), Copy(C), Delete(D), Fav(F), List(L), Tree(T).
+        /// Requires a TTY; ignored in JSON / non-interactive mode. Per Ehud #311.
+        #[arg(long, short = 'i')]
+        interactive: bool,
     },
     /// Create a new server profile in the vault
     ///
@@ -14178,6 +14184,659 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                             "Group '{}' deleted. Its servers were kept.",
                             removed
                         ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
+                }
+            }
+            _ => {
+                eprintln!("Unrecognized command. Type '?' for help.");
+            }
+        }
+    }
+}
+
+// ── Users section (`aeroftp users [-i]`) ──────────────────────────────────
+//
+// Mirrors the groups section (D2) on the shared interactive engine
+// (`SectionVerb` / `render_section_actions` / `section_is_*` /
+// `section_prompt_line`) so `users -i` speaks the same vocabulary as
+// `profiles -i` and `groups -i`. The user-partitions DB is the single source
+// of truth, shared with the GUI Manage Users surface, so renames, ordering and
+// the default/favourite flag round-trip both ways. Per Ehud #311 (D1).
+
+/// Verb table for the `users -i` action bar. `fav_marker` rides on the Fav
+/// label (\u{2605} default, \u{2665} when chosen, #270) so it matches the GUI
+/// favourite glyph and the profiles section.
+fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
+    vec![
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Delete", "D"),
+        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Tree", "T"),
+        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Quit", "Q/0"),
+    ]
+}
+
+/// Render the user table as a string (shared by the plain `users` listing and
+/// the `users -i` loop). Columns: 1-based index, name, numeric id, and a flag
+/// summary (active / admin / password / default). `marker` annotates the
+/// default account so the favourite glyph matches the rest of the app.
+fn format_users_table(users: &[user_partitions::UserMetadata], marker: &str) -> String {
+    if users.is_empty() {
+        return "No AeroFTP users found.".to_string();
+    }
+    let mut out = String::from("  #  User                                 ID    Flags\n");
+    for (i, u) in users.iter().enumerate() {
+        let name: String = if u.name.chars().count() > 36 {
+            format!("{}\u{2026}", u.name.chars().take(35).collect::<String>())
+        } else {
+            u.name.clone()
+        };
+        let mut flags: Vec<String> = Vec::new();
+        if u.is_active {
+            flags.push("active".to_string());
+        }
+        if u.is_admin {
+            flags.push("admin".to_string());
+        }
+        if u.has_passphrase {
+            flags.push("password".to_string());
+        }
+        if u.is_default {
+            flags.push(format!("default{}", marker));
+        }
+        let flag_str = if flags.is_empty() {
+            "-".to_string()
+        } else {
+            flags.join(", ")
+        };
+        out.push_str(&format!(
+            "  {:<2} {:<37}{:<6}{}\n",
+            i + 1,
+            name,
+            u.id,
+            flag_str
+        ));
+    }
+    out.trim_end().to_string()
+}
+
+/// Resolve a user selector (1-based table index or case-insensitive name) to a
+/// 0-based position in `users`. Mirrors `resolve_group_selector`: the
+/// interactive table is index-addressed, so a bare number is the row, not the
+/// (separate) numeric user id.
+fn resolve_user_selector(
+    users: &[user_partitions::UserMetadata],
+    sel: &str,
+) -> Result<usize, String> {
+    let s = sel.trim();
+    if s.is_empty() {
+        return Err("empty selector".to_string());
+    }
+    if let Ok(n) = s.parse::<usize>() {
+        if n >= 1 && n <= users.len() {
+            return Ok(n - 1);
+        }
+        return Err(format!("index out of range (1..={})", users.len()));
+    }
+    users
+        .iter()
+        .position(|u| u.name.eq_ignore_ascii_case(s))
+        .ok_or_else(|| format!("no user named '{}'", s))
+}
+
+/// True when `candidate` matches an existing user name (case-insensitive,
+/// trimmed). Pure helper for the Copy naming.
+fn user_name_taken(users: &[user_partitions::UserMetadata], candidate: &str) -> bool {
+    users
+        .iter()
+        .any(|u| u.name.eq_ignore_ascii_case(candidate.trim()))
+}
+
+/// The auto name for a user copy: `"<src> (copy)"`, then `"... (copy 2)"`, etc.
+/// when the base is taken. Pure, case-insensitive; mirrors `next_group_copy_name`.
+fn next_user_copy_name(users: &[user_partitions::UserMetadata], src_name: &str) -> String {
+    let base = format!("{} (copy)", src_name);
+    if !user_name_taken(users, &base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{} (copy {})", src_name, n);
+        if !user_name_taken(users, &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Compute the id order after moving the user at `src_idx` to 1-based position
+/// `target_1based`. Pure helper feeding `cli_reorder_users`, which re-stamps a
+/// dense `sort_order`. `target_1based` is clamped to `1..=len`. Mirrors the
+/// group `apply_group_reorder` move, returning the new id sequence.
+fn user_order_after_move(
+    users: &[user_partitions::UserMetadata],
+    src_idx: usize,
+    target_1based: usize,
+) -> Vec<i64> {
+    let mut ids: Vec<i64> = users.iter().map(|u| u.id).collect();
+    if ids.is_empty() || src_idx >= ids.len() {
+        return ids;
+    }
+    let dst = target_1based.max(1).min(ids.len()) - 1;
+    let id = ids.remove(src_idx);
+    ids.insert(dst, id);
+    ids
+}
+
+fn print_users_help() {
+    eprintln!("  l / ls            reprint the user table");
+    eprintln!("  l <N|name ...>    list the saved servers of each user");
+    eprintln!("  r <N|name> [new]  rename a user (prompts for the new name when omitted)");
+    eprintln!(
+        "  c <N|name> [new]  copy a user: duplicate its servers into a new user (no passwords)"
+    );
+    eprintln!(
+        "  d <N|name>        delete a user (prompts to confirm; not the active or last user)"
+    );
+    eprintln!(
+        "  f <N|name>        toggle the default user (auto-unlocked on launch; password-free only)"
+    );
+    eprintln!("  # <N|name> <pos>  move a user to position <pos> (re-index, persisted)");
+    eprintln!("  t / tree          users -> their servers (with group tags)");
+    eprintln!("  refresh / .       reload + reprint the table");
+    eprintln!("  h / help / ?      show this help");
+    eprintln!("  0/q               quit");
+    eprintln!();
+    eprintln!(
+        "  Users are shared with the GUI Manage Users surface; changes round-trip both ways."
+    );
+    eprintln!("  Selectors: a table number (1-based) or the user name (quote names with spaces).");
+}
+
+/// `aeroftp-cli users [-i]`: list and (interactively) manage local AeroFTP
+/// users. The plain listing prints to stdout (JSON or a table); `-i` drops into
+/// the shared interactive engine. Per Ehud #311 (D1). The JSON branch matches
+/// `users list` so scripts see one schema.
+fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
+    use std::io::IsTerminal;
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    let users = match user_partitions::cli_list_users(&store) {
+        Ok(users) => users,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    if matches!(format, OutputFormat::Json) {
+        let stats = user_partitions::cli_storage_stats(&store).unwrap_or_default();
+        print_json(&serde_json::json!({
+            "users": users,
+            "storageStats": stats,
+        }));
+        return 0;
+    }
+
+    let marker = load_favorite_marker(&store);
+
+    if interactive {
+        if !std::io::stdin().is_terminal() {
+            // Non-TTY: behave like the plain listing instead of hanging on a
+            // prompt nobody can answer.
+            println!("{}", format_users_table(&users, marker));
+            eprintln!("`users -i` needs an interactive terminal; printed the listing instead.");
+            return 0;
+        }
+        return interactive_users_loop(cli, &store);
+    }
+
+    println!("{}", format_users_table(&users, marker));
+    0
+}
+
+/// Interactive `users -i` loop. Built on the shared section engine so its
+/// vocabulary matches `profiles -i` / `groups -i`. The user-partitions DB is
+/// the single source of truth: the table is reloaded at the top of every
+/// iteration, so GUI Manage Users changes show up on the next prompt. Per
+/// Ehud #311 (D1).
+fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
+    let marker = load_favorite_marker(store);
+    let verbs = users_section_verbs(marker);
+    loop {
+        let users = match user_partitions::cli_list_users(store) {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("{}", paint_red(&format!("Failed to list users: {}", e)));
+                return 5;
+            }
+        };
+        eprintln!("{}", format_users_table(&users, marker));
+        eprintln!("\nActions: {}", render_section_actions(&verbs));
+        eprintln!(
+            "Interactive: r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+        );
+
+        let line = match section_prompt_line("users> ") {
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                eprintln!();
+                return 0;
+            }
+            Err(e) => {
+                eprintln!("Read error: {}. Exiting interactive mode.", e);
+                return 1;
+            }
+        };
+        let raw = line.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let lower = raw.to_lowercase();
+        if section_is_quit(&lower) {
+            return 0;
+        }
+        if section_is_help(&lower) {
+            print_users_help();
+            continue;
+        }
+        if section_is_refresh(&lower) {
+            continue;
+        }
+
+        // Re-index: `# <selector> <pos>` (also the compact `#<selector> <pos>`).
+        if raw.starts_with('#') {
+            let tk = tokenize_quoted(raw);
+            let (sel, pos_raw) = if tk[0] == "#" {
+                if tk.len() < 3 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves user 3 to the top)");
+                    continue;
+                }
+                (tk[1].clone(), tk[2].clone())
+            } else {
+                let s = tk[0][1..].to_string();
+                if s.is_empty() || tk.len() < 2 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves user 3 to the top)");
+                    continue;
+                }
+                (s, tk[1].clone())
+            };
+            let idx = match resolve_user_selector(&users, &sel) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("Selector '{}' skipped: {}", sel, e);
+                    continue;
+                }
+            };
+            let pos = match pos_raw.parse::<usize>() {
+                Ok(n) if n >= 1 => n,
+                _ => {
+                    eprintln!(
+                        "Target position must be a positive number (1..={}).",
+                        users.len()
+                    );
+                    continue;
+                }
+            };
+            let name = users[idx].name.clone();
+            let ids = user_order_after_move(&users, idx, pos);
+            match user_partitions::cli_reorder_users(store, &ids) {
+                Ok(()) => eprintln!(
+                    "{}",
+                    paint_green(&format!(
+                        "User '{}' moved to #{}.",
+                        name,
+                        pos.min(users.len())
+                    ))
+                ),
+                Err(e) => eprintln!("{}", paint_red(&format!("Re-index failed: {}", e))),
+            }
+            continue;
+        }
+
+        let tokens = tokenize_quoted(raw);
+        let verb = tokens[0].to_lowercase();
+        match verb.as_str() {
+            "l" | "ls" | "list" => {
+                if tokens.len() < 2 {
+                    eprintln!("{}", format_users_table(&users, marker));
+                    continue;
+                }
+                for sel in &tokens[1..] {
+                    match resolve_user_selector(&users, sel) {
+                        Ok(i) => {
+                            let u = &users[i];
+                            match user_partitions::cli_list_server_profiles_for_user(store, u.id) {
+                                Ok(profiles) => {
+                                    eprintln!(
+                                        "\n=== {} ({} server(s)) ===",
+                                        u.name,
+                                        profiles.len()
+                                    );
+                                    if profiles.is_empty() {
+                                        eprintln!("  (no servers)");
+                                    }
+                                    for p in &profiles {
+                                        let pname = p
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .or_else(|| p.get("id").and_then(|v| v.as_str()))
+                                            .unwrap_or("(unnamed)");
+                                        eprintln!("  {}", pname);
+                                    }
+                                }
+                                Err(e) if e == "USER_LOCKED" => eprintln!(
+                                    "\n=== {} ===\n  (password-protected; switch to view its servers)",
+                                    u.name
+                                ),
+                                Err(e) => {
+                                    eprintln!("\n=== {} ===\n  (unavailable: {})", u.name, e)
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Selector '{}' skipped: {}", sel, e),
+                    }
+                }
+            }
+            "t" | "tree" => {
+                let groups = load_server_groups(store);
+                for u in &users {
+                    let active = if u.is_active { " *" } else { "" };
+                    let default_tag = if u.is_default {
+                        format!(" (default{})", marker)
+                    } else {
+                        String::new()
+                    };
+                    eprintln!("\n{}{}{}", u.name, active, default_tag);
+                    match user_partitions::cli_list_server_profiles_for_user(store, u.id) {
+                        Ok(profiles) => {
+                            if profiles.is_empty() {
+                                eprintln!("  (no servers)");
+                            }
+                            for p in &profiles {
+                                let pid = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let pname = p
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.is_empty())
+                                    .unwrap_or("(unnamed)");
+                                let tags: Vec<&str> = groups
+                                    .iter()
+                                    .filter(|g| g.members.iter().any(|m| m == pid))
+                                    .map(|g| g.name.as_str())
+                                    .collect();
+                                if tags.is_empty() {
+                                    eprintln!("  - {}", pname);
+                                } else {
+                                    eprintln!("  - {}  [{}]", pname, tags.join(", "));
+                                }
+                            }
+                        }
+                        Err(e) if e == "USER_LOCKED" => {
+                            eprintln!("  (password-protected; switch to view)")
+                        }
+                        Err(e) => eprintln!("  (unavailable: {})", e),
+                    }
+                }
+            }
+            "f" | "fav" | "favorite" | "favourite" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: f <N|name>   (toggle the default/auto-unlock user)");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let u = &users[idx];
+                let make_default = !u.is_default;
+                match user_partitions::cli_set_default_user(store, u.id, make_default) {
+                    Ok(()) => {
+                        if make_default {
+                            eprintln!(
+                                "{}",
+                                paint_green(&format!(
+                                    "User '{}' is now the default (auto-unlocked on launch).",
+                                    u.name
+                                ))
+                            );
+                        } else {
+                            eprintln!(
+                                "{}",
+                                paint_yellow(&format!("User '{}' is no longer the default.", u.name))
+                            );
+                        }
+                    }
+                    Err(e) if e == "DEFAULT_REQUIRES_NO_PASSPHRASE" => eprintln!(
+                        "{}",
+                        paint_red(&format!(
+                            "User '{}' is password-protected, so it cannot auto-unlock. Remove its password to make it the default.",
+                            u.name
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Fav failed: {}", e))),
+                }
+            }
+            "r" | "rename" | "mv" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: r <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let user = users[idx].clone();
+                let new_name = if tokens.len() >= 3 {
+                    tokens[2].clone()
+                } else {
+                    match section_prompt_line(&format!(
+                        "New name for user '{}' (empty to abort): ",
+                        user.name
+                    )) {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    }
+                };
+                if new_name.is_empty() {
+                    eprintln!("Empty input: rename aborted.");
+                    continue;
+                }
+                match user_partitions::cli_rename_user(store, user.id, &new_name) {
+                    Ok(()) => eprintln!(
+                        "{}",
+                        paint_green(&format!(
+                            "User '{}' renamed to '{}'.",
+                            user.name,
+                            new_name.trim()
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Rename failed: {}", e))),
+                }
+            }
+            "c" | "copy" | "dup" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: c <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let src = users[idx].clone();
+                // Resolve the target name: explicit (must be free) else "<src> (copy)".
+                let target_name = match tokens.get(2).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    Some(n) => {
+                        if user_name_taken(&users, n) {
+                            eprintln!(
+                                "{}",
+                                paint_red(&format!("A user named '{}' already exists.", n))
+                            );
+                            continue;
+                        }
+                        n.to_string()
+                    }
+                    None => next_user_copy_name(&users, &src.name),
+                };
+                // Read the source servers first (no passwords are copied: the
+                // keyring credentials stay with the original user).
+                let profiles = match user_partitions::cli_list_server_profiles_for_user(
+                    store, src.id,
+                ) {
+                    Ok(p) => p,
+                    Err(e) if e == "USER_LOCKED" => {
+                        eprintln!(
+                            "{}",
+                            paint_red(&format!(
+                                "User '{}' is password-protected: switch to it first so its servers can be read.",
+                                src.name
+                            ))
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("{}", paint_red(&format!("Copy failed: {}", e)));
+                        continue;
+                    }
+                };
+                let new_user = match user_partitions::cli_create_user(
+                    store,
+                    &target_name,
+                    src.avatar_emoji.as_deref(),
+                    src.avatar_color.as_deref(),
+                    None,
+                ) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        eprintln!("{}", paint_red(&format!("Copy failed: {}", e)));
+                        continue;
+                    }
+                };
+                match user_partitions::cli_replace_server_profiles_for_user(
+                    store,
+                    new_user.id,
+                    &profiles,
+                ) {
+                    Ok(()) => eprintln!(
+                        "{}",
+                        paint_blue(&format!(
+                            "User '{}' duplicated as '{}' ({} server(s), no passwords copied).",
+                            src.name,
+                            target_name,
+                            profiles.len()
+                        ))
+                    ),
+                    Err(e) => eprintln!(
+                        "{}",
+                        paint_red(&format!(
+                            "User '{}' created but copying its servers failed: {}",
+                            target_name, e
+                        ))
+                    ),
+                }
+            }
+            "d" | "delete" | "del" | "rm" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: d <N|name>");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let user = users[idx].clone();
+                if users.len() <= 1 {
+                    eprintln!("Cannot delete the last AeroFTP user.");
+                    continue;
+                }
+                if user.is_active {
+                    eprintln!(
+                        "Refusing to delete the active user. Switch first (aeroftp users switch)."
+                    );
+                    continue;
+                }
+                eprintln!(
+                    "About to delete user '{}'. Its saved servers and settings are removed.",
+                    user.name
+                );
+                let confirm =
+                    match section_prompt_line("Type 'yes' (or the user name) to confirm: ") {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    };
+                let allow = confirm.eq_ignore_ascii_case("yes") || confirm == user.name;
+                if !allow {
+                    eprintln!("Confirmation did not match: user NOT deleted.");
+                    continue;
+                }
+                if user.has_passphrase {
+                    let mut passphrase = match read_user_passphrase(
+                        cli,
+                        &user.name,
+                        &format!("Account password for user '{}': ", user.name),
+                        true,
+                        true,
+                    ) {
+                        Ok(Some(value)) => value,
+                        Ok(None) => String::new(),
+                        Err(err) => {
+                            eprintln!("{}", paint_red(&err));
+                            continue;
+                        }
+                    };
+                    let verified = user_partitions::cli_verify_user_passphrase(
+                        store,
+                        user.id,
+                        Some(&passphrase),
+                    );
+                    passphrase.zeroize();
+                    if let Err(err) = verified {
+                        eprintln!("{}", paint_red(&format!("Password check failed: {}", err)));
+                        continue;
+                    }
+                }
+                match user_partitions::cli_delete_user(store, user.id) {
+                    Ok(()) => eprintln!(
+                        "{}",
+                        paint_yellow(&format!("User '{}' deleted.", user.name))
                     ),
                     Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
                 }
@@ -51406,7 +52065,13 @@ async fn main() {
             _ignored: _,
             interactive,
         } => cmd_groups(&cli, format, *interactive),
-        Commands::Users { command } => cmd_users(&cli, command, format),
+        Commands::Users {
+            command,
+            interactive,
+        } => match command {
+            Some(cmd) => cmd_users(&cli, cmd, format),
+            None => cmd_users_section(&cli, format, *interactive),
+        },
         Commands::ProfileAdd {
             name,
             protocol,
@@ -52289,6 +52954,96 @@ mod tests {
             render_section_actions(&groups_section_verbs()),
             "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} List/ls(L) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
         );
+    }
+
+    fn usr(id: i64, name: &str, default: bool) -> user_partitions::UserMetadata {
+        user_partitions::UserMetadata {
+            id,
+            name: name.to_string(),
+            avatar_emoji: None,
+            avatar_color: None,
+            has_passphrase: false,
+            sort_order: id,
+            created_at: 0,
+            updated_at: 0,
+            last_unlocked_at: None,
+            is_active: false,
+            is_admin: false,
+            is_default: default,
+        }
+    }
+
+    #[test]
+    fn resolve_user_selector_takes_index_or_name() {
+        let users = vec![usr(2, "alice", false), usr(5, "Home Box", false)];
+        // 1-based table index (NOT the numeric user id).
+        assert_eq!(resolve_user_selector(&users, "1").unwrap(), 0);
+        assert_eq!(resolve_user_selector(&users, "2").unwrap(), 1);
+        // Case-insensitive name.
+        assert_eq!(resolve_user_selector(&users, "ALICE").unwrap(), 0);
+        assert_eq!(resolve_user_selector(&users, "Home Box").unwrap(), 1);
+        // Out of range / unknown / empty.
+        assert!(resolve_user_selector(&users, "3").is_err());
+        assert!(resolve_user_selector(&users, "nope").is_err());
+        assert!(resolve_user_selector(&users, "").is_err());
+    }
+
+    #[test]
+    fn user_copy_name_disambiguates() {
+        let mut users = vec![usr(1, "alice", false)];
+        assert_eq!(next_user_copy_name(&users, "alice"), "alice (copy)");
+        users.push(usr(2, "alice (copy)", false));
+        assert_eq!(next_user_copy_name(&users, "alice"), "alice (copy 2)");
+        users.push(usr(3, "alice (copy 2)", false));
+        assert_eq!(next_user_copy_name(&users, "alice"), "alice (copy 3)");
+        // Taken check is case-insensitive.
+        assert!(user_name_taken(&users, "ALICE (COPY)"));
+        assert!(!user_name_taken(&users, "bob"));
+    }
+
+    #[test]
+    fn user_reorder_moves_within_dense_id_order() {
+        let users = vec![
+            usr(10, "A", false),
+            usr(20, "B", false),
+            usr(30, "C", false),
+        ];
+        // Move C (idx 2) to the top.
+        assert_eq!(user_order_after_move(&users, 2, 1), vec![30, 10, 20]);
+        // Move A (idx 0) down to position 2.
+        assert_eq!(user_order_after_move(&users, 0, 2), vec![20, 10, 30]);
+        // Over-large target clamps to the last slot; no-op stays identity.
+        assert_eq!(user_order_after_move(&users, 0, 99), vec![20, 30, 10]);
+        // Out-of-range source index returns the order unchanged.
+        assert_eq!(user_order_after_move(&users, 9, 1), vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn users_table_renders_header_and_default_marker() {
+        assert!(format_users_table(&[], "\u{2605}").contains("No AeroFTP users"));
+        let mut alice = usr(2, "alice", true);
+        alice.is_active = true;
+        let table = format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}");
+        assert!(table.contains("User"));
+        assert!(table.contains("ID"));
+        assert!(table.contains("Flags"));
+        // 1-based row numbering, the numeric id, and the default star.
+        assert!(table
+            .lines()
+            .any(|l| l.contains("alice") && l.contains("active") && l.contains("default\u{2605}")));
+        assert!(table
+            .lines()
+            .any(|l| l.contains("bob") && l.trim_end().ends_with('-')));
+    }
+
+    #[test]
+    fn users_action_bar_matches_d1_vocabulary() {
+        assert_eq!(
+            render_section_actions(&users_section_verbs("\u{2605}")),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+        );
+        // The Fav glyph follows the user's chosen favourite marker (#270).
+        assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));
     }
 
     #[test]
