@@ -7,7 +7,7 @@
 // invoke bridge and are exercised by the live integration run, not here.
 
 import { describe, expect, it } from 'vitest';
-import { normalizeServerGroups, newServerGroupId, type ServerGroup } from './serverGroups';
+import { normalizeServerGroups, newServerGroupId, reorderServerGroups, type ServerGroup } from './serverGroups';
 
 describe('normalizeServerGroups', () => {
     it('returns [] for non-array input', () => {
@@ -51,6 +51,32 @@ describe('normalizeServerGroups', () => {
     it('preserves a custom colour when present', () => {
         const raw: ServerGroup[] = [{ id: 'g', name: 'G', color: '#10b981', order: 0, members: [] }];
         expect(normalizeServerGroups(raw)[0].color).toBe('#10b981');
+    });
+});
+
+describe('reorderServerGroups', () => {
+    const make = (): ServerGroup[] => [
+        { id: 'a', name: 'A', order: 0, members: [] },
+        { id: 'b', name: 'B', order: 1, members: [] },
+        { id: 'c', name: 'C', order: 2, members: [] },
+    ];
+
+    it('moves a group and re-stamps a dense 0..N order', () => {
+        const out = reorderServerGroups(make(), 'c', 0);
+        expect(out.map(g => g.id)).toEqual(['c', 'a', 'b']);
+        expect(out.map(g => g.order)).toEqual([0, 1, 2]);
+    });
+
+    it('clamps an out-of-range target to the last slot', () => {
+        const out = reorderServerGroups(make(), 'a', 99);
+        expect(out.map(g => g.id)).toEqual(['b', 'c', 'a']);
+        expect(out.map(g => g.order)).toEqual([0, 1, 2]);
+    });
+
+    it('returns the same reference for an unknown id or a no-op move', () => {
+        const groups = make();
+        expect(reorderServerGroups(groups, 'missing', 0)).toBe(groups);
+        expect(reorderServerGroups(groups, 'a', 0)).toBe(groups);
     });
 });
 

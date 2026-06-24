@@ -58,6 +58,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "catalog",
     "tui",
     "profiles",
+    "groups",
     "users",
     "profile-add",
     "profile-duplicate",

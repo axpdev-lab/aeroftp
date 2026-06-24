@@ -2387,6 +2387,24 @@ enum Commands {
         #[arg(long)]
         tui: bool,
     },
+    /// List and manage server-profile groups (the My Servers group chips)
+    ///
+    /// Groups are flat, named labels on saved server profiles, the CLI analogue
+    /// of the GUI group chips. Membership lives in the vault under
+    /// `config_server_groups`, shared with the GUI, so changes round-trip both
+    /// ways. Mirrors `aeroftp-cli profiles`: a plain listing, or `-i` for an
+    /// interactive prompt (rename / copy / delete / re-index). Per Ehud #311.
+    Groups {
+        /// Optional `list` keyword for parity with `<tool> groups list` muscle memory; ignored.
+        #[arg(hide = true)]
+        _ignored: Vec<String>,
+
+        /// Drop into an interactive prompt after the table (rclone-config-style):
+        /// re-index(#), Rename(R), Copy(C), Delete(D), List(L). Requires a TTY;
+        /// ignored in JSON / non-interactive mode.
+        #[arg(long, short = 'i')]
+        interactive: bool,
+    },
     /// Manage local AeroFTP user partitions
     ///
     /// These users are entirely offline: they are local partitions of the
@@ -10596,6 +10614,130 @@ fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, 
     Ok(removed)
 }
 
+/// Whether a group name is already used (case-insensitive). Pure helper.
+fn group_name_taken(groups: &[CliServerGroup], candidate: &str) -> bool {
+    groups
+        .iter()
+        .any(|g| g.name.eq_ignore_ascii_case(candidate.trim()))
+}
+
+/// The auto name for a group copy: `"<src> (copy)"`, or `"<src> (copy 2)"`,
+/// `"... (copy 3)"`, etc. when the base is taken. Pure helper, case-insensitive.
+fn next_group_copy_name(groups: &[CliServerGroup], src_name: &str) -> String {
+    let base = format!("{} (copy)", src_name);
+    if !group_name_taken(groups, &base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{} (copy {})", src_name, n);
+        if !group_name_taken(groups, &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Move the group named `name` to 1-based position `target_1based` and re-stamp
+/// a dense, gap-free `order` (0..N) on the whole list. Pure helper over a vec
+/// pre-sorted by `order`. Returns `(canonical_name, new_zero_based_index)`.
+fn apply_group_reorder(
+    groups: &mut Vec<CliServerGroup>,
+    name: &str,
+    target_1based: usize,
+) -> Result<(String, usize), String> {
+    if groups.is_empty() {
+        return Err("No groups to reorder".to_string());
+    }
+    let src = groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", name.trim()))?;
+    let dst = target_1based.max(1).min(groups.len()).saturating_sub(1);
+    let canonical = groups[src].name.clone();
+    if dst != src {
+        let g = groups.remove(src);
+        groups.insert(dst, g);
+    }
+    for (i, g) in groups.iter_mut().enumerate() {
+        g.order = i as i64;
+    }
+    Ok((canonical, dst))
+}
+
+/// Duplicate a group: create a new group carrying the same membership set (and
+/// colour) under a new name. The source is looked up case-insensitively. When
+/// `new_name` is `None` the copy is named `"<src> (copy)"`, disambiguated with a
+/// numeric suffix if that name is taken, so re-copying never collides. Returns
+/// `(canonical_source_name, new_name)`. Mirrors `duplicateGroup` parity: a group
+/// is just a label, so only the membership/order is cloned, never the servers.
+fn copy_group_in_vault(
+    store: &CredentialStore,
+    src_name: &str,
+    new_name: Option<&str>,
+) -> Result<(String, String), String> {
+    let mut groups = load_server_groups(store);
+    let src = groups
+        .iter()
+        .find(|g| g.name.eq_ignore_ascii_case(src_name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", src_name.trim()))?
+        .clone();
+
+    // Resolve the target name: explicit (must be free), else "<src> (copy)"
+    // disambiguated with a numeric suffix.
+    let target_name = match new_name.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(n) => {
+            if group_name_taken(&groups, n) {
+                return Err(format!("A group named '{}' already exists", n));
+            }
+            n.to_string()
+        }
+        None => next_group_copy_name(&groups, &src.name),
+    };
+
+    let order = groups.iter().map(|g| g.order).max().unwrap_or(-1) + 1;
+    groups.push(CliServerGroup {
+        id: format!(
+            "grp_{}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            src.id.chars().take(6).collect::<String>()
+        ),
+        name: target_name.clone(),
+        color: src.color.clone(),
+        order,
+        members: src.members.clone(),
+    });
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok((src.name, target_name))
+}
+
+/// Move a group (looked up case-insensitively by name) to a new 1-based
+/// position in the ordered group list, persisting a compact 0..N `order`
+/// sequence so the CLI `re-index(#)` and the GUI drag-reorder converge on the
+/// same vault order. `target_1based` is clamped to `1..=len`. Returns
+/// `(canonical_name, new_zero_based_index)`.
+fn reorder_group_in_vault(
+    store: &CredentialStore,
+    name: &str,
+    target_1based: usize,
+) -> Result<(String, usize), String> {
+    let mut groups = load_server_groups(store);
+    let (canonical, dst) = apply_group_reorder(&mut groups, name, target_1based)?;
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok((canonical, dst))
+}
+
 /// Remove a deleted profile id from every group's member list and from the
 /// favourites set (B4 DiscoveryHub delete). Mirrors `pruneServerFromGroups` in
 /// `serverGroups.ts`: the group rows themselves stay (a group is just a label),
@@ -13601,6 +13743,452 @@ fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
     let _ = run_self_subcommand(&refs);
 }
 
+// ----------------------------------------------------------------------------
+// Shared interactive-section engine (Ehud #311)
+//
+// The `profiles -i` loop, `groups -i` and `users -i` all share the same action
+// vocabulary: a labelled action bar, a quit/help/refresh keyword set, and a
+// prompt/read-line cycle. These primitives are the one engine behind those three
+// front-ends, so the vocabulary stays consistent and the #311 fixes (labelled
+// verbs, sticky reopen) apply uniformly instead of drifting per section.
+// ----------------------------------------------------------------------------
+
+/// One labelled verb in an interactive section's action bar. `key` is the
+/// literal trigger shown in parentheses ("#", "R", "Q/0"); `label` is the human
+/// name ("re-index", "Rename"). Rendered as `label(key)`.
+struct SectionVerb {
+    label: String,
+    key: &'static str,
+}
+
+impl SectionVerb {
+    fn new(label: impl Into<String>, key: &'static str) -> Self {
+        Self {
+            label: label.into(),
+            key,
+        }
+    }
+}
+
+/// Render an action bar from a verb table: `re-index(#) \u{00b7} Rename(R) \u{00b7} ...`.
+fn render_section_actions(verbs: &[SectionVerb]) -> String {
+    verbs
+        .iter()
+        .map(|v| format!("{}({})", v.label, v.key))
+        .collect::<Vec<_>>()
+        .join(" \u{00b7} ")
+}
+
+/// Shared quit vocabulary for every interactive `-i` section.
+fn section_is_quit(lower: &str) -> bool {
+    matches!(lower, "q" | "quit" | "exit" | "0" | "-1")
+}
+
+/// Shared help vocabulary.
+fn section_is_help(lower: &str) -> bool {
+    matches!(lower, "h" | "help" | "?")
+}
+
+/// Shared F5-style refresh vocabulary (discussion #266).
+fn section_is_refresh(lower: &str) -> bool {
+    matches!(lower, "refresh" | "clear" | ".")
+}
+
+/// Prompt on stderr, read one line from stdin. `Ok(None)` on EOF (Ctrl-D) so the
+/// caller can quit cleanly; the trailing newline is kept (callers trim). The
+/// result is NOT lowercased: callers decide case handling.
+fn section_prompt_line(prompt: &str) -> std::io::Result<Option<String>> {
+    use std::io::{self, BufRead, Write};
+    eprint!("{}", prompt);
+    let _ = io::stderr().flush();
+    let mut line = String::new();
+    match io::stdin().lock().read_line(&mut line) {
+        Ok(0) => Ok(None),
+        Ok(_) => Ok(Some(line)),
+        Err(e) => Err(e),
+    }
+}
+
+/// The labelled action bar for `profiles -i`, mirroring the profile-table column
+/// order. `fav_marker` (\u{2605} default, \u{2665} if chosen, #270) rides on the
+/// Fav verb so the bar shows the user's chosen glyph.
+fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
+    vec![
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Edit", "E"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Delete", "D"),
+        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("Groups", "G"),
+        SectionVerb::new("Users", "U"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Tree", "T"),
+        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Quit", "Q/0"),
+    ]
+}
+
+/// The labelled action bar for `groups -i` (Ehud #311, D2 verb set).
+fn groups_section_verbs() -> Vec<SectionVerb> {
+    vec![
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Delete", "D"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Quit", "Q/0"),
+    ]
+}
+
+/// Render the group table as a string (shared by the plain `groups` listing and
+/// the `groups -i` loop, which print it to stdout and stderr respectively).
+fn format_groups_table(groups: &[CliServerGroup]) -> String {
+    if groups.is_empty() {
+        return "No groups yet. Create one in the GUI, or via `aeroftp-cli profiles -i` (g <selector> <group>).".to_string();
+    }
+    let mut out = String::from("  #  Group                                Members\n");
+    for (i, g) in groups.iter().enumerate() {
+        let name: String = if g.name.chars().count() > 36 {
+            format!("{}\u{2026}", g.name.chars().take(35).collect::<String>())
+        } else {
+            g.name.clone()
+        };
+        out.push_str(&format!("  {:<2} {:<37}{}\n", i + 1, name, g.members.len()));
+    }
+    out.trim_end().to_string()
+}
+
+/// Resolve a group selector (1-based table index or case-insensitive name) to a
+/// 0-based position in `groups`. Mirrors `resolve_profile_selector`.
+fn resolve_group_selector(groups: &[CliServerGroup], sel: &str) -> Result<usize, String> {
+    let s = sel.trim();
+    if s.is_empty() {
+        return Err("empty selector".to_string());
+    }
+    if let Ok(n) = s.parse::<usize>() {
+        if n >= 1 && n <= groups.len() {
+            return Ok(n - 1);
+        }
+        return Err(format!("index out of range (1..={})", groups.len()));
+    }
+    groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(s))
+        .ok_or_else(|| format!("no group named '{}'", s))
+}
+
+fn print_groups_help() {
+    eprintln!("  l / ls            reprint the group table");
+    eprintln!("  l <N|name ...>    list the member profiles of each group");
+    eprintln!("  r <N|name> [new]  rename a group (prompts for the new name when omitted)");
+    eprintln!("  c <N|name> [new]  copy a group: duplicate its membership under a new name");
+    eprintln!("  d <N|name>        delete a group (the member servers are kept)");
+    eprintln!("  # <N|name> <pos>  move a group to position <pos> (re-index, persisted)");
+    eprintln!("  refresh / .       reload + reprint the table");
+    eprintln!("  h / help / ?      show this help");
+    eprintln!("  0/q               quit");
+    eprintln!();
+    eprintln!("  Groups are shared with the GUI My Servers chips; changes round-trip both ways.");
+    eprintln!("  Selectors: a table number (1-based) or the group name (quote names with spaces).");
+}
+
+/// `aeroftp-cli groups [-i]`: list and (interactively) manage server-profile
+/// groups. The plain listing prints to stdout (JSON or a table); `-i` drops into
+/// the shared interactive engine. Per Ehud #311 (D2).
+fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
+    use std::io::IsTerminal;
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    let groups = load_server_groups(&store);
+
+    if matches!(format, OutputFormat::Json) {
+        let arr: Vec<serde_json::Value> = groups
+            .iter()
+            .map(|g| {
+                serde_json::json!({
+                    "id": g.id,
+                    "name": g.name,
+                    "color": g.color,
+                    "order": g.order,
+                    "memberCount": g.members.len(),
+                })
+            })
+            .collect();
+        print_json(&serde_json::json!({ "groups": arr }));
+        return 0;
+    }
+
+    if interactive {
+        if !std::io::stdin().is_terminal() {
+            // Non-TTY: behave like the plain listing instead of hanging on a
+            // prompt nobody can answer.
+            println!("{}", format_groups_table(&groups));
+            eprintln!("`groups -i` needs an interactive terminal; printed the listing instead.");
+            return 0;
+        }
+        return interactive_groups_loop(cli, &store);
+    }
+
+    println!("{}", format_groups_table(&groups));
+    0
+}
+
+/// Interactive `groups -i` loop. Built on the shared section engine
+/// (`render_section_actions`, `section_is_*`, `section_prompt_line`) so its
+/// vocabulary matches `profiles -i`. The vault is the single source of truth:
+/// the table is reloaded from `config_server_groups` at the top of every
+/// iteration, so changes made in the GUI (or another session) show up on the
+/// next prompt. Per Ehud #311.
+fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
+    let verbs = groups_section_verbs();
+    loop {
+        let groups = load_server_groups(store);
+        eprintln!("{}", format_groups_table(&groups));
+        eprintln!("\nActions: {}", render_section_actions(&verbs));
+        eprintln!(
+            "Interactive: r/c/d <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+        );
+
+        let line = match section_prompt_line("groups> ") {
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                eprintln!();
+                return 0;
+            }
+            Err(e) => {
+                eprintln!("Read error: {}. Exiting interactive mode.", e);
+                return 1;
+            }
+        };
+        let raw = line.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let lower = raw.to_lowercase();
+        if section_is_quit(&lower) {
+            return 0;
+        }
+        if section_is_help(&lower) {
+            print_groups_help();
+            continue;
+        }
+        if section_is_refresh(&lower) {
+            // The table reloads and reprints at the top of the loop.
+            continue;
+        }
+
+        // Re-index: `# <selector> <pos>` (also the compact `#<selector> <pos>`).
+        if raw.starts_with('#') {
+            let tk = tokenize_quoted(raw);
+            let (sel, pos_raw) = if tk[0] == "#" {
+                if tk.len() < 3 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves group 3 to the top)");
+                    continue;
+                }
+                (tk[1].clone(), tk[2].clone())
+            } else {
+                let s = tk[0][1..].to_string();
+                if s.is_empty() || tk.len() < 2 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves group 3 to the top)");
+                    continue;
+                }
+                (s, tk[1].clone())
+            };
+            let idx = match resolve_group_selector(&groups, &sel) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("Selector '{}' skipped: {}", sel, e);
+                    continue;
+                }
+            };
+            let pos = match pos_raw.parse::<usize>() {
+                Ok(n) if n >= 1 => n,
+                _ => {
+                    eprintln!(
+                        "Target position must be a positive number (1..={}).",
+                        groups.len()
+                    );
+                    continue;
+                }
+            };
+            let gname = groups[idx].name.clone();
+            match reorder_group_in_vault(store, &gname, pos) {
+                Ok((name, dst)) => eprintln!(
+                    "{}",
+                    paint_green(&format!("Group '{}' moved to #{}.", name, dst + 1))
+                ),
+                Err(e) => eprintln!("{}", paint_red(&format!("Re-index failed: {}", e))),
+            }
+            continue;
+        }
+
+        let tokens = tokenize_quoted(raw);
+        let verb = tokens[0].to_lowercase();
+        match verb.as_str() {
+            "l" | "ls" | "list" => {
+                if tokens.len() < 2 {
+                    eprintln!("{}", format_groups_table(&groups));
+                    continue;
+                }
+                let profiles = load_active_user_profiles(cli, store).unwrap_or_default();
+                let name_for = |id: &str| -> Option<String> {
+                    profiles
+                        .iter()
+                        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+                        .and_then(|p| p.get("name").and_then(|v| v.as_str()))
+                        .map(|s| s.to_string())
+                };
+                for sel in &tokens[1..] {
+                    match resolve_group_selector(&groups, sel) {
+                        Ok(i) => {
+                            let g = &groups[i];
+                            eprintln!("\n=== {} ({} member(s)) ===", g.name, g.members.len());
+                            if g.members.is_empty() {
+                                eprintln!("  (empty)");
+                            }
+                            for m in &g.members {
+                                match name_for(m) {
+                                    Some(n) => eprintln!("  {}", n),
+                                    None => eprintln!("  {} (not in active user)", m),
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Selector '{}' skipped: {}", sel, e),
+                    }
+                }
+            }
+            "r" | "rename" | "mv" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: r <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let old = groups[idx].name.clone();
+                let new_name = if tokens.len() >= 3 {
+                    tokens[2].clone()
+                } else {
+                    match section_prompt_line(&format!(
+                        "New name for group '{}' (empty to abort): ",
+                        old
+                    )) {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    }
+                };
+                if new_name.is_empty() {
+                    eprintln!("Empty input: rename aborted.");
+                    continue;
+                }
+                match rename_group_in_vault(store, &old, &new_name) {
+                    Ok(was) => eprintln!(
+                        "{}",
+                        paint_green(&format!(
+                            "Group '{}' renamed to '{}'.",
+                            was,
+                            new_name.trim()
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Rename failed: {}", e))),
+                }
+            }
+            "c" | "copy" | "dup" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: c <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let src = groups[idx].name.clone();
+                let new_name = tokens.get(2).map(|s| s.as_str());
+                match copy_group_in_vault(store, &src, new_name) {
+                    Ok((s, n)) => eprintln!(
+                        "{}",
+                        paint_blue(&format!("Group '{}' duplicated as '{}'.", s, n))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Copy failed: {}", e))),
+                }
+            }
+            "d" | "delete" | "del" | "rm" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: d <N|name>");
+                    continue;
+                }
+                let idx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let name = groups[idx].name.clone();
+                let count = groups[idx].members.len();
+                eprintln!(
+                    "About to delete group '{}' ({} member(s)). The member servers are kept.",
+                    name, count
+                );
+                let confirm =
+                    match section_prompt_line("Type 'yes' (or the group name) to confirm: ") {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    };
+                let allow = confirm.eq_ignore_ascii_case("yes") || confirm == name;
+                if !allow {
+                    eprintln!("Confirmation did not match: group NOT deleted.");
+                    continue;
+                }
+                match delete_group_in_vault(store, &name) {
+                    Ok(removed) => eprintln!(
+                        "{}",
+                        paint_yellow(&format!(
+                            "Group '{}' deleted. Its servers were kept.",
+                            removed
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
+                }
+            }
+            _ => {
+                eprintln!("Unrecognized command. Type '?' for help.");
+            }
+        }
+    }
+}
+
 /// rclone-config-style prompt loop on `aeroftp profiles -i`.
 ///
 /// Accepts compact tokens (`1l`, `l1`, `2t`, `3d`) and rclone-style action
@@ -13666,8 +14254,8 @@ fn interactive_profiles_loop(
             // profile-table column order; the syntax line below keeps the
             // selector/target details.
             eprintln!(
-                "\nActions: re-index(#) · Rename(R) · Edit(E) · Copy(C) · Delete(D) · Fav{}(F) · Groups(G) · Users(U) · List/ls(L) · Tree(T) · Refresh(.) · Help(H) · Quit(Q/0)\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
-                fav_marker
+                "\nActions: {}\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
+                render_section_actions(&profiles_section_verbs(fav_marker))
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -13691,10 +14279,10 @@ fn interactive_profiles_loop(
             continue;
         }
         let lower = raw.to_lowercase();
-        if lower == "q" || lower == "quit" || lower == "exit" || lower == "0" || lower == "-1" {
+        if section_is_quit(&lower) {
             return 0;
         }
-        if lower == "help" || lower == "h" || lower == "?" {
+        if section_is_help(&lower) {
             eprintln!("  l <selectors>   list root of each profile");
             eprintln!("  t <selectors> [:N]  tree of each profile (default depth 2; :N sets depth, :0 = full)");
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
@@ -13736,7 +14324,7 @@ fn interactive_profiles_loop(
         // empty Enter deliberately does nothing, since wiping the terminal on
         // an accidental keystroke is intrusive. Re-runs the same view, which
         // re-reads the vault and picks up changes made in another session.
-        if lower == "refresh" || lower == "clear" || lower == "." {
+        if section_is_refresh(&lower) {
             refresh_profiles_view(overrides);
             continue;
         }
@@ -50814,6 +51402,10 @@ async fn main() {
                 start_in_tui: *tui,
             },
         ),
+        Commands::Groups {
+            _ignored: _,
+            interactive,
+        } => cmd_groups(&cli, format, *interactive),
         Commands::Users { command } => cmd_users(&cli, command, format),
         Commands::ProfileAdd {
             name,
@@ -51568,6 +52160,135 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn section_actions_render_label_key_joined() {
+        let verbs = vec![
+            SectionVerb::new("re-index", "#"),
+            SectionVerb::new("Rename", "R"),
+            SectionVerb::new("Quit", "Q/0"),
+        ];
+        assert_eq!(
+            render_section_actions(&verbs),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Quit(Q/0)"
+        );
+    }
+
+    #[test]
+    fn profiles_action_bar_matches_documented_vocabulary() {
+        // The shared engine must reproduce the exact `profiles -i` action bar,
+        // including the favourite glyph riding on the Fav verb (#270/#311).
+        assert_eq!(
+            render_section_actions(&profiles_section_verbs("\u{2605}")),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Help(H) \u{00b7} Quit(Q/0)"
+        );
+        // The chosen-heart marker (#270) flows through unchanged.
+        assert!(
+            render_section_actions(&profiles_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)")
+        );
+    }
+
+    #[test]
+    fn section_keyword_predicates_cover_the_shared_vocabulary() {
+        for q in ["q", "quit", "exit", "0", "-1"] {
+            assert!(section_is_quit(q), "{q} should quit");
+        }
+        for h in ["h", "help", "?"] {
+            assert!(section_is_help(h), "{h} should open help");
+        }
+        for r in ["refresh", "clear", "."] {
+            assert!(section_is_refresh(r), "{r} should refresh");
+        }
+        // Disjoint: a refresh keyword is not a quit keyword, and vice versa.
+        assert!(!section_is_quit("refresh"));
+        assert!(!section_is_refresh("q"));
+        assert!(!section_is_help("."));
+    }
+
+    fn grp(name: &str, order: i64, members: &[&str]) -> CliServerGroup {
+        CliServerGroup {
+            id: format!("grp_{}", name),
+            name: name.to_string(),
+            color: None,
+            order,
+            members: members.iter().map(|m| m.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn resolve_group_selector_takes_index_or_name() {
+        let groups = vec![grp("Work", 0, &[]), grp("Home Lab", 1, &[])];
+        // 1-based index.
+        assert_eq!(resolve_group_selector(&groups, "1").unwrap(), 0);
+        assert_eq!(resolve_group_selector(&groups, "2").unwrap(), 1);
+        // Case-insensitive name.
+        assert_eq!(resolve_group_selector(&groups, "work").unwrap(), 0);
+        assert_eq!(resolve_group_selector(&groups, "Home Lab").unwrap(), 1);
+        // Out of range / unknown.
+        assert!(resolve_group_selector(&groups, "3").is_err());
+        assert!(resolve_group_selector(&groups, "nope").is_err());
+        assert!(resolve_group_selector(&groups, "").is_err());
+    }
+
+    #[test]
+    fn group_copy_name_disambiguates() {
+        let mut groups = vec![grp("Work", 0, &[])];
+        assert_eq!(next_group_copy_name(&groups, "Work"), "Work (copy)");
+        groups.push(grp("Work (copy)", 1, &[]));
+        assert_eq!(next_group_copy_name(&groups, "Work"), "Work (copy 2)");
+        groups.push(grp("Work (copy 2)", 2, &[]));
+        assert_eq!(next_group_copy_name(&groups, "Work"), "Work (copy 3)");
+        // Taken check is case-insensitive.
+        assert!(group_name_taken(&groups, "WORK (COPY)"));
+        assert!(!group_name_taken(&groups, "Fresh"));
+    }
+
+    #[test]
+    fn group_reorder_moves_and_restamps_dense_order() {
+        // Pre-sorted by order, as load_server_groups returns.
+        let mut groups = vec![grp("A", 0, &[]), grp("B", 1, &[]), grp("C", 2, &[])];
+        // Move C to the top.
+        let (name, dst) = apply_group_reorder(&mut groups, "c", 1).unwrap();
+        assert_eq!(name, "C");
+        assert_eq!(dst, 0);
+        let order: Vec<(&str, i64)> = groups.iter().map(|g| (g.name.as_str(), g.order)).collect();
+        assert_eq!(order, vec![("C", 0), ("A", 1), ("B", 2)]);
+        // Over-large target clamps to the last position.
+        let (_, dst) = apply_group_reorder(&mut groups, "C", 99).unwrap();
+        assert_eq!(dst, 2);
+        assert_eq!(
+            groups.iter().map(|g| g.name.clone()).collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+        // Unknown group is an error; empty list is an error.
+        assert!(apply_group_reorder(&mut groups, "missing", 1).is_err());
+        assert!(apply_group_reorder(&mut Vec::new(), "A", 1).is_err());
+    }
+
+    #[test]
+    fn groups_table_renders_header_and_counts() {
+        assert!(format_groups_table(&[]).contains("No groups yet"));
+        let table = format_groups_table(&[grp("Work", 0, &["p1", "p2"]), grp("Home", 1, &[])]);
+        assert!(table.contains("Group"));
+        assert!(table.contains("Members"));
+        // Numbered 1-based, with member counts.
+        assert!(table.contains("1 "));
+        assert!(table.contains("Work"));
+        assert!(table
+            .lines()
+            .any(|l| l.contains("Work") && l.trim_end().ends_with('2')));
+        assert!(table
+            .lines()
+            .any(|l| l.contains("Home") && l.trim_end().ends_with('0')));
+    }
+
+    #[test]
+    fn groups_action_bar_matches_d2_vocabulary() {
+        assert_eq!(
+            render_section_actions(&groups_section_verbs()),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} List/ls(L) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+        );
     }
 
     #[test]

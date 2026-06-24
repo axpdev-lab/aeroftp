@@ -38,6 +38,7 @@ import {
     readServerGroupsFromLocalStorage,
     newServerGroupId,
     pruneServerFromGroups,
+    reorderServerGroups,
 } from '../../utils/serverGroups';
 import { InputDialog } from '../Dialogs';
 
@@ -476,6 +477,10 @@ export function MyServersPanel({
             localStorage.removeItem('aeroftp_myservers_group');
             return null;
         });
+    }, [groups, persistGroups]);
+    const reorderGroup = useCallback((groupId: string, targetIndex: number) => {
+        const next = reorderServerGroups(groups, groupId, targetIndex);
+        if (next !== groups) persistGroups(next);
     }, [groups, persistGroups]);
     const toggleGroupMembership = useCallback((serverId: string, groupId: string) => {
         persistGroups(groups.map(g => {
@@ -1416,6 +1421,7 @@ export function MyServersPanel({
             groupCounts={groupCounts}
             onGroupSelect={selectGroup}
             onGroupContextMenu={handleGroupContextMenu}
+            onGroupReorder={reorderGroup}
             onNewGroup={() => setGroupDialog({ id: null, name: '' })}
         />
         </div>
