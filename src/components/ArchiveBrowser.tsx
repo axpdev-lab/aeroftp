@@ -141,6 +141,16 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals).
     const guarded = useGuardedClose({ guard: extracting !== null ? 'busy' : null, onClose });
     const tempPreviewPathsRef = useRef<string[]>([]);
+    const archivePasswordRef = useRef<HTMLInputElement>(null);
+
+    // Focus the password field when the encrypted-archive prompt appears, so the
+    // user can type straight away without clicking it first.
+    useEffect(() => {
+        if (needsPassword) {
+            const id = window.setTimeout(() => archivePasswordRef.current?.focus(), 50);
+            return () => window.clearTimeout(id);
+        }
+    }, [needsPassword]);
 
     // Cleanup temp preview files on unmount (A7-03)
     useEffect(() => {
@@ -349,6 +359,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <input
+                                    ref={archivePasswordRef}
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}

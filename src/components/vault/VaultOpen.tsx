@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
+import { useEffect, useRef } from 'react';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels } from './useVaultState';
@@ -13,6 +14,16 @@ interface VaultOpenProps {
 export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
     const t = useTranslation();
     const isZip = state.isPlaintextZip;
+    const passwordRef = useRef<HTMLInputElement>(null);
+
+    // Focus the password field when the open form appears, so the user can type
+    // straight away without clicking it first.
+    useEffect(() => {
+        if (!isZip) {
+            const id = window.setTimeout(() => passwordRef.current?.focus(), 50);
+            return () => window.clearTimeout(id);
+        }
+    }, [isZip]);
 
     // Plaintext Zip needs no password: useVaultState auto-unlocks it straight to
     // browse, so this screen would only flash a pointless confirm step. Show a
@@ -48,7 +59,7 @@ export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
                 <>
                     <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
                     <div className="relative">
-                        <input type={state.showPassword ? 'text' : 'password'} value={state.password}
+                        <input ref={passwordRef} type={state.showPassword ? 'text' : 'password'} value={state.password}
                             onChange={e => state.setPassword(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && state.handleUnlock()}
                             className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />

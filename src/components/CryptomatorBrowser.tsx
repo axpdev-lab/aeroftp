@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -58,6 +58,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     // Save-All (#322): live export of the whole decrypted tree to folder/zip/.aerozip.
+    const passwordRef = useRef<HTMLInputElement>(null);
     const [savingAll, setSavingAll] = useState(false);
     const [saveProgress, setSaveProgress] = useState<{ percentage: number; transferred: number; total: number } | null>(null);
     // Real byte-true decrypt progress (>=10MB plaintext only).
@@ -77,6 +78,16 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const guarded = useGuardedClose({ guard: (decrypting || savingAll) ? 'busy' : null, onClose });
 
     const currentDirId = breadcrumb[breadcrumb.length - 1].dirId;
+
+    // Focus the password field as soon as the unlock form is shown (e.g. when the
+    // modal opens with a vault already selected), so the user can type straight
+    // away without clicking it first.
+    useEffect(() => {
+        if (!vaultInfo && vaultPath) {
+            const id = window.setTimeout(() => passwordRef.current?.focus(), 50);
+            return () => window.clearTimeout(id);
+        }
+    }, [vaultInfo, vaultPath]);
 
     const handleSelectVault = async () => {
         const selected = await open({ directory: true });
@@ -367,6 +378,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                     <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('cryptomator.password')}</label>
                                     <div className="relative">
                                         <input
+                                            ref={passwordRef}
                                             type={showPassword ? 'text' : 'password'}
                                             value={password}
                                             onChange={e => setPassword(e.target.value)}
