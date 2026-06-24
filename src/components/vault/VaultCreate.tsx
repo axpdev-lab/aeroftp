@@ -48,10 +48,16 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
         return () => window.clearTimeout(id);
     }, []);
 
+    // Labels are i18n (never hardcoded). The third profile is the MAXIMUM
+    // compression level (zstd -15); it is NOT called "Archive" so it does not
+    // collide with the encrypted vault's "Archive" mode (the v3 dedup archive).
+    // The `id` stays `archive` because that is the backend profile token; only
+    // the user-facing label changed. The detail (`zstd -N`) is a literal codec
+    // flag, not translatable prose.
     const compressionProfiles: { id: VaultV3CompressionProfile; label: string; detail: string }[] = [
-        { id: 'fast', label: 'Fast', detail: 'zstd -3' },
-        { id: 'balanced', label: 'Balanced', detail: 'zstd -9' },
-        { id: 'archive', label: 'Archive', detail: 'zstd -15' },
+        { id: 'fast', label: t('compress.fast'), detail: 'zstd -3' },
+        { id: 'balanced', label: t('compress.balanced'), detail: 'zstd -9' },
+        { id: 'archive', label: t('compress.maximum'), detail: 'zstd -15' },
     ];
 
     // Real (canary) size estimate for the .aerozip output, recomputed (debounced)

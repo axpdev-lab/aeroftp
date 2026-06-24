@@ -2942,6 +2942,7 @@
             "compress": "Pakkaa",
             "store": "Tallennus (ei pakkausta)",
             "fast": "Nopea",
+            "balanced": "Tasapainotettu",
             "normal": "Normaali",
             "maximum": "Maksimi",
             "compressing": "Pakataan...",

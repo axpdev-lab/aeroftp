@@ -2942,6 +2942,7 @@
             "compress": "Paki",
             "store": "Salvesta (pakkimiseta)",
             "fast": "Kiire",
+            "balanced": "Tasakaalustatud",
             "normal": "Tavaline",
             "maximum": "Maksimaalne",
             "compressing": "Pakkimine...",

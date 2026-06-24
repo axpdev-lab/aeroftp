@@ -2942,6 +2942,7 @@
             "compress": "Kompres",
             "store": "Simpan (tanpa kompresi)",
             "fast": "Cepat",
+            "balanced": "Seimbang",
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Mengompresi...",

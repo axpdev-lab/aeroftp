@@ -2942,6 +2942,7 @@
             "compress": "Compresser",
             "store": "Stocker (sans compression)",
             "fast": "Rapide",
+            "balanced": "Équilibré",
             "normal": "Normal",
             "maximum": "Maximum",
             "compressing": "Compression en cours...",

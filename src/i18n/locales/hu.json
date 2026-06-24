@@ -2942,6 +2942,7 @@
             "compress": "Tömörítés",
             "store": "Tárolás (nincs tömörítés)",
             "fast": "Gyors",
+            "balanced": "Kiegyensulyozott",
             "normal": "Normál",
             "maximum": "Maximum",
             "compressing": "Tömörítés...",

@@ -2942,6 +2942,7 @@
             "compress": "Mampatkan",
             "store": "Simpan (tanpa pemampatan)",
             "fast": "Pantas",
+            "balanced": "Seimbang",
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Memampatkan...",

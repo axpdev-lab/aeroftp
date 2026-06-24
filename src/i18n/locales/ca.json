@@ -2942,6 +2942,7 @@
             "compress": "Comprimir",
             "store": "Emmagatzemar (sense compressió)",
             "fast": "Ràpid",
+            "balanced": "Equilibrat",
             "normal": "Normal",
             "maximum": "Màxim",
             "compressing": "Comprimint...",

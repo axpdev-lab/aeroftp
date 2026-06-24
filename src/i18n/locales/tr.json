@@ -2942,6 +2942,7 @@
             "compress": "Sıkıştır",
             "store": "Depola (sıkıştırmasız)",
             "fast": "Hızlı",
+            "balanced": "Dengeli",
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Sıkıştırılıyor...",

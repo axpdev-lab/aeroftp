@@ -2942,6 +2942,7 @@
             "compress": "Saspiest",
             "store": "Saglabāt (bez saspiešanas)",
             "fast": "Ātrs",
+            "balanced": "Līdzsvarots",
             "normal": "Normāls",
             "maximum": "Maksimāls",
             "compressing": "Saspiežana...",

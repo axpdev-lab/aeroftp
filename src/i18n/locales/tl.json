@@ -2942,6 +2942,7 @@
             "compress": "I-compress",
             "store": "I-store (walang compression)",
             "fast": "Mabilis",
+            "balanced": "Balanse",
             "normal": "Normal",
             "maximum": "Maximum",
             "compressing": "Ino-compress...",

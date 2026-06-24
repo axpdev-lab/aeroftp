@@ -2942,6 +2942,7 @@
             "compress": "압축",
             "store": "저장 (압축 없음)",
             "fast": "빠름",
+            "balanced": "균형",
             "normal": "보통",
             "maximum": "최대",
             "compressing": "압축 중...",

@@ -2942,6 +2942,7 @@
             "compress": "Comprimeren",
             "store": "Opslaan (geen compressie)",
             "fast": "Snel",
+            "balanced": "Gebalanceerd",
             "normal": "Normaal",
             "maximum": "Maximaal",
             "compressing": "Comprimeren...",

@@ -2942,6 +2942,7 @@
             "compress": "Komprimovat",
             "store": "Ulozenie (bez kompresie)",
             "fast": "Rychly",
+            "balanced": "Vyvážený",
             "normal": "Normalny",
             "maximum": "Maximalny",
             "compressing": "Komprimovanie...",

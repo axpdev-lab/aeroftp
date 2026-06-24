@@ -1097,6 +1097,7 @@
             "compressing": "Compressing...",
             "estimatedSize": "Estimated",
             "fast": "Fast",
+            "balanced": "Balanced",
             "files": "files",
             "folders": "folders",
             "format": "Format",

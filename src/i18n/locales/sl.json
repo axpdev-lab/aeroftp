@@ -2942,6 +2942,7 @@
             "compress": "Stisni",
             "store": "Shrani (brez stiskanja)",
             "fast": "Hitro",
+            "balanced": "Uravnoteženo",
             "normal": "Normalno",
             "maximum": "Največje",
             "compressing": "Stiskanje...",

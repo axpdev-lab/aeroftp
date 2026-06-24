@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { X, Loader2, Archive, Lock, Unlock } from 'lucide-react';
+import { X, Loader2, Archive, Lock, Unlock, Home, Files } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { VaultIcon } from './icons/VaultIcon';
 import { useTranslation } from '../i18n';
@@ -11,6 +11,8 @@ import { VaultHome } from './vault/VaultHome';
 import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
 import { VaultBrowse } from './vault/VaultBrowse';
+import { VaultViewTabs, VaultViewTab } from './vault/VaultViewTabs';
+import { VaultRecentList } from './vault/VaultRecentList';
 import { VaultCreateReceipt } from './vault/VaultCreateReceipt';
 import { VaultReceipt } from './vault/VaultReceipt';
 import { ZipCompressionReport } from './vault/ZipCompressionReport';
@@ -58,6 +60,21 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
     // is inert and the X routes through a confirm, so a stray click or reflexive close
     // can never abandon an in-flight big-file op (the user would lose track of it).
     const guarded = useGuardedClose({ guard: state.loading ? 'busy' : null, onClose });
+
+    // Unified tabbed shell (owner-locked layout, 2026-06-24): the standalone intro
+    // modal AND the vault browser share one [primary]+[Recent] tab strip. The
+    // primary tab is "Home" (the create/open landing) standalone, "Files" (the
+    // browser/unlock) once a vault is open; [Recent] is the same reusable
+    // cronologia in both. create + receipt stay tab-free + history-free. The active
+    // tab resets to the primary on each mode change but the user can switch to
+    // [Recent] within a mode.
+    const isTabbedContext = state.mode === 'home' || state.mode === 'open' || state.mode === 'browse';
+    const [activeTab, setActiveTab] = React.useState<VaultViewTab>('files');
+    React.useEffect(() => {
+        if (state.mode === 'home' || state.mode === 'open' || state.mode === 'browse') setActiveTab('files');
+    }, [state.mode]);
+    const primaryTabLabel = state.mode === 'home' ? t('localTabs.home') : t('vault.receipt.files');
+    const PrimaryTabIcon = state.mode === 'home' ? Home : Files;
 
     const loggedReportRef = React.useRef<unknown>(null);
     React.useEffect(() => {
@@ -225,12 +242,42 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                 {state.success && state.mode !== 'receipt' && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-sm">{state.success}</div>}
                 {state.zipReport && state.mode === 'browse' && <ZipCompressionReport inputBytes={state.zipReport.inputBytes} outputBytes={state.zipReport.outputBytes} />}
 
+                {/* Unified tab bar: standalone intro ([Home]+[Recent]) and the vault
+                    browser ([Files]+[Recent]) share it. create + receipt are tab-free. */}
+                {isTabbedContext && (
+                    <VaultViewTabs
+                        activeTab={activeTab}
+                        onSelect={setActiveTab}
+                        primaryLabel={primaryTabLabel}
+                        primaryIcon={PrimaryTabIcon}
+                    />
+                )}
+
                 {/* Content */}
-                {state.mode === 'home' && <VaultHome state={state} isConnected={isConnected} iconProvider={iconProvider} />}
                 {state.mode === 'create' && <VaultCreate state={state} />}
-                {state.mode === 'open' && <VaultOpen state={state} />}
-                {state.mode === 'browse' && <VaultBrowse state={state} iconProvider={iconProvider} />}
                 {state.mode === 'receipt' && <VaultCreateReceipt state={state} onClose={guarded.requestClose} />}
+
+                {/* Primary tab: the intro landing (home), the unlock prompt (open) or
+                    the browser (browse). */}
+                {isTabbedContext && activeTab === 'files' && state.mode === 'home' && (
+                    <VaultHome state={state} isConnected={isConnected} iconProvider={iconProvider} />
+                )}
+                {isTabbedContext && activeTab === 'files' && state.mode === 'open' && (
+                    <VaultOpen state={state} />
+                )}
+                {isTabbedContext && activeTab === 'files' && state.mode === 'browse' && (
+                    <VaultBrowse state={state} iconProvider={iconProvider} />
+                )}
+
+                {/* [Recent] tab: the reusable cronologia, identical standalone and in
+                    the browser. */}
+                {isTabbedContext && activeTab === 'recent' && (
+                    <VaultRecentList
+                        state={state}
+                        containerClassName="p-4 w-full"
+                        listClassName="space-y-1.5 overflow-y-auto max-h-[60vh]"
+                    />
+                )}
 
                 {/* Loading overlay */}
                 {state.loading && state.mode === 'browse' && (

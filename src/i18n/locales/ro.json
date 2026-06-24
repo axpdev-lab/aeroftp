@@ -2942,6 +2942,7 @@
             "compress": "Comprimă",
             "store": "Stocare (fără comprimare)",
             "fast": "Rapid",
+            "balanced": "Echilibrat",
             "normal": "Normal",
             "maximum": "Maxim",
             "compressing": "Se comprimă...",

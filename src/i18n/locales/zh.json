@@ -2942,6 +2942,7 @@
             "compress": "压缩",
             "store": "存储（不压缩）",
             "fast": "快速",
+            "balanced": "均衡",
             "normal": "标准",
             "maximum": "最大",
             "compressing": "正在压缩...",

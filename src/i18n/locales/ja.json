@@ -2907,6 +2907,7 @@
             "compress": "圧縮",
             "store": "保存（無圧縮）",
             "fast": "高速",
+            "balanced": "バランス",
             "normal": "通常",
             "maximum": "最大",
             "compressing": "圧縮中...",

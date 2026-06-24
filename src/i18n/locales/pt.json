@@ -2942,6 +2942,7 @@
             "compress": "Compactar",
             "store": "Armazenar (sem compactação)",
             "fast": "Rápido",
+            "balanced": "Equilibrado",
             "normal": "Normal",
             "maximum": "Máximo",
             "compressing": "A comprimir...",

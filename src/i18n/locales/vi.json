@@ -2942,6 +2942,7 @@
             "compress": "Nén",
             "store": "Lưu trữ (không nén)",
             "fast": "Nhanh",
+            "balanced": "Cân bằng",
             "normal": "Bình thường",
             "maximum": "Tối đa",
             "compressing": "Đang nén...",

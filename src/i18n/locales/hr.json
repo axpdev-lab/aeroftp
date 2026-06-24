@@ -2942,6 +2942,7 @@
             "compress": "Sažmi",
             "store": "Pohrani (bez sažimanja)",
             "fast": "Brzo",
+            "balanced": "Uravnotezen",
             "normal": "Normalno",
             "maximum": "Maksimalno",
             "compressing": "Komprimiranje...",

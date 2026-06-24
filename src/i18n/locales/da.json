@@ -2942,6 +2942,7 @@
             "compress": "Komprimer",
             "store": "Gem (ingen komprimering)",
             "fast": "Hurtig",
+            "balanced": "Balanceret",
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Komprimerer...",

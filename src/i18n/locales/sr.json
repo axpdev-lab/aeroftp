@@ -2942,6 +2942,7 @@
             "compress": "Kompresuj",
             "store": "Skladišti (bez kompresije)",
             "fast": "Brzo",
+            "balanced": "Уравнотежен",
             "normal": "Normalno",
             "maximum": "Maksimalno",
             "compressing": "Компресовање...",

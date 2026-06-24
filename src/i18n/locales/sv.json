@@ -2942,6 +2942,7 @@
             "compress": "Komprimera",
             "store": "Lagra (ingen komprimering)",
             "fast": "Snabb",
+            "balanced": "Balanserat",
             "normal": "Normal",
             "maximum": "Maximal",
             "compressing": "Komprimerar...",

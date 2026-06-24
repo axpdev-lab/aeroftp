@@ -2942,6 +2942,7 @@
             "compress": "Komprimer",
             "store": "Lagre (ingen komprimering)",
             "fast": "Rask",
+            "balanced": "Balansert",
             "normal": "Normal",
             "maximum": "Maksimum",
             "compressing": "Komprimerer...",

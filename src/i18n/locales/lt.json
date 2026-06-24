@@ -2942,6 +2942,7 @@
             "compress": "Suspausti",
             "store": "Saugoti (be suspaudimo)",
             "fast": "Greitas",
+            "balanced": "Subalansuotas",
             "normal": "Įprastas",
             "maximum": "Maksimalus",
             "compressing": "Glaudinamas...",
