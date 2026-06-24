@@ -983,6 +983,17 @@ async fn save_all_v3_impl(
                         .prefix(".aerovault-saveall-")
                         .tempdir()
                         .map_err(|e| format!("Create scratch dir: {e}"))?;
+                    // F-10: explicit 0700 for parity with vault_storage_provider's
+                    // cache (tempfile is 0700 on Unix by default; be explicit).
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        std::fs::set_permissions(
+                            scratch.path(),
+                            std::fs::Permissions::from_mode(0o700),
+                        )
+                        .map_err(|e| format!("Set scratch dir perms: {e}"))?;
+                    }
                     {
                         let vault = open_v3_for_read(&vault_path, password.as_deref())?;
                         aerovault::v3::VaultV3::extract_all(&vault, scratch.path())?;

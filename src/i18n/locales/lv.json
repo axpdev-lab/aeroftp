@@ -356,7 +356,6 @@
             "edit": "Rediģēt",
             "emptyTrash": "Iztīrīt atkritni",
             "emptyTrashConfirm": "Vai tiešām vēlaties neatgriezeniski dzēst visus vienumus atkritum grozam? Šo darbību nevar atsaukt.",
-            "encryptFolderAsVault": "Šifrēt mapi kā AeroVault...",
             "encryptionOptional": "Iestatīt paroli (AES-256)",
             "encryptionOptionalHint": "Atstājiet tukšu bez šifrēšanas",
             "enterArchivePassword": "Šis arhīvs ir šifrēts. Ievadiet paroli:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay",
             "privacyEllipsis": "Privātums...",
             "openWithAeroVaultZip": "Atvērt ar AeroVault Zip",
-            "createAeroVaultZip": "Izveidot AeroVault Zip...",
             "importToAeroFTP": "Importēt uz AeroFTP"
         },
         "transfer": {

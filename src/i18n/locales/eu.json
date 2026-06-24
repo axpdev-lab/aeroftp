@@ -356,7 +356,6 @@
             "edit": "Editatu",
             "emptyTrash": "Hustu zakarrontzia",
             "emptyTrashConfirm": "Ziur zaude zakarrontziko elementu guztiak betirako ezabatu nahi dituzula? Ekintza hau ezin da desegin.",
-            "encryptFolderAsVault": "Enkriptatu karpeta AeroVault gisa...",
             "encryptionOptional": "Ezarri pasahitza (AES-256)",
             "encryptionOptionalHint": "Utzi hutsik enkriptaziorik gabe uzteko",
             "enterArchivePassword": "Artxibo hau enkriptatuta dago. Sartu pasahitza:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa",
             "privacyEllipsis": "Pribatutasuna...",
             "openWithAeroVaultZip": "Ireki AeroVault Zip-ekin",
-            "createAeroVaultZip": "Sortu AeroVault Zip...",
             "importToAeroFTP": "Inportatu AeroFTPra"
         },
         "transfer": {

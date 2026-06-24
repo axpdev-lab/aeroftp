@@ -3872,92 +3872,95 @@ pub async fn oauth2_connect(
     // "still connecting" Cancel aborts a slow OAuth API connect (the My Servers
     // OAuth path previously could not be cancelled at all).
     let build_provider = async {
-    let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
-        "google_drive" | "googledrive" | "google" => {
-            let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
-            let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Google Drive connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "googlephotos" | "google_photos" => {
-            let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
-            let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Google Photos connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "dropbox" => {
-            let config = DropboxConfig::new(&params.client_id, &params.client_secret);
-            let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Dropbox connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "onedrive" | "microsoft" => {
-            let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
-            let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("OneDrive connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "box" => {
-            let config = BoxConfig {
-                client_id: params.client_id.clone(),
-                client_secret: params.client_secret.clone(),
-            };
-            let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Box connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "pcloud" => {
-            // pCloud tokens are region-locked: always prefer vault-stored region
-            // (detected during token exchange) over serde default "us"
-            let region = crate::credential_store::CredentialStore::from_cache()
-                .and_then(|store| store.get("oauth_pcloud_region").ok())
-                .unwrap_or(params.region.clone());
-            let config = PCloudConfig {
-                client_id: params.client_id.clone(),
-                client_secret: params.client_secret.clone(),
-                region,
-            };
-            let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("pCloud connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
-            let config =
-                ZohoWorkdriveConfig::new(&params.client_id, &params.client_secret, &params.region);
-            let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "yandexdisk" | "yandex_disk" | "yandex" => {
-            // Yandex Disk OAuth: retrieve token from stored OAuth tokens
-            use crate::providers::{OAuth2Manager, OAuthProvider};
-            let manager = OAuth2Manager::new();
-            let tokens = manager
-                .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
-                .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
-            let mut p =
-                crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
-            p.connect()
-                .await
-                .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
-            Box::new(p)
-        }
-        other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
+        let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
+            "google_drive" | "googledrive" | "google" => {
+                let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
+                let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Google Drive connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "googlephotos" | "google_photos" => {
+                let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
+                let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Google Photos connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "dropbox" => {
+                let config = DropboxConfig::new(&params.client_id, &params.client_secret);
+                let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Dropbox connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "onedrive" | "microsoft" => {
+                let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
+                let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("OneDrive connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "box" => {
+                let config = BoxConfig {
+                    client_id: params.client_id.clone(),
+                    client_secret: params.client_secret.clone(),
+                };
+                let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Box connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "pcloud" => {
+                // pCloud tokens are region-locked: always prefer vault-stored region
+                // (detected during token exchange) over serde default "us"
+                let region = crate::credential_store::CredentialStore::from_cache()
+                    .and_then(|store| store.get("oauth_pcloud_region").ok())
+                    .unwrap_or(params.region.clone());
+                let config = PCloudConfig {
+                    client_id: params.client_id.clone(),
+                    client_secret: params.client_secret.clone(),
+                    region,
+                };
+                let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("pCloud connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
+                let config = ZohoWorkdriveConfig::new(
+                    &params.client_id,
+                    &params.client_secret,
+                    &params.region,
+                );
+                let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "yandexdisk" | "yandex_disk" | "yandex" => {
+                // Yandex Disk OAuth: retrieve token from stored OAuth tokens
+                use crate::providers::{OAuth2Manager, OAuthProvider};
+                let manager = OAuth2Manager::new();
+                let tokens = manager
+                    .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
+                    .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
+                let mut p =
+                    crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
+                Box::new(p)
+            }
+            other => return Err(format!("Unknown OAuth2 provider: {}", other)),
+        };
         Ok::<Box<dyn StorageProvider>, String>(provider)
     };
 

@@ -356,7 +356,6 @@
             "edit": "Editar",
             "emptyTrash": "Baleirar o lixo",
             "emptyTrashConfirm": "Está seguro de que quere eliminar permanentemente todos os elementos do lixo? Esta acción non se pode desfacer.",
-            "encryptFolderAsVault": "Cifrar cartafol como AeroVault...",
             "encryptionOptional": "Establecer contrasinal (AES-256)",
             "encryptionOptionalHint": "Deixar baleiro para non cifrar",
             "enterArchivePassword": "Este arquivo está cifrado. Introduce o contrasinal:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidade...",
             "openWithAeroVaultZip": "Abrir con AeroVault Zip",
-            "createAeroVaultZip": "Crear AeroVault Zip...",
             "importToAeroFTP": "Importar a AeroFTP"
         },
         "transfer": {

@@ -356,7 +356,6 @@
             "edit": "Edytuj",
             "emptyTrash": "Opróżnij kosz",
             "emptyTrashConfirm": "Czy na pewno chcesz trwale usunąć wszystkie elementy z Kosza? Tej operacji nie można cofnąć.",
-            "encryptFolderAsVault": "Zaszyfruj folder jako AeroVault...",
             "encryptionOptional": "Ustaw hasło (AES-256)",
             "encryptionOptionalHint": "Pozostaw puste, aby wyłączyć szyfrowanie",
             "enterArchivePassword": "To archiwum jest zaszyfrowane. Wprowadź hasło:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Otwórz jako AeroVault Overlay",
             "privacyEllipsis": "Prywatność...",
             "openWithAeroVaultZip": "Otwórz za pomocą AeroVault Zip",
-            "createAeroVaultZip": "Utwórz AeroVault Zip...",
             "importToAeroFTP": "Importuj do AeroFTP"
         },
         "transfer": {

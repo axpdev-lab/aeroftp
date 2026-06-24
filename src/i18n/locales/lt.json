@@ -356,7 +356,6 @@
             "edit": "Redaguoti",
             "emptyTrash": "Ištuštinti šiukšliadėžę",
             "emptyTrashConfirm": "Ar tikrai norite visam laikui ištrinti visus elementus iš šiukšliadėžės? Šio veiksmo anuliuoti negalima.",
-            "encryptFolderAsVault": "Užšifruoti aplanką kaip AeroVault...",
             "encryptionOptional": "Nustatyti slaptažodį (AES-256)",
             "encryptionOptionalHint": "Palikite tuščią be šifravimo",
             "enterArchivePassword": "Šis archyvas užšifruotas. Įveskite slaptažodį:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay",
             "privacyEllipsis": "Privatumas...",
             "openWithAeroVaultZip": "Atidaryti su AeroVault Zip",
-            "createAeroVaultZip": "Kurti AeroVault Zip...",
             "importToAeroFTP": "Importuoti į AeroFTP"
         },
         "transfer": {

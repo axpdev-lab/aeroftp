@@ -356,7 +356,6 @@
             "edit": "সম্পাদনা",
             "emptyTrash": "ট্র্যাশ খালি করুন",
             "emptyTrashConfirm": "আপনি কি নিশ্চিত যে ট্র্যাশের সমস্ত আইটেম স্থায়ীভাবে মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না।",
-            "encryptFolderAsVault": "AeroVault হিসাবে ফোল্ডার এনক্রিপ্ট করুন...",
             "encryptionOptional": "পাসওয়ার্ড সেট করুন (AES-256)",
             "encryptionOptionalHint": "এনক্রিপশন না চাইলে খালি রাখুন",
             "enterArchivePassword": "আর্কাইভ সুরক্ষিত। পাসওয়ার্ড দিন:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন",
             "privacyEllipsis": "গোপনীয়তা...",
             "openWithAeroVaultZip": "AeroVault Zip দিয়ে খুলুন",
-            "createAeroVaultZip": "AeroVault Zip তৈরি করুন...",
             "importToAeroFTP": "AeroFTP-তে ইম্পোর্ট করুন"
         },
         "transfer": {

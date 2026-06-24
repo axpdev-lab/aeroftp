@@ -356,7 +356,6 @@
             "edit": "Edit",
             "emptyTrash": "Kosongkan Sampah",
             "emptyTrashConfirm": "Apakah Anda yakin ingin menghapus semua item di Sampah secara permanen? Tindakan ini tidak dapat dibatalkan.",
-            "encryptFolderAsVault": "Enkripsi folder sebagai AeroVault...",
             "encryptionOptional": "Setel Kata Sandi (AES-256)",
             "encryptionOptionalHint": "Biarkan kosong untuk tanpa enkripsi",
             "enterArchivePassword": "Arsip ini terenkripsi. Masukkan kata sandi:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
             "privacyEllipsis": "Privasi...",
             "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
-            "createAeroVaultZip": "Buat AeroVault Zip...",
             "importToAeroFTP": "Impor ke AeroFTP"
         },
         "transfer": {

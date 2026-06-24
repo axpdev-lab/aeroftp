@@ -356,7 +356,6 @@
             "edit": "Rediger",
             "emptyTrash": "Tøm papirkurven",
             "emptyTrashConfirm": "Er du sikker på at du vil slette alle elementer i papirkurven permanent? Denne handlingen kan ikke angres.",
-            "encryptFolderAsVault": "Krypter mappe som AeroVault...",
             "encryptionOptional": "Sett passord (AES-256)",
             "encryptionOptionalHint": "La stå tomt for ingen kryptering",
             "enterArchivePassword": "Dette arkivet er kryptert. Skriv inn passord:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Åpne som AeroVault Overlay",
             "privacyEllipsis": "Personvern...",
             "openWithAeroVaultZip": "Åpne med AeroVault Zip",
-            "createAeroVaultZip": "Opprett AeroVault Zip...",
             "importToAeroFTP": "Importer til AeroFTP"
         },
         "transfer": {

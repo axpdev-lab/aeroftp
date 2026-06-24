@@ -8135,7 +8135,9 @@ async fn estimate_compressed_size(
             estimated_bytes: estimated,
             ratio_pct: ratio * 100.0,
             sampled_bytes: sample.len() as u64,
-            exact: total <= CANARY_SAMPLE_CAP,
+            // F-08: only "exact" if the whole input was actually sampled; a
+            // silently-skipped unreadable file leaves sample.len() < total.
+            exact: total <= CANARY_SAMPLE_CAP && sample.len() as u64 == total,
         })
     })
     .await

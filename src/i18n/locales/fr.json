@@ -356,7 +356,6 @@
             "edit": "Modifier",
             "emptyTrash": "Vider la corbeille",
             "emptyTrashConfirm": "Êtes-vous sûr de vouloir supprimer définitivement tous les éléments de la corbeille ? Cette action est irréversible.",
-            "encryptFolderAsVault": "Chiffrer le dossier en AeroVault...",
             "encryptionOptional": "Definir un mot de passe (AES-256)",
             "encryptionOptionalHint": "Laisser vide pour ne pas chiffrer",
             "enterArchivePassword": "Cette archive est chiffree. Entrez le mot de passe :",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Ouvrir en tant qu'AeroVault Overlay",
             "privacyEllipsis": "Confidentialité...",
             "openWithAeroVaultZip": "Ouvrir avec AeroVault Zip",
-            "createAeroVaultZip": "Créer AeroVault Zip...",
             "importToAeroFTP": "Importer dans AeroFTP"
         },
         "transfer": {

@@ -356,7 +356,6 @@
             "edit": "Düzenle",
             "emptyTrash": "Çöp kutusunu boşalt",
             "emptyTrashConfirm": "Çöp Kutusundaki tüm öğeleri kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
-            "encryptFolderAsVault": "Klasörü AeroVault olarak şifrele...",
             "encryptionOptional": "Parola Belirle (AES-256)",
             "encryptionOptionalHint": "Şifreleme istemiyorsanız boş bırakın",
             "enterArchivePassword": "Bu arşiv şifreli. Parolayı girin:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay olarak aç",
             "privacyEllipsis": "Gizlilik...",
             "openWithAeroVaultZip": "AeroVault Zip ile aç",
-            "createAeroVaultZip": "AeroVault Zip oluştur...",
             "importToAeroFTP": "AeroFTP'ye içe aktar"
         },
         "transfer": {

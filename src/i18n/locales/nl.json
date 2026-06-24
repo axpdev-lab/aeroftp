@@ -356,7 +356,6 @@
             "edit": "Bewerken",
             "emptyTrash": "Prullenbak legen",
             "emptyTrashConfirm": "Weet u zeker dat u alle items in de Prullenbak permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
-            "encryptFolderAsVault": "Map versleutelen als AeroVault...",
             "encryptionOptional": "Wachtwoord instellen (AES-256)",
             "encryptionOptionalHint": "Laat leeg voor geen versleuteling",
             "enterArchivePassword": "Dit archief is versleuteld. Voer het wachtwoord in:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Openen als AeroVault Overlay",
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Openen met AeroVault Zip",
-            "createAeroVaultZip": "AeroVault Zip maken...",
             "importToAeroFTP": "Importeren in AeroFTP"
         },
         "transfer": {

@@ -421,7 +421,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <p className="text-sm">{state.currentDir ? t('vault.dirEmpty') : (isZip ? t('vault.zipEmpty') : t('vault.empty'))}</p>
                         {!state.currentDir && (
                             <p className="text-xs mt-1 text-gray-400 dark:text-gray-500">
-                                {isZip ? t('vault.zipEmptyHint') : (t('vault.emptyHint') || 'Drag files here or click Add Files to get started')}
+                                {isZip ? t('vault.zipEmptyHint') : t('vault.emptyVaultHint')}
                             </p>
                         )}
                     </div>

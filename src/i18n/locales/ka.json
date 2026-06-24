@@ -356,7 +356,6 @@
             "edit": "რედაქტირება",
             "emptyTrash": "კალათის გასწორება",
             "emptyTrashConfirm": "დარწმუნებული ხართ, რომ გსურთ კალათაში არსებული ყველა ელემენტის საბოლოოდ წაშლა? ეს მოქმედება ვერ გაუქმებელია.",
-            "encryptFolderAsVault": "საქაღალდის დაშიფვრა AeroVault-ად...",
             "encryptionOptional": "პაროლის დაყენება (AES-256)",
             "encryptionOptionalHint": "ცარიელი დატოვეთ, თუ დაშიფვრა არ გსურთ",
             "enterArchivePassword": "ეს არქივი დაშიფრულია. შეიყვანეთ პაროლი:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay",
             "privacyEllipsis": "კონფიდენციალურობა...",
             "openWithAeroVaultZip": "გახსნა AeroVault Zip-ით",
-            "createAeroVaultZip": "AeroVault Zip-ის შექმნა...",
             "importToAeroFTP": "AeroFTP-ში იმპორტი"
         },
         "transfer": {

@@ -14039,7 +14039,11 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         }
 
         let tokens = tokenize_quoted(raw);
-        let verb = tokens[0].to_lowercase();
+        // F-02/F-03: a quote-only line tokenizes to an empty vec; guard before
+        // indexing so it does not panic the interactive session.
+        let Some(verb) = tokens.first().map(|t| t.to_lowercase()) else {
+            continue;
+        };
         match verb.as_str() {
             "l" | "ls" | "list" => {
                 if tokens.len() < 2 {
@@ -14507,7 +14511,11 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         }
 
         let tokens = tokenize_quoted(raw);
-        let verb = tokens[0].to_lowercase();
+        // F-02/F-03: a quote-only line tokenizes to an empty vec; guard before
+        // indexing so it does not panic the interactive session.
+        let Some(verb) = tokens.first().map(|t| t.to_lowercase()) else {
+            continue;
+        };
         match verb.as_str() {
             "l" | "ls" | "list" => {
                 if tokens.len() < 2 {
@@ -19190,6 +19198,14 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             .and_then(|v| v.as_object_mut())
         {
             features.remove("googlephotos");
+        }
+        // F-06: also drop it from the sibling transfer-capabilities array, which
+        // is built from a list that still includes "googlephotos".
+        if let Some(caps) = info
+            .get_mut("protocol_transfer_capabilities")
+            .and_then(|v| v.as_array_mut())
+        {
+            caps.retain(|v| v.as_str() != Some("googlephotos"));
         }
     }
 

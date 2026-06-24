@@ -356,7 +356,6 @@
             "edit": "I-edit",
             "emptyTrash": "Alisan ang Basurahan",
             "emptyTrashConfirm": "Sigurado ka bang nais mong permanenteng burahin ang lahat ng mga item sa Basurahan? Hindi na ito maaaring i-undo.",
-            "encryptFolderAsVault": "I-encrypt ang folder bilang AeroVault...",
             "encryptionOptional": "Magtakda ng Password (AES-256)",
             "encryptionOptionalHint": "Iwanang walang laman kung walang encryption",
             "enterArchivePassword": "Ang archive na ito ay naka-encrypt. Ilagay ang password:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Buksan bilang AeroVault Overlay",
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Buksan gamit ang AeroVault Zip",
-            "createAeroVaultZip": "Gumawa ng AeroVault Zip...",
             "importToAeroFTP": "I-import sa AeroFTP"
         },
         "transfer": {

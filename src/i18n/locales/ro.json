@@ -356,7 +356,6 @@
             "edit": "Editează",
             "emptyTrash": "Golire coș de gunoi",
             "emptyTrashConfirm": "Sunteți sigur că doriți să ștergeți permanent toate elementele din Coșul de gunoi? Această acțiune nu poate fi anulată.",
-            "encryptFolderAsVault": "Criptează dosarul ca AeroVault...",
             "encryptionOptional": "Setare parolă (AES-256)",
             "encryptionOptionalHint": "Lăsați gol pentru fără criptare",
             "enterArchivePassword": "Această arhivă este criptată. Introduceți parola:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Deschide ca AeroVault Overlay",
             "privacyEllipsis": "Confidențialitate...",
             "openWithAeroVaultZip": "Deschide cu AeroVault Zip",
-            "createAeroVaultZip": "Creează AeroVault Zip...",
             "importToAeroFTP": "Importă în AeroFTP"
         },
         "transfer": {

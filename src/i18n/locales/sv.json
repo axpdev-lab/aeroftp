@@ -356,7 +356,6 @@
             "edit": "Redigera",
             "emptyTrash": "Töm papperskorgen",
             "emptyTrashConfirm": "Är du säker på att du vill permanent ta bort alla objekt i Papperskorgen? Detta kan inte ångras.",
-            "encryptFolderAsVault": "Kryptera mapp som AeroVault...",
             "encryptionOptional": "Ange lösenord (AES-256)",
             "encryptionOptionalHint": "Lämna tomt för ingen kryptering",
             "enterArchivePassword": "Detta arkiv är krypterat. Ange lösenord:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Öppna som AeroVault Overlay",
             "privacyEllipsis": "Sekretess...",
             "openWithAeroVaultZip": "Öppna med AeroVault Zip",
-            "createAeroVaultZip": "Skapa AeroVault Zip...",
             "importToAeroFTP": "Importera till AeroFTP"
         },
         "transfer": {

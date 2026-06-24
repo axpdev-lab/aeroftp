@@ -356,7 +356,6 @@
             "edit": "Editar",
             "emptyTrash": "Buidar la paperera",
             "emptyTrashConfirm": "Esteu segur que voleu eliminar permanentment tots els elements de la paperera? Aquesta acció no es pot desfer.",
-            "encryptFolderAsVault": "Xifra carpeta com a AeroVault...",
             "encryptionOptional": "Establir contrasenya (AES-256)",
             "encryptionOptionalHint": "Deixeu buit per no xifrar",
             "enterArchivePassword": "Aquest arxiu està xifrat. Introduïu la contrasenya:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Obre com a AeroVault Overlay",
             "privacyEllipsis": "Privacitat...",
             "openWithAeroVaultZip": "Obre amb AeroVault Zip",
-            "createAeroVaultZip": "Crea AeroVault Zip...",
             "importToAeroFTP": "Importa a AeroFTP"
         },
         "transfer": {

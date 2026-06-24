@@ -356,7 +356,6 @@
             "edit": "Редактирай",
             "emptyTrash": "Изпразване на кошчето",
             "emptyTrashConfirm": "Наистина ли искате да изтриете завинаги всички елементи в кошчето? Това действие не може да бъде отменено.",
-            "encryptFolderAsVault": "Криптирай папка като AeroVault...",
             "encryptionOptional": "Задаване на парола (AES-256)",
             "encryptionOptionalHint": "Оставете празно, ако не желаете криптиране",
             "enterArchivePassword": "Този архив е криптиран. Въведете парола:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Отвори като AeroVault Overlay",
             "privacyEllipsis": "Поверителност...",
             "openWithAeroVaultZip": "Отвори с AeroVault Zip",
-            "createAeroVaultZip": "Създай AeroVault Zip...",
             "importToAeroFTP": "Импортиране в AeroFTP"
         },
         "transfer": {

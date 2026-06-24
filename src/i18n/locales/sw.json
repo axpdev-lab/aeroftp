@@ -356,7 +356,6 @@
             "edit": "Hariri",
             "emptyTrash": "Futa tupio",
             "emptyTrashConfirm": "Je, una uhakika unataka kufuta kabisa vipengee vyote vilivyo kwenye Tupio? Kitendo hiki hakiwezi kutendeshwa upya.",
-            "encryptFolderAsVault": "Simba folda kama AeroVault...",
             "encryptionOptional": "Weka Nenosiri (AES-256)",
             "encryptionOptionalHint": "Acha tupu kwa bila usimbaji",
             "enterArchivePassword": "Kumbukumbu hii imesimbwa kwa njia fiche. Ingiza nenosiri:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay",
             "privacyEllipsis": "Faragha...",
             "openWithAeroVaultZip": "Fungua kwa AeroVault Zip",
-            "createAeroVaultZip": "Unda AeroVault Zip...",
             "importToAeroFTP": "Ingiza kwenye AeroFTP"
         },
         "transfer": {

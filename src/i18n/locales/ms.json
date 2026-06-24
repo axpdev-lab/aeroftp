@@ -356,7 +356,6 @@
             "edit": "Sunting",
             "emptyTrash": "Kosongkan Tong Sampah",
             "emptyTrashConfirm": "Adakah anda pasti mahu memadamkan semua item dalam Tong Sampah secara kekal? Tindakan ini tidak boleh dibuat asal.",
-            "encryptFolderAsVault": "Sulitkan folder sebagai AeroVault...",
             "encryptionOptional": "Tetapkan Kata Laluan (AES-256)",
             "encryptionOptionalHint": "Biarkan kosong untuk tiada penyulitan",
             "enterArchivePassword": "Arkib ini disulitkan. Masukkan kata laluan:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
             "privacyEllipsis": "Privasi...",
             "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
-            "createAeroVaultZip": "Cipta AeroVault Zip...",
             "importToAeroFTP": "Import ke AeroFTP"
         },
         "transfer": {

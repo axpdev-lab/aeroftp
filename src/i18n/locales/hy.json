@@ -356,7 +356,6 @@
             "edit": "Խմբագրել",
             "emptyTrash": "Դատարկել աղբամանը",
             "emptyTrashConfirm": "Վստահ՞ եք աղբամանի բոլոր տառրերը ընդմիշտ ջնջելու համար: Այս գործողությունը հնարավոր չէ հետ վերածել:",
-            "encryptFolderAsVault": "Գաղտնագրել թղթապանակը որպես AeroVault...",
             "encryptionOptional": "Սահմանել գաղտնաբառ (AES-256)",
             "encryptionOptionalHint": "Թողնել դատարկ առանց կոդավորման",
             "enterArchivePassword": "Այս արխիվը կոդավորված է: Մուտքագրեք գաղտնաբառը՝",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay",
             "privacyEllipsis": "Գաղտնիություն...",
             "openWithAeroVaultZip": "Բացել AeroVault Zip-ով",
-            "createAeroVaultZip": "Ստեղծել AeroVault Zip...",
             "importToAeroFTP": "Ներմուծել AeroFTP"
         },
         "transfer": {

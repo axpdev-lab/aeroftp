@@ -1375,7 +1375,6 @@
             "createShareLink": "Create Share Link",
             "creating7z": "Creating {name} (LZMA2)",
             "createAeroVault": "Create AeroVault...",
-            "encryptFolderAsVault": "Encrypt Folder as AeroVault...",
             "openWithAeroVault": "Open with AeroVault",
             "openAsAeroVaultOverlay": "Open as AeroVault Overlay",
             "createCryptomator": "Create Cryptomator Vault...",
@@ -1460,7 +1459,6 @@
             "shareLinkDeleted": "Share link deleted",
             "newDocumentName": "Document name:",
             "openWithAeroVaultZip": "Open with AeroVault Zip",
-            "createAeroVaultZip": "Create AeroVault Zip...",
             "importToAeroFTP": "Import to AeroFTP"
         },
         "aerocrypt": {

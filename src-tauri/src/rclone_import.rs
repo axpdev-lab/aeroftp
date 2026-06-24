@@ -1840,7 +1840,10 @@ pub fn export_rclone(
                 output.push_str("type = b2\n");
                 output.push_str(&format!("account = {}\n", server.username));
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
-                    output.push_str(&format!("key = {}\n", pw));
+                    // F-01: strip CR/LF like the other plain-secret sinks
+                    // (s3 secret_access_key, azure/swift key) so a crafted
+                    // application key can't forge a second [section].
+                    output.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
             }
             // Protocols without rclone equivalent: skip
@@ -3190,6 +3193,55 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
             );
         }
         // Exactly one real section header for the single exported remote.
+        let headers: Vec<&str> = conf
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with('[') && l.ends_with(']'))
+            .collect();
+        assert_eq!(
+            headers,
+            ["[victim]"],
+            "exactly one real section header expected:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_b2_key_rejects_ini_injection() {
+        // F-05: the ftp test above only exercises obscure_password (base64,
+        // newline-free). Backblaze b2 writes the application key verbatim and so
+        // MUST run it through ini_value; a CR/LF key must not forge a second
+        // [section]. This regresses F-01 (the b2 gap that skipped ini_value).
+        let servers = vec![RcloneExportServer {
+            name: "victim".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "account-key-id".to_string(),
+            protocol: Some("backblaze".to_string()),
+            options: None,
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert(
+            "victim".to_string(),
+            "appkey\n[evil]\ntype = local".to_string(),
+        );
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-ini-injection-b2.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        for line in conf.lines() {
+            let t = line.trim();
+            assert!(
+                !t.starts_with("[evil"),
+                "b2 forged section header on its own line: {line:?}\n{conf}"
+            );
+            assert_ne!(
+                t, "type = local",
+                "b2 forged backend line: {line:?}\n{conf}"
+            );
+        }
         let headers: Vec<&str> = conf
             .lines()
             .map(str::trim)

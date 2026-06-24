@@ -356,7 +356,6 @@
             "edit": "Golygu",
             "emptyTrash": "Gwagio'r Sbwriel",
             "emptyTrashConfirm": "Ydych chi'n siŵr eich bod am ddileu'r holl eitemau yn y Sbwriel yn barhaol? Ni ellir dadwneud hyn.",
-            "encryptFolderAsVault": "Amgryptio ffolder fel AeroVault...",
             "encryptionOptional": "Gosod Cyfrinair (AES-256)",
             "encryptionOptionalHint": "Gadewch yn wag ar gyfer dim amgryptiad",
             "enterArchivePassword": "Mae'r archif hwn wedi'i amgryptio. Rhowch gyfrinair:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay",
             "privacyEllipsis": "Preifatrwydd...",
             "openWithAeroVaultZip": "Agor gydag AeroVault Zip",
-            "createAeroVaultZip": "Creu AeroVault Zip...",
             "importToAeroFTP": "Mewnforio i AeroFTP"
         },
         "transfer": {

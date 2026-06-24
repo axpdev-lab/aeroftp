@@ -356,7 +356,6 @@
             "edit": "Muuda",
             "emptyTrash": "Tühjenda prügikast",
             "emptyTrashConfirm": "Kas olete kindel, et soovite kõik prügikastis olevad üksused jäädavalt kustutada? Seda toimingut ei saa tagasi võtta.",
-            "encryptFolderAsVault": "Krüpti kaust AeroVault'ina...",
             "encryptionOptional": "Määra parool (AES-256)",
             "encryptionOptionalHint": "Jätke tühjaks krüptimiseta",
             "enterArchivePassword": "See arhiiv on krüpteeritud. Sisestage parool:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
             "privacyEllipsis": "Privaatsus...",
             "openWithAeroVaultZip": "Ava rakendusega AeroVault Zip",
-            "createAeroVaultZip": "Loo AeroVault Zip...",
             "importToAeroFTP": "Impordi AeroFTP-sse"
         },
         "transfer": {

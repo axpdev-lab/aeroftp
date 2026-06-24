@@ -356,7 +356,6 @@
             "edit": "編集",
             "emptyTrash": "ゴミ箱を空にする",
             "emptyTrashConfirm": "ゴミ箱内のすべてのアイテムを完全に削除してもよろしいですか？この操作は元に戻せません。",
-            "encryptFolderAsVault": "フォルダをAeroVaultとして暗号化...",
             "encryptionOptional": "パスワードを設定（AES-256）",
             "encryptionOptionalHint": "未入力の場合は暗号化しません",
             "enterArchivePassword": "このアーカイブは暗号化されています。パスワードを入力してください:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay として開く",
             "privacyEllipsis": "プライバシー…",
             "openWithAeroVaultZip": "AeroVault Zip で開く",
-            "createAeroVaultZip": "AeroVault Zip を作成...",
             "importToAeroFTP": "AeroFTPにインポート"
         },
         "transfer": {

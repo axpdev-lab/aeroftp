@@ -356,7 +356,6 @@
             "edit": "编辑",
             "emptyTrash": "清空回收站",
             "emptyTrashConfirm": "您确定要永久删除回收站中的所有项目吗？此操作无法撤消。",
-            "encryptFolderAsVault": "将文件夹加密为 AeroVault...",
             "encryptionOptional": "设置密码（AES-256）",
             "encryptionOptionalHint": "留空则不加密",
             "enterArchivePassword": "此压缩包已加密。请输入密码：",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开",
             "privacyEllipsis": "隐私…",
             "openWithAeroVaultZip": "用 AeroVault Zip 打开",
-            "createAeroVaultZip": "创建 AeroVault Zip...",
             "importToAeroFTP": "导入到 AeroFTP"
         },
         "transfer": {

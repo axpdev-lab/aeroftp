@@ -356,7 +356,6 @@
             "edit": "Szerkesztés",
             "emptyTrash": "Kuka ürítése",
             "emptyTrashConfirm": "Biztosan véglegesen törölni szeretné a kukában lévő összes elemet? Ez a művelet nem vonható vissza.",
-            "encryptFolderAsVault": "Mappa titkosítása AeroVaultként...",
             "encryptionOptional": "Jelszó beállítása (AES-256)",
             "encryptionOptionalHint": "Hagyja üresen titkosítás nélkül",
             "enterArchivePassword": "Ez az archívum titkosítva van. Adja meg a jelszót:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként",
             "privacyEllipsis": "Adatvédelem...",
             "openWithAeroVaultZip": "Megnyitás ezzel: AeroVault Zip",
-            "createAeroVaultZip": "AeroVault Zip létrehozása...",
             "importToAeroFTP": "Importálás az AeroFTP-be"
         },
         "transfer": {

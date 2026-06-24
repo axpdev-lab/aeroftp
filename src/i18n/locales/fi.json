@@ -356,7 +356,6 @@
             "edit": "Muokkaa",
             "emptyTrash": "Tyhjennä roskakori",
             "emptyTrashConfirm": "Haluatko varmasti poistaa kaikki roskakorin kohteet pysyvästi? Tätä toimintoa ei voi kumota.",
-            "encryptFolderAsVault": "Salaa kansio AeroVaultina...",
             "encryptionOptional": "Aseta salasana (AES-256)",
             "encryptionOptionalHint": "Jätä tyhjäksi ilman salausta",
             "enterArchivePassword": "Tämä arkisto on salattu. Syötä salasana:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Avaa AeroVault Overlayna",
             "privacyEllipsis": "Yksityisyys...",
             "openWithAeroVaultZip": "Avaa sovelluksella AeroVault Zip",
-            "createAeroVaultZip": "Luo AeroVault Zip...",
             "importToAeroFTP": "Tuo AeroFTP:hen"
         },
         "transfer": {

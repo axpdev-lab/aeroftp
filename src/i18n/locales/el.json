@@ -356,7 +356,6 @@
             "edit": "Επεξεργασία",
             "emptyTrash": "Άδειασμα κάδου απορριμμάτων",
             "emptyTrashConfirm": "Είστε βέβαιοι ότι θέλετε να διαγράψετε οριστικά όλα τα στοιχεία στον κάδο απορριμμάτων; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.",
-            "encryptFolderAsVault": "Κρυπτογράφηση φακέλου ως AeroVault...",
             "encryptionOptional": "Ορισμός Κωδικού (AES-256)",
             "encryptionOptionalHint": "Αφήστε κενό για χωρίς κρυπτογράφηση",
             "enterArchivePassword": "Αυτό το αρχείο είναι κρυπτογραφημένο. Εισάγετε κωδικό:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Άνοιγμα ως AeroVault Overlay",
             "privacyEllipsis": "Απόρρητο...",
             "openWithAeroVaultZip": "Άνοιγμα με AeroVault Zip",
-            "createAeroVaultZip": "Δημιουργία AeroVault Zip...",
             "importToAeroFTP": "Εισαγωγή στο AeroFTP"
         },
         "transfer": {

@@ -356,7 +356,6 @@
             "edit": "កែសម្រួល",
             "emptyTrash": "បាដ់ធុងរំតារ",
             "emptyTrashConfirm": "តើអ្នកប្រាកដជាទេអ្នកចង់លុប​ធាតុ​ទាំងអត់​នៅ​ក្នុង​ធុង​រំតារ​ជា​អចិន្ត្រៃយ៍​មែនទេ? សកម្មភាព​នេះ​មិន​អាច​ត្រឡប់​វិញ​បាន​ទេ។",
-            "encryptFolderAsVault": "អ៊ិនគ្រីបថតជា AeroVault...",
             "encryptionOptional": "កំណត់ពាក្យសម្ងាត់ (AES-256)",
             "encryptionOptionalHint": "ទុកឱ្យនៅទទេប្រសិនបើសោមិនត្រូវបានអ៊ិនគ្រីប",
             "enterArchivePassword": "បណ្ណសារត្រូវបានការពារ។ បញ្ចូលពាក្យសម្ងាត់:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "បើកជា AeroVault Overlay",
             "privacyEllipsis": "ឯកជនភាព...",
             "openWithAeroVaultZip": "បើកជាមួយ AeroVault Zip",
-            "createAeroVaultZip": "បង្កើត AeroVault Zip...",
             "importToAeroFTP": "នាំចូលទៅ AeroFTP"
         },
         "transfer": {

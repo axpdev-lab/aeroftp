@@ -356,7 +356,6 @@
             "edit": "Уреди",
             "emptyTrash": "Испразни го корпато",
             "emptyTrashConfirm": "Дали сте сигурни дека сакате трајно да ги избришете сите ставки во корпата? Ова дејство не може да се поништи.",
-            "encryptFolderAsVault": "Шифрирај папка како AeroVault...",
             "encryptionOptional": "Постави лозинка (AES-256)",
             "encryptionOptionalHint": "Оставете празно за без шифрирање",
             "enterArchivePassword": "Оваа архива е шифрирана. Внесете лозинка:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Отвори како AeroVault Overlay",
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори со AeroVault Zip",
-            "createAeroVaultZip": "Создади AeroVault Zip...",
             "importToAeroFTP": "Увези во AeroFTP"
         },
         "transfer": {

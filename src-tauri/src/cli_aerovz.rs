@@ -459,6 +459,11 @@ fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, S
         .map(|m| m.len())
         .unwrap_or(0);
     let extracted_bytes = archive_input_size(std::slice::from_ref(&outdir_string));
+    // F-07: report the real parity presence, not a hardcoded `true`, so a
+    // `--recovery-level 0` archive does not claim recovery it does not carry.
+    let integrity_recovery = aerovault::v3::VaultV3::recovery_status(&archive_path)
+        .map(|s| s.any)
+        .unwrap_or(false);
 
     Ok(AerovzExtractReport {
         status: "ok",
@@ -468,7 +473,7 @@ fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, S
         mime: PRODUCT_ARCHIVE_MIME,
         encrypted: false,
         confidential: false,
-        integrity_recovery: true,
+        integrity_recovery,
         archive: archive_string,
         output_dir: outdir_string,
         archive_bytes,
@@ -509,7 +514,8 @@ fn list_archive(archive: &str) -> Result<AerovzListReport, String> {
         mime: PRODUCT_ARCHIVE_MIME,
         encrypted: false,
         confidential: false,
-        integrity_recovery: true,
+        // F-07: derive from the actual recovery status (already computed above).
+        integrity_recovery: recovery.enabled,
         archive: archive_string,
         archive_bytes,
         file_count: summary.file_count,

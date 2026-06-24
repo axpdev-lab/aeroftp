@@ -356,7 +356,6 @@
             "edit": "Upravit",
             "emptyTrash": "Vysypat koš",
             "emptyTrashConfirm": "Opravdu chcete trvale odstranit všechny položky v koši? Tuto akci nelze vrátit zpět.",
-            "encryptFolderAsVault": "Zašifrovat složku jako AeroVault...",
             "encryptionOptional": "Nastavit heslo (AES-256)",
             "encryptionOptionalHint": "Nechte prazdne pro vypnuti sifrovani",
             "enterArchivePassword": "Tento archiv je zasifrovany. Zadejte heslo:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Otevřít jako AeroVault Overlay",
             "privacyEllipsis": "Soukromí...",
             "openWithAeroVaultZip": "Otevřít pomocí AeroVault Zip",
-            "createAeroVaultZip": "Vytvořit AeroVault Zip...",
             "importToAeroFTP": "Importovat do AeroFTP"
         },
         "transfer": {

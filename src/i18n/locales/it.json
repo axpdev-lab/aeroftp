@@ -749,7 +749,6 @@
             "edit": "Modifica",
             "emptyTrash": "Svuota Cestino",
             "emptyTrashConfirm": "Eliminare definitivamente tutti gli elementi nel cestino? Questa operazione non può essere annullata.",
-            "encryptFolderAsVault": "Cifra cartella come AeroVault...",
             "encryptionOptional": "Imposta Password (AES-256)",
             "encryptionOptionalHint": "Lascia vuoto per nessuna crittografia",
             "enterArchivePassword": "Questo archivio e' crittografato. Inserisci la password:",
@@ -825,7 +824,6 @@
             "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…",
             "openAsAeroVaultOverlay": "Apri come AeroVault Overlay",
             "openWithAeroVaultZip": "Apri con AeroVault Zip",
-            "createAeroVaultZip": "Crea AeroVault Zip...",
             "importToAeroFTP": "Importa in AeroFTP"
         },
         "transfer": {

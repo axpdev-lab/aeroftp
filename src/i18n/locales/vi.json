@@ -356,7 +356,6 @@
             "edit": "Sửa",
             "emptyTrash": "Dọn sạch thùng rác",
             "emptyTrashConfirm": "Bạn có chắc chắn muốn xóa vĩnh viễn tất cả các mục trong Thùng rác không? Thao tác này không thể hoàn tác.",
-            "encryptFolderAsVault": "Mã hóa thư mục thành AeroVault...",
             "encryptionOptional": "Đặt mật khẩu (AES-256)",
             "encryptionOptionalHint": "Để trống nếu không mã hóa",
             "enterArchivePassword": "Tệp lưu trữ này được mã hóa. Nhập mật khẩu:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay",
             "privacyEllipsis": "Quyền riêng tư...",
             "openWithAeroVaultZip": "Mở bằng AeroVault Zip",
-            "createAeroVaultZip": "Tạo AeroVault Zip...",
             "importToAeroFTP": "Nhập vào AeroFTP"
         },
         "transfer": {

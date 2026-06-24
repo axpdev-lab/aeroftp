@@ -356,7 +356,6 @@
             "edit": "Редагувати",
             "emptyTrash": "Очистити кошик",
             "emptyTrashConfirm": "Ви впевнені, що бажаєте назавжди видалити всі елементи з Кошика? Цю дію неможливо скасувати.",
-            "encryptFolderAsVault": "Зашифрувати теку як AeroVault...",
             "encryptionOptional": "Встановити пароль (AES-256)",
             "encryptionOptionalHint": "Залиште порожнім для відключення шифрування",
             "enterArchivePassword": "Цей архів зашифрований. Введіть пароль:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay",
             "privacyEllipsis": "Приватність...",
             "openWithAeroVaultZip": "Відкрити за допомогою AeroVault Zip",
-            "createAeroVaultZip": "Створити AeroVault Zip...",
             "importToAeroFTP": "Імпортувати в AeroFTP"
         },
         "transfer": {

@@ -356,7 +356,6 @@
             "edit": "Editar",
             "emptyTrash": "Vaciar papelera",
             "emptyTrashConfirm": "¿Está seguro de que desea eliminar permanentemente todos los elementos de la papelera? Esta acción no se puede deshacer.",
-            "encryptFolderAsVault": "Cifrar carpeta como AeroVault...",
             "encryptionOptional": "Establecer contraseña (AES-256)",
             "encryptionOptionalHint": "Dejar vacío para sin cifrado",
             "enterArchivePassword": "Este archivo está cifrado. Ingresa la contraseña:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidad...",
             "openWithAeroVaultZip": "Abrir con AeroVault Zip",
-            "createAeroVaultZip": "Crear AeroVault Zip...",
             "importToAeroFTP": "Importar a AeroFTP"
         },
         "transfer": {

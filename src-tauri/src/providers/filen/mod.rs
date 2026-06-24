@@ -713,7 +713,8 @@ impl FilenProvider {
     fn derive_file_key(file_key: &str) -> Result<Vec<u8>, ProviderError> {
         match file_key.len() {
             64 => hex::decode(file_key)
-                .map_err(|e| ProviderError::Other(format!("Invalid file key hex: {}", e))),
+                // F-11: do not echo the hex parser's char/position detail.
+                .map_err(|_| ProviderError::Other("Invalid Filen file key (not valid hex)".into())),
             32 => Ok(file_key.as_bytes().to_vec()),
             n => Err(ProviderError::Other(format!(
                 "Unsupported Filen file key length {} (expected 32 raw or 64 hex)",

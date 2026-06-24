@@ -356,7 +356,6 @@
             "edit": "संपादित करें",
             "emptyTrash": "रद्दी खाली करें",
             "emptyTrashConfirm": "क्या आप वाकई रद्दी में मौजूद सभी आइटम स्थायी रूप से हटाना चाहते हैं? यह क्रिया वापस नहीं की जा सकती।",
-            "encryptFolderAsVault": "फ़ोल्डर को AeroVault के रूप में एन्क्रिप्ट करें...",
             "encryptionOptional": "पासवर्ड सेट करें (AES-256)",
             "encryptionOptionalHint": "कोई एन्क्रिप्शन नहीं के लिए खाली छोड़ें",
             "enterArchivePassword": "यह आर्काइव एन्क्रिप्टेड है। पासवर्ड दर्ज करें:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay के रूप में खोलें",
             "privacyEllipsis": "गोपनीयता...",
             "openWithAeroVaultZip": "AeroVault Zip से खोलें",
-            "createAeroVaultZip": "AeroVault Zip बनाएं...",
             "importToAeroFTP": "AeroFTP में आयात करें"
         },
         "transfer": {

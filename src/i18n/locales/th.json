@@ -356,7 +356,6 @@
             "edit": "แก้ไข",
             "emptyTrash": "ล้างถังขยะ",
             "emptyTrashConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบรายการทั้งหมดในถังขยะอย่างถาวร? การดำเนินการนี้ไม่สามารถย้อนกลับได้",
-            "encryptFolderAsVault": "เข้ารหัสโฟลเดอร์เป็น AeroVault...",
             "encryptionOptional": "ตั้งรหัสผ่าน (AES-256)",
             "encryptionOptionalHint": "เว้นว่างไว้หากไม่ต้องการเข้ารหัส",
             "enterArchivePassword": "ไฟล์เก็บถาวรนี้ถูกเข้ารหัส กรุณาใส่รหัสผ่าน:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "เปิดเป็น AeroVault Overlay",
             "privacyEllipsis": "ความเป็นส่วนตัว...",
             "openWithAeroVaultZip": "เปิดด้วย AeroVault Zip",
-            "createAeroVaultZip": "สร้าง AeroVault Zip...",
             "importToAeroFTP": "นำเข้าไปยัง AeroFTP"
         },
         "transfer": {

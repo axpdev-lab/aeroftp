@@ -356,7 +356,6 @@
             "edit": "Editar",
             "emptyTrash": "Esvaziar lixeira",
             "emptyTrashConfirm": "Tem a certeza de que pretende eliminar permanentemente todos os itens da Lixeira? Esta ação não pode ser desfeita.",
-            "encryptFolderAsVault": "Cifrar pasta como AeroVault...",
             "encryptionOptional": "Definir Senha (AES-256)",
             "encryptionOptionalHint": "Deixe vazio para não criptografar",
             "enterArchivePassword": "Este arquivo está criptografado. Digite a senha:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidade...",
             "openWithAeroVaultZip": "Abrir com AeroVault Zip",
-            "createAeroVaultZip": "Criar AeroVault Zip...",
             "importToAeroFTP": "Importar para o AeroFTP"
         },
         "transfer": {

@@ -356,7 +356,6 @@
             "edit": "Bearbeiten",
             "emptyTrash": "Papierkorb leeren",
             "emptyTrashConfirm": "Möchten Sie wirklich alle Elemente im Papierkorb endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
-            "encryptFolderAsVault": "Ordner als AeroVault verschlüsseln...",
             "encryptionOptional": "Passwort festlegen (AES-256)",
             "encryptionOptionalHint": "Leer lassen für keine Verschlüsselung",
             "enterArchivePassword": "Dieses Archiv ist verschlüsselt. Passwort eingeben:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Als AeroVault Overlay öffnen",
             "privacyEllipsis": "Datenschutz...",
             "openWithAeroVaultZip": "Mit AeroVault Zip öffnen",
-            "createAeroVaultZip": "AeroVault Zip erstellen...",
             "importToAeroFTP": "In AeroFTP importieren"
         },
         "transfer": {

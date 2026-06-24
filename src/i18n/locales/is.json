@@ -356,7 +356,6 @@
             "edit": "Breyta",
             "emptyTrash": "Tæma ruslafötu",
             "emptyTrashConfirm": "Ertu viss um að þú viljir eyða öllum atriðum í ruslafötunni varanlega? Þetta er ekki hægt að afturkalla.",
-            "encryptFolderAsVault": "Dulkóða möppu sem AeroVault...",
             "encryptionOptional": "Setja lykilorð (AES-256)",
             "encryptionOptionalHint": "Skildu eftir autt fyrir enga dulkóðun",
             "enterArchivePassword": "Þessi skjalasafn er dulkóðað. Sláðu inn lykilorð:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay",
             "privacyEllipsis": "Persónuvernd...",
             "openWithAeroVaultZip": "Opna með AeroVault Zip",
-            "createAeroVaultZip": "Búa til AeroVault Zip...",
             "importToAeroFTP": "Flytja inn í AeroFTP"
         },
         "transfer": {

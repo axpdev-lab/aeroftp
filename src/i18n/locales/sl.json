@@ -356,7 +356,6 @@
             "edit": "Uredi",
             "emptyTrash": "Izprazni koš",
             "emptyTrashConfirm": "Ali ste prepričani, da želite trajno izbrisati vse elemente iz Koša? Tega dejanja ni mogoče razveljaviti.",
-            "encryptFolderAsVault": "Šifriraj mapo kot AeroVault...",
             "encryptionOptional": "Nastavi geslo (AES-256)",
             "encryptionOptionalHint": "Pustite prazno za brez šifriranja",
             "enterArchivePassword": "Ta arhiv je šifriran. Vnesite geslo:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "Odpri kot AeroVault Overlay",
             "privacyEllipsis": "Zasebnost...",
             "openWithAeroVaultZip": "Odpri z AeroVault Zip",
-            "createAeroVaultZip": "Ustvari AeroVault Zip...",
             "importToAeroFTP": "Uvozi v AeroFTP"
         },
         "transfer": {

@@ -356,7 +356,6 @@
             "edit": "편집",
             "emptyTrash": "휴지통 비우기",
             "emptyTrashConfirm": "휴지통의 모든 항목을 영구적으로 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
-            "encryptFolderAsVault": "폴더를 AeroVault로 암호화...",
             "encryptionOptional": "비밀번호 설정 (AES-256)",
             "encryptionOptionalHint": "암호화하지 않으려면 비워 두세요",
             "enterArchivePassword": "이 압축 파일은 암호화되어 있습니다. 비밀번호를 입력하세요:",
@@ -432,7 +431,6 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
             "privacyEllipsis": "개인정보...",
             "openWithAeroVaultZip": "AeroVault Zip으로 열기",
-            "createAeroVaultZip": "AeroVault Zip 만들기...",
             "importToAeroFTP": "AeroFTP로 가져오기"
         },
         "transfer": {
