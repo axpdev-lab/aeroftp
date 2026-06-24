@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Zaščiteno z Popravljanje napak",
                 "errorCorrectionOverhead": "Dodatni prostor Popravljanje napak",
                 "savedTo": "Shranjeno v {path}",
-                "saveFailed": "Shranjevanje ni uspelo: {error}"
+                "saveFailed": "Shranjevanje ni uspelo: {error}",
+                "composition": "Sestava velikosti",
+                "factorContainer": "Vsebnik"
             },
             "scrubErrorCorrection": "Preglej Popravljanje napak",
             "compressionProfile": "Profil stiskanja",

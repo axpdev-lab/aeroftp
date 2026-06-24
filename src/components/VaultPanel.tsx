@@ -28,13 +28,15 @@ interface VaultPanelProps {
     initialMode?: VaultMode;
     initialContainerKind?: VaultContainerKind;
     initialFolderPath?: string;
+    initialOutputDir?: string;
     iconProvider?: IconProvider;
     onOverlaySessionChange?: (session: AeroVaultOverlaySession | null) => void;
+    onVaultCreated?: (createdDir: string) => void;
 }
 
 export type { VaultMode } from './vault/useVaultState';
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialContainerKind, initialFolderPath, iconProvider, onOverlaySessionChange }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialContainerKind, initialFolderPath, initialOutputDir, iconProvider, onOverlaySessionChange, onVaultCreated }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const { log } = useActivityLog();
@@ -45,8 +47,10 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         initialPath,
         initialFiles,
         initialFolderPath,
+        initialOutputDir,
         isConnected,
         onClose,
+        onVaultCreated,
         onActivityLog: (message, details) => log('SUCCESS', message, 'success', details),
     });
 

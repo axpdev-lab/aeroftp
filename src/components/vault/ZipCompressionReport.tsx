@@ -65,7 +65,7 @@ export const ZipCompressionReport: React.FC<{ inputBytes: number; outputBytes: n
             </div>
             <div className="mt-2 text-center text-[11px] text-gray-500 dark:text-gray-400">
                 {outcome === 'saved' && `${t('compress.saved')} ${formatSize(savedBytes)}`}
-                {outcome === 'grew' && `${t('compress.increased')} ${formatSize(Math.abs(savedBytes))}`}
+                {outcome === 'grew' && `${t('compress.increased')} ${formatSize(Math.abs(savedBytes))} (+${Math.abs(pct)}%)`}
                 {outcome === 'incompressible' && t('compress.incompressible')}
             </div>
         </div>

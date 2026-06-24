@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Được bảo vệ Sửa lỗi",
                 "errorCorrectionOverhead": "Phụ phí Sửa lỗi",
                 "savedTo": "Đã lưu vào {path}",
-                "saveFailed": "Không thể lưu: {error}"
+                "saveFailed": "Không thể lưu: {error}",
+                "composition": "Thành phần kích thước",
+                "factorContainer": "Vùng chứa"
             },
             "scrubErrorCorrection": "Quét Sửa lỗi",
             "compressionProfile": "Hồ sơ nén",

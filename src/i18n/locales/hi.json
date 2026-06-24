@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "त्रुटि सुधार संरक्षित",
                 "errorCorrectionOverhead": "त्रुटि सुधार ओवरहेड",
                 "savedTo": "{path} में सहेजा गया",
-                "saveFailed": "सहेजा नहीं जा सका: {error}"
+                "saveFailed": "सहेजा नहीं जा सका: {error}",
+                "composition": "आकार संरचना",
+                "factorContainer": "कंटेनर"
             },
             "scrubErrorCorrection": "त्रुटि सुधार स्क्रब करें",
             "compressionProfile": "संपीड़न प्रोफ़ाइल",

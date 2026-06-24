@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "오류 정정 보호됨",
                 "errorCorrectionOverhead": "오류 정정 오버헤드",
                 "savedTo": "{path}에 저장됨",
-                "saveFailed": "저장할 수 없습니다: {error}"
+                "saveFailed": "저장할 수 없습니다: {error}",
+                "composition": "크기 구성",
+                "factorContainer": "컨테이너"
             },
             "scrubErrorCorrection": "오류 정정 검사",
             "compressionProfile": "압축 프로필",

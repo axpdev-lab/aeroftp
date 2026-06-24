@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Apsaugota Klaidų taisymas",
                 "errorCorrectionOverhead": "Klaidų taisymas papildomos sąnaudos",
                 "savedTo": "Įrašyta į {path}",
-                "saveFailed": "Nepavyko įrašyti: {error}"
+                "saveFailed": "Nepavyko įrašyti: {error}",
+                "composition": "Dydžio sudėtis",
+                "factorContainer": "Konteineris"
             },
             "scrubErrorCorrection": "Tikrinti Klaidų taisymas",
             "compressionProfile": "Glaudinimo profilis",

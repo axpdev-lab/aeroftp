@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Protégé par Correction d'erreurs",
                 "errorCorrectionOverhead": "Surcoût Correction d'erreurs",
                 "savedTo": "Enregistré dans {path}",
-                "saveFailed": "Impossible d'enregistrer : {error}"
+                "saveFailed": "Impossible d'enregistrer : {error}",
+                "composition": "Composition de la taille",
+                "factorContainer": "Conteneur"
             },
             "scrubErrorCorrection": "Vérifier la Correction d'erreurs",
             "compressionProfile": "Profil de compression",

@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Virheenkorjaus-suojattu",
                 "errorCorrectionOverhead": "Virheenkorjaus-lisätila",
                 "savedTo": "Tallennettu sijaintiin {path}",
-                "saveFailed": "Tallennus epäonnistui: {error}"
+                "saveFailed": "Tallennus epäonnistui: {error}",
+                "composition": "Koon koostumus",
+                "factorContainer": "Säiliö"
             },
             "scrubErrorCorrection": "Tarkista Virheenkorjaus",
             "compressionProfile": "Pakkausprofiili",

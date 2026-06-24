@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Исправка грешака zaštita",
                 "errorCorrectionOverhead": "Исправка грешака dodatak",
                 "savedTo": "Сачувано у {path}",
-                "saveFailed": "Чување није успело: {error}"
+                "saveFailed": "Чување није успело: {error}",
+                "composition": "Састав величине",
+                "factorContainer": "Контејнер"
             },
             "scrubErrorCorrection": "Proveri Исправка грешака",
             "compressionProfile": "Профил компресије",

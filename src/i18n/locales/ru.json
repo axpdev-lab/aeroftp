@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Защита Коррекция ошибок",
                 "errorCorrectionOverhead": "Накладные расходы Коррекция ошибок",
                 "savedTo": "Сохранено в {path}",
-                "saveFailed": "Не удалось сохранить: {error}"
+                "saveFailed": "Не удалось сохранить: {error}",
+                "composition": "Состав размера",
+                "factorContainer": "Контейнер"
             },
             "scrubErrorCorrection": "Проверить Коррекция ошибок",
             "compressionProfile": "Профиль сжатия",

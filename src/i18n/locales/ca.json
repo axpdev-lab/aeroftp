@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Protegit amb Correcció d'errors",
                 "errorCorrectionOverhead": "Sobrecàrrega Correcció d'errors",
                 "savedTo": "Desat a {path}",
-                "saveFailed": "No s'ha pogut desar: {error}"
+                "saveFailed": "No s'ha pogut desar: {error}",
+                "composition": "Composició de la mida",
+                "factorContainer": "Contenidor"
             },
             "scrubErrorCorrection": "Escombrar Correcció d'errors",
             "compressionProfile": "Perfil de compressió",

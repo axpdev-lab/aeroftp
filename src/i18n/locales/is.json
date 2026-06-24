@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Villuleiðrétting-varið",
                 "errorCorrectionOverhead": "Villuleiðrétting-aukaálag",
                 "savedTo": "Vistað í {path}",
-                "saveFailed": "Ekki tókst að vista: {error}"
+                "saveFailed": "Ekki tókst að vista: {error}",
+                "composition": "Stærðarsamsetning",
+                "factorContainer": "Gámur"
             },
             "scrubErrorCorrection": "Skanna Villuleiðrétting",
             "compressionProfile": "Þjöppunarsnið",

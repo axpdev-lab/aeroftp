@@ -16,7 +16,7 @@
 
 import * as React from 'react';
 import { useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Package, Lock, Shrink, ShieldPlus, TrendingUp } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { VaultState } from './useVaultState';
 import { ZipCompressionReport } from './ZipCompressionReport';
@@ -49,6 +49,30 @@ export const VaultCreateReceipt: React.FC<VaultCreateReceiptProps> = ({ state, o
     const fileCount = state.meta?.fileCount ?? 0;
     const heading = state.isPlaintextZip ? t('vault.zipCreated') : t('vault.created');
 
+    // Size-composition badges: explain what the final container weight is made of,
+    // so an "increase" (encryption + container overhead) or a "saving"
+    // (compression) is self-evident instead of surprising. The factors are
+    // derived from the create parameters, in order, and colour-coded by role:
+    // container/encryption are neutral structural overhead (slate), compression is
+    // the only size-reducing factor (emerald), and Error Correction adds weight
+    // back (amber, with an up-arrow). Compression participates only for the v3
+    // Archive level and plaintext .aerozip; Error Correction only where it was
+    // offered (those same two modes) and actually enabled.
+    const hasEncryption = !state.isPlaintextZip;
+    const hasCompression = state.isPlaintextZip || state.securityLevel === 'experimental';
+    const hasRecovery = state.errorCorrectionEnabled && (state.isPlaintextZip || state.securityLevel === 'experimental');
+    const toneClass: Record<'slate' | 'emerald' | 'amber', string> = {
+        slate: 'bg-slate-500/10 text-slate-500 dark:text-slate-300',
+        emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+        amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    };
+    const factors: { key: string; label: string; icon: React.ReactNode; tone: 'slate' | 'emerald' | 'amber' }[] = [
+        { key: 'container', label: t('vault.receipt.factorContainer'), icon: <Package size={11} />, tone: 'slate' },
+        ...(hasEncryption ? [{ key: 'encryption', label: t('protocol.encryption'), icon: <Lock size={11} />, tone: 'slate' as const }] : []),
+        ...(hasCompression ? [{ key: 'compression', label: t('syncPanel.compression'), icon: <Shrink size={11} />, tone: 'emerald' as const }] : []),
+        ...(hasRecovery ? [{ key: 'recovery', label: t('aerosync.errorCorrection'), icon: <ShieldPlus size={11} />, tone: 'amber' as const }] : []),
+    ];
+
     return (
         <div className="compress-dialog flex flex-col" style={{ color: 'var(--compress-text)' }}>
             <div className="px-6 pt-6 pb-2 flex flex-col items-center text-center">
@@ -69,6 +93,27 @@ export const VaultCreateReceipt: React.FC<VaultCreateReceiptProps> = ({ state, o
             </div>
 
             {bars && <ZipCompressionReport inputBytes={bars.inputBytes} outputBytes={bars.outputBytes} />}
+
+            {/* Size-composition badges: which factors make up the final weight,
+                in order, colour-coded (slate = structural overhead, emerald =
+                compression/the only reducer, amber = Error Correction/adds weight). */}
+            {bars && factors.length > 0 && (
+                <div className="px-4 pb-3">
+                    <div className="text-[10px] mb-1.5 text-center" style={{ color: 'var(--compress-text-muted)' }}>
+                        {t('vault.receipt.composition')}
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {factors.map((f, i) => (
+                            <React.Fragment key={f.key}>
+                                {i > 0 && <span className="text-[11px]" style={{ color: 'var(--compress-text-muted)' }}>+</span>}
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${toneClass[f.tone]}`}>
+                                    {f.icon}{f.label}{f.tone === 'amber' && <TrendingUp size={10} />}
+                                </span>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t" style={{ borderColor: 'var(--compress-border)' }}>
                 {state.lastReport && (

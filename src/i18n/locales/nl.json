@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Foutcorrectie-beschermd",
                 "errorCorrectionOverhead": "Foutcorrectie-overhead",
                 "savedTo": "Opgeslagen in {path}",
-                "saveFailed": "Kan niet opslaan: {error}"
+                "saveFailed": "Kan niet opslaan: {error}",
+                "composition": "Grootteopbouw",
+                "factorContainer": "Container"
             },
             "scrubErrorCorrection": "Foutcorrectie scrubben",
             "compressionProfile": "Compressieprofiel",

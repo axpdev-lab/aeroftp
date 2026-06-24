@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Errore-zuzenketa babesa",
                 "errorCorrectionOverhead": "Errore-zuzenketa gainkostua",
                 "savedTo": "{path} helbidean gordeta",
-                "saveFailed": "Ezin izan da gorde: {error}"
+                "saveFailed": "Ezin izan da gorde: {error}",
+                "composition": "Tamainaren osaera",
+                "factorContainer": "Edukiontzi"
             },
             "scrubErrorCorrection": "Eskaneatu Errore-zuzenketa",
             "compressionProfile": "Konpresio-profila",

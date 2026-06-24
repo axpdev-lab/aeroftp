@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Protektado ng Pagwawasto ng Error",
                 "errorCorrectionOverhead": "Pagwawasto ng Error overhead",
                 "savedTo": "Naka-save sa {path}",
-                "saveFailed": "Hindi ma-save: {error}"
+                "saveFailed": "Hindi ma-save: {error}",
+                "composition": "Komposisyon ng laki",
+                "factorContainer": "Lalagyan"
             },
             "scrubErrorCorrection": "I-scrub ang Pagwawasto ng Error",
             "compressionProfile": "Profile ng compression",

@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Dilindungi Pembetulan Ralat",
                 "errorCorrectionOverhead": "Overhed Pembetulan Ralat",
                 "savedTo": "Disimpan ke {path}",
-                "saveFailed": "Tidak dapat menyimpan: {error}"
+                "saveFailed": "Tidak dapat menyimpan: {error}",
+                "composition": "Komposisi saiz",
+                "factorContainer": "Bekas"
             },
             "scrubErrorCorrection": "Imbas Pembetulan Ralat",
             "compressionProfile": "Profil pemampatan",

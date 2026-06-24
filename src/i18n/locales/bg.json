@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Защитено с Корекция на грешки",
                 "errorCorrectionOverhead": "Корекция на грешки натоварване",
                 "savedTo": "Запазено в {path}",
-                "saveFailed": "Неуспешно записване: {error}"
+                "saveFailed": "Неуспешно записване: {error}",
+                "composition": "Състав на размера",
+                "factorContainer": "Контейнер"
             },
             "scrubErrorCorrection": "Проверка на Корекция на грешки",
             "compressionProfile": "Профил на компресия",

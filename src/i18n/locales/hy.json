@@ -2800,7 +2800,9 @@
                 "errorCorrectionProtected": "Սխալների ուղղում-ով պաշտպանված",
                 "errorCorrectionOverhead": "Սխալների ուղղում ծախս",
                 "savedTo": "Պահպանվել է {path}-ում",
-                "saveFailed": "Չհաջողվեց պահպանել՝ {error}"
+                "saveFailed": "Չհաջողվեց պահպանել՝ {error}",
+                "composition": "Չափի կազմություն",
+                "factorContainer": "Կոնտեյներ"
             },
             "scrubErrorCorrection": "Ստուգել Սխալների ուղղում",
             "compressionProfile": "Սեղմման պրոֆիլ",

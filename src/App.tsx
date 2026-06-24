@@ -987,7 +987,7 @@ const App: React.FC = () => {
   // openAeroSync() bumps it; a stale scan (dialog closed or reopened
   // meanwhile) sees a mismatched token and discards its result.
   const aeroSyncCompareSeqRef = useRef(0);
-  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; containerKind?: 'vault' | 'zip'; path?: string; files?: string[]; folderPath?: string }>(false);
+  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; containerKind?: 'vault' | 'zip'; path?: string; files?: string[]; folderPath?: string; outputDir?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
@@ -12451,36 +12451,25 @@ interface UpdateVerificationInfo {
     // Always show "Create AeroVault..." / archive actions and "More"
     // (except on container/cryptomator files).
     if (!isAeroVaultFile && !isAeroVaultArchiveFile && !isCryptomatorMarker) {
-      // Folder-specific: "Encrypt Folder as AeroVault..."
-      if (count === 1 && file.is_dir) {
-        items.push({
-          label: t('contextMenu.encryptFolderAsVault') || 'Encrypt Folder as AeroVault...',
-          icon: <VaultIcon size={14} />,
-          action: () => {
-            setShowVaultPanel({ mode: 'create', folderPath: file.path });
-          },
-        });
-      }
+      // ONE unified "Create AeroVault..." entry (redesign Phase 4): the modal
+      // opens on the Encrypted (.aerovault) tab by default; the plaintext
+      // .aerozip choice lives on its format card inside the modal, so the menu
+      // no longer carries a separate Zip / Encrypt-Folder item. Folder vs files
+      // is just the selection: a single folder routes to folder mode, otherwise
+      // the selected files are staged.
       items.push({
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
         icon: <VaultIcon size={14} />,
         action: () => {
+          if (count === 1 && file.is_dir) {
+            setShowVaultPanel({ mode: 'create', folderPath: file.path, outputDir: currentLocalPath });
+            return;
+          }
           const paths = filesToUpload.map(name => {
             const f = sortedLocalFiles.find(lf => lf.name === name);
             return f ? f.path : `${currentLocalPath}/${name}`;
           });
-          setShowVaultPanel({ mode: 'create', files: paths });
-        },
-      });
-      items.push({
-        label: t('contextMenu.createAeroVaultZip') || 'Create AeroVault Zip...',
-        icon: <Archive size={14} />,
-        action: () => {
-          const paths = filesToUpload.map(name => {
-            const f = sortedLocalFiles.find(lf => lf.name === name);
-            return f ? f.path : `${currentLocalPath}/${name}`;
-          });
-          setShowVaultPanel({ mode: 'create', containerKind: 'zip', files: paths });
+          setShowVaultPanel({ mode: 'create', files: paths, outputDir: currentLocalPath });
         },
       });
 
@@ -12877,7 +12866,7 @@ interface UpdateVerificationInfo {
           }}
           onShowSupport={() => setShowSupportDialog(true)}
           onShowCyberTools={() => setShowCyberTools(true)}
-          onShowVault={() => setShowVaultPanel({ mode: 'home' })}
+          onShowVault={() => setShowVaultPanel({ mode: 'home', outputDir: currentLocalPath })}
           onShowAbout={() => setShowAboutDialog(true)}
           onShowMcp={() => setShowMcpDialog(true)}
           onShowShortcuts={() => setShowShortcutsDialog(true)}
@@ -13733,7 +13722,13 @@ interface UpdateVerificationInfo {
           isOpen={showCloudPanel}
           onClose={() => setShowCloudPanel(false)}
         />
-        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialContainerKind={showVaultPanel.containerKind} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
+        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialContainerKind={showVaultPanel.containerKind} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} initialOutputDir={showVaultPanel.outputDir} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} onVaultCreated={(dir) => {
+          // Refresh whichever local panel is showing the folder the new vault was
+          // written into, so it appears without a manual refresh (Compressor parity).
+          const norm = (p: string) => p.replace(/[\\/]+$/, '');
+          if (norm(dir) === norm(currentLocalPath)) void loadLocalFiles(currentLocalPath);
+          if (currentLocalPath2 && norm(dir) === norm(currentLocalPath2)) void loadLocalFiles2(currentLocalPath2);
+        }} />}
         {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock

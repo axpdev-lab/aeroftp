@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Захищено Виправлення помилок",
                 "errorCorrectionOverhead": "Накладні витрати Виправлення помилок",
                 "savedTo": "Збережено в {path}",
-                "saveFailed": "Не вдалося зберегти: {error}"
+                "saveFailed": "Не вдалося зберегти: {error}",
+                "composition": "Склад розміру",
+                "factorContainer": "Контейнер"
             },
             "scrubErrorCorrection": "Перевірити Виправлення помилок",
             "compressionProfile": "Профіль стиснення",

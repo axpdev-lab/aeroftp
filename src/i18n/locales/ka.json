@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "შეცდომების შესწორება-ით დაცული",
                 "errorCorrectionOverhead": "შეცდომების შესწორება დანამატი",
                 "savedTo": "შენახულია {path}-ში",
-                "saveFailed": "შენახვა ვერ მოხერხდა: {error}"
+                "saveFailed": "შენახვა ვერ მოხერხდა: {error}",
+                "composition": "ზომის შემადგენლობა",
+                "factorContainer": "კონტეინერი"
             },
             "scrubErrorCorrection": "შეცდომების შესწორება-ის შემოწმება",
             "compressionProfile": "შეკუმშვის პროფილი",

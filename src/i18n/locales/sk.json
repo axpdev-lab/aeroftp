@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Chránené pomocou Oprava chýb",
                 "errorCorrectionOverhead": "Réžia Oprava chýb",
                 "savedTo": "Uložené do {path}",
-                "saveFailed": "Nepodarilo sa uložiť: {error}"
+                "saveFailed": "Nepodarilo sa uložiť: {error}",
+                "composition": "Zloženie veľkosti",
+                "factorContainer": "Kontajner"
             },
             "scrubErrorCorrection": "Prehľadať Oprava chýb",
             "compressionProfile": "Profil kompresie",

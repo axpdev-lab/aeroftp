@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Fejlkorrektion-beskyttet",
                 "errorCorrectionOverhead": "Fejlkorrektion-overhead",
                 "savedTo": "Gemt til {path}",
-                "saveFailed": "Kunne ikke gemme: {error}"
+                "saveFailed": "Kunne ikke gemme: {error}",
+                "composition": "Størrelsessammensætning",
+                "factorContainer": "Container"
             },
             "scrubErrorCorrection": "Scan Fejlkorrektion",
             "compressionProfile": "Komprimeringsprofil",

@@ -4090,7 +4090,9 @@
                 "errorCorrectionProtected": "Error Correction protected",
                 "errorCorrectionOverhead": "Error Correction overhead",
                 "savedTo": "Saved to {path}",
-                "saveFailed": "Could not save: {error}"
+                "saveFailed": "Could not save: {error}",
+                "composition": "Size composition",
+                "factorContainer": "Container"
             },
             "scrubErrorCorrection": "Scrub Error Correction",
             "compressionProfile": "Compression Profile",

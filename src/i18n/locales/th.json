@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "ป้องกันด้วย การแก้ไขข้อผิดพลาด",
                 "errorCorrectionOverhead": "โอเวอร์เฮด การแก้ไขข้อผิดพลาด",
                 "savedTo": "บันทึกไปยัง {path}",
-                "saveFailed": "ไม่สามารถบันทึก: {error}"
+                "saveFailed": "ไม่สามารถบันทึก: {error}",
+                "composition": "องค์ประกอบขนาด",
+                "factorContainer": "คอนเทนเนอร์"
             },
             "scrubErrorCorrection": "สแกน การแก้ไขข้อผิดพลาด",
             "compressionProfile": "โปรไฟล์การบีบอัด",

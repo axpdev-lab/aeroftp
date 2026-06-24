@@ -281,6 +281,28 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                     />
                     <span className="text-xs font-mono whitespace-nowrap" style={{ color: 'var(--compress-text-muted)' }}>{isZip ? '.aerozip' : '.aerovault'}</span>
                 </div>
+                {/* Output path preview (Compressor-style, Phase 3): the new vault is
+                    written straight into the source folder, no save dialog. The
+                    optional "Change" button picks a different destination folder.
+                    Hidden when no folder context is known (create from Home), where
+                    handleCreate falls back to a native save dialog. */}
+                {state.fullOutputPath && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-xs font-mono truncate flex-1" title={state.fullOutputPath} style={{ color: 'var(--compress-text-muted)' }}>
+                            {state.fullOutputPath}
+                        </span>
+                        <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={state.handleChangeOutputDir}
+                            disabled={state.loading}
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded shrink-0 transition-colors disabled:opacity-50"
+                            style={{ background: 'var(--compress-bg-deep)', border: '1px solid var(--compress-border)', color: 'var(--compress-text-secondary)' }}
+                        >
+                            <FolderOpen size={12} /> {t('connection.change')}
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Mode cards (7z-like format grid): encrypted (.aerovault, password

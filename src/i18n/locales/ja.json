@@ -2772,7 +2772,9 @@
                 "errorCorrectionProtected": "誤り訂正 保護済み",
                 "errorCorrectionOverhead": "誤り訂正 オーバーヘッド",
                 "savedTo": "{path} に保存しました",
-                "saveFailed": "保存できませんでした: {error}"
+                "saveFailed": "保存できませんでした: {error}",
+                "composition": "サイズの内訳",
+                "factorContainer": "コンテナ"
             },
             "scrubErrorCorrection": "誤り訂正 スクラブ",
             "compressionProfile": "圧縮プロファイル",

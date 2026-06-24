@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Felkorrigering-skyddad",
                 "errorCorrectionOverhead": "Felkorrigering-omkostnad",
                 "savedTo": "Sparad till {path}",
-                "saveFailed": "Det gick inte att spara: {error}"
+                "saveFailed": "Det gick inte att spara: {error}",
+                "composition": "Storlekssammansättning",
+                "factorContainer": "Behållare"
             },
             "scrubErrorCorrection": "Skrubba Felkorrigering",
             "compressionProfile": "Komprimeringsprofil",

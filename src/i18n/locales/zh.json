@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "受 纠错 保护",
                 "errorCorrectionOverhead": "纠错 开销",
                 "savedTo": "已保存到 {path}",
-                "saveFailed": "无法保存：{error}"
+                "saveFailed": "无法保存：{error}",
+                "composition": "大小构成",
+                "factorContainer": "容器"
             },
             "scrubErrorCorrection": "纠错 校验扫描",
             "compressionProfile": "压缩配置",

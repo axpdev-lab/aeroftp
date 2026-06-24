@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Vigade parandus-kaitstud",
                 "errorCorrectionOverhead": "Vigade parandus lisakoormus",
                 "savedTo": "Salvestatud asukohta {path}",
-                "saveFailed": "Salvestamine ebaõnnestus: {error}"
+                "saveFailed": "Salvestamine ebaõnnestus: {error}",
+                "composition": "Suuruse koostis",
+                "factorContainer": "Konteiner"
             },
             "scrubErrorCorrection": "Kontrolli Vigade parandus-d",
             "compressionProfile": "Tihendusprofiil",

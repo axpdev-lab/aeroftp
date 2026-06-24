@@ -274,8 +274,15 @@ export interface UseVaultStateProps {
     initialPath?: string;
     initialFiles?: string[];
     initialFolderPath?: string;
+    /** Source folder the new vault is written into (Compressor-style, no save
+     *  dialog). Seeds `outputDir`; empty falls back to a native save dialog. */
+    initialOutputDir?: string;
     isConnected?: boolean;
     onClose: () => void;
+    // Called after a vault is successfully created, with the directory the file
+    // was written into, so the host can refresh the file panel showing it (the
+    // Compressor refreshes its panel post-create; AeroVault now matches).
+    onVaultCreated?: (createdDir: string) => void;
     // Optional activity-log sink: mutating vault ops that do not produce a receipt
     // (e.g. Change Mode) report through this so they appear in the Activity Log.
     onActivityLog?: (message: string, details?: string) => void;
@@ -292,6 +299,14 @@ export interface VaultState {
     isPlaintextZip: boolean;
     vaultPath: string;
     setVaultPath: (path: string) => void;
+    /** Destination folder for a newly created vault (Compressor-style). When
+     *  set, create writes `${outputDir}/${name}${ext}` with no save dialog. */
+    outputDir: string;
+    setOutputDir: (dir: string) => void;
+    /** Full preview path of the file create will write (outputDir + name + ext). */
+    fullOutputPath: string;
+    /** Open a folder picker to change `outputDir` (the optional "change" escape hatch). */
+    handleChangeOutputDir: () => Promise<void>;
     password: string;
     setPassword: (pw: string) => void;
     confirmPassword: string;
@@ -467,16 +482,47 @@ export interface VaultState {
     handleAddDirectory: () => Promise<void>;
 }
 
+/**
+ * Derive the saved filename from the (required) vault/archive name. The typed
+ * name is authoritative; only path separators and the characters illegal in a
+ * filename are stripped (spaces and unicode are preserved), plus a redundant
+ * extension the user may have typed. Shared by `handleCreate` and the create
+ * screen's output-path preview so both stay in lockstep.
+ */
+export function buildVaultFileName(typedName: string, creatingZip: boolean): string {
+    const ext = creatingZip ? 'aerozip' : 'aerovault';
+    const fallback = creatingZip ? 'zip' : 'vault';
+    const name = typedName.trim()
+        .replace(/[\\/:*?"<>|]+/g, '_')
+        .replace(/\.(aerovault|aerozip)$/i, '');
+    return `${name || fallback}.${ext}`;
+}
+
+/** Join a directory and a filename with the directory's own separator. */
+function joinVaultPath(dir: string, fileName: string): string {
+    const sep = dir.includes('\\') && !dir.includes('/') ? '\\' : '/';
+    return `${dir.replace(/[\\/]+$/, '')}${sep}${fileName}`;
+}
+
+/** Parent directory of a full path (strips the final path segment). */
+function parentDir(p: string): string {
+    return p.replace(/[\\/][^\\/]+$/, '') || p;
+}
+
 // --- Hook implementation ---
 
 export function useVaultState(props: UseVaultStateProps): VaultState {
-    const { initialMode, initialContainerKind, initialPath, initialFiles, initialFolderPath, onClose, onActivityLog } = props;
+    const { initialMode, initialContainerKind, initialPath, initialFiles, initialFolderPath, initialOutputDir, onClose, onVaultCreated, onActivityLog } = props;
     const t = useTranslation();
 
     // Core state
     const [mode, setMode] = useState<VaultMode>(initialMode || (initialPath ? 'open' : initialFiles?.length ? 'create' : 'home'));
     const [containerKind, setContainerKind] = useState<VaultContainerKind>(initialContainerKind || 'vault');
     const [vaultPath, setVaultPath] = useState(initialPath || '');
+    // Destination folder for a newly created vault. Seeded from the file panel's
+    // current dir (Compressor-style); when set, create writes straight into it
+    // with no save dialog. Empty (e.g. create from Home) falls back to save().
+    const [outputDir, setOutputDir] = useState(initialOutputDir || '');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [description, setDescription] = useState('');
@@ -717,27 +763,28 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         // The vault/archive name field (required as of #322 follow-up D) is
         // authoritative for the saved filename: an explicit name always wins over a
-        // name derived from the staged contents. Strip only path separators and the
-        // characters illegal in a filename (spaces and unicode are preserved), plus a
-        // redundant extension the user may have typed. handleCreate is only reachable
-        // from the Create button, which stays disabled while the name is empty, so
-        // `description` is non-empty here; the fallback is pure defence.
-        const defaultName = (() => {
-            const ext = creatingZip ? 'aerozip' : 'aerovault';
-            const fallback = creatingZip ? 'zip' : 'vault';
-            const typedName = description.trim()
-                .replace(/[\\/:*?"<>|]+/g, '_')
-                .replace(/\.(aerovault|aerozip)$/i, '');
-            return `${typedName || fallback}.${ext}`;
-        })();
+        // name derived from the staged contents. handleCreate is only reachable from
+        // the Create button, which stays disabled while the name is empty, so
+        // `description` is non-empty here; the helper's fallback is pure defence.
+        const defaultName = buildVaultFileName(description, creatingZip);
 
-        const savePath = await save({
-            defaultPath: defaultName,
-            filters: creatingZip
-                ? [{ name: 'AeroVault Zip', extensions: ['aerozip'] }]
-                : [{ name: 'AeroVault', extensions: ['aerovault'] }],
-        });
-        if (!savePath) return;
+        // Compressor-style output: when a source folder is known (passed in as
+        // `outputDir` from the file panel, or chosen via the "change" button) write
+        // straight into it with no save dialog. Only when there is no folder context
+        // (e.g. create from Home) do we fall back to the native save dialog.
+        let savePath: string;
+        if (outputDir) {
+            savePath = joinVaultPath(outputDir, defaultName);
+        } else {
+            const picked = await save({
+                defaultPath: defaultName,
+                filters: creatingZip
+                    ? [{ name: 'AeroVault Zip', extensions: ['aerozip'] }]
+                    : [{ name: 'AeroVault', extensions: ['aerovault'] }],
+            });
+            if (!picked) return;
+            savePath = picked;
+        }
 
         setLoading(true);
         setError(null);
@@ -952,11 +999,22 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
                 await saveToHistory(savePath, vName, 'standard', 1, false, 0);
             }
+            // Refresh the host file panel so the new vault shows without a manual
+            // refresh (Compressor parity). Best-effort: the panel only reloads if
+            // it is currently showing the folder the file was written into.
+            onVaultCreated?.(parentDir(savePath));
         } catch (e) {
             setError(mapVaultError(e, t));
         } finally {
             setLoading(false);
         }
+    };
+
+    // Optional escape hatch: pick a different destination folder for the new
+    // vault. Updates `outputDir`, which the path preview and handleCreate read.
+    const handleChangeOutputDir = async () => {
+        const sel = await open({ directory: true, multiple: false });
+        if (typeof sel === 'string') setOutputDir(sel);
     };
 
     const handleOpen = async () => {
@@ -2024,6 +2082,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         containerKind, setContainerKind,
         isPlaintextZip,
         vaultPath, setVaultPath,
+        outputDir, setOutputDir,
+        fullOutputPath: outputDir ? joinVaultPath(outputDir, buildVaultFileName(description, isPlaintextZip)) : '',
+        handleChangeOutputDir,
         password, setPassword,
         confirmPassword, setConfirmPassword,
         description, setDescription,

@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Protejat cu Corectarea erorilor",
                 "errorCorrectionOverhead": "Supraîncărcare Corectarea erorilor",
                 "savedTo": "Salvat în {path}",
-                "saveFailed": "Nu s-a putut salva: {error}"
+                "saveFailed": "Nu s-a putut salva: {error}",
+                "composition": "Compoziția dimensiunii",
+                "factorContainer": "Container"
             },
             "scrubErrorCorrection": "Scanează Corectarea erorilor",
             "compressionProfile": "Profil de compresie",

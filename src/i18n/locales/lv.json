@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Aizsargāts ar Kļūdu labošana",
                 "errorCorrectionOverhead": "Kļūdu labošana papildizmaksa",
                 "savedTo": "Saglabāts {path}",
-                "saveFailed": "Neizdevās saglabāt: {error}"
+                "saveFailed": "Neizdevās saglabāt: {error}",
+                "composition": "Izmēra sastāvs",
+                "factorContainer": "Konteiners"
             },
             "scrubErrorCorrection": "Pārbaudīt Kļūdu labošana",
             "compressionProfile": "Saspiešanas profils",

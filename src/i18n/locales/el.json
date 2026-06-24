@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Προστασία Διόρθωση σφαλμάτων",
                 "errorCorrectionOverhead": "Επιβάρυνση Διόρθωση σφαλμάτων",
                 "savedTo": "Αποθηκεύτηκε στο {path}",
-                "saveFailed": "Δεν ήταν δυνατή η αποθήκευση: {error}"
+                "saveFailed": "Δεν ήταν δυνατή η αποθήκευση: {error}",
+                "composition": "Σύνθεση μεγέθους",
+                "factorContainer": "Κοντέινερ"
             },
             "scrubErrorCorrection": "Έλεγχος Διόρθωση σφαλμάτων",
             "compressionProfile": "Προφίλ συμπίεσης",

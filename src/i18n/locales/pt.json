@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Protegido por Correção de erros",
                 "errorCorrectionOverhead": "Sobrecarga Correção de erros",
                 "savedTo": "Guardado em {path}",
-                "saveFailed": "Não foi possível guardar: {error}"
+                "saveFailed": "Não foi possível guardar: {error}",
+                "composition": "Composição do tamanho",
+                "factorContainer": "Contentor"
             },
             "scrubErrorCorrection": "Verificar Correção de erros",
             "compressionProfile": "Perfil de compressão",

@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Chronione przez Korekcja błędów",
                 "errorCorrectionOverhead": "Narzut Korekcja błędów",
                 "savedTo": "Zapisano w {path}",
-                "saveFailed": "Nie można zapisać: {error}"
+                "saveFailed": "Nie można zapisać: {error}",
+                "composition": "Skład rozmiaru",
+                "factorContainer": "Kontener"
             },
             "scrubErrorCorrection": "Skanuj Korekcja błędów",
             "compressionProfile": "Profil kompresji",

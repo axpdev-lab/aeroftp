@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "Hibajavítás-védett",
                 "errorCorrectionOverhead": "Hibajavítás többletterhelés",
                 "savedTo": "Mentve ide: {path}",
-                "saveFailed": "Nem sikerült menteni: {error}"
+                "saveFailed": "Nem sikerült menteni: {error}",
+                "composition": "Méret összetétele",
+                "factorContainer": "Konténer"
             },
             "scrubErrorCorrection": "Hibajavítás ellenőrzése",
             "compressionProfile": "Tömörítési profil",

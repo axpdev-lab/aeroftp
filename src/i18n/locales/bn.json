@@ -2807,7 +2807,9 @@
                 "errorCorrectionProtected": "ত্রুটি সংশোধন সুরক্ষিত",
                 "errorCorrectionOverhead": "ত্রুটি সংশোধন ওভারহেড",
                 "savedTo": "{path}-এ সংরক্ষিত হয়েছে",
-                "saveFailed": "সংরক্ষণ করা যায়নি: {error}"
+                "saveFailed": "সংরক্ষণ করা যায়নি: {error}",
+                "composition": "আকারের গঠন",
+                "factorContainer": "কন্টেইনার"
             },
             "scrubErrorCorrection": "ত্রুটি সংশোধন স্ক্রাব করুন",
             "compressionProfile": "কম্প্রেশন প্রোফাইল",
