@@ -5001,6 +5001,13 @@
             "continue": "Fortfahren",
             "done": "{count} Datei(en) in {path} gespeichert",
             "skipped": "{count} Element(e) übersprungen"
+        },
+        "mountVault": {
+            "button": "Einbinden (schreibgeschützt)",
+            "hint": "Den entsperrten Tresor als schreibgeschütztes Laufwerk durchsuchen. Wird beim Sperren ausgehängt.",
+            "open": "Öffnen",
+            "unmount": "Aushängen",
+            "unmountHint": "Diese schreibgeschützte Tresoransicht aushängen"
         }
     }
 }

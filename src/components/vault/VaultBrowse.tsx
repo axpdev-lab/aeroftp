@@ -14,6 +14,7 @@ import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { SaveAllMenu } from '../common/SaveAllMenu';
+import { MountVaultButton } from '../common/MountVaultButton';
 import { formatSize } from '../../utils/formatters';
 import { TransferProgressBar } from '../TransferProgressBar';
 
@@ -129,6 +130,16 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 )}
                 {(state.vaultSecurity?.version === 3 || isZip) && state.entries.length > 0 && (
                     <SaveAllMenu disabled={state.loading} onExport={state.handleSaveAll} />
+                )}
+                {(state.vaultSecurity?.version === 3 || isZip) && (
+                    <MountVaultButton
+                        kind="aerovault"
+                        vaultKey={state.vaultPath}
+                        vaultPath={state.vaultPath}
+                        password={isZip ? '' : state.password}
+                        displayName={state.vaultPath.split(/[\\/]/).pop() || 'AeroVault'}
+                        disabled={state.loading}
+                    />
                 )}
                 {!isZip && (
                     <button onClick={() => state.setChangingPassword(!state.changingPassword)} className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded">

@@ -5001,6 +5001,13 @@
             "continue": "Continuer",
             "done": "{count} fichier(s) enregistré(s) dans {path}",
             "skipped": "{count} élément(s) ignoré(s)"
+        },
+        "mountVault": {
+            "button": "Monter (lecture seule)",
+            "hint": "Parcourez le coffre déverrouillé comme un disque en lecture seule. Il se démonte quand vous le verrouillez.",
+            "open": "Ouvrir",
+            "unmount": "Démonter",
+            "unmountHint": "Démonter cette vue du coffre en lecture seule"
         }
     }
 }

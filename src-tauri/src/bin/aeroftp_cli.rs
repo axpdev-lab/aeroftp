@@ -2123,6 +2123,32 @@ enum Commands {
         #[arg(long, env = "AEROFTP_MOUNT_FUSE_THREADS")]
         fuse_threads: Option<usize>,
     },
+    /// Mount an UNLOCKED vault (Cryptomator or .aerovault/.aerozip) as a
+    /// read-only local filesystem (AeroMount for unlocked vaults, #322).
+    ///
+    /// The vault password is read from STDIN, never from the command line, so it
+    /// never appears in the process table. The mount is always READ-ONLY and
+    /// EPHEMERAL: the vault is unlocked in this process and its keys are wiped
+    /// when the process exits, so unmounting is as simple as killing it (the GUI
+    /// does this on vault-lock / quit). Linux only for now.
+    ///
+    /// Example: `printf %s "$PW" | aeroftp-cli mount-vault /mnt/v --kind cryptomator --vault-path /path/to/vault`
+    #[command(name = "mount-vault")]
+    MountVault {
+        /// Local mount point: an existing EMPTY directory.
+        mountpoint: String,
+        /// Vault kind: `cryptomator` (a vault directory) or `aerovault` (a
+        /// `.aerovault` or `.aerozip` file).
+        #[arg(long)]
+        kind: String,
+        /// Path to the Cryptomator vault directory or the `.aerovault`/`.aerozip`
+        /// container file.
+        #[arg(long)]
+        vault_path: String,
+        /// Read-only (always enforced today; write-back is a later phase).
+        #[arg(long, default_value_t = true)]
+        read_only: bool,
+    },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
         /// Source profile name (saved in vault)
@@ -37966,6 +37992,69 @@ mod fuse_mount {
             eprintln!("Press Ctrl+C to unmount");
         }
 
+        run_fuse_session(
+            provider,
+            mountpoint,
+            base_path,
+            cache_ttl,
+            allow_other,
+            read_only,
+            knobs,
+            quiet,
+            format,
+        )
+        .await
+    }
+
+    /// Validate that `mountpoint` exists, is a directory and is empty (the FUSE
+    /// session would otherwise refuse or shadow existing files). Returns the exit
+    /// code to use on failure, or `None` when the mountpoint is usable.
+    fn validate_empty_mountpoint(mountpoint: &str, format: OutputFormat) -> Option<i32> {
+        let mp = std::path::Path::new(mountpoint);
+        if !mp.exists() {
+            print_error(
+                format,
+                &format!("Mount point does not exist: {}", mountpoint),
+                5,
+            );
+            return Some(5);
+        }
+        if !mp.is_dir() {
+            print_error(
+                format,
+                &format!("Mount point is not a directory: {}", mountpoint),
+                5,
+            );
+            return Some(5);
+        }
+        if let Ok(mut rd) = std::fs::read_dir(mp) {
+            if rd.next().is_some() {
+                print_error(
+                    format,
+                    &format!("Mount point is not empty: {}", mountpoint),
+                    5,
+                );
+                return Some(5);
+            }
+        }
+        None
+    }
+
+    /// Core FUSE session: wrap an already-connected provider, mount it, and block
+    /// until a shutdown signal, then unmount + disconnect. Shared by the remote
+    /// mount (`cmd_mount`) and the unlocked-vault mount (`cmd_mount_vault`).
+    #[allow(clippy::too_many_arguments)]
+    async fn run_fuse_session(
+        provider: Box<dyn StorageProvider>,
+        mountpoint: &str,
+        base_path: String,
+        cache_ttl: u64,
+        allow_other: bool,
+        read_only: bool,
+        knobs: super::MountKnobs,
+        quiet: bool,
+        format: OutputFormat,
+    ) -> i32 {
         let provider_arc = Arc::new(AsyncMutex::new(provider));
 
         let fs = AeroFuseFs::new(
@@ -38055,10 +38144,130 @@ mod fuse_mount {
         }
         0
     }
+
+    /// Mount an UNLOCKED vault (Cryptomator dir or `.aerovault`/`.aerozip` file)
+    /// as a READ-ONLY filesystem (#322 AeroMount Deliverable B). The password is
+    /// read from STDIN (never argv) so it never lands in the process table; the
+    /// vault is unlocked in THIS process and its keys are zeroized on exit, so the
+    /// mount is ephemeral (the GUI kills this child on vault-lock / quit). The
+    /// decrypted bytes are surfaced through a read-only `VaultStorageProvider`.
+    pub async fn cmd_mount_vault(
+        mountpoint: &str,
+        kind: &str,
+        vault_path: &str,
+        read_only: bool,
+        cli: &Cli,
+        format: OutputFormat,
+    ) -> i32 {
+        use std::io::Read as _;
+
+        if let Some(code) = validate_empty_mountpoint(mountpoint, format) {
+            return code;
+        }
+
+        // Read the password from stdin (the GUI writes it to the child's pipe;
+        // a CLI user pipes it). Trim a single trailing newline only.
+        let mut password = String::new();
+        if std::io::stdin().read_to_string(&mut password).is_err() {
+            print_error(format, "Failed to read password from stdin", 5);
+            return 5;
+        }
+        if password.ends_with('\n') {
+            password.pop();
+            if password.ends_with('\r') {
+                password.pop();
+            }
+        }
+
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+        // Build the read-only backend for the requested container kind.
+        let backend: Result<Box<dyn StorageProvider>, String> = (|| {
+            let name = match kind {
+                "cryptomator" => {
+                    let readable = ftp_client_gui_lib::cryptomator::open_cryptomator_for_mount(
+                        std::path::Path::new(vault_path),
+                        &password,
+                    )?;
+                    (
+                        Box::new(readable)
+                            as Box<dyn ftp_client_gui_lib::readable_vault::ReadableVault>,
+                        "Cryptomator vault",
+                    )
+                }
+                "aerovault" => {
+                    // An empty password means the plaintext `.aerozip` lane.
+                    let pw = if password.is_empty() {
+                        None
+                    } else {
+                        Some(password.as_str())
+                    };
+                    let readable =
+                        ftp_client_gui_lib::aerovault_v3::open_aerovault_for_mount(vault_path, pw)?;
+                    (
+                        Box::new(readable)
+                            as Box<dyn ftp_client_gui_lib::readable_vault::ReadableVault>,
+                        "AeroVault",
+                    )
+                }
+                other => return Err(format!("Unknown vault kind: {other}")),
+            };
+            let (readable, label) = name;
+            let provider = ftp_client_gui_lib::vault_storage_provider::VaultStorageProvider::new(
+                label.to_string(),
+                readable,
+            )?;
+            Ok(Box::new(provider) as Box<dyn StorageProvider>)
+        })();
+
+        // Zeroize the password copy as soon as the vault is unlocked.
+        {
+            use zeroize::Zeroize as _;
+            password.zeroize();
+        }
+
+        let provider = match backend {
+            Ok(p) => p,
+            Err(e) => {
+                print_error(format, &format!("Open vault failed: {e}"), 6);
+                return 6;
+            }
+        };
+
+        if !quiet {
+            eprintln!(
+                "Mounting unlocked vault on {} (read-only{})",
+                mountpoint,
+                if read_only {
+                    ""
+                } else {
+                    ", IGNORED: forced read-only"
+                }
+            );
+            eprintln!("Unmounts when this process exits (vault lock / quit)");
+        }
+
+        // Read-only is forced regardless of the flag: write-back into a live
+        // vault is a later phase (design 4.3).
+        run_fuse_session(
+            provider,
+            mountpoint,
+            "/".to_string(),
+            30,
+            false, // never allow_other for a decrypted vault
+            true,  // read-only
+            super::MountKnobs::default(),
+            quiet,
+            format,
+        )
+        .await
+    }
 }
 
 #[cfg(target_os = "linux")]
 use fuse_mount::cmd_mount;
+#[cfg(target_os = "linux")]
+use fuse_mount::cmd_mount_vault;
 
 /// Windows mount: WebDAV bridge - starts a local WebDAV server and maps it as a drive letter.
 #[cfg(windows)]
@@ -48720,6 +48929,27 @@ async fn main() {
             {
                 let _ = mount_knobs;
                 print_error(format, "Mount is not supported on this platform", 7);
+                7
+            }
+        }
+        Commands::MountVault {
+            mountpoint,
+            kind,
+            vault_path,
+            read_only,
+        } => {
+            #[cfg(target_os = "linux")]
+            {
+                cmd_mount_vault(mountpoint, kind, vault_path, *read_only, &cli, format).await
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = (mountpoint, kind, vault_path, read_only);
+                print_error(
+                    format,
+                    "Mounting an unlocked vault is only supported on Linux for now",
+                    7,
+                );
                 7
             }
         }

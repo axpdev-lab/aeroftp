@@ -5001,6 +5001,13 @@
             "continue": "Kontynuuj",
             "done": "Zapisano {count} plik(ów) w {path}",
             "skipped": "Pominięto {count} element(ów)"
+        },
+        "mountVault": {
+            "button": "Zamontuj (tylko do odczytu)",
+            "hint": "Przeglądaj odblokowany sejf jako dysk tylko do odczytu. Odłącza się po zablokowaniu.",
+            "open": "Otwórz",
+            "unmount": "Odmontuj",
+            "unmountHint": "Odmontuj ten widok sejfu tylko do odczytu"
         }
     }
 }

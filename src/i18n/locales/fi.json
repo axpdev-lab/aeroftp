@@ -5001,6 +5001,13 @@
             "continue": "Jatka",
             "done": "Tallennettiin {count} tiedosto(a) sijaintiin {path}",
             "skipped": "{count} kohde(tta) ohitettu"
+        },
+        "mountVault": {
+            "button": "Liitä (vain luku)",
+            "hint": "Selaa avattua holvia vain luku -asemana. Irrotetaan, kun lukitset sen.",
+            "open": "Avaa",
+            "unmount": "Irrota",
+            "unmountHint": "Irrota tämä vain luku -holvinäkymä"
         }
     }
 }

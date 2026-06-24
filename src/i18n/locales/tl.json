@@ -5020,6 +5020,13 @@
             "continue": "Magpatuloy",
             "done": "Na-save ang {count} (na) file sa {path}",
             "skipped": "{count} (na) item ang nalaktawan"
+        },
+        "mountVault": {
+            "button": "I-mount (basahin lang)",
+            "hint": "I-browse ang naka-unlock na vault bilang read-only na drive. Naa-unmount kapag ni-lock mo ito.",
+            "open": "Buksan",
+            "unmount": "I-unmount",
+            "unmountHint": "I-unmount ang read-only na view ng vault na ito"
         }
     }
 }

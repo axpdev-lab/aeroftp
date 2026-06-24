@@ -5001,6 +5001,13 @@
             "continue": "Nadaljuj",
             "done": "Shranjenih {count} datotek v {path}",
             "skipped": "{count} elementov preskočenih"
+        },
+        "mountVault": {
+            "button": "Priklopi (samo za branje)",
+            "hint": "Brskajte po odklenjeni shrambi kot pogonu samo za branje. Ob zaklepu se odklopi.",
+            "open": "Odpri",
+            "unmount": "Odklopi",
+            "unmountHint": "Odklopi ta pogled shrambe samo za branje"
         }
     }
 }

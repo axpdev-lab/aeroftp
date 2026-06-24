@@ -49,13 +49,46 @@ pub struct ExportReport {
 }
 
 /// Read-only view of an unlocked vault: walk the tree and stream a file's
-/// plaintext. The single seam both Save-All and a future read-only mount share.
-pub trait ReadableVault {
+/// plaintext. The single seam both Save-All and the read-only mount share.
+///
+/// `Send` so an adapter can be owned by the mount's `VaultStorageProvider` and
+/// moved onto the FUSE runtime; the provider wraps it in a `Mutex` to obtain the
+/// `Sync` that `StorageProvider` requires, so the adapter itself need not be `Sync`
+/// (the `.aerovault` crate handle is not).
+pub trait ReadableVault: Send {
     /// Recursively enumerate every entry (directories and files), parents before
     /// children.
     fn walk(&self) -> Result<Vec<ReadableEntry>, String>;
     /// Stream a single file entry's plaintext into `sink`.
     fn read_file(&self, entry: &ReadableEntry, sink: &mut dyn Write) -> Result<(), String>;
+
+    /// Whether `read_at` is a true seekable random read (decrypts only the bytes
+    /// in the window) rather than the whole-file fallback below. The mount uses
+    /// this to decide whether a large file needs a first-access plaintext temp
+    /// cache (whole-file backends) or can be served directly (seekable backends).
+    ///
+    /// Cryptomator overrides this to `true` (independent 32 KiB GCM chunks);
+    /// `.aerovault` keeps the `false` default (the crate reads whole-file today).
+    fn supports_seek(&self) -> bool {
+        false
+    }
+
+    /// Read up to `len` bytes of a file entry's plaintext starting at `offset`,
+    /// for the FUSE `read(offset, size)` path. Returns fewer bytes only at EOF.
+    ///
+    /// The default streams the whole file into memory and slices the window,
+    /// which is correct everywhere but reads the full file per call; seekable
+    /// backends override it to decrypt only the covering region.
+    fn read_at(&self, entry: &ReadableEntry, offset: u64, len: u32) -> Result<Vec<u8>, String> {
+        // Cap the whole-file buffer like `read_file_to_vec` so a bogus manifest
+        // size cannot pre-allocate an enormous buffer.
+        let cap = entry.size.min(64 * 1024 * 1024) as usize;
+        let mut buf: Vec<u8> = Vec::with_capacity(cap);
+        self.read_file(entry, &mut buf)?;
+        let start = (offset as usize).min(buf.len());
+        let end = start.saturating_add(len as usize).min(buf.len());
+        Ok(buf[start..end].to_vec())
+    }
 }
 
 /// Reject any vault entry path that is absolute or carries a `..` / `.` / root /

@@ -5020,6 +5020,13 @@
             "continue": "Halda áfram",
             "done": "Vistaði {count} skrá(r) í {path}",
             "skipped": "{count} atriði sleppt"
+        },
+        "mountVault": {
+            "button": "Tengja (skrifvarið)",
+            "hint": "Skoðaðu opnaða hvelfingu sem skrifvarið drif. Aftengist þegar þú læsir henni.",
+            "open": "Opna",
+            "unmount": "Aftengja",
+            "unmountHint": "Aftengja þessa skrifvörðu hvelfingarsýn"
         }
     }
 }

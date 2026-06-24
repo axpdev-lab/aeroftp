@@ -5001,6 +5001,13 @@
             "continue": "Nastavi",
             "done": "Spremljeno {count} datoteka u {path}",
             "skipped": "{count} stavki preskočeno"
+        },
+        "mountVault": {
+            "button": "Montiraj (samo za čitanje)",
+            "hint": "Pregledavajte otključani trezor kao pogon samo za čitanje. Odmontira se kada ga zaključate.",
+            "open": "Otvori",
+            "unmount": "Odmontiraj",
+            "unmountHint": "Odmontiraj ovaj prikaz trezora samo za čitanje"
         }
     }
 }

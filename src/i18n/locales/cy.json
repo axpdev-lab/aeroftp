@@ -5020,6 +5020,13 @@
             "continue": "Parhau",
             "done": "Cadwyd {count} ffeil i {path}",
             "skipped": "{count} eitem wedi'u hepgor"
+        },
+        "mountVault": {
+            "button": "Mowntio (darllen yn unig)",
+            "hint": "Porwch y gladdgell ddatglôdd fel gyriant darllen yn unig. Mae'n dadfowntio pan fyddwch yn ei chloi.",
+            "open": "Agor",
+            "unmount": "Dadfowntio",
+            "unmountHint": "Dadfowntio'r olwg gladdgell darllen-yn-unig hon"
         }
     }
 }

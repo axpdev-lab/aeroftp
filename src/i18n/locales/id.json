@@ -5001,6 +5001,13 @@
             "continue": "Lanjutkan",
             "done": "Menyimpan {count} file ke {path}",
             "skipped": "{count} item dilewati"
+        },
+        "mountVault": {
+            "button": "Pasang (hanya-baca)",
+            "hint": "Jelajahi vault yang terbuka sebagai drive hanya-baca. Akan dilepas saat Anda menguncinya.",
+            "open": "Buka",
+            "unmount": "Lepas",
+            "unmountHint": "Lepas tampilan vault hanya-baca ini"
         }
     }
 }

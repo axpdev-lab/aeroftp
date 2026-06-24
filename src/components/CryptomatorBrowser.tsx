@@ -18,6 +18,7 @@ import { useModalFileView } from './modalview/useModalFileView';
 import { ModalViewToolbar } from './modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
 import { SaveAllMenu, SaveAllTarget } from './common/SaveAllMenu';
+import { MountVaultButton } from './common/MountVaultButton';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
@@ -413,6 +414,16 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                 <Upload size={12} /> {t('cryptomator.encrypt')}
                             </button>
                             <SaveAllMenu disabled={loading} onExport={handleSaveAll} />
+                            {vaultInfo && (
+                                <MountVaultButton
+                                    kind="cryptomator"
+                                    vaultKey={vaultInfo.vaultId}
+                                    vaultPath={vaultPath}
+                                    password={password}
+                                    displayName={vaultInfo.name}
+                                    disabled={loading}
+                                />
+                            )}
                             <ModalViewToolbar view={modalView} />
                         </div>
 

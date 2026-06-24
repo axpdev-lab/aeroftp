@@ -5001,6 +5001,13 @@
             "continue": "Pokračovať",
             "done": "Uložených {count} súborov do {path}",
             "skipped": "{count} položiek preskočených"
+        },
+        "mountVault": {
+            "button": "Pripojiť (len na čítanie)",
+            "hint": "Prehliadajte odomknutý trezor ako disk len na čítanie. Odpojí sa, keď ho zamknete.",
+            "open": "Otvoriť",
+            "unmount": "Odpojiť",
+            "unmountHint": "Odpojiť toto zobrazenie trezoru len na čítanie"
         }
     }
 }

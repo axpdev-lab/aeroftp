@@ -5020,6 +5020,13 @@
             "continue": "Jarraitu",
             "done": "{count} fitxategi gorde dira hemen: {path}",
             "skipped": "{count} elementu saltatu dira"
+        },
+        "mountVault": {
+            "button": "Muntatu (irakurtzeko soilik)",
+            "hint": "Arakatu desblokeatutako kutxa gotorra irakurtzeko soilik den unitate gisa. Blokeatzean desmuntatzen da.",
+            "open": "Ireki",
+            "unmount": "Desmuntatu",
+            "unmountHint": "Desmuntatu irakurtzeko soilik den kutxa gotor ikuspegi hau"
         }
     }
 }

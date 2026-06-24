@@ -5001,6 +5001,13 @@
             "continue": "Continua",
             "done": "Salvati {count} file in {path}",
             "skipped": "{count} elemento/i saltato/i"
+        },
+        "mountVault": {
+            "button": "Monta (sola lettura)",
+            "hint": "Sfoglia il vault sbloccato come unità in sola lettura. Si smonta quando lo blocchi.",
+            "open": "Apri",
+            "unmount": "Smonta",
+            "unmountHint": "Smonta questa vista in sola lettura del vault"
         }
     }
 }

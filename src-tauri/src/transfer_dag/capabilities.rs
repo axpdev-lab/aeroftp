@@ -178,7 +178,10 @@ impl TransferCapabilities {
             | ProviderType::Immich
             | ProviderType::ImageKit
             | ProviderType::Uploadcare
-            | ProviderType::Cloudinary => {}
+            | ProviderType::Cloudinary
+            // Synthetic local mount; never enters the transfer DAG. Keep the
+            // conservative no-special-capabilities default.
+            | ProviderType::AeroVaultMount => {}
         }
 
         if !caps.multipart_upload.is_available() {

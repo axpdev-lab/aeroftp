@@ -5001,6 +5001,13 @@
             "continue": "Endelea",
             "done": "Imehifadhi faili {count} kwenye {path}",
             "skipped": "Vipengele {count} vimerukwa"
+        },
+        "mountVault": {
+            "button": "Pakia (kusoma tu)",
+            "hint": "Vinjari kasha lililofunguliwa kama diski ya kusoma tu. Hupakuliwa unapolifunga.",
+            "open": "Fungua",
+            "unmount": "Pakua",
+            "unmountHint": "Pakua mwonekano huu wa kasha la kusoma tu"
         }
     }
 }

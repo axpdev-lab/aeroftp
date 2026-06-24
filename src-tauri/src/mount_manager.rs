@@ -121,7 +121,7 @@ fn sidecar_path() -> PathBuf {
 /// 1. Same directory as the running GUI executable (works for installed builds
 ///    and `cargo run`).
 /// 2. `aeroftp-cli` on `PATH`.
-fn locate_cli() -> Result<PathBuf, String> {
+pub(crate) fn locate_cli() -> Result<PathBuf, String> {
     let exe_name = if cfg!(windows) {
         "aeroftp-cli.exe"
     } else {

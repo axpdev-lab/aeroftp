@@ -5001,6 +5001,13 @@
             "continue": "Folytatás",
             "done": "{count} fájl mentve ide: {path}",
             "skipped": "{count} elem kihagyva"
+        },
+        "mountVault": {
+            "button": "Csatolás (csak olvasható)",
+            "hint": "Böngészd a feloldott széfet csak olvasható meghajtóként. Lecsatolódik, amikor lezárod.",
+            "open": "Megnyitás",
+            "unmount": "Leválasztás",
+            "unmountHint": "Ennek a csak olvasható széfnézetnek a leválasztása"
         }
     }
 }

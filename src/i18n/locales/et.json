@@ -5001,6 +5001,13 @@
             "continue": "Jätka",
             "done": "Salvestati {count} fail(i) asukohta {path}",
             "skipped": "{count} üksus(t) vahele jäetud"
+        },
+        "mountVault": {
+            "button": "Ühenda (kirjutuskaitstud)",
+            "hint": "Sirvi avatud hoidlat kirjutuskaitstud kettana. Eemaldatakse, kui selle lukustad.",
+            "open": "Ava",
+            "unmount": "Eemalda",
+            "unmountHint": "Eemalda see kirjutuskaitstud hoidlavaade"
         }
     }
 }

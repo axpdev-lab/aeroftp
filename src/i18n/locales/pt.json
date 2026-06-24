@@ -5001,6 +5001,13 @@
             "continue": "Continuar",
             "done": "Guardados {count} ficheiro(s) em {path}",
             "skipped": "{count} item(ns) ignorado(s)"
+        },
+        "mountVault": {
+            "button": "Montar (somente leitura)",
+            "hint": "Navegue no cofre desbloqueado como uma unidade somente leitura. É desmontado ao bloqueá-lo.",
+            "open": "Abrir",
+            "unmount": "Desmontar",
+            "unmountHint": "Desmontar esta visualização do cofre somente leitura"
         }
     }
 }

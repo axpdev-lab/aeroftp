@@ -49,7 +49,7 @@ pub mod credential_store;
 mod cross_profile_commands;
 pub mod cross_profile_transfer;
 mod crypto;
-mod cryptomator;
+pub mod cryptomator;
 mod cyber_tools;
 pub mod cyberduck_import;
 mod debug_tests;
@@ -64,6 +64,8 @@ pub mod mobaxterm_import;
 pub mod putty_import;
 pub mod readable_vault;
 pub mod s3cmd_import;
+pub mod vault_mount;
+pub mod vault_storage_provider;
 pub mod vault_telemetry;
 // `pub` only so `tests/integration_delta_sync.rs` (separate crate) can
 // inject a MockDeltaTransport. Everything but the hidden inner helper
@@ -2242,6 +2244,9 @@ fn exit_app(app: &tauri::AppHandle) {
     let app_clone = app.clone();
     tauri::async_runtime::block_on(async move {
         crate::mount_manager::stop_all().await;
+        // Unmount any ephemeral read-only vault mounts (#322 Deliverable B): they
+        // must not outlive the app holding the keys.
+        crate::vault_mount::stop_all().await;
         let _ = app_clone;
     });
     app.exit(0);
@@ -15361,6 +15366,37 @@ async fn mount_suggest_path(profile: String) -> Result<String, String> {
     Ok(mount_manager::suggest_mountpoint(&profile))
 }
 
+/// Mount an UNLOCKED vault (Cryptomator or `.aerovault`/`.aerozip`) read-only as
+/// an ephemeral local filesystem (#322 Deliverable B). The password is forwarded
+/// to the `aeroftp-cli mount-vault` child over stdin and never stored; the mount
+/// auto-unmounts on vault lock / app quit. `key` is a stable handle (the
+/// Cryptomator `vault_id` or the `.aerovault` path) used to stop/open it later.
+#[tauri::command]
+async fn vault_mount_start(
+    key: String,
+    kind: String,
+    vault_path: String,
+    password: String,
+    display_name: String,
+) -> Result<vault_mount::VaultMountInfo, String> {
+    vault_mount::start(key, kind, vault_path, password, display_name).await
+}
+
+#[tauri::command]
+async fn vault_mount_stop(key: String) -> Result<(), String> {
+    vault_mount::stop(&key).await
+}
+
+#[tauri::command]
+async fn vault_mount_list() -> Result<Vec<vault_mount::VaultMountInfo>, String> {
+    Ok(vault_mount::list().await)
+}
+
+#[tauri::command]
+async fn vault_mount_open(key: String) -> Result<(), String> {
+    vault_mount::open_in_file_manager(&key).await
+}
+
 #[tauri::command]
 async fn mount_pick_drive_letter() -> Result<String, String> {
     mount_manager::pick_free_drive_letter()
@@ -17192,6 +17228,10 @@ pub fn run() {
             mount_start,
             mount_stop,
             mount_open_in_explorer,
+            vault_mount_start,
+            vault_mount_stop,
+            vault_mount_list,
+            vault_mount_open,
             mount_suggest_path,
             mount_pick_drive_letter,
             mount_set_storage_mode,

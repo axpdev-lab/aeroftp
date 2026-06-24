@@ -5001,6 +5001,13 @@
             "continue": "Doorgaan",
             "done": "{count} bestand(en) opgeslagen in {path}",
             "skipped": "{count} item(s) overgeslagen"
+        },
+        "mountVault": {
+            "button": "Koppelen (alleen-lezen)",
+            "hint": "Blader door de ontgrendelde kluis als een alleen-lezen schijf. Wordt ontkoppeld als je hem vergrendelt.",
+            "open": "Openen",
+            "unmount": "Ontkoppelen",
+            "unmountHint": "Deze alleen-lezen kluisweergave ontkoppelen"
         }
     }
 }

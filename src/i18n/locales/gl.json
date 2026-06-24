@@ -5020,6 +5020,13 @@
             "continue": "Continuar",
             "done": "Gardáronse {count} ficheiro(s) en {path}",
             "skipped": "{count} elemento(s) omitido(s)"
+        },
+        "mountVault": {
+            "button": "Montar (só lectura)",
+            "hint": "Navega polo vault desbloqueado como unidade só de lectura. Desmóntase ao bloquealo.",
+            "open": "Abrir",
+            "unmount": "Desmontar",
+            "unmountHint": "Desmontar esta vista do vault só de lectura"
         }
     }
 }

@@ -5001,6 +5001,13 @@
             "continue": "Continuar",
             "done": "Se guardaron {count} archivo(s) en {path}",
             "skipped": "{count} elemento(s) omitido(s)"
+        },
+        "mountVault": {
+            "button": "Montar (solo lectura)",
+            "hint": "Explora el vault desbloqueado como unidad de solo lectura. Se desmonta al bloquearlo.",
+            "open": "Abrir",
+            "unmount": "Desmontar",
+            "unmountHint": "Desmontar esta vista del vault en solo lectura"
         }
     }
 }

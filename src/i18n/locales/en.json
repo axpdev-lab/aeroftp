@@ -5001,6 +5001,13 @@
             "continue": "Continue",
             "done": "Saved {count} file(s) to {path}",
             "skipped": "{count} item(s) skipped"
+        },
+        "mountVault": {
+            "button": "Mount (read-only)",
+            "hint": "Browse the unlocked vault as a read-only drive. It unmounts when you lock it.",
+            "open": "Open",
+            "unmount": "Unmount",
+            "unmountHint": "Unmount this read-only vault view"
         }
     }
 }

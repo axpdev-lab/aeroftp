@@ -5020,6 +5020,13 @@
             "continue": "Continua",
             "done": "S'han desat {count} fitxer(s) a {path}",
             "skipped": "{count} element(s) omès(os)"
+        },
+        "mountVault": {
+            "button": "Munta (només lectura)",
+            "hint": "Navega pel vault desbloquejat com una unitat només de lectura. Es desmunta quan el bloqueges.",
+            "open": "Obre",
+            "unmount": "Desmunta",
+            "unmountHint": "Desmunta aquesta vista del vault només de lectura"
         }
     }
 }

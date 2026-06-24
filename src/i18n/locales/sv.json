@@ -5001,6 +5001,13 @@
             "continue": "Fortsätt",
             "done": "Sparade {count} fil(er) till {path}",
             "skipped": "{count} objekt hoppades över"
+        },
+        "mountVault": {
+            "button": "Montera (skrivskyddad)",
+            "hint": "Bläddra i det upplåsta valvet som en skrivskyddad enhet. Avmonteras när du låser det.",
+            "open": "Öppna",
+            "unmount": "Avmontera",
+            "unmountHint": "Avmontera den här skrivskyddade valvvyn"
         }
     }
 }

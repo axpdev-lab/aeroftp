@@ -5001,6 +5001,13 @@
             "continue": "Devam et",
             "done": "{count} dosya {path} konumuna kaydedildi",
             "skipped": "{count} öğe atlandı"
+        },
+        "mountVault": {
+            "button": "Bağla (salt okunur)",
+            "hint": "Kilidi açılmış kasayı salt okunur bir sürücü olarak gözatın. Kilitlediğinizde bağlantısı kesilir.",
+            "open": "Aç",
+            "unmount": "Ayır",
+            "unmountHint": "Bu salt okunur kasa görünümünü ayır"
         }
     }
 }

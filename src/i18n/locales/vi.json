@@ -5001,6 +5001,13 @@
             "continue": "Tiếp tục",
             "done": "Đã lưu {count} tệp vào {path}",
             "skipped": "Đã bỏ qua {count} mục"
+        },
+        "mountVault": {
+            "button": "Gắn kết (chỉ đọc)",
+            "hint": "Duyệt kho đã mở khóa như một ổ đĩa chỉ đọc. Sẽ ngắt kết nối khi bạn khóa lại.",
+            "open": "Mở",
+            "unmount": "Ngắt kết nối",
+            "unmountHint": "Ngắt kết nối chế độ xem kho chỉ đọc này"
         }
     }
 }

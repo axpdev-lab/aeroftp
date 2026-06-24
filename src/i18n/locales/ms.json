@@ -5001,6 +5001,13 @@
             "continue": "Teruskan",
             "done": "Menyimpan {count} fail ke {path}",
             "skipped": "{count} item dilangkau"
+        },
+        "mountVault": {
+            "button": "Lekap (baca sahaja)",
+            "hint": "Layari peti besi yang dibuka sebagai pemacu baca sahaja. Dinyahlekap apabila anda menguncinya.",
+            "open": "Buka",
+            "unmount": "Nyahlekap",
+            "unmountHint": "Nyahlekap paparan peti besi baca sahaja ini"
         }
     }
 }

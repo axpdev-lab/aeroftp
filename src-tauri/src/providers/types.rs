@@ -82,6 +82,11 @@ pub enum ProviderType {
     /// Free tier: 25 monthly credits (1 credit = 1 GB storage OR 1 GB bandwidth
     /// OR 1000 transformations).
     Cloudinary,
+    /// Synthetic, in-process provider over an UNLOCKED vault (Cryptomator or
+    /// `.aerovault`), used only by AeroMount Deliverable B to surface a decrypted
+    /// vault as a read-only filesystem. Never created through the provider
+    /// factory and never persisted to a profile; it has no network endpoint.
+    AeroVaultMount,
 }
 
 impl fmt::Display for ProviderType {
@@ -120,6 +125,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Uploadcare => write!(f, "Uploadcare"),
             ProviderType::Backblaze => write!(f, "Backblaze B2"),
             ProviderType::Cloudinary => write!(f, "Cloudinary"),
+            ProviderType::AeroVaultMount => write!(f, "AeroMount (unlocked vault)"),
         }
     }
 }
@@ -207,6 +213,7 @@ impl ProviderType {
             ProviderType::Uploadcare => 443,
             ProviderType::Backblaze => 443,
             ProviderType::Cloudinary => 443,
+            ProviderType::AeroVaultMount => 0, // local, no network endpoint
         }
     }
 

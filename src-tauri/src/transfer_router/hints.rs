@@ -81,7 +81,9 @@ pub fn from_provider_type(
         | ProviderType::Immich
         | ProviderType::ImageKit
         | ProviderType::Uploadcare
-        | ProviderType::Cloudinary => ProviderHint::OAuthCloud,
+        | ProviderType::Cloudinary
+        // Synthetic local mount; never routed through the transfer router.
+        | ProviderType::AeroVaultMount => ProviderHint::OAuthCloud,
     }
 }
 

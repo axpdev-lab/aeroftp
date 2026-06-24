@@ -5020,6 +5020,13 @@
             "continue": "Fortsett",
             "done": "Lagret {count} fil(er) til {path}",
             "skipped": "{count} element(er) hoppet over"
+        },
+        "mountVault": {
+            "button": "Monter (skrivebeskyttet)",
+            "hint": "Bla gjennom det opplåste hvelvet som en skrivebeskyttet stasjon. Demonteres når du låser det.",
+            "open": "Åpne",
+            "unmount": "Demonter",
+            "unmountHint": "Demonter denne skrivebeskyttede hvelvvisningen"
         }
     }
 }

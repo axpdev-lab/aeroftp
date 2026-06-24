@@ -117,6 +117,12 @@ impl CryptomatorState {
     }
 }
 
+impl Default for CryptomatorState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ─── Crypto primitives ────────────────────────────────────────────────────────
 
 /// Derive KEK from password using scrypt
@@ -696,6 +702,108 @@ fn decrypt_file_to_writer(
     decrypt_data_to_writer(vault, &data, sink, |_| {})
 }
 
+/// Decrypt only the plaintext byte window `[offset, offset+len)` of a vault file,
+/// reading and decrypting just the GCM chunks that cover it (each 32 KiB chunk is
+/// independently authenticated by its chunk number + header nonce). This is the
+/// seekable random-read path the read-only mount uses, so a `read(offset, size)`
+/// on a multi-GB file never decrypts the whole thing. Returns fewer bytes than
+/// requested only at EOF.
+fn decrypt_file_range(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    filename: &str,
+    offset: u64,
+    len: u32,
+) -> Result<Vec<u8>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const CHUNK_PLAIN: u64 = 32768;
+    const CHUNK_ENC: u64 = 32768 + 28; // 12-byte nonce + ciphertext + 16-byte tag
+    const HEADER_LEN: u64 = 68;
+
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    let file_path = locate_encrypted_file(vault, dir_id, filename)?;
+    let mut f = fs::File::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let file_len = f
+        .metadata()
+        .map_err(|e| format!("Failed to stat file: {}", e))?
+        .len();
+    if file_len < HEADER_LEN {
+        return Err("File too small to contain a valid header".to_string());
+    }
+
+    // Read + decrypt the file header to recover the per-file content key.
+    let mut header = [0u8; HEADER_LEN as usize];
+    f.read_exact(&mut header)
+        .map_err(|e| format!("Failed to read header: {}", e))?;
+    let header_nonce = &header[0..12];
+    let header_payload = &header[12..68];
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(&vault.enc_key));
+    let decrypted_header = cipher
+        .decrypt(GenericArray::from_slice(header_nonce), header_payload)
+        .map_err(|_| "Failed to decrypt file header: wrong key?".to_string())?;
+    if decrypted_header.len() < 40 {
+        return Err("Invalid decrypted header size".to_string());
+    }
+    let mut content_key = [0u8; 32];
+    content_key.copy_from_slice(&decrypted_header[8..40]);
+    let content_cipher = Aes256Gcm::new(GenericArray::from_slice(&content_key));
+
+    let plain_total = plaintext_total_from_encrypted_len(file_len as usize);
+    if offset >= plain_total {
+        return Ok(Vec::new());
+    }
+    let end_plain = offset.saturating_add(len as u64).min(plain_total);
+    let want = (end_plain - offset) as usize;
+
+    let first_chunk = offset / CHUNK_PLAIN;
+    let last_chunk = (end_plain - 1) / CHUNK_PLAIN;
+
+    let mut out: Vec<u8> = Vec::with_capacity(want);
+    for chunk_num in first_chunk..=last_chunk {
+        let enc_pos = HEADER_LEN + chunk_num * CHUNK_ENC;
+        if enc_pos >= file_len {
+            break;
+        }
+        let enc_avail = (file_len - enc_pos).min(CHUNK_ENC);
+        if enc_avail < 28 {
+            return Err("Truncated chunk".to_string());
+        }
+        f.seek(SeekFrom::Start(enc_pos))
+            .map_err(|e| format!("Failed to seek: {}", e))?;
+        let mut chunk = vec![0u8; enc_avail as usize];
+        f.read_exact(&mut chunk)
+            .map_err(|e| format!("Failed to read chunk {}: {}", chunk_num, e))?;
+
+        let chunk_nonce = &chunk[0..12];
+        let mut aad = Vec::with_capacity(20);
+        aad.extend_from_slice(&chunk_num.to_be_bytes());
+        aad.extend_from_slice(header_nonce);
+        let decrypted = content_cipher
+            .decrypt(
+                GenericArray::from_slice(chunk_nonce),
+                aes_gcm::aead::Payload {
+                    msg: &chunk[12..],
+                    aad: &aad,
+                },
+            )
+            .map_err(|_| format!("Failed to decrypt chunk {}", chunk_num))?;
+
+        // Copy just the part of this chunk that overlaps the requested window.
+        let chunk_plain_start = chunk_num * CHUNK_PLAIN;
+        let chunk_plain_end = chunk_plain_start + decrypted.len() as u64;
+        let s = offset.max(chunk_plain_start);
+        let e = end_plain.min(chunk_plain_end);
+        if s < e {
+            let lo = (s - chunk_plain_start) as usize;
+            let hi = (e - chunk_plain_start) as usize;
+            out.extend_from_slice(&decrypted[lo..hi]);
+        }
+    }
+    Ok(out)
+}
+
 /// As `decrypt_file_inner`, but emits byte-true `archive_progress` while writing the
 /// plaintext when an `AppHandle` is supplied (GUI path). The CLI and tests pass
 /// `None`. The decrypt crypto is in-app (no crate dependency), so this is part of the
@@ -804,10 +912,15 @@ fn collect_tree(
                 collect_tree(vault, &child, &rel, out);
             }
         } else {
+            // `list_dir_inner` reports the ENCRYPTED on-disk length; the readable
+            // tree (mount `st_size`, Save-All progress) must report the PLAINTEXT
+            // size, derived from the encrypted length. A mount's `getattr` size
+            // has to match what `read` can actually return, or tools that trust
+            // `st_size` (mmap, exact-length readers) get short reads / zero-fill.
             out.push(crate::readable_vault::ReadableEntry {
                 rel_path: rel,
                 is_dir: false,
-                size: e.size,
+                size: plaintext_total_from_encrypted_len(e.size as usize),
                 // The handle carries the PARENT dir_id so read_file can decrypt
                 // without re-resolving the path.
                 handle: dir_id.to_string(),
@@ -831,6 +944,74 @@ impl crate::readable_vault::ReadableVault for CryptomatorReadable<'_> {
         let filename = entry.rel_path.rsplit('/').next().unwrap_or(&entry.rel_path);
         decrypt_file_to_writer(self.vault, &entry.handle, filename, sink)
     }
+
+    fn supports_seek(&self) -> bool {
+        true
+    }
+
+    fn read_at(
+        &self,
+        entry: &crate::readable_vault::ReadableEntry,
+        offset: u64,
+        len: u32,
+    ) -> Result<Vec<u8>, String> {
+        let filename = entry.rel_path.rsplit('/').next().unwrap_or(&entry.rel_path);
+        decrypt_file_range(self.vault, &entry.handle, filename, offset, len)
+    }
+}
+
+/// Owning variant of [`CryptomatorReadable`] for the read-only mount
+/// (Deliverable B, #322): it holds the `UnlockedVault` for the whole mount
+/// session rather than borrowing one from `CryptomatorState`. The mount runs in
+/// the `aeroftp-cli` subprocess, which unlocks the vault itself (the password is
+/// handed to it over stdin and never stored), so the adapter must own the keys.
+/// All three operations delegate to the same free functions as the borrowed
+/// adapter, so the crypto path is shared.
+pub struct OwnedCryptomatorReadable {
+    vault: UnlockedVault,
+}
+
+impl crate::readable_vault::ReadableVault for OwnedCryptomatorReadable {
+    fn walk(&self) -> Result<Vec<crate::readable_vault::ReadableEntry>, String> {
+        let mut out = Vec::new();
+        collect_tree(&self.vault, "", "", &mut out);
+        Ok(out)
+    }
+
+    fn read_file(
+        &self,
+        entry: &crate::readable_vault::ReadableEntry,
+        sink: &mut dyn std::io::Write,
+    ) -> Result<(), String> {
+        let filename = entry.rel_path.rsplit('/').next().unwrap_or(&entry.rel_path);
+        decrypt_file_to_writer(&self.vault, &entry.handle, filename, sink)
+    }
+
+    fn supports_seek(&self) -> bool {
+        true
+    }
+
+    fn read_at(
+        &self,
+        entry: &crate::readable_vault::ReadableEntry,
+        offset: u64,
+        len: u32,
+    ) -> Result<Vec<u8>, String> {
+        let filename = entry.rel_path.rsplit('/').next().unwrap_or(&entry.rel_path);
+        decrypt_file_range(&self.vault, &entry.handle, filename, offset, len)
+    }
+}
+
+/// Unlock a Cryptomator vault standalone (NOT inserted into `CryptomatorState`)
+/// and wrap it in an owning [`OwnedCryptomatorReadable`] for the read-only mount.
+/// The returned adapter holds the master keys for the mount session and zeroizes
+/// them on drop (auto-unmount), matching the ephemeral, session-bound posture.
+pub fn open_cryptomator_for_mount(
+    vault_path: &Path,
+    password: &str,
+) -> Result<OwnedCryptomatorReadable, String> {
+    let (vault, _config) = unlock_vault_inner(vault_path, password)?;
+    Ok(OwnedCryptomatorReadable { vault })
 }
 
 /// Encrypt a file into the vault
@@ -1083,6 +1264,10 @@ pub async fn cryptomator_lock(
     if vaults.remove(&vault_id).is_none() {
         return Err("Vault not found or already locked".to_string());
     }
+    drop(vaults);
+    // Auto-unmount any read-only AeroMount of this vault: the mount cannot
+    // outlive the in-memory keys (#322 Deliverable B, ephemeral posture).
+    crate::vault_mount::stop(&vault_id).await.ok();
     Ok(())
 }
 
@@ -1753,5 +1938,74 @@ mod tests {
             .read_to_end(&mut got)
             .unwrap();
         assert_eq!(got, bytes_c, "zip nested round-trip");
+    }
+
+    /// The seekable `read_at` (decrypts only the covering 32 KiB GCM chunks) must
+    /// return exactly the same bytes as a full whole-file decrypt for every
+    /// window, including chunk boundaries, cross-chunk spans, EOF clamping and
+    /// past-EOF reads. This is the random-read path the read-only mount uses.
+    #[tokio::test]
+    async fn seekable_read_at_matches_full_decrypt() {
+        use crate::readable_vault::ReadableVault;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let password = "correcthorse";
+
+        // A multi-chunk file: 100000 bytes spans 4 chunks (32768*3 = 98304),
+        // last chunk partial. A non-repeating-ish pattern catches off-by-one.
+        let data: Vec<u8> = (0..100_000u32)
+            .map(|i| (i.wrapping_mul(2654435761) >> 13) as u8)
+            .collect();
+        let src = tmp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("data.bin"), &data).unwrap();
+
+        let vault_root = tmp.path().join("Vault");
+        cryptomator_create(
+            vault_root.to_string_lossy().to_string(),
+            password.to_string(),
+        )
+        .await
+        .expect("vault creation");
+        let (vault, _c) = unlock_vault_inner(&vault_root, password).expect("unlock");
+        let mut report = CryptomatorIngestReport::default();
+        ingest_path_inner(&vault, "", &src.join("data.bin"), &mut report);
+        assert!(report.skipped.is_empty(), "skips: {:?}", report.skipped);
+
+        let adapter = OwnedCryptomatorReadable { vault };
+        assert!(adapter.supports_seek());
+        let walked = adapter.walk().expect("walk");
+        let entry = walked
+            .iter()
+            .find(|e| e.rel_path == "data.bin")
+            .expect("data.bin in walk");
+
+        // Whole-file decrypt as the oracle.
+        let mut full = Vec::new();
+        adapter.read_file(entry, &mut full).expect("full decrypt");
+        assert_eq!(full, data, "full decrypt must equal source");
+
+        let cases: &[(u64, u32)] = &[
+            (0, 10),         // head
+            (32768 - 5, 10), // across chunk 0/1 boundary
+            (32768, 32768),  // exactly chunk 1
+            (32768 - 1, 2),  // one byte each side of a boundary
+            (65536, 40000),  // spans chunks 2 and 3
+            (99_990, 100),   // tail, clamps at EOF
+            (100_000, 10),   // exactly at EOF -> empty
+            (200_000, 10),   // past EOF -> empty
+            (0, 100_000),    // whole file in one call
+            (12345, 0),      // zero-length window
+        ];
+        for &(off, len) in cases {
+            let got = adapter.read_at(entry, off, len).expect("read_at");
+            let start = (off as usize).min(full.len());
+            let end = start.saturating_add(len as usize).min(full.len());
+            assert_eq!(
+                got,
+                &full[start..end],
+                "window (offset={off}, len={len}) mismatch"
+            );
+        }
     }
 }

@@ -5001,6 +5001,13 @@
             "continue": "Turpināt",
             "done": "Saglabāti {count} faili mapē {path}",
             "skipped": "Izlaisti {count} vienumi"
+        },
+        "mountVault": {
+            "button": "Pievienot (tikai lasāms)",
+            "hint": "Pārlūko atbloķēto seifu kā tikai lasāmu disku. Tiek atvienots, kad to bloķē.",
+            "open": "Atvērt",
+            "unmount": "Atvienot",
+            "unmountHint": "Atvienot šo tikai lasāmo seifa skatu"
         }
     }
 }

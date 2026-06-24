@@ -5001,6 +5001,13 @@
             "continue": "Continuă",
             "done": "S-au salvat {count} fișier(e) în {path}",
             "skipped": "{count} element(e) omis(e)"
+        },
+        "mountVault": {
+            "button": "Montează (doar citire)",
+            "hint": "Răsfoiește seiful deblocat ca unitate doar pentru citire. Se demontează când îl blochezi.",
+            "open": "Deschide",
+            "unmount": "Demontează",
+            "unmountHint": "Demontează această vizualizare a seifului doar pentru citire"
         }
     }
 }

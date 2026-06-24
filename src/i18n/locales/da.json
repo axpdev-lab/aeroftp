@@ -5001,6 +5001,13 @@
             "continue": "Fortsæt",
             "done": "Gemte {count} fil(er) til {path}",
             "skipped": "{count} element(er) sprunget over"
+        },
+        "mountVault": {
+            "button": "Monter (skrivebeskyttet)",
+            "hint": "Gennemse den oplåste boks som et skrivebeskyttet drev. Afmonteres, når du låser den.",
+            "open": "Åbn",
+            "unmount": "Afmonter",
+            "unmountHint": "Afmonter denne skrivebeskyttede boksvisning"
         }
     }
 }

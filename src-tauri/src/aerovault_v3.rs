@@ -845,7 +845,7 @@ pub async fn aerovz_extract_all(
 /// `.zip` exporter. `walk` derives the tree from the crate summary; `read_file`
 /// extracts one entry into a transient temp file inside an auto-removed temp dir
 /// (the crate has no read-to-writer API) then streams it into the sink.
-struct VaultV3Readable {
+pub struct VaultV3Readable {
     vault: aerovault::v3::OpenVaultV3,
 }
 
@@ -906,6 +906,19 @@ pub(crate) fn create_aerozip_from_dir(
         let _ = std::fs::remove_file(dest);
         format!("Add to .aerozip: {e}")
     })
+}
+
+/// Open a v3 container (encrypted `.aerovault` with a password, or plaintext
+/// `.aerozip` without) and wrap it in a [`VaultV3Readable`] for the read-only
+/// mount (Deliverable B, #322). The crate reads whole-file today, so the adapter
+/// keeps `supports_seek() == false`; the mount serves large files through a
+/// first-access plaintext temp cache instead of re-reading per `read`.
+pub fn open_aerovault_for_mount(
+    vault_path: &str,
+    password: Option<&str>,
+) -> Result<VaultV3Readable, String> {
+    let vault = open_v3_for_read(vault_path, password)?;
+    Ok(VaultV3Readable { vault })
 }
 
 /// Open a v3 container for reading: encrypted `.aerovault` when a password is

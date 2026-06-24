@@ -5001,6 +5001,13 @@
             "continue": "继续",
             "done": "已将 {count} 个文件保存到 {path}",
             "skipped": "已跳过 {count} 个项目"
+        },
+        "mountVault": {
+            "button": "挂载（只读）",
+            "hint": "将已解锁的保险库作为只读驱动器浏览。锁定时会自动卸载。",
+            "open": "打开",
+            "unmount": "卸载",
+            "unmountHint": "卸载此只读保险库视图"
         }
     }
 }

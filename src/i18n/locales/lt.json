@@ -5001,6 +5001,13 @@
             "continue": "Tęsti",
             "done": "Įrašyta {count} failų į {path}",
             "skipped": "Praleista {count} elementų"
+        },
+        "mountVault": {
+            "button": "Prijungti (tik skaitymui)",
+            "hint": "Naršykite atrakintą seifą kaip tik skaitymui skirtą diską. Atjungiama, kai jį užrakinate.",
+            "open": "Atidaryti",
+            "unmount": "Atjungti",
+            "unmountHint": "Atjungti šį tik skaitymui skirtą seifo rodinį"
         }
     }
 }
