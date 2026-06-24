@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Brezplačni paket",
+            "freeCardTier": "Brezpl. + kartica",
             "paidTier": "Plačljivo"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Ponudnik",
                 "region": "Regija",
                 "freeStorage": "Brezplačno",
+                "freeRequiresCard": "Brezplačna raven, vendar registracija zahteva kreditno kartico",
                 "freeProtocols": "Brezplačni protokoli",
                 "paidProtocols": "Plačljivi protokoli",
                 "health": "Stanje",

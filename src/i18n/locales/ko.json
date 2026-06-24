@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "무료 플랜",
+            "freeCardTier": "무료 + 카드",
             "paidTier": "유료"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "제공업체",
                 "region": "지역",
                 "freeStorage": "무료",
+                "freeRequiresCard": "무료 등급이지만 가입 시 신용카드가 필요합니다",
                 "freeProtocols": "무료 프로토콜",
                 "paidProtocols": "유료 프로토콜",
                 "health": "상태",

@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "मुफ़्त योजना",
+            "freeCardTier": "मुफ्त + कार्ड",
             "paidTier": "सशुल्क"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "प्रदाता",
                 "region": "क्षेत्र",
                 "freeStorage": "मुफ़्त",
+                "freeRequiresCard": "मुफ्त प्लान, लेकिन साइन अप के लिए क्रेडिट कार्ड आवश्यक है",
                 "freeProtocols": "मुफ़्त प्रोटोकॉल",
                 "paidProtocols": "सशुल्क प्रोटोकॉल",
                 "health": "स्थिति",

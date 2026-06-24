@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Plan bezpłatny",
+            "freeCardTier": "Darmowy + karta",
             "paidTier": "Płatny"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Dostawca",
                 "region": "Region",
                 "freeStorage": "Bezpłatnie",
+                "freeRequiresCard": "Plan darmowy, ale rejestracja wymaga karty kredytowej",
                 "freeProtocols": "Bezpłatne protokoły",
                 "paidProtocols": "Płatne protokoły",
                 "health": "Status",

@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Ücretsiz plan",
+            "freeCardTier": "Ücretsiz + kart",
             "paidTier": "Ücretli"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Sağlayıcı",
                 "region": "Bölge",
                 "freeStorage": "Ücretsiz",
+                "freeRequiresCard": "Ücretsiz katman, ancak kayıt için kredi kartı gerekir",
                 "freeProtocols": "Ücretsiz protokoller",
                 "paidProtocols": "Ücretli protokoller",
                 "health": "Durum",

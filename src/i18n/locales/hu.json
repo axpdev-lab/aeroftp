@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Ingyenes csomag",
+            "freeCardTier": "Ingyenes + kártya",
             "paidTier": "Fizetős"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Szolgáltató",
                 "region": "Régió",
                 "freeStorage": "Ingyenes",
+                "freeRequiresCard": "Ingyenes csomag, de a regisztrációhoz bankkártya szükséges",
                 "freeProtocols": "Ingyenes protokollok",
                 "paidProtocols": "Fizetős protokollok",
                 "health": "Állapot",

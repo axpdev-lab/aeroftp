@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Nemokamas planas",
+            "freeCardTier": "Nemok. + kortelė",
             "paidTier": "Mokama"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Tiekėjas",
                 "region": "Regionas",
                 "freeStorage": "Nemokama",
+                "freeRequiresCard": "Nemokamas planas, bet registracijai reikia kredito kortelės",
                 "freeProtocols": "Nemokami protokolai",
                 "paidProtocols": "Mokami protokolai",
                 "health": "Būsena",

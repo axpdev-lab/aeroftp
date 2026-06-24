@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Δωρεάν πλάνο",
+            "freeCardTier": "Δωρεάν + κάρτα",
             "paidTier": "Επί πληρωμή"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Πάροχος",
                 "region": "Περιοχή",
                 "freeStorage": "Δωρεάν",
+                "freeRequiresCard": "Δωρεάν επίπεδο, αλλά η εγγραφή απαιτεί πιστωτική κάρτα",
                 "freeProtocols": "Δωρεάν πρωτόκολλα",
                 "paidProtocols": "Πληρωμένα πρωτόκολλα",
                 "health": "Κατάσταση",

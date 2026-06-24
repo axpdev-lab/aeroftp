@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "უფასო გეგმა",
+            "freeCardTier": "უფასო + ბარათი",
             "paidTier": "ფასიანი"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "პროვაიდერი",
                 "region": "რეგიონი",
                 "freeStorage": "უფასო",
+                "freeRequiresCard": "უფასო დონე, თუმცა რეგისტრაცია საჭიროებს საკრედიტო ბარათს",
                 "freeProtocols": "უფასო პროტოკოლები",
                 "paidProtocols": "ფასიანი პროტოკოლები",
                 "health": "სტატუსი",

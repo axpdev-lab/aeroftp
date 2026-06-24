@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Gói miễn phí",
+            "freeCardTier": "Miễn phí + thẻ",
             "paidTier": "Trả phí"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Nhà cung cấp",
                 "region": "Khu vực",
                 "freeStorage": "Miễn phí",
+                "freeRequiresCard": "Gói miễn phí, nhưng đăng ký yêu cầu thẻ tín dụng",
                 "freeProtocols": "Giao thức miễn phí",
                 "paidProtocols": "Giao thức trả phí",
                 "health": "Trạng thái",

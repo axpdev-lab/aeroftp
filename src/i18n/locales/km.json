@@ -3979,6 +3979,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "គម្រោងឥតគិតថ្លៃ",
+            "freeCardTier": "ឥតគិតថ្លៃ + កាត",
             "paidTier": "បង់ប្រាក់"
         },
         "zohoworkdrive": {
@@ -4424,6 +4425,7 @@
                 "company": "អ្នកផ្តល់សេវា",
                 "region": "តំបន់",
                 "freeStorage": "ឥតគិតថ្លៃ",
+                "freeRequiresCard": "កម្រិតឥតគិតថ្លៃ ប៉ុន្តែការចុះឈ្មោះតម្រូវឱ្យមានកាតឥណទាន",
                 "freeProtocols": "ពិធីការឥតគិតថ្លៃ",
                 "paidProtocols": "ពិធីការបង់ប្រាក់",
                 "health": "ស្ថានភាព",

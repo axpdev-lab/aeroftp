@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Ilmainen taso",
+            "freeCardTier": "Ilmainen + kortti",
             "paidTier": "Maksullinen"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Palveluntarjoaja",
                 "region": "Alue",
                 "freeStorage": "Ilmainen",
+                "freeRequiresCard": "Ilmainen taso, mutta rekisteröinti vaatii luottokortin",
                 "freeProtocols": "Ilmaiset protokollat",
                 "paidProtocols": "Maksulliset protokollat",
                 "health": "Tila",

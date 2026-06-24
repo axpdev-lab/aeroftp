@@ -3979,6 +3979,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Бесплатен план",
+            "freeCardTier": "Бесплатно + картичка",
             "paidTier": "Платено"
         },
         "zohoworkdrive": {
@@ -4424,6 +4425,7 @@
                 "company": "Провајдер",
                 "region": "Регион",
                 "freeStorage": "Бесплатно",
+                "freeRequiresCard": "Бесплатно ниво, но регистрацијата бара кредитна картичка",
                 "freeProtocols": "Бесплатни протоколи",
                 "paidProtocols": "Платени протоколи",
                 "health": "Статус",

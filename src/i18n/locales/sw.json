@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Mpango wa bure",
+            "freeCardTier": "Bure + kadi",
             "paidTier": "Ya malipo"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Mtoa huduma",
                 "region": "Eneo",
                 "freeStorage": "Bila malipo",
+                "freeRequiresCard": "Kiwango cha bure, lakini kujisajili kunahitaji kadi ya benki",
                 "freeProtocols": "Itifaki za bure",
                 "paidProtocols": "Itifaki za malipo",
                 "health": "Hali",

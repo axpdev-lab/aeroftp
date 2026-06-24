@@ -3979,6 +3979,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Cynllun am ddim",
+            "freeCardTier": "Am ddim + cerdyn",
             "paidTier": "Taledig"
         },
         "zohoworkdrive": {
@@ -4424,6 +4425,7 @@
                 "company": "Darparwr",
                 "region": "Rhanbarth",
                 "freeStorage": "Am ddim",
+                "freeRequiresCard": "Haen am ddim, ond mae cofrestru'n gofyn am gerdyn credyd",
                 "freeProtocols": "Protocolau am ddim",
                 "paidProtocols": "Protocolau taledig",
                 "health": "Statws",

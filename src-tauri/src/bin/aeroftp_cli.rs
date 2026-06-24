@@ -29671,6 +29671,10 @@ struct CliCatalogCompany {
     country: String,
     free_gb: Option<f64>,
     free_note: Option<String>,
+    /// Has a genuine free allowance but signup requires a credit card (Amazon
+    /// S3, Azure Blob, Yandex Object Storage). Kept out of the paid bucket.
+    #[serde(default)]
+    free_requires_card: bool,
     regions: Vec<String>,
     protocols: Vec<CliCatalogMethod>,
 }
@@ -29865,8 +29869,10 @@ fn cmd_catalog(
         return 0;
     }
 
-    // One row per company (default).
-    let company_has_free = |c: &CliCatalogCompany| c.protocols.iter().any(|m| !m.paid);
+    // One row per company (default). A free allowance via a card-gated signup
+    // (free_requires_card) still counts as "has free", so it stays out of --paid.
+    let company_has_free =
+        |c: &CliCatalogCompany| c.free_requires_card || c.protocols.iter().any(|m| !m.paid);
     let mut companies: Vec<&CliCatalogCompany> = catalog
         .iter()
         .filter(|c| {

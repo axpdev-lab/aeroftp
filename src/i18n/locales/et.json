@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Tasuta pakett",
+            "freeCardTier": "Tasuta + kaart",
             "paidTier": "Tasuline"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Teenusepakkuja",
                 "region": "Piirkond",
                 "freeStorage": "Tasuta",
+                "freeRequiresCard": "Tasuta tase, kuid registreerumine nõuab krediitkaarti",
                 "freeProtocols": "Tasuta protokollid",
                 "paidProtocols": "Tasulised protokollid",
                 "health": "Olek",

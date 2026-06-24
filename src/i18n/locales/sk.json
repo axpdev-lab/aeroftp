@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Bezplatný plán",
+            "freeCardTier": "Zadarmo + karta",
             "paidTier": "Platené"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Poskytovateľ",
                 "region": "Región",
                 "freeStorage": "Zadarmo",
+                "freeRequiresCard": "Bezplatný plán, ale registrácia vyžaduje platobnú kartu",
                 "freeProtocols": "Bezplatné protokoly",
                 "paidProtocols": "Platené protokoly",
                 "health": "Stav",

@@ -3979,6 +3979,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Ókeypis áskrift",
+            "freeCardTier": "Frítt + kort",
             "paidTier": "Gjaldskylt"
         },
         "zohoworkdrive": {
@@ -4424,6 +4425,7 @@
                 "company": "Þjónustuaðili",
                 "region": "Svæði",
                 "freeStorage": "Ókeypis",
+                "freeRequiresCard": "Ókeypis þrep, en skráning krefst greiðslukorts",
                 "freeProtocols": "Ókeypis samskiptareglur",
                 "paidProtocols": "Gjaldskyldar samskiptareglur",
                 "health": "Staða",

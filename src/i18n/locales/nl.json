@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Gratis abonnement",
+            "freeCardTier": "Gratis + kaart",
             "paidTier": "Betaald"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Provider",
                 "region": "Regio",
                 "freeStorage": "Gratis",
+                "freeRequiresCard": "Gratis abonnement, maar voor registratie is een creditcard vereist",
                 "freeProtocols": "Gratis protocollen",
                 "paidProtocols": "Betaalde protocollen",
                 "health": "Status",

@@ -3979,6 +3979,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Doako plana",
+            "freeCardTier": "Doan + txartela",
             "paidTier": "Ordainpekoa"
         },
         "zohoworkdrive": {
@@ -4424,6 +4425,7 @@
                 "company": "Hornitzailea",
                 "region": "Eskualdea",
                 "freeStorage": "Doan",
+                "freeRequiresCard": "Doako maila, baina izena emateko kreditu-txartela behar da",
                 "freeProtocols": "Doako protokoloak",
                 "paidProtocols": "Ordainpeko protokoloak",
                 "health": "Egoera",

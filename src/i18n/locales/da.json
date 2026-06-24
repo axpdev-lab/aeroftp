@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Gratis plan",
+            "freeCardTier": "Gratis + kort",
             "paidTier": "Betalt"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Udbyder",
                 "region": "Region",
                 "freeStorage": "Gratis",
+                "freeRequiresCard": "Gratis niveau, men tilmelding kræver et betalingskort",
                 "freeProtocols": "Gratis protokoller",
                 "paidProtocols": "Betalte protokoller",
                 "health": "Status",

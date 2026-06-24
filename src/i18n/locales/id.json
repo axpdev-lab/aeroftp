@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Paket gratis",
+            "freeCardTier": "Gratis + kartu",
             "paidTier": "Berbayar"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Penyedia",
                 "region": "Wilayah",
                 "freeStorage": "Gratis",
+                "freeRequiresCard": "Tingkat gratis, tetapi pendaftaran memerlukan kartu kredit",
                 "freeProtocols": "Protokol gratis",
                 "paidProtocols": "Protokol berbayar",
                 "health": "Status",

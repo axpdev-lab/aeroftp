@@ -3979,6 +3979,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Gratis abonnement",
+            "freeCardTier": "Gratis + kort",
             "paidTier": "Betalt"
         },
         "zohoworkdrive": {
@@ -4424,6 +4425,7 @@
                 "company": "Leverandør",
                 "region": "Region",
                 "freeStorage": "Gratis",
+                "freeRequiresCard": "Gratis nivå, men registrering krever et betalingskort",
                 "freeProtocols": "Gratis protokoller",
                 "paidProtocols": "Betalte protokoller",
                 "health": "Status",

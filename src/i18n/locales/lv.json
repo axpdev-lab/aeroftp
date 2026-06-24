@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Bezmaksas plāns",
+            "freeCardTier": "Bezmaksas + karte",
             "paidTier": "Maksas"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Pakalpojumu sniedzējs",
                 "region": "Reģions",
                 "freeStorage": "Bezmaksas",
+                "freeRequiresCard": "Bezmaksas līmenis, bet reģistrācijai nepieciešama kredītkarte",
                 "freeProtocols": "Bezmaksas protokoli",
                 "paidProtocols": "Maksas protokoli",
                 "health": "Statuss",

@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Անվճար փաթեթ",
+            "freeCardTier": "Անվճար + քարտ",
             "paidTier": "Վճարովի"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Մատակարար",
                 "region": "Տարածաշրջան",
                 "freeStorage": "Անվճար",
+                "freeRequiresCard": "Անվճար փաթեթ, սակայն գրանցումը պահանջում է վարկային քարտ",
                 "freeProtocols": "Անվճար արձանագրություններ",
                 "paidProtocols": "Վճարովի արձանագրություններ",
                 "health": "Կարգավիճակ",

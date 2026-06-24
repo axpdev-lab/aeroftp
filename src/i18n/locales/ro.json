@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Plan gratuit",
+            "freeCardTier": "Gratis + card",
             "paidTier": "Cu plată"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Furnizor",
                 "region": "Regiune",
                 "freeStorage": "Gratuit",
+                "freeRequiresCard": "Plan gratuit, dar înregistrarea necesită un card de credit",
                 "freeProtocols": "Protocoale gratuite",
                 "paidProtocols": "Protocoale cu plată",
                 "health": "Stare",

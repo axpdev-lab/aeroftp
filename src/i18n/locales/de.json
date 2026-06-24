@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "Kostenloses Kontingent",
+            "freeCardTier": "Gratis + Karte",
             "paidTier": "Kostenpflichtig"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "Anbieter",
                 "region": "Region",
                 "freeStorage": "Kostenlos",
+                "freeRequiresCard": "Kostenloser Tarif, aber für die Anmeldung ist eine Kreditkarte erforderlich",
                 "freeProtocols": "Kostenlose Protokolle",
                 "paidProtocols": "Kostenpflichtige Protokolle",
                 "health": "Status",

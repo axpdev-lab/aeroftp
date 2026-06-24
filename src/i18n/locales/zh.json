@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "免费套餐",
+            "freeCardTier": "免费 + 卡",
             "paidTier": "付费"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "提供商",
                 "region": "地区",
                 "freeStorage": "免费",
+                "freeRequiresCard": "免费套餐，但注册需要信用卡",
                 "freeProtocols": "免费协议",
                 "paidProtocols": "付费协议",
                 "health": "状态",

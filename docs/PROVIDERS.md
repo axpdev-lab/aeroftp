@@ -18,27 +18,27 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Provider | HQ | Free tier | Connection methods |
 | --- | --- | --- | --- |
 | 4shared | VG | 15 GB | OAuth, WebDAV |
-| Alibaba OSS | CN | paid plan | S3* |
-| Amazon S3 | US | 5 GB 12-month trial | S3* |
-| Azure Blob | US | 12-month trial | Blob* |
+| Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
+| Amazon S3 | US | 5 GB (always-free, card req.) | S3* |
+| Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
 | Backblaze B2 | US | 10 GB | API, S3 |
 | Box | US | 10 GB | OAuth |
-| Cloudflare R2 | US | 10 GB (egress-free) | S3 |
+| Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
 | Cloudinary | US | credit-based | API |
 | CloudMe | SE | 3 GB | WebDAV |
 | DigitalOcean Spaces | US | paid plan | S3* |
 | Drime | FR | 20 GB | API |
 | DriveHQ | US | 1 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
-| Felicloud | - | Nextcloud host | WebDAV |
-| FileLu | US | 1 GB | API, WebDAV, S3 |
+| Felicloud | - | 10 GB (Nextcloud host) | WebDAV |
+| FileLu | US | 10 GB | API, WebDAV, S3 |
 | Filen | DE | 10 GB (E2E) | API, S3, WebDAV |
 | GitHub | US | repo storage | API |
 | GitLab | US | repo storage | API |
-| Google Cloud Storage | US | 5 GB (always-free tier) | S3 |
+| Google Cloud Storage | US | 5 GB (always-free, card req.) | S3* |
 | Google Drive | US | 15 GB | OAuth |
 | Hetzner Storage Box | DE | paid plan | SFTP* |
-| IDrive e2 | US | 10 GB | S3 |
+| IDrive e2 | US | 7-day trial | S3* |
 | ImageKit | IN | 20 GB (media CDN) | API |
 | Immich | - | self-hosted | API |
 | InfiniCloud | JP | 20 GB | WebDAV |
@@ -53,18 +53,18 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Nextcloud | - | self-hosted | WebDAV |
 | OneDrive | US | 5 GB | OAuth |
 | OpenDrive | US | 5 GB | API, WebDAV |
-| Oracle Cloud | US | 20 GB (always-free) | S3 |
+| Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
 | pCloud | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
-| Storj | US | 25 GB (decentralized) | S3 |
-| Tab.digital | IN | managed Nextcloud | WebDAV* |
-| Tencent COS | CN | paid plan | S3* |
+| Storj | US | 30-day trial | S3* |
+| Tab.digital | IN | 8 GB (managed Nextcloud) | WebDAV |
+| Tencent COS | CN | 6-month trial | S3* |
 | Uploadcare | US | 3 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |
 | Yandex Disk | RU | 5 GB | OAuth, WebDAV |
-| Yandex Object Storage | RU | paid plan | S3* |
+| Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
 <sub>49 providers, 60 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>

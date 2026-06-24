@@ -3960,6 +3960,7 @@
             "prs": "PRs",
             "devTools": "Dev Tools",
             "freeTier": "ফ্রি প্ল্যান",
+            "freeCardTier": "ফ্রি + কার্ড",
             "paidTier": "পেইড"
         },
         "zohoworkdrive": {
@@ -4405,6 +4406,7 @@
                 "company": "প্রদানকারী",
                 "region": "অঞ্চল",
                 "freeStorage": "ফ্রি",
+                "freeRequiresCard": "ফ্রি প্ল্যান, তবে সাইন আপের জন্য ক্রেডিট কার্ড প্রয়োজন",
                 "freeProtocols": "ফ্রি প্রোটোকল",
                 "paidProtocols": "পেইড প্রোটোকল",
                 "health": "অবস্থা",
