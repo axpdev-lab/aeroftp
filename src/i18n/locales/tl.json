@@ -2715,6 +2715,7 @@
             "description": "Ang AeroVault ay nagbibigay-daan sa iyo na gumawa ng AES-256 naka-encrypt na container para ligtas na i-imbak ang iyong mga file.",
             "descriptionV2": "Ang AeroVault v2 ay nagbibigay ng military-grade encryption na may nonce misuse-resistant AES-256-GCM-SIV at opsyonal na cascade encryption.",
             "description_label": "Paglalarawan (opsyonal)",
+            "vaultName": "Pangalan ng Vault",
             "dirEmpty": "Walang laman ang direktoryo",
             "directoryCreated": "Nagawa ang direktoryo \"{name}\"",
             "dropFiles": "I-drop ang mga file para idagdag sa vault",

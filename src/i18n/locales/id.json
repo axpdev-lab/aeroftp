@@ -2715,6 +2715,7 @@
             "description": "AeroVault memungkinkan Anda membuat wadah terenkripsi AES-256 untuk menyimpan file Anda dengan aman.",
             "descriptionV2": "AeroVault v2 menyediakan enkripsi tingkat militer dengan AES-256-GCM-SIV tahan penyalahgunaan nonce dan enkripsi kaskade opsional.",
             "description_label": "Deskripsi (opsional)",
+            "vaultName": "Nama Brankas",
             "dirEmpty": "Direktori kosong",
             "directoryCreated": "Direktori \"{name}\" dibuat",
             "dropFiles": "Lepaskan file untuk ditambahkan ke brankas",

@@ -2680,6 +2680,7 @@
             "description": "AeroVaultはAES-256暗号化コンテナを作成し、ファイルを安全に保存できます。",
             "descriptionV2": "AeroVault v2は、ノンス誤用耐性のあるAES-256-GCM-SIVと任意のカスケード暗号化を備えた軍用グレードの暗号化を提供します。",
             "description_label": "説明（任意）",
+            "vaultName": "ヴォルト名",
             "dirEmpty": "ディレクトリは空です",
             "directoryCreated": "ディレクトリ \"{name}\" を作成しました",
             "dropFiles": "ファイルをドロップしてvaultに追加",

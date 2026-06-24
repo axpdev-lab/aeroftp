@@ -2715,6 +2715,7 @@
             "description": "AeroVault vous permet de creer des conteneurs chiffres AES-256 pour stocker vos fichiers en toute securite.",
             "descriptionV2": "AeroVault v2 offre un chiffrement de niveau militaire avec AES-256-GCM-SIV resistant aux mauvais usages de nonce et un chiffrement en cascade optionnel.",
             "description_label": "Description (optionnelle)",
+            "vaultName": "Nom du coffre-fort",
             "dirEmpty": "Le repertoire est vide",
             "directoryCreated": "Répertoire \"{name}\" créé",
             "dropFiles": "Deposez les fichiers pour les ajouter au vault",

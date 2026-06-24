@@ -2715,6 +2715,7 @@
             "description": "AeroVault ļauj izveidot AES-256 šifrētus konteinerus drošai failu glabāšanai.",
             "descriptionV2": "AeroVault v2 nodrošina militāra līmeņa šifrēšanu ar nonce ļaunīgas izmantošanas noturīgu AES-256-GCM-SIV un izveidojamu kadkād šifrēšanu.",
             "description_label": "Apraksts (neobligāts)",
+            "vaultName": "Sefa nosaukums",
             "dirEmpty": "Direktorija ir tukša",
             "directoryCreated": "Direktorija \"{name}\" izveidota",
             "dropFiles": "Ievelciet failus, lai pievienotu glabātuvei",

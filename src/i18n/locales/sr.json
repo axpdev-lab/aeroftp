@@ -2715,6 +2715,7 @@
             "description": "AeroVault vam omogućava da kreirate AES-256 šifrovane kontejnere za bezbedno čuvanje vaših fajlova.",
             "descriptionV2": "AeroVault v2 pruža vojni nivo šifrovanja sa AES-256-GCM-SIV otpornim na pogrešnu upotrebu nonce-a i opcionalnim kaskadnim šifrovanjem.",
             "description_label": "Opis (opciono)",
+            "vaultName": "Назив сефа",
             "dirEmpty": "Direktorijum je prazan",
             "directoryCreated": "Фолдер \"{name}\" креиран",
             "dropFiles": "Превуците датотеке за додавање у трезор",

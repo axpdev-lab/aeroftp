@@ -2715,6 +2715,7 @@
             "description": "Crea contedores cifrados AES-256 para gardar os teus ficheiros de forma segura.",
             "descriptionV2": "AeroVault v2 ofrece cifrado de grao militar con AES-256-GCM-SIV resistente ao mal uso de nonce e cifrado en cascada opcional.",
             "description_label": "Descrición (opcional)",
+            "vaultName": "Nome da bóveda",
             "dirEmpty": "O directorio está baleiro",
             "directoryCreated": "Directorio \"{name}\" creado",
             "dropFiles": "Solte ficheiros para engadir á caixa forte",

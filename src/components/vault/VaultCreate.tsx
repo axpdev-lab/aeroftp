@@ -180,6 +180,23 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                 </div>
             )}
 
+            {/* Vault / Archive name (Ehud #322 follow-up D): a required name that
+                drives the saved filename, shown for every security level AND the
+                .aerozip archive. Mirrors the Compressor's "Archive Name" field
+                (label + extension suffix). Autofocused on open; Create stays
+                disabled until it is non-empty. The value is also stored as the
+                v1/v2 `description` metadata. */}
+            <label className="text-sm text-gray-500 dark:text-gray-400">
+                {isZip ? t('compress.archiveName') : t('vault.vaultName')}
+                <span className="text-red-400 ml-0.5">*</span>
+            </label>
+            <div className="flex gap-2 items-center">
+                <input ref={firstFieldRef} value={state.description} onChange={e => state.setDescription(e.target.value)}
+                    className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm"
+                    placeholder={isZip ? 'My archive' : 'My secure vault'} />
+                <span className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{isZip ? '.aerozip' : '.aerovault'}</span>
+            </div>
+
             {isZip && (
                 <>
                     <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.compressionProfile')}</label>
@@ -471,14 +488,6 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                 </>
             )}
 
-            {state.securityLevel !== 'experimental' && (
-                <>
-                    <label className="text-sm text-gray-500 dark:text-gray-400 mt-2">{t('vault.description_label')}</label>
-                    <input ref={firstFieldRef} value={state.description} onChange={e => state.setDescription(e.target.value)}
-                        className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
-                </>
-            )}
-
             <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
             <div className="relative">
                 <input type={state.showPassword ? 'text' : 'password'} value={state.password} onChange={e => state.setPassword(e.target.value)}
@@ -553,7 +562,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                     <button onClick={() => state.setMode('home')} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">
                         {t('vault.cancel')}
                     </button>
-                    <button onClick={state.handleCreate} disabled={state.loading} className={`flex items-center gap-2 px-4 py-1.5 ${isZip ? 'bg-amber-600' : securityLevels[state.securityLevel].bgColor} hover:opacity-90 rounded text-sm disabled:opacity-50 transition-opacity`}>
+                    <button onClick={state.handleCreate} disabled={state.loading || !state.description.trim()} className={`flex items-center gap-2 px-4 py-1.5 ${isZip ? 'bg-amber-600' : securityLevels[state.securityLevel].bgColor} hover:opacity-90 rounded text-sm disabled:opacity-50 transition-opacity`}>
                         {state.loading ? <Loader2 size={14} className="animate-spin" /> : (isZip ? <Unlock size={14} /> : <Lock size={14} />)}
                         {t('vault.create')} {isZip ? '.aerozip' : '.aerovault'}
                     </button>

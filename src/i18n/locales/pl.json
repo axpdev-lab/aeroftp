@@ -2715,6 +2715,7 @@
             "description": "AeroVault pozwala tworzyć zaszyfrowane kontenery AES-256 do bezpiecznego przechowywania plików.",
             "descriptionV2": "AeroVault v2 zapewnia szyfrowanie klasy wojskowej z odpornym na ponowne użycie nonce AES-256-GCM-SIV i opcjonalnym szyfrowaniem kaskadowym.",
             "description_label": "Opis (opcjonalnie)",
+            "vaultName": "Nazwa skarbca",
             "dirEmpty": "Katalog jest pusty",
             "directoryCreated": "Utworzono katalog \"{name}\"",
             "dropFiles": "Upusc pliki, aby dodac je do vault",

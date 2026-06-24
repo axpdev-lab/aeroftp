@@ -2715,6 +2715,7 @@
             "description": "Mae AeroVault yn gadael i chi greu cynwysyddion amgryptiedig AES-256 i storio'ch ffeiliau'n ddiogel.",
             "descriptionV2": "Mae AeroVault v2 yn darparu amgryptiad gradd milwrol gyda AES-256-GCM-SIV sy'n gwrthsefyll camddefnydd nonce ac amgryptiad rhaeadru dewisol.",
             "description_label": "Disgrifiad (dewisol)",
+            "vaultName": "Enw Coffor",
             "dirEmpty": "Mae'r cyfeiriadur yn wag",
             "directoryCreated": "Cyfeiriadur \"{name}\" wedi'i greu",
             "dropFiles": "Gollyngwch ffeiliau i'w hychwanegu at y gell",

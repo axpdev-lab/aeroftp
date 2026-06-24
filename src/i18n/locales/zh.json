@@ -2715,6 +2715,7 @@
             "description": "AeroVault 可以创建 AES-256 加密容器来安全存储您的文件。",
             "descriptionV2": "AeroVault v2 提供军事级加密，具有防重放的 AES-256-GCM-SIV 和可选的级联加密。",
             "description_label": "描述（可选）",
+            "vaultName": "保险库名称",
             "dirEmpty": "目录为空",
             "directoryCreated": "已创建目录“{name}”",
             "dropFiles": "拖放文件以添加到 vault",

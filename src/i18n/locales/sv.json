@@ -2715,6 +2715,7 @@
             "description": "AeroVault låter dig skapa AES-256-krypterade behållare för att säkert lagra dina filer.",
             "descriptionV2": "AeroVault v2 ger militärklassad kryptering med nonce-missbrukståligt AES-256-GCM-SIV och valfri kaskadkryptering.",
             "description_label": "Beskrivning (valfritt)",
+            "vaultName": "Valvnamn",
             "dirEmpty": "Katalogen är tom",
             "directoryCreated": "Mappen \"{name}\" skapad",
             "dropFiles": "Dra filer här för att lägga till i valvet",

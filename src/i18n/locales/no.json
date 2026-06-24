@@ -2715,6 +2715,7 @@
             "description": "AeroVault lar deg opprette AES-256-krypterte beholdere for å lagre filene dine sikkert.",
             "descriptionV2": "AeroVault v2 gir militærgrad kryptering med nonce-misbrukresistent AES-256-GCM-SIV og valgfri kaskadekryptering.",
             "description_label": "Beskrivelse (valgfritt)",
+            "vaultName": "Navn på hvelv",
             "dirEmpty": "Katalogen er tom",
             "directoryCreated": "Mappe \"{name}\" opprettet",
             "dropFiles": "Slipp filer her for å legge til i hvelvet",

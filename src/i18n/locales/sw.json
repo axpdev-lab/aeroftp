@@ -2715,6 +2715,7 @@
             "description": "AeroVault inakuruhusu kuunda vyombo vilivyosimbwa kwa AES-256 kuhifadhi faili zako kwa usalama.",
             "descriptionV2": "AeroVault v2 inatoa usimbaji wa kiwango cha jeshi na AES-256-GCM-SIV inayostahimili matumizi mabaya ya nonce na usimbaji wa msururu wa hiari.",
             "description_label": "Maelezo (hiari)",
+            "vaultName": "Jina la hazina",
             "dirEmpty": "Saraka ni tupu",
             "directoryCreated": "Folda \"{name}\" imetengenezwa",
             "dropFiles": "Dondosha faili kuongeza kwenye hazina",

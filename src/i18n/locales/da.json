@@ -2715,6 +2715,7 @@
             "description": "AeroVault lader dig oprette AES-256-krypterede containere til sikker opbevaring af dine filer.",
             "descriptionV2": "AeroVault v2 tilbyder militærgrad kryptering med nonce-misbrugsresistent AES-256-GCM-SIV og valgfri kaskadekryptering.",
             "description_label": "Beskrivelse (valgfri)",
+            "vaultName": "Boksnavn",
             "dirEmpty": "Mappen er tom",
             "directoryCreated": "Mappen \"{name}\" oprettet",
             "dropFiles": "Træk filer hertil for at tilføje til boksen",

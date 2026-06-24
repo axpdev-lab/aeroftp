@@ -715,28 +715,20 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             if (password !== confirmPassword) { setError(t('vault.passwordMismatch')); return; }
         }
 
+        // The vault/archive name field (required as of #322 follow-up D) is
+        // authoritative for the saved filename: an explicit name always wins over a
+        // name derived from the staged contents. Strip only path separators and the
+        // characters illegal in a filename (spaces and unicode are preserved), plus a
+        // redundant extension the user may have typed. handleCreate is only reachable
+        // from the Create button, which stays disabled while the name is empty, so
+        // `description` is non-empty here; the fallback is pure defence.
         const defaultName = (() => {
             const ext = creatingZip ? 'aerozip' : 'aerovault';
             const fallback = creatingZip ? 'zip' : 'vault';
-            if (initialFolderPath) {
-                const name = initialFolderPath.split('/').pop() || fallback;
-                return `${name}.${ext}`;
-            }
-            if (stagedFiles.length === 1 && stagedDirs.length === 0) {
-                const name = stagedFiles[0].split('/').pop()?.replace(/\.[^.]+$/, '') || fallback;
-                return `${name}.${ext}`;
-            }
-            if (stagedDirs.length === 1 && stagedFiles.length === 0) {
-                const name = stagedDirs[0].replace(/\/+$/, '').split('/').pop() || fallback;
-                return `${name}.${ext}`;
-            }
-            if (stagedFiles.length > 1 || stagedDirs.length > 0) {
-                const first = stagedFiles[0] || stagedDirs[0];
-                const parent = first.split('/').slice(0, -1).pop() || fallback;
-                return `${parent}.${ext}`;
-            }
-            if (description) return `${description.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`;
-            return `${fallback}.${ext}`;
+            const typedName = description.trim()
+                .replace(/[\\/:*?"<>|]+/g, '_')
+                .replace(/\.(aerovault|aerozip)$/i, '');
+            return `${typedName || fallback}.${ext}`;
         })();
 
         const savePath = await save({

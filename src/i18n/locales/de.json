@@ -2715,6 +2715,7 @@
             "description": "AeroVault ermöglicht es Ihnen, AES-256 verschlüsselte Container zum sicheren Speichern Ihrer Dateien zu erstellen.",
             "descriptionV2": "AeroVault v2 bietet militärische Verschlüsselung mit Nonce-Missbrauch-resistentem AES-256-GCM-SIV und optionaler Kaskadenverschlüsselung.",
             "description_label": "Beschreibung (optional)",
+            "vaultName": "Tresorname",
             "dirEmpty": "Verzeichnis ist leer",
             "directoryCreated": "Verzeichnis \"{name}\" erstellt",
             "dropFiles": "Dateien hierher ziehen, um sie zum Vault hinzuzufuegen",

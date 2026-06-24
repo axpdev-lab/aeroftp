@@ -2715,6 +2715,7 @@
             "description": "AeroVault cho phép bạn tạo các container mã hóa AES-256 để lưu trữ tệp một cách an toàn.",
             "descriptionV2": "AeroVault v2 cung cấp mã hóa cấp quân sự với AES-256-GCM-SIV chống sử dụng lại nonce và tùy chọn mã hóa tầng.",
             "description_label": "Mô tả (tùy chọn)",
+            "vaultName": "Tên kho lưu trữ",
             "dirEmpty": "Thư mục trống",
             "directoryCreated": "Đã tạo thư mục \"{name}\"",
             "dropFiles": "Kéo thả tệp để thêm vào vault",

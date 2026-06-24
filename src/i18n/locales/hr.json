@@ -2715,6 +2715,7 @@
             "description": "AeroVault vam omogućuje stvaranje AES-256 kriptiranih spremnika za sigurno pohranjivanje datoteka.",
             "descriptionV2": "AeroVault v2 pruža vojnu razinu enkripcije s nonce-otpornim AES-256-GCM-SIV i opcionalnom kaskadnom enkripcijom.",
             "description_label": "Opis (neobavezno)",
+            "vaultName": "Naziv zbirke",
             "dirEmpty": "Direktorij je prazan",
             "directoryCreated": "Mapa \"{name}\" kreirana",
             "dropFiles": "Povucite datoteke za dodavanje u trezor",

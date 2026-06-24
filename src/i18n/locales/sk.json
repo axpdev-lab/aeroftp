@@ -2715,6 +2715,7 @@
             "description": "AeroVault vam umoznuje vytvarat sifrovane kontajnery AES-256 pre bezpecne ulozenie suborov.",
             "descriptionV2": "AeroVault v2 poskytuje vojenske sifrovanie s odolnym proti opakovaniu nonce AES-256-GCM-SIV a volitelnym kaskadovym sifrovanim.",
             "description_label": "Popis (volitelne)",
+            "vaultName": "Názov trezoru",
             "dirEmpty": "Adresar je prazdny",
             "directoryCreated": "Adresar \"{name}\" vytvoreny",
             "dropFiles": "Pretiahnite súbory na pridanie do trezoru",

@@ -2715,6 +2715,7 @@
             "description": "AeroVault-ek AES-256 edukiontzi enkriptatuak sortzen uzten dizu zure fitxategiak segurtasunez gordetzeko.",
             "descriptionV2": "AeroVault v2-k gradu militarreko enkriptatze bat eskaintzen du AES-256-GCM-SIV nonce-erabilera okerrari erresistentea eta kaskada enkriptatze aukerazkoarekin.",
             "description_label": "Deskribapena (aukerazkoa)",
+            "vaultName": "Gangela izena",
             "dirEmpty": "Direktorioa hutsik dago",
             "directoryCreated": "\"{name}\" direktorioa sortuta",
             "dropFiles": "Jaregin fitxategiak kutxara gehitzeko",

@@ -2965,6 +2965,7 @@
             "description": "AeroVault ti permette di creare contenitori crittografati AES-256 per archiviare i tuoi file in sicurezza.",
             "descriptionV2": "AeroVault v2 offre crittografia di livello militare con AES-256-GCM-SIV resistente al riuso del nonce e crittografia a cascata opzionale.",
             "description_label": "Descrizione (opzionale)",
+            "vaultName": "Nome Vault",
             "dirEmpty": "La directory è vuota",
             "directoryCreated": "Directory \"{name}\" creata",
             "dropFiles": "Trascina i file per aggiungerli al vault",

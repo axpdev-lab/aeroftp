@@ -2715,6 +2715,7 @@
             "description": "AeroVault leidžia kurti AES-256 užšifruotus konteinerius saugiam failų saugojimui.",
             "descriptionV2": "AeroVault v2 teikia karinės klasės šifravimą su nonce piktnaudžiavimui atspariu AES-256-GCM-SIV ir pasirenkamu kaskadiniu šifravimu.",
             "description_label": "Aprašymas (neprivalomas)",
+            "vaultName": "Seiso pavadinimas",
             "dirEmpty": "Katalogas tuščias",
             "directoryCreated": "Katalogas \"{name}\" sukurtas",
             "dropFiles": "Vilkite failus, kad pridėtumėte į saugyklą",

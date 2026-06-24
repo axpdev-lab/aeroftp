@@ -2715,6 +2715,7 @@
             "description": "AeroVault mahdollistaa AES-256-salattujen säilöjen luomisen tiedostojesi turvalliseen tallentamiseen.",
             "descriptionV2": "AeroVault v2 tarjoaa sotilastason salauksen nonce-väärinkäytöltä suojatulla AES-256-GCM-SIV:llä ja valinnaisella kaskadisalauksella.",
             "description_label": "Kuvaus (valinnainen)",
+            "vaultName": "Holvin nimi",
             "dirEmpty": "Hakemisto on tyhjä",
             "directoryCreated": "Hakemisto \"{name}\" luotu",
             "dropFiles": "Pudota tiedostoja lisätäksesi ne holviin",

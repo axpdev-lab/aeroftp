@@ -3994,6 +3994,7 @@
             "createNew": "Create Vault",
             "description": "AeroVault lets you create AES-256 encrypted containers to securely store your files.",
             "description_label": "Description (optional)",
+            "vaultName": "Vault Name",
             "descriptionV2": "AeroVault v2 provides military-grade encryption with nonce misuse-resistant AES-256-GCM-SIV and optional cascade encryption.",
             "directoryCreated": "Directory \"{name}\" created",
             "dirEmpty": "Directory is empty",

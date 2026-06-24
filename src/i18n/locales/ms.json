@@ -2715,6 +2715,7 @@
             "description": "AeroVault membolehkan anda mencipta bekas disulitkan AES-256 untuk menyimpan fail anda dengan selamat.",
             "descriptionV2": "AeroVault v2 menyediakan penyulitan gred tentera dengan AES-256-GCM-SIV tahan salah guna nonce dan penyulitan bertingkat pilihan.",
             "description_label": "Penerangan (pilihan)",
+            "vaultName": "Nama Peti",
             "dirEmpty": "Direktori kosong",
             "directoryCreated": "Direktori \"{name}\" dicipta",
             "dropFiles": "Lepaskan fail untuk ditambah ke peti besi",

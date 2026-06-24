@@ -2715,6 +2715,7 @@
             "description": "AeroVault võimaldab luua AES-256 krüpteeritud konteinereid failide turvaliseks salvestamiseks.",
             "descriptionV2": "AeroVault v2 pakub sõjaväelist krüptimist nonce väärkasutuskindla AES-256-GCM-SIV ja valikulise kaskaadkrüptimisega.",
             "description_label": "Kirjeldus (valikuline)",
+            "vaultName": "Holvuse nimi",
             "dirEmpty": "Kataloog on tühi",
             "directoryCreated": "Kaust \"{name}\" loodud",
             "dropFiles": "Lohistage failid hoidlasse lisamiseks",

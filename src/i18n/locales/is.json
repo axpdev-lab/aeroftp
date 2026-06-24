@@ -2715,6 +2715,7 @@
             "description": "AeroVault gerir þér kleift að búa til AES-256 dulkóðuð ílát til að geyma skrár þínar á öruggan hátt.",
             "descriptionV2": "AeroVault v2 veitir hernaðarstaðal dulkóðun með AES-256-GCM-SIV sem þolir nonce-misnotkun og valfrjálsa cascade dulkóðun.",
             "description_label": "Lýsing (valfrjálst)",
+            "vaultName": "Heiti hólfs",
             "dirEmpty": "Mappa er tóm",
             "directoryCreated": "Mappa \"{name}\" búin til",
             "dropFiles": "Slepptu skrám til að bæta við hvelfingunni",

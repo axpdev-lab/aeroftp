@@ -2715,6 +2715,7 @@
             "description": "AeroVault vă permite să creați containere criptate AES-256 pentru a stoca în siguranță fișierele dvs.",
             "descriptionV2": "AeroVault v2 oferă criptare de nivel militar cu AES-256-GCM-SIV rezistent la reutilizarea nonce-ului și criptare opțională în cascadă.",
             "description_label": "Descriere (opțional)",
+            "vaultName": "Nume seif",
             "dirEmpty": "Directorul este gol",
             "directoryCreated": "Directorul \"{name}\" a fost creat",
             "dropFiles": "Trageți fișiere pentru a le adăuga în seif",

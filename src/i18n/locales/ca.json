@@ -2715,6 +2715,7 @@
             "description": "AeroVault us permet crear contenidors xifrats amb AES-256 per emmagatzemar els vostres fitxers de forma segura.",
             "descriptionV2": "AeroVault v2 proporciona xifratge de grau militar amb AES-256-GCM-SIV resistent a la reutilització de nonce i xifratge en cascada opcional.",
             "description_label": "Descripció (opcional)",
+            "vaultName": "Nom de la caixa forta",
             "dirEmpty": "El directori és buit",
             "directoryCreated": "Directori \"{name}\" creat",
             "dropFiles": "Deixeu anar fitxers per afegir-los a la caixa forta",

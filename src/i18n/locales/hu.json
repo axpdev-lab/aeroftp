@@ -2715,6 +2715,7 @@
             "description": "Az AeroVault AES-256 titkosított tárolókat hoz létre fájljai biztonságos tárolására.",
             "descriptionV2": "Az AeroVault v2 katonai szintű titkosítást nyújt nonce-visszahasználás ellen védett AES-256-GCM-SIV-vel és opcionális kaszkad titkosítással.",
             "description_label": "Leírás (opcionális)",
+            "vaultName": "Tár neve",
             "dirEmpty": "A könyvtár üres",
             "directoryCreated": "Mappa \"{name}\" létrehozva",
             "dropFiles": "Húzza ide a fájlokat a széfhez való hozzáadáshoz",
