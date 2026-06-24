@@ -44,6 +44,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "tree",
     "ncdu",
     "mount",
+    "mount-vault",
     "transfer",
     "transfer-doctor",
     "batch",
