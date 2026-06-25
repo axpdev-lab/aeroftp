@@ -14,7 +14,7 @@ A large pass on AeroVault and the bridge. The vault create flow is rebuilt to ma
 #### Added
 - **AeroVault create rebuilt Compressor-style** (@EhudKirsh, #322): a required Vault Name drives the saved filename, the security level and compression are chosen on mode cards, the password field only appears for an encrypted vault, and create ends in a result receipt with the size composition instead of dropping you into the browser. The create form gained hover states, a reset button, a padlock and format label, an encryption badge and proportional before/after size bars.
 - **Unified tabbed AeroVault shell**: the standalone modal and the in-browser view share one tab strip (Home and Recent standalone, Files and Recent in the browser), with the recent-vaults list extracted into a single reusable component rendered in both.
-- **AeroVault Zip plaintext archive lane (`.aerozip`)**: a new fast, unencrypted archive format with a CLI (`aeroftp aerovz`) and a GUI scaffold, opened by header on double-click with the OS file-type association registered. The copy is explicit that it provides no confidentiality. Recovery parity is opt-out (default on); `--recovery-level 0` (or `off`/`none`) disables it.
+- **AeroVault Zip plaintext archive lane (`.aerozip`)**: a new fast, unencrypted archive format with a CLI (`aeroftp archive`) and a GUI scaffold, opened by header on double-click with the OS file-type association registered. The copy is explicit that it provides no confidentiality. Recovery parity is opt-out (default on); `--recovery-level 0` (or `off`/`none`) disables it.
 - **AeroMount read-only mount of unlocked vaults** (@EhudKirsh, #322, idea #1): mount an unlocked Cryptomator vault, `.aerovault` or `.aerozip` as a read-only filesystem in your OS file manager. It is ephemeral and session-bound, the password is passed over stdin and never stored, and it auto-unmounts when you lock the vault or quit. Linux first.
 - **AeroMount "Save all..." for unlocked vaults** (@EhudKirsh, #322, idea #1): export the whole decrypted tree of an unlocked Cryptomator vault, `.aerovault` or `.aerozip` in one shot, to a folder, a single `.zip` or a single `.aerozip`, instead of one file at a time. A shared `ReadableVault` seam drives a streaming zip writer for both container types, behind a confirm dialog that flags the plaintext export.
 - **Real graphical compressed-size estimate**: the Compress and AeroVault Zip dialogs show the estimated output size as a bar that updates on every option change. A backend canary samples the actual input, compresses it with the chosen codec and level and extrapolates (exact when the whole input fits the sample cap).
@@ -55,6 +55,8 @@ A large pass on AeroVault and the bridge. The vault create flow is rebuilt to ma
 #### Contributors
 
 [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+
+<sub>_Updated 2026-06-25 09:12 CEST (post-tag doc fix): corrected the `.aerozip` CLI command name from `aeroftp aerovz` to `aeroftp archive` (`aerovz` is the internal lane codename, not a public command). Files touched: this changelog entry and `docs/UNIVERSAL-VAULT.md`; the v4.0.9 GitHub release notes were updated to match. No code or behaviour changed._</sub>
 
 ## [4.0.8] - 2026-06-22
 
