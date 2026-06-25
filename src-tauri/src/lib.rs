@@ -16220,7 +16220,7 @@ pub fn run() {
             let (w, h) = tray_rgba.dimensions();
             let icon = tauri::image::Image::new_owned(tray_rgba.into_raw(), w, h);
 
-            let _tray = TrayIconBuilder::with_id("main")
+            let tray_builder = TrayIconBuilder::with_id("main")
                 .icon(icon)
                 .tooltip("AeroCloud - Idle")
                 .menu(&tray_menu)
@@ -16276,10 +16276,54 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
-                })
-                .build(app)?;
+                });
 
-            info!("System tray icon initialized");
+            // libappindicator-sys panics (it `expect`s, it does not return a
+            // Result) when it cannot dlopen the appindicator library, so `?`
+            // never sees it. Minimal or immutable distros such as Fedora
+            // Silverblue ship without libappindicator, so probe the library
+            // first and run tray-less instead of crashing on launch (#362).
+            #[cfg(target_os = "linux")]
+            fn appindicator_available() -> bool {
+                use std::ffi::CString;
+                const CANDIDATES: [&str; 4] = [
+                    "libayatana-appindicator3.so.1",
+                    "libappindicator3.so.1",
+                    "libayatana-appindicator3.so",
+                    "libappindicator3.so",
+                ];
+                for name in CANDIDATES {
+                    if let Ok(c) = CString::new(name) {
+                        // SAFETY: dlopen with a valid NUL-terminated name; the
+                        // handle is released immediately on a successful probe.
+                        unsafe {
+                            let handle =
+                                libc::dlopen(c.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL);
+                            if !handle.is_null() {
+                                libc::dlclose(handle);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            }
+            #[cfg(not(target_os = "linux"))]
+            fn appindicator_available() -> bool {
+                true
+            }
+
+            if appindicator_available() {
+                let _tray = tray_builder.build(app)?;
+                info!("System tray icon initialized");
+            } else {
+                log::warn!(
+                    "System tray unavailable: libappindicator / ayatana-appindicator3 \
+                     not found. Running without a tray icon (install \
+                     libayatana-appindicator3 to enable it). See \
+                     https://github.com/axpdev-lab/aeroftp/issues/362"
+                );
+            }
 
             // Handle .aerovault/.aerozip file passed as CLI argument on first launch
             {
