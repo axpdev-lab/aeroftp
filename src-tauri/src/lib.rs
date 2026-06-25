@@ -9714,6 +9714,12 @@ static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// `set_close_to_tray` on startup and whenever the user toggles the option.
 static CLOSE_TO_TRAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Whether a usable system tray was created at startup. False on minimal or
+/// immutable Linux distros that ship without libappindicator (#362): in that
+/// case close-to-tray must not hide the window, or it would vanish with no
+/// tray to restore it from. Defaults true so every other platform is unchanged.
+static TRAY_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
 #[tauri::command]
 fn set_close_to_tray(enabled: bool) {
     CLOSE_TO_TRAY.store(enabled, std::sync::atomic::Ordering::SeqCst);
@@ -16313,7 +16319,9 @@ pub fn run() {
                 true
             }
 
-            if appindicator_available() {
+            let tray_available = appindicator_available();
+            TRAY_AVAILABLE.store(tray_available, std::sync::atomic::Ordering::SeqCst);
+            if tray_available {
                 let _tray = tray_builder.build(app)?;
                 info!("System tray icon initialized");
             } else {
@@ -16413,7 +16421,11 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let cloud_config = cloud_config::load_cloud_config();
                 let close_to_tray = CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::SeqCst);
-                if cloud_config.enabled || close_to_tray {
+                let tray_available = TRAY_AVAILABLE.load(std::sync::atomic::Ordering::SeqCst);
+                // Only hide to tray if a tray actually exists. On distros without
+                // libappindicator (#362) the tray is skipped, so hiding here would
+                // strand the window with no way to bring it back: close normally.
+                if (cloud_config.enabled || close_to_tray) && tray_available {
                     let reason = if close_to_tray {
                         "close-to-tray setting"
                     } else {
