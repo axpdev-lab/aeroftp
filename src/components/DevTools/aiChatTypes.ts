@@ -221,12 +221,36 @@ export interface CodingGitResultData {
     commitMessage?: string;
 }
 
+export interface CodingRunCheckResult {
+    success: boolean;
+    workspace_root: string;
+    check: string;
+    label: string;
+    program: string;
+    args: string[];
+    filter?: string | null;
+    exit_code?: number | null;
+    timed_out: boolean;
+    timeout_secs: number;
+    duration_ms: number;
+    stdout: string;
+    stderr: string;
+    stdout_truncated: boolean;
+    stderr_truncated: boolean;
+}
+
+export interface CodingRunCheckResultData {
+    kind: 'coding_run_checks';
+    result: CodingRunCheckResult;
+}
+
 export type ChatResultData =
     | TransferPlanResultData
     | CodingPlanResultData
     | CodingPatchResultData
     | CodingCheckpointRestoreResultData
-    | CodingGitResultData;
+    | CodingGitResultData
+    | CodingRunCheckResultData;
 
 export interface Message {
     id: string;

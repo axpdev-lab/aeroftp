@@ -9,6 +9,7 @@ import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { CodingGitApprovalPreview } from './CodingGitReview';
+import { CodingChecksApprovalPreview } from './CodingChecksReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -58,6 +59,7 @@ const BatchToolItem: React.FC<{
     const isPatchTool = tc.toolName === 'coding_apply_patch';
     const isCheckpointRestoreTool = tc.toolName === 'coding_checkpoint_restore';
     const isGitMutationTool = tc.toolName === 'coding_git_stage' || tc.toolName === 'coding_git_commit';
+    const isRunCheckTool = tc.toolName === 'coding_run_checks';
     const patchText = typeof tc.args.patch === 'string' ? tc.args.patch : undefined;
     const workspaceRoot = typeof tc.args.workspace_root === 'string' ? tc.args.workspace_root : undefined;
     const patchDryRun = tc.args.dry_run === true;
@@ -71,6 +73,9 @@ const BatchToolItem: React.FC<{
         : undefined;
     const gitDryRun = tc.args.dry_run === true;
     const gitCommitMessage = typeof tc.args.message === 'string' ? tc.args.message : undefined;
+    const runCheckName = typeof tc.args.check === 'string' ? tc.args.check : undefined;
+    const runCheckFilter = typeof tc.args.filter === 'string' ? tc.args.filter : undefined;
+    const runCheckTimeout = typeof tc.args.timeout_secs === 'number' ? tc.args.timeout_secs : undefined;
 
     const tool = allTools ? getToolByNameFromAll(tc.toolName, allTools) : getToolByName(tc.toolName);
     const dangerLevel = tool?.dangerLevel || 'medium';
@@ -223,6 +228,17 @@ const BatchToolItem: React.FC<{
                         paths={gitPaths}
                         dryRun={gitDryRun}
                         commitMessage={gitCommitMessage}
+                    />
+                </div>
+            )}
+
+            {isRunCheckTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingChecksApprovalPreview
+                        workspaceRoot={workspaceRoot}
+                        check={runCheckName}
+                        filter={runCheckFilter}
+                        timeoutSecs={runCheckTimeout}
                     />
                 </div>
             )}

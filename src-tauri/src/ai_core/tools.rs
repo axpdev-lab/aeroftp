@@ -566,6 +566,28 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::High,
             surfaces: Surfaces::GUI,
         },
+        ToolDef {
+            name: "coding_run_checks",
+            description: "Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use coding_git_diff to review changes first. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept an optional filter.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "check": {
+                        "type": "string",
+                        "enum": [
+                            "cargo-check", "cargo-build", "cargo-test", "cargo-clippy",
+                            "cargo-fmt-check", "tsc", "vitest", "eslint", "npm-build"
+                        ]
+                    },
+                    "filter": {"type": "string"},
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "check"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
             name: "clipboard_read",
@@ -1900,6 +1922,7 @@ pub async fn dispatch_tool(
         "coding_git_diff" => coding_tools::coding_git_diff(ctx, args).await,
         "coding_git_stage" => coding_tools::coding_git_stage(ctx, args).await,
         "coding_git_commit" => coding_tools::coding_git_commit(ctx, args).await,
+        "coding_run_checks" => coding_tools::coding_run_checks(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,

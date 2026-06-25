@@ -9,6 +9,7 @@ import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { CodingGitApprovalPreview } from './CodingGitReview';
+import { CodingChecksApprovalPreview } from './CodingChecksReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -70,6 +71,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const isPatchTool = toolCall.toolName === 'coding_apply_patch';
     const isCheckpointRestoreTool = toolCall.toolName === 'coding_checkpoint_restore';
     const isGitMutationTool = toolCall.toolName === 'coding_git_stage' || toolCall.toolName === 'coding_git_commit';
+    const isRunCheckTool = toolCall.toolName === 'coding_run_checks';
     const patchText = typeof toolCall.args.patch === 'string' ? toolCall.args.patch : undefined;
     const workspaceRoot = typeof toolCall.args.workspace_root === 'string' ? toolCall.args.workspace_root : undefined;
     const patchDryRun = toolCall.args.dry_run === true;
@@ -83,6 +85,9 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
         : undefined;
     const gitDryRun = toolCall.args.dry_run === true;
     const gitCommitMessage = typeof toolCall.args.message === 'string' ? toolCall.args.message : undefined;
+    const runCheckName = typeof toolCall.args.check === 'string' ? toolCall.args.check : undefined;
+    const runCheckFilter = typeof toolCall.args.filter === 'string' ? toolCall.args.filter : undefined;
+    const runCheckTimeout = typeof toolCall.args.timeout_secs === 'number' ? toolCall.args.timeout_secs : undefined;
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -200,6 +205,15 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                         paths={gitPaths}
                         dryRun={gitDryRun}
                         commitMessage={gitCommitMessage}
+                    />
+                )}
+
+                {isRunCheckTool && isPending && (
+                    <CodingChecksApprovalPreview
+                        workspaceRoot={workspaceRoot}
+                        check={runCheckName}
+                        filter={runCheckFilter}
+                        timeoutSecs={runCheckTimeout}
                     />
                 )}
 

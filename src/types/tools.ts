@@ -431,6 +431,17 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'high',
     },
+    {
+        name: 'coding_run_checks',
+        description: 'Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use after applying patches or before committing. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept a filter.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to run the check in', required: true },
+            { name: 'check', type: 'string', description: 'Allowlisted check key (e.g. cargo-test, tsc, vitest)', required: true },
+            { name: 'filter', type: 'string', description: 'Optional test-name/file filter for cargo-test or vitest', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (5-1800, default 600)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
 
     // Clipboard
     {

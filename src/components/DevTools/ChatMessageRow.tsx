@@ -20,6 +20,8 @@ import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { getCodingCheckpointRestoreFromResultData } from './aiChatCodingCheckpointRestore';
 import { CodingGitReview } from './CodingGitReview';
 import { getCodingGitFromResultData } from './aiChatCodingGit';
+import { CodingChecksReview } from './CodingChecksReview';
+import { getCodingRunCheckFromResultData } from './aiChatCodingChecks';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
 import type { AIProviderType } from '../../types/ai';
 
@@ -74,6 +76,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     const codingPatch = getCodingPatchFromResultData(message.toolResultData);
     const codingCheckpointRestore = getCodingCheckpointRestoreFromResultData(message.toolResultData);
     const codingGit = getCodingGitFromResultData(message.toolResultData);
+    const codingRunCheck = getCodingRunCheckFromResultData(message.toolResultData);
     const renderedContent = codingPlan ? extractedCodingPlan.content : message.content;
     const isLong = isAssistant && renderedContent.length > 500;
     return (
@@ -148,6 +151,9 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                         )}
                         {codingGit && (
                             <CodingGitReview data={codingGit} />
+                        )}
+                        {codingRunCheck && (
+                            <CodingChecksReview data={codingRunCheck} />
                         )}
                     </div>
                     {isLong && !isExpanded && (

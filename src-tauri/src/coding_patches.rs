@@ -265,7 +265,7 @@ fn plan_patch(root: &Path, patches: &[FilePatch]) -> Result<PatchPlan, String> {
         let old_content = read_target_text(&target, status)?;
         let old_size_bytes = old_content
             .as_ref()
-            .map(|text| text.as_bytes().len() as u64)
+            .map(|text| text.len() as u64)
             .unwrap_or(0);
 
         let new_text =

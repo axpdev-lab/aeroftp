@@ -12,6 +12,7 @@ use crate::coding_checkpoints::{
     create_checkpoint, restore_checkpoint, CreateCodingCheckpointRequest,
     RestoreCodingCheckpointRequest,
 };
+use crate::coding_checks::{run_check, CodingRunCheckRequest};
 use crate::coding_git::{
     git_commit, git_diff, git_stage, git_status, CodingGitCommitRequest, CodingGitDiffRequest,
     CodingGitStageRequest,
@@ -219,6 +220,22 @@ pub async fn coding_git_commit(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value
         message,
         dry_run,
     })
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_run_checks(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let check = get_str(args, "check")?;
+    let filter = get_str_opt(args, "filter");
+    let timeout_secs = args.get("timeout_secs").and_then(|value| value.as_u64());
+    let result = run_check(CodingRunCheckRequest {
+        workspace_root,
+        check,
+        filter,
+        timeout_secs,
+    })
+    .await
     .map_err(ToolError::Exec)?;
     to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
 }

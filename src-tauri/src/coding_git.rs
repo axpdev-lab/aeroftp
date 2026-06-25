@@ -209,7 +209,7 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
     let message = validate_commit_message(&req.message)?;
     let before = git_status_for_workspace(&workspace, &[])?;
 
-    if before.conflicted.len() > 0 {
+    if !before.conflicted.is_empty() {
         return Ok(CodingGitCommitResult {
             success: false,
             workspace_root: path_to_string(&workspace.workspace_root),

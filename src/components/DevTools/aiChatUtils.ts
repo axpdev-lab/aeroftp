@@ -5,6 +5,7 @@ import { Message } from './aiChatTypes';
 import { normalizeCodingPatchResult, summarizeCodingPatchResult } from './aiChatCodingPatch';
 import { normalizeCodingCheckpointRestoreResult, summarizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
 import { normalizeCodingGitResult, summarizeCodingGitResult } from './aiChatCodingGit';
+import { normalizeCodingRunCheckResult, summarizeCodingRunCheckResult } from './aiChatCodingChecks';
 import { TaskType } from '../../types/ai';
 import { computeResponseBuffer } from './aiChatTokenInfo';
 
@@ -358,6 +359,12 @@ export function formatToolResult(_toolName: string, result: unknown): string {
         const codingGitResult = normalizeCodingGitResult(_toolName, r);
         if (codingGitResult) {
             return summarizeCodingGitResult(_toolName, codingGitResult);
+        }
+        if (_toolName === 'coding_run_checks') {
+            const runCheckResult = normalizeCodingRunCheckResult(r);
+            if (runCheckResult) {
+                return summarizeCodingRunCheckResult(runCheckResult);
+            }
         }
         // Edit results
         if (r.replaced !== undefined) {

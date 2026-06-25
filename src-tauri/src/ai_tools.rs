@@ -78,6 +78,7 @@ const ALLOWED_TOOLS: &[&str] = &[
     "coding_git_diff",
     "coding_git_stage",
     "coding_git_commit",
+    "coding_run_checks",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -149,6 +150,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "coding_apply_patch"
                 | "coding_git_stage"
                 | "coding_git_commit"
+                | "coding_run_checks"
                 | "shell_execute"
         ),
     }
@@ -420,6 +422,7 @@ fn human_tool_label(tool_name: &str) -> &str {
         "coding_git_diff" => "Inspect Git Diff",
         "coding_git_stage" => "Stage Git Paths",
         "coding_git_commit" => "Create Git Commit",
+        "coding_run_checks" => "Run Project Checks",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -1111,6 +1114,60 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                     if max_bytes > 256 * 1024 {
                         warnings.push("max_bytes will be capped at 256 KiB".to_string());
                     }
+                }
+            }
+        }
+        "coding_run_checks" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            const KNOWN_CHECKS: &[&str] = &[
+                "cargo-check",
+                "cargo-build",
+                "cargo-test",
+                "cargo-clippy",
+                "cargo-fmt-check",
+                "tsc",
+                "vitest",
+                "eslint",
+                "npm-build",
+            ];
+            match args.get("check").and_then(|v| v.as_str()) {
+                Some(check) if KNOWN_CHECKS.contains(&check) => {}
+                Some(check) => errors.push(format!(
+                    "Unknown check '{}'. Known checks: {}",
+                    check,
+                    KNOWN_CHECKS.join(", ")
+                )),
+                None => errors.push("Missing 'check' parameter".to_string()),
+            }
+
+            if let Some(filter) = args.get("filter").and_then(|v| v.as_str()) {
+                if filter.trim().is_empty() {
+                    errors.push("'filter' cannot be empty when provided".to_string());
+                } else if filter.trim().starts_with('-') {
+                    errors.push("'filter' cannot start with '-'".to_string());
+                } else if filter.len() > 200 {
+                    errors.push("'filter' exceeds 200 characters".to_string());
+                }
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 1800 {
+                    warnings.push("timeout_secs will be capped at 1800s".to_string());
                 }
             }
         }

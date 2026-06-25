@@ -275,6 +275,7 @@ const CODING_AGENT_STYLE = [
 const CODING_AGENT_CAPABILITIES = [
     'You can inspect local and remote files, search workspaces, read project rules, use RAG and memory context, edit local files with the available file tools, run approved shell commands, and use saved AeroFTP profiles for remote verification or deployment tasks without seeing secrets.',
     'Workspace checkpoint, patch, and git tools are available for coding work: use coding_apply_patch with dry_run=true to validate unified diffs, then apply only after the diff is correct. Real patch apply creates a checkpoint first. Use coding_checkpoint_restore only when the user approves a restore. Use coding_git_status and coding_git_diff for repository review, coding_git_stage for explicit paths, and coding_git_commit only after staged status/diff review.',
+    'Use coding_run_checks to verify changes by running a curated build/test/lint/typecheck from the allowlist (cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build); run the relevant checks after applying patches and before committing.',
 ].join('\n');
 
 const CODING_AGENT_TOOL_SELECTION = [
@@ -282,7 +283,7 @@ const CODING_AGENT_TOOL_SELECTION = [
     '- Prefer coding_apply_patch for multi-file or precise source edits. Dry-run first for non-trivial patches and inspect diagnostics before applying.',
     '- Before local_write/local_edit/local_delete/local_rename or other risky local mutations in coding work, create a coding checkpoint for the touched files when the workspace root is known.',
     '- For git status, diff, stage, and commit, prefer coding_git_* tools over shell_execute. Before coding_git_commit, inspect coding_git_status and coding_git_diff with staged=true.',
-    '- For build, test, lint, typecheck, and package-manager commands, use shell_execute only when the command is relevant to the workspace and compatible with the current approval mode.',
+    '- For build, test, lint, and typecheck, prefer coding_run_checks (curated allowlist, structured pass/fail). Use shell_execute only for commands outside that allowlist and compatible with the current approval mode.',
     '- For remote deploy or verification, use saved profiles and remote_* tools. Never ask for passwords, tokens, or API keys.',
     '- server_list_saved returns profile metadata only, not files. To list/read files on a saved server, use remote_list/remote_read/server_exec with the server name.',
     '- Never delete or overwrite user work unless the user explicitly asked and the approval flow allows it.',

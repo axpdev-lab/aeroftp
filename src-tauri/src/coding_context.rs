@@ -105,7 +105,7 @@ fn read_file_attachment(root: &Path, path: &Path, display_path: String) -> Menti
         return error_attachment(&display_path, e.to_string());
     }
     let truncated = meta.len() > MAX_FILE_BYTES;
-    let content = if buf.iter().any(|b| *b == 0) {
+    let content = if buf.contains(&0) {
         "[binary file omitted]".to_string()
     } else {
         String::from_utf8_lossy(&buf).to_string()

@@ -44,6 +44,7 @@ mod cloud_config;
 mod cloud_provider_factory;
 mod cloud_service;
 mod coding_checkpoints;
+mod coding_checks;
 mod coding_context;
 mod coding_git;
 mod coding_patches;
