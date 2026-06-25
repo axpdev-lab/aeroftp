@@ -4,15 +4,16 @@
 //! Structured compiler/typechecker diagnostics for AeroAgent coding mode.
 //!
 //! Runs a fixed, allowlisted diagnostic command (`cargo check
-//! --message-format=json` or `tsc --noEmit`) inside a declared workspace root
-//! and parses the machine-readable output into a flat list of structured
-//! `{file, line, column, severity, code, message}` entries.
+//! --message-format=json`, `tsc --noEmit`, or `eslint -f json`) inside a
+//! declared workspace root and parses the machine-readable output into a flat
+//! list of structured `{file, line, column, severity, code, message}` entries.
 //!
 //! This is a read-only inspection tool: it never modifies the workspace and the
 //! program plus its arguments come from a fixed catalog (the only
 //! caller-controlled value is the workspace root and an optional timeout).
 //! Arbitrary command execution remains the job of `shell_execute`.
 
+use std::path::Path;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
@@ -90,6 +91,11 @@ const DIAGNOSTICS_CATALOG: &[DiagnosticsPreset] = &[
         source: "tsc",
         program: "npx",
         args: &["--no-install", "tsc", "--noEmit", "--pretty", "false"],
+    },
+    DiagnosticsPreset {
+        source: "eslint",
+        program: "npx",
+        args: &["--no-install", "eslint", "-f", "json", "."],
     },
 ];
 
@@ -200,6 +206,76 @@ fn parse_tsc_diagnostics(output: &str) -> Vec<CodingDiagnostic> {
     output.lines().filter_map(parse_tsc_line).collect()
 }
 
+/// Make an eslint absolute `filePath` workspace-relative (forward slashes);
+/// fall back to the original string when it is not under the workspace.
+fn relativize_path(path: &str, workspace: &Path) -> String {
+    Path::new(path)
+        .strip_prefix(workspace)
+        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| path.to_string())
+}
+
+/// Parse `eslint -f json` output (an array of per-file results) into structured
+/// diagnostics. eslint severity 2 = error, 1 = warning; `ruleId` maps to `code`.
+/// Non-JSON output (e.g. a fatal config error) yields an empty list, matching
+/// the tsc fallback behavior.
+fn parse_eslint_diagnostics(stdout: &str, workspace: &Path) -> Vec<CodingDiagnostic> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        return Vec::new();
+    };
+    let Some(files) = value.as_array() else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for file in files {
+        let file_rel = file
+            .get("filePath")
+            .and_then(|p| p.as_str())
+            .map(|p| relativize_path(p, workspace));
+        let Some(messages) = file.get("messages").and_then(|m| m.as_array()) else {
+            continue;
+        };
+        for message in messages {
+            let severity = match message.get("severity").and_then(|s| s.as_u64()) {
+                Some(2) => "error",
+                Some(1) => "warning",
+                _ => continue,
+            };
+            let line = message
+                .get("line")
+                .and_then(|l| l.as_u64())
+                .map(|l| l as u32);
+            let column = message
+                .get("column")
+                .and_then(|c| c.as_u64())
+                .map(|c| c as u32);
+            let code = message
+                .get("ruleId")
+                .and_then(|r| r.as_str())
+                .map(str::to_string);
+            let text = message
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or_default()
+                .to_string();
+            out.push(CodingDiagnostic {
+                file: file_rel.clone(),
+                line,
+                column,
+                severity: severity.to_string(),
+                code,
+                message: text,
+            });
+        }
+    }
+    out
+}
+
 /// Run a curated diagnostic command and parse its output into structured
 /// diagnostics.
 pub async fn run_diagnostics(
@@ -254,6 +330,7 @@ pub async fn run_diagnostics(
                 out.extend(parse_tsc_diagnostics(&stderr));
                 out
             }
+            "eslint" => parse_eslint_diagnostics(&stdout, &workspace),
             _ => Vec::new(),
         }
     };
@@ -293,10 +370,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_cargo_and_tsc() {
+    fn catalog_has_cargo_tsc_and_eslint() {
         assert!(find_preset("cargo").is_some());
         assert!(find_preset("tsc").is_some());
-        assert!(find_preset("eslint").is_none());
+        assert!(find_preset("eslint").is_some());
+        assert!(find_preset("nope").is_none());
+        // The accessor used by the schema/validation must list every source.
+        assert_eq!(diagnostics_sources(), vec!["cargo", "tsc", "eslint"]);
+    }
+
+    #[test]
+    fn parse_eslint_extracts_errors_and_warnings() {
+        let workspace = Path::new("/repo");
+        let stdout = r#"[
+            {"filePath":"/repo/src/a.ts","messages":[
+                {"ruleId":"no-unused-vars","severity":2,"line":3,"column":5,"message":"'x' is defined but never used."},
+                {"ruleId":"eqeqeq","severity":1,"line":7,"column":9,"message":"Expected '===' and instead saw '=='."}
+            ]},
+            {"filePath":"/repo/src/b.ts","messages":[
+                {"ruleId":null,"severity":2,"line":1,"column":1,"message":"Parsing error: Unexpected token"}
+            ]}
+        ]"#;
+        let diags = parse_eslint_diagnostics(stdout, workspace);
+        assert_eq!(diags.len(), 3);
+        assert_eq!(diags[0].file.as_deref(), Some("src/a.ts"));
+        assert_eq!(diags[0].severity, "error");
+        assert_eq!(diags[0].code.as_deref(), Some("no-unused-vars"));
+        assert_eq!(diags[0].line, Some(3));
+        assert_eq!(diags[0].column, Some(5));
+        assert_eq!(diags[1].severity, "warning");
+        // ruleId null -> no code, but still reported.
+        assert_eq!(diags[2].file.as_deref(), Some("src/b.ts"));
+        assert!(diags[2].code.is_none());
+    }
+
+    #[test]
+    fn parse_eslint_handles_empty_and_non_json() {
+        let workspace = Path::new("/repo");
+        // Clean run: empty array, no diagnostics.
+        assert!(parse_eslint_diagnostics("[]", workspace).is_empty());
+        assert!(parse_eslint_diagnostics("   ", workspace).is_empty());
+        // Fatal config error (non-JSON) degrades to empty, like tsc.
+        assert!(parse_eslint_diagnostics("Oops something went wrong", workspace).is_empty());
+        // severity 0 (off) is skipped.
+        let off = r#"[{"filePath":"/repo/a.ts","messages":[{"ruleId":"x","severity":0,"line":1,"column":1,"message":"off"}]}]"#;
+        assert!(parse_eslint_diagnostics(off, workspace).is_empty());
+    }
+
+    #[test]
+    fn relativize_path_strips_workspace_or_keeps_absolute() {
+        let workspace = Path::new("/repo");
+        assert_eq!(relativize_path("/repo/src/a.ts", workspace), "src/a.ts");
+        // Outside the workspace: kept as-is.
+        assert_eq!(relativize_path("/other/x.ts", workspace), "/other/x.ts");
     }
 
     #[test]

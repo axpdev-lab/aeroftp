@@ -645,7 +645,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "coding_diagnostics",
-            description: "Run a read-only compiler/typechecker pass (cargo check or tsc) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Use to inspect build/type errors without producing binaries. Sources: cargo (cargo check --message-format=json), tsc (tsc --noEmit).",
+            description: "Run a read-only compiler/typechecker/linter pass (cargo check, tsc, or eslint) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Use to inspect build/type/lint errors without producing binaries. Sources: cargo (cargo check --message-format=json), tsc (tsc --noEmit), eslint (eslint -f json).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
