@@ -12,6 +12,22 @@ import { Globe, Check, Copy, Wrench, GitBranch } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBlock } from './ThinkingBlock';
 import { getToolLabel } from './aiChatToolLabels';
+import { CodingPlanArtifactCard } from './CodingPlanArtifactCard';
+import { extractCodingPlanArtifact, getCodingPlanFromResultData } from './aiChatCodingPlan';
+import { CodingPatchReview } from './CodingPatchReview';
+import { getCodingPatchFromResultData } from './aiChatCodingPatch';
+import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
+import { getCodingCheckpointRestoreFromResultData } from './aiChatCodingCheckpointRestore';
+import { CodingGitReview } from './CodingGitReview';
+import { getCodingGitFromResultData } from './aiChatCodingGit';
+import { CodingChecksReview, CodingVerifyReview } from './CodingChecksReview';
+import { getCodingRunCheckFromResultData, getCodingVerifyFromResultData } from './aiChatCodingChecks';
+import { CodingGitHistoryReview } from './CodingGitHistoryReview';
+import { getCodingGitHistoryFromResultData } from './aiChatCodingGitHistory';
+import { CodingDiagnosticsReview } from './CodingDiagnosticsReview';
+import { getCodingDiagnosticsFromResultData } from './aiChatCodingDiagnostics';
+import { CodingSearchReview } from './CodingSearchReview';
+import { getCodingSearchFromResultData } from './aiChatCodingSearch';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
 import type { AIProviderType } from '../../types/ai';
 
@@ -58,7 +74,21 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     TransferPlanReview,
 }) => {
     const isAssistant = message.role === 'assistant';
-    const isLong = isAssistant && message.content.length > 500;
+    const extractedCodingPlan = React.useMemo(
+        () => extractCodingPlanArtifact(message.content),
+        [message.content],
+    );
+    const codingPlan = getCodingPlanFromResultData(message.toolResultData) || extractedCodingPlan.plan;
+    const codingPatch = getCodingPatchFromResultData(message.toolResultData);
+    const codingCheckpointRestore = getCodingCheckpointRestoreFromResultData(message.toolResultData);
+    const codingGit = getCodingGitFromResultData(message.toolResultData);
+    const codingRunCheck = getCodingRunCheckFromResultData(message.toolResultData);
+    const codingGitHistory = getCodingGitHistoryFromResultData(message.toolResultData);
+    const codingVerify = getCodingVerifyFromResultData(message.toolResultData);
+    const codingDiagnostics = getCodingDiagnosticsFromResultData(message.toolResultData);
+    const codingSearch = getCodingSearchFromResultData(message.toolResultData);
+    const renderedContent = codingPlan ? extractedCodingPlan.content : message.content;
+    const isLong = isAssistant && renderedContent.length > 500;
     return (
         <div
             data-message-id={message.id}
@@ -97,11 +127,14 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                             }`}
                     >
                         <MarkdownRenderer
-                            content={message.content}
+                            content={renderedContent}
                             isStreaming={isStreamingRow}
                             editorFilePath={editorFilePath}
                             editorFileName={editorFileName}
                         />
+                        {codingPlan && (
+                            <CodingPlanArtifactCard plan={codingPlan} />
+                        )}
                         {isTransferPlanResultData(message.toolResultData) && (
                             <TransferPlanReview
                                 plan={message.toolResultData.plan}
@@ -110,6 +143,39 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                                     await onExecutePlan(message, selectedOperationIds);
                                 }}
                             />
+                        )}
+                        {codingPatch && (
+                            <CodingPatchReview
+                                result={codingPatch.result}
+                                patchText={codingPatch.patch}
+                                workspaceRoot={codingPatch.workspaceRoot}
+                                mode="result"
+                            />
+                        )}
+                        {codingCheckpointRestore && (
+                            <CodingCheckpointRestoreReview
+                                result={codingCheckpointRestore.result}
+                                paths={codingCheckpointRestore.requestedPaths}
+                                mode="result"
+                            />
+                        )}
+                        {codingGit && (
+                            <CodingGitReview data={codingGit} />
+                        )}
+                        {codingRunCheck && (
+                            <CodingChecksReview data={codingRunCheck} />
+                        )}
+                        {codingGitHistory && (
+                            <CodingGitHistoryReview data={codingGitHistory} />
+                        )}
+                        {codingVerify && (
+                            <CodingVerifyReview data={codingVerify} />
+                        )}
+                        {codingDiagnostics && (
+                            <CodingDiagnosticsReview data={codingDiagnostics} />
+                        )}
+                        {codingSearch && (
+                            <CodingSearchReview data={codingSearch} />
                         )}
                     </div>
                     {isLong && !isExpanded && (

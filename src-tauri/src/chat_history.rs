@@ -236,6 +236,8 @@ fn apply_schema(conn: &Connection) -> Result<(), String> {
         }
     }
 
+    crate::coding_checkpoints::init_db_schema(conn)?;
+
     Ok(())
 }
 

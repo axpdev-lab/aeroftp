@@ -54,6 +54,330 @@ export interface TransferPlanResultData {
     plan: TransferPlan;
 }
 
+export type CodingPlanRiskLevel = 'low' | 'medium' | 'high';
+export type CodingPlanScope = 'single_file' | 'multi_file' | 'investigation' | 'unknown';
+
+export interface CodingPlanStep {
+    id: string;
+    title: string;
+    description?: string;
+    files?: string[];
+}
+
+export interface CodingPlanArtifact {
+    kind: 'coding_plan';
+    title: string;
+    summary: string;
+    riskLevel: CodingPlanRiskLevel;
+    scope: CodingPlanScope;
+    files: string[];
+    steps: CodingPlanStep[];
+    verification: string[];
+    questions: string[];
+    warnings: string[];
+}
+
+export interface CodingPlanResultData {
+    kind: 'coding_plan';
+    plan: CodingPlanArtifact;
+}
+
+export interface CodingPatchFileResult {
+    path: string;
+    status: string;
+    hunks: number;
+    additions: number;
+    deletions: number;
+    old_size_bytes: number;
+    new_size_bytes: number;
+}
+
+export interface CodingPatchDiagnostic {
+    path?: string | null;
+    hunk_index?: number | null;
+    message: string;
+    expected?: string | null;
+    actual?: string | null;
+}
+
+export interface CodingPatchResult {
+    success: boolean;
+    dry_run: boolean;
+    checkpoint_id?: string | null;
+    files: CodingPatchFileResult[];
+    diagnostics: CodingPatchDiagnostic[];
+    warnings: string[];
+}
+
+export interface CodingPatchResultData {
+    kind: 'coding_patch';
+    result: CodingPatchResult;
+    workspaceRoot?: string;
+    patch?: string;
+}
+
+export interface CodingCheckpointRestoreFileResult {
+    path: string;
+    action: string;
+    existed_at_checkpoint: boolean;
+    size_bytes: number;
+    sha256?: string | null;
+}
+
+export interface CodingCheckpointRestoreResult {
+    checkpoint_id: string;
+    workspace_root: string;
+    dry_run: boolean;
+    files: CodingCheckpointRestoreFileResult[];
+}
+
+export interface CodingCheckpointRestoreResultData {
+    kind: 'coding_checkpoint_restore';
+    result: CodingCheckpointRestoreResult;
+    requestedPaths?: string[];
+}
+
+export interface CodingGitFileStatus {
+    path: string;
+    index_status: string;
+    worktree_status: string;
+}
+
+export interface CodingGitStatusResult {
+    workspace_root: string;
+    repo_root: string;
+    branch?: string | null;
+    head?: string | null;
+    upstream?: string | null;
+    ahead: number;
+    behind: number;
+    clean: boolean;
+    staged: CodingGitFileStatus[];
+    unstaged: CodingGitFileStatus[];
+    untracked: CodingGitFileStatus[];
+    conflicted: CodingGitFileStatus[];
+    total: number;
+    truncated: boolean;
+    raw: string[];
+}
+
+export interface CodingGitDiffStat {
+    path: string;
+    additions: number;
+    deletions: number;
+    binary: boolean;
+}
+
+export interface CodingGitDiffResult {
+    workspace_root: string;
+    repo_root: string;
+    staged: boolean;
+    paths: string[];
+    file_count: number;
+    total_additions: number;
+    total_deletions: number;
+    stats: CodingGitDiffStat[];
+    diff: string;
+    truncated: boolean;
+}
+
+export interface CodingGitStageResult {
+    success: boolean;
+    workspace_root: string;
+    repo_root: string;
+    dry_run: boolean;
+    staged: boolean;
+    paths: string[];
+    before: CodingGitStatusResult;
+    after?: CodingGitStatusResult | null;
+    message: string;
+}
+
+export interface CodingGitCommitResult {
+    success: boolean;
+    workspace_root: string;
+    repo_root: string;
+    dry_run: boolean;
+    committed: boolean;
+    commit_hash?: string | null;
+    message: string;
+    stdout: string;
+    stderr: string;
+    before: CodingGitStatusResult;
+    after?: CodingGitStatusResult | null;
+}
+
+export type CodingGitResult =
+    | CodingGitStatusResult
+    | CodingGitDiffResult
+    | CodingGitStageResult
+    | CodingGitCommitResult;
+
+export interface CodingGitResultData {
+    kind: 'coding_git';
+    toolName: 'coding_git_status' | 'coding_git_diff' | 'coding_git_stage' | 'coding_git_commit';
+    result: CodingGitResult;
+    requestedPaths?: string[];
+    commitMessage?: string;
+}
+
+export interface CodingRunCheckResult {
+    success: boolean;
+    workspace_root: string;
+    check: string;
+    label: string;
+    program: string;
+    args: string[];
+    filter?: string | null;
+    exit_code?: number | null;
+    timed_out: boolean;
+    timeout_secs: number;
+    duration_ms: number;
+    stdout: string;
+    stderr: string;
+    stdout_truncated: boolean;
+    stderr_truncated: boolean;
+}
+
+export interface CodingRunCheckResultData {
+    kind: 'coding_run_checks';
+    result: CodingRunCheckResult;
+}
+
+export interface CodingVerifyResult {
+    workspace_root: string;
+    overall_success: boolean;
+    stopped_early: boolean;
+    checks: CodingRunCheckResult[];
+}
+
+export interface CodingVerifyResultData {
+    kind: 'coding_verify';
+    result: CodingVerifyResult;
+}
+
+export interface CodingGitLogEntry {
+    hash: string;
+    short_hash: string;
+    author: string;
+    date: string;
+    subject: string;
+}
+
+export interface CodingGitLogResult {
+    workspace_root: string;
+    repo_root: string;
+    paths: string[];
+    max_count: number;
+    commits: CodingGitLogEntry[];
+    truncated: boolean;
+}
+
+export interface CodingGitShowResult {
+    workspace_root: string;
+    repo_root: string;
+    commit: string;
+    hash: string;
+    short_hash: string;
+    author: string;
+    date: string;
+    subject: string;
+    body: string;
+    stats: CodingGitDiffStat[];
+    total_additions: number;
+    total_deletions: number;
+    diff: string;
+    truncated: boolean;
+}
+
+export type CodingGitHistoryResult = CodingGitLogResult | CodingGitShowResult;
+
+export interface CodingGitHistoryResultData {
+    kind: 'coding_git_history';
+    toolName: 'coding_git_log' | 'coding_git_show';
+    result: CodingGitHistoryResult;
+}
+
+export interface CodingDiagnostic {
+    file?: string | null;
+    line?: number | null;
+    column?: number | null;
+    severity: string;
+    code?: string | null;
+    message: string;
+}
+
+export interface CodingDiagnosticsResult {
+    workspace_root: string;
+    source: string;
+    program: string;
+    args: string[];
+    exit_code?: number | null;
+    timed_out: boolean;
+    timeout_secs: number;
+    duration_ms: number;
+    success: boolean;
+    error_count: number;
+    warning_count: number;
+    diagnostics: CodingDiagnostic[];
+    truncated: boolean;
+}
+
+export interface CodingDiagnosticsResultData {
+    kind: 'coding_diagnostics';
+    result: CodingDiagnosticsResult;
+}
+
+export interface CodingSearchSubmatch {
+    start: number;
+    end: number;
+    text: string;
+}
+
+export interface CodingSearchMatch {
+    file: string;
+    line: number;
+    column: number;
+    line_text: string;
+    submatches: CodingSearchSubmatch[];
+}
+
+export interface CodingSearchResult {
+    workspace_root: string;
+    pattern: string;
+    path?: string | null;
+    globs: string[];
+    case_insensitive: boolean;
+    fixed_strings: boolean;
+    program: string;
+    args: string[];
+    exit_code?: number | null;
+    timed_out: boolean;
+    timeout_secs: number;
+    duration_ms: number;
+    total_matches: number;
+    file_count: number;
+    matches: CodingSearchMatch[];
+    truncated: boolean;
+}
+
+export interface CodingSearchResultData {
+    kind: 'coding_search';
+    result: CodingSearchResult;
+}
+
+export type ChatResultData =
+    | TransferPlanResultData
+    | CodingPlanResultData
+    | CodingPatchResultData
+    | CodingCheckpointRestoreResultData
+    | CodingGitResultData
+    | CodingRunCheckResultData
+    | CodingGitHistoryResultData
+    | CodingVerifyResultData
+    | CodingDiagnosticsResultData
+    | CodingSearchResultData;
+
 export interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -78,7 +402,7 @@ export interface Message {
         cacheReadTokens?: number;      // Anthropic: tokens read from cache (90% cheaper)
         cacheSavings?: number;         // Estimated USD savings from caching
     };
-    toolResultData?: TransferPlanResultData;
+    toolResultData?: ChatResultData;
 }
 
 export interface AIChatProps {
@@ -129,5 +453,6 @@ export const MUTATION_TOOLS: Record<string, 'remote' | 'local' | 'both'> = {
     local_write: 'local', local_delete: 'local', local_rename: 'local', local_move_files: 'local',
     local_batch_rename: 'local', local_copy_files: 'local', local_trash: 'local',
     local_mkdir: 'local', local_edit: 'local',
+    coding_apply_patch: 'local', coding_checkpoint_restore: 'local',
     archive_compress: 'both', archive_decompress: 'both',
 };

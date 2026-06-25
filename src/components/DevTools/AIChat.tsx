@@ -16,7 +16,7 @@ import { type Conversation, cleanupHistory, loadSession } from '../../utils/chat
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData } from './aiChatTypes';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData, CodingGitResultData, CodingRunCheckResultData, CodingGitHistoryResultData, CodingVerifyResultData, CodingDiagnosticsResultData, CodingSearchResultData } from './aiChatTypes';
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
@@ -30,7 +30,17 @@ import { useAgentMemory } from './useAgentMemory';
 import { buildContextBlock, buildSystemPrompt } from './aiChatSystemPrompt';
 import { getParameterPreset } from './aiProviderProfiles';
 import { detectProjectContext, invalidateProjectCache, fetchFileImports, fetchGitContext } from './aiChatProjectContext';
-import { buildSmartContext, formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
+import { invalidateCodingRulesCache } from './aiChatRules';
+import { extractContextMentionCandidates } from './aiChatMentions';
+import { formatSmartContextForPrompt, determineBudgetMode } from './aiChatSmartContext';
+import { buildCodingPlanPromptBlock, buildCodingWorkspaceContext, buildSmartContextForWorkspace, resolveAgentPromptProfile, workspaceToSystemPromptContext } from './aiChatCodingWorkspace';
+import { normalizeCodingPatchResult } from './aiChatCodingPatch';
+import { normalizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
+import { isCodingGitToolName, normalizeCodingGitResult } from './aiChatCodingGit';
+import { normalizeCodingRunCheckResult, normalizeCodingVerifyResult } from './aiChatCodingChecks';
+import { normalizeCodingDiagnosticsResult } from './aiChatCodingDiagnostics';
+import { normalizeCodingSearchResult } from './aiChatCodingSearch';
+import { isCodingGitHistoryToolName, normalizeCodingGitHistoryResult } from './aiChatCodingGitHistory';
 import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
 import { BranchSelector } from './ConversationBranch';
 import type { ProjectContext } from '../../types/contextIntelligence';
@@ -280,6 +290,128 @@ const isTransferPlanResultData = (value: unknown): value is TransferPlanResultDa
     if (!value || typeof value !== 'object') return false;
     const candidate = value as Record<string, unknown>;
     return candidate.kind === 'transfer_plan' && isTransferPlan(candidate.plan);
+};
+
+const buildCodingPatchResultData = (
+    toolName: string,
+    result: unknown,
+    args: Record<string, unknown>,
+): CodingPatchResultData | undefined => {
+    if (toolName !== 'coding_apply_patch') return undefined;
+
+    const patchResult = normalizeCodingPatchResult(result);
+    if (!patchResult) return undefined;
+
+    return {
+        kind: 'coding_patch',
+        result: patchResult,
+        workspaceRoot: typeof args.workspace_root === 'string' ? args.workspace_root : undefined,
+        patch: typeof args.patch === 'string' ? args.patch : undefined,
+    };
+};
+
+const buildCodingCheckpointRestoreResultData = (
+    toolName: string,
+    result: unknown,
+    args: Record<string, unknown>,
+): CodingCheckpointRestoreResultData | undefined => {
+    if (toolName !== 'coding_checkpoint_restore') return undefined;
+
+    const restoreResult = normalizeCodingCheckpointRestoreResult(result);
+    if (!restoreResult) return undefined;
+
+    return {
+        kind: 'coding_checkpoint_restore',
+        result: restoreResult,
+        requestedPaths: Array.isArray(args.paths)
+            ? args.paths.filter((path): path is string => typeof path === 'string')
+            : undefined,
+    };
+};
+
+const buildCodingGitResultData = (
+    toolName: string,
+    result: unknown,
+    args: Record<string, unknown>,
+): CodingGitResultData | undefined => {
+    if (!isCodingGitToolName(toolName)) return undefined;
+
+    const gitResult = normalizeCodingGitResult(toolName, result);
+    if (!gitResult) return undefined;
+
+    return {
+        kind: 'coding_git',
+        toolName,
+        result: gitResult,
+        requestedPaths: Array.isArray(args.paths)
+            ? args.paths.filter((path): path is string => typeof path === 'string')
+            : undefined,
+        commitMessage: typeof args.message === 'string' ? args.message : undefined,
+    };
+};
+
+const buildCodingRunCheckResultData = (
+    toolName: string,
+    result: unknown,
+): CodingRunCheckResultData | undefined => {
+    if (toolName !== 'coding_run_checks') return undefined;
+    const checkResult = normalizeCodingRunCheckResult(result);
+    if (!checkResult) return undefined;
+    return { kind: 'coding_run_checks', result: checkResult };
+};
+
+const buildCodingGitHistoryResultData = (
+    toolName: string,
+    result: unknown,
+): CodingGitHistoryResultData | undefined => {
+    if (!isCodingGitHistoryToolName(toolName)) return undefined;
+    const historyResult = normalizeCodingGitHistoryResult(toolName, result);
+    if (!historyResult) return undefined;
+    return { kind: 'coding_git_history', toolName, result: historyResult };
+};
+
+const buildCodingVerifyResultData = (
+    toolName: string,
+    result: unknown,
+): CodingVerifyResultData | undefined => {
+    if (toolName !== 'coding_verify') return undefined;
+    const verifyResult = normalizeCodingVerifyResult(result);
+    if (!verifyResult) return undefined;
+    return { kind: 'coding_verify', result: verifyResult };
+};
+
+const buildCodingDiagnosticsResultData = (
+    toolName: string,
+    result: unknown,
+): CodingDiagnosticsResultData | undefined => {
+    if (toolName !== 'coding_diagnostics') return undefined;
+    const diagnosticsResult = normalizeCodingDiagnosticsResult(result);
+    if (!diagnosticsResult) return undefined;
+    return { kind: 'coding_diagnostics', result: diagnosticsResult };
+};
+
+const buildCodingSearchResultData = (
+    toolName: string,
+    result: unknown,
+): CodingSearchResultData | undefined => {
+    if (toolName !== 'coding_search') return undefined;
+    const searchResult = normalizeCodingSearchResult(result);
+    if (!searchResult) return undefined;
+    return { kind: 'coding_search', result: searchResult };
+};
+
+const getMutationTargetForTool = (
+    toolName: string,
+    args: Record<string, unknown>,
+): 'remote' | 'local' | 'both' | undefined => {
+    if (
+        (toolName === 'coding_apply_patch' || toolName === 'coding_checkpoint_restore')
+        && args.dry_run === true
+    ) {
+        return undefined;
+    }
+
+    return MUTATION_TOOLS[toolName];
 };
 
 const TransferPlanReview: React.FC<{
@@ -548,6 +680,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [appTheme]);
 
     const [input, setInput] = useState('');
+    const mentionCandidates = useMemo(() => extractContextMentionCandidates(input), [input]);
     const [showModelSelector, setShowModelSelector] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
@@ -758,7 +891,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         // The backend OS dialog is the single confirmation gate for mutative tools.
         if (mode === 'extreme') return true;
         // Never auto-approve destructive or credential-backed tools in other modes
-        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec'];
+        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec', 'coding_checkpoint_restore', 'coding_apply_patch', 'coding_git_stage', 'coding_git_commit'];
         if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
         // Safe tools always auto-approved in all modes
         if (isSafeTool(toolName, allTools)) return true;
@@ -1511,17 +1644,34 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             const transferPlanData = toolCall.toolName === 'generate_transfer_plan' && result && typeof result === 'object' && isTransferPlan(result)
                 ? ({ kind: 'transfer_plan', plan: result } as TransferPlanResultData)
                 : undefined;
+            const codingPatchResultData = buildCodingPatchResultData(toolCall.toolName, result, executionArgs);
+            const codingCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, result, executionArgs);
+            const codingGitResultData = buildCodingGitResultData(toolCall.toolName, result, executionArgs);
+            const codingRunCheckResultData = buildCodingRunCheckResultData(toolCall.toolName, result);
+            const codingGitHistoryResultData = buildCodingGitHistoryResultData(toolCall.toolName, result);
+            const codingVerifyResultData = buildCodingVerifyResultData(toolCall.toolName, result);
+            const codingDiagnosticsResultData = buildCodingDiagnosticsResultData(toolCall.toolName, result);
+            const codingSearchResultData = buildCodingSearchResultData(toolCall.toolName, result);
+            const codingToolResultData = codingPatchResultData ?? codingCheckpointRestoreResultData ?? codingGitResultData ?? codingRunCheckResultData ?? codingGitHistoryResultData ?? codingVerifyResultData ?? codingDiagnosticsResultData ?? codingSearchResultData;
+            const toolResultData = transferPlanData ?? codingToolResultData;
 
             // Check for soft failures (tool returned success: false)
             if (result && typeof result === 'object' && 'success' in (result as Record<string, unknown>) && !(result as Record<string, unknown>).success) {
-                const softError = String((result as Record<string, unknown>).message || t('ai.error.operationFailed'));
+                const softError = String(
+                    (result as Record<string, unknown>).message
+                    || (codingToolResultData ? 'Coding tool validation failed' : t('ai.error.operationFailed')),
+                );
                 const strategy = analyzeToolError(toolCall.toolName, toolCall.args, softError);
 
                 const errorMessage: Message = {
                     id: crypto.randomUUID(),
                     role: 'assistant',
-                    content: `Tool returned failure: ${softError}\n\n**Suggestion**: ${strategy.suggestion}`,
+                    content: codingToolResultData
+                        ? formattedResult
+                        : `Tool returned failure: ${softError}\n\n**Suggestion**: ${strategy.suggestion}`,
                     timestamp: new Date(),
+                    toolName: codingToolResultData ? toolCall.toolName : undefined,
+                    toolResultData: codingToolResultData,
                 };
                 setMessages(prev => [...prev, errorMessage]);
 
@@ -1543,12 +1693,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 content: formattedResult,
                 toolName: toolCall.toolName,
                 timestamp: new Date(),
-                toolResultData: transferPlanData,
+                toolResultData,
             };
             setMessages(prev => [...prev, resultMessage]);
 
             // Refresh file panels after mutation tools
-            const mutationTarget = MUTATION_TOOLS[toolCall.toolName];
+            const mutationTarget = getMutationTargetForTool(toolCall.toolName, executionArgs);
             if (mutationTarget && onFileMutation) {
                 onFileMutation(mutationTarget);
             }
@@ -1560,8 +1710,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     window.dispatchEvent(new CustomEvent('file-changed', { detail: { path: changedPath } }));
                     // Invalidate cached project context when config files are modified
                     const configFiles = ['package.json', 'Cargo.toml', 'composer.json', 'pyproject.toml', 'go.mod', 'pom.xml', 'build.gradle'];
+                    const ruleFiles = ['AGENTS.md', 'CLAUDE.md', '.cursorrules', '.github/copilot-instructions.md'];
                     if (configFiles.some(cf => changedPath.endsWith(cf))) {
                         invalidateProjectCache();
+                    }
+                    if (ruleFiles.some(rf => changedPath.endsWith(rf))) {
+                        invalidateCodingRulesCache();
                     }
                 }
             }
@@ -1580,15 +1734,26 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         strategy.maxRetries || 3,
                     );
                     const retryFormatted = formatToolResult(toolCall.toolName, retryResult);
+                    const retryPatchResultData = buildCodingPatchResultData(toolCall.toolName, retryResult, executionArgs);
+                    const retryCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, retryResult, executionArgs);
+                    const retryGitResultData = buildCodingGitResultData(toolCall.toolName, retryResult, executionArgs);
+                    const retryRunCheckResultData = buildCodingRunCheckResultData(toolCall.toolName, retryResult);
+                    const retryGitHistoryResultData = buildCodingGitHistoryResultData(toolCall.toolName, retryResult);
+                    const retryVerifyResultData = buildCodingVerifyResultData(toolCall.toolName, retryResult);
+                    const retryDiagnosticsResultData = buildCodingDiagnosticsResultData(toolCall.toolName, retryResult);
+                    const retrySearchResultData = buildCodingSearchResultData(toolCall.toolName, retryResult);
+                    const retryCodingToolResultData = retryPatchResultData ?? retryCheckpointRestoreResultData ?? retryGitResultData ?? retryRunCheckResultData ?? retryGitHistoryResultData ?? retryVerifyResultData ?? retryDiagnosticsResultData ?? retrySearchResultData;
                     const retryMsg: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',
                         content: retryFormatted,
+                        toolName: retryCodingToolResultData ? toolCall.toolName : undefined,
+                        toolResultData: retryCodingToolResultData,
                         timestamp: new Date(),
                     };
                     setMessages(prev => [...prev, retryMsg]);
 
-                    const mutationTarget = MUTATION_TOOLS[toolCall.toolName];
+                    const mutationTarget = getMutationTargetForTool(toolCall.toolName, executionArgs);
                     if (mutationTarget && onFileMutation) onFileMutation(mutationTarget);
 
                     setPendingToolCalls([]);
@@ -2000,53 +2165,58 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             // Phase 3: Determine budget mode and build smart context (#70, #71)
             const budgetMode = determineBudgetMode(modelContextWindow);
             const taskType = detectTaskType(userMessage.content);
-
-            // Build RAG summary from index
-            const ragSummary = ragIndexRef.current ? (() => {
-                const idx = ragIndexRef.current!;
-                const extSummary = Object.entries((idx.extensions || {}) as Record<string, number>)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 8)
-                    .map(([ext, count]) => `${count} .${ext}`)
-                    .join(', ');
-                return `- Workspace indexed: ${idx.files_count} files (${extSummary})`;
-            })() : null;
-
             const relevantAgentMemory = await searchMemory(userMessage.content, 5);
+            const workspaceCtx = await buildCodingWorkspaceContext({
+                projectPath,
+                localPath,
+                remotePath,
+                projectContext: projectContextRef.current,
+                gitBranch: gitBranchRef.current,
+                gitSummary: gitSummaryRef.current,
+                fileImports: fileImportsRef.current,
+                ragIndex: ragIndexRef.current,
+                userPrompt: userMessage.content,
+            });
 
             // Build smart context with priority-based allocation
             const contextTokenBudget = Math.floor(modelContextWindow * 0.15); // 15% for smart context
-            const smartCtx = buildSmartContext(
-                userMessage.content,
+            const smartCtx = buildSmartContextForWorkspace(workspaceCtx, {
+                userPrompt: userMessage.content,
                 taskType,
-                projectContextRef.current,
-                gitSummaryRef.current,
-                relevantAgentMemory || agentMemory,
-                fileImportsRef.current,
-                ragSummary,
-                contextTokenBudget,
+                agentMemory: relevantAgentMemory || agentMemory,
+                tokenBudget: contextTokenBudget,
                 budgetMode,
-            );
+            });
             const smartContextBlock = formatSmartContextForPrompt(smartCtx);
+            const codingPlanBlock = buildCodingPlanPromptBlock(workspaceCtx, {
+                userPrompt: userMessage.content,
+                taskType,
+                agentMode,
+            });
+            const promptProfile = resolveAgentPromptProfile(workspaceCtx, {
+                userPrompt: userMessage.content,
+                taskType,
+            });
 
             // Build context-aware system prompt with Phase 3 data
             const contextBlock = buildContextBlock({
                 providerType, isConnected, serverHost, serverPort, serverUser,
-                remotePath, localPath, selectedFiles,
+                selectedFiles,
                 activeFilePanel, isCloudConnection,
                 editorFileName, editorFilePath,
                 ragIndex: ragIndexRef.current,
                 macros,
-                projectContext: projectContextRef.current,
-                gitBranch: gitBranchRef.current || undefined,
-                gitSummary: gitSummaryRef.current || undefined,
                 agentMemory: relevantAgentMemory || agentMemory,
-                fileImports: fileImportsRef.current,
+                codingPlanBlock: codingPlanBlock || undefined,
                 smartContextBlock: smartContextBlock || undefined,
+                ...workspaceToSystemPromptContext(workspaceCtx),
             });
             // Build extra tool definitions for system prompt (plugin + macro, not built-in)
             const extraToolDefs = toNativeDefinitions([...pluginTools, ...macrosToToolDefinitions(macros)]);
-            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, extraToolDefs);
+            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, {
+                extraTools: extraToolDefs,
+                promptProfile,
+            });
 
             // Build message history (images only on the current user message)
             const currentUserMsg: Record<string, unknown> = {
@@ -2922,6 +3092,19 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                         <X size={10} />
                                     </button>
                                 </div>
+                            ))}
+                        </div>
+                    )}
+                    {mentionCandidates.length > 0 && (
+                        <div className={`flex flex-wrap gap-1.5 px-3 py-2 border-b ${ct.border}`}>
+                            {mentionCandidates.map(path => (
+                                <span
+                                    key={path}
+                                    className={`max-w-[220px] truncate rounded-md border ${ct.borderSolid} px-2 py-0.5 text-[11px] ${ct.textSecondary}`}
+                                    title={`@${path}`}
+                                >
+                                    @{path}
+                                </span>
                             ))}
                         </div>
                     )}

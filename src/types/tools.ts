@@ -356,6 +356,148 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'medium',
     },
+    {
+        name: 'coding_checkpoint_create',
+        description: 'Snapshot explicit workspace files before coding-agent edits. Stores file bytes plus chat/session anchor metadata for later restore.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root containing every path to snapshot', required: true },
+            { name: 'paths', type: 'array', description: 'Array of workspace-relative or absolute file paths to snapshot', required: true },
+            { name: 'label', type: 'string', description: 'Short human-readable checkpoint label', required: false },
+            { name: 'anchor_message_id', type: 'string', description: 'Optional chat message ID to anchor the checkpoint', required: false },
+            { name: 'conversation_anchor', type: 'string', description: 'Optional short note describing the conversation point', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'coding_checkpoint_restore',
+        description: 'Restore files from a coding checkpoint. Rewrites files that existed and deletes files that were absent when the checkpoint was created.',
+        parameters: [
+            { name: 'checkpoint_id', type: 'string', description: 'Checkpoint ID returned by coding_checkpoint_create', required: true },
+            { name: 'paths', type: 'array', description: 'Optional subset of checkpoint paths to restore', required: false },
+            { name: 'dry_run', type: 'boolean', description: 'Preview restore actions without changing files', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'coding_apply_patch',
+        description: 'Dry-run or apply a unified multi-file diff inside a workspace root. Real apply creates a checkpoint before changing files.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root containing every patched file', required: true },
+            { name: 'patch', type: 'string', description: 'Unified diff text to validate or apply', required: true },
+            { name: 'dry_run', type: 'boolean', description: 'Validate and summarize without changing files (default false)', required: false },
+            { name: 'checkpoint_label', type: 'string', description: 'Optional checkpoint label for real apply', required: false },
+            { name: 'anchor_message_id', type: 'string', description: 'Optional chat message ID to anchor the pre-apply checkpoint', required: false },
+            { name: 'conversation_anchor', type: 'string', description: 'Optional short note for the pre-apply checkpoint', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'coding_git_status',
+        description: 'Inspect git branch, ahead/behind state, and staged/unstaged/untracked/conflicted files for a coding workspace.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Optional literal workspace-relative path subset to inspect', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_git_diff',
+        description: 'Inspect unstaged or staged git diff for a coding workspace with stats and capped patch output.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Optional literal workspace-relative path subset to diff', required: false },
+            { name: 'staged', type: 'boolean', description: 'If true, diff the staged index; otherwise diff unstaged changes', required: false },
+            { name: 'max_bytes', type: 'number', description: 'Maximum diff text bytes to return (capped at 256 KiB)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_git_stage',
+        description: 'Stage explicit literal workspace paths in git. Use dry_run=true first for review; real stage changes the git index.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Literal workspace-relative or absolute paths to stage; no globs are expanded', required: true },
+            { name: 'dry_run', type: 'boolean', description: 'Preview status for the requested paths without changing the index', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'coding_git_commit',
+        description: 'Create a git commit from the currently staged index. Run coding_git_status and coding_git_diff with staged=true before using this.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'message', type: 'string', description: 'Commit message', required: true },
+            { name: 'dry_run', type: 'boolean', description: 'Preview staged commit inputs without creating a commit', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'coding_git_log',
+        description: 'List recent git commits (newest first) for a coding workspace, optionally limited to a path subset.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Optional literal workspace-relative path subset to filter history', required: false },
+            { name: 'max_count', type: 'number', description: 'Max commits to return (default 20, max 200)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_git_show',
+        description: 'Show a single git commit: metadata, per-file stats, and capped diff for a coding workspace.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'commit', type: 'string', description: 'Commit reference (hash, HEAD, HEAD~1, branch, tag)', required: true },
+            { name: 'max_bytes', type: 'number', description: 'Maximum diff text bytes to return (capped at 256 KiB)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_run_checks',
+        description: 'Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use after applying patches or before committing. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept a filter.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to run the check in', required: true },
+            { name: 'check', type: 'string', description: 'Allowlisted check key (e.g. cargo-test, tsc, vitest)', required: true },
+            { name: 'filter', type: 'string', description: 'Optional test-name/file filter for cargo-test or vitest', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (5-1800, default 600)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'coding_verify',
+        description: 'Run an ordered list of curated checks in one pass, stopping at the first failure unless continue_on_failure is set, and return per-check results plus overall pass/fail. Use after applying patches and before committing.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to run the checks in', required: true },
+            { name: 'checks', type: 'array', description: 'Ordered list of allowlisted check keys (max 10)', required: true },
+            { name: 'continue_on_failure', type: 'boolean', description: 'Run all checks even after one fails (default false)', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Per-check timeout in seconds (5-1800, default 600)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'coding_diagnostics',
+        description: 'Run a read-only compiler/typechecker/linter pass (cargo check, tsc, or eslint) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Inspect build/type/lint errors without producing binaries.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to inspect', required: true },
+            { name: 'source', type: 'string', description: 'Diagnostics source: cargo (cargo check), tsc (tsc --noEmit), or eslint (eslint -f json)', required: true },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (5-1800, default 600)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_search',
+        description: 'Search the coding workspace with ripgrep and return structured {file, line, column, line_text, submatches} matches (paths are workspace-relative). Respects .gitignore. Use to locate symbols or strings before editing. Pattern is a regex unless fixed_strings=true.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to search in', required: true },
+            { name: 'pattern', type: 'string', description: 'Search pattern (regex by default, literal when fixed_strings=true)', required: true },
+            { name: 'path', type: 'string', description: 'Optional workspace-relative path subset to limit the search', required: false },
+            { name: 'globs', type: 'array', description: 'Optional ripgrep glob filters (e.g. *.rs, !target/*), max 20', required: false },
+            { name: 'case_insensitive', type: 'boolean', description: 'Case-insensitive match (default false)', required: false },
+            { name: 'fixed_strings', type: 'boolean', description: 'Treat the pattern as a literal string instead of a regex (default false)', required: false },
+            { name: 'max_results', type: 'number', description: 'Max matches to return (default 200, max 1000)', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (5-600, default 60)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
 
     // Clipboard
     {

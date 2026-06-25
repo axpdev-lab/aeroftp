@@ -634,6 +634,7 @@ pub struct TauriToolCtx {
     pub creds: VaultCredentialProvider,
     pub context_local_path: Option<String>,
     pub approval_grant_id: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[async_trait]
@@ -665,6 +666,9 @@ impl ToolCtx for TauriToolCtx {
     }
     fn approval_grant_id(&self) -> Option<&str> {
         self.approval_grant_id.as_deref()
+    }
+    fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
     fn tauri_app_handle(&self) -> Option<tauri::AppHandle> {
         Some(self.app.clone())

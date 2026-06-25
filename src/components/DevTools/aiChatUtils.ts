@@ -2,6 +2,13 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { Message } from './aiChatTypes';
+import { normalizeCodingPatchResult, summarizeCodingPatchResult } from './aiChatCodingPatch';
+import { normalizeCodingCheckpointRestoreResult, summarizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
+import { normalizeCodingGitResult, summarizeCodingGitResult } from './aiChatCodingGit';
+import { normalizeCodingRunCheckResult, summarizeCodingRunCheckResult, normalizeCodingVerifyResult, summarizeCodingVerifyResult } from './aiChatCodingChecks';
+import { normalizeCodingDiagnosticsResult, summarizeCodingDiagnosticsResult } from './aiChatCodingDiagnostics';
+import { normalizeCodingGitHistoryResult, summarizeCodingGitHistoryResult } from './aiChatCodingGitHistory';
+import { normalizeCodingSearchResult, summarizeCodingSearchResult } from './aiChatCodingSearch';
 import { TaskType } from '../../types/ai';
 import { computeResponseBuffer } from './aiChatTokenInfo';
 
@@ -343,6 +350,48 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             }
             lines.push('\nReview the plan card below before execution.');
             return lines.join('\n');
+        }
+        const patchResult = normalizeCodingPatchResult(r);
+        if (patchResult) {
+            return summarizeCodingPatchResult(patchResult);
+        }
+        const checkpointRestoreResult = normalizeCodingCheckpointRestoreResult(r);
+        if (checkpointRestoreResult) {
+            return summarizeCodingCheckpointRestoreResult(checkpointRestoreResult);
+        }
+        const codingGitResult = normalizeCodingGitResult(_toolName, r);
+        if (codingGitResult) {
+            return summarizeCodingGitResult(_toolName, codingGitResult);
+        }
+        if (_toolName === 'coding_run_checks') {
+            const runCheckResult = normalizeCodingRunCheckResult(r);
+            if (runCheckResult) {
+                return summarizeCodingRunCheckResult(runCheckResult);
+            }
+        }
+        if (_toolName === 'coding_git_log' || _toolName === 'coding_git_show') {
+            const historyResult = normalizeCodingGitHistoryResult(_toolName, r);
+            if (historyResult) {
+                return summarizeCodingGitHistoryResult(_toolName, historyResult);
+            }
+        }
+        if (_toolName === 'coding_verify') {
+            const verifyResult = normalizeCodingVerifyResult(r);
+            if (verifyResult) {
+                return summarizeCodingVerifyResult(verifyResult);
+            }
+        }
+        if (_toolName === 'coding_diagnostics') {
+            const diagnosticsResult = normalizeCodingDiagnosticsResult(r);
+            if (diagnosticsResult) {
+                return summarizeCodingDiagnosticsResult(diagnosticsResult);
+            }
+        }
+        if (_toolName === 'coding_search') {
+            const searchResult = normalizeCodingSearchResult(r);
+            if (searchResult) {
+                return summarizeCodingSearchResult(searchResult);
+            }
         }
         // Edit results
         if (r.replaced !== undefined) {

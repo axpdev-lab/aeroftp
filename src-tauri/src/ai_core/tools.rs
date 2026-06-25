@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, LazyLock};
 
 use crate::ai_core::agent_tools;
+use crate::ai_core::coding_tools;
 use crate::ai_core::correct_tools;
 use crate::ai_core::local_tools;
 use crate::ai_core::remote_tools;
@@ -118,6 +119,9 @@ pub trait ToolCtx: Send + Sync {
     fn approval_grant_id(&self) -> Option<&str> {
         None
     }
+    fn session_id(&self) -> Option<&str> {
+        None
+    }
     fn tauri_app_handle(&self) -> Option<tauri::AppHandle> {
         None
     }
@@ -157,6 +161,12 @@ pub enum ToolError {
 pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
     let local_surfaces = Surfaces::GUI | Surfaces::CLI;
     let remote_surfaces = Surfaces::GUI | Surfaces::CLI | Surfaces::MCP;
+    // Schema enums derived from the curated catalogs so the advertised tool
+    // surface stays in lockstep with what is actually runnable (no duplicate
+    // hand-maintained lists). See coding_checks::check_keys /
+    // coding_diagnostics::diagnostics_sources.
+    let check_enum: Value = crate::coding_checks::check_keys().into();
+    let diagnostics_enum: Value = crate::coding_diagnostics::diagnostics_sources().into();
     vec![
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
         ToolDef {
@@ -451,6 +461,225 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::ReadOnly,
             surfaces: local_surfaces,
+        },
+        ToolDef {
+            name: "coding_checkpoint_create",
+            description: "Snapshot explicit workspace files before coding-agent mutations.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "label": {"type": "string"},
+                    "anchor_message_id": {"type": "string"},
+                    "conversation_anchor": {"type": "string"}
+                },
+                "required": ["workspace_root", "paths"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_checkpoint_restore",
+            description: "Restore files from a workspace checkpoint, optionally as a dry run.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "checkpoint_id": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["checkpoint_id"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_apply_patch",
+            description: "Dry-run or apply a unified multi-file diff inside a workspace root.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "patch": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                    "checkpoint_label": {"type": "string"},
+                    "anchor_message_id": {"type": "string"},
+                    "conversation_anchor": {"type": "string"}
+                },
+                "required": ["workspace_root", "patch"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_status",
+            description: "Inspect git branch and working tree status for a coding workspace.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["workspace_root"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_diff",
+            description: "Inspect unstaged or staged git diff for a coding workspace.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "staged": {"type": "boolean"},
+                    "max_bytes": {"type": "integer"}
+                },
+                "required": ["workspace_root"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_stage",
+            description: "Stage explicit workspace paths in git, optionally as a dry run.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["workspace_root", "paths"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_commit",
+            description: "Create a git commit from the currently staged index, optionally as a dry run.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "message": {"type": "string"},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["workspace_root", "message"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_log",
+            description: "List recent git commits (newest first) for a coding workspace, optionally limited to a path subset.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "max_count": {"type": "integer"}
+                },
+                "required": ["workspace_root"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_show",
+            description: "Show a single git commit's metadata, per-file stats, and capped diff for a coding workspace.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "commit": {"type": "string"},
+                    "max_bytes": {"type": "integer"}
+                },
+                "required": ["workspace_root", "commit"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_run_checks",
+            description: "Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use coding_git_diff to review changes first. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept an optional filter.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "check": {
+                        "type": "string",
+                        "enum": check_enum.clone()
+                    },
+                    "filter": {"type": "string"},
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "check"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_verify",
+            description: "Run an ordered list of curated checks in one pass, stopping at the first failure unless continue_on_failure is set, and return per-check results plus an overall pass/fail. Use after applying patches and before committing. Each check is from the same allowlist as coding_run_checks.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "checks": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": check_enum.clone()
+                        }
+                    },
+                    "continue_on_failure": {"type": "boolean"},
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "checks"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_diagnostics",
+            description: "Run a read-only compiler/typechecker/linter pass (cargo check, tsc, or eslint) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Use to inspect build/type/lint errors without producing binaries. Sources: cargo (cargo check --message-format=json), tsc (tsc --noEmit), eslint (eslint -f json).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "source": {
+                        "type": "string",
+                        "enum": diagnostics_enum.clone()
+                    },
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "source"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_search",
+            description: "Search the coding workspace with ripgrep and return structured matches: a flat list of {file, line, column, line_text, submatches} (file paths are workspace-relative). Respects .gitignore and skips hidden files. Use to locate symbols, identifiers, or strings before editing. The pattern is a regex by default; set fixed_strings=true for a literal search. Optionally restrict to a path subset and/or file globs.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "pattern": {"type": "string"},
+                    "path": {"type": "string"},
+                    "globs": {"type": "array", "items": {"type": "string"}},
+                    "case_insensitive": {"type": "boolean"},
+                    "fixed_strings": {"type": "boolean"},
+                    "max_results": {"type": "integer"},
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "pattern"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
         },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
@@ -1779,6 +2008,19 @@ pub async fn dispatch_tool(
         "local_stat_batch" => local_tools::local_stat_batch(ctx, args).await,
         "local_diff" => local_tools::local_diff(ctx, args).await,
         "local_tree" => local_tools::local_tree(ctx, args).await,
+        "coding_checkpoint_create" => coding_tools::coding_checkpoint_create(ctx, args).await,
+        "coding_checkpoint_restore" => coding_tools::coding_checkpoint_restore(ctx, args).await,
+        "coding_apply_patch" => coding_tools::coding_apply_patch(ctx, args).await,
+        "coding_git_status" => coding_tools::coding_git_status(ctx, args).await,
+        "coding_git_diff" => coding_tools::coding_git_diff(ctx, args).await,
+        "coding_git_stage" => coding_tools::coding_git_stage(ctx, args).await,
+        "coding_git_commit" => coding_tools::coding_git_commit(ctx, args).await,
+        "coding_git_log" => coding_tools::coding_git_log(ctx, args).await,
+        "coding_git_show" => coding_tools::coding_git_show(ctx, args).await,
+        "coding_run_checks" => coding_tools::coding_run_checks(ctx, args).await,
+        "coding_verify" => coding_tools::coding_verify(ctx, args).await,
+        "coding_diagnostics" => coding_tools::coding_diagnostics(ctx, args).await,
+        "coding_search" => coding_tools::coding_search(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,
@@ -1952,6 +2194,47 @@ mod tests {
             danger: DangerLevel::Safe,
             surfaces,
         }
+    }
+
+    fn schema_enum(tool: &str, pointer: &str) -> Vec<String> {
+        let def = find_tool(tool).unwrap_or_else(|| panic!("tool {tool} missing"));
+        def.input_schema
+            .pointer(pointer)
+            .and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("enum {pointer} missing for {tool}"))
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn coding_schema_enums_track_catalogs() {
+        // The advertised tool surface must stay derived from the curated
+        // catalogs; a hand-edited enum that drifts from CHECK_CATALOG /
+        // DIAGNOSTICS_CATALOG would fail here.
+        let checks: Vec<String> = crate::coding_checks::check_keys()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(!checks.is_empty());
+        assert_eq!(
+            schema_enum("coding_run_checks", "/properties/check/enum"),
+            checks
+        );
+        assert_eq!(
+            schema_enum("coding_verify", "/properties/checks/items/enum"),
+            checks
+        );
+
+        let sources: Vec<String> = crate::coding_diagnostics::diagnostics_sources()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(!sources.is_empty());
+        assert_eq!(
+            schema_enum("coding_diagnostics", "/properties/source/enum"),
+            sources
+        );
     }
 
     #[test]

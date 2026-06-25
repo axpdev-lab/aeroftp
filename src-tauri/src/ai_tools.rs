@@ -71,6 +71,19 @@ const ALLOWED_TOOLS: &[&str] = &[
     "local_stat_batch",
     "local_diff",
     "local_tree",
+    "coding_checkpoint_create",
+    "coding_checkpoint_restore",
+    "coding_apply_patch",
+    "coding_git_status",
+    "coding_git_diff",
+    "coding_git_stage",
+    "coding_git_commit",
+    "coding_git_log",
+    "coding_git_show",
+    "coding_run_checks",
+    "coding_verify",
+    "coding_diagnostics",
+    "coding_search",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -138,6 +151,12 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "archive_compress"
                 | "archive_decompress"
                 | "clipboard_write"
+                | "coding_checkpoint_restore"
+                | "coding_apply_patch"
+                | "coding_git_stage"
+                | "coding_git_commit"
+                | "coding_run_checks"
+                | "coding_verify"
                 | "shell_execute"
         ),
     }
@@ -156,7 +175,14 @@ fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
 
     !matches!(
         tool_name,
-        "remote_delete" | "local_delete" | "local_trash" | "archive_decompress"
+        "remote_delete"
+            | "local_delete"
+            | "local_trash"
+            | "archive_decompress"
+            | "coding_checkpoint_restore"
+            | "coding_apply_patch"
+            | "coding_git_stage"
+            | "coding_git_commit"
     )
 }
 
@@ -315,6 +341,10 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "from",
         "to",
         "destination",
+        "workspace_root",
+        "checkpoint_id",
+        "checkpoint_label",
+        "message",
         "local_dir",
         "remote_dir",
         "pattern",
@@ -322,6 +352,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "theme",
         "entry",
         "category",
+        "dry_run",
     ] {
         if let Some(value) = args.get(key) {
             details.push(format!("{}: {}", key, format_approval_value(value)));
@@ -390,6 +421,19 @@ fn human_tool_label(tool_name: &str) -> &str {
         "archive_compress" => "Create Archive",
         "archive_decompress" => "Extract Archive",
         "clipboard_write" => "Write to Clipboard",
+        "coding_checkpoint_create" => "Create Coding Checkpoint",
+        "coding_checkpoint_restore" => "Restore Coding Checkpoint",
+        "coding_apply_patch" => "Apply Coding Patch",
+        "coding_git_status" => "Inspect Git Status",
+        "coding_git_diff" => "Inspect Git Diff",
+        "coding_git_stage" => "Stage Git Paths",
+        "coding_git_commit" => "Create Git Commit",
+        "coding_git_log" => "Inspect Git Log",
+        "coding_git_show" => "Inspect Git Commit",
+        "coding_run_checks" => "Run Project Checks",
+        "coding_verify" => "Run Verification Pass",
+        "coding_diagnostics" => "Inspect Compiler Diagnostics",
+        "coding_search" => "Search Workspace",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -922,6 +966,362 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                     }
                 } else {
                     errors.push(format!("Missing '{}' parameter", key));
+                }
+            }
+        }
+        "coding_checkpoint_create" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            let paths = args.get("paths").and_then(|v| v.as_array());
+            if paths.is_none() || paths.is_some_and(|a| a.is_empty()) {
+                errors.push("'paths' array is missing or empty".to_string());
+            } else if let Some(arr) = paths {
+                if arr.len() > 100 {
+                    errors.push(format!(
+                        "Too many checkpoint paths: {} (max 100)",
+                        arr.len()
+                    ));
+                }
+                for path in arr.iter().filter_map(|v| v.as_str()) {
+                    if let Err(e) = validate_path(path, "paths[]") {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+        "coding_checkpoint_restore" => {
+            if args
+                .get("checkpoint_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .is_none()
+            {
+                errors.push("Missing 'checkpoint_id' parameter".to_string());
+            }
+            if let Some(paths) = args.get("paths").and_then(|v| v.as_array()) {
+                if paths.is_empty() {
+                    errors.push("'paths' array cannot be empty when provided".to_string());
+                }
+                for path in paths.iter().filter_map(|v| v.as_str()) {
+                    if let Err(e) = validate_path(path, "paths[]") {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+        "coding_apply_patch" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+            match args.get("patch").and_then(|v| v.as_str()) {
+                Some(patch) if patch.trim().is_empty() => {
+                    errors.push("'patch' parameter cannot be empty".to_string());
+                }
+                Some(patch) if patch.len() > 512 * 1024 => {
+                    errors.push("Patch exceeds 512 KB limit".to_string());
+                }
+                Some(_) => {}
+                None => errors.push("Missing 'patch' parameter".to_string()),
+            }
+        }
+        "coding_git_status" | "coding_git_diff" | "coding_git_stage" | "coding_git_commit" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            if matches!(
+                tool_name.as_str(),
+                "coding_git_status" | "coding_git_diff" | "coding_git_stage"
+            ) {
+                if let Some(paths) = args.get("paths").and_then(|v| v.as_array()) {
+                    if paths.is_empty() && tool_name == "coding_git_stage" {
+                        errors.push("'paths' array cannot be empty".to_string());
+                    }
+                    if paths.len() > 100 {
+                        errors.push(format!("Too many git paths: {} (max 100)", paths.len()));
+                    }
+                    for path in paths.iter().filter_map(|v| v.as_str()) {
+                        if path.trim().is_empty() {
+                            errors.push("paths[]: path is empty".to_string());
+                        }
+                        if path.len() > 4096 {
+                            errors.push("paths[]: path exceeds 4096 characters".to_string());
+                        }
+                        if path.contains('\0') {
+                            errors.push("paths[]: path contains null bytes".to_string());
+                        }
+                        if path
+                            .replace('\\', "/")
+                            .split('/')
+                            .any(|component| component == "..")
+                        {
+                            errors.push("paths[]: path traversal ('..') not allowed".to_string());
+                        }
+                    }
+                    if paths.iter().any(|v| !v.is_string()) {
+                        errors.push("'paths' must contain only strings".to_string());
+                    }
+                } else if tool_name == "coding_git_stage" {
+                    errors.push("Missing 'paths' parameter".to_string());
+                }
+            }
+
+            if tool_name == "coding_git_commit" {
+                match args.get("message").and_then(|v| v.as_str()) {
+                    Some(message) if message.trim().is_empty() => {
+                        errors.push("'message' parameter cannot be empty".to_string());
+                    }
+                    Some(message) if message.len() > 10_000 => {
+                        errors.push("'message' exceeds 10000 characters".to_string());
+                    }
+                    Some(message) if message.contains('\0') => {
+                        errors.push("'message' contains null bytes".to_string());
+                    }
+                    Some(_) => {}
+                    None => errors.push("Missing 'message' parameter".to_string()),
+                }
+            }
+
+            if tool_name == "coding_git_diff" {
+                if let Some(max_bytes) = args.get("max_bytes").and_then(|v| v.as_u64()) {
+                    if max_bytes > 256 * 1024 {
+                        warnings.push("max_bytes will be capped at 256 KiB".to_string());
+                    }
+                }
+            }
+        }
+        "coding_git_log" | "coding_git_show" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            if tool_name == "coding_git_show" {
+                match args.get("commit").and_then(|v| v.as_str()) {
+                    Some(commit) if commit.trim().is_empty() => {
+                        errors.push("'commit' cannot be empty".to_string());
+                    }
+                    Some(commit) if commit.trim().starts_with('-') => {
+                        errors.push("'commit' cannot start with '-'".to_string());
+                    }
+                    Some(commit) if commit.contains('\0') => {
+                        errors.push("'commit' contains null bytes".to_string());
+                    }
+                    Some(_) => {}
+                    None => errors.push("Missing 'commit' parameter".to_string()),
+                }
+            }
+        }
+        "coding_run_checks" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            let known_checks = crate::coding_checks::check_keys();
+            match args.get("check").and_then(|v| v.as_str()) {
+                Some(check) if known_checks.contains(&check) => {}
+                Some(check) => errors.push(format!(
+                    "Unknown check '{}'. Known checks: {}",
+                    check,
+                    known_checks.join(", ")
+                )),
+                None => errors.push("Missing 'check' parameter".to_string()),
+            }
+
+            if let Some(filter) = args.get("filter").and_then(|v| v.as_str()) {
+                if filter.trim().is_empty() {
+                    errors.push("'filter' cannot be empty when provided".to_string());
+                } else if filter.trim().starts_with('-') {
+                    errors.push("'filter' cannot start with '-'".to_string());
+                } else if filter.len() > 200 {
+                    errors.push("'filter' exceeds 200 characters".to_string());
+                }
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 1800 {
+                    warnings.push("timeout_secs will be capped at 1800s".to_string());
+                }
+            }
+        }
+        "coding_verify" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            let known_checks = crate::coding_checks::check_keys();
+            match args.get("checks").and_then(|v| v.as_array()) {
+                Some(checks) if checks.is_empty() => {
+                    errors.push("'checks' array cannot be empty".to_string());
+                }
+                Some(checks) if checks.len() > 10 => {
+                    errors.push(format!("Too many checks: {} (max 10)", checks.len()));
+                }
+                Some(checks) => {
+                    for check in checks {
+                        match check.as_str() {
+                            Some(name) if known_checks.contains(&name) => {}
+                            Some(name) => errors.push(format!("Unknown check '{}'", name)),
+                            None => errors.push("'checks' must contain only strings".to_string()),
+                        }
+                    }
+                }
+                None => errors.push("Missing 'checks' parameter".to_string()),
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 1800 {
+                    warnings.push("timeout_secs will be capped at 1800s per check".to_string());
+                }
+            }
+        }
+        "coding_diagnostics" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            let known_sources = crate::coding_diagnostics::diagnostics_sources();
+            match args.get("source").and_then(|v| v.as_str()) {
+                Some(source) if known_sources.contains(&source) => {}
+                Some(source) => errors.push(format!(
+                    "Unknown diagnostics source '{}'. Use: {}",
+                    source,
+                    known_sources.join(", ")
+                )),
+                None => errors.push("Missing 'source' parameter".to_string()),
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 1800 {
+                    warnings.push("timeout_secs will be capped at 1800s".to_string());
+                }
+            }
+        }
+        "coding_search" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            match args.get("pattern").and_then(|v| v.as_str()) {
+                Some(pattern) if pattern.trim().is_empty() => {
+                    errors.push("'pattern' cannot be empty".to_string());
+                }
+                Some(pattern) if pattern.contains('\0') => {
+                    errors.push("'pattern' contains null bytes".to_string());
+                }
+                Some(pattern) if pattern.len() > 1000 => {
+                    errors.push("'pattern' exceeds 1000 characters".to_string());
+                }
+                Some(_) => {}
+                None => errors.push("Missing 'pattern' parameter".to_string()),
+            }
+
+            if let Some(globs) = args.get("globs").and_then(|v| v.as_array()) {
+                if globs.len() > 20 {
+                    errors.push(format!("Too many globs: {} (max 20)", globs.len()));
+                }
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 600 {
+                    warnings.push("timeout_secs will be capped at 600s".to_string());
                 }
             }
         }
@@ -1620,6 +2020,7 @@ pub async fn execute_ai_tool(
         creds: crate::ai_core::tauri_impl::VaultCredentialProvider,
         context_local_path,
         approval_grant_id,
+        session_id,
     };
     crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args)
         .await

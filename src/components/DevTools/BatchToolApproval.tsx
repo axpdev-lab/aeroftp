@@ -6,6 +6,10 @@ import { Check, X, ChevronDown, ChevronRight, Loader2, Shield, ShieldAlert, Shie
 import { invoke } from '@tauri-apps/api/core';
 import { AgentToolCall, AITool, getToolByName, getToolByNameFromAll, DangerLevel } from '../../types/tools';
 import { DiffPreview } from './DiffPreview';
+import { CodingPatchReview } from './CodingPatchReview';
+import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
+import { CodingGitApprovalPreview } from './CodingGitReview';
+import { CodingChecksApprovalPreview, CodingVerifyApprovalPreview } from './CodingChecksReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -26,11 +30,13 @@ const dangerConfig: Record<DangerLevel, { accent: string; icon: typeof Shield }>
 };
 
 function getMainArg(toolName: string, args: Record<string, unknown>): string {
-    const path = (args.path || args.local_path || args.remote_path || args.from) as string | undefined;
+    const path = (args.path || args.local_path || args.remote_path || args.from || args.workspace_root) as string | undefined;
     if (path) {
         const parts = path.replace(/\\/g, '/').split('/');
         return parts[parts.length - 1] || path;
     }
+    const checkpointId = args.checkpoint_id as string | undefined;
+    if (checkpointId) return checkpointId.length > 40 ? checkpointId.slice(0, 40) + '...' : checkpointId;
     const command = args.command as string | undefined;
     if (command) return command.length > 40 ? command.slice(0, 40) + '...' : command;
     return '';
@@ -50,6 +56,31 @@ const BatchToolItem: React.FC<{
     const [diffLoading, setDiffLoading] = useState(false);
     const [diffError, setDiffError] = useState<string | null>(null);
     const isEditTool = tc.toolName === 'local_edit' || tc.toolName === 'remote_edit';
+    const isPatchTool = tc.toolName === 'coding_apply_patch';
+    const isCheckpointRestoreTool = tc.toolName === 'coding_checkpoint_restore';
+    const isGitMutationTool = tc.toolName === 'coding_git_stage' || tc.toolName === 'coding_git_commit';
+    const isRunCheckTool = tc.toolName === 'coding_run_checks';
+    const isVerifyTool = tc.toolName === 'coding_verify';
+    const verifyChecks = Array.isArray(tc.args.checks)
+        ? tc.args.checks.filter((c): c is string => typeof c === 'string')
+        : undefined;
+    const verifyContinueOnFailure = tc.args.continue_on_failure === true;
+    const patchText = typeof tc.args.patch === 'string' ? tc.args.patch : undefined;
+    const workspaceRoot = typeof tc.args.workspace_root === 'string' ? tc.args.workspace_root : undefined;
+    const patchDryRun = tc.args.dry_run === true;
+    const restoreCheckpointId = typeof tc.args.checkpoint_id === 'string' ? tc.args.checkpoint_id : undefined;
+    const restorePaths = Array.isArray(tc.args.paths)
+        ? tc.args.paths.filter((path): path is string => typeof path === 'string')
+        : undefined;
+    const restoreDryRun = tc.args.dry_run === true;
+    const gitPaths = Array.isArray(tc.args.paths)
+        ? tc.args.paths.filter((path): path is string => typeof path === 'string')
+        : undefined;
+    const gitDryRun = tc.args.dry_run === true;
+    const gitCommitMessage = typeof tc.args.message === 'string' ? tc.args.message : undefined;
+    const runCheckName = typeof tc.args.check === 'string' ? tc.args.check : undefined;
+    const runCheckFilter = typeof tc.args.filter === 'string' ? tc.args.filter : undefined;
+    const runCheckTimeout = typeof tc.args.timeout_secs === 'number' ? tc.args.timeout_secs : undefined;
 
     const tool = allTools ? getToolByNameFromAll(tc.toolName, allTools) : getToolByName(tc.toolName);
     const dangerLevel = tool?.dangerLevel || 'medium';
@@ -169,6 +200,61 @@ const BatchToolItem: React.FC<{
             {isEditTool && diffError && (
                 <div className="px-3 py-1 text-[11px] text-yellow-400">
                     {t('ai.tool.previewUnavailable') || 'Preview unavailable:'} {diffError}
+                </div>
+            )}
+
+            {isPatchTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingPatchReview
+                        patchText={patchText}
+                        workspaceRoot={workspaceRoot}
+                        dryRun={patchDryRun}
+                        mode="approval"
+                    />
+                </div>
+            )}
+
+            {isCheckpointRestoreTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingCheckpointRestoreReview
+                        checkpointId={restoreCheckpointId}
+                        paths={restorePaths}
+                        dryRun={restoreDryRun}
+                        mode="approval"
+                    />
+                </div>
+            )}
+
+            {isGitMutationTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingGitApprovalPreview
+                        toolName={tc.toolName}
+                        workspaceRoot={workspaceRoot}
+                        paths={gitPaths}
+                        dryRun={gitDryRun}
+                        commitMessage={gitCommitMessage}
+                    />
+                </div>
+            )}
+
+            {isRunCheckTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingChecksApprovalPreview
+                        workspaceRoot={workspaceRoot}
+                        check={runCheckName}
+                        filter={runCheckFilter}
+                        timeoutSecs={runCheckTimeout}
+                    />
+                </div>
+            )}
+
+            {isVerifyTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingVerifyApprovalPreview
+                        workspaceRoot={workspaceRoot}
+                        checks={verifyChecks}
+                        continueOnFailure={verifyContinueOnFailure}
+                    />
                 </div>
             )}
 
