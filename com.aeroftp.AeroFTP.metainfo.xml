@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.0.9" date="2026-06-24">
+      <description>
+        <p>AeroVault Create Redesign, the AeroVault Zip Plaintext Lane and Universal rclone Export. The vault create flow is rebuilt to match the Compressor: a named vault, mode cards with a conditional password, a result receipt with the size composition instead of a jump into the browser, and a single tabbed shell (Home, Recent, Files) shared by the standalone modal and the browser. A new AeroVault Zip plaintext lane adds a fast, honestly-unencrypted .aerozip archive format for cases where compression matters and confidentiality does not, with optional recovery parity and a real measured size estimate. AeroMount gains a read-only mount and a one-shot Save-All for unlocked vaults (Ehud Kirsh's idea #1).</p>
+        <p>On the bridge side, rclone export now reaches Filen and every OAuth cloud provider, not just import. A consistent password-create UX (strength meter, live confirm-match, show/hide) lands on every create-password surface, and the interactive CLI gains dedicated groups and users sections on the same -i engine as profiles. The release closes a pre-release audit of all 86 changes (12 findings) before tagging, and patches the quinn-proto advisory RUSTSEC-2026-0185. 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.0.8" date="2026-06-22">
       <description>
         <p>AeroProgress, Quick Connect Polish and AeroCrypt as a First-Class Profile. A flagship pass on the transfer and encryption progress experience: the floating transfer card is back with a lane per file, live speed, ETA and bytes, a collapsible speed graph and per-theme styling, and the Transfer Queue, vault creation and cross-profile transfers now report real progress instead of a bare spinner or a frozen "Streaming" state. Native delta sync over SFTP fills the card with live wire-byte progress, and large delta uploads that exceeded the protocol frame limit now complete.</p>
