@@ -13,6 +13,10 @@ use crate::ai_core::local_tools::validate_path;
 const MAX_GIT_PATHS: usize = 100;
 const DEFAULT_DIFF_BYTES: usize = 64 * 1024;
 const MAX_DIFF_BYTES: usize = 256 * 1024;
+const DEFAULT_LOG_COUNT: usize = 20;
+const MAX_LOG_COUNT: usize = 200;
+const MAX_GIT_REF_LEN: usize = 200;
+const LOG_FORMAT: &str = "%H%x1f%h%x1f%an%x1f%aI%x1f%s";
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct CodingGitFileStatus {
@@ -88,6 +92,57 @@ pub struct CodingGitCommitResult {
     pub stderr: String,
     pub before: CodingGitStatusResult,
     pub after: Option<CodingGitStatusResult>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CodingGitLogEntry {
+    pub hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub date: String,
+    pub subject: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CodingGitLogResult {
+    pub workspace_root: String,
+    pub repo_root: String,
+    pub paths: Vec<String>,
+    pub max_count: usize,
+    pub commits: Vec<CodingGitLogEntry>,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CodingGitShowResult {
+    pub workspace_root: String,
+    pub repo_root: String,
+    pub commit: String,
+    pub hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub date: String,
+    pub subject: String,
+    pub body: String,
+    pub stats: Vec<CodingGitDiffStat>,
+    pub total_additions: u64,
+    pub total_deletions: u64,
+    pub diff: String,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct CodingGitLogRequest {
+    pub workspace_root: String,
+    pub paths: Option<Vec<String>>,
+    pub max_count: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CodingGitShowRequest {
+    pub workspace_root: String,
+    pub commit: String,
+    pub max_bytes: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -311,6 +366,134 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
         before,
         after: Some(after),
     })
+}
+
+pub fn git_log(req: CodingGitLogRequest) -> Result<CodingGitLogResult, String> {
+    let workspace = validate_git_workspace(&req.workspace_root)?;
+    let paths = normalize_optional_paths(&workspace.workspace_root, req.paths)?;
+    let max_count = req.max_count.unwrap_or(DEFAULT_LOG_COUNT).clamp(1, MAX_LOG_COUNT);
+
+    let mut args = literal_git_args(["log", "--no-color"]);
+    args.push(format!("--max-count={}", max_count + 1).into());
+    args.push(format!("--pretty=format:{LOG_FORMAT}").into());
+    append_pathspecs(&mut args, &paths);
+
+    let stdout = run_git_stdout(&workspace.workspace_root, &args)?;
+    let mut commits = parse_log(&stdout);
+    let truncated = commits.len() > max_count;
+    commits.truncate(max_count);
+
+    Ok(CodingGitLogResult {
+        workspace_root: path_to_string(&workspace.workspace_root),
+        repo_root: path_to_string(&workspace.repo_root),
+        paths,
+        max_count,
+        commits,
+        truncated,
+    })
+}
+
+pub fn git_show(req: CodingGitShowRequest) -> Result<CodingGitShowResult, String> {
+    let workspace = validate_git_workspace(&req.workspace_root)?;
+    let commit = validate_git_ref(&req.commit)?;
+    let max_bytes = req
+        .max_bytes
+        .unwrap_or(DEFAULT_DIFF_BYTES)
+        .min(MAX_DIFF_BYTES);
+
+    // Metadata (suppress diff); fields separated by unit separator.
+    let meta_raw = run_git_stdout(
+        &workspace.workspace_root,
+        &str_git_args([
+            "show",
+            "-s",
+            "--no-color",
+            "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%b",
+            &commit,
+        ]),
+    )?;
+    let fields: Vec<&str> = meta_raw.split('\u{1f}').collect();
+    if fields.len() < 6 {
+        return Err(format!("Unexpected git show metadata for '{commit}'"));
+    }
+
+    let numstat = run_git_stdout(
+        &workspace.workspace_root,
+        &str_git_args(["show", "--numstat", "--no-color", "--format=", &commit]),
+    )?;
+    let stats = parse_numstat(&numstat);
+    let total_additions = stats.iter().map(|stat| stat.additions).sum();
+    let total_deletions = stats.iter().map(|stat| stat.deletions).sum();
+
+    let patch_raw = run_git_stdout(
+        &workspace.workspace_root,
+        &str_git_args([
+            "show",
+            "--patch",
+            "--no-color",
+            "--no-ext-diff",
+            "--format=",
+            &commit,
+        ]),
+    )?;
+    let (diff, truncated) = truncate_chars(patch_raw.trim_start_matches('\n'), max_bytes);
+
+    Ok(CodingGitShowResult {
+        workspace_root: path_to_string(&workspace.workspace_root),
+        repo_root: path_to_string(&workspace.repo_root),
+        commit,
+        hash: fields[0].trim().to_string(),
+        short_hash: fields[1].trim().to_string(),
+        author: fields[2].to_string(),
+        date: fields[3].trim().to_string(),
+        subject: fields[4].to_string(),
+        body: fields[5].trim_end().to_string(),
+        stats,
+        total_additions,
+        total_deletions,
+        diff,
+        truncated,
+    })
+}
+
+fn parse_log(stdout: &str) -> Vec<CodingGitLogEntry> {
+    stdout
+        .lines()
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split('\u{1f}').collect();
+            if fields.len() < 5 {
+                return None;
+            }
+            Some(CodingGitLogEntry {
+                hash: fields[0].to_string(),
+                short_hash: fields[1].to_string(),
+                author: fields[2].to_string(),
+                date: fields[3].to_string(),
+                subject: fields[4].to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Validate a git commit-ish reference. Refs may contain '/', '~', '^', etc.,
+/// but a leading '-' could inject a flag, so reject it along with control
+/// characters, whitespace, and over-length input.
+fn validate_git_ref(reference: &str) -> Result<String, String> {
+    let trimmed = reference.trim();
+    if trimmed.is_empty() {
+        return Err("commit reference cannot be empty".to_string());
+    }
+    if trimmed.len() > MAX_GIT_REF_LEN {
+        return Err(format!("commit reference exceeds {MAX_GIT_REF_LEN} characters"));
+    }
+    if trimmed.starts_with('-') {
+        return Err("commit reference cannot start with '-'".to_string());
+    }
+    if trimmed.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err("commit reference cannot contain whitespace or control characters".to_string());
+    }
+    Ok(trimmed.to_string())
 }
 
 fn validate_git_workspace(root: &str) -> Result<GitWorkspace, String> {
@@ -832,5 +1015,86 @@ UU conflict.txt
         let dir = tempfile::tempdir().expect("tempdir");
         let err = normalize_pathspec(dir.path(), "../outside.txt").expect_err("traversal");
         assert!(err.contains("path traversal"));
+    }
+
+    #[test]
+    fn parse_log_splits_unit_separated_fields() {
+        let stdout = "abc123\u{1f}abc\u{1f}Jane\u{1f}2026-06-25T10:00:00+00:00\u{1f}first\n\
+                      def456\u{1f}def\u{1f}John\u{1f}2026-06-24T10:00:00+00:00\u{1f}second\n";
+        let entries = parse_log(stdout);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].hash, "abc123");
+        assert_eq!(entries[0].subject, "first");
+        assert_eq!(entries[1].author, "John");
+    }
+
+    #[test]
+    fn validate_git_ref_rejects_injection() {
+        assert!(validate_git_ref("--all").is_err());
+        assert!(validate_git_ref("").is_err());
+        assert!(validate_git_ref("a b").is_err());
+        assert!(validate_git_ref(&"x".repeat(MAX_GIT_REF_LEN + 1)).is_err());
+        assert_eq!(validate_git_ref("HEAD~1").unwrap(), "HEAD~1");
+        assert_eq!(validate_git_ref("feature/x").unwrap(), "feature/x");
+    }
+
+    #[test]
+    fn git_log_lists_commits_newest_first() {
+        let dir = init_repo();
+        fs::write(dir.path().join("a.txt"), "a\n").expect("write");
+        run(dir.path(), &["add", "a.txt"]);
+        run(dir.path(), &["commit", "-m", "second"]);
+
+        let result = git_log(CodingGitLogRequest {
+            workspace_root: path_to_string(dir.path()),
+            paths: None,
+            max_count: Some(10),
+        })
+        .expect("log");
+
+        assert_eq!(result.commits.len(), 2);
+        assert_eq!(result.commits[0].subject, "second");
+        assert_eq!(result.commits[1].subject, "initial");
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn git_log_flags_truncation() {
+        let dir = init_repo();
+        fs::write(dir.path().join("a.txt"), "a\n").expect("write");
+        run(dir.path(), &["add", "a.txt"]);
+        run(dir.path(), &["commit", "-m", "second"]);
+
+        let result = git_log(CodingGitLogRequest {
+            workspace_root: path_to_string(dir.path()),
+            paths: None,
+            max_count: Some(1),
+        })
+        .expect("log");
+
+        assert_eq!(result.commits.len(), 1);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn git_show_returns_metadata_and_diff() {
+        let dir = init_repo();
+        fs::write(dir.path().join("a.txt"), "alpha\n").expect("write");
+        run(dir.path(), &["add", "a.txt"]);
+        run(dir.path(), &["commit", "-m", "add alpha"]);
+
+        let result = git_show(CodingGitShowRequest {
+            workspace_root: path_to_string(dir.path()),
+            commit: "HEAD".to_string(),
+            max_bytes: None,
+        })
+        .expect("show");
+
+        assert_eq!(result.subject, "add alpha");
+        assert_eq!(result.author, "Aero Test");
+        assert!(result.diff.contains("alpha"));
+        assert_eq!(result.stats.len(), 1);
+        assert_eq!(result.stats[0].path, "a.txt");
+        assert_eq!(result.total_additions, 1);
     }
 }

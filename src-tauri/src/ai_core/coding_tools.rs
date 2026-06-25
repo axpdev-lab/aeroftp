@@ -14,8 +14,8 @@ use crate::coding_checkpoints::{
 };
 use crate::coding_checks::{run_check, CodingRunCheckRequest};
 use crate::coding_git::{
-    git_commit, git_diff, git_stage, git_status, CodingGitCommitRequest, CodingGitDiffRequest,
-    CodingGitStageRequest,
+    git_commit, git_diff, git_log, git_show, git_stage, git_status, CodingGitCommitRequest,
+    CodingGitDiffRequest, CodingGitLogRequest, CodingGitShowRequest, CodingGitStageRequest,
 };
 use crate::coding_patches::{apply_coding_patch, preview_coding_patch, ApplyCodingPatchRequest};
 
@@ -219,6 +219,38 @@ pub async fn coding_git_commit(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value
         workspace_root,
         message,
         dry_run,
+    })
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_git_log(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let paths = optional_string_array(args, "paths", "coding_git_log")?;
+    let max_count = args
+        .get("max_count")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize);
+    let result = git_log(CodingGitLogRequest {
+        workspace_root,
+        paths,
+        max_count,
+    })
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_git_show(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let commit = get_str(args, "commit")?;
+    let max_bytes = args
+        .get("max_bytes")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize);
+    let result = git_show(CodingGitShowRequest {
+        workspace_root,
+        commit,
+        max_bytes,
     })
     .map_err(ToolError::Exec)?;
     to_value(result).map_err(|e| ToolError::Exec(e.to_string()))

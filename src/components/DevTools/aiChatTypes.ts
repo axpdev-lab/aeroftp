@@ -244,13 +244,56 @@ export interface CodingRunCheckResultData {
     result: CodingRunCheckResult;
 }
 
+export interface CodingGitLogEntry {
+    hash: string;
+    short_hash: string;
+    author: string;
+    date: string;
+    subject: string;
+}
+
+export interface CodingGitLogResult {
+    workspace_root: string;
+    repo_root: string;
+    paths: string[];
+    max_count: number;
+    commits: CodingGitLogEntry[];
+    truncated: boolean;
+}
+
+export interface CodingGitShowResult {
+    workspace_root: string;
+    repo_root: string;
+    commit: string;
+    hash: string;
+    short_hash: string;
+    author: string;
+    date: string;
+    subject: string;
+    body: string;
+    stats: CodingGitDiffStat[];
+    total_additions: number;
+    total_deletions: number;
+    diff: string;
+    truncated: boolean;
+}
+
+export type CodingGitHistoryResult = CodingGitLogResult | CodingGitShowResult;
+
+export interface CodingGitHistoryResultData {
+    kind: 'coding_git_history';
+    toolName: 'coding_git_log' | 'coding_git_show';
+    result: CodingGitHistoryResult;
+}
+
 export type ChatResultData =
     | TransferPlanResultData
     | CodingPlanResultData
     | CodingPatchResultData
     | CodingCheckpointRestoreResultData
     | CodingGitResultData
-    | CodingRunCheckResultData;
+    | CodingRunCheckResultData
+    | CodingGitHistoryResultData;
 
 export interface Message {
     id: string;

@@ -432,6 +432,26 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'high',
     },
     {
+        name: 'coding_git_log',
+        description: 'List recent git commits (newest first) for a coding workspace, optionally limited to a path subset.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'paths', type: 'array', description: 'Optional literal workspace-relative path subset to filter history', required: false },
+            { name: 'max_count', type: 'number', description: 'Max commits to return (default 20, max 200)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'coding_git_show',
+        description: 'Show a single git commit: metadata, per-file stats, and capped diff for a coding workspace.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root inside the git repository', required: true },
+            { name: 'commit', type: 'string', description: 'Commit reference (hash, HEAD, HEAD~1, branch, tag)', required: true },
+            { name: 'max_bytes', type: 'number', description: 'Maximum diff text bytes to return (capped at 256 KiB)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
         name: 'coding_run_checks',
         description: 'Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use after applying patches or before committing. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept a filter.',
         parameters: [

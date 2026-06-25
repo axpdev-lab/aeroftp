@@ -78,6 +78,8 @@ const ALLOWED_TOOLS: &[&str] = &[
     "coding_git_diff",
     "coding_git_stage",
     "coding_git_commit",
+    "coding_git_log",
+    "coding_git_show",
     "coding_run_checks",
     // Clipboard tools
     "clipboard_read",
@@ -422,6 +424,8 @@ fn human_tool_label(tool_name: &str) -> &str {
         "coding_git_diff" => "Inspect Git Diff",
         "coding_git_stage" => "Stage Git Paths",
         "coding_git_commit" => "Create Git Commit",
+        "coding_git_log" => "Inspect Git Log",
+        "coding_git_show" => "Inspect Git Commit",
         "coding_run_checks" => "Run Project Checks",
         "sync_control" => "Sync Control",
         other => other,
@@ -1114,6 +1118,39 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                     if max_bytes > 256 * 1024 {
                         warnings.push("max_bytes will be capped at 256 KiB".to_string());
                     }
+                }
+            }
+        }
+        "coding_git_log" | "coding_git_show" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            if tool_name == "coding_git_show" {
+                match args.get("commit").and_then(|v| v.as_str()) {
+                    Some(commit) if commit.trim().is_empty() => {
+                        errors.push("'commit' cannot be empty".to_string());
+                    }
+                    Some(commit) if commit.trim().starts_with('-') => {
+                        errors.push("'commit' cannot start with '-'".to_string());
+                    }
+                    Some(commit) if commit.contains('\0') => {
+                        errors.push("'commit' contains null bytes".to_string());
+                    }
+                    Some(_) => {}
+                    None => errors.push("Missing 'commit' parameter".to_string()),
                 }
             }
         }

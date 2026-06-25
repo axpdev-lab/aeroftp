@@ -567,6 +567,36 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: Surfaces::GUI,
         },
         ToolDef {
+            name: "coding_git_log",
+            description: "List recent git commits (newest first) for a coding workspace, optionally limited to a path subset.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "max_count": {"type": "integer"}
+                },
+                "required": ["workspace_root"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "coding_git_show",
+            description: "Show a single git commit's metadata, per-file stats, and capped diff for a coding workspace.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "commit": {"type": "string"},
+                    "max_bytes": {"type": "integer"}
+                },
+                "required": ["workspace_root", "commit"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
             name: "coding_run_checks",
             description: "Run a curated project check (build/test/lint/typecheck) from a fixed allowlist inside a coding workspace and capture structured pass/fail output. Use coding_git_diff to review changes first. Known checks: cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build. Only cargo-test and vitest accept an optional filter.",
             input_schema: json!({
@@ -1922,6 +1952,8 @@ pub async fn dispatch_tool(
         "coding_git_diff" => coding_tools::coding_git_diff(ctx, args).await,
         "coding_git_stage" => coding_tools::coding_git_stage(ctx, args).await,
         "coding_git_commit" => coding_tools::coding_git_commit(ctx, args).await,
+        "coding_git_log" => coding_tools::coding_git_log(ctx, args).await,
+        "coding_git_show" => coding_tools::coding_git_show(ctx, args).await,
         "coding_run_checks" => coding_tools::coding_run_checks(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
