@@ -661,6 +661,26 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::ReadOnly,
             surfaces: Surfaces::GUI,
         },
+        ToolDef {
+            name: "coding_search",
+            description: "Search the coding workspace with ripgrep and return structured matches: a flat list of {file, line, column, line_text, submatches} (file paths are workspace-relative). Respects .gitignore and skips hidden files. Use to locate symbols, identifiers, or strings before editing. The pattern is a regex by default; set fixed_strings=true for a literal search. Optionally restrict to a path subset and/or file globs.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "pattern": {"type": "string"},
+                    "path": {"type": "string"},
+                    "globs": {"type": "array", "items": {"type": "string"}},
+                    "case_insensitive": {"type": "boolean"},
+                    "fixed_strings": {"type": "boolean"},
+                    "max_results": {"type": "integer"},
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "pattern"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
             name: "clipboard_read",
@@ -2000,6 +2020,7 @@ pub async fn dispatch_tool(
         "coding_run_checks" => coding_tools::coding_run_checks(ctx, args).await,
         "coding_verify" => coding_tools::coding_verify(ctx, args).await,
         "coding_diagnostics" => coding_tools::coding_diagnostics(ctx, args).await,
+        "coding_search" => coding_tools::coding_search(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,

@@ -483,6 +483,21 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'safe',
     },
+    {
+        name: 'coding_search',
+        description: 'Search the coding workspace with ripgrep and return structured {file, line, column, line_text, submatches} matches (paths are workspace-relative). Respects .gitignore. Use to locate symbols or strings before editing. Pattern is a regex unless fixed_strings=true.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to search in', required: true },
+            { name: 'pattern', type: 'string', description: 'Search pattern (regex by default, literal when fixed_strings=true)', required: true },
+            { name: 'path', type: 'string', description: 'Optional workspace-relative path subset to limit the search', required: false },
+            { name: 'globs', type: 'array', description: 'Optional ripgrep glob filters (e.g. *.rs, !target/*), max 20', required: false },
+            { name: 'case_insensitive', type: 'boolean', description: 'Case-insensitive match (default false)', required: false },
+            { name: 'fixed_strings', type: 'boolean', description: 'Treat the pattern as a literal string instead of a regex (default false)', required: false },
+            { name: 'max_results', type: 'number', description: 'Max matches to return (default 200, max 1000)', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (5-600, default 60)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
 
     // Clipboard
     {

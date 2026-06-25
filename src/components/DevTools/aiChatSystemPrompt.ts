@@ -277,6 +277,7 @@ const CODING_AGENT_CAPABILITIES = [
     'Workspace checkpoint, patch, and git tools are available for coding work: use coding_apply_patch with dry_run=true to validate unified diffs, then apply only after the diff is correct. Real patch apply creates a checkpoint first. Use coding_checkpoint_restore only when the user approves a restore. Use coding_git_status and coding_git_diff for repository review, coding_git_log and coding_git_show to inspect history and a specific commit, coding_git_stage for explicit paths, and coding_git_commit only after staged status/diff review.',
     'Use coding_run_checks to verify changes by running a curated build/test/lint/typecheck from the allowlist (cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build); run the relevant checks after applying patches and before committing. Use coding_verify to run an ordered set of those checks in one pass (stops at the first failure by default).',
     'Use coding_diagnostics (read-only, source cargo or tsc) to get structured {file, line, column, severity, code, message} compiler/type errors with error/warning counts; prefer it over coding_run_checks when you need to locate and fix specific build or type errors quickly.',
+    'Use coding_search (read-only, ripgrep-backed) to locate symbols, identifiers, or strings across the workspace; it returns structured {file, line, column, line_text} matches with workspace-relative paths, respects .gitignore, and supports an optional path subset, file globs, case_insensitive, and fixed_strings (literal) for non-regex searches.',
 ].join('\n');
 
 const CODING_AGENT_TOOL_SELECTION = [
@@ -286,6 +287,7 @@ const CODING_AGENT_TOOL_SELECTION = [
     '- For git status, diff, stage, and commit, prefer coding_git_* tools over shell_execute. Before coding_git_commit, inspect coding_git_status and coding_git_diff with staged=true.',
     '- For build, test, lint, and typecheck, prefer coding_run_checks (curated allowlist, structured pass/fail). Use shell_execute only for commands outside that allowlist and compatible with the current approval mode.',
     '- To locate specific build or type errors, prefer coding_diagnostics (read-only structured {file, line, column, severity, code, message}) over scraping raw coding_run_checks output.',
+    '- To find where a symbol or string is used across the workspace, prefer coding_search (ripgrep-backed structured {file, line, column, line_text}) over local_grep when you want gitignore-aware, capped, structured matches.',
     '- For remote deploy or verification, use saved profiles and remote_* tools. Never ask for passwords, tokens, or API keys.',
     '- server_list_saved returns profile metadata only, not files. To list/read files on a saved server, use remote_list/remote_read/server_exec with the server name.',
     '- Never delete or overwrite user work unless the user explicitly asked and the approval flow allows it.',

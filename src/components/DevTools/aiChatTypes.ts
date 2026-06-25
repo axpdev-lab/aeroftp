@@ -328,6 +328,44 @@ export interface CodingDiagnosticsResultData {
     result: CodingDiagnosticsResult;
 }
 
+export interface CodingSearchSubmatch {
+    start: number;
+    end: number;
+    text: string;
+}
+
+export interface CodingSearchMatch {
+    file: string;
+    line: number;
+    column: number;
+    line_text: string;
+    submatches: CodingSearchSubmatch[];
+}
+
+export interface CodingSearchResult {
+    workspace_root: string;
+    pattern: string;
+    path?: string | null;
+    globs: string[];
+    case_insensitive: boolean;
+    fixed_strings: boolean;
+    program: string;
+    args: string[];
+    exit_code?: number | null;
+    timed_out: boolean;
+    timeout_secs: number;
+    duration_ms: number;
+    total_matches: number;
+    file_count: number;
+    matches: CodingSearchMatch[];
+    truncated: boolean;
+}
+
+export interface CodingSearchResultData {
+    kind: 'coding_search';
+    result: CodingSearchResult;
+}
+
 export type ChatResultData =
     | TransferPlanResultData
     | CodingPlanResultData
@@ -337,7 +375,8 @@ export type ChatResultData =
     | CodingRunCheckResultData
     | CodingGitHistoryResultData
     | CodingVerifyResultData
-    | CodingDiagnosticsResultData;
+    | CodingDiagnosticsResultData
+    | CodingSearchResultData;
 
 export interface Message {
     id: string;

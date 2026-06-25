@@ -29,6 +29,7 @@ export function getToolLabel(
         coding_run_checks: 'Run Checks',
         coding_verify: 'Verify',
         coding_diagnostics: 'Diagnostics',
+        coding_search: 'Search',
     };
     const key = `ai.toolLabels.${toolName}`;
     const translated = t(key);

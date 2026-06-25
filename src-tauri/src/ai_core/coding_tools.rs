@@ -19,6 +19,7 @@ use crate::coding_git::{
     CodingGitDiffRequest, CodingGitLogRequest, CodingGitShowRequest, CodingGitStageRequest,
 };
 use crate::coding_patches::{apply_coding_patch, preview_coding_patch, ApplyCodingPatchRequest};
+use crate::coding_search::{run_search, CodingSearchRequest};
 
 pub async fn coding_checkpoint_create(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let app = ctx.tauri_app_handle().ok_or_else(|| {
@@ -303,6 +304,39 @@ pub async fn coding_diagnostics(_ctx: &dyn ToolCtx, args: &Value) -> Result<Valu
     let result = run_diagnostics(CodingDiagnosticsRequest {
         workspace_root,
         source,
+        timeout_secs,
+    })
+    .await
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_search(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let pattern = get_str(args, "pattern")?;
+    let path = get_str_opt(args, "path");
+    let globs = optional_string_array(args, "globs", "coding_search")?;
+    let case_insensitive = args
+        .get("case_insensitive")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let fixed_strings = args
+        .get("fixed_strings")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let max_results = args
+        .get("max_results")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize);
+    let timeout_secs = args.get("timeout_secs").and_then(|value| value.as_u64());
+    let result = run_search(CodingSearchRequest {
+        workspace_root,
+        pattern,
+        path,
+        globs,
+        case_insensitive,
+        fixed_strings,
+        max_results,
         timeout_secs,
     })
     .await
