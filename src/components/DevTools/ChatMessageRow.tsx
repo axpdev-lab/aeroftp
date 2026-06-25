@@ -20,8 +20,8 @@ import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { getCodingCheckpointRestoreFromResultData } from './aiChatCodingCheckpointRestore';
 import { CodingGitReview } from './CodingGitReview';
 import { getCodingGitFromResultData } from './aiChatCodingGit';
-import { CodingChecksReview } from './CodingChecksReview';
-import { getCodingRunCheckFromResultData } from './aiChatCodingChecks';
+import { CodingChecksReview, CodingVerifyReview } from './CodingChecksReview';
+import { getCodingRunCheckFromResultData, getCodingVerifyFromResultData } from './aiChatCodingChecks';
 import { CodingGitHistoryReview } from './CodingGitHistoryReview';
 import { getCodingGitHistoryFromResultData } from './aiChatCodingGitHistory';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
@@ -80,6 +80,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     const codingGit = getCodingGitFromResultData(message.toolResultData);
     const codingRunCheck = getCodingRunCheckFromResultData(message.toolResultData);
     const codingGitHistory = getCodingGitHistoryFromResultData(message.toolResultData);
+    const codingVerify = getCodingVerifyFromResultData(message.toolResultData);
     const renderedContent = codingPlan ? extractedCodingPlan.content : message.content;
     const isLong = isAssistant && renderedContent.length > 500;
     return (
@@ -160,6 +161,9 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                         )}
                         {codingGitHistory && (
                             <CodingGitHistoryReview data={codingGitHistory} />
+                        )}
+                        {codingVerify && (
+                            <CodingVerifyReview data={codingVerify} />
                         )}
                     </div>
                     {isLong && !isExpanded && (

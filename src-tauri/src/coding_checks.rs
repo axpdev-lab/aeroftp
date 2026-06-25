@@ -146,6 +146,25 @@ pub struct CodingRunCheckRequest {
     pub timeout_secs: Option<u64>,
 }
 
+/// Maximum checks accepted in a single verify pass.
+const MAX_VERIFY_CHECKS: usize = 10;
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CodingVerifyResult {
+    pub workspace_root: String,
+    pub overall_success: bool,
+    pub stopped_early: bool,
+    pub checks: Vec<CodingRunCheckResult>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CodingVerifyRequest {
+    pub workspace_root: String,
+    pub checks: Vec<String>,
+    pub continue_on_failure: bool,
+    pub timeout_secs: Option<u64>,
+}
+
 fn find_preset(key: &str) -> Option<&'static CheckPreset> {
     CHECK_CATALOG.iter().find(|preset| preset.key == key)
 }
@@ -308,6 +327,60 @@ pub async fn run_check(req: CodingRunCheckRequest) -> Result<CodingRunCheckResul
     })
 }
 
+/// Run an ordered list of curated checks. Stops at the first failing check
+/// unless `continue_on_failure` is set. Validates the whole request up front so
+/// no check runs if any check key is unknown.
+pub async fn run_verify(req: CodingVerifyRequest) -> Result<CodingVerifyResult, String> {
+    if req.checks.is_empty() {
+        return Err("verify requires at least one check".to_string());
+    }
+    if req.checks.len() > MAX_VERIFY_CHECKS {
+        return Err(format!(
+            "verify accepts at most {MAX_VERIFY_CHECKS} checks"
+        ));
+    }
+    for check in &req.checks {
+        if find_preset(check).is_none() {
+            let known: Vec<&str> = CHECK_CATALOG.iter().map(|p| p.key).collect();
+            return Err(format!(
+                "Unknown check '{}'. Known checks: {}",
+                check,
+                known.join(", ")
+            ));
+        }
+    }
+
+    let mut checks = Vec::with_capacity(req.checks.len());
+    let mut overall_success = true;
+    let mut stopped_early = false;
+
+    for check in &req.checks {
+        let result = run_check(CodingRunCheckRequest {
+            workspace_root: req.workspace_root.clone(),
+            check: check.clone(),
+            filter: None,
+            timeout_secs: req.timeout_secs,
+        })
+        .await?;
+        let passed = result.success;
+        checks.push(result);
+        if !passed {
+            overall_success = false;
+            if !req.continue_on_failure {
+                stopped_early = true;
+                break;
+            }
+        }
+    }
+
+    Ok(CodingVerifyResult {
+        workspace_root: req.workspace_root,
+        overall_success,
+        stopped_early,
+        checks,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,6 +429,29 @@ mod tests {
         assert!(truncated);
         assert!(s.contains("truncated"));
         assert!(s.ends_with("xxxxxxxxxx"));
+    }
+
+    #[tokio::test]
+    async fn run_verify_rejects_empty_and_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        assert!(run_verify(CodingVerifyRequest {
+            workspace_root: root.clone(),
+            checks: vec![],
+            continue_on_failure: false,
+            timeout_secs: None,
+        })
+        .await
+        .is_err());
+        let err = run_verify(CodingVerifyRequest {
+            workspace_root: root,
+            checks: vec!["nope".to_string()],
+            continue_on_failure: false,
+            timeout_secs: None,
+        })
+        .await
+        .unwrap_err();
+        assert!(err.contains("Unknown check"));
     }
 
     #[tokio::test]

@@ -12,7 +12,7 @@ use crate::coding_checkpoints::{
     create_checkpoint, restore_checkpoint, CreateCodingCheckpointRequest,
     RestoreCodingCheckpointRequest,
 };
-use crate::coding_checks::{run_check, CodingRunCheckRequest};
+use crate::coding_checks::{run_check, run_verify, CodingRunCheckRequest, CodingVerifyRequest};
 use crate::coding_git::{
     git_commit, git_diff, git_log, git_show, git_stage, git_status, CodingGitCommitRequest,
     CodingGitDiffRequest, CodingGitLogRequest, CodingGitShowRequest, CodingGitStageRequest,
@@ -265,6 +265,28 @@ pub async fn coding_run_checks(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value
         workspace_root,
         check,
         filter,
+        timeout_secs,
+    })
+    .await
+    .map_err(ToolError::Exec)?;
+    to_value(result).map_err(|e| ToolError::Exec(e.to_string()))
+}
+
+pub async fn coding_verify(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let workspace_root = get_str(args, "workspace_root")?;
+    let checks = value_as_string_array(args, "checks").map_err(|reason| ToolError::InvalidArgs {
+        tool: "coding_verify".to_string(),
+        reason,
+    })?;
+    let continue_on_failure = args
+        .get("continue_on_failure")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let timeout_secs = args.get("timeout_secs").and_then(|value| value.as_u64());
+    let result = run_verify(CodingVerifyRequest {
+        workspace_root,
+        checks,
+        continue_on_failure,
         timeout_secs,
     })
     .await

@@ -16,7 +16,7 @@ import { type Conversation, cleanupHistory, loadSession } from '../../utils/chat
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData, CodingGitResultData, CodingRunCheckResultData, CodingGitHistoryResultData } from './aiChatTypes';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData, CodingGitResultData, CodingRunCheckResultData, CodingGitHistoryResultData, CodingVerifyResultData } from './aiChatTypes';
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
@@ -37,7 +37,7 @@ import { buildCodingPlanPromptBlock, buildCodingWorkspaceContext, buildSmartCont
 import { normalizeCodingPatchResult } from './aiChatCodingPatch';
 import { normalizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
 import { isCodingGitToolName, normalizeCodingGitResult } from './aiChatCodingGit';
-import { normalizeCodingRunCheckResult } from './aiChatCodingChecks';
+import { normalizeCodingRunCheckResult, normalizeCodingVerifyResult } from './aiChatCodingChecks';
 import { isCodingGitHistoryToolName, normalizeCodingGitHistoryResult } from './aiChatCodingGitHistory';
 import { TokenBudgetIndicator, type TokenBudgetData } from './TokenBudgetIndicator';
 import { BranchSelector } from './ConversationBranch';
@@ -366,6 +366,16 @@ const buildCodingGitHistoryResultData = (
     const historyResult = normalizeCodingGitHistoryResult(toolName, result);
     if (!historyResult) return undefined;
     return { kind: 'coding_git_history', toolName, result: historyResult };
+};
+
+const buildCodingVerifyResultData = (
+    toolName: string,
+    result: unknown,
+): CodingVerifyResultData | undefined => {
+    if (toolName !== 'coding_verify') return undefined;
+    const verifyResult = normalizeCodingVerifyResult(result);
+    if (!verifyResult) return undefined;
+    return { kind: 'coding_verify', result: verifyResult };
 };
 
 const getMutationTargetForTool = (
@@ -1617,7 +1627,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             const codingGitResultData = buildCodingGitResultData(toolCall.toolName, result, executionArgs);
             const codingRunCheckResultData = buildCodingRunCheckResultData(toolCall.toolName, result);
             const codingGitHistoryResultData = buildCodingGitHistoryResultData(toolCall.toolName, result);
-            const codingToolResultData = codingPatchResultData ?? codingCheckpointRestoreResultData ?? codingGitResultData ?? codingRunCheckResultData ?? codingGitHistoryResultData;
+            const codingVerifyResultData = buildCodingVerifyResultData(toolCall.toolName, result);
+            const codingToolResultData = codingPatchResultData ?? codingCheckpointRestoreResultData ?? codingGitResultData ?? codingRunCheckResultData ?? codingGitHistoryResultData ?? codingVerifyResultData;
             const toolResultData = transferPlanData ?? codingToolResultData;
 
             // Check for soft failures (tool returned success: false)
@@ -1704,7 +1715,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     const retryGitResultData = buildCodingGitResultData(toolCall.toolName, retryResult, executionArgs);
                     const retryRunCheckResultData = buildCodingRunCheckResultData(toolCall.toolName, retryResult);
                     const retryGitHistoryResultData = buildCodingGitHistoryResultData(toolCall.toolName, retryResult);
-                    const retryCodingToolResultData = retryPatchResultData ?? retryCheckpointRestoreResultData ?? retryGitResultData ?? retryRunCheckResultData ?? retryGitHistoryResultData;
+                    const retryVerifyResultData = buildCodingVerifyResultData(toolCall.toolName, retryResult);
+                    const retryCodingToolResultData = retryPatchResultData ?? retryCheckpointRestoreResultData ?? retryGitResultData ?? retryRunCheckResultData ?? retryGitHistoryResultData ?? retryVerifyResultData;
                     const retryMsg: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',

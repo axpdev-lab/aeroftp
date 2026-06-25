@@ -5,6 +5,8 @@ import type {
     ChatResultData,
     CodingRunCheckResult,
     CodingRunCheckResultData,
+    CodingVerifyResult,
+    CodingVerifyResultData,
 } from './aiChatTypes';
 
 const CODING_RUN_CHECKS_KIND = 'coding_run_checks';
@@ -83,6 +85,56 @@ export function getCodingRunCheckFromResultData(
 
 export function commandLine(result: CodingRunCheckResult): string {
     return [result.program, ...result.args].join(' ');
+}
+
+export function normalizeCodingVerifyResult(value: unknown): CodingVerifyResult | null {
+    if (!isRecord(value)) return null;
+    if (
+        typeof value.workspace_root !== 'string'
+        || typeof value.overall_success !== 'boolean'
+        || typeof value.stopped_early !== 'boolean'
+        || !Array.isArray(value.checks)
+    ) {
+        return null;
+    }
+    const checks: CodingRunCheckResult[] = [];
+    for (const item of value.checks) {
+        const normalized = normalizeCodingRunCheckResult(item);
+        if (!normalized) return null;
+        checks.push(normalized);
+    }
+    return {
+        workspace_root: value.workspace_root,
+        overall_success: value.overall_success,
+        stopped_early: value.stopped_early,
+        checks,
+    };
+}
+
+export function isCodingVerifyResultData(value: unknown): value is CodingVerifyResultData {
+    if (!isRecord(value) || value.kind !== 'coding_verify') return false;
+    return !!normalizeCodingVerifyResult(value.result);
+}
+
+export function getCodingVerifyFromResultData(
+    value: ChatResultData | undefined,
+): CodingVerifyResultData | null {
+    if (!isCodingVerifyResultData(value)) return null;
+    const result = normalizeCodingVerifyResult(value.result);
+    if (!result) return null;
+    return { kind: 'coding_verify', result };
+}
+
+export function summarizeCodingVerifyResult(result: CodingVerifyResult): string {
+    const passed = result.checks.filter(c => c.success).length;
+    const lines = [
+        `**Verification ${result.overall_success ? 'passed' : 'failed'}**`,
+        `${passed}/${result.checks.length} check(s) passed`,
+    ];
+    if (result.stopped_early) lines.push('Stopped at the first failing check.');
+    lines.push('');
+    lines.push('Review the verification card below.');
+    return lines.join('\n');
 }
 
 export function summarizeCodingRunCheckResult(result: CodingRunCheckResult): string {

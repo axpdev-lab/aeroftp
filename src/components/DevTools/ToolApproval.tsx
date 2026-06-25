@@ -9,7 +9,7 @@ import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { CodingGitApprovalPreview } from './CodingGitReview';
-import { CodingChecksApprovalPreview } from './CodingChecksReview';
+import { CodingChecksApprovalPreview, CodingVerifyApprovalPreview } from './CodingChecksReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -72,6 +72,11 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
     const isCheckpointRestoreTool = toolCall.toolName === 'coding_checkpoint_restore';
     const isGitMutationTool = toolCall.toolName === 'coding_git_stage' || toolCall.toolName === 'coding_git_commit';
     const isRunCheckTool = toolCall.toolName === 'coding_run_checks';
+    const isVerifyTool = toolCall.toolName === 'coding_verify';
+    const verifyChecks = Array.isArray(toolCall.args.checks)
+        ? toolCall.args.checks.filter((c): c is string => typeof c === 'string')
+        : undefined;
+    const verifyContinueOnFailure = toolCall.args.continue_on_failure === true;
     const patchText = typeof toolCall.args.patch === 'string' ? toolCall.args.patch : undefined;
     const workspaceRoot = typeof toolCall.args.workspace_root === 'string' ? toolCall.args.workspace_root : undefined;
     const patchDryRun = toolCall.args.dry_run === true;
@@ -214,6 +219,14 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                         check={runCheckName}
                         filter={runCheckFilter}
                         timeoutSecs={runCheckTimeout}
+                    />
+                )}
+
+                {isVerifyTool && isPending && (
+                    <CodingVerifyApprovalPreview
+                        workspaceRoot={workspaceRoot}
+                        checks={verifyChecks}
+                        continueOnFailure={verifyContinueOnFailure}
                     />
                 )}
 

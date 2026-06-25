@@ -244,6 +244,18 @@ export interface CodingRunCheckResultData {
     result: CodingRunCheckResult;
 }
 
+export interface CodingVerifyResult {
+    workspace_root: string;
+    overall_success: boolean;
+    stopped_early: boolean;
+    checks: CodingRunCheckResult[];
+}
+
+export interface CodingVerifyResultData {
+    kind: 'coding_verify';
+    result: CodingVerifyResult;
+}
+
 export interface CodingGitLogEntry {
     hash: string;
     short_hash: string;
@@ -293,7 +305,8 @@ export type ChatResultData =
     | CodingCheckpointRestoreResultData
     | CodingGitResultData
     | CodingRunCheckResultData
-    | CodingGitHistoryResultData;
+    | CodingGitHistoryResultData
+    | CodingVerifyResultData;
 
 export interface Message {
     id: string;

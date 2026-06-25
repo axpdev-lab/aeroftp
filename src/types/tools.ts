@@ -462,6 +462,17 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'medium',
     },
+    {
+        name: 'coding_verify',
+        description: 'Run an ordered list of curated checks in one pass, stopping at the first failure unless continue_on_failure is set, and return per-check results plus overall pass/fail. Use after applying patches and before committing.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to run the checks in', required: true },
+            { name: 'checks', type: 'array', description: 'Ordered list of allowlisted check keys (max 10)', required: true },
+            { name: 'continue_on_failure', type: 'boolean', description: 'Run all checks even after one fails (default false)', required: false },
+            { name: 'timeout_secs', type: 'number', description: 'Per-check timeout in seconds (5-1800, default 600)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
 
     // Clipboard
     {

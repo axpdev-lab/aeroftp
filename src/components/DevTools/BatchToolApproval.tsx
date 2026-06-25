@@ -9,7 +9,7 @@ import { DiffPreview } from './DiffPreview';
 import { CodingPatchReview } from './CodingPatchReview';
 import { CodingCheckpointRestoreReview } from './CodingCheckpointRestoreReview';
 import { CodingGitApprovalPreview } from './CodingGitReview';
-import { CodingChecksApprovalPreview } from './CodingChecksReview';
+import { CodingChecksApprovalPreview, CodingVerifyApprovalPreview } from './CodingChecksReview';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { useI18n } from '../../i18n';
 import { getToolLabel } from './aiChatToolLabels';
@@ -60,6 +60,11 @@ const BatchToolItem: React.FC<{
     const isCheckpointRestoreTool = tc.toolName === 'coding_checkpoint_restore';
     const isGitMutationTool = tc.toolName === 'coding_git_stage' || tc.toolName === 'coding_git_commit';
     const isRunCheckTool = tc.toolName === 'coding_run_checks';
+    const isVerifyTool = tc.toolName === 'coding_verify';
+    const verifyChecks = Array.isArray(tc.args.checks)
+        ? tc.args.checks.filter((c): c is string => typeof c === 'string')
+        : undefined;
+    const verifyContinueOnFailure = tc.args.continue_on_failure === true;
     const patchText = typeof tc.args.patch === 'string' ? tc.args.patch : undefined;
     const workspaceRoot = typeof tc.args.workspace_root === 'string' ? tc.args.workspace_root : undefined;
     const patchDryRun = tc.args.dry_run === true;
@@ -239,6 +244,16 @@ const BatchToolItem: React.FC<{
                         check={runCheckName}
                         filter={runCheckFilter}
                         timeoutSecs={runCheckTimeout}
+                    />
+                </div>
+            )}
+
+            {isVerifyTool && tc.status === 'pending' && (
+                <div className="px-3 pb-2">
+                    <CodingVerifyApprovalPreview
+                        workspaceRoot={workspaceRoot}
+                        checks={verifyChecks}
+                        continueOnFailure={verifyContinueOnFailure}
                     />
                 </div>
             )}

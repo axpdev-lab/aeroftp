@@ -618,6 +618,31 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
         },
+        ToolDef {
+            name: "coding_verify",
+            description: "Run an ordered list of curated checks in one pass, stopping at the first failure unless continue_on_failure is set, and return per-check results plus an overall pass/fail. Use after applying patches and before committing. Each check is from the same allowlist as coding_run_checks.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "workspace_root": {"type": "string"},
+                    "checks": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "cargo-check", "cargo-build", "cargo-test", "cargo-clippy",
+                                "cargo-fmt-check", "tsc", "vitest", "eslint", "npm-build"
+                            ]
+                        }
+                    },
+                    "continue_on_failure": {"type": "boolean"},
+                    "timeout_secs": {"type": "integer"}
+                },
+                "required": ["workspace_root", "checks"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
         // ─── Area B: system_* (clipboard/shell/archive) (T3 Gate 2) ──────────
         ToolDef {
             name: "clipboard_read",
@@ -1955,6 +1980,7 @@ pub async fn dispatch_tool(
         "coding_git_log" => coding_tools::coding_git_log(ctx, args).await,
         "coding_git_show" => coding_tools::coding_git_show(ctx, args).await,
         "coding_run_checks" => coding_tools::coding_run_checks(ctx, args).await,
+        "coding_verify" => coding_tools::coding_verify(ctx, args).await,
         // ─── Area B: system_* (clipboard/shell/archive) ──────────────────────
         "clipboard_read" => system_tools::clipboard_read(ctx, args).await,
         "clipboard_write" => system_tools::clipboard_write(ctx, args).await,

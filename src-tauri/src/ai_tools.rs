@@ -81,6 +81,7 @@ const ALLOWED_TOOLS: &[&str] = &[
     "coding_git_log",
     "coding_git_show",
     "coding_run_checks",
+    "coding_verify",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -153,6 +154,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "coding_git_stage"
                 | "coding_git_commit"
                 | "coding_run_checks"
+                | "coding_verify"
                 | "shell_execute"
         ),
     }
@@ -427,6 +429,7 @@ fn human_tool_label(tool_name: &str) -> &str {
         "coding_git_log" => "Inspect Git Log",
         "coding_git_show" => "Inspect Git Commit",
         "coding_run_checks" => "Run Project Checks",
+        "coding_verify" => "Run Verification Pass",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -1205,6 +1208,59 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
             if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
                 if timeout > 1800 {
                     warnings.push("timeout_secs will be capped at 1800s".to_string());
+                }
+            }
+        }
+        "coding_verify" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            const KNOWN_CHECKS: &[&str] = &[
+                "cargo-check",
+                "cargo-build",
+                "cargo-test",
+                "cargo-clippy",
+                "cargo-fmt-check",
+                "tsc",
+                "vitest",
+                "eslint",
+                "npm-build",
+            ];
+            match args.get("checks").and_then(|v| v.as_array()) {
+                Some(checks) if checks.is_empty() => {
+                    errors.push("'checks' array cannot be empty".to_string());
+                }
+                Some(checks) if checks.len() > 10 => {
+                    errors.push(format!("Too many checks: {} (max 10)", checks.len()));
+                }
+                Some(checks) => {
+                    for check in checks {
+                        match check.as_str() {
+                            Some(name) if KNOWN_CHECKS.contains(&name) => {}
+                            Some(name) => errors.push(format!("Unknown check '{}'", name)),
+                            None => errors.push("'checks' must contain only strings".to_string()),
+                        }
+                    }
+                }
+                None => errors.push("Missing 'checks' parameter".to_string()),
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 1800 {
+                    warnings.push("timeout_secs will be capped at 1800s per check".to_string());
                 }
             }
         }

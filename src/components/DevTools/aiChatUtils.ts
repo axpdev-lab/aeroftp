@@ -5,7 +5,7 @@ import { Message } from './aiChatTypes';
 import { normalizeCodingPatchResult, summarizeCodingPatchResult } from './aiChatCodingPatch';
 import { normalizeCodingCheckpointRestoreResult, summarizeCodingCheckpointRestoreResult } from './aiChatCodingCheckpointRestore';
 import { normalizeCodingGitResult, summarizeCodingGitResult } from './aiChatCodingGit';
-import { normalizeCodingRunCheckResult, summarizeCodingRunCheckResult } from './aiChatCodingChecks';
+import { normalizeCodingRunCheckResult, summarizeCodingRunCheckResult, normalizeCodingVerifyResult, summarizeCodingVerifyResult } from './aiChatCodingChecks';
 import { normalizeCodingGitHistoryResult, summarizeCodingGitHistoryResult } from './aiChatCodingGitHistory';
 import { TaskType } from '../../types/ai';
 import { computeResponseBuffer } from './aiChatTokenInfo';
@@ -371,6 +371,12 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const historyResult = normalizeCodingGitHistoryResult(_toolName, r);
             if (historyResult) {
                 return summarizeCodingGitHistoryResult(_toolName, historyResult);
+            }
+        }
+        if (_toolName === 'coding_verify') {
+            const verifyResult = normalizeCodingVerifyResult(r);
+            if (verifyResult) {
+                return summarizeCodingVerifyResult(verifyResult);
             }
         }
         // Edit results

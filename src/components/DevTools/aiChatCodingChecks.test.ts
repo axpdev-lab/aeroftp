@@ -5,9 +5,13 @@ import { describe, expect, it } from 'vitest';
 import {
     commandLine,
     getCodingRunCheckFromResultData,
+    getCodingVerifyFromResultData,
     isCodingRunCheckResultData,
+    isCodingVerifyResultData,
     normalizeCodingRunCheckResult,
+    normalizeCodingVerifyResult,
     summarizeCodingRunCheckResult,
+    summarizeCodingVerifyResult,
 } from './aiChatCodingChecks';
 
 const passResult = {
@@ -86,5 +90,26 @@ describe('aiChatCodingChecks', () => {
         expect(isCodingRunCheckResultData(data)).toBe(true);
         expect(isCodingRunCheckResultData({ kind: 'coding_git', result: passResult })).toBe(false);
         expect(getCodingRunCheckFromResultData(data as never)?.result.check).toBe('cargo-test');
+    });
+
+    it('normalizes and summarizes a verify result', () => {
+        const verify = {
+            workspace_root: '/repo',
+            overall_success: false,
+            stopped_early: true,
+            checks: [passResult, failResult],
+        };
+        const result = normalizeCodingVerifyResult(verify);
+        expect(result?.checks).toHaveLength(2);
+        expect(result?.overall_success).toBe(false);
+        expect(result?.stopped_early).toBe(true);
+        expect(summarizeCodingVerifyResult(result!)).toContain('1/2');
+        expect(isCodingVerifyResultData({ kind: 'coding_verify', result: verify })).toBe(true);
+        expect(getCodingVerifyFromResultData({ kind: 'coding_verify', result: verify } as never)?.result.checks).toHaveLength(2);
+    });
+
+    it('rejects a verify result with a malformed check', () => {
+        const bad = { workspace_root: '/repo', overall_success: true, stopped_early: false, checks: [{ success: true }] };
+        expect(normalizeCodingVerifyResult(bad)).toBeNull();
     });
 });

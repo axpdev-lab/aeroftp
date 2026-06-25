@@ -275,7 +275,7 @@ const CODING_AGENT_STYLE = [
 const CODING_AGENT_CAPABILITIES = [
     'You can inspect local and remote files, search workspaces, read project rules, use RAG and memory context, edit local files with the available file tools, run approved shell commands, and use saved AeroFTP profiles for remote verification or deployment tasks without seeing secrets.',
     'Workspace checkpoint, patch, and git tools are available for coding work: use coding_apply_patch with dry_run=true to validate unified diffs, then apply only after the diff is correct. Real patch apply creates a checkpoint first. Use coding_checkpoint_restore only when the user approves a restore. Use coding_git_status and coding_git_diff for repository review, coding_git_log and coding_git_show to inspect history and a specific commit, coding_git_stage for explicit paths, and coding_git_commit only after staged status/diff review.',
-    'Use coding_run_checks to verify changes by running a curated build/test/lint/typecheck from the allowlist (cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build); run the relevant checks after applying patches and before committing.',
+    'Use coding_run_checks to verify changes by running a curated build/test/lint/typecheck from the allowlist (cargo-check, cargo-build, cargo-test, cargo-clippy, cargo-fmt-check, tsc, vitest, eslint, npm-build); run the relevant checks after applying patches and before committing. Use coding_verify to run an ordered set of those checks in one pass (stops at the first failure by default).',
 ].join('\n');
 
 const CODING_AGENT_TOOL_SELECTION = [
