@@ -702,7 +702,6 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v1.6.0 | AeroAgent Pro: native function calling (SEC-002), streaming, provider-agnostic tools, chat history, cost tracking, context awareness, 122 i18n keys | Done |
 | v1.7.0 | Encryption Block: AeroVault v1, archive browser + selective extraction, Cryptomator format 8, CompressDialog, AeroFile mode, preview panel, Type column, 7z password fix | Done |
 | v1.8.0 | Smart Sync (3 intelligent modes), Batch Rename (4 modes), Inline Rename, **AeroVault v2** (AES-256-GCM-SIV + AES-KW + AES-SIV + Argon2id 128MiB + HMAC-SHA512 + ChaCha20 cascade) | Done |
-
 | v1.8.6 | Universal Credential Vault (AES-256-GCM + Argon2id + HKDF-SHA256), smart folder transfers, folder conflict resolution | Done |
 | v1.8.7 | File clipboard (cut/copy/paste), cross-panel paste, Ubuntu/macOS audits | Done |
 | v1.8.8 | Vision/multimodal AI, auto panel refresh, XSS hardening, security audit | Done |

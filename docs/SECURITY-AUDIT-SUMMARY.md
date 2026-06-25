@@ -1,7 +1,7 @@
 # AeroFTP - Independent Security & Quality Audit Reports
 
 > **Classification**: Public
-> **Last Updated**: 2026-06-22
+> **Last Updated**: 2026-06-25
 
 This document contains all public security and quality audit reports for AeroFTP releases.
 
@@ -672,6 +672,13 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Version | Date | Auditors | Grade |
 |---------|------|----------|-------|
+| v4.0.9 | 24 Jun 2026 | Claude Opus 4.8 (4-way parallel sub-agents, Extra High/Max reasoning) | **12 findings (F-01–F-12), all resolved** — pre-release bundle audit of 86 commits (v4.0.8..release) |
+| v4.0.7 | 18 Jun 2026 | Claude Opus 4.8 (1M ctx, multi-agent) + GPT-5.5 Codex — dual-blind + 3-pass adversarial controaudit | **A** (0 open) — 1 High, 1 Medium, 3 Low, 4 Info, 0 Critical; AeroVault crate 0.6.1/0.6.2 + app embedder, all fixed + verified |
+| AeroVault v4 ECC | 12 Jun 2026 | GPT-5.5 Codex — live stress on a real cloud profile | **PASS** — Reed-Solomon gen/verify/repair round-trip, byte-identity + corruption detect/repair |
+| CLI #360 | 5 Jun 2026 | Claude Opus 4.8 (blind) + GPT-5.5 Codex — merged release gate | 3 Medium + Low/Info confirmed; 5 mandatory release-gate (W0) fixes required before grade A |
+| AeroAgent | 4 Jun 2026 | Claude Opus 4.8 (deep audit + skeptic verification pass) | 25 findings, all confirmed and remediated (0 refuted) |
+| AeroVault v3/v4 | 3 Jun 2026 | Two independent reviewers (Claude Opus 4.8, dual-blind) | 3 High + ~10 Medium + Low/Info — unanimous NO-GO, then all fixed (crate 0.4.1/0.4.2 + app); v4 cleared |
+| AeroVault crate | 30 May 2026 | Claude Opus 4.8 (deep review + skeptic verification) | 45 of 47 confirmed (0 Critical, 1 High, 8 Medium, 24 Low, 12 Info), all fixed |
 | v2.9.4/v2.9.5 | 13 Mar 2026 | Claude Opus 4.6 + GPT-5.4 (PIA Round 2, 8-area parallel independent) | **B** pre-rem → **A-** post-rem (103+14 findings, 9 convergent, GPT counter-review) |
 | v2.8.6/v2.8.7 | 6-7 Mar 2026 | Claude Opus 4.6 + GPT-5.4 (PIA, 8-area parallel independent) | **B-** pre-rem (~82 unique findings, 21 cross-engine confirmed) |
 | v2.6.4 | 24 Feb 2026 | 8x Opus 4.6 + GPT-5.3-Codex (DEIA) | **A-** (148 findings, 94 fixed) |
@@ -689,6 +696,8 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 | v2.0.0 | 7 Feb 2026 | Multi-phase review | Pass |
 | v1.9.0 | Feb 2026 | Dual audit | B+ |
 
+> The v4.0.x rounds above run Claude Opus 4.8 with multiple parallel sub-agents alongside GPT-5.5 Codex, both at Extra High / Max reasoning, using dual-blind review with an adversarial counter-audit pass. The v3.0–v4.0.6 release-line audits (several run on the L1 station) are still being consolidated into this table and will be backfilled as records are reconciled.
+
 Evidence packs: `docs/security-evidence/`
 
 ---
@@ -700,7 +709,7 @@ This audit was conducted by AI-powered code review agents with full source acces
 ---
 
 **Document**: AeroFTP Independent Security & Quality Audit Reports
-**Revision**: 5.0
-**Date**: 13 March 2026
+**Revision**: 5.1
+**Date**: 25 June 2026
 **Classification**: Public
 **Repository**: [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)
