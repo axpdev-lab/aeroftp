@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -42,6 +43,11 @@ import {
     reorderServerGroups,
 } from '../../utils/serverGroups';
 import { InputDialog } from '../Dialogs';
+import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
+import { usePeerDriveStates, type PeerDriveState } from '../../hooks/usePeerDriveStates';
+import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialog';
+import { SharedByMePanel } from '../AeroShare/SharedByMePanel';
+import { friendCanConnect, AERO_SHARE_OPEN_EVENT, type AeroShareOpenDetail } from '../../utils/aeroShare';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
@@ -220,6 +226,9 @@ function parseHealthEndpoint(input: string): { url: string; host: string; port?:
 
 function getHealthProbeInput(server: ServerProfile): string | null {
     const proto = server.protocol || 'ftp';
+    // AeroShare friend: no HTTP endpoint to probe (the drive is a local
+    // replica; reachability is the live sync badge, not a health dot).
+    if (proto === 'peer') return null;
     const providerUrl = server.providerId ? getProviderById(server.providerId)?.healthCheckUrl : undefined;
     const protocolUrl = PROVIDER_HEALTH_URLS[proto];
     const endpoint = server.options?.endpoint;
@@ -366,6 +375,21 @@ export function MyServersPanel({
     }, []);
     const { thresholds } = useStorageThresholds();
     const { density, setDensity } = useMyServersDensity();
+    // AeroShare (experimental, default OFF). When off, every friend surface
+    // (cards, Add friend, dialog) is hidden; when on, friend cards get a live
+    // drive-state badge fed by usePeerDriveStates.
+    const aeroShareEnabled = useAeroShareEnabled();
+    const { states: peerStates, refresh: refreshPeerStates } = usePeerDriveStates(aeroShareEnabled);
+    const [aeroShareDialog, setAeroShareDialog] = useState<{ mode: AeroShareMode; prefillAfid?: string; prefillAlias?: string; prefillShareFolder?: string } | null>(null);
+    // Bumped after a handshake so the friend's freshly-saved profile reloads
+    // (the load effect also keys on the parent `lastUpdate`).
+    const [localRefresh, setLocalRefresh] = useState(0);
+    // Bumped after a share is created so the "Shared by me" panel re-pulls.
+    const [sharedRefresh, setSharedRefresh] = useState(0);
+    const peerStateFor = useCallback((server: ServerProfile): PeerDriveState | undefined => {
+        const ns = server.options?.peerNamespace;
+        return ns ? peerStates.get(ns)?.state : undefined;
+    }, [peerStates]);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
@@ -559,7 +583,7 @@ export function MyServersPanel({
             } catch { /* vault not ready / locked, retry on next lastUpdate bump */ }
         })();
         return () => { cancelled = true; };
-    }, [lastUpdate]);
+    }, [lastUpdate, localRefresh]);
 
     useEffect(() => {
         // N4 (#270): gate the cross-user copy/move menu entries on at least
@@ -610,6 +634,37 @@ export function MyServersPanel({
     useEffect(() => {
         localStorage.setItem(VIEW_MODE_KEY, viewMode);
     }, [viewMode]);
+
+    // Safety net: the "peer" (AeroShare) chip is only rendered while the flag
+    // is on. If the user filters by it and then disables AeroShare, the chip
+    // vanishes while the filter stays active -> an empty list with no way back.
+    // Snap the filter to "all" so the grid never gets stuck behind a hidden chip.
+    useEffect(() => {
+        if (!aeroShareEnabled && activeFilter === 'peer') {
+            setActiveFilter('all');
+            localStorage.setItem('aeroftp_myservers_filter', 'all');
+        }
+    }, [aeroShareEnabled, activeFilter]);
+
+    // Global entry-point bridge: the Discover tile, the titlebar +friend icon
+    // and File-menu item all dispatch AERO_SHARE_OPEN_EVENT instead of reaching
+    // into this panel. We hold the only dialog instance (always mounted), so we
+    // listen here. Ignored when the flag is off (the dialog also gates on it).
+    useEffect(() => {
+        if (!aeroShareEnabled) return;
+        const onOpen = (e: Event) => {
+            const d = (e as CustomEvent<AeroShareOpenDetail>).detail;
+            setAeroShareDialog({
+                // A pre-filled share folder implies the share tab.
+                mode: (d?.mode === 'share' || d?.prefillShareFolder) ? 'share' : 'receive',
+                prefillAfid: d?.prefillAfid,
+                prefillAlias: d?.prefillAlias,
+                prefillShareFolder: d?.prefillShareFolder,
+            });
+        };
+        window.addEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
+        return () => window.removeEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
+    }, [aeroShareEnabled]);
 
     const toggleFavorite = useCallback((serverId: string) => {
         setFavorites(prev => {
@@ -815,7 +870,10 @@ export function MyServersPanel({
     }, [crossProfileSelection]);
 
     const filteredServers = useMemo(() => {
-        let result = servers;
+        // AeroShare is experimental and OFF by default: when the flag is off,
+        // friend (protocol "peer") profiles are hidden everywhere, even if a
+        // partition already holds some (D-GUI-2).
+        let result = aeroShareEnabled ? servers : servers.filter(s => s.protocol !== 'peer');
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             result = result.filter((server) => (serverSearchTexts.get(server.id) ?? '').includes(q));
@@ -839,7 +897,7 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts, activeProfileIds]);
+    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts, activeProfileIds, aeroShareEnabled]);
 
     // Per-group count of members that still resolve to an existing server.
     const groupCounts = useMemo(() => {
@@ -943,7 +1001,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0, encrypted: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, peer: 0, favorites: 0, encrypted: 0,
             // Open-session count: a profile-id set, not a protocol predicate.
             active: activeProfileIds?.size ?? 0,
         };
@@ -978,6 +1036,16 @@ export function MyServersPanel({
     // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
     const handleConnect = useCallback(async (server: ServerProfile) => {
         if (connectingId) return;
+
+        // AeroShare friend (design §2 "what happens after you click"): if a
+        // drive is already bound, fall through to the standard credential-based
+        // connect path (peer carries no password; the binding rides in
+        // options.peer*). If nothing is shared yet, open the handshake dialog
+        // instead of attempting a connection.
+        if (server.protocol === 'peer' && !friendCanConnect(server)) {
+            setAeroShareDialog({ mode: 'receive', prefillAfid: server.host, prefillAlias: server.username });
+            return;
+        }
 
         // #128-C: dual-action connect button. When this card already owns an
         // open session (the pulsing "active session" dot), jump to that live
@@ -1451,6 +1519,7 @@ export function MyServersPanel({
             onGroupContextMenu={handleGroupContextMenu}
             onGroupReorder={reorderGroup}
             onNewGroup={() => setGroupDialog({ id: null, name: '' })}
+            aeroShareEnabled={aeroShareEnabled}
         />
         </div>
     ) : null;
@@ -1479,6 +1548,17 @@ export function MyServersPanel({
                 crossProfileSelectionCount={crossProfileSelection.length}
                 listDensity={density}
                 onToggleListDensity={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
+                onAddFriend={aeroShareEnabled ? () => setAeroShareDialog({ mode: 'receive' }) : undefined}
+                aeroShareEnabled={aeroShareEnabled}
+            />
+
+            {/* Only under the AeroShare filter (not "All"): the shared-folder
+                list is part of the AeroShare world, and showing it on every tab
+                is too invasive. */}
+            <SharedByMePanel
+                enabled={aeroShareEnabled && activeFilter === 'peer'}
+                onShareFolder={() => setAeroShareDialog({ mode: 'share' })}
+                refreshKey={sharedRefresh}
             />
 
             {filteredServers.length === 0 ? (
@@ -1492,13 +1572,24 @@ export function MyServersPanel({
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
                                 {t('introHub.noServersHint')}
                             </p>
-                            <button
-                                onClick={onQuickConnect}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors mb-8"
-                            >
-                                <Plus size={18} />
-                                {t('introHub.addFirstServer')}
-                            </button>
+                            <div className="flex items-center gap-2 mb-8">
+                                <button
+                                    onClick={onQuickConnect}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                                >
+                                    <Plus size={18} />
+                                    {t('introHub.addFirstServer')}
+                                </button>
+                                {aeroShareEnabled && (
+                                    <button
+                                        onClick={() => setAeroShareDialog({ mode: 'receive' })}
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                                    >
+                                        <UserPlus size={18} />
+                                        {t('aeroShare.addFriend')}
+                                    </button>
+                                )}
+                            </div>
 
                             {onJumpToCategory && (
                                 <>
@@ -1607,6 +1698,7 @@ export function MyServersPanel({
                                     onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                                     thresholds={thresholds}
                                     hasActiveSession={activeProfileIds?.has(server.id) ?? false}
+                                    peerState={peerStateFor(server)}
                                 />
                             );
                         })}
@@ -1678,6 +1770,7 @@ export function MyServersPanel({
                         thresholds={thresholds}
                         density={density}
                         activeProfileIds={activeProfileIds}
+                        getPeerState={peerStateFor}
                     />
                     {canDrag && dragIdx !== null && (
                         <div
@@ -1771,6 +1864,23 @@ export function MyServersPanel({
                     onAction={() => { deleteGroup(groupDeleteTarget.id); setGroupDeleteTarget(null); }}
                     actionIcon={<Trash2 size={14} />}
                 />
+            )}
+            {/* Portaled to <body>: this panel is kept mounted but display:none
+                when another IntroHub tab is active, and a display:none ancestor
+                hides even a position:fixed child. Entry points (Discover tile,
+                titlebar icon, File menu) fire from other tabs, so the dialog
+                must escape this subtree to actually show. */}
+            {aeroShareEnabled && aeroShareDialog && createPortal(
+                <AeroShareDialog
+                    initialMode={aeroShareDialog.mode}
+                    prefillAfid={aeroShareDialog.prefillAfid}
+                    prefillAlias={aeroShareDialog.prefillAlias}
+                    prefillShareFolder={aeroShareDialog.prefillShareFolder}
+                    onFriendSaved={() => { setLocalRefresh(n => n + 1); refreshPeerStates(); setSharedRefresh(n => n + 1); }}
+                    onConnectFriend={(profile) => { void handleConnect(profile); }}
+                    onClose={() => setAeroShareDialog(null)}
+                />,
+                document.body,
             )}
         </div>
     );

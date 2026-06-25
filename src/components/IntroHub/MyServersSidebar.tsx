@@ -1,13 +1,13 @@
 import * as React from 'react';
 import {
     Search, X, Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
-    HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity,
+    HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity, Share2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import type { ServerGroup } from '../../utils/serverGroups';
-import { visibleQuickFilters, visibleProtocolFilters } from '../../utils/sidebarFilters';
+import { visibleQuickFilters, visibleProtocolFilters, visiblePeerFilter } from '../../utils/sidebarFilters';
 
 const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     all: Server,
@@ -21,6 +21,7 @@ const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     media: Image,
     dev: Code,
     'local-bridge': HardDrive,
+    peer: Share2,
 };
 
 const labelKeyOf = (id: MyServersFilterBy) =>
@@ -43,6 +44,8 @@ interface MyServersSidebarProps {
     onGroupContextMenu: (e: React.MouseEvent, groupId: string) => void;
     onGroupReorder: (groupId: string, targetIndex: number) => void;
     onNewGroup: () => void;
+    /** AeroShare flag: gates the friend (peer) quick chip in the sidebar. */
+    aeroShareEnabled?: boolean;
 }
 
 export function MyServersSidebar({
@@ -62,6 +65,7 @@ export function MyServersSidebar({
     onGroupContextMenu,
     onGroupReorder,
     onNewGroup,
+    aeroShareEnabled = false,
 }: MyServersSidebarProps) {
     const t = useTranslation();
 
@@ -94,7 +98,10 @@ export function MyServersSidebar({
     // stays pinned (the escape hatch); `favorites`/`encrypted` hide at 0. User
     // groups are the owner exception: ALWAYS visible even at 0 members (rendered
     // straight from `groups` below). Mirrors the `profiles -i`/`groups -i` rule.
-    const visibleQuick = visibleQuickFilters(chipCounts);
+    const visibleQuick = [
+        ...visibleQuickFilters(chipCounts),
+        ...visiblePeerFilter(chipCounts, aeroShareEnabled),
+    ];
     const visibleProtocols = visibleProtocolFilters(chipCounts);
 
     const borderSide = side === 'left' ? 'border-r' : 'border-l';

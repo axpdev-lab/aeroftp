@@ -18,6 +18,7 @@ import { MyServersTableHeader } from './MyServersTableHeader';
 import { MyServersTableRow } from './MyServersTableRow';
 import { aggregateByDedupKey } from '../../utils/storageDedup';
 import { formatBytes } from '../../utils/formatters';
+import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 
 type HealthStatus = 'up' | 'slow' | 'down' | 'pending' | 'unknown';
 
@@ -60,6 +61,8 @@ interface MyServersTableProps {
     density: MyServersDensity;
     /** Profile ids that have at least one open session in the tab strip. */
     activeProfileIds?: ReadonlySet<string>;
+    /** AeroShare friend rows: resolve the live drive-state for the badge chip. */
+    getPeerState?: (server: ServerProfile) => PeerDriveState | undefined;
 }
 
 const pctOf = (server: ServerProfile) => {
@@ -137,6 +140,7 @@ export function MyServersTable({
     onSelect,
     cardLayout,
     getHealthStatus,
+    getPeerState,
     onRetryHealth,
     thresholds,
     density,
@@ -314,6 +318,7 @@ export function MyServersTable({
                                 density={density}
                                 resolveAlign={resolveAlign}
                                 hasActiveSession={activeProfileIds?.has(server.id) ?? false}
+                                peerState={getPeerState?.(server)}
                             />
                         );
                     })}

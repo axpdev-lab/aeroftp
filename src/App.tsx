@@ -169,6 +169,9 @@ import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { ToastContainer, useToast } from './components/Toast';
 import { ContextMenu, useContextMenu, ContextMenuItem } from './components/ContextMenu';
+import { useAeroShareEnabled } from './hooks/useAeroShareEnabled';
+import { openAeroShareDialog, openAeroShareSend } from './utils/aeroShare';
+import { AeroShareHub } from './components/AeroShare/AeroShareHub';
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
 import { TwoFactorPromptDialog } from './components/TwoFactorPromptDialog';
@@ -282,7 +285,7 @@ import {
   Download, Upload, Pencil, Trash2, X, ShieldCheck, ShieldQuestion, ShieldAlert, Loader2,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
-  Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
+  Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
   MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2
 } from 'lucide-react';
@@ -1772,6 +1775,8 @@ const App: React.FC = () => {
   }, [theme, isDark, setIconTheme]);
   const toast = useToast();
   const contextMenu = useContextMenu();
+  // AeroShare flag: gates the folder-context "Share a folder" menu item.
+  const aeroShareEnabled = useAeroShareEnabled();
   const humanLog = useHumanizedLog();
   const activityLog = useActivityLog();
 
@@ -5322,6 +5327,13 @@ interface UpdateVerificationInfo {
       github_pem_path: effectiveParams.options?.githubPemPath || null,
       github_token_expires_at: effectiveParams.options?.githubTokenExpiresAt || null,
       github_branch: effectiveParams.options?.githubBranch || null,
+      // AeroShare (protocol "peer"): forward the friend-drive binding so
+      // provider_connect can (re)start the replication sub and browse the
+      // local replica. `server` already carries the friend's AeroFTP-ID.
+      peer_namespace: effectiveParams.options?.peerNamespace || null,
+      peer_ticket: effectiveParams.options?.peerTicket || null,
+      peer_local_folder: effectiveParams.options?.peerLocalFolder || null,
+      peer_role: effectiveParams.options?.peerRole || null,
     };
 
     return { effectiveParams, providerParams };
@@ -12014,6 +12026,23 @@ interface UpdateVerificationInfo {
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
       },
+      // AeroShare: share this local folder peer-to-peer (folder-context entry
+      // point, flag-gated, single folder). Opens the Share dialog prefilled
+      // with the folder, so a friend's AeroFTP-ID + Create-share-link is all
+      // that's left. No active connection required.
+      ...(aeroShareEnabled && file.is_dir && count === 1 ? [{
+        label: t('aeroShare.dialog.shareTab'),
+        icon: <Share2 size={14} />,
+        action: () => openAeroShareDialog({ mode: 'share', prefillShareFolder: file.path }),
+      } as ContextMenuItem] : []),
+      // AeroShare: send THIS file directly to a friend (one-shot, E2EE, no
+      // persistent drive). Files only (single selection); folders use the
+      // "Share via AeroShare" item above. Flag-gated.
+      ...(aeroShareEnabled && !file.is_dir && count === 1 ? [{
+        label: t('aeroShare.send.menu'),
+        icon: <Send size={14} />,
+        action: () => openAeroShareSend({ filePath: file.path }),
+      } as ContextMenuItem] : []),
       // AeroFile dual-panel: send to the opposite local panel. Pass the
       // panel id captured at right-click time (localPanelId param of
       // showLocalContextMenu) so the transfer always reads the SOURCE
@@ -12995,6 +13024,10 @@ interface UpdateVerificationInfo {
         />
 
         <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
+        {/* AeroShare "Send file to user": receive loop + incoming prompt + send
+            dialog + session inbox + its own toasts. Mounted only while the flag
+            is on; unmount stops the receive loop. */}
+        {aeroShareEnabled && <AeroShareHub />}
         <ScanningToast state={scanningState} t={t} />
         <FontSizeIndicator indicator={fontSizeIndicator} />
 

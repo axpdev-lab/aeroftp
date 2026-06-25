@@ -31,6 +31,7 @@ export type MyServersFilterBy =
     | 'media'
     | 'dev'
     | 'local-bridge'
+    | 'peer'
     | 'favorites'
     | 'encrypted'
     | 'active';
@@ -59,10 +60,15 @@ export const FILTER_CHIPS: FilterChip[] = [
     { id: 'ftp', labelKey: 'introHub.filter.ftpSftp', matchFn: (p, pid) => ['ftp', 'ftps', 'sftp'].includes(p) && !isDevService(p, pid) },
     { id: 's3', labelKey: 'introHub.filter.s3', matchFn: (p) => p === 's3' || p === 'azure' },
     { id: 'webdav', labelKey: 'introHub.filter.webdav', matchFn: (p) => p === 'webdav' },
-    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p, pid) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', ...DEV_PROTOCOLS, ...MEDIA_PROTOCOLS].includes(p) && !isDevService(p, pid) && !isMediaService(p) },
+    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p, pid) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', 'peer', ...DEV_PROTOCOLS, ...MEDIA_PROTOCOLS].includes(p) && !isDevService(p, pid) && !isMediaService(p) },
     { id: 'media', labelKey: 'introHub.filter.media', matchFn: (p) => isMediaService(p) },
     { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p, pid) => isDevService(p, pid) },
     { id: 'local-bridge', labelKey: 'introHub.filter.localBridge', matchFn: (_p, pid) => isLocalBridgeProvider(pid) },
+    // AeroShare friends (protocol "peer"). REUSEs the aeroShare.feature label
+    // ("AeroShare") so no new i18n key is needed. Flag-gated: the toolbar only
+    // renders this chip when the AeroShare flag is on (the chip vanishes with
+    // the rest of the friend surfaces when off).
+    { id: 'peer', labelKey: 'aeroShare.feature', matchFn: (p) => p === 'peer' },
     { id: 'favorites', labelKey: 'introHub.filter.favorites', matchFn: () => true }, // Filtered by isFavorite in MyServersPanel
     { id: 'encrypted', labelKey: 'introHub.filter.encrypted', matchFn: () => true }, // Filtered by getServerCryptOverlay in MyServersPanel (matchFn can't see the overlay binding)
     { id: 'active', labelKey: 'connection.activeSessions', matchFn: () => true }, // Filtered by activeProfileIds in MyServersPanel (matchFn can't see the open-session set); reuses the existing translated string

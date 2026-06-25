@@ -459,6 +459,21 @@ pub struct ProviderConnectionParams {
     pub github_token_expires_at: Option<String>,
     /// GitHub: optional branch override
     pub github_branch: Option<String>,
+    /// AeroShare (`protocol="peer"`): the drive's iroh-docs namespace id.
+    /// For a peer connection `server` carries the friend's AeroFTP-ID and
+    /// `username` the friend's display alias.
+    #[serde(default, alias = "peerNamespace")]
+    pub peer_namespace: Option<String>,
+    /// AeroShare: the publisher's DocTicket (dial addresses + namespace).
+    #[serde(default, alias = "peerTicket")]
+    pub peer_ticket: Option<String>,
+    /// AeroShare: absolute LOCAL folder the drive replicates into.
+    #[serde(default, alias = "peerLocalFolder")]
+    pub peer_local_folder: Option<String>,
+    /// AeroShare: my role on the drive (`replicator` default; `publisher`
+    /// arrives with the Phase 2 write direction).
+    #[serde(default, alias = "peerRole")]
+    pub peer_role: Option<String>,
     /// W3.1 (#270.5): frontend-generated token identifying this connection
     /// attempt. When present, `provider_connect` registers a cancellation
     /// token under it so an Esc / "still connecting" Cancel can abort the
@@ -498,6 +513,7 @@ impl ProviderConnectionParams {
             "uploadcare" | "upload_care" => ProviderType::Uploadcare,
             "cloudinary" => ProviderType::Cloudinary,
             "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
+            "peer" | "aeroshare" => ProviderType::Peer,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -629,6 +645,57 @@ impl ProviderConnectionParams {
 
         if provider_type == ProviderType::WebDav && self.anonymous.unwrap_or(false) {
             extra.insert("anonymous".to_string(), "true".to_string());
+        }
+
+        // AeroShare peer drive: `server` carries the friend's AeroFTP-ID;
+        // namespace + ticket + local replica folder arrive in the dedicated
+        // params and ride in `extra` (consumed by `PeerProviderConfig` and the
+        // PeerRuntime sync task).
+        if provider_type == ProviderType::Peer {
+            crate::peer::validate_aeroftp_id(self.server.trim())
+                .map_err(|e| format!("AeroShare: invalid friend AeroFTP-ID: {e}"))?;
+            let namespace = self
+                .peer_namespace
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "AeroShare requires the drive namespace".to_string())?;
+            let ticket = self
+                .peer_ticket
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "AeroShare requires the drive ticket".to_string())?;
+            let local_folder = self
+                .peer_local_folder
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "AeroShare requires the local replica folder".to_string())?;
+            if !std::path::Path::new(local_folder).is_absolute() {
+                return Err("AeroShare replica folder must be an absolute path".to_string());
+            }
+            extra.insert(
+                crate::providers::peer::PEER_EXTRA_NAMESPACE.to_string(),
+                namespace.to_string(),
+            );
+            extra.insert(
+                crate::providers::peer::PEER_EXTRA_TICKET.to_string(),
+                ticket.to_string(),
+            );
+            extra.insert(
+                crate::providers::peer::PEER_EXTRA_LOCAL_FOLDER.to_string(),
+                local_folder.to_string(),
+            );
+            extra.insert(
+                crate::providers::peer::PEER_EXTRA_ROLE.to_string(),
+                self.peer_role
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("replicator")
+                    .to_string(),
+            );
         }
 
         // Add FTP/FTPS-specific options
@@ -904,8 +971,10 @@ pub struct ProviderConnectionInfo {
 /// Connect to a storage provider using the specified protocol
 #[tauri::command]
 pub async fn provider_connect(
+    app: tauri::AppHandle,
     state: State<'_, ProviderState>,
     cancel_registry: State<'_, ConnectionCancelRegistry>,
+    peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
     info!(
@@ -914,6 +983,15 @@ pub async fn provider_connect(
     );
 
     let mut config = params.to_provider_config()?;
+
+    // AeroShare: a peer drive browses a LOCAL replica that the PeerRuntime
+    // keeps converging in the background. Ensure its sync task is up BEFORE
+    // the provider connects, so a first connect creates the replica folder
+    // and starts pulling (the panel can browse the last-synced state even
+    // while the friend is offline).
+    if config.provider_type == ProviderType::Peer {
+        peer_runtime.ensure_sub_for_config(&app, &config).await?;
+    }
 
     // SEC-GH-001: For GitHub App mode, inject the held installation token
     // so the token never crosses the IPC boundary.
@@ -1018,12 +1096,31 @@ pub async fn cancel_connection(
 
 /// Disconnect from the current provider
 #[tauri::command]
-pub async fn provider_disconnect(state: State<'_, ProviderState>) -> Result<(), String> {
+pub async fn provider_disconnect(
+    app: tauri::AppHandle,
+    state: State<'_, ProviderState>,
+    peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+) -> Result<(), String> {
     // Issue #233: wait for any in-flight DAG transfer to drain before
     // mutating the provider slot. Without this, an active download/upload
     // sees the box yanked and surfaces a spurious `NotConnected` instead
     // of completing or failing on its real I/O error.
     drain_in_flight_transfers(&state, Duration::from_secs(30)).await;
+
+    // AeroShare: closing a peer connection tab stands the received drive down
+    // to STANDBY - cancel the replication task (frees CPU/relay and fixes the
+    // orphan-task leak) and mark it idle (dark-blue dot), resumable on the next
+    // connect. Done while the config is still present so we know the namespace.
+    {
+        let config_lock = state.config.lock().await;
+        if let Some(cfg) = config_lock.as_ref() {
+            if cfg.provider_type == ProviderType::Peer {
+                if let Some(ns) = cfg.extra.get(crate::providers::peer::PEER_EXTRA_NAMESPACE) {
+                    peer_runtime.standby(&app, ns).await;
+                }
+            }
+        }
+    }
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -10514,6 +10611,10 @@ mod tests {
             github_pem_path: None,
             github_token_expires_at: None,
             github_branch: None,
+            peer_namespace: None,
+            peer_ticket: None,
+            peer_local_folder: None,
+            peer_role: None,
             connect_token: None,
         }
     }

@@ -3,6 +3,7 @@
 
 import { ServerProfile, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import { maskCredential } from './maskCredential';
+import { shortAfid } from './aeroShare';
 
 const HOSTNAME_PROTOCOLS: ReadonlyArray<ProviderType> = ['ftp', 'ftps', 'sftp', 'webdav'];
 
@@ -52,6 +53,12 @@ export const getServerSubtitle = (
     opts: ServerSubtitleOptions = {},
 ): string => {
     const proto = (server.protocol || 'ftp') as ProviderType;
+    // AeroShare friend: `host` is the friend's AeroFTP-ID. Show the short,
+    // human-scannable form (the alias is already the card title). The AFID is
+    // a public identifier, so masking does not apply.
+    if (proto === 'peer') {
+        return server.host ? shortAfid(server.host) : '';
+    }
     const masked = opts.credentialsMasked && proto !== 'github';
     // Default to true so callers that don't pass the option preserve previous
     // "show identifier" behavior; the toolbar always passes an explicit value.

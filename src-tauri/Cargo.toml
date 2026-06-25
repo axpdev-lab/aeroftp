@@ -39,6 +39,11 @@ path = "src/bin/seed_test_profiles.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# WI-3d: promoted from [dev-dependencies] to a NORMAL dependency so the iroh P2P
+# drive engine ships in the binary (the app calls it via src/peer/). peer-l0
+# stays the iroh isolation boundary; the 5 accepted RUSTSEC advisories now apply
+# to the shipped binary (see docs/security-evidence/IROH-PEER-L0-ADVISORIES-2026-06.md).
+aeroftp-peer-l0 = { path = "peer-l0" }
 filetime = "0.2"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }

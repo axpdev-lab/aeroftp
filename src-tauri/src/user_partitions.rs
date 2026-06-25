@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 
 const DB_FILENAME: &str = "user_partitions.db";
-const SCHEMA_VERSION: &str = "4";
+const SCHEMA_VERSION: &str = "5";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
@@ -327,6 +327,36 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              key             TEXT PRIMARY KEY,
              value           TEXT NOT NULL,
              updated_at      INTEGER NOT NULL
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_identity (
+             user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+             encrypted_blob BLOB NOT NULL,
+             nonce          BLOB NOT NULL,
+             aead_alg       TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             public_id      TEXT NOT NULL,
+             created_at     INTEGER NOT NULL,
+             updated_at     INTEGER NOT NULL
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_contacts (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             contact_id     TEXT NOT NULL,
+             alias          TEXT NOT NULL,
+             added_at       INTEGER NOT NULL,
+             PRIMARY KEY(user_id, contact_id)
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_drives (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             namespace_id   TEXT NOT NULL,
+             role           TEXT NOT NULL,
+             encrypted_blob BLOB NOT NULL,
+             nonce          BLOB NOT NULL,
+             aead_alg       TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             created_at     INTEGER NOT NULL,
+             updated_at     INTEGER NOT NULL,
+             PRIMARY KEY(user_id, namespace_id)
          );",
     )
     .map_err(|e| format!("User partitions schema init: {e}"))
@@ -968,6 +998,37 @@ fn upgrade_v3_to_v4(conn: &mut Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// v4 -> v5 upgrade. The P2P secret-store tables (peer_identity / peer_contacts /
+/// peer_drives) used by AeroShare are additive and already created by
+/// `init_db_schema`'s `CREATE TABLE IF NOT EXISTS` on every open, so this only
+/// stamps the new schema version inside a transaction, mirroring
+/// [`upgrade_v2_to_v3`]. This branch is REQUIRED: without it a v4 database would
+/// keep reporting v4 and the cascade would never settle on `SCHEMA_VERSION`.
+fn upgrade_v4_to_v5(conn: &mut Connection) -> Result<(), String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start v4->v5 upgrade: {e}"))?;
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, SCHEMA_VERSION, now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit v4->v5 upgrade: {e}"))?;
+    Ok(())
+}
+
+/// Run `f` with the unlocked DEK of `user_id`, scoped to that partition without
+/// switching the active session. Thin wrapper over [`with_user_dek`] so the
+/// sibling P2P secret-store facade tests ([`crate::peer_identity`]) can thread a
+/// partition's real DEK. Test-only for now: shipping callers thread the DEK from
+/// the active session exactly like the profile commands do.
+#[cfg(test)]
+pub(crate) fn with_partition_dek<R>(
+    conn: &Connection,
+    root_key: &SecretKey,
+    user_id: i64,
+    f: impl FnOnce(&SecretKey) -> Result<R, String>,
+) -> Result<R, String> {
+    with_user_dek(conn, root_key, user_id, |_, dek| f(dek))
+}
+
 fn already_migrated_report() -> MigrationReport {
     MigrationReport {
         schema_version: SCHEMA_VERSION.to_string(),
@@ -984,7 +1045,7 @@ fn already_migrated_report() -> MigrationReport {
 /// legacy-payload migration is required; `Ok(false)` when the database predates
 /// the user-partitions schema (version `None`/`"1"`) and the caller must run
 /// [`migrate_legacy_payloads`]. The cascade is written sequentially (not
-/// mutually exclusive) so a v2 database visits v3 then v4 in a single startup.
+/// mutually exclusive) so a v2 database visits v3, v4, then v5 in a single startup.
 fn apply_pending_upgrades(conn: &mut Connection) -> Result<bool, String> {
     if matches!(
         current_schema_version(conn)?.as_deref(),
@@ -997,6 +1058,9 @@ fn apply_pending_upgrades(conn: &mut Connection) -> Result<bool, String> {
     }
     if current_schema_version(conn)?.as_deref() == Some("3") {
         upgrade_v3_to_v4(conn)?;
+    }
+    if current_schema_version(conn)?.as_deref() == Some("4") {
+        upgrade_v4_to_v5(conn)?;
         return Ok(true);
     }
     Ok(false)
@@ -3702,6 +3766,286 @@ pub fn cli_find_user_by_name(store: &CredentialStore, name: &str) -> Result<User
         .ok_or_else(|| format!("USER_NOT_FOUND: {}", name))
 }
 
+// ============ WI-4d: CLI bridges for the P2P (peer) secret store ============
+// Thin wrappers around the WI-4b `peer_identity` vault facade, following the same template as the
+// `cli_*` server-profile bridges: open the partition db, derive the root wrapping key, and (for
+// private material) run the facade call inside `with_partition_dek` so the per-user DEK is threaded
+// and zeroized. Public material (the AeroFTP-ID, contacts, drive namespaces+roles) needs no DEK. These
+// stay opaque-bytes in/out — the peer-l0 crypto lives in `crate::peer`, the CLI handler orchestrates.
+
+/// Store (or replace) the active user's P2P identity. Refuses to clobber an existing identity unless
+/// `force` (re-keying is the explicit WI-4e path). `secret_bytes`/`public_id` are produced by
+/// `crate::peer::generate_identity`.
+pub fn cli_peer_identity_store(
+    store: &CredentialStore,
+    user_id: i64,
+    secret_bytes: &[u8],
+    public_id: &str,
+    force: bool,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    if !force && crate::peer_identity::identity_public_id(&conn, user_id)?.is_some() {
+        return Err("PEER_IDENTITY_EXISTS".to_string());
+    }
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::store_identity(&conn, user_id, dek, secret_bytes, public_id)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// The active user's public AeroFTP-ID, or `None` if no identity exists. Public: no DEK.
+pub fn cli_peer_identity_show(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Option<String>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::identity_public_id(&conn, user_id)
+}
+
+/// Load + decrypt the active user's 64-byte identity secret (wiped on drop), or `None` if unset.
+pub fn cli_peer_identity_load(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Option<zeroize::Zeroizing<Vec<u8>>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::load_identity(&conn, user_id, dek)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// Add (or rename) a contact. Public material: no DEK.
+pub fn cli_peer_contact_add(
+    store: &CredentialStore,
+    user_id: i64,
+    contact_id: &str,
+    alias: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::add_contact(&conn, user_id, contact_id, alias)
+}
+
+/// List the active user's contacts as `(contact_id, alias)`. Public: no DEK.
+pub fn cli_peer_contact_list(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Vec<(String, String)>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::list_contacts(&conn, user_id)
+}
+
+/// Remove a contact (no-op if absent). Public: no DEK.
+pub fn cli_peer_contact_remove(
+    store: &CredentialStore,
+    user_id: i64,
+    contact_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::remove_contact(&conn, user_id, contact_id)
+}
+
+/// Store (or replace) the per-drive content key for `namespace_id` under `role`
+/// (`publisher`/`replicator`). Private blob -> needs the DEK.
+pub fn cli_peer_drive_store(
+    store: &CredentialStore,
+    user_id: i64,
+    namespace_id: &str,
+    role: &str,
+    content_key: &[u8],
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::store_drive(&conn, user_id, dek, namespace_id, role, content_key)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// Load + decrypt the per-drive content key for `namespace_id` (wiped on drop), or `None`.
+pub fn cli_peer_drive_load(
+    store: &CredentialStore,
+    user_id: i64,
+    namespace_id: &str,
+) -> Result<Option<zeroize::Zeroizing<Vec<u8>>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::load_drive(&conn, user_id, dek, namespace_id)
+    });
+    root_key.zeroize();
+    result
+}
+
+/// A per-drive content key resolved from the ACTIVE user's partition, paired
+/// with that user's id so callers can scope per-user state without a second
+/// active-user lookup. The key is wiped on drop.
+pub type ActiveUserDriveKey = (i64, zeroize::Zeroizing<Vec<u8>>);
+
+/// GUI sibling of [`cli_peer_drive_load`] for the AeroShare runtime: load +
+/// decrypt the per-drive content key for `namespace_id` from the ACTIVE
+/// user's partition in the app vault (AppHandle-scoped DB). `None` when no
+/// key for the namespace was imported into this partition.
+pub fn gui_peer_drive_load(
+    app: &AppHandle,
+    namespace_id: &str,
+) -> Result<Option<ActiveUserDriveKey>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::load_drive(&conn, user.id, dek, namespace_id)
+    });
+    root_key.zeroize();
+    result.map(|opt| opt.map(|key| (user.id, key)))
+}
+
+// ============ AeroShare P1 task 4: GUI bridges for the peer secret store ============
+// AppHandle-scoped siblings of the `cli_peer_*` bridges above, for the Tauri commands in
+// `crate::peer_commands`. Same custody rules: private material runs inside `with_user_dek`
+// (DEK threaded + zeroized), public material (AFIDs, aliases, namespaces, roles) needs no DEK.
+// All operate on the ACTIVE user partition.
+
+/// GUI: the active user's AeroFTP-ID. With `auto_create`, mints + custodies a
+/// fresh identity when none exists (the receiver-side "show my AFID" flow and
+/// the first share both need this). Returns `(user_id, afid, created)`;
+/// `None` only when no identity exists AND `auto_create` is false.
+pub fn gui_peer_identity_get_or_create(
+    app: &AppHandle,
+    auto_create: bool,
+) -> Result<Option<(i64, String, bool)>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    if let Some(afid) = crate::peer_identity::identity_public_id(&conn, user.id)? {
+        return Ok(Some((user.id, afid, false)));
+    }
+    if !auto_create {
+        return Ok(None);
+    }
+    let (secret, afid) = crate::peer::generate_identity();
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::store_identity(&conn, user.id, dek, &secret, &afid)
+    });
+    root_key.zeroize();
+    result?;
+    Ok(Some((user.id, afid, true)))
+}
+
+/// GUI: load + decrypt the active user's 64-byte identity secret (wiped on
+/// drop), or `None` when the partition has no identity yet.
+pub fn gui_peer_identity_load_secret(
+    app: &AppHandle,
+) -> Result<Option<ActiveUserDriveKey>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::load_identity(&conn, user.id, dek)
+    });
+    root_key.zeroize();
+    result.map(|opt| opt.map(|key| (user.id, key)))
+}
+
+/// GUI: add (or rename) a contact in the active user's partition. Public: no DEK.
+pub fn gui_peer_contact_add(app: &AppHandle, contact_id: &str, alias: &str) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::add_contact(&conn, user.id, contact_id, alias)
+}
+
+/// GUI: the active user's contacts as `(contact_id, alias)`. Public: no DEK.
+pub fn gui_peer_contact_list(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::list_contacts(&conn, user.id)
+}
+
+/// GUI: remove a contact from the active user's partition. Public: no DEK.
+/// No-op if the contact is absent.
+pub fn gui_peer_contact_remove(app: &AppHandle, contact_id: &str) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::remove_contact(&conn, user.id, contact_id)
+}
+
+/// GUI: store (or replace) the per-drive content key for `namespace_id` under
+/// `role` in the active user's partition. Returns the active `user_id`.
+pub fn gui_peer_drive_store(
+    app: &AppHandle,
+    namespace_id: &str,
+    role: &str,
+    content_key: &[u8],
+) -> Result<i64, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::store_drive(&conn, user.id, dek, namespace_id, role, content_key)
+    });
+    root_key.zeroize();
+    result?;
+    Ok(user.id)
+}
+
+/// GUI: the active user's drives as `(namespace_id, role)`. Public: no DEK.
+pub fn gui_peer_drive_list(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::list_drives(&conn, user.id)
+}
+
+/// List the active user's drives as `(namespace_id, role)`. Public: no DEK.
+pub fn cli_peer_drive_list(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Vec<(String, String)>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::list_drives(&conn, user_id)
+}
+
+/// Forget a drive (no-op if absent). Public: no DEK.
+pub fn cli_peer_drive_forget(
+    store: &CredentialStore,
+    user_id: i64,
+    namespace_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    crate::peer_identity::delete_drive(&conn, user_id, namespace_id)
+}
+
 #[tauri::command]
 pub async fn user_partitions_init(app: AppHandle) -> Result<MigrationReport, String> {
     init_or_migrate(&app)
@@ -6085,10 +6429,11 @@ mod tests {
     }
 
     #[test]
-    fn apply_pending_upgrades_chains_v2_to_v4() {
+    fn apply_pending_upgrades_chains_v2_to_v5() {
         let _guard = test_lock();
-        // A v2 database (no is_admin, no user_credentials) must reach v4 in a
-        // single startup: v2 -> v3 -> v4.
+        // A v2 database (no is_admin, no user_credentials) must reach the current
+        // schema in a single startup: v2 -> v3 -> v4 -> v5 (v5 = AeroShare peer
+        // secret-store tables, version-stamp only).
         let mut conn = Connection::open_in_memory().expect("memory db");
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
@@ -6126,7 +6471,7 @@ mod tests {
         assert!(current, "v2 must chain to current schema");
         assert_eq!(
             current_schema_version(&conn).expect("version").as_deref(),
-            Some("4")
+            Some(SCHEMA_VERSION)
         );
 
         // Both intermediate effects landed: is_admin seed (v3) and the
@@ -7109,5 +7454,84 @@ mod tests {
         if let Some(v) = prev_pp {
             std::env::set_var("AEROFTP_USER_PASSPHRASE", v);
         }
+    }
+
+    #[test]
+    fn upgrade_v4_to_v5_stamps_version_and_preserves_users() {
+        // Regression guard for the AeroShare v4->v5 branch: a stored-v4 database
+        // (which already has users) must upgrade to v5 by ONLY stamping the version.
+        // The P2P secret-store tables are additive (created by init_db_schema on
+        // open), so the upgrade must NOT re-insert a default user or touch existing
+        // partitions (which a fall-through to migrate_legacy_payloads would cause).
+        let _guard = test_lock();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name              TEXT NOT NULL,
+                 name_canonical    TEXT NOT NULL UNIQUE,
+                 avatar_emoji      TEXT,
+                 avatar_color      TEXT,
+                 has_passphrase    INTEGER NOT NULL DEFAULT 0,
+                 kdf_salt          BLOB,
+                 kdf_params        TEXT,
+                 wrapped_dek       BLOB NOT NULL,
+                 dek_verifier      BLOB NOT NULL,
+                 sort_order        INTEGER NOT NULL DEFAULT 0,
+                 created_at        INTEGER NOT NULL,
+                 updated_at        INTEGER NOT NULL,
+                 last_unlocked_at  INTEGER,
+                 is_admin          INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE global_state (
+                 key             TEXT PRIMARY KEY,
+                 value           TEXT NOT NULL,
+                 updated_at      INTEGER NOT NULL
+             );",
+        )
+        .expect("v4 schema");
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, sort_order, created_at, updated_at, is_admin)
+             VALUES ('default', 'default', X'00', X'00', 0, ?1, ?1, 1)",
+            params![now],
+        )
+        .expect("seed default");
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, sort_order, created_at, updated_at, is_admin)
+             VALUES ('alice', 'alice', X'00', X'00', 1, ?1, ?1, 0)",
+            params![now],
+        )
+        .expect("seed alice");
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '4', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v4");
+
+        let users_before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("count before");
+        assert_eq!(users_before, 2);
+
+        upgrade_v4_to_v5(&mut conn).expect("upgrade v4->v5");
+
+        let version = current_schema_version(&conn).expect("version");
+        assert_eq!(version.as_deref(), Some(SCHEMA_VERSION));
+        let users_after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("count after");
+        assert_eq!(
+            users_after, 2,
+            "v4->v5 must preserve users (no default re-insert)"
+        );
+
+        // Idempotent: rerunning must not crash nor change the user set.
+        upgrade_v4_to_v5(&mut conn).expect("idempotent rerun");
+        let users_final: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("count final");
+        assert_eq!(users_final, 2);
     }
 }
