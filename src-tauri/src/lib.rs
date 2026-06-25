@@ -46,6 +46,7 @@ mod cloud_service;
 mod coding_checkpoints;
 mod coding_checks;
 mod coding_context;
+mod coding_diagnostics;
 mod coding_git;
 mod coding_patches;
 mod coding_rules;

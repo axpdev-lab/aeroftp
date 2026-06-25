@@ -28,6 +28,7 @@ export function getToolLabel(
         coding_git_show: 'Git Show',
         coding_run_checks: 'Run Checks',
         coding_verify: 'Verify',
+        coding_diagnostics: 'Diagnostics',
     };
     const key = `ai.toolLabels.${toolName}`;
     const translated = t(key);

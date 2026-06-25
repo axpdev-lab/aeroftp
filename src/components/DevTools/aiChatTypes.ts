@@ -298,6 +298,36 @@ export interface CodingGitHistoryResultData {
     result: CodingGitHistoryResult;
 }
 
+export interface CodingDiagnostic {
+    file?: string | null;
+    line?: number | null;
+    column?: number | null;
+    severity: string;
+    code?: string | null;
+    message: string;
+}
+
+export interface CodingDiagnosticsResult {
+    workspace_root: string;
+    source: string;
+    program: string;
+    args: string[];
+    exit_code?: number | null;
+    timed_out: boolean;
+    timeout_secs: number;
+    duration_ms: number;
+    success: boolean;
+    error_count: number;
+    warning_count: number;
+    diagnostics: CodingDiagnostic[];
+    truncated: boolean;
+}
+
+export interface CodingDiagnosticsResultData {
+    kind: 'coding_diagnostics';
+    result: CodingDiagnosticsResult;
+}
+
 export type ChatResultData =
     | TransferPlanResultData
     | CodingPlanResultData
@@ -306,7 +336,8 @@ export type ChatResultData =
     | CodingGitResultData
     | CodingRunCheckResultData
     | CodingGitHistoryResultData
-    | CodingVerifyResultData;
+    | CodingVerifyResultData
+    | CodingDiagnosticsResultData;
 
 export interface Message {
     id: string;

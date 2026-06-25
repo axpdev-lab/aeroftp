@@ -473,6 +473,16 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'medium',
     },
+    {
+        name: 'coding_diagnostics',
+        description: 'Run a read-only compiler/typechecker pass (cargo check or tsc) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Inspect build/type errors without producing binaries.',
+        parameters: [
+            { name: 'workspace_root', type: 'string', description: 'Workspace root to inspect', required: true },
+            { name: 'source', type: 'string', description: 'Diagnostics source: cargo (cargo check) or tsc (tsc --noEmit)', required: true },
+            { name: 'timeout_secs', type: 'number', description: 'Timeout in seconds (5-1800, default 600)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
 
     // Clipboard
     {

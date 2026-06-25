@@ -178,9 +178,7 @@ fn validate_filter(filter: &str) -> Result<(), String> {
         return Err("filter cannot be empty when provided".to_string());
     }
     if trimmed.len() > MAX_FILTER_LEN {
-        return Err(format!(
-            "filter exceeds {MAX_FILTER_LEN} characters"
-        ));
+        return Err(format!("filter exceeds {MAX_FILTER_LEN} characters"));
     }
     if trimmed.starts_with('-') {
         return Err("filter cannot start with '-' (would inject a flag)".to_string());
@@ -196,10 +194,7 @@ fn build_argv(preset: &CheckPreset, filter: Option<&str>) -> Result<Vec<String>,
     let mut argv: Vec<String> = preset.args.iter().map(|a| a.to_string()).collect();
     if let Some(filter) = filter {
         if !preset.supports_filter {
-            return Err(format!(
-                "Check '{}' does not accept a filter",
-                preset.key
-            ));
+            return Err(format!("Check '{}' does not accept a filter", preset.key));
         }
         validate_filter(filter)?;
         argv.push(filter.trim().to_string());
@@ -221,8 +216,9 @@ fn bound_tail(bytes: &[u8], max: usize) -> (String, bool) {
 
 /// Spawn `program` with `args` in `workspace`, capturing separated
 /// stdout/stderr with a timeout. Factored out so tests can exercise the real
-/// spawn/capture path with a ubiquitous program.
-async fn spawn_capture(
+/// spawn/capture path with a ubiquitous program, and reused by
+/// `coding_diagnostics` which needs the raw (uncapped) output to parse.
+pub(crate) async fn spawn_capture(
     workspace: &std::path::Path,
     program: &str,
     args: &[String],
@@ -247,12 +243,7 @@ async fn spawn_capture(
         .map_err(|e| format!("Failed to spawn '{program}': {e}"))?;
 
     match tokio::time::timeout(timeout, child.wait_with_output()).await {
-        Ok(Ok(output)) => Ok((
-            output.status.code(),
-            output.stdout,
-            output.stderr,
-            false,
-        )),
+        Ok(Ok(output)) => Ok((output.status.code(), output.stdout, output.stderr, false)),
         Ok(Err(e)) => Err(format!("Process error running '{program}': {e}")),
         Err(_) => Ok((None, Vec::new(), Vec::new(), true)),
     }
@@ -298,10 +289,7 @@ pub async fn run_check(req: CodingRunCheckRequest) -> Result<CodingRunCheckResul
 
     let (stdout, stdout_truncated) = bound_tail(&stdout_raw, MAX_CHECK_OUTPUT_BYTES);
     let (stderr, stderr_truncated) = if timed_out {
-        (
-            format!("Check timed out after {timeout_secs}s"),
-            false,
-        )
+        (format!("Check timed out after {timeout_secs}s"), false)
     } else {
         bound_tail(&stderr_raw, MAX_CHECK_OUTPUT_BYTES)
     };
@@ -335,9 +323,7 @@ pub async fn run_verify(req: CodingVerifyRequest) -> Result<CodingVerifyResult, 
         return Err("verify requires at least one check".to_string());
     }
     if req.checks.len() > MAX_VERIFY_CHECKS {
-        return Err(format!(
-            "verify accepts at most {MAX_VERIFY_CHECKS} checks"
-        ));
+        return Err(format!("verify accepts at most {MAX_VERIFY_CHECKS} checks"));
     }
     for check in &req.checks {
         if find_preset(check).is_none() {

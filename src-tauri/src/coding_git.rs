@@ -371,7 +371,10 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
 pub fn git_log(req: CodingGitLogRequest) -> Result<CodingGitLogResult, String> {
     let workspace = validate_git_workspace(&req.workspace_root)?;
     let paths = normalize_optional_paths(&workspace.workspace_root, req.paths)?;
-    let max_count = req.max_count.unwrap_or(DEFAULT_LOG_COUNT).clamp(1, MAX_LOG_COUNT);
+    let max_count = req
+        .max_count
+        .unwrap_or(DEFAULT_LOG_COUNT)
+        .clamp(1, MAX_LOG_COUNT);
 
     let mut args = literal_git_args(["log", "--no-color"]);
     args.push(format!("--max-count={}", max_count + 1).into());
@@ -485,7 +488,9 @@ fn validate_git_ref(reference: &str) -> Result<String, String> {
         return Err("commit reference cannot be empty".to_string());
     }
     if trimmed.len() > MAX_GIT_REF_LEN {
-        return Err(format!("commit reference exceeds {MAX_GIT_REF_LEN} characters"));
+        return Err(format!(
+            "commit reference exceeds {MAX_GIT_REF_LEN} characters"
+        ));
     }
     if trimmed.starts_with('-') {
         return Err("commit reference cannot start with '-'".to_string());
@@ -979,7 +984,7 @@ UU conflict.txt
         })
         .expect("stage");
         assert!(stage.staged);
-        assert!(stage.after.expect("after").staged.len() > 0);
+        assert!(!stage.after.expect("after").staged.is_empty());
 
         let commit = git_commit(CodingGitCommitRequest {
             workspace_root: path_to_string(dir.path()),

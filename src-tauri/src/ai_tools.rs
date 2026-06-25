@@ -82,6 +82,7 @@ const ALLOWED_TOOLS: &[&str] = &[
     "coding_git_show",
     "coding_run_checks",
     "coding_verify",
+    "coding_diagnostics",
     // Clipboard tools
     "clipboard_read",
     "clipboard_write",
@@ -430,6 +431,7 @@ fn human_tool_label(tool_name: &str) -> &str {
         "coding_git_show" => "Inspect Git Commit",
         "coding_run_checks" => "Run Project Checks",
         "coding_verify" => "Run Verification Pass",
+        "coding_diagnostics" => "Inspect Compiler Diagnostics",
         "sync_control" => "Sync Control",
         other => other,
     }
@@ -1261,6 +1263,38 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
             if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
                 if timeout > 1800 {
                     warnings.push("timeout_secs will be capped at 1800s per check".to_string());
+                }
+            }
+        }
+        "coding_diagnostics" => {
+            if let Some(root) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                if let Err(e) = validate_path(root, "workspace_root") {
+                    errors.push(e);
+                }
+                let p = std::path::Path::new(root);
+                if p.is_absolute() {
+                    if !p.exists() {
+                        errors.push(format!("Workspace root not found: {}", root));
+                    } else if !p.is_dir() {
+                        errors.push(format!("Workspace root is not a directory: {}", root));
+                    }
+                }
+            } else {
+                errors.push("Missing 'workspace_root' parameter".to_string());
+            }
+
+            match args.get("source").and_then(|v| v.as_str()) {
+                Some(source) if ["cargo", "tsc"].contains(&source) => {}
+                Some(source) => errors.push(format!(
+                    "Unknown diagnostics source '{}'. Use: cargo, tsc",
+                    source
+                )),
+                None => errors.push("Missing 'source' parameter".to_string()),
+            }
+
+            if let Some(timeout) = args.get("timeout_secs").and_then(|v| v.as_u64()) {
+                if timeout > 1800 {
+                    warnings.push("timeout_secs will be capped at 1800s".to_string());
                 }
             }
         }
