@@ -148,18 +148,20 @@ jobs:
       # to run (no build, just text parsing). Linux-only because the
       # source files are identical across the matrix; one check covers
       # the whole release.
-      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json)
+      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml)
         if: matrix.target == 'linux'
         shell: bash
         run: |
           CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           PKG=$(node -p "require('./package.json').version")
           TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SNAP=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
           echo "Cargo.toml:        $CARGO"
           echo "package.json:      $PKG"
           echo "tauri.conf.json:   $TAURI"
-          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ]; then
-            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI"
+          echo "snapcraft.yaml:    $SNAP"
+          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ] || [ "$CARGO" != "$SNAP" ]; then
+            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI snapcraft.yaml=$SNAP"
             exit 1
           fi
 
