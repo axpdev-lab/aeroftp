@@ -1,5 +1,7 @@
 # AeroVault v3 Format Specification
 
+> _Last updated: 2026-06-22_
+
 **Version**: 1.0
 **Status**: Published - shipped in AeroFTP v3.8.0; the standalone [`aerovault`](https://crates.io/crates/aerovault) crate fully migrated to v3 as of 0.6.0 (earlier crate releases shipped v2 while v3 lived in the AeroFTP repo pending migration)
 **Date**: 2026-05-11 (published 2026-06-03)
@@ -218,8 +220,8 @@ engine is placement-agnostic (`reconstruct_from_error_correction` takes the pari
 bytes), so a detached file simply carries the same AVEC payloads in a framed sidecar.
 
 The detached file is the **unified `.aerocorrect` sidecar** shared with AeroSync
-(Ehud's #276 call: one detached parity format for any file, see
-[AEROCORRECT-SPEC](AEROCORRECT-SPEC.md) for the full binary layout). It supersedes
+(Ehud's #276 call: one detached parity format for any file; the full binary
+layout is documented in [section 11 below](#11-v4-evolution-note-t-aerovault-ecc-shipped)). It supersedes
 the earlier vault-only `.aerovault.rec` / `AVREC1` format. The sidecar is content
 addressed: it binds to the SHA-256 of the whole container, not to a vault salt.
 

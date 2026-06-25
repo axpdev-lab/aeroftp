@@ -1,12 +1,14 @@
 # Multi-User Account Partition
 
+> _Last updated: 2026-06-22_
+
 *Introduced in v4.0.0.*
 
 AeroFTP can split its encrypted vault into **per-user partitions** so that several people sharing one machine each keep their own server profiles, AeroSync settings, and credentials, isolated from one another. The feature is fully optional: a single-user install behaves exactly as before, and migration from an older single-user keystore is automatic and idempotent.
 
 ## How it works
 
-- **Encrypted partitions.** Each user owns an isolated partition inside `vault.db`. The partition key is derived with **Argon2id** and the partition payload is encrypted with **AES**. A user's data is never readable from another user's session.
+- **Encrypted partitions.** Each user owns an isolated partition stored in an additive `user_partitions.db` database (the legacy `vault.db` credential vault is left unchanged). The partition key is derived with **Argon2id** and the partition payload is encrypted with **AES**. A user's data is never readable from another user's session.
 - **Account Lock Screen.** On launch, AeroFTP presents the configured users (avatar, name) and unlocks the selected partition with that user's passphrase. A user with no passphrase uses device-wrapped access (no prompt). The unlock prompts use honest crypto-stack labels (Argon2id key derivation, AES partition encryption).
 - **Partition-aware everywhere.** Server profiles, saved servers, AeroSync settings, export/import, the keystore wizard, and AeroCloud all read and write the active user's partition.
 - **Admin role.** An opt-in admin role gates user management and exposes an admin reset-passphrase path. A last-admin guard prevents an installation from locking itself out.
@@ -14,7 +16,7 @@ AeroFTP can split its encrypted vault into **per-user partitions** so that sever
 
 ## Using it in the GUI
 
-- Add, rename, reorder, and delete users from **Settings → Users** (admin role required to manage other users).
+- Add, rename, reorder, and delete users from the **Manage Users** panel, opened via the account dropdown (or the Account Lock Screen) (admin role required to manage other users).
 - Set or change a per-user passphrase, or remove it to return to device-wrapped access.
 - Switch the active user from the account dropdown; the Account Lock Screen re-appears when a passphrase-protected partition is selected.
 

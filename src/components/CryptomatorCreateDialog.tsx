@@ -5,25 +5,40 @@ import * as React from 'react';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
-import { X, Lock, Loader2, Shield, Eye, EyeOff } from 'lucide-react';
+import { X, Lock, Loader2, Shield } from 'lucide-react';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { PasswordInput } from './common/PasswordInput';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 
 interface CryptomatorCreateDialogProps {
   outputDir: string;
+  /** Host paths of the items the user selected to encrypt into the new vault.
+   *  When present, they are recursively ingested after the skeleton is created
+   *  (folders become real subdirectories). Empty/undefined => empty vault. */
+  files?: string[];
   onClose: () => void;
   onCreated?: () => void;
 }
 
-export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated }: CryptomatorCreateDialogProps) {
+interface IngestReport {
+  files: number;
+  dirs: number;
+  skipped: string[];
+}
+
+export default function CryptomatorCreateDialog({ outputDir, files, onClose, onCreated }: CryptomatorCreateDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [vaultName, setVaultName] = useState('NewVault');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<string[] | null>(null);
 
+  const selectionCount = files?.length ?? 0;
   const isValid = vaultName.trim().length > 0 && password.length >= 8 && password === confirmPassword;
 
   const handleCreate = async () => {
@@ -35,15 +50,40 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
     }
     setCreating(true);
     setError(null);
+    setStatus(null);
     try {
       const vaultPath = `${outputDir}/${vaultName.trim()}`;
       await invoke('cryptomator_create', { vaultPath, password });
+
+      // Ingest the user's selection into the freshly created vault (#322).
+      if (files && files.length > 0) {
+        setStatus(t('cryptomator.encryptingSelection') || 'Encrypting selected items...');
+        const info = await invoke<{ vaultId: string }>('cryptomator_unlock', { vaultPath, password });
+        try {
+          const report = await invoke<IngestReport>('cryptomator_encrypt_paths', {
+            vaultId: info.vaultId,
+            dirId: '',
+            inputPaths: files,
+          });
+          if (report.skipped && report.skipped.length > 0) {
+            // Keep the dialog open to surface a partial-failure summary instead
+            // of silently dropping items; the vault itself was created.
+            onCreated?.();
+            setSkipped(report.skipped);
+            return;
+          }
+        } finally {
+          await invoke('cryptomator_lock', { vaultId: info.vaultId }).catch(() => { });
+        }
+      }
+
       onCreated?.();
       onClose();
     } catch (err) {
       setError(String(err));
     } finally {
       setCreating(false);
+      setStatus(null);
     }
   };
 
@@ -102,22 +142,18 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
           <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
             {t('common.password') || 'Password'}
           </label>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              placeholder={t('cryptomator.minPassword') || 'Min 8 characters'}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              {showPassword ? <EyeOff size={16} className="text-gray-600 dark:text-gray-400" /> : <Eye size={16} className="text-gray-600 dark:text-gray-400" />}
-            </button>
-          </div>
+          <PasswordInput
+            value={password}
+            onChange={setPassword}
+            className="w-full px-3 py-2 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            placeholder={t('cryptomator.minPassword') || 'Min 8 characters'}
+            ariaLabel={t('common.password') || 'Password'}
+          />
+          {password.length > 0 && (
+            <div className="mt-2">
+              <PasswordStrengthBar password={password} />
+            </div>
+          )}
           {password.length > 0 && password.length < 8 && (
             <p className="mt-1 text-xs text-red-500">{t('cryptomator.minPassword') || 'Minimum 8 characters'}</p>
           )}
@@ -128,22 +164,50 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
           <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
             {t('cryptomator.confirmPassword') || 'Confirm Password'}
           </label>
-          <input
-            type={showPassword ? 'text' : 'password'}
+          <PasswordInput
             value={confirmPassword}
-            onChange={e => setConfirmPassword(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            onChange={setConfirmPassword}
+            className="w-full px-3 py-2 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             placeholder={t('cryptomator.repeatPassword') || 'Repeat password'}
+            ariaLabel={t('cryptomator.confirmPassword') || 'Confirm Password'}
           />
-          {confirmPassword.length > 0 && password !== confirmPassword && (
-            <p className="mt-1 text-xs text-red-500">{t('cryptomator.passwordMismatch') || 'Passwords do not match'}</p>
-          )}
+          <PasswordMatchHint password={password} confirm={confirmPassword} />
         </div>
 
         {/* Error message */}
         {error && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
             <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* Ingest status while encrypting the selection */}
+        {status && (
+          <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <Loader2 size={16} className="animate-spin text-emerald-500 flex-shrink-0" />
+            <span className="text-xs text-emerald-600 dark:text-emerald-400">{status}</span>
+          </div>
+        )}
+
+        {/* Partial-failure summary: the vault was created but some items were skipped */}
+        {skipped && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
+              {t('cryptomator.ingestSkipped') || 'Vault created, but some items could not be added:'}
+            </p>
+            <ul className="max-h-32 overflow-y-auto text-xs text-amber-600 dark:text-amber-400 list-disc list-inside">
+              {skipped.map((s, i) => <li key={i} className="break-all">{s}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {/* Info badge: how many selected items will go in (when launched from a selection) */}
+        {selectionCount > 0 && !skipped && (
+          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <Lock size={16} className="text-emerald-500 flex-shrink-0" />
+            <span className="text-xs text-emerald-600 dark:text-emerald-400">
+              {(t('cryptomator.selectionInfo', { count: selectionCount }) || `${selectionCount} item(s) will be encrypted into the vault`)}
+            </span>
           </div>
         )}
 
@@ -157,29 +221,40 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
 
         {/* Buttons */}
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            {t('common.cancel') || 'Cancel'}
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={!isValid || creating}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {creating ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                {t('common.creating') || 'Creating...'}
-              </>
-            ) : (
-              <>
-                <Lock size={16} />
-                {t('common.create') || 'Create'}
-              </>
-            )}
-          </button>
+          {skipped ? (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
+            >
+              {t('cryptomator.done') || 'Done'}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                {t('common.cancel') || 'Cancel'}
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={!isValid || creating}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {creating ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    {t('common.creating') || 'Creating...'}
+                  </>
+                ) : (
+                  <>
+                    <Lock size={16} />
+                    {t('common.create') || 'Create'}
+                  </>
+                )}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

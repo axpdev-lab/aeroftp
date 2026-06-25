@@ -148,18 +148,20 @@ jobs:
       # to run (no build, just text parsing). Linux-only because the
       # source files are identical across the matrix; one check covers
       # the whole release.
-      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json)
+      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml)
         if: matrix.target == 'linux'
         shell: bash
         run: |
           CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           PKG=$(node -p "require('./package.json').version")
           TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SNAP=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
           echo "Cargo.toml:        $CARGO"
           echo "package.json:      $PKG"
           echo "tauri.conf.json:   $TAURI"
-          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ]; then
-            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI"
+          echo "snapcraft.yaml:    $SNAP"
+          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ] || [ "$CARGO" != "$SNAP" ]; then
+            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI snapcraft.yaml=$SNAP"
             exit 1
           fi
 
@@ -330,6 +332,8 @@ jobs:
       # Create portable ZIP for Windows (no installer needed).
       # Includes:
       #   - AeroFTP.exe          (the app)
+      #   - aeroftp-cli.exe      (headless CLI: providers, transfers, vault)
+      #   - aeroftp-dispatch.exe (CLI subcommand dispatcher / shim)
       #   - portable.marker      (detection key for the in-place auto-updater;
       #                          presence triggers portable-mode behaviour:
       #                          data dir next to .exe, in-place .exe swap on
@@ -346,6 +350,19 @@ jobs:
             exit 1
           }
 
+          # The CLI binaries are produced by the same `tauri build` (cargo builds
+          # every [[bin]] in the crate). Ship them inside the portable ZIP so the
+          # headless CLI is available without the installer (issue #340). Hard-fail
+          # if absent so a packaging regression can never silently drop them again.
+          $cliExe      = "src-tauri/target/release/aeroftp-cli.exe"
+          $dispatchExe = "src-tauri/target/release/aeroftp-dispatch.exe"
+          foreach ($bin in @($cliExe, $dispatchExe)) {
+            if (-not (Test-Path $bin)) {
+              Write-Host "::error::CLI binary not found at $bin"
+              exit 1
+            }
+          }
+
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           $zipName = "AeroFTP-${version}-portable-windows-x64.zip"
           $stage = "src-tauri/target/release/bundle/portable-stage"
@@ -356,6 +373,8 @@ jobs:
           New-Item -ItemType Directory -Path $stage | Out-Null
 
           Copy-Item $exe                                              "$stage\AeroFTP.exe"
+          Copy-Item $cliExe                                           "$stage\aeroftp-cli.exe"
+          Copy-Item $dispatchExe                                      "$stage\aeroftp-dispatch.exe"
           Copy-Item "src-tauri/installer/portable/portable.marker"    "$stage\portable.marker"
           Copy-Item "src-tauri/installer/portable/README.txt"         "$stage\README.txt"
           Copy-Item "LICENSE"                                         "$stage\LICENSE.txt"

@@ -16,6 +16,7 @@ import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureSt
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
+import { isConnectCancelledError } from '../../utils/connectCancel';
 import { ServerHealthCheck } from '../ServerHealthCheck';
 import { SpeedTestDialog } from '../SpeedTestDialog';
 import { AlertDialog } from '../Dialogs';
@@ -38,6 +39,7 @@ import {
     readServerGroupsFromLocalStorage,
     newServerGroupId,
     pruneServerFromGroups,
+    reorderServerGroups,
 } from '../../utils/serverGroups';
 import { InputDialog } from '../Dialogs';
 
@@ -166,6 +168,16 @@ function getServerSearchText(server: ServerProfile): string {
         searchTokens.push('api ocs', 'ocs');
     }
 
+    // Crypt-overlay profiles are searchable by "crypt"/"encrypted" and by kind,
+    // while STILL matching their transport tokens above (an S3-backed crypt
+    // profile is found by both "s3" and "crypt"). The transport class is kept
+    // for search even though the display class is "Crypt".
+    const cryptKind = getServerCryptOverlay(server);
+    if (cryptKind) {
+        searchTokens.push('crypt', 'encrypted', 'overlay');
+        searchTokens.push(cryptKind === 'aerocrypt' ? 'aerocrypt' : 'rclone crypt');
+    }
+
     return searchTokens
         .filter((value): value is string => !!value)
         .join(' ')
@@ -254,6 +266,12 @@ function wait(ms: number) {
 
 interface MyServersPanelProps {
     onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void | Promise<void>;
+    /** Run a connect phase under a cancel token so Esc / "still connecting"
+     *  Cancel aborts it. The OAuth / 4shared connects below dispatch their
+     *  backend invokes through this so Esc cancels them like the credential
+     *  providers already do (#360). Optional: when absent the invokes run
+     *  bare (non-cancellable), preserving the prior behavior. */
+    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>) => Promise<T>;
     onEdit: (profile: ServerProfile) => void;
     onQuickConnect: () => void;
     /** Jump to Discover tab pre-filtered on a specific category. */
@@ -268,6 +286,15 @@ interface MyServersPanelProps {
     /** Profile ids that have at least one open session in the tab strip.
      *  Drives the pulsing health indicator on cards / rows (issue #222). */
     activeProfileIds?: ReadonlySet<string>;
+    /** Jump to a profile's already-open session instead of starting a parallel
+     *  connect, when its card shows the pulsing "active session" dot. Lets the
+     *  card's connect button flip its action (connect vs go-to session) so a
+     *  still-connected account is not re-logged-in / re-prompted for 2FA.
+     *  Returns true when a session was found and activated. Issue #128-C. */
+    onActivateSession?: (savedServerId: string) => boolean;
+    /** Saved-server profile id whose connect is in flight (incl. the post-2FA
+     *  retry), so its card connect button keeps spinning. Issue #128-C. */
+    connectingProfileId?: string | null;
     /** Close every open session for the given saved profile. Wired to the
      *  Disconnect context-menu entry, gated on `activeProfileIds`. #222. */
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
@@ -284,6 +311,7 @@ const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: R
 
 export function MyServersPanel({
     onConnect,
+    cancellableConnect,
     onEdit,
     onQuickConnect,
     onJumpToCategory,
@@ -293,6 +321,8 @@ export function MyServersPanel({
     onOpenCrossProfile,
     onOpenMountManager,
     activeProfileIds,
+    onActivateSession,
+    connectingProfileId,
     onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
@@ -455,6 +485,10 @@ export function MyServersPanel({
             localStorage.removeItem('aeroftp_myservers_group');
             return null;
         });
+    }, [groups, persistGroups]);
+    const reorderGroup = useCallback((groupId: string, targetIndex: number) => {
+        const next = reorderServerGroups(groups, groupId, targetIndex);
+        if (next !== groups) persistGroups(next);
     }, [groups, persistGroups]);
     const toggleGroupMembership = useCallback((serverId: string, groupId: string) => {
         persistGroups(groups.map(g => {
@@ -796,6 +830,8 @@ export function MyServersPanel({
             result = result.filter(s => favorites.has(s.id));
         } else if (activeFilter === 'encrypted') {
             result = result.filter(s => getServerCryptOverlay(s) !== null);
+        } else if (activeFilter === 'active') {
+            result = result.filter(s => activeProfileIds?.has(s.id) ?? false);
         } else if (activeFilter !== 'all') {
             const chip = FILTER_CHIPS.find(c => c.id === activeFilter);
             if (chip) {
@@ -803,7 +839,7 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts]);
+    }, [servers, searchQuery, activeFilter, activeGroupId, groups, favorites, serverSearchTexts, activeProfileIds]);
 
     // Per-group count of members that still resolve to an existing server.
     const groupCounts = useMemo(() => {
@@ -908,11 +944,13 @@ export function MyServersPanel({
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
             ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0, encrypted: 0,
+            // Open-session count: a profile-id set, not a protocol predicate.
+            active: activeProfileIds?.size ?? 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
             for (const chip of FILTER_CHIPS) {
-                if (chip.id === 'all') continue;
+                if (chip.id === 'all' || chip.id === 'active') continue;
                 if (chip.id === 'favorites') {
                     if (favorites.has(s.id)) counts.favorites++;
                 } else if (chip.id === 'encrypted') {
@@ -923,12 +961,33 @@ export function MyServersPanel({
             }
         }
         return counts;
-    }, [servers, favorites]);
+    }, [servers, favorites, activeProfileIds]);
+
+    // The "Active Sessions" filter only exists while at least one session is
+    // open. If the last session closes (or a stale 'active' was persisted from a
+    // prior run), fall back to 'all' so the list never strands on an empty,
+    // unselectable filter once its sidebar row disappears.
+    React.useEffect(() => {
+        if (activeFilter === 'active' && (activeProfileIds?.size ?? 0) === 0) {
+            setActiveFilter('all');
+            localStorage.setItem('aeroftp_myservers_filter', 'all');
+        }
+    }, [activeFilter, activeProfileIds]);
 
     // Connection handler - full logic from original SavedServers.tsx
     // Handles OAuth2, 4shared OAuth1, and standard credential-based connections
     const handleConnect = useCallback(async (server: ServerProfile) => {
         if (connectingId) return;
+
+        // #128-C: dual-action connect button. When this card already owns an
+        // open session (the pulsing "active session" dot), jump to that live
+        // tab instead of starting a parallel connection, so a still-connected
+        // account is never re-logged-in or re-prompted for 2FA. Falls through
+        // to a normal connect when no open session is found.
+        if (activeProfileIds?.has(server.id) && onActivateSession?.(server.id)) {
+            return;
+        }
+
         setConnectingId(server.id);
 
         // OAuth2 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho, kDrive)
@@ -955,22 +1014,31 @@ export function MyServersPanel({
                         try { region = await invoke<string>('get_credential', { account: `oauth_${server.protocol}_region` }); } catch { /* default */ }
                     }
                 }
-                const params = { provider: oauthProvider, client_id: credentials.clientId, client_secret: credentials.clientSecret, profile_id: server.id, ...(region && { region }) };
+                const baseParams = { provider: oauthProvider, client_id: credentials.clientId, client_secret: credentials.clientSecret, profile_id: server.id, ...(region && { region }) };
 
                 const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profileId: server.id });
-                if (!hasTokens) await invoke('oauth2_full_auth', { params });
 
-                let result: { display_name: string; account_email: string | null };
-                try {
-                    result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
-                } catch (connectErr) {
-                    const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
-                    const lower = errMsg.toLowerCase();
-                    if (lower.includes('token expired') || (lower.includes('token') && lower.includes('refresh')) || lower.includes('authentication failed') || (lower.includes('invalid') && lower.includes('access_token'))) {
-                        await invoke('oauth2_full_auth', { params });
-                        result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
-                    } else throw connectErr;
-                }
+                // #360: dispatch the OAuth auth + connect under a connect token
+                // (when available) so Esc / "still connecting" Cancel aborts the
+                // in-flight backend call, matching the credential providers.
+                const doOAuthConnect = async (connectToken?: string) => {
+                    const params = connectToken ? { ...baseParams, connect_token: connectToken } : baseParams;
+                    if (!hasTokens) await invoke('oauth2_full_auth', { params });
+                    try {
+                        return await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                    } catch (connectErr) {
+                        const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+                        const lower = errMsg.toLowerCase();
+                        if (lower.includes('token expired') || (lower.includes('token') && lower.includes('refresh')) || lower.includes('authentication failed') || (lower.includes('invalid') && lower.includes('access_token'))) {
+                            await invoke('oauth2_full_auth', { params });
+                            return await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                        }
+                        throw connectErr;
+                    }
+                };
+                const result = cancellableConnect
+                    ? await cancellableConnect(doOAuthConnect)
+                    : await doOAuthConnect();
 
                 // Yandex Disk doesn't expose account_email() from the backend
                 // (the username field is OAuth-config, not a profile email):
@@ -988,7 +1056,9 @@ export function MyServersPanel({
 
                 await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
-                logger.error('OAuth connection failed', e);
+                // #360: a user cancel is not a failure (cancellableConnect already
+                // surfaced the calm toast); just clear the spinner below.
+                if (!isConnectCancelledError(e)) logger.error('OAuth connection failed', e);
             } finally {
                 setOauthConnecting(null);
                 setConnectingId(null);
@@ -1007,17 +1077,25 @@ export function MyServersPanel({
 
             setOauthConnecting(server.id);
             try {
-                const params = { consumer_key: consumerKey, consumer_secret: consumerSecret };
                 const hasTokens = await invoke<boolean>('fourshared_has_tokens');
-                if (!hasTokens) await invoke('fourshared_full_auth', { params });
 
-                let result: { display_name: string; account_email: string | null };
-                try {
-                    result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
-                } catch {
-                    await invoke('fourshared_full_auth', { params });
-                    result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
-                }
+                // #360: run the 4shared auth + connect under a connect token so
+                // Esc / "still connecting" Cancel can abort the in-flight call.
+                const doFourSharedConnect = async (connectToken?: string) => {
+                    const params = connectToken
+                        ? { consumer_key: consumerKey, consumer_secret: consumerSecret, connect_token: connectToken }
+                        : { consumer_key: consumerKey, consumer_secret: consumerSecret };
+                    if (!hasTokens) await invoke('fourshared_full_auth', { params });
+                    try {
+                        return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                    } catch {
+                        await invoke('fourshared_full_auth', { params });
+                        return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                    }
+                };
+                const result = cancellableConnect
+                    ? await cancellableConnect(doFourSharedConnect)
+                    : await doFourSharedConnect();
 
                 const updatedUsername = result.account_email || server.username;
                 const connectedAt = new Date().toISOString();
@@ -1031,7 +1109,8 @@ export function MyServersPanel({
 
                 await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
-                logger.error('4shared connection failed', e);
+                // #360: a user cancel is not a failure (calm toast already shown).
+                if (!isConnectCancelledError(e)) logger.error('4shared connection failed', e);
             } finally {
                 setOauthConnecting(null);
                 setConnectingId(null);
@@ -1114,7 +1193,7 @@ export function MyServersPanel({
         } finally {
             setConnectingId(null);
         }
-    }, [servers, connectingId, onConnect, t]);
+    }, [servers, connectingId, onConnect, cancellableConnect, t]);
 
     const handleDuplicate = useCallback((server: ServerProfile) => {
         const dup: ServerProfile = {
@@ -1370,6 +1449,7 @@ export function MyServersPanel({
             groupCounts={groupCounts}
             onGroupSelect={selectGroup}
             onGroupContextMenu={handleGroupContextMenu}
+            onGroupReorder={reorderGroup}
             onNewGroup={() => setGroupDialog({ id: null, name: '' })}
         />
         </div>
@@ -1496,7 +1576,7 @@ export function MyServersPanel({
                                 <ServerCard
                                     key={server.id}
                                     server={server}
-                                    isConnecting={connectingId === server.id || oauthConnecting === server.id}
+                                    isConnecting={connectingId === server.id || oauthConnecting === server.id || connectingProfileId === server.id}
                                     credentialsMasked={credentialsMasked}
                                     hideUsername={hideUsername}
                                     isFavorite={favorites.has(server.id)}
@@ -1567,6 +1647,7 @@ export function MyServersPanel({
                         columns={tableColumns}
                         favorites={favorites}
                         connectingId={connectingId}
+                        connectingProfileId={connectingProfileId}
                         oauthConnecting={oauthConnecting}
                         credentialsMasked={credentialsMasked}
                         hideUsername={hideUsername}

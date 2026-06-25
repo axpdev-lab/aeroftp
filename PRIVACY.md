@@ -1,6 +1,6 @@
 # AeroFTP Privacy Policy
 
-*Last updated: 14 April 2026*
+*Last updated: 2026-06-22*
 
 ## Overview
 
@@ -18,11 +18,11 @@ AeroFTP stores the following data **exclusively on your local machine**:
 - **Credentials**: Passwords, OAuth tokens, and API keys are stored in the encrypted local vault database. The vault encryption key is protected either by the system keyring (default) or by a user-supplied master password in master mode. Credentials are never stored in plaintext.
 - **Application settings**: UI preferences, theme selection, language, and general configuration. Stored in the Tauri application data directory.
 - **Chat history**: AI assistant conversations, if used, are stored in a local SQLite database. You can delete all chat history at any time from Settings.
-- **Sync journals**: Transfer logs for the AeroSync feature. Automatically cleaned after 30 days.
+- **Sync journals**: Transfer logs for the AeroSync feature. You can clear them at any time, or remove entries older than 30 days, from the journal history dialog.
 - **File tags**: Color labels assigned to local files. Stored in a local SQLite database.
 
 All local data can be deleted by removing the AeroFTP application data directory:
-- **Linux**: `~/.config/aeroftp/` and `~/.local/share/aeroftp/`
+- **Linux**: `~/.config/aeroftp/` and `~/.local/share/com.aeroftp.AeroFTP/`
 - **macOS**: `~/Library/Application Support/aeroftp/`
 - **Windows**: `%APPDATA%\aeroftp\`
 
@@ -66,9 +66,9 @@ Updates to this privacy policy will be reflected in this document with an update
 ## Contact
 
 For privacy-related questions or concerns:
-- **Email**: aeroftp@axpdev.it
+- **Email**: dev@aeroftp.app
 - **GitHub Issues**: https://github.com/axpdev-lab/aeroftp/issues
 
 ---
 
-*AeroFTP v3.8.0 - An open source project by axpnet*
+*AeroFTP v4.0.x - An open source project by axpnet*

@@ -1,5 +1,7 @@
 # AeroAgent - AI-Powered File Management
 
+> _Last updated: 2026-06-22_
+
 AeroAgent is AeroFTP's integrated AI assistant with **50+ agent tools (35+ exposed over MCP)** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
 
 > Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
@@ -152,7 +154,7 @@ AeroAgent executes complex tasks autonomously with tool chaining:
 
 - **Tool approval**: All file modifications require explicit user approval (Allow/Reject)
 - **Diff preview**: See exactly what changes will be made before approving
-- **Danger levels**: Tools classified as safe/medium/high with appropriate warnings
+- **Danger levels**: Tools classified read-only / safe / medium / high, with appropriate warnings; every medium- or high-danger tool requires explicit user approval before it runs
 - **Password isolation**: Server credentials resolved in Rust backend, never exposed to AI model
 - **Command denylist**: Dangerous shell commands blocked at backend level
 
@@ -181,14 +183,14 @@ The rows below enumerate each tool name, including aliases. Many remote tools sh
 |------|--------|------|--------|
 | `remote_list` | Read-only | `remote_upload` | Medium |
 | `remote_read` | Read-only | `upload_files` | Medium |
-| `remote_info` | Read-only | `upload_many` | Medium |
+| `remote_info` | Read-only | `remote_upload_many` | Medium |
 | `remote_search` | Read-only | `remote_download` | Medium |
 | `remote_head` | Read-only | `download_files` | Safe |
 | `remote_tail` | Read-only | `remote_mkdir` | Medium |
 | `remote_tree` | Read-only | `remote_rename` | Medium |
 | `remote_storage_quota` | Read-only | `remote_edit` | Medium |
 | `remote_hashsum` | Read-only | `remote_touch` | Medium |
-| `list_servers` | Read-only | `remote_delete` | High |
+| `server_list_saved` | Read-only | `remote_delete` | High |
 | | | `remote_delete_many` | High |
 
 **Local file operations (21)**
@@ -211,8 +213,8 @@ The rows below enumerate each tool name, including aliases. Many remote tools sh
 
 | Tool | Danger |
 |------|--------|
-| `transfer` | Medium |
-| `transfer_tree` | Medium |
+| `remote_transfer` | Medium |
+| `remote_transfer_tree` | Medium |
 | `cross_profile_transfer` | Medium |
 | `generate_transfer_plan` | Safe |
 
@@ -220,10 +222,10 @@ The rows below enumerate each tool name, including aliases. Many remote tools sh
 
 | Tool | Danger | Tool | Danger |
 |------|--------|------|--------|
-| `sync_doctor` | Read-only | `cleanup` | High |
-| `reconcile` | Read-only | `sync_control` | Safe |
-| `dedupe` | High | `sync_preview` | Safe |
-| `speed` | Medium | | |
+| `remote_sync_doctor` | Read-only | `remote_cleanup` | High |
+| `remote_reconcile` | Read-only | `sync_control` | Safe |
+| `remote_dedupe` | High | `sync_preview` | Safe |
+| `remote_speed` | Medium | | |
 
 **Archives (2)**
 

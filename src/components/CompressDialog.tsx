@@ -3,10 +3,19 @@
 
 import * as React from 'react';
 import { useState, useMemo, useEffect } from 'react';
-import { Archive, Lock, Eye, EyeOff, X, File, Folder, Loader2, ChevronDown, ChevronUp, Shield } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { Archive, Lock, Eye, EyeOff, X, File, Folder, Loader2, ChevronDown, ChevronUp, Shield, Check, TrendingDown, TrendingUp } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes as formatSize } from '../utils/formatters';
+import { CompressionEstimateBar } from './common/CompressionEstimateBar';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useArchiveProgress } from '../hooks/useArchiveProgress';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { TransferProgressBar } from './TransferProgressBar';
+import { computeCompressionRatio } from '../utils/archiveSizeReport';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import './CompressDialog.css';
 
 type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2';
@@ -18,11 +27,20 @@ export interface CompressOptions {
     password: string | null;
 }
 
+/** Real byte totals reported back by the parent after a successful compression,
+ *  used to render the completion stats (ratio, bytes saved, before/after bars). */
+export interface CompressResult {
+    inputBytes: number;
+    outputBytes: number;
+}
+
 interface CompressDialogProps {
     files: { name: string; path: string; size: number; isDir: boolean }[];
     defaultName: string;
     outputDir: string;
-    onConfirm: (options: CompressOptions) => void;
+    /** Returns the real input/output byte totals on success so the dialog can
+     *  present completion stats; throws on failure (dialog stays on the form). */
+    onConfirm: (options: CompressOptions) => void | Promise<CompressResult | void>;
     onClose: () => void;
 }
 
@@ -75,18 +93,18 @@ const LEVEL_OPTIONS: Record<string, LevelOption[]> = {
     ],
 };
 
-// Estimated compression ratio by format+level (approximate, for display only)
-function getEstimatedRatio(format: CompressFormat, level: number): string | null {
-    if (format === 'tar') return null; // no compression
-    if (level === 0) return null; // store mode
-    const ratios: Record<string, Record<number, string>> = {
-        zip: { 1: '~70%', 6: '~55%', 9: '~50%' },
-        '7z': { 1: '~55%', 6: '~40%', 9: '~35%' },
-        'tar.gz': { 1: '~65%', 6: '~50%', 9: '~45%' },
-        'tar.xz': { 1: '~50%', 6: '~35%', 9: '~30%' },
-        'tar.bz2': { 1: '~60%', 6: '~45%', 9: '~40%' },
-    };
-    return ratios[format]?.[level] || null;
+// Map a UI format + level onto the backend canary codec. The backend then
+// compresses a real sample with that codec to measure the true ratio.
+function formatToCodec(format: CompressFormat, level: number): { codec: string; level: number } {
+    switch (format) {
+        case 'zip': return { codec: level === 0 ? 'store' : 'deflate', level };
+        case '7z': return { codec: 'xz', level }; // 7z is LZMA2; xz estimates it well
+        case 'tar': return { codec: 'store', level: 0 };
+        case 'tar.gz': return { codec: 'gzip', level };
+        case 'tar.xz': return { codec: 'xz', level };
+        case 'tar.bz2': return { codec: 'bzip2', level };
+        default: return { codec: 'store', level: 0 };
+    }
 }
 
 function getExtension(format: CompressFormat): string {
@@ -96,6 +114,105 @@ function getExtension(format: CompressFormat): string {
         : `.${format}`;
 }
 
+/**
+ * Inverse "drain" bar shown beneath the live progress bar during compression.
+ * It starts full and empties in step with the top progress bar: the filled
+ * width is the input still to read (`total - transferred`) and the caption next
+ * to it shows exactly that byte figure, so bar and number shrink together
+ * (byte-true, never a fixed estimate that disagrees with the bar). The measured
+ * saving is shown only at completion.
+ */
+const InverseDrainBar: React.FC<{ transferred: number; total: number }> = ({ transferred, total }) => {
+    const remaining = Math.max(0, total - transferred);
+    const filled = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+    return (
+        <div className="mt-3">
+            <div className="flex items-center justify-end text-[10px] mb-1" style={{ color: 'var(--compress-text-muted)' }}>
+                <span className="flex items-center gap-1"><TrendingDown size={11} style={{ color: 'var(--compress-accent)' }} />{formatSize(remaining)}</span>
+            </div>
+            <div className="tpb-track h-3.5 rounded-full overflow-hidden" style={{ background: 'var(--compress-bg-deep)', border: '1px solid var(--compress-border)' }}>
+                <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{ width: `${filled}%`, background: 'linear-gradient(90deg, var(--compress-accent), var(--compress-accent-hover))' }}
+                />
+            </div>
+        </div>
+    );
+};
+
+/**
+ * Completion panel: real before/after comparison after a finished compression.
+ * The "After" bar animates from full down to the measured output/input ratio on
+ * mount, so the user watches the file weight shrink by exactly the saved share.
+ */
+const CompletionStats: React.FC<{ result: CompressResult; t: (k: string) => string }> = ({ result, t }) => {
+    const { inputBytes, outputBytes, savedBytes, savedPercent } = computeCompressionRatio(result.inputBytes, result.outputBytes);
+    const pct = Math.round(savedPercent);
+    // Three honest outcomes. A sub-1% delta in either direction is reported as
+    // "incompressible" rather than a confusing "+0% / Increased 148 B": the file
+    // was already compressed and there is essentially no space to reclaim.
+    const outcome: 'saved' | 'grew' | 'incompressible' = pct >= 1 ? 'saved' : pct <= -1 ? 'grew' : 'incompressible';
+    // Both bars are scaled against the larger of the two so they stay
+    // proportional in either direction: the bigger size fills the track, the
+    // smaller one is visibly shorter (a grown archive reads longer, not equal).
+    const maxBytes = Math.max(inputBytes, outputBytes, 1);
+    const beforeWidth = (inputBytes / maxBytes) * 100;
+    const afterTarget = (outputBytes / maxBytes) * 100;
+    // Animate the "After" bar from the "Before" length to its real length, so
+    // the change (shrink or grow) is shown as motion.
+    const [settled, setSettled] = useState(false);
+    useEffect(() => {
+        const h = requestAnimationFrame(() => setSettled(true));
+        return () => cancelAnimationFrame(h);
+    }, []);
+    const afterWidth = settled ? afterTarget : beforeWidth;
+    const afterFill = outcome === 'saved' ? 'linear-gradient(90deg,#10b981,#22c55e)'
+        : outcome === 'grew' ? 'linear-gradient(90deg,#f97316,#ef4444)'
+        : 'var(--compress-text-muted)';
+    const badgeColor = outcome === 'saved' ? 'text-green-400' : outcome === 'grew' ? 'text-orange-400' : 'text-gray-400';
+    return (
+        <div className="px-5 py-4 border-t" style={{ borderColor: 'var(--compress-border)' }}>
+            <div className="flex items-center gap-2 mb-3">
+                <span className="flex items-center justify-center w-6 h-6 rounded-full" style={{ background: 'rgba(34,197,94,0.15)' }}>
+                    <Check size={14} style={{ color: '#22c55e' }} />
+                </span>
+                <span className="text-sm font-semibold">{t('compress.complete') || 'Compression complete'}</span>
+                <span className={`ml-auto text-sm font-bold flex items-center gap-1 ${badgeColor}`}>
+                    {outcome === 'saved' && <><TrendingDown size={14} />-{pct}%</>}
+                    {outcome === 'grew' && <><TrendingUp size={14} />+{Math.abs(pct)}%</>}
+                    {outcome === 'incompressible' && <>≈0%</>}
+                </span>
+            </div>
+
+            {/* Before bar (full = original) */}
+            <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[10px] w-12 shrink-0" style={{ color: 'var(--compress-text-muted)' }}>{t('compress.before') || 'Before'}</span>
+                <div className="tpb-track h-3 rounded-full overflow-hidden flex-1" style={{ background: 'var(--compress-bg-deep)' }}>
+                    <div className="h-full rounded-full" style={{ width: `${beforeWidth}%`, background: 'var(--compress-text-muted)' }} />
+                </div>
+                <span className="text-[10px] w-16 text-right shrink-0">{formatSize(inputBytes)}</span>
+            </div>
+            {/* After bar (drains to output/input ratio) */}
+            <div className="flex items-center gap-2">
+                <span className="text-[10px] w-12 shrink-0" style={{ color: 'var(--compress-text-muted)' }}>{t('compress.after') || 'After'}</span>
+                <div className="tpb-track h-3 rounded-full overflow-hidden flex-1" style={{ background: 'var(--compress-bg-deep)' }}>
+                    <div
+                        className="h-full rounded-full transition-all duration-700 ease-out"
+                        style={{ width: `${afterWidth}%`, background: afterFill }}
+                    />
+                </div>
+                <span className="text-[10px] w-16 text-right shrink-0">{formatSize(outputBytes)}</span>
+            </div>
+
+            <div className="mt-3 text-center text-xs" style={{ color: 'var(--compress-text-secondary)' }}>
+                {outcome === 'saved' && `${t('compress.saved') || 'Saved'} ${formatSize(savedBytes)}`}
+                {outcome === 'grew' && `${t('compress.increased') || 'Increased'} ${formatSize(Math.abs(savedBytes))}`}
+                {outcome === 'incompressible' && (t('compress.incompressible') || 'Already compressed, no space to save')}
+            </div>
+        </div>
+    );
+};
+
 export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultName, outputDir, onConfirm, onClose }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -103,9 +220,18 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const [archiveName, setArchiveName] = useState(defaultName);
     const [compressionLevel, setCompressionLevel] = useState(6);
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [compressing, setCompressing] = useState(false);
     const [showFileList, setShowFileList] = useState(false);
+    // Measured result of a finished compression; drives the completion stats panel.
+    const [result, setResult] = useState<CompressResult | null>(null);
+    // Real byte-level progress (>=10MB ops only); null for small/instant compressions.
+    const progress = useArchiveProgress(compressing);
+    // Lock the modal while compressing: inert backdrop + confirm on X, so a stray
+    // click can't abandon an in-flight big-file compression (same pattern as AeroSync,
+    // CrossProfile, AeroVault).
+    const guarded = useGuardedClose({ guard: compressing ? 'busy' : null, onClose });
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -119,7 +245,33 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const fileCount = files.filter(f => !f.isDir).length;
     const folderCount = files.filter(f => f.isDir).length;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-    const estimatedRatio = getEstimatedRatio(format, compressionLevel);
+
+    // Real (canary) compression-size estimate: recomputed, debounced, whenever
+    // the input, format or level changes. The backend compresses a bounded
+    // sample with the actual codec and extrapolates, so this reflects measured
+    // behaviour rather than the old per-format ratio guess.
+    const [estimate, setEstimate] = useState<{ original: number; estimated: number; exact: boolean } | null>(null);
+    const [estimateLoading, setEstimateLoading] = useState(false);
+    useEffect(() => {
+        if (totalSize <= 0) { setEstimate(null); return; }
+        const { codec, level } = formatToCodec(format, compressionLevel);
+        let cancelled = false;
+        setEstimateLoading(true);
+        const handle = setTimeout(async () => {
+            try {
+                const paths = files.map(f => f.path);
+                const r = await invoke<{ input_bytes: number; estimated_bytes: number; exact: boolean }>(
+                    'estimate_compressed_size', { paths, codec, level },
+                );
+                if (!cancelled) setEstimate({ original: r.input_bytes, estimated: r.estimated_bytes, exact: r.exact });
+            } catch {
+                if (!cancelled) setEstimate(null);
+            } finally {
+                if (!cancelled) setEstimateLoading(false);
+            }
+        }, 250);
+        return () => { cancelled = true; clearTimeout(handle); };
+    }, [files, format, compressionLevel, totalSize]);
 
     const fullOutputPath = useMemo(() => {
         const ext = getExtension(format);
@@ -137,29 +289,47 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
         }
         if (!FORMAT_OPTIONS.find(f => f.value === newFormat)?.supportsPassword) {
             setPassword('');
+            setConfirmPassword('');
         }
     };
 
     const handleConfirm = async () => {
+        setResult(null);
         setCompressing(true);
         try {
-            await onConfirm({
+            const res = await onConfirm({
                 archiveName: archiveName.replace(/\.(zip|7z|tar|tar\.gz|tar\.xz|tar\.bz2|tgz|txz|tbz2)$/i, ''),
                 format,
                 compressionLevel,
                 password: formatInfo.supportsPassword && password ? password : null,
             });
+            // On success the parent returns the real byte totals: switch to the
+            // completion stats view. A 0 output means the size could not be read,
+            // so we close rather than render a misleading "100% saved". On failure
+            // the parent throws (already toasted + logged) and we stay on the form.
+            if (res && typeof res.outputBytes === 'number' && res.outputBytes > 0) {
+                setResult(res);
+            } else {
+                onClose();
+            }
+        } catch {
+            /* parent surfaced the error; remain on the form for a retry */
         } finally {
             setCompressing(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => { if (e.target === e.currentTarget && !compressing) onClose(); }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => {
+            // Once a password has been typed (encrypted archive) the backdrop is
+            // inert, so a stray click outside cannot discard it and force retyping.
+            // The X is the only way out then. Other states still close on click.
+            if (e.target === e.currentTarget && !password) guarded.requestBackdropClose();
+        }}>
             <div
                 {...modalDrag.panelProps}
                 className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
-                style={{ background: 'var(--compress-bg)', border: '1px solid var(--compress-border)', color: 'var(--compress-text)' }}>
+                style={{ ...modalDrag.panelProps.style, background: 'var(--compress-bg)', border: '1px solid var(--compress-border)', color: 'var(--compress-text)' }}>
 
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3.5 border-b cursor-grab active:cursor-grabbing" style={{ borderColor: 'var(--compress-border)' }}>
@@ -167,7 +337,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         <Archive size={20} style={{ color: 'var(--compress-accent)' }} />
                         <span className="font-semibold text-base">{t('compress.title') || 'Compress Files'}</span>
                     </div>
-                    <button onClick={onClose} disabled={compressing} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--compress-text-secondary)' }}
+                    <button onClick={guarded.requestClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--compress-text-secondary)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-bg-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                         title={t('common.close')}>
@@ -175,6 +345,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                     </button>
                 </div>
 
+                {!result && (
                 <div className="p-5 flex flex-col gap-4 overflow-y-auto">
 
                     {/* ── File summary + expandable list ────────────── */}
@@ -275,10 +446,14 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     </button>
                                 ))}
                             </div>
-                            {estimatedRatio && (
-                                <div className="text-[10px] mt-1.5 flex items-center gap-1" style={{ color: 'var(--compress-text-muted)' }}>
-                                    <Archive size={10} />
-                                    {t('compress.estimatedSize') || 'Estimated'}: {estimatedRatio} ({formatSize(Math.round(totalSize * parseInt(estimatedRatio.replace(/[^0-9]/g, '')) / 100))})
+                            {totalSize > 0 && format !== 'tar' && (estimate || estimateLoading) && (
+                                <div className="mt-2">
+                                    <CompressionEstimateBar
+                                        originalBytes={estimate?.original ?? totalSize}
+                                        estimatedBytes={estimate?.estimated ?? totalSize}
+                                        exact={estimate?.exact ?? false}
+                                        loading={estimateLoading && !estimate}
+                                    />
                                 </div>
                             )}
                         </div>
@@ -306,6 +481,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
                                 />
                                 <button
+                                    type="button"
+                                    tabIndex={-1}
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
                                     style={{ color: 'var(--compress-text-muted)' }}
@@ -313,6 +490,33 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                                 </button>
                             </div>
+                            {password && <div className="mt-1.5"><PasswordStrengthBar password={password} /></div>}
+                            {password && (
+                                <div className="relative mt-2">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={confirmPassword}
+                                        onChange={e => setConfirmPassword(e.target.value)}
+                                        disabled={compressing}
+                                        placeholder={t('password.confirmPlaceholder')}
+                                        aria-label={t('password.confirm')}
+                                        className="w-full rounded-lg px-3 py-2 text-sm pr-9 outline-none transition-colors"
+                                        style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                                        onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
+                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
+                                    />
+                                    <button
+                                        type="button"
+                                        tabIndex={-1}
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
+                                        style={{ color: 'var(--compress-text-muted)' }}
+                                    >
+                                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                    <PasswordMatchHint password={password} confirm={confirmPassword} />
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -321,18 +525,51 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         {fullOutputPath}
                     </div>
                 </div>
+                )}
 
-                {/* ── Footer / Progress ─────────────────────────── */}
-                {compressing ? (
+                {/* ── Footer / Progress / Completion ────────────── */}
+                {result ? (
+                    <>
+                        <CompletionStats result={result} t={t} />
+                        <div className="flex justify-end px-5 py-3 border-t" style={{ borderColor: 'var(--compress-border)' }}>
+                            <button
+                                onClick={onClose}
+                                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                                style={{ background: 'var(--compress-accent)' }}
+                                onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-accent-hover)')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'var(--compress-accent)')}
+                            >
+                                <Check size={15} />
+                                {t('compress.done') || 'Done'}
+                            </button>
+                        </div>
+                    </>
+                ) : compressing ? (
                     <div className="px-5 py-4 border-t" style={{ borderColor: 'var(--compress-border)' }}>
                         <div className="flex items-center gap-3 mb-2">
                             <Loader2 size={16} className="animate-spin" style={{ color: 'var(--compress-accent)' }} />
                             <span className="text-sm font-medium">{t('compress.compressing') || 'Compressing...'}</span>
                             <span className="text-xs ml-auto" style={{ color: 'var(--compress-text-muted)' }}>{formatInfo.label}</span>
                         </div>
-                        <div className="compress-progress-bar">
-                            <div className="bar" />
-                        </div>
+                        {/* Real byte-true bar appears only for >=10MB ops; small ones are
+                            instant and show just the spinner above (no fake bar). The
+                            lower inverse bar drains in step, picturing the file shrinking. */}
+                        {progress && (
+                            <>
+                                <TransferProgressBar
+                                    percentage={progress.percentage}
+                                    transferredBytes={progress.transferred}
+                                    totalBytes={progress.total}
+                                    speedBps={progress.speedBps}
+                                    etaSeconds={progress.etaSeconds}
+                                    variant={progress.indeterminate ? 'indeterminate' : 'gradient'}
+                                    size="lg"
+                                />
+                                {!progress.indeterminate && (
+                                    <InverseDrainBar transferred={progress.transferred} total={progress.total} />
+                                )}
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="flex justify-end gap-2.5 px-5 py-3.5 border-t" style={{ borderColor: 'var(--compress-border)' }}>
@@ -347,7 +584,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         </button>
                         <button
                             onClick={handleConfirm}
-                            disabled={!archiveName.trim()}
+                            disabled={!archiveName.trim() || (!!password && confirmPassword !== password)}
                             className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50"
                             style={{ background: 'var(--compress-accent)' }}
                             onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--compress-accent-hover)'; }}
@@ -359,6 +596,13 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                     </div>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

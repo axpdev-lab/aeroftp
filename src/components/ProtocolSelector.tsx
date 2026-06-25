@@ -225,8 +225,9 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isCloudStorage: true,
         tooltip: t('protocol.googledriveTooltip'),
     },
-    {
-        type: 'googlephotos',
+    // Google Photos: kept in development (Photos API problem); hidden in production, available in DEV
+    ...(import.meta.env.DEV ? [{
+        type: 'googlephotos' as const,
         name: 'Google Photos',
         icon: <GooglePhotosLogo size={18} />,
         description: t('protocol.googlephotosDesc'),
@@ -235,7 +236,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isOAuth: true,
         isCloudStorage: true,
         tooltip: t('protocol.googlephotosTooltip'),
-    },
+    }] : []),
     {
         type: 'onedrive',
         name: 'OneDrive',

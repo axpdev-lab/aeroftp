@@ -9,6 +9,7 @@ import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
@@ -136,6 +137,11 @@ interface ImportedServerProfile {
   providerId?: string;
   credential?: string;
   hasStoredCredential?: boolean;
+  // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags, so an
+  // imported Crypt profile re-imports AS a Crypt profile instead of plaintext.
+  aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+  hasStoredAeroCryptPassword?: boolean;
+  hasStoredAeroCryptSalt?: boolean;
 }
 
 interface ServerProfilesImportResult {
@@ -181,6 +187,7 @@ import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
+import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './utils/connectCancel';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -246,12 +253,16 @@ import { AccountLockScreen } from './components/AccountLockScreen';
 import {
     ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
     decideBootAccountAction,
+    defaultUserIdFromList,
     getUnlockStatus,
     initUserPartitions,
+    legacyDefaultToMigrate,
     listUsers,
     readDefaultAccountId,
     readUsersListCache,
+    setDefaultUser,
     unlockUser,
+    writeDefaultAccountId,
     writeUsersListCache,
 } from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
@@ -267,7 +278,7 @@ import { ScanningToast, INITIAL_SCANNING_STATE } from './components/ScanningToas
 import type { ScanningState } from './components/ScanningToast';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
-  FolderUp, RefreshCw, FolderPlus, FolderOpen,
+  FolderUp, RefreshCw, FolderPlus, FolderOpen, FolderInput,
   Download, Upload, Pencil, Trash2, X, ShieldCheck, ShieldQuestion, ShieldAlert, Loader2,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
@@ -377,7 +388,6 @@ import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
-import { OverlayIcon } from './components/icons/OverlayIcon';
 import { DecryptingText } from './components/DecryptingText';
 import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
@@ -416,6 +426,8 @@ import { useTranslation } from './i18n';
 // Components
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
+import { runExtractWithToast } from './utils/extractToast';
+import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -447,6 +459,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTransferEvents, TRANSFER_EVENT_BRIDGE } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
+import { useBridgeConfigDetection } from './hooks/useBridgeConfigDetection';
 import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
@@ -457,13 +470,8 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 // connect catch blocks match on it to surface a calm "connection cancelled"
 // flow instead of a "connection failed" error, and to skip the saved-server
 // connect-failure marker (a deliberate cancel is not a failure).
-const CONNECT_CANCELLED_MARKER = 'CONNECT_CANCELLED';
-
-function isConnectCancelledError(error: unknown): boolean {
-  if (error == null) return false;
-  if (error instanceof Error) return error.message.includes(CONNECT_CANCELLED_MARKER);
-  return String(error).includes(CONNECT_CANCELLED_MARKER);
-}
+// CONNECT_CANCELLED_MARKER / isConnectCancelledError now live in
+// ./utils/connectCancel so the My Servers OAuth path can share them (#360).
 
 // Generate a per-attempt connection token threaded to the backend connect
 // command and used by `cancel_connection` to abort that exact attempt. Prefer
@@ -509,6 +517,70 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 //   - Connection logic (connectToFtp ~200 lines)
 //   - Cloud sync events (~98 lines)
 // ============================================================================
+
+// CWP-20B (navigate-out scope): plaintext-absolute scope predicate shared by
+// the path-bar badge and (later) the transfer routing, so the two can never
+// diverge. Both `scope` (binding.remoteScope) and `displayPath`
+// (currentRemoteDisplayPath = the backend's decode_path of pwd) are
+// plaintext-absolute, which is the only sound comparison (current_path is
+// ciphertext). FAIL-CLOSED: returns true ("inside / encrypted") unless we are
+// CONFIDENTLY outside, so a normalization mismatch can only cause a visible
+// decrypt error, never silent plaintext exposure.
+// Spec: docs/dev/roadmap/APPENDIX-CRYPTO-WRAPPER-PROFILES/tasks/CWP-20B-navigate-out-scope.md
+const normCryptScope = (s?: string | null): string => {
+  const t = (s || '').trim();
+  if (!t || t === '/') return ''; // empty / root => whole remote is the scope
+  return '/' + t.replace(/^\/+|\/+$/g, '');
+};
+const isWithinCryptScope = (
+  scope: string | undefined | null,
+  displayPath: string | null | undefined,
+): boolean => {
+  const s = normCryptScope(scope);
+  if (s === '') return true; // whole-remote scope (== legacy anchored session)
+  if (displayPath == null) return true; // unknown path => fail closed
+  const p = '/' + String(displayPath).replace(/^\/+|\/+$/g, '');
+  return p === s || p.startsWith(s + '/');
+};
+
+// CWP-20B (B3): the absolute display path a navigation will LAND on, derived from
+// the current display path and the navigation argument, so routing can key off the
+// destination rather than the current location and flip the crypt overlay on/off
+// exactly at the scope boundary. The key trick that keeps this sound WITHOUT having
+// to decrypt: an encrypted absolute path (e.g. `/AeroCryptTest/<enc>/<enc>`) still
+// carries the cleartext anchor as its leading segment, so isWithinCryptScope
+// classifies "deeper inside the anchor" correctly even though the tail is opaque.
+//   - '..'              => the parent display path
+//   - absolute path     => itself (plain-absolute outside, or encrypted-under-anchor inside)
+//   - relative name     => joined onto the current display path
+const normDisplayPath = (p: string): string => {
+  const trimmed = String(p).replace(/\/+$/g, '');
+  if (trimmed === '' || trimmed === '/') return '/';
+  return trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+};
+const parentDisplayPath = (current: string): string => {
+  const p = normDisplayPath(current);
+  if (p === '/') return '/';
+  const idx = p.lastIndexOf('/');
+  return idx <= 0 ? '/' : p.slice(0, idx);
+};
+const joinDisplayPath = (current: string, name: string): string => {
+  const base = normDisplayPath(current);
+  const leaf = String(name).replace(/^\/+|\/+$/g, '');
+  if (!leaf) return base;
+  return base === '/' ? '/' + leaf : base + '/' + leaf;
+};
+const resolveTargetDisplayPath = (
+  current: string,
+  path: string,
+  _plainPath?: boolean,
+): string => {
+  if (path === '..') return parentDisplayPath(current);
+  if (path === '' || path === '.') return normDisplayPath(current);
+  if (path.startsWith('/')) return normDisplayPath(path);
+  return joinDisplayPath(current, path);
+};
+
 const App: React.FC = () => {
   // Mouse Back button (button code 3) → synthetic Escape, so any open
   // modal / dialog / dropdown closes via its existing Esc handler. See
@@ -842,6 +914,10 @@ const App: React.FC = () => {
   const [showMcpDialog, setShowMcpDialog] = useState(false);
   const [showExportImport, setShowExportImport] = useState(false);
   const [exportImportServers, setExportImportServers] = useState<ServerProfile[]>([]);
+  // Optional starting mode + preset bridge-config file for the Export/Import
+  // dialog (set by AeroFile "Import to AeroFTP"); reset whenever it closes.
+  const [exportImportInitialMode, setExportImportInitialMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | undefined>(undefined);
+  const [exportImportBridgeFile, setExportImportBridgeFile] = useState<string | null>(null);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
@@ -910,7 +986,7 @@ const App: React.FC = () => {
   // openAeroSync() bumps it; a stale scan (dialog closed or reopened
   // meanwhile) sees a mismatched token and discards its result.
   const aeroSyncCompareSeqRef = useRef(0);
-  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
+  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; containerKind?: 'vault' | 'zip'; path?: string; files?: string[]; folderPath?: string; outputDir?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
@@ -1130,7 +1206,7 @@ const App: React.FC = () => {
     resolve: ((accepted: boolean) => void) | null;
   }>({ visible: false, info: null, host: '', port: 22, resolve: null });
   const [compressDialogState, setCompressDialogState] = useState<{ files: { name: string; path: string; size: number; isDir: boolean }[]; defaultName: string; outputDir: string } | null>(null);
-  const [cryptomatorCreateDialog, setCryptomatorCreateDialog] = useState<{ outputDir: string } | null>(null);
+  const [cryptomatorCreateDialog, setCryptomatorCreateDialog] = useState<{ outputDir: string; files?: string[] } | null>(null);
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
@@ -1513,7 +1589,23 @@ const App: React.FC = () => {
         // or silently unlock a password-free default account. Keeping the policy
         // in a pure helper lets it be unit-tested; see its doc comment for why
         // the already-unlocked case must be handled explicitly.
-        const action = decideBootAccountAction(users, status, readDefaultAccountId());
+        //
+        // The default user is now a DB flag shared with the CLI (#311). One-time
+        // upgrade: migrate a legacy localStorage default into the DB, then forget
+        // the localStorage key so the DB stays the single source of truth.
+        let defaultId = defaultUserIdFromList(users);
+        const legacyId = legacyDefaultToMigrate(users, readDefaultAccountId());
+        if (legacyId != null) {
+          try {
+            await setDefaultUser(legacyId, true);
+            defaultId = legacyId;
+          } catch (err) {
+            console.warn('[mu] default-account migration failed:', err);
+          }
+          writeDefaultAccountId(null);
+          if (cancelled) return;
+        }
+        const action = decideBootAccountAction(users, status, defaultId);
         if (action.kind === 'unlockDefault') {
           try {
             await unlockUser(action.userId, null);
@@ -1867,15 +1959,12 @@ interface UpdateVerificationInfo {
     }
   }, []);
 
-  // Central cancellable connect wrapper. Every connect invoke funnels through
-  // here so the token plumbing, Esc handling, still-connecting modal, and the
-  // cancelled-vs-failed toast distinction live in ONE place instead of nine
-  // ad-hoc try/catches. `command` picks the backend connect; `params` is the
-  // existing payload object, which we extend with the connect token.
-  const runConnect = useCallback(async <T,>(
-    command: 'provider_connect' | 'connect_ftp',
-    params: Record<string, unknown>,
-  ): Promise<T> => {
+  // Arm a fresh connect attempt: mint a token, register it as the live attempt
+  // so the Esc handler / "still connecting" Cancel can abort it, and start the
+  // still-connecting timer. Returns the token to thread to the backend. Pairs
+  // with `endConnectAttempt` in a finally so the ref never leaks (a leaked ref
+  // would keep Esc armed and let it cancel an unrelated later attempt).
+  const beginConnectAttempt = useCallback((): string => {
     const token = makeConnectToken();
     activeConnectTokenRef.current = token;
     connectCancelledRef.current = false;
@@ -1884,8 +1973,33 @@ interface UpdateVerificationInfo {
       // Only show the modal if this very attempt is still the live one.
       if (activeConnectTokenRef.current === token) setStillConnecting(true);
     }, STILL_CONNECTING_DELAY_MS);
+    return token;
+  }, []);
+
+  const endConnectAttempt = useCallback((token: string) => {
+    if (stillConnectingTimerRef.current) {
+      clearTimeout(stillConnectingTimerRef.current);
+      stillConnectingTimerRef.current = null;
+    }
+    if (activeConnectTokenRef.current === token) {
+      activeConnectTokenRef.current = null;
+      setStillConnecting(false);
+    }
+  }, []);
+
+  // Central cancellable connect wrapper. Every connect phase funnels through
+  // here so the token plumbing, Esc handling, still-connecting modal, and the
+  // cancelled-vs-failed toast distinction live in ONE place instead of ad-hoc
+  // try/catches. `run` receives the live connect token and threads it into
+  // whatever backend command(s) it invokes (#360: a single provider_connect, or
+  // the OAuth full-auth + connect pair, or the MEGAcmd URL preflight) so each
+  // one registers under it and a cancel reaches whichever phase is in flight.
+  const cancellableConnect = useCallback(async <T,>(
+    run: (connectToken: string) => Promise<T>,
+  ): Promise<T> => {
+    const token = beginConnectAttempt();
     try {
-      return await invoke<T>(command, { params: { ...params, connectToken: token } });
+      return await run(token);
     } catch (error) {
       // A user cancel surfaces a calm toast here (single point), then re-throws
       // so the connect flow's success path is aborted. The per-flow catch sees
@@ -1896,16 +2010,18 @@ interface UpdateVerificationInfo {
       }
       throw error;
     } finally {
-      if (stillConnectingTimerRef.current) {
-        clearTimeout(stillConnectingTimerRef.current);
-        stillConnectingTimerRef.current = null;
-      }
-      if (activeConnectTokenRef.current === token) {
-        activeConnectTokenRef.current = null;
-        setStillConnecting(false);
-      }
+      endConnectAttempt(token);
     }
-  }, [notify, t]);
+  }, [beginConnectAttempt, endConnectAttempt, notify, t]);
+
+  // Thin wrapper for the common single-invoke connect (`provider_connect` /
+  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
+  const runConnect = useCallback(<T,>(
+    command: 'provider_connect' | 'connect_ftp',
+    params: Record<string, unknown>,
+  ): Promise<T> => cancellableConnect<T>((token) =>
+    invoke<T>(command, { params: { ...params, connectToken: token } })
+  ), [cancellableConnect]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -1962,6 +2078,7 @@ interface UpdateVerificationInfo {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
     universalPreviewOpen, universalPreviewFile, openUniversalPreview, closeUniversalPreview,
+    previewNext, previewPrevious, hasPreviewNext, hasPreviewPrevious,
     viewMode, setViewMode,
   } = preview;
   const [devToolsMaximized, setDevToolsMaximized] = useState(false);
@@ -2317,7 +2434,7 @@ interface UpdateVerificationInfo {
           if (file && !file.is_dir) {
             const category = getPreviewCategory(file.name);
             if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-              openUniversalPreview(file, true);
+              openUniversalPreview(file, true, sortedRemoteFilesRef.current);
             } else if (isPreviewable(file.name)) {
               openDevToolsPreview(file, true);
             }
@@ -3243,6 +3360,33 @@ interface UpdateVerificationInfo {
     return localFiles2.filter(f => f.name.toLowerCase().includes(q));
   }, [localFiles2, localSearchFilter2]);
   const sortedLocalFiles2 = useMemo(() => sortFiles(filteredLocalFiles2, localSortField, localSortOrder), [filteredLocalFiles2, localSortField, localSortOrder, sortFiles]);
+
+  // AeroFile: recognize third-party client configs (rclone/WinSCP/FileZilla/...)
+  // in the local panels so a row can show a badge and the right-click menu can
+  // offer "Import to AeroFTP". Panel 2 only scans when the dual panel is open.
+  const bridgeConfigsLocal = useBridgeConfigDetection(sortedLocalFiles, true);
+  const bridgeConfigsLocal2 = useBridgeConfigDetection(sortedLocalFiles2, showDualLocalPanel);
+  const getLocalBridgeConfig = useCallback(
+    (file: LocalFile) => (file.is_dir ? null : bridgeConfigsLocal.get(file.path) ?? null),
+    [bridgeConfigsLocal],
+  );
+  const getLocal2BridgeConfig = useCallback(
+    (file: LocalFile) => (file.is_dir ? null : bridgeConfigsLocal2.get(file.path) ?? null),
+    [bridgeConfigsLocal2],
+  );
+  // Open the Export/Import dialog straight into the bridge import flow for a
+  // recognized config file (reuses the dialog's identify+route logic).
+  const openBridgeImportForFile = useCallback(async (filePath: string) => {
+    try {
+      setExportImportServers(await loadSavedServerProfiles());
+    } catch {
+      setExportImportServers([]);
+    }
+    setExportImportInitialMode('bridge-import');
+    setExportImportBridgeFile(filePath);
+    setShowExportImport(true);
+  }, []);
+
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
   sortedLocalFilesRef.current = sortedLocalFiles;
   sortedRemoteFilesRef.current = sortedRemoteFiles;
@@ -3273,8 +3417,21 @@ interface UpdateVerificationInfo {
   const overlayBadgeKind = sessions.find((s) => s.id === activeSessionId)?.cryptOverlayKind ?? null;
   const overlayVaultLit = cryptOverlayOwnerMatchesActive && !!(rcloneCryptVaultId || aeroCryptVaultId);
   const overlayBadgeDecrypting = overlayAnimActive && overlayDecrypting;
-  const overlayBadgeState: 'decrypting' | 'active' | 'locked' =
-    overlayBadgeDecrypting ? 'decrypting' : overlayVaultLit ? 'active' : 'locked';
+  // CWP-20B: the active tab's bound plaintext scope ('' = whole remote) and
+  // whether the current decrypted path is inside it. SAME predicate the routing
+  // gate will use, so the badge can never claim "encrypted" where an op runs in
+  // the clear (or vice-versa). In the legacy anchored architecture the path is
+  // always within scope, so 'outside' only becomes reachable once cross-boundary
+  // navigation (B3) lands; wiring it now keeps badge and routing on one check.
+  const activeBoundRemoteScope =
+    sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope ?? '';
+  const overlayInScope = isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
+  const overlayBadgeState: 'decrypting' | 'active' | 'outside' | 'locked' =
+    overlayBadgeDecrypting
+      ? 'decrypting'
+      : overlayVaultLit
+        ? (overlayInScope ? 'active' : 'outside')
+        : 'locked';
 
   const toggleActiveCryptOverlay = () => {
     const sess = sessions.find((s) => s.id === activeSessionId);
@@ -3885,10 +4042,10 @@ interface UpdateVerificationInfo {
     }
   });
 
-  // OS file association: listen for .aerovault files opened via double-click or single-instance forwarding
+  // OS file association: listen for .aerovault/.aerozip files opened via double-click or single-instance forwarding
   useTauriListener<string>('vault-open-file', (event) => {
     const vaultPath = event.payload;
-    if (vaultPath && vaultPath.endsWith('.aerovault')) {
+    if (vaultPath && (vaultPath.endsWith('.aerovault') || vaultPath.endsWith('.aerozip'))) {
       setShowVaultPanel({ mode: 'open', path: vaultPath });
     }
   });
@@ -4083,6 +4240,42 @@ interface UpdateVerificationInfo {
     };
   }, [loadLocalFiles]);
 
+  // Ehud #2: OS file/folder drag&drop from the system File Explorer onto the
+  // AeroFile local panel imports the dropped items into the current local
+  // directory (copy_local_file is recursive, so folders are pulled in whole).
+  // Skipped while the vault panel is open (it registers its own drop listener)
+  // or the connection screen is showing (no local target). The webview drop
+  // event is window-global, so this gate is what keeps it from double-firing.
+  useEffect(() => {
+    if (showVaultPanel || showConnectionScreen) return;
+    const webview = getCurrentWebview();
+    return guardedUnlisten(webview.onDragDropEvent(async (event) => {
+      if (event.payload.type !== 'drop') return;
+      const dest = currentLocalPathRef.current;
+      if (!dest || !event.payload.paths.length) return;
+      let copied = 0;
+      const failures: string[] = [];
+      for (const src of event.payload.paths) {
+        const base = src.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+        if (!base) continue;
+        const to = `${dest.replace(/\/+$/, '')}/${base}`;
+        try {
+          await invoke('copy_local_file', { from: src, to });
+          copied++;
+        } catch {
+          failures.push(base);
+        }
+      }
+      if (copied > 0) {
+        await loadLocalFiles(currentLocalPathRef.current);
+        notify.success(t('toast.dropImported', { count: copied.toString() }));
+      }
+      if (failures.length) {
+        notify.error(t('toast.dropFailed', { count: failures.length.toString() }), failures.join(', '));
+      }
+    }));
+  }, [showVaultPanel, showConnectionScreen, loadLocalFiles, notify, t]);
+
   // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
   // so the user gets feedback that the click that hit a dead session
   // was recovered automatically. Backend emits four phases: lost,
@@ -4141,6 +4334,15 @@ interface UpdateVerificationInfo {
     setCurrentRemotePath(response.current_path);
     setCurrentRemoteDisplayPath(response.display_current_path || response.current_path);
     setSelectedRemoteFiles(new Set());
+    // CWP-20B coordinate probe (debug-gated): confirm the exact normalization of
+    // current_path (ciphertext-absolute) vs display_current_path (plaintext-
+    // absolute) so isWithinCryptScope keys off the right one. Enable debug mode
+    // and navigate in/out of a bound crypt scope to read these.
+    logger.debug('[CWP-20B scope]', {
+      current_path: response.current_path,
+      display_current_path: response.display_current_path,
+      boundScope: sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope,
+    });
   };
 
   const loadRcloneCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
@@ -4172,12 +4374,49 @@ interface UpdateVerificationInfo {
   // connected server this returns null, so its operations use the plain provider
   // (uploads stay plaintext, listings show the real names) — an overlay can never
   // bleed onto a different server, even if a vault id is still held in memory.
-  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+  // The session's overlay binding WITHOUT the B2 fail-closed scope gate: "this tab
+  // owns an unlocked overlay", regardless of where the panel currently sits. B3
+  // routing needs this ungated form to re-anchor the overlay when the user steps
+  // back INTO the anchor from a cleartext (out-of-scope) location, where the gated
+  // activeCryptOverlay() below has already gone null. All path-preserving ops keep
+  // using activeCryptOverlay() so they stay fail-closed on the CURRENT path.
+  const rawActiveCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
     if (!cryptOverlayOwnerMatchesActive) return null;
-    if (rcloneCryptVaultId) return { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' };
-    if (aeroCryptVaultId) return { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' };
-    return null;
+    return rcloneCryptVaultId
+      ? { vaultId: rcloneCryptVaultId, prefix: 'rclone_crypt_provider' as const }
+      : aeroCryptVaultId
+        ? { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' as const }
+        : null;
   };
+  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
+    const overlay = rawActiveCryptOverlay();
+    if (!overlay) return null;
+    // CWP-20B (B2): fail-closed scope gate. The overlay routes an op ONLY while the
+    // active panel's DECRYPTED path is within the session's bound crypt scope.
+    // Outside the scope this returns null, so the op falls through to the plain
+    // provider (real names, normal protocol, plaintext transfers). The predicate
+    // is fail-closed (unknown path or whole-remote scope => inside), so a
+    // normalization mismatch can at worst route an in-scope op through the overlay
+    // (a visible decrypt error), never expose plaintext where encryption was
+    // expected. This is the SAME predicate the path-bar badge uses (overlayInScope)
+    // and, via isCryptOverlayActive() below, the SAME one the CWP-20 action gating
+    // (share-link, server-side checksum) keys on, so badge + routing + gating can
+    // never diverge. In the shipped anchored architecture the path is always within
+    // scope, so this is a no-op until cross-boundary navigation (B3) can leave it.
+    if (!isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath)) return null;
+    return overlay;
+  };
+  // P3.4/P3.5 single source of truth: true when the ACTIVE panel is inside an
+  // unlocked crypt overlay scope (either kind, at equal grade). Both the action
+  // gating (share-link, server-side checksum) and the transparent transfer
+  // routing derive from this SAME predicate, so the path-bar "encrypted" badge
+  // and the actual behaviour can never diverge (a badge that lies about scope
+  // is a data-exposure bug). CWP-20B (B2): since activeCryptOverlay() now applies
+  // the fail-closed scope gate, this means "overlay owned AND unlocked AND the
+  // decrypted path is within the bound scope" — outside the scope it is false, so
+  // share-link / server-side checksum re-enable for the plaintext region exactly
+  // as the badge drops to its 'outside' state.
+  const isCryptOverlayActive = (): boolean => activeCryptOverlay() !== null;
 
   // Per-session overlay binding. Each connected tab remembers its own overlay so
   // switching/reconnecting to it restores ITS decrypted view (the single global
@@ -4198,13 +4437,16 @@ interface UpdateVerificationInfo {
     ));
   };
   // Overlay UNLOCKED: store the live vault + keep the capability kind.
+  // `remoteScope` (CWP-20B) is the plaintext-absolute bound folder ('' = whole
+  // remote); carried per-session so the scope-aware badge/routing stay isolated.
   const bindSessionCryptOverlay = (
     match: { savedServerId?: string; sessionId?: string },
     vaultId: string,
     kind: 'rclone-crypt' | 'aerocrypt',
+    remoteScope?: string,
   ) => {
     setSessions((prev) => prev.map((s) =>
-      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind }, cryptOverlayKind: kind } : s,
+      sessionMatches(s, match) ? { ...s, cryptOverlay: { vaultId, kind, remoteScope: normCryptScope(remoteScope) }, cryptOverlayKind: kind } : s,
     ));
   };
   // Overlay LOCKED: drop the live vault but KEEP the capability kind so the badge
@@ -4306,7 +4548,7 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setAeroCryptVaultId(null);
             setRcloneCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt');
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt', overlayScope);
             return { vaultId: info.vault_id, prefix: 'rclone_crypt_provider' };
           }
         } else {
@@ -4317,7 +4559,7 @@ interface UpdateVerificationInfo {
           if (info?.vault_id) {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt');
+            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt', overlayScope);
             return { vaultId: info.vault_id, prefix: 'aerocrypt_provider' };
           }
         }
@@ -4885,7 +5127,12 @@ interface UpdateVerificationInfo {
     // surfaces a clear error.
     if (effectiveParams.providerId === 'megacmd-webdav') {
       try {
-        const url = await invoke<string>('mega_webdav_url');
+        // #360: `mega-webdav /` blocks (up to its 30s timeout) when the MEGAcmd
+        // daemon is not running, and this preflight runs BEFORE runConnect's
+        // token is armed, so Esc could not abort it. Run it under a connect
+        // token so the backend honors a cancel and the Esc handler is live.
+        const url = await cancellableConnect<string>((connectToken) =>
+          invoke<string>('mega_webdav_url', { connectToken }));
         if (url) {
           let port = effectiveParams.port || 4443;
           try {
@@ -4901,7 +5148,10 @@ interface UpdateVerificationInfo {
             options: { ...(effectiveParams.options || {}), anonymous: true },
           };
         }
-      } catch {
+      } catch (e) {
+        // A user cancel (Esc) must abort the whole connect, not silently fall
+        // through to a connect against the saved endpoint (#360).
+        if (isConnectCancelledError(e)) throw e;
         // Bridge not reachable (MEGAcmd missing / not logged in): fall back to
         // the saved endpoint.
       }
@@ -5345,7 +5595,19 @@ interface UpdateVerificationInfo {
     lastError: string | null;
     pendingParams: ConnectionParams;
     loading: boolean;
+    // The activity-log entry of the connect attempt that triggered this
+    // prompt (#128). The retry reuses it so the single line flows
+    // Connecting -> "enter your 2FA code" (live) -> "2FA code verified"
+    // (done), instead of leaving a stranded entry and minting a new one.
+    logId?: string;
   } | null>(null);
+
+  // Saved-server profile id whose connect is currently in flight, INCLUDING the
+  // post-2FA retry that runs after the modal closes (#128-C). The per-card local
+  // `connectingId` only covers the first click and is cleared the moment the 2FA
+  // modal appears; this keeps the card connect button's spinner spinning through
+  // the (multi-second) retry so the wait is visible for every server.
+  const [connectingProfileId, setConnectingProfileId] = useState<string | null>(null);
 
   // Auto-retry banner for the saved-2FA-secret reconnect case (issue #128).
   // When a profile stores a totp_secret the backend regenerates the code
@@ -5357,6 +5619,9 @@ interface UpdateVerificationInfo {
     accountLabel: string;
     secondsLeft: number;
     params: ConnectionParams;
+    // Reuse the original connect attempt's activity-log entry (#128) so the
+    // saved-secret auto-retry resolves the same line to done on success.
+    logId?: string;
   } | null>(null);
   // Caps the saved-secret auto-retry at a single attempt: a second 2FA
   // failure means the stored secret itself is wrong, not a reused code.
@@ -5372,6 +5637,7 @@ interface UpdateVerificationInfo {
     error: unknown,
     params: ConnectionParams,
     accountLabel: string,
+    logId?: string,
   ): boolean => {
     const protocol = params.protocol;
     if (protocol !== 'mega' && protocol !== 'filen' && protocol !== 'internxt') return false;
@@ -5393,14 +5659,23 @@ interface UpdateVerificationInfo {
       if (totpRetryCountRef.current >= 1) {
         totpRetryCountRef.current = 0;
         setTotpAutoRetry(null);
+        // The saved secret itself is wrong: this IS a genuine failure, so the
+        // activity-log line turns red (unlike the calm "enter your code" state).
+        if (logId) humanLog.updateEntry(logId, { status: 'error', message: t('twoFactor.autoRetryFailedTitle') });
         notify.error(t('twoFactor.autoRetryFailedTitle'), t('twoFactor.autoRetryFailedBody'));
         return true;
       }
       totpRetryCountRef.current += 1;
-      void scheduleTotpAutoRetry(params, accountLabel, savedSecret);
+      // Leave the log entry in its calm "running" state (it reads "Connecting"):
+      // the saved-secret path reconnects itself, so there is nothing to type.
+      void scheduleTotpAutoRetry(params, accountLabel, savedSecret, logId);
       return true;
     }
 
+    // Manual prompt: the connect is not an error, the account is just 2FA-
+    // protected by the user's own choice. Show a calm, live (blue) line asking
+    // for the code, never a red failure. The retry resolves this same entry.
+    if (logId) humanLog.updateEntry(logId, { status: 'running', message: t('lockScreen.enter2FAHint') });
     setTwoFactorPrompt({
       open: true,
       providerKey: protocol,
@@ -5408,6 +5683,7 @@ interface UpdateVerificationInfo {
       lastError: msg,
       pendingParams: params,
       loading: false,
+      logId,
     });
     return true;
   };
@@ -5419,6 +5695,7 @@ interface UpdateVerificationInfo {
     params: ConnectionParams,
     accountLabel: string,
     secret: string,
+    logId?: string,
   ) => {
     let waitSeconds = 30;
     try {
@@ -5430,7 +5707,7 @@ interface UpdateVerificationInfo {
     } catch {
       // Keep the 30s worst-case default if the preview call fails.
     }
-    setTotpAutoRetry({ accountLabel, secondsLeft: waitSeconds, params });
+    setTotpAutoRetry({ accountLabel, secondsLeft: waitSeconds, params, logId });
   };
 
   /** Modal callback. Closes the prompt; if the retry triggers another 2FA
@@ -5444,8 +5721,20 @@ interface UpdateVerificationInfo {
         two_factor_code: code,
       },
     };
+    const retryLogId = twoFactorPrompt.logId;
+    const retryProfileId = twoFactorPrompt.pendingParams.savedServerId ?? null;
     setTwoFactorPrompt(null);
-    await connectToFtp(newParams);
+    // Keep the saved-server card's connect button spinning through the retry
+    // (the modal cleared the per-card local spinner). #128-C.
+    setConnectingProfileId(retryProfileId);
+    try {
+      // Reuse the original entry so it resolves to "2FA code verified" on
+      // success, or flips back to the calm "enter your code" line on a wrong
+      // code, without ever leaving a stranded log entry behind (#128).
+      await connectToFtp(newParams, { existingLogId: retryLogId });
+    } finally {
+      setConnectingProfileId(null);
+    }
   };
 
   // Drives the saved-secret auto-retry countdown. Ticks once a second and,
@@ -5454,8 +5743,9 @@ interface UpdateVerificationInfo {
     if (!totpAutoRetry) return;
     if (totpAutoRetry.secondsLeft <= 0) {
       const retryParams = totpAutoRetry.params;
+      const retryLogId = totpAutoRetry.logId;
       setTotpAutoRetry(null);
-      void connectToFtp(retryParams);
+      void connectToFtp(retryParams, { isAutoRetry: true, existingLogId: retryLogId });
       return;
     }
     const id = window.setTimeout(() => {
@@ -5465,7 +5755,21 @@ interface UpdateVerificationInfo {
   }, [totpAutoRetry]);
 
   // FTP operations
-  const connectToFtp = async (overrideParams?: ConnectionParams) => {
+  const connectToFtp = async (
+    overrideParams?: ConnectionParams,
+    opts?: { isAutoRetry?: boolean; existingLogId?: string },
+  ) => {
+    // #128 item E: a user-initiated connect cancels any pending saved-secret 2FA
+    // auto-retry. Without this, entering the API key (or any manual reconnect)
+    // mid-countdown leaves the bottom-right countdown popup up and its 1s timer
+    // still fires a stale 2FA reconnect. The auto-retry's own fire passes
+    // isAutoRetry and is exempt: it already cleared the popup (see the countdown
+    // effect), and resetting its one-shot budget here would let a persistently
+    // failing secret loop forever.
+    if (!opts?.isAutoRetry) {
+      setTotpAutoRetry(null);
+      totpRetryCountRef.current = 0;
+    }
     // Parse host:port from server field if user entered it inline
     // Use a local copy to avoid direct React state mutation (C3 audit fix)
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
@@ -5536,6 +5840,61 @@ interface UpdateVerificationInfo {
         return;
       }
 
+      // #128-C: re-entering an account that is still connected in the backend
+      // must not tear the session down and force a fresh 2FA/TOTP login. The 🏠
+      // Home button (handleNewTabFromSavedServer) caches the active tab WITHOUT
+      // calling provider_disconnect, so the single-slot backend still holds the
+      // live provider. If a cached, overlay-free session for the same account
+      // exists and a liveness probe confirms the backend still holds that exact
+      // account alive, re-activate the cached tab from its snapshot and skip the
+      // reconnect entirely. A genuine auto-retry (isAutoRetry), a crypt-overlay
+      // tab, or a different account falls through to the normal reconnect below.
+      if (!opts?.isAutoRetry) {
+        const reusable = sessions.find(s => {
+          if (s.cryptOverlay) return false;
+          const p = s.connectionParams;
+          if (!p || p.protocol !== protocol) return false;
+          return (p.savedServerId && effectiveParams.savedServerId)
+            ? p.savedServerId === effectiveParams.savedServerId
+            : (p.username || '') === (effectiveParams.username || '')
+            && (p.server || '') === (effectiveParams.server || '');
+        });
+        if (reusable) {
+          let alive = false;
+          try {
+            alive = await invoke<boolean>('provider_probe_alive', {
+              protocol,
+              username: effectiveParams.username || null,
+            });
+          } catch { alive = false; }
+          if (alive) {
+            logger.debug('[connectToFtp] #128-C: backend session still alive, reusing tab without reconnect (no 2FA)');
+            setActiveSessionId(reusable.id);
+            setConnectionParams(reusable.connectionParams);
+            setSessions(prev => prev.map(s => s.id === reusable.id ? { ...s, status: 'connected' } : s));
+            setIsConnected(true);
+            setShowRemotePanel(true);
+            setShowLocalPreview(false);
+            setShowConnectionScreen(false);
+            setIsSyncNavigation(reusable.isSyncNavigation ?? false);
+            setSyncBasePaths(reusable.syncBasePaths ?? null);
+            setRemoteFiles(reusable.remoteFiles);
+            setCurrentRemotePath(reusable.remotePath);
+            setSelectedRemoteFiles(new Set());
+            try {
+              const localFilesData: LocalFile[] = await invoke('get_local_files', {
+                path: reusable.localPath,
+                showHidden: showHiddenFiles,
+              });
+              setLocalFiles(localFilesData);
+            } catch { /* keep the current local pane on failure */ }
+            setCurrentLocalPath(reusable.localPath);
+            fetchStorageQuota(protocol, reusable.connectionParams);
+            return;
+          }
+        }
+      }
+
       setLoading(true);
       setIsSyncNavigation(false);
       setSyncBasePaths(null);
@@ -5577,7 +5936,9 @@ interface UpdateVerificationInfo {
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
         ? providerName.replace(effectiveParams.username, maskCredential(effectiveParams.username))
         : providerName;
-      const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
+      // On a 2FA retry, reuse the original attempt's entry (#128) instead of
+      // minting a new one, so the single line carries the whole lifecycle.
+      const logId = opts?.existingLogId ?? humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
       try {
         // Disconnect any existing provider first
@@ -5636,7 +5997,14 @@ interface UpdateVerificationInfo {
           private_key_path: effectiveParams.options?.private_key_path || undefined,
         });
         setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-        humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
+        // A 2FA retry reuses the original entry: resolve it to a calm "code
+        // verified" done state (#128) rather than the generic connect line, so
+        // the user sees their 2FA step explicitly succeed.
+        if (opts?.existingLogId) {
+          humanLog.updateEntry(logId, { status: 'success', message: t('twoFactor.codeVerified') });
+        } else {
+          humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
+        }
         notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
         // Load files using provider API. Re-use the {username}-resolved
@@ -5702,8 +6070,7 @@ interface UpdateVerificationInfo {
         // Replace the "Check credentials" log line with a 2FA-specific one
         // so the activity log doesn't mislead the user into thinking the
         // password is wrong when the server is just asking for a TOTP.
-        if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName)) {
-          humanLog.updateEntry(logId, { status: 'error', message: t('auth.enter2FAHint') });
+        if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName, logId)) {
           setLoading(false);
           return;
         }
@@ -5974,7 +6341,33 @@ interface UpdateVerificationInfo {
     try {
       let response: FileListResponse;
 
-      if (isOAuth) {
+      // #128-C: returning to a session whose account the single-slot backend
+      // STILL holds alive (the only open session after 🏠 Home, or the tab that
+      // currently owns the slot) must not disconnect + log in again, which for
+      // Filen / MEGA / Internxt would force a fresh 2FA code. Probe the live
+      // slot (identity-checked against this exact protocol + account); if it is
+      // still alive, just re-list in place. When another tab has since displaced
+      // the slot, or the link dropped, the probe returns false and we fall
+      // through to the normal reconnect, so tab-to-tab switching is unchanged.
+      let stillAlive = false;
+      if (!targetSession.cryptOverlay) {
+        try {
+          stillAlive = await invoke<boolean>('provider_probe_alive', {
+            protocol: protocol ?? null,
+            username: targetSession.connectionParams?.username || null,
+          });
+        } catch {
+          stillAlive = false;
+        }
+      }
+
+      if (stillAlive) {
+        logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
+        if (targetSession.remotePath && targetSession.remotePath !== '/') {
+          try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch { /* keep the backend cwd */ }
+        }
+        response = await invoke('provider_list_files', { path: null });
+      } else if (isOAuth) {
         // OAuth providers - need to reconnect because ProviderState may have a different provider
         logger.debug('[switchSession] OAuth provider, reconnecting...');
 
@@ -6209,7 +6602,11 @@ interface UpdateVerificationInfo {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
       activityLog.updateEntry(reconnectLogId, {
         status: 'success',
-        message: t('activity.reconnect_success', { server: targetSession.serverName })
+        // Honest wording: a live-slot reuse never reconnected (#128-C), so don't
+        // claim it did; a real reconnect keeps the "Reconnected" line.
+        message: stillAlive
+          ? t('activity.session_resumed', { server: targetSession.serverName })
+          : t('activity.reconnect_success', { server: targetSession.serverName })
       });
 
       // Refresh remote files with real data
@@ -6258,8 +6655,31 @@ interface UpdateVerificationInfo {
       // Issue #128: when reconnect fails because the saved session is stale
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
-      tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName);
+      tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName, reconnectLogId);
     }
+  };
+
+  /**
+   * Dual-action entry for a saved-server card whose pulsing dot says it already
+   * has an open session (#128-C). Instead of opening a parallel connection (a
+   * fresh login, and a fresh 2FA code for Filen / MEGA / Internxt), jump to the
+   * existing tab via switchSession, which reuses the live backend slot when it
+   * is still alive and only reconnects if another tab has displaced it. Returns
+   * true when an open session was found and activated.
+   */
+  const goToActiveSession = (savedServerId: string): boolean => {
+    if (!savedServerId) return false;
+    const existing = sessions.find(s => s.connectionParams?.savedServerId === savedServerId);
+    if (!existing) return false;
+    // switchSession only switches the active tab; when invoked from the My
+    // Servers grid (the connection screen is up) we must also leave that screen
+    // and show the file panels, mirroring connectToFtp's own reuse path.
+    setShowConnectionScreen(false);
+    setShowRemotePanel(true);
+    setShowLocalPreview(false);
+    setIsConnected(true);
+    void switchSession(existing.id);
+    return true;
   };
 
   const closeSession = async (sessionId: string) => {
@@ -6381,11 +6801,17 @@ interface UpdateVerificationInfo {
     return () => window.removeEventListener('aerovault-overlay-toggle', onToggle);
   }, [toggleAeroVaultOverlay]);
 
-  // N1.3: backend sweeper emits `aerovault-overlay-expired` when an overlay session
-  // crosses its idle timeout. Drop the matching session from the active state and
-  // any background tab that still references it, then notify the user.
+  // N1.3: the backend sweeper emits ONE `aerovault-overlay-expired` per session that
+  // crosses its idle timeout. Drop each matching session from the active state and any
+  // background tab that references it. The user-facing notification is COALESCED: a long
+  // working session can accumulate several idle overlays, and the sweeper expires them in
+  // the same tick, so without batching the user would get N identical toasts and N
+  // identical activity-log lines at the same timestamp. We collapse a burst into a single
+  // notification carrying the count.
+  const overlayExpiredBatchRef = React.useRef<{ ids: Set<string>; timer: number | null }>({ ids: new Set(), timer: null });
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     listen<{ session_id: string; source?: string }>('aerovault-overlay-expired', (event) => {
       const expiredId = event.payload?.session_id;
       if (!expiredId) return;
@@ -6397,15 +6823,28 @@ interface UpdateVerificationInfo {
             : s
         )
       );
-      notify.warning(
-        'AeroVault Overlay',
-        t('toolbar.aerovaultOverlayExpired') || 'Overlay locked due to inactivity'
-      );
+      // Coalesce the notification: gather this burst and emit a single entry shortly after.
+      const batch = overlayExpiredBatchRef.current;
+      batch.ids.add(expiredId);
+      if (batch.timer == null) {
+        batch.timer = window.setTimeout(() => {
+          const count = batch.ids.size;
+          batch.ids.clear();
+          batch.timer = null;
+          const base = t('toolbar.aerovaultOverlayExpired') || 'Overlay locked due to inactivity';
+          notify.warning('AeroVault Overlay', count > 1 ? `${base} (${count})` : base);
+        }, 250);
+      }
     }).then((un) => {
-      unlisten = un;
+      // If the effect was cleaned up before listen() resolved, detach immediately so the
+      // async registration cannot leak a listener (defensive: deps here are stable).
+      if (cancelled) un(); else unlisten = un;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
+      const batch = overlayExpiredBatchRef.current;
+      if (batch.timer != null) { window.clearTimeout(batch.timer); batch.timer = null; }
     };
   }, [notify, t]);
 
@@ -6705,7 +7144,25 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const cryptOverlay = isProvider ? activeCryptOverlay() : null;
+
+      // CWP-20B (B3): route on the TARGET display path, not the current one, so a
+      // boundary crossing flips between the crypt overlay and the plain provider at
+      // the moment of navigation (B2 keyed only off the current path, so it could
+      // never *leave* the anchor). overlayBinding is the ungated session overlay so
+      // we can re-anchor when stepping back INTO the anchor from cleartext.
+      const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;
+      const targetDisplay = resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath);
+      const targetInScope = overlayBinding
+        ? isWithinCryptScope(activeBoundRemoteScope, targetDisplay)
+        : false;
+      const cryptOverlay = targetInScope ? overlayBinding : null;
+      // Leaving the anchor (in-scope -> out-of-scope, only reachable via '..' or a
+      // typed path): drive the plain provider to the ABSOLUTE parent (outside the
+      // scope display == real path) so it lands deterministically in the cleartext
+      // region, rather than a relative '..' from the encrypted cwd.
+      const crossingOut = !!overlayBinding && !targetInScope
+        && isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
+      const plainNavPath = crossingOut ? targetDisplay : path;
 
       let response: FileListResponse;
       if (isAeroVaultOverlay) {
@@ -6715,15 +7172,20 @@ interface UpdateVerificationInfo {
         });
       } else if (isProvider) {
         if (cryptOverlay) {
+          // In-scope: relative descent / cd_up stay encrypted; an in-scope absolute
+          // path (incl. re-anchor at the cleartext anchor itself) is a clear cd.
+          // cryptScope lets the backend encrypt ONLY the components BELOW the anchor
+          // for a plaintext-absolute target (path bar), keeping the anchor cleartext.
           const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
             vaultId: cryptOverlay.vaultId,
             path,
             plainPath: !!plainPath,
+            cryptScope: activeBoundRemoteScope || null,
           });
           response = mapRcloneCryptListResponse(cryptResponse);
         } else {
-          // Use provider API
-          response = await invoke('provider_change_dir', { path });
+          // Plain provider region (incl. having just crossed out of the anchor).
+          response = await invoke('provider_change_dir', { path: plainNavPath });
         }
       } else {
         // Use FTP API
@@ -10398,7 +10860,7 @@ interface UpdateVerificationInfo {
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
       // Media files (images, audio, video, pdf) use Universal Preview modal
-      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
+      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true, sortedRemoteFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true, file.is_dir), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
@@ -10845,7 +11307,9 @@ interface UpdateVerificationInfo {
     // the ciphertext blobs (scrambled names, encrypted bytes), so they are
     // misleading: a share link would hand out unreadable data, a server hash
     // would not match the plaintext. Disable them in the menu (P3.5 gating).
-    const cryptOverlayActive = !!(aeroCryptVaultId || rcloneCryptVaultId);
+    // Uses the single session-scoped predicate so the gate matches the path-bar
+    // badge and the transfer routing (both kinds, native + interop).
+    const cryptOverlayActive = isCryptOverlayActive();
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
@@ -11280,6 +11744,11 @@ interface UpdateVerificationInfo {
         options: s.options,
         providerId: s.providerId,
         hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
+        // CWP-20B: carry the crypt-overlay binding + secret flags so the
+        // imported profile reconnects as Crypt (both kinds).
+        aeroCryptOverlay: s.aeroCryptOverlay,
+        hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
+        hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
       }));
 
     if (newServers.length > 0) {
@@ -11420,6 +11889,36 @@ interface UpdateVerificationInfo {
     });
   }, [notify, refreshProfilesFromImportedKeystore, t]);
 
+  // Double-click routing for archive containers: open the in-app ArchiveBrowser
+  // (mirrors the right-click "Browse Archive" action) instead of previewing the
+  // container as a blob. Encryption is probed per-format so the browser prompts.
+  const handleOpenArchiveFromFile = useCallback(async (file: LocalFile) => {
+    const lower = file.name.toLowerCase();
+    const is7z = lower.endsWith('.7z');
+    const isZip = lower.endsWith('.zip');
+    const isRar = lower.endsWith('.rar');
+    const archType: import('./types').ArchiveType = isZip ? 'zip' : is7z ? '7z' : isRar ? 'rar' : 'tar';
+    let encrypted = false;
+    try {
+      encrypted = is7z
+        ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
+        : isZip
+          ? await invoke<boolean>('is_zip_encrypted', { archivePath: file.path })
+          : isRar
+            ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
+            : false;
+    } catch { /* ignore */ }
+    setArchiveBrowserState({ path: file.path, type: archType, encrypted });
+  }, []);
+
+  // Double-click on a Cryptomator marker file opens its parent dir (the vault
+  // root) in CryptomatorBrowser, mirroring the right-click action.
+  const handleOpenCryptomatorFromFile = useCallback((file: LocalFile) => {
+    const cut = Math.max(file.path.lastIndexOf('\\'), file.path.lastIndexOf('/'));
+    const parent = cut > 0 ? file.path.slice(0, cut) : undefined;
+    setShowCryptomatorBrowser({ initialVaultPath: parent });
+  }, []);
+
   const handleOpenWithDefaultApp = useCallback(async (file: LocalFile) => {
     try {
       const path = file.path || `${currentLocalPath}/${file.name}`;
@@ -11427,6 +11926,14 @@ interface UpdateVerificationInfo {
 
       if (route.kind === 'aerovault') {
         setShowVaultPanel({ mode: 'open', path });
+        return;
+      }
+
+      // .aerozip opens the plaintext AeroVault Zip lane; VaultPanel auto-detects
+      // the container kind on open (aerovz_is_archive header sniff), so no
+      // password is prompted and no encrypted-vault path is taken.
+      if (route.kind === 'aerozip') {
+        setShowVaultPanel({ mode: 'open', containerKind: 'zip', path });
         return;
       }
 
@@ -11491,8 +11998,13 @@ interface UpdateVerificationInfo {
       : (count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload'));
     const filesToUpload = Array.from(selection);
 
-    // Detect .aerovault early for context menu ordering
+    // Detect AeroFTP container files early for context menu ordering.
     const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
+    const isAeroVaultArchiveFile = count === 1 && !file.is_dir && /\.aerozip$/i.test(file.name);
+    // AeroFile: is this single file a recognized third-party client config?
+    const bridgeCfg = count === 1 && !file.is_dir
+      ? (localPanelId === 'local2' ? bridgeConfigsLocal2 : bridgeConfigsLocal).get(file.path)
+      : undefined;
 
     const isAeroFileDualActive = (!isConnected || !showRemotePanel) && showDualLocalPanel;
     const items: ContextMenuItem[] = [
@@ -11562,6 +12074,56 @@ interface UpdateVerificationInfo {
         icon: <VaultIcon size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
+      // .aerozip: Open with AeroVault Zip (plaintext aerovz lane, no password)
+      ...(isAeroVaultArchiveFile ? [{
+        label: t('contextMenu.openWithAeroVaultZip') || 'Open with AeroVault Zip',
+        icon: <Archive size={14} />,
+        action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
+      }] : []),
+      // AeroFile: a recognized client config (rclone/WinSCP/FileZilla/...) can
+      // be imported into AeroFTP via the existing bridge import flow.
+      ...(bridgeCfg ? [{
+        label: t('contextMenu.importToAeroFTP'),
+        icon: <FolderInput size={14} />,
+        action: () => { void openBridgeImportForFile(file.path); },
+      } as ContextMenuItem] : []),
+      // .aerozip: Extract Here / Extract to Folder (plaintext lane, no password)
+      ...(isAeroVaultArchiveFile ? [{
+        label: t('contextMenu.extractSubmenu'),
+        icon: <FolderOpen size={14} />,
+        action: () => { },
+        children: [
+          {
+            label: t('contextMenu.extractHere'),
+            icon: <FolderOpen size={14} />,
+            action: async () => {
+              try {
+                notify.info(t('contextMenu.extracting'), file.name);
+                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: currentLocalPath }, { filename: file.name, archiveBytes: file.size });
+                notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: currentLocalPath }));
+                await loadLocalFiles(currentLocalPath);
+              } catch (err) {
+                notify.error(t('contextMenu.extractionFailed'), String(err));
+              }
+            },
+          },
+          {
+            label: t('contextMenu.extractToFolder'),
+            icon: <FolderOpen size={14} />,
+            action: async () => {
+              const subFolder = `${currentLocalPath}/${file.name.replace(/\.aerozip$/i, '')}`;
+              try {
+                notify.info(t('contextMenu.extracting'), file.name);
+                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: subFolder }, { filename: file.name, archiveBytes: file.size });
+                notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: subFolder }));
+                await loadLocalFiles(currentLocalPath);
+              } catch (err) {
+                notify.error(t('contextMenu.extractionFailed'), String(err));
+              }
+            },
+          },
+        ],
+      }] : []),
       // .aerovault: Open as AeroVault Overlay (N3 onboarding shortcut)
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.openAsAeroVaultOverlay') || 'Open as AeroVault Overlay',
@@ -11587,7 +12149,7 @@ interface UpdateVerificationInfo {
                   if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
                   try {
                     notify.info(t('contextMenu.extracting'), file.name);
-                    await invoke<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: currentLocalPath });
+                    await runExtractWithToast<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: currentLocalPath }, { filename: file.name, archiveBytes: file.size });
                     notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: currentLocalPath }));
                     await loadLocalFiles(currentLocalPath);
                   } catch (err) {
@@ -11611,7 +12173,7 @@ interface UpdateVerificationInfo {
                   if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
                   try {
                     notify.info(t('contextMenu.extracting'), file.name);
-                    await invoke<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: subFolder });
+                    await runExtractWithToast<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: subFolder }, { filename: file.name, archiveBytes: file.size });
                     notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: subFolder }));
                     await loadLocalFiles(currentLocalPath);
                   } catch (err) {
@@ -11624,7 +12186,7 @@ interface UpdateVerificationInfo {
         ],
       }] : []),
       // Media files (images, audio, video, pdf) use Universal Preview modal
-      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
+      { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false, sortedLocalFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
       { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1, shortcut: 'F2' },
@@ -11800,14 +12362,16 @@ interface UpdateVerificationInfo {
                   const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
                   notify.info(t('contextMenu.extracting'), file.name);
                   const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+                  const toastOpts = { filename: file.name, archiveBytes: file.size };
+                  let extractedTotal = 0;
                   if (is7zArchive) {
-                    await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                    ({ extractedTotal } = await runExtractWithToast<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder }, toastOpts));
                   } else if (isRarArchive) {
-                    await invoke<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder });
+                    ({ extractedTotal } = await runExtractWithToast<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder }, toastOpts));
                   } else {
-                    await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password });
+                    ({ extractedTotal } = await runExtractWithToast<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password }, toastOpts));
                   }
-                  activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+                  activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
                 } catch (err) {
@@ -11821,16 +12385,18 @@ interface UpdateVerificationInfo {
           const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
           notify.info(t('contextMenu.extracting'), file.name);
           const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
+          const toastOpts = { filename: file.name, archiveBytes: file.size };
+          let extractedTotal = 0;
           if (isZipArchive) {
-            await invoke<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null }, toastOpts));
           } else if (is7zArchive) {
-            await invoke<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder }, toastOpts));
           } else if (isRarArchive) {
-            await invoke<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder }, toastOpts));
           } else if (isTarArchive) {
-            await invoke<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder });
+            ({ extractedTotal } = await runExtractWithToast<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder }, toastOpts));
           }
-          activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}` });
+          activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);
         } catch (err) {
@@ -11929,27 +12495,28 @@ interface UpdateVerificationInfo {
       });
     }
 
-    // Always show "Create AeroVault..." and "More" (except on vault/cryptomator files)
-    if (!isAeroVaultFile && !isCryptomatorMarker) {
-      // Folder-specific: "Encrypt Folder as AeroVault..."
-      if (count === 1 && file.is_dir) {
-        items.push({
-          label: t('contextMenu.encryptFolderAsVault') || 'Encrypt Folder as AeroVault...',
-          icon: <VaultIcon size={14} />,
-          action: () => {
-            setShowVaultPanel({ mode: 'create', folderPath: file.path });
-          },
-        });
-      }
+    // Always show "Create AeroVault..." / archive actions and "More"
+    // (except on container/cryptomator files).
+    if (!isAeroVaultFile && !isAeroVaultArchiveFile && !isCryptomatorMarker) {
+      // ONE unified "Create AeroVault..." entry (redesign Phase 4): the modal
+      // opens on the Encrypted (.aerovault) tab by default; the plaintext
+      // .aerozip choice lives on its format card inside the modal, so the menu
+      // no longer carries a separate Zip / Encrypt-Folder item. Folder vs files
+      // is just the selection: a single folder routes to folder mode, otherwise
+      // the selected files are staged.
       items.push({
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
         icon: <VaultIcon size={14} />,
         action: () => {
+          if (count === 1 && file.is_dir) {
+            setShowVaultPanel({ mode: 'create', folderPath: file.path, outputDir: currentLocalPath });
+            return;
+          }
           const paths = filesToUpload.map(name => {
             const f = sortedLocalFiles.find(lf => lf.name === name);
             return f ? f.path : `${currentLocalPath}/${name}`;
           });
-          setShowVaultPanel({ mode: 'create', files: paths });
+          setShowVaultPanel({ mode: 'create', files: paths, outputDir: currentLocalPath });
         },
       });
 
@@ -11962,7 +12529,13 @@ interface UpdateVerificationInfo {
           {
             label: t('contextMenu.createCryptomator') || 'Create Cryptomator Vault...',
             icon: <Lock size={14} />,
-            action: () => setCryptomatorCreateDialog({ outputDir: currentLocalPath }),
+            action: () => {
+              const paths = filesToUpload.map(name => {
+                const f = sortedLocalFiles.find(lf => lf.name === name);
+                return f ? f.path : `${currentLocalPath}/${name}`;
+              });
+              setCryptomatorCreateDialog({ outputDir: currentLocalPath, files: paths });
+            },
           },
         ],
       });
@@ -12150,12 +12723,12 @@ interface UpdateVerificationInfo {
       ...(providerSupportsCryptOverlay(currentProtocol) && !aeroCryptVaultId && !rcloneCryptVaultId ? [
         {
           label: `${t('aerocryptNative.title')} (${t('aerocryptNative.recommended')})`,
-          icon: <OverlayIcon size={14} className="text-emerald-500" />,
+          icon: <Lock size={14} className="text-emerald-500" />,
           action: () => setShowAeroCryptUnlock(true),
         } as ContextMenuItem,
         {
           label: t('aerocrypt.title'),
-          icon: <OverlayIcon size={14} className="text-blue-500" />,
+          icon: <Lock size={14} className="text-blue-500" />,
           action: () => setShowRcloneCryptUnlock(true),
           divider: true,
         } as ContextMenuItem,
@@ -12221,7 +12794,7 @@ interface UpdateVerificationInfo {
       if (doubleClickAction === 'preview') {
         const category = getPreviewCategory(file.name);
         if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-          await openUniversalPreview(file, true);
+          await openUniversalPreview(file, true, sortedRemoteFilesRef.current);
         } else if (isPreviewable(file.name)) {
           openDevToolsPreview(file, true);
         }
@@ -12239,7 +12812,7 @@ interface UpdateVerificationInfo {
     } else if (doubleClickAction === 'preview') {
       const category = getPreviewCategory(file.name);
       if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
-        openUniversalPreview(file, false);
+        openUniversalPreview(file, false, sortedLocalFilesRef.current);
       } else if (isPreviewable(file.name)) {
         openDevToolsPreview(file, false);
       }
@@ -12340,7 +12913,7 @@ interface UpdateVerificationInfo {
           }}
           onShowSupport={() => setShowSupportDialog(true)}
           onShowCyberTools={() => setShowCyberTools(true)}
-          onShowVault={() => setShowVaultPanel({ mode: 'home' })}
+          onShowVault={() => setShowVaultPanel({ mode: 'home', outputDir: currentLocalPath })}
           onShowAbout={() => setShowAboutDialog(true)}
           onShowMcp={() => setShowMcpDialog(true)}
           onShowShortcuts={() => setShowShortcutsDialog(true)}
@@ -12860,7 +13433,18 @@ interface UpdateVerificationInfo {
               if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
-                if (propertiesDialog.isRemote) {
+                if (propertiesDialog.isRemote && isCryptOverlayActive()) {
+                  // P3.5 gating: under an active crypt overlay (native or
+                  // interop) the server stores ciphertext, so a server-side
+                  // digest would hash the encrypted blob, NOT the plaintext the
+                  // user sees. Refuse it honestly rather than return a hash that
+                  // silently fails every integrity check against the real file.
+                  notify.error(
+                    t('toast.checksumFailed'),
+                    t('aerocrypt.serverHashGated'),
+                  );
+                  setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
+                } else if (propertiesDialog.isRemote) {
                   // Server-side only: provider_checksum never downloads the
                   // file. One call returns every digest the backend exposes
                   // cheaply (S3 md5, B2 sha1, SFTP sha256, Drive/OneDrive/Box
@@ -13015,6 +13599,8 @@ interface UpdateVerificationInfo {
         {showExportImport && (
           <ExportImportDialog
             servers={exportImportServers}
+            initialMode={exportImportInitialMode}
+            initialBridgeFilePath={exportImportBridgeFile ?? undefined}
             onImport={(newServers) => {
               const merged = [...exportImportServers, ...newServers];
               setExportImportServers(merged);
@@ -13022,8 +13608,14 @@ interface UpdateVerificationInfo {
                 .then(() => setServersRefreshKey(k => k + 1))
                 .catch(() => {});
               setShowExportImport(false);
+              setExportImportInitialMode(undefined);
+              setExportImportBridgeFile(null);
             }}
-            onClose={() => setShowExportImport(false)}
+            onClose={() => {
+              setShowExportImport(false);
+              setExportImportInitialMode(undefined);
+              setExportImportBridgeFile(null);
+            }}
           />
         )}
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
@@ -13163,6 +13755,10 @@ interface UpdateVerificationInfo {
           isOpen={universalPreviewOpen}
           file={universalPreviewFile}
           onClose={closeUniversalPreview}
+          onNext={previewNext}
+          onPrevious={previewPrevious}
+          hasNext={hasPreviewNext}
+          hasPrevious={hasPreviewPrevious}
           onEdit={universalPreviewFile ? () => {
             const pf = universalPreviewFile;
             closeUniversalPreview();
@@ -13173,7 +13769,13 @@ interface UpdateVerificationInfo {
           isOpen={showCloudPanel}
           onClose={() => setShowCloudPanel(false)}
         />
-        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
+        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialContainerKind={showVaultPanel.containerKind} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} initialOutputDir={showVaultPanel.outputDir} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} onVaultCreated={(dir) => {
+          // Refresh whichever local panel is showing the folder the new vault was
+          // written into, so it appears without a manual refresh (Compressor parity).
+          const norm = (p: string) => p.replace(/[\\/]+$/, '');
+          if (norm(dir) === norm(currentLocalPath)) void loadLocalFiles(currentLocalPath);
+          if (currentLocalPath2 && norm(dir) === norm(currentLocalPath2)) void loadLocalFiles2(currentLocalPath2);
+        }} />}
         {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock
@@ -13602,6 +14204,7 @@ interface UpdateVerificationInfo {
               const ext = opts.format === 'tar.gz' ? '.tar.gz' : opts.format === 'tar.xz' ? '.tar.xz' : opts.format === 'tar.bz2' ? '.tar.bz2' : `.${opts.format}`;
               const outputPath = `${compressDialogState.outputDir}/${opts.archiveName}${ext}`;
               const paths = compressDialogState.files.map(f => f.path);
+              const inputBytes = compressDialogState.files.reduce((sum, f) => sum + (f.size || 0), 0);
               const logId = activityLog.log('INFO', `Compressing to ${opts.archiveName}${ext}...`, 'running');
               try {
                 if (opts.format === 'zip') {
@@ -13611,14 +14214,23 @@ interface UpdateVerificationInfo {
                 } else {
                   await invoke<string>('compress_tar', { paths, outputPath, format: opts.format, compressionLevel: opts.compressionLevel });
                 }
+                // Stat the produced archive to report the real output size and saving.
+                let outputBytes = 0;
+                try {
+                  const props = await invoke<{ size: number }>('get_file_properties', { path: outputPath });
+                  outputBytes = props?.size ?? 0;
+                } catch { /* size stays 0 -> log reports input only, no fake ratio */ }
                 const suffix = opts.password ? ' (AES-256)' : '';
-                activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}` });
+                activityLog.updateEntry(logId, { status: 'success', message: `Created ${opts.archiveName}${ext}${suffix}`, details: formatCompressDetails(inputBytes, outputBytes) });
                 notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
-                setCompressDialogState(null);
                 await loadLocalFiles(currentLocalPath);
+                // Keep the dialog open so it can present the completion stats
+                // (ratio, bytes saved, before/after bars); the user closes it.
+                return { inputBytes, outputBytes };
               } catch (err) {
                 activityLog.log('ERROR', `Compression failed: ${String(err)}`, 'error');
                 notify.error(t('contextMenu.compressionFailed'), String(err));
+                throw err;
               }
             }}
           />
@@ -13627,6 +14239,7 @@ interface UpdateVerificationInfo {
         {cryptomatorCreateDialog && (
           <CryptomatorCreateDialog
             outputDir={cryptomatorCreateDialog.outputDir}
+            files={cryptomatorCreateDialog.files}
             onClose={() => setCryptomatorCreateDialog(null)}
             onCreated={() => loadLocalFiles(currentLocalPath)}
           />
@@ -13646,9 +14259,13 @@ interface UpdateVerificationInfo {
               onConnectionParamsChange={setConnectionParams}
               onQuickConnectDirsChange={setQuickConnectDirs}
               onConnect={connectToFtp}
+              cancellableConnect={cancellableConnect}
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
+              sessionCount={sessions.length}
               activeProfileIds={activeProfileIds}
+              onActivateSession={goToActiveSession}
+              connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
@@ -13882,8 +14499,7 @@ interface UpdateVerificationInfo {
                     // activity panel shows the "enter 2FA hint" line instead of the misleading
                     // "Check credentials" toast (the password is fine, the server just wants
                     // a TOTP). Mirrors the order used in connectToFtp.
-                    if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName)) {
-                      humanLog.updateEntry(logId, { status: 'error', message: t('auth.enter2FAHint') });
+                    if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName, logId)) {
                       setLoading(false);
                       return;
                     }
@@ -14368,19 +14984,29 @@ interface UpdateVerificationInfo {
                         ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 border-emerald-500/30'
                         : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-500 border-blue-500/30';
                       const greyCls = 'bg-gray-400/15 text-gray-400 border-gray-400/30';
+                      // CWP-20B 'outside': overlay unlocked but the current path is
+                      // outside its bound scope, i.e. this folder is plaintext.
+                      // Amber dim distinguishes it from 'locked' (vault locked).
+                      const outsideCls = 'bg-amber-500/15 text-amber-500 border-amber-500/30';
                       const stateCls = overlayBadgeState === 'active'
                         ? `${litCls} cursor-pointer`
                         : overlayBadgeState === 'decrypting'
                           ? `${greyCls} animate-pulse cursor-wait`
-                          : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
+                          : overlayBadgeState === 'outside'
+                            ? `${outsideCls} hover:bg-amber-500/25 cursor-pointer`
+                            : `${greyCls} hover:bg-gray-400/25 cursor-pointer`;
                       const iconCls = overlayBadgeState === 'active'
                         ? (isAero ? 'text-emerald-400' : 'text-blue-400')
-                        : 'text-gray-400';
+                        : overlayBadgeState === 'outside'
+                          ? 'text-amber-500'
+                          : 'text-gray-400';
                       const title = overlayBadgeState === 'active'
                         ? `${label} · ${t('aerocrypt.lock')}`
                         : overlayBadgeState === 'decrypting'
                           ? `${label} · …`
-                          : `${label} · ${t('aerocrypt.unlock')}`;
+                          : overlayBadgeState === 'outside'
+                            ? `${label} · ${t('aerocrypt.outsideScope')}`
+                            : `${label} · ${t('aerocrypt.unlock')}`;
                       return (
                         <button
                           type="button"
@@ -14390,7 +15016,7 @@ interface UpdateVerificationInfo {
                           title={title}
                           aria-label={title}
                         >
-                          <OverlayIcon size={11} className={iconCls} />
+                          <Lock size={11} className={iconCls} />
                           {label}
                         </button>
                       );
@@ -15073,6 +15699,9 @@ interface UpdateVerificationInfo {
                   onOpenDevToolsPreview={openDevToolsPreview}
                   onUploadFile={uploadFile}
                   onOpenInFileManager={openInFileManager}
+                  onOpenVault={(path) => setShowVaultPanel({ mode: 'open', path })}
+                  onOpenArchive={handleOpenArchiveFromFile}
+                  onOpenCryptomator={handleOpenCryptomatorFromFile}
                   isTrashView={isTrashView}
                   trashItems={trashItems}
                   onEmptyTrash={handleEmptyTrash}
@@ -15087,6 +15716,7 @@ interface UpdateVerificationInfo {
                   iconProvider={iconProvider}
                   displayName={displayName}
                   getSyncBadge={getSyncBadge}
+                  getBridgeConfig={getLocalBridgeConfig}
                   getTagsForFile={fileTags.getTagsForFile}
                   labelCounts={fileTags.labelCounts}
                   activeTagFilter={fileTags.activeTagFilter}
@@ -15209,6 +15839,9 @@ interface UpdateVerificationInfo {
                     onOpenDevToolsPreview={openDevToolsPreview}
                     onUploadFile={uploadFile}
                     onOpenInFileManager={openInFileManager}
+                    onOpenVault={(path) => setShowVaultPanel({ mode: 'open', path })}
+                    onOpenArchive={handleOpenArchiveFromFile}
+                    onOpenCryptomator={handleOpenCryptomatorFromFile}
                     isTrashView={false}
                     trashItems={[]}
                     onEmptyTrash={handleEmptyTrash}
@@ -15220,6 +15853,7 @@ interface UpdateVerificationInfo {
                     iconProvider={iconProvider}
                     displayName={displayName}
                     getSyncBadge={() => null}
+                    getBridgeConfig={getLocal2BridgeConfig}
                     getTagsForFile={fileTags.getTagsForFile}
                     labelCounts={fileTags.labelCounts}
                     activeTagFilter={null}

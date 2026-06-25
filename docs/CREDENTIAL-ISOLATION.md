@@ -1,5 +1,7 @@
 # Credential Isolation for AI Agents
 
+> _Last updated: 2026-06-22_
+
 > How AeroFTP enables AI coding agents to operate on remote servers and cloud providers without exposing credentials.
 
 ---
@@ -139,7 +141,7 @@ aeroftp-cli batch deploy.aeroftp-script --json
 
 ```
 # deploy.aeroftp-script
-SET ON_ERROR=stop
+ON_ERROR FAIL
 CONNECT staging-server
 PUT ./build/app.js /var/www/app.js
 STAT /var/www/app.js
@@ -164,7 +166,7 @@ AeroFTP is open source under the GPL-3.0 license. The credential isolation archi
 | Provider factory | [`src-tauri/src/cloud_provider_factory.rs`](../src-tauri/src/cloud_provider_factory.rs) | Multi-protocol provider creation |
 | OAuth2 manager | [`src-tauri/src/providers/oauth2.rs`](../src-tauri/src/providers/oauth2.rs) | Token storage, refresh, and lifecycle |
 
-The architecture has been reviewed by 10 independent auditors (5 Claude Opus 4.6 + 5 GPT 5.4) with 83+ findings identified and resolved across security, performance, code quality, and OAuth correctness.
+The architecture has been reviewed across multiple independent dual-engine AI audits (Claude Opus 4.6 and GPT-5.4), with all findings across security, performance, code quality, and OAuth correctness resolved. See [`docs/SECURITY-AUDIT-SUMMARY.md`](SECURITY-AUDIT-SUMMARY.md) and [`docs/THREAT-MODEL.md`](THREAT-MODEL.md) for the audit history.
 
 ---
 

@@ -12,6 +12,7 @@
  */
 
 import React, { useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
   Copy, ArrowRightLeft,
@@ -31,6 +32,8 @@ import { LocalFile } from '../types';
 import type { ServerProfile } from '../types';
 import type { TrashItem, FileTag, PanelEndpoint } from '../types/aerofile';
 import { FileTagBadge } from './FileTagBadge';
+import { BridgeConfigBadge } from './BridgeConfigBadge';
+import type { BridgeSourceDescriptor } from './bridge/bridgeSources';
 import type { PanelKey } from '../hooks/useDragAndDrop';
 import { PanelEndpointSelector } from './PanelEndpointSelector';
 
@@ -173,6 +176,12 @@ export interface LocalFilePanelProps {
   onOpenDevToolsPreview: (file: LocalFile, isRemote: boolean) => void;
   onUploadFile: (path: string, name: string, isFolder: boolean) => void;
   onOpenInFileManager: (path: string) => void;
+  // Open a local .aerovault file in the AeroVault modal (browse/open flow).
+  onOpenVault: (path: string) => void;
+  // Open a local archive (zip/7z/rar/tar...) in the in-app ArchiveBrowser.
+  onOpenArchive: (file: LocalFile) => void;
+  // Open a Cryptomator marker file (vault/masterkey.cryptomator) in CryptomatorBrowser.
+  onOpenCryptomator: (file: LocalFile) => void;
 
   // --- Trash ---
   isTrashView: boolean;
@@ -201,6 +210,9 @@ export interface LocalFilePanelProps {
   iconProvider: IconProvider;
   displayName: (name: string, isDir: boolean) => string;
   getSyncBadge: (filePath: string, fileModified: string | undefined, isLocal: boolean) => React.ReactNode;
+  /** AeroFile bridge-config recognition: returns the matching bridge source
+   *  for a recognized third-party client config (rclone/WinSCP/...), else null. */
+  getBridgeConfig?: (file: LocalFile) => BridgeSourceDescriptor | null;
   t: (key: string, params?: Record<string, string | number>) => string;
   notify: { success: (title: string, message: string) => void };
 }
@@ -283,6 +295,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   onOpenDevToolsPreview,
   onUploadFile,
   onOpenInFileManager,
+  onOpenVault,
+  onOpenArchive,
+  onOpenCryptomator,
   isTrashView,
   trashItems,
   onEmptyTrash,
@@ -301,9 +316,18 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   iconProvider,
   displayName,
   getSyncBadge,
+  getBridgeConfig,
   t,
   notify,
 }) => {
+  // AeroFile: render the bridge-config badge for a recognized client config.
+  const bridgeBadge = (file: LocalFile): React.ReactNode => {
+    if (!getBridgeConfig || file.is_dir) return null;
+    const source = getBridgeConfig(file);
+    if (!source) return null;
+    return <BridgeConfigBadge source={source} title={`${source.label} - ${t('contextMenu.importToAeroFTP')}`} />;
+  };
+
   // Navigate to parent directory
   const navigateUp = () => {
     const parent = currentPath.split(/[\\/]/).slice(0, -1).join('/') || '/';
@@ -311,9 +335,39 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   };
 
   // Handle file double-click
-  const handleDoubleClick = (file: LocalFile) => {
+  const handleDoubleClick = async (file: LocalFile) => {
     if (file.is_dir) {
       onNavigate(file.path);
+      return;
+    }
+    if (/\.(aerovault|aerozip)$/i.test(file.name)) {
+      // An AeroVault container (.aerovault encrypted, .aerozip plaintext Zip
+      // lane) is an opaque custom format: never preview/upload it as a blob.
+      // Open it in the AeroVault modal (same path as the OS file association)
+      // so a double-click unlocks/browses it in-app. The panel auto-detects the
+      // lane on open, so .aerozip skips the password prompt.
+      onOpenVault(file.path);
+      return;
+    }
+    // Open by CONTENT, not extension: an AeroVault container that was renamed or
+    // stripped of its extension still opens in the modal. The sniff reads only
+    // the header magic (a few bytes, cheap regardless of file size); on any
+    // error / non-container it silently falls through to normal handling.
+    try {
+      const kind = await invoke<string | null>('detect_aero_container', { path: file.path });
+      if (kind === 'zip' || kind === 'vault') {
+        onOpenVault(file.path);
+        return;
+      }
+    } catch { /* not a container or unreadable: continue with normal handling */ }
+    if (/^(vault|masterkey)\.cryptomator$/i.test(file.name)) {
+      // Cryptomator marker file: open the vault (its parent dir) in CryptomatorBrowser,
+      // mirroring the right-click "Open as Cryptomator Vault" action.
+      onOpenCryptomator(file);
+    } else if (/\.(zip|7z|rar|tar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2)$/i.test(file.name)) {
+      // Archive: open the in-app ArchiveBrowser instead of previewing the blob,
+      // mirroring the right-click "Browse Archive" action.
+      onOpenArchive(file);
     } else if (doubleClickAction === 'preview') {
       const category = getPreviewCategory(file.name);
       if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
@@ -876,6 +930,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                       </span>
                     )}
                     <FileTagBadge tags={getTagsForFile(file.path)} />
+                    {bridgeBadge(file)}
                     {getSyncBadge(file.path, file.modified || undefined, true)}
                   </td>
                   {orderedExtras.map((c) => visibility[c.id] ? renderFileExtra(c.id, file) : null)}
@@ -961,6 +1016,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   </span>
                 )}
                 <FileTagBadge tags={getTagsForFile(file.path)} />
+                {bridgeBadge(file)}
                 {!file.is_dir && file.size !== null && file.size > 0 && (
                   <span className="file-grid-size">{formatBytes(file.size)}</span>
                 )}

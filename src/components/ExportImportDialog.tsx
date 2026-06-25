@@ -2,12 +2,13 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput, Search } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { ServerProfile } from '../types';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { useTranslation } from '../i18n';
@@ -24,6 +25,10 @@ interface ExportImportDialogProps {
     // open the dialog straight into a specific action. Undefined preserves the
     // existing landing-page behavior (My Servers export/import flow).
     initialMode?: 'export' | 'import' | 'bridge-import' | 'bridge-export';
+    // Optional bridge-config file to import on open (AeroFile "Import to
+    // AeroFTP"). When set, the dialog runs the same identify+route flow as a
+    // drag-and-drop so it lands straight on that source's preview.
+    initialBridgeFilePath?: string;
 }
 
 interface ImportedServer {
@@ -41,6 +46,10 @@ interface ImportedServer {
     providerId?: string;
     credential?: string;
     hasStoredCredential?: boolean;
+    // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags.
+    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+    hasStoredAeroCryptPassword?: boolean;
+    hasStoredAeroCryptSalt?: boolean;
 }
 
 interface ImportResult {
@@ -53,7 +62,7 @@ interface ImportResult {
     };
 }
 
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode, initialBridgeFilePath }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -218,6 +227,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     options: s.options,
                     providerId: s.providerId,
                     hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
+                    // CWP-20B: carry crypt-overlay binding + secret flags so the
+                    // imported profile reconnects as Crypt (both kinds).
+                    aeroCryptOverlay: s.aeroCryptOverlay,
+                    hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
+                    hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
                 }));
 
             const skipped = importedServers.length - newServers.length;
@@ -319,6 +333,16 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             if (unlisten) unlisten();
         };
     }, [handleBridgeDrop]);
+
+    // Opened from a recognized bridge-config file (AeroFile "Import to
+    // AeroFTP"): run the identify+route flow once, exactly like a drop.
+    const initialBridgeHandledRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (initialBridgeFilePath && initialBridgeHandledRef.current !== initialBridgeFilePath) {
+            initialBridgeHandledRef.current = initialBridgeFilePath;
+            void handleBridgeDrop(initialBridgeFilePath);
+        }
+    }, [initialBridgeFilePath, handleBridgeDrop]);
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -563,6 +587,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                             />
+                            <PasswordMatchHint password={password} confirm={confirmPassword} />
 
                             {/* Password strength indicator (0-100 score, parity with AeroVault) */}
                             {password.length > 0 && (

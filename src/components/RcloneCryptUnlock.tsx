@@ -4,10 +4,12 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Lock, Unlock, Eye, EyeOff, Loader2, X, Download, FileText, Folder, FolderUp, Upload } from 'lucide-react';
-import { OverlayIcon } from './icons/OverlayIcon';
+import { Lock, Unlock, Loader2, X, Download, FileText, Folder, FolderUp, Upload } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { PasswordInput } from './common/PasswordInput';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 
 interface RcloneCryptUnlockProps {
     onClose: () => void;
@@ -44,8 +46,8 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [salt, setSalt] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
     const [filenameEncryption, setFilenameEncryption] = useState('standard');
     const [dirNameEncryption, setDirNameEncryption] = useState(true);
     const [createSubpath, setCreateSubpath] = useState('');
@@ -79,6 +81,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     const clearSensitiveState = useCallback(() => {
         setVaultInfo(null);
         setPassword('');
+        setConfirmPassword('');
         setSalt('');
         setSuccess(null);
         setTestDecName(null);
@@ -115,7 +118,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     };
 
     const handleCreate = async () => {
-        if (!password) return;
+        if (!password || password !== confirmPassword) return;
         setLoading(true);
         setError(null);
         try {
@@ -129,6 +132,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
             setVaultInfo(info);
             onUnlocked?.(info.vault_id);
             setPassword('');
+            setConfirmPassword('');
             setSalt('');
             setCreateSubpath('');
             setSuccess(t('aerocrypt.initialised'));
@@ -278,7 +282,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
-                        <OverlayIcon size={20} className="text-gray-600 dark:text-gray-300" />
+                        <Lock size={20} className="text-gray-600 dark:text-gray-300" />
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                             {t('aerocrypt.title')}
                         </h2>
@@ -313,14 +317,14 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                             <div className="flex gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => { setMode('open'); setError(null); }}
+                                    onClick={() => { setMode('open'); setError(null); setConfirmPassword(''); }}
                                     className={`flex-1 px-3 py-1.5 rounded text-sm font-medium ${mode === 'open' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'}`}
                                 >
                                     {t('aerocrypt.openExisting')}
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { setMode('create'); setError(null); }}
+                                    onClick={() => { setMode('create'); setError(null); setConfirmPassword(''); }}
                                     className={`flex-1 px-3 py-1.5 rounded text-sm font-medium ${mode === 'create' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'}`}
                                 >
                                     {t('aerocrypt.createNew')}
@@ -331,24 +335,36 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     {t('aerocrypt.password')}
                                 </label>
-                                <div className="relative">
-                                    <input
-                                        type={showPassword ? 'text' : 'password'}
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
-                                        className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder={t('aerocrypt.passwordPlaceholder')}
-                                        autoFocus
-                                    />
-                                    <button
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    >
-                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                    </button>
-                                </div>
+                                <PasswordInput
+                                    value={password}
+                                    onChange={setPassword}
+                                    onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
+                                    placeholder={t('aerocrypt.passwordPlaceholder')}
+                                    ariaLabel={t('aerocrypt.password')}
+                                    autoFocus
+                                />
+                                {mode === 'create' && password.length > 0 && (
+                                    <div className="mt-2">
+                                        <PasswordStrengthBar password={password} />
+                                    </div>
+                                )}
                             </div>
+
+                            {mode === 'create' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        {t('password.confirm')}
+                                    </label>
+                                    <PasswordInput
+                                        value={confirmPassword}
+                                        onChange={setConfirmPassword}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                                        placeholder={t('password.confirmPlaceholder')}
+                                        ariaLabel={t('password.confirm')}
+                                    />
+                                    <PasswordMatchHint password={password} confirm={confirmPassword} />
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -421,7 +437,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                             ) : (
                                 <button
                                     onClick={handleCreate}
-                                    disabled={!password || loading}
+                                    disabled={!password || password !== confirmPassword || loading}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}

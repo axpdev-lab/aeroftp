@@ -2,13 +2,23 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2, Key } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useArchiveProgress } from '../hooks/useArchiveProgress';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { TransferProgressBar } from './TransferProgressBar';
+import { useModalFileView } from './modalview/useModalFileView';
+import { ModalViewToolbar } from './modalview/ModalViewToolbar';
+import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
+import { SaveAllMenu, SaveAllTarget } from './common/SaveAllMenu';
+import { MountVaultButton } from './common/MountVaultButton';
 
 interface CryptomatorBrowserProps {
     onClose: () => void;
@@ -36,6 +46,7 @@ interface BreadcrumbItem {
 export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose, initialVaultPath }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const modalView = useModalFileView();
     const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -43,10 +54,40 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const [entries, setEntries] = useState<CryptomatorEntry[]>([]);
     const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ name: t('cryptomator.root'), dirId: '' }]);
     const [loading, setLoading] = useState(false);
+    const [decrypting, setDecrypting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    // Save-All (#322): live export of the whole decrypted tree to folder/zip/.aerozip.
+    const passwordRef = useRef<HTMLInputElement>(null);
+    const [savingAll, setSavingAll] = useState(false);
+    const [saveProgress, setSaveProgress] = useState<{ percentage: number; transferred: number; total: number } | null>(null);
+    // Real byte-true decrypt progress (>=10MB plaintext only).
+    const progress = useArchiveProgress(decrypting);
+
+    // Drive the Save-All bar from the backend's `vault_progress` events while a
+    // bulk export runs (the single-file path uses `archive_progress` above).
+    useEffect(() => {
+        if (!savingAll) { setSaveProgress(null); return; }
+        let un: (() => void) | undefined;
+        let alive = true;
+        listen<{ percentage: number; transferred: number; total: number }>('vault_progress', e => setSaveProgress(e.payload))
+            .then(u => { if (alive) un = u; else u(); });
+        return () => { alive = false; un?.(); };
+    }, [savingAll]);
+    // Lock the modal during a decrypt or bulk export so a reflexive X can't abandon it.
+    const guarded = useGuardedClose({ guard: (decrypting || savingAll) ? 'busy' : null, onClose });
 
     const currentDirId = breadcrumb[breadcrumb.length - 1].dirId;
+
+    // Focus the password field as soon as the unlock form is shown (e.g. when the
+    // modal opens with a vault already selected), so the user can type straight
+    // away without clicking it first.
+    useEffect(() => {
+        if (!vaultInfo && vaultPath) {
+            const id = window.setTimeout(() => passwordRef.current?.focus(), 50);
+            return () => window.clearTimeout(id);
+        }
+    }, [vaultInfo, vaultPath]);
 
     const handleSelectVault = async () => {
         const selected = await open({ directory: true });
@@ -119,6 +160,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         if (!savePath) return;
 
         setLoading(true);
+        setDecrypting(true);
         setError(null);
         try {
             await invoke('cryptomator_decrypt_file', {
@@ -132,6 +174,45 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
             setError(String(e));
         } finally {
             setLoading(false);
+            setDecrypting(false);
+        }
+    };
+
+    // Save-All (#322, Ehud idea #1): export the whole decrypted vault tree in one
+    // shot. SECURITY: this writes PLAINTEXT to the chosen location; SaveAllMenu
+    // confirms that intent (with a "not encrypted" note for the .zip target) first.
+    const handleSaveAll = async (target: SaveAllTarget) => {
+        if (!vaultInfo) return;
+        const base = vaultInfo.name.replace(/\.[^.]+$/, '') || 'vault';
+        let destPath: string | null;
+        if (target === 'folder') {
+            destPath = await open({ directory: true }) as string | null;
+        } else {
+            destPath = await save({
+                defaultPath: target === 'zip' ? `${base}.zip` : `${base}.aerozip`,
+                filters: target === 'zip'
+                    ? [{ name: 'Zip', extensions: ['zip'] }]
+                    : [{ name: 'AeroZip', extensions: ['aerozip'] }],
+            });
+        }
+        if (!destPath) return;
+
+        setLoading(true);
+        setSavingAll(true);
+        setError(null);
+        try {
+            const report = await invoke<{ files: number; dirs: number; skipped: string[] }>('cryptomator_save_all', {
+                vaultId: vaultInfo.vaultId,
+                destPath,
+                target,
+            });
+            const skippedNote = report.skipped.length ? ` ${t('saveAll.skipped', { count: String(report.skipped.length) })}` : '';
+            setSuccess(`${t('saveAll.done', { count: String(report.files), path: destPath })}${skippedNote}`);
+        } catch (e) {
+            setError(String(e));
+        } finally {
+            setLoading(false);
+            setSavingAll(false);
         }
     };
 
@@ -159,9 +240,41 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         }
     };
 
+    // --- Grid (icon) view (shared file-manager view) ---
+    const gridItems: ModalGridItem[] = entries.map(entry => ({
+        key: entry.name,
+        label: entry.name,
+        isDir: entry.isDir,
+        size: entry.isDir ? undefined : entry.size,
+    }));
+    const gridGetIcon = (item: ModalGridItem, px: number): React.ReactNode => (
+        item.isDir
+            ? <Folder size={px} className="text-yellow-500 dark:text-yellow-400" />
+            : <File size={px} className="text-gray-500 dark:text-gray-400" />
+    );
+    const gridActivate = (item: ModalGridItem) => {
+        const entry = entries.find(e => e.name === item.key);
+        if (!entry) return;
+        if (entry.isDir && entry.dirId) navigateToDir(entry.name, entry.dirId);
+        else if (!entry.isDir) handleDecrypt(entry);
+    };
+    const gridActions = (item: ModalGridItem): React.ReactNode => {
+        const entry = entries.find(e => e.name === item.key);
+        if (!entry || entry.isDir) return null;
+        return (
+            <button
+                onClick={(e) => { e.stopPropagation(); handleDecrypt(entry); }}
+                className="p-1 rounded bg-white/80 dark:bg-gray-800/80 hover:bg-blue-100 dark:hover:bg-gray-600"
+                title={t('cryptomator.decryptAndSave')}
+            >
+                <Download size={12} />
+            </button>
+        );
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[650px] max-h-[80vh] flex flex-col animate-scale-in">
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[780px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
@@ -177,13 +290,39 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                 <Lock size={12} /> {t('cryptomator.lock')}
                             </button>
                         )}
-                        <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
+                        <button onClick={guarded.requestClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}><X size={18} /></button>
                     </div>
                 </div>
 
                 {/* Error / Success */}
                 {error && <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm">{error}</div>}
                 {success && <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm">{success}</div>}
+                {/* Real byte-true decrypt bar; appears only for >=10MB plaintext. */}
+                {progress && (
+                    <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+                        <TransferProgressBar
+                            percentage={progress.percentage}
+                            transferredBytes={progress.transferred}
+                            totalBytes={progress.total}
+                            speedBps={progress.speedBps}
+                            etaSeconds={progress.etaSeconds}
+                            filename={t('cryptomator.decrypting') || 'Decrypting'}
+                            size="lg"
+                        />
+                    </div>
+                )}
+                {/* Save-All export bar (whole-tree decrypt to folder/zip/.aerozip). */}
+                {savingAll && saveProgress && (
+                    <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+                        <TransferProgressBar
+                            percentage={saveProgress.percentage}
+                            transferredBytes={saveProgress.transferred}
+                            totalBytes={saveProgress.total}
+                            filename={t('saveAll.button')}
+                            size="lg"
+                        />
+                    </div>
+                )}
 
                 {/* Unlock form */}
                 {!vaultInfo && (
@@ -239,13 +378,14 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                     <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">{t('cryptomator.password')}</label>
                                     <div className="relative">
                                         <input
+                                            ref={passwordRef}
                                             type={showPassword ? 'text' : 'password'}
                                             value={password}
                                             onChange={e => setPassword(e.target.value)}
                                             onKeyDown={e => e.key === 'Enter' && handleUnlock()}
                                             className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8"
                                         />
-                                        <button onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                        <button tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                                             {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                                         </button>
                                     </div>
@@ -285,6 +425,18 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                             <button onClick={handleEncrypt} disabled={loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 rounded">
                                 <Upload size={12} /> {t('cryptomator.encrypt')}
                             </button>
+                            <SaveAllMenu disabled={loading} onExport={handleSaveAll} />
+                            {vaultInfo && (
+                                <MountVaultButton
+                                    kind="cryptomator"
+                                    vaultKey={vaultInfo.vaultId}
+                                    vaultPath={vaultPath}
+                                    password={password}
+                                    displayName={vaultInfo.name}
+                                    disabled={loading}
+                                />
+                            )}
+                            <ModalViewToolbar view={modalView} />
                         </div>
 
                         {/* File list */}
@@ -299,7 +451,17 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                                     {t('cryptomator.empty')}
                                 </div>
                             )}
-                            {!loading && entries.length > 0 && (
+                            {!loading && entries.length > 0 && modalView.viewMode === 'grid' && (
+                                <ModalFileGrid
+                                    items={gridItems}
+                                    gridSize={modalView.gridSize}
+                                    getIcon={gridGetIcon}
+                                    onActivate={gridActivate}
+                                    renderActions={gridActions}
+                                    formatSize={formatSize}
+                                />
+                            )}
+                            {!loading && entries.length > 0 && modalView.viewMode === 'list' && (
                                 <table className="w-full">
                                     <thead className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-gray-50 dark:bg-gray-800">
                                         <tr>
@@ -343,6 +505,13 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
                     </>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

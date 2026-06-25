@@ -272,6 +272,7 @@ fn ingest_duck(
                 credential: None,
                 has_stored_credential: Some(false),
                 public_url_base: None,
+                ..Default::default()
             });
         }
         DuckOutcome::Skip { kind, reason } => {

@@ -93,6 +93,9 @@ use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 use zeroize::Zeroize;
 
+#[path = "../cli_aerovz.rs"]
+mod cli_aerovz;
+
 #[path = "../cli_tui/mod.rs"]
 mod cli_tui;
 
@@ -2120,6 +2123,32 @@ enum Commands {
         #[arg(long, env = "AEROFTP_MOUNT_FUSE_THREADS")]
         fuse_threads: Option<usize>,
     },
+    /// Mount an UNLOCKED vault (Cryptomator or .aerovault/.aerozip) as a
+    /// read-only local filesystem (AeroMount for unlocked vaults, #322).
+    ///
+    /// The vault password is read from STDIN, never from the command line, so it
+    /// never appears in the process table. The mount is always READ-ONLY and
+    /// EPHEMERAL: the vault is unlocked in this process and its keys are wiped
+    /// when the process exits, so unmounting is as simple as killing it (the GUI
+    /// does this on vault-lock / quit). Linux only for now.
+    ///
+    /// Example: `printf %s "$PW" | aeroftp-cli mount-vault /mnt/v --kind cryptomator --vault-path /path/to/vault`
+    #[command(name = "mount-vault")]
+    MountVault {
+        /// Local mount point: an existing EMPTY directory.
+        mountpoint: String,
+        /// Vault kind: `cryptomator` (a vault directory) or `aerovault` (a
+        /// `.aerovault` or `.aerozip` file).
+        #[arg(long)]
+        kind: String,
+        /// Path to the Cryptomator vault directory or the `.aerovault`/`.aerozip`
+        /// container file.
+        #[arg(long)]
+        vault_path: String,
+        /// Read-only (always enforced today; write-back is a later phase).
+        #[arg(long, default_value_t = true)]
+        read_only: bool,
+    },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
         /// Source profile name (saved in vault)
@@ -2351,6 +2380,30 @@ enum Commands {
         /// plain listing stays instant. Mirrors the GUI's 🔴/🟠/🟢 detector.
         #[arg(long)]
         health: bool,
+
+        /// Open the inline action menu (TUI) directly, skipping the `-i` line
+        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
+        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        #[arg(long)]
+        tui: bool,
+    },
+    /// List and manage server-profile groups (the My Servers group chips)
+    ///
+    /// Groups are flat, named labels on saved server profiles, the CLI analogue
+    /// of the GUI group chips. Membership lives in the vault under
+    /// `config_server_groups`, shared with the GUI, so changes round-trip both
+    /// ways. Mirrors `aeroftp-cli profiles`: a plain listing, or `-i` for an
+    /// interactive prompt (rename / copy / delete / re-index). Per Ehud #311.
+    Groups {
+        /// Optional `list` keyword for parity with `<tool> groups list` muscle memory; ignored.
+        #[arg(hide = true)]
+        _ignored: Vec<String>,
+
+        /// Drop into an interactive prompt after the table (rclone-config-style):
+        /// re-index(#), Rename(R), Copy(C), Delete(D), List(L). Requires a TTY;
+        /// ignored in JSON / non-interactive mode.
+        #[arg(long, short = 'i')]
+        interactive: bool,
     },
     /// Manage local AeroFTP user partitions
     ///
@@ -2358,7 +2411,13 @@ enum Commands {
     /// vault on this device and are not tied to any online account or login.
     Users {
         #[command(subcommand)]
-        command: UsersCommands,
+        command: Option<UsersCommands>,
+
+        /// Drop into an interactive prompt after the table (rclone-config-style):
+        /// re-index(#), Rename(R), Copy(C), Delete(D), Fav(F), List(L), Tree(T).
+        /// Requires a TTY; ignored in JSON / non-interactive mode. Per Ehud #311.
+        #[arg(long, short = 'i')]
+        interactive: bool,
     },
     /// Create a new server profile in the vault
     ///
@@ -2817,6 +2876,14 @@ enum Commands {
         #[arg(long)]
         subfolder: bool,
     },
+    /// Plaintext archive operations for `.aerozip` (application/x-aerozip).
+    ///
+    /// Creates, extracts, and lists passwordless archives backed by the aerovz
+    /// lane: compression + integrity + Reed-Solomon recovery, not confidentiality.
+    Archive {
+        #[command(subcommand)]
+        command: cli_aerovz::ArchiveCommands,
+    },
 }
 
 #[cfg(test)]
@@ -2966,9 +3033,159 @@ enum VaultCommands {
         /// path. The plain-text rendering is printed to stderr regardless.
         #[arg(long)]
         receipt: Option<String>,
+        /// Place the added files inside this directory in the vault (created if it
+        /// does not exist yet). Without it, files land at the vault root.
+        #[arg(long = "to-dir")]
+        to_dir: Option<String>,
         /// Vault format: auto (detect from file) | v1 | v2 | v3
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
+    },
+    /// Recursively add a local directory tree into the vault, preserving its
+    /// structure (mirrors the GUI "add folder"). v2/v3 auto-detected from the file.
+    AddDir {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Local directory to add recursively
+        source_dir: String,
+        /// Place the tree under this directory prefix inside the vault
+        #[arg(long = "prefix")]
+        prefix: Option<String>,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Extract the WHOLE vault into a destination directory, preserving the tree
+    /// (mirrors the GUI "extract all"). v2/v3 auto-detected from the file.
+    ExtractAll {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Destination directory (created if needed)
+        dest: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Create an empty directory inside the vault.
+    Mkdir {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Directory path to create inside the vault (e.g. docs/2026)
+        dir: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Delete one or more entries from the vault. Use --recursive to remove a
+    /// directory and everything under it.
+    Rm {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// One or more entry paths inside the vault to delete
+        #[arg(required = true)]
+        entries: Vec<String>,
+        /// Recursively delete directory contents
+        #[arg(long, short = 'r')]
+        recursive: bool,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Move or rename an entry inside the vault (a rename is a move within the same
+    /// directory).
+    Mv {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Source entry path inside the vault
+        from: String,
+        /// Destination entry path inside the vault
+        to: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Copy an entry inside the vault to a new path.
+    Cp {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Source entry path inside the vault
+        from: String,
+        /// Destination entry path inside the vault
+        to: String,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Change a vault's password (re-wraps the keys; the content is not re-encrypted).
+    /// New password via --new-password or AEROFTP_VAULT_NEW_PASSWORD.
+    ChangePassword {
+        /// Path to the .aerovault file
+        path: String,
+        /// Current password (or AEROFTP_VAULT_PASSWORD)
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// New password (or set AEROFTP_VAULT_NEW_PASSWORD)
+        #[arg(long = "new-password")]
+        new_password: Option<String>,
+        /// Vault format: auto (detect from file) | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
+    },
+    /// Compact a v2 vault, reclaiming space left by deleted entries (orphaned data).
+    Compact {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+    },
+    /// Preview a LOCAL directory: file count, directory count, total size. No vault
+    /// is opened (mirrors the GUI add-folder pre-scan).
+    ScanDir {
+        /// Local directory to scan
+        source_dir: String,
+    },
+    /// Compare a vault's contents against a local directory and print the differences
+    /// (vault-only, local-only, conflicts, unchanged). Read-only. v2 vaults only.
+    SyncCompare {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Local directory to compare against
+        local_dir: String,
+    },
+    /// One-shot directional sync between a vault and a local directory, deriving the
+    /// actions from a fresh comparison. v2 vaults only.
+    SyncApply {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Local directory to sync with
+        local_dir: String,
+        /// Direction: to-vault (push local additions/changes into the vault) or
+        /// to-local (pull vault additions/changes out to disk). Conflicts resolve in
+        /// favour of the chosen side; the other side's extra files are left untouched.
+        #[arg(long, value_parser = ["to-vault", "to-local"])]
+        direction: String,
+    },
+    /// Report a v3 vault's Error Correction recovery status (embedded extension and/or
+    /// detached `.aerocorrect` sidecar) from a header-only read. No password needed.
+    RecoveryStatus {
+        /// Path to the .aerovault file
+        path: String,
     },
     /// Open a vault and print its info (file / chunk / dedup counts)
     Info {
@@ -3056,6 +3273,32 @@ enum VaultCommands {
         /// Drop embedded parity even if no detached sidecar exists
         #[arg(long)]
         force: bool,
+    },
+    /// Re-pack a vault under a new "mode" (Ehud #2), keeping the same password: a new
+    /// security level (v2 <-> v3 / cascade), compression profile and/or Error
+    /// Correction. The source is opened in its own format and recreated in the target
+    /// format, so this covers both same-format tweaks and full cross-format moves
+    /// (which fully re-encrypt every file). Mirrors the GUI "Change Mode" action.
+    ChangeMode {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Target security level: standard | advanced | paranoid (v2) | archive (v3).
+        /// Omit to keep the current format (profile/EC-only change).
+        #[arg(long = "security-level", visible_alias = "level")]
+        security_level: Option<String>,
+        /// Compression profile (archive/v3 target only): fast | balanced | archive
+        #[arg(long, default_value = "balanced")]
+        profile: String,
+        /// Enable Error Correction (Reed-Solomon). Archive (v3) target only; ignored
+        /// for a v2 target.
+        #[arg(long, visible_alias = "ec")]
+        error_correction: bool,
+        /// QR-style Error Correction overhead level (with --error-correction): named
+        /// low (~7%), medium (~15%), quartile (~25%), high (~30%), or a number 5-50.
+        #[arg(long = "recovery-level", default_value = "20")]
+        recovery_level: String,
     },
 }
 
@@ -5176,6 +5419,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
+        | ProviderError::FileTooLarge(_)
         | ProviderError::RestrictedChar { .. } => 5,
         ProviderError::AuthenticationFailed(_) => 6,
         ProviderError::NotSupported(_) => 7,
@@ -9538,6 +9782,10 @@ struct ProfilesViewOverrides {
     /// Probe the local-bridge helper apps and print a status line per bridge
     /// profile after the table (#215 follow-up; opt-in due to probe latency).
     health: bool,
+    /// `--tui` (Ehud #311): open the inline action menu directly, skipping the
+    /// line prompt. Implies interactive; quitting the directly-opened menu exits
+    /// instead of dropping into the prompt.
+    start_in_tui: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -9746,6 +9994,33 @@ fn e2e_bits(proto: &str) -> Option<u16> {
     }
 }
 
+/// True when the saved profile carries an enabled crypt overlay binding —
+/// native AeroCrypt OR interop rclone-crypt, at equal grade. Mirrors
+/// `getServerCryptOverlay` in `src/types.ts`.
+fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
+    profile
+        .get("aeroCryptOverlay")
+        .and_then(|ov| ov.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Profile-aware protocol class. A profile with an enabled crypt overlay (either
+/// kind) classifies as "Crypt", a shared family regardless of transport — the
+/// native/interop distinction is cosmetic, not a class. Mirrors
+/// `getProfileProtocolClass` in `src/types.ts`. Falls back to the transport
+/// class otherwise.
+fn profile_protocol_class(profile: &serde_json::Value) -> &'static str {
+    if profile_has_crypt_overlay(profile) {
+        return "Crypt";
+    }
+    let proto = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    protocol_class(proto)
+}
+
 /// Render the protocol class label exactly as the GUI table shows it for sort
 /// purposes (Type column). Matches `badgeSortLabel` in `MyServersTable.tsx`.
 fn badge_sort_label(profile: &serde_json::Value) -> String {
@@ -9757,7 +10032,7 @@ fn badge_sort_label(profile: &serde_json::Value) -> String {
         .get("providerId")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let class = protocol_class(proto);
+    let class = profile_protocol_class(profile);
     if provider_id == "felicloud" {
         return "API OCS".to_string();
     }
@@ -9780,7 +10055,7 @@ fn badge_display_label(profile: &serde_json::Value) -> String {
         .get("protocol")
         .and_then(|v| v.as_str())
         .unwrap_or("ftp");
-    match (protocol_class(proto), e2e_bits(proto)) {
+    match (profile_protocol_class(profile), e2e_bits(proto)) {
         ("E2E", Some(bits)) => format!("E2E{}", bits),
         (other, _) => other.to_string(),
     }
@@ -10343,6 +10618,130 @@ fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, 
         .store("config_server_groups", &payload)
         .map_err(|e| format!("Failed to write groups: {}", e))?;
     Ok(removed)
+}
+
+/// Whether a group name is already used (case-insensitive). Pure helper.
+fn group_name_taken(groups: &[CliServerGroup], candidate: &str) -> bool {
+    groups
+        .iter()
+        .any(|g| g.name.eq_ignore_ascii_case(candidate.trim()))
+}
+
+/// The auto name for a group copy: `"<src> (copy)"`, or `"<src> (copy 2)"`,
+/// `"... (copy 3)"`, etc. when the base is taken. Pure helper, case-insensitive.
+fn next_group_copy_name(groups: &[CliServerGroup], src_name: &str) -> String {
+    let base = format!("{} (copy)", src_name);
+    if !group_name_taken(groups, &base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{} (copy {})", src_name, n);
+        if !group_name_taken(groups, &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Move the group named `name` to 1-based position `target_1based` and re-stamp
+/// a dense, gap-free `order` (0..N) on the whole list. Pure helper over a vec
+/// pre-sorted by `order`. Returns `(canonical_name, new_zero_based_index)`.
+fn apply_group_reorder(
+    groups: &mut Vec<CliServerGroup>,
+    name: &str,
+    target_1based: usize,
+) -> Result<(String, usize), String> {
+    if groups.is_empty() {
+        return Err("No groups to reorder".to_string());
+    }
+    let src = groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", name.trim()))?;
+    let dst = target_1based.max(1).min(groups.len()).saturating_sub(1);
+    let canonical = groups[src].name.clone();
+    if dst != src {
+        let g = groups.remove(src);
+        groups.insert(dst, g);
+    }
+    for (i, g) in groups.iter_mut().enumerate() {
+        g.order = i as i64;
+    }
+    Ok((canonical, dst))
+}
+
+/// Duplicate a group: create a new group carrying the same membership set (and
+/// colour) under a new name. The source is looked up case-insensitively. When
+/// `new_name` is `None` the copy is named `"<src> (copy)"`, disambiguated with a
+/// numeric suffix if that name is taken, so re-copying never collides. Returns
+/// `(canonical_source_name, new_name)`. Mirrors `duplicateGroup` parity: a group
+/// is just a label, so only the membership/order is cloned, never the servers.
+fn copy_group_in_vault(
+    store: &CredentialStore,
+    src_name: &str,
+    new_name: Option<&str>,
+) -> Result<(String, String), String> {
+    let mut groups = load_server_groups(store);
+    let src = groups
+        .iter()
+        .find(|g| g.name.eq_ignore_ascii_case(src_name.trim()))
+        .ok_or_else(|| format!("No group named '{}'", src_name.trim()))?
+        .clone();
+
+    // Resolve the target name: explicit (must be free), else "<src> (copy)"
+    // disambiguated with a numeric suffix.
+    let target_name = match new_name.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(n) => {
+            if group_name_taken(&groups, n) {
+                return Err(format!("A group named '{}' already exists", n));
+            }
+            n.to_string()
+        }
+        None => next_group_copy_name(&groups, &src.name),
+    };
+
+    let order = groups.iter().map(|g| g.order).max().unwrap_or(-1) + 1;
+    groups.push(CliServerGroup {
+        id: format!(
+            "grp_{}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            src.id.chars().take(6).collect::<String>()
+        ),
+        name: target_name.clone(),
+        color: src.color.clone(),
+        order,
+        members: src.members.clone(),
+    });
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok((src.name, target_name))
+}
+
+/// Move a group (looked up case-insensitively by name) to a new 1-based
+/// position in the ordered group list, persisting a compact 0..N `order`
+/// sequence so the CLI `re-index(#)` and the GUI drag-reorder converge on the
+/// same vault order. `target_1based` is clamped to `1..=len`. Returns
+/// `(canonical_name, new_zero_based_index)`.
+fn reorder_group_in_vault(
+    store: &CredentialStore,
+    name: &str,
+    target_1based: usize,
+) -> Result<(String, usize), String> {
+    let mut groups = load_server_groups(store);
+    let (canonical, dst) = apply_group_reorder(&mut groups, name, target_1based)?;
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    store
+        .store("config_server_groups", &payload)
+        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok((canonical, dst))
 }
 
 /// Remove a deleted profile id from every group's member list and from the
@@ -13278,9 +13677,12 @@ fn render_profiles_text(
         print_bridge_health_section(&sorted, color_on);
     }
 
-    if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+    if (overrides.interactive || overrides.start_in_tui)
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal()
+    {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
-        return interactive_profiles_loop(cli, store, ordered, overrides);
+        return interactive_profiles_loop(cli, store, ordered, overrides, overrides.start_in_tui);
     }
 
     0
@@ -13319,20 +13721,1139 @@ fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
 /// for bit-identical output.
 fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
     if use_color() {
-        // ESC[2J clears the visible screen, ESC[3J also clears the scrollback
-        // buffer, ESC[H homes the cursor. Without ESC[3J most terminals
-        // (Alacritty, pwsh, Windows Terminal) keep every previous table in
-        // scrollback, so repeated refreshes appear to "stack" and scroll back,
-        // while WezTerm wiped them: the result was inconsistent across
-        // terminals (#341). ESC[3J is the xterm scrollback-clear, supported by
-        // every modern terminal, so the refresh now behaves the same way
-        // everywhere: one clean table per refresh.
-        eprint!("\x1b[2J\x1b[3J\x1b[H");
-        let _ = std::io::Write::flush(&mut std::io::stderr());
+        // Clear the screen + scrollback and home the cursor, one clean table per
+        // refresh. We go through crossterm rather than a raw `ESC[2J ESC[3J ESC[H`
+        // so the wipe is consistent on EVERY host (#341). On legacy Windows
+        // consoles (classic blue PowerShell, standalone CMD, pwsh in conhost)
+        // ENABLE_VIRTUAL_TERMINAL_PROCESSING is off by default, so a raw ANSI clear
+        // is ignored and the tables just stack; crossterm enables VT first (or
+        // falls back to the WinAPI console clear when VT is unavailable), so modern
+        // terminals (WezTerm, Alacritty, Windows Terminal) and legacy consoles all
+        // clear the same way. On Linux/macOS this emits the identical ANSI as
+        // before. ClearType::Purge is the scrollback wipe (the ESC[3J equivalent).
+        use crossterm::{
+            cursor::MoveTo,
+            execute,
+            terminal::{Clear, ClearType},
+        };
+        let mut err = std::io::stderr();
+        let _ = execute!(
+            err,
+            Clear(ClearType::All),
+            Clear(ClearType::Purge),
+            MoveTo(0, 0)
+        );
     }
     let args = profiles_view_args(ov);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let _ = run_self_subcommand(&refs);
+}
+
+// ----------------------------------------------------------------------------
+// Shared interactive-section engine (Ehud #311)
+//
+// The `profiles -i` loop, `groups -i` and `users -i` all share the same action
+// vocabulary: a labelled action bar, a quit/help/refresh keyword set, and a
+// prompt/read-line cycle. These primitives are the one engine behind those three
+// front-ends, so the vocabulary stays consistent and the #311 fixes (labelled
+// verbs, sticky reopen) apply uniformly instead of drifting per section.
+// ----------------------------------------------------------------------------
+
+/// One labelled verb in an interactive section's action bar. `key` is the
+/// literal trigger shown in parentheses ("#", "R", "Q/0"); `label` is the human
+/// name ("re-index", "Rename"). Rendered as `label(key)`.
+struct SectionVerb {
+    label: String,
+    key: &'static str,
+}
+
+impl SectionVerb {
+    fn new(label: impl Into<String>, key: &'static str) -> Self {
+        Self {
+            label: label.into(),
+            key,
+        }
+    }
+}
+
+/// Render an action bar from a verb table: `re-index(#) \u{00b7} Rename(R) \u{00b7} ...`.
+fn render_section_actions(verbs: &[SectionVerb]) -> String {
+    verbs
+        .iter()
+        .map(|v| format!("{}({})", v.label, v.key))
+        .collect::<Vec<_>>()
+        .join(" \u{00b7} ")
+}
+
+/// Shared quit vocabulary for every interactive `-i` section.
+fn section_is_quit(lower: &str) -> bool {
+    matches!(lower, "q" | "quit" | "exit" | "0" | "-1")
+}
+
+/// Shared help vocabulary.
+fn section_is_help(lower: &str) -> bool {
+    matches!(lower, "h" | "help" | "?")
+}
+
+/// Shared F5-style refresh vocabulary (discussion #266).
+fn section_is_refresh(lower: &str) -> bool {
+    matches!(lower, "refresh" | "clear" | ".")
+}
+
+/// Prompt on stderr, read one line from stdin. `Ok(None)` on EOF (Ctrl-D) so the
+/// caller can quit cleanly; the trailing newline is kept (callers trim). The
+/// result is NOT lowercased: callers decide case handling.
+fn section_prompt_line(prompt: &str) -> std::io::Result<Option<String>> {
+    use std::io::{self, BufRead, Write};
+    eprint!("{}", prompt);
+    let _ = io::stderr().flush();
+    let mut line = String::new();
+    match io::stdin().lock().read_line(&mut line) {
+        Ok(0) => Ok(None),
+        Ok(_) => Ok(Some(line)),
+        Err(e) => Err(e),
+    }
+}
+
+/// The labelled action bar for `profiles -i`, mirroring the profile-table column
+/// order. `fav_marker` (\u{2605} default, \u{2665} if chosen, #270) rides on the
+/// Fav verb so the bar shows the user's chosen glyph.
+fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
+    vec![
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Edit", "E"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Delete", "D"),
+        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("Groups", "G"),
+        SectionVerb::new("Users", "U"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Tree", "T"),
+        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Quit", "Q/0"),
+    ]
+}
+
+/// The labelled action bar for `groups -i` (Ehud #311, D2 verb set).
+fn groups_section_verbs() -> Vec<SectionVerb> {
+    vec![
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Delete", "D"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Quit", "Q/0"),
+    ]
+}
+
+/// Render the group table as a string (shared by the plain `groups` listing and
+/// the `groups -i` loop, which print it to stdout and stderr respectively).
+fn format_groups_table(groups: &[CliServerGroup]) -> String {
+    if groups.is_empty() {
+        return "No groups yet. Create one in the GUI, or via `aeroftp-cli profiles -i` (g <selector> <group>).".to_string();
+    }
+    let mut out = String::from("  #  Group                                Members\n");
+    for (i, g) in groups.iter().enumerate() {
+        let name: String = if g.name.chars().count() > 36 {
+            format!("{}\u{2026}", g.name.chars().take(35).collect::<String>())
+        } else {
+            g.name.clone()
+        };
+        out.push_str(&format!("  {:<2} {:<37}{}\n", i + 1, name, g.members.len()));
+    }
+    out.trim_end().to_string()
+}
+
+/// Resolve a group selector (1-based table index or case-insensitive name) to a
+/// 0-based position in `groups`. Mirrors `resolve_profile_selector`.
+fn resolve_group_selector(groups: &[CliServerGroup], sel: &str) -> Result<usize, String> {
+    let s = sel.trim();
+    if s.is_empty() {
+        return Err("empty selector".to_string());
+    }
+    if let Ok(n) = s.parse::<usize>() {
+        if n >= 1 && n <= groups.len() {
+            return Ok(n - 1);
+        }
+        return Err(format!("index out of range (1..={})", groups.len()));
+    }
+    groups
+        .iter()
+        .position(|g| g.name.eq_ignore_ascii_case(s))
+        .ok_or_else(|| format!("no group named '{}'", s))
+}
+
+fn print_groups_help() {
+    eprintln!("  l / ls            reprint the group table");
+    eprintln!("  l <N|name ...>    list the member profiles of each group");
+    eprintln!("  r <N|name> [new]  rename a group (prompts for the new name when omitted)");
+    eprintln!("  c <N|name> [new]  copy a group: duplicate its membership under a new name");
+    eprintln!("  d <N|name>        delete a group (the member servers are kept)");
+    eprintln!("  # <N|name> <pos>  move a group to position <pos> (re-index, persisted)");
+    eprintln!("  refresh / .       reload + reprint the table");
+    eprintln!("  h / help / ?      show this help");
+    eprintln!("  0/q               quit");
+    eprintln!();
+    eprintln!("  Groups are shared with the GUI My Servers chips; changes round-trip both ways.");
+    eprintln!("  Selectors: a table number (1-based) or the group name (quote names with spaces).");
+}
+
+/// `aeroftp-cli groups [-i]`: list and (interactively) manage server-profile
+/// groups. The plain listing prints to stdout (JSON or a table); `-i` drops into
+/// the shared interactive engine. Per Ehud #311 (D2).
+fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
+    use std::io::IsTerminal;
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    let groups = load_server_groups(&store);
+
+    if matches!(format, OutputFormat::Json) {
+        let arr: Vec<serde_json::Value> = groups
+            .iter()
+            .map(|g| {
+                serde_json::json!({
+                    "id": g.id,
+                    "name": g.name,
+                    "color": g.color,
+                    "order": g.order,
+                    "memberCount": g.members.len(),
+                })
+            })
+            .collect();
+        print_json(&serde_json::json!({ "groups": arr }));
+        return 0;
+    }
+
+    if interactive {
+        if !std::io::stdin().is_terminal() {
+            // Non-TTY: behave like the plain listing instead of hanging on a
+            // prompt nobody can answer.
+            println!("{}", format_groups_table(&groups));
+            eprintln!("`groups -i` needs an interactive terminal; printed the listing instead.");
+            return 0;
+        }
+        return interactive_groups_loop(cli, &store);
+    }
+
+    println!("{}", format_groups_table(&groups));
+    0
+}
+
+/// Interactive `groups -i` loop. Built on the shared section engine
+/// (`render_section_actions`, `section_is_*`, `section_prompt_line`) so its
+/// vocabulary matches `profiles -i`. The vault is the single source of truth:
+/// the table is reloaded from `config_server_groups` at the top of every
+/// iteration, so changes made in the GUI (or another session) show up on the
+/// next prompt. Per Ehud #311.
+fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
+    let verbs = groups_section_verbs();
+    loop {
+        let groups = load_server_groups(store);
+        eprintln!("{}", format_groups_table(&groups));
+        eprintln!("\nActions: {}", render_section_actions(&verbs));
+        eprintln!(
+            "Interactive: r/c/d <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+        );
+
+        let line = match section_prompt_line("groups> ") {
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                eprintln!();
+                return 0;
+            }
+            Err(e) => {
+                eprintln!("Read error: {}. Exiting interactive mode.", e);
+                return 1;
+            }
+        };
+        let raw = line.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let lower = raw.to_lowercase();
+        if section_is_quit(&lower) {
+            return 0;
+        }
+        if section_is_help(&lower) {
+            print_groups_help();
+            continue;
+        }
+        if section_is_refresh(&lower) {
+            // The table reloads and reprints at the top of the loop.
+            continue;
+        }
+
+        // Re-index: `# <selector> <pos>` (also the compact `#<selector> <pos>`).
+        if raw.starts_with('#') {
+            let tk = tokenize_quoted(raw);
+            let (sel, pos_raw) = if tk[0] == "#" {
+                if tk.len() < 3 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves group 3 to the top)");
+                    continue;
+                }
+                (tk[1].clone(), tk[2].clone())
+            } else {
+                let s = tk[0][1..].to_string();
+                if s.is_empty() || tk.len() < 2 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves group 3 to the top)");
+                    continue;
+                }
+                (s, tk[1].clone())
+            };
+            let idx = match resolve_group_selector(&groups, &sel) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("Selector '{}' skipped: {}", sel, e);
+                    continue;
+                }
+            };
+            let pos = match pos_raw.parse::<usize>() {
+                Ok(n) if n >= 1 => n,
+                _ => {
+                    eprintln!(
+                        "Target position must be a positive number (1..={}).",
+                        groups.len()
+                    );
+                    continue;
+                }
+            };
+            let gname = groups[idx].name.clone();
+            match reorder_group_in_vault(store, &gname, pos) {
+                Ok((name, dst)) => eprintln!(
+                    "{}",
+                    paint_green(&format!("Group '{}' moved to #{}.", name, dst + 1))
+                ),
+                Err(e) => eprintln!("{}", paint_red(&format!("Re-index failed: {}", e))),
+            }
+            continue;
+        }
+
+        let tokens = tokenize_quoted(raw);
+        // F-02/F-03: a quote-only line tokenizes to an empty vec; guard before
+        // indexing so it does not panic the interactive session.
+        let Some(verb) = tokens.first().map(|t| t.to_lowercase()) else {
+            continue;
+        };
+        match verb.as_str() {
+            "l" | "ls" | "list" => {
+                if tokens.len() < 2 {
+                    eprintln!("{}", format_groups_table(&groups));
+                    continue;
+                }
+                let profiles = load_active_user_profiles(cli, store).unwrap_or_default();
+                let name_for = |id: &str| -> Option<String> {
+                    profiles
+                        .iter()
+                        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+                        .and_then(|p| p.get("name").and_then(|v| v.as_str()))
+                        .map(|s| s.to_string())
+                };
+                for sel in &tokens[1..] {
+                    match resolve_group_selector(&groups, sel) {
+                        Ok(i) => {
+                            let g = &groups[i];
+                            eprintln!("\n=== {} ({} member(s)) ===", g.name, g.members.len());
+                            if g.members.is_empty() {
+                                eprintln!("  (empty)");
+                            }
+                            for m in &g.members {
+                                match name_for(m) {
+                                    Some(n) => eprintln!("  {}", n),
+                                    None => eprintln!("  {} (not in active user)", m),
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Selector '{}' skipped: {}", sel, e),
+                    }
+                }
+            }
+            "r" | "rename" | "mv" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: r <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let old = groups[idx].name.clone();
+                let new_name = if tokens.len() >= 3 {
+                    tokens[2].clone()
+                } else {
+                    match section_prompt_line(&format!(
+                        "New name for group '{}' (empty to abort): ",
+                        old
+                    )) {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    }
+                };
+                if new_name.is_empty() {
+                    eprintln!("Empty input: rename aborted.");
+                    continue;
+                }
+                match rename_group_in_vault(store, &old, &new_name) {
+                    Ok(was) => eprintln!(
+                        "{}",
+                        paint_green(&format!(
+                            "Group '{}' renamed to '{}'.",
+                            was,
+                            new_name.trim()
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Rename failed: {}", e))),
+                }
+            }
+            "c" | "copy" | "dup" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: c <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let src = groups[idx].name.clone();
+                let new_name = tokens.get(2).map(|s| s.as_str());
+                match copy_group_in_vault(store, &src, new_name) {
+                    Ok((s, n)) => eprintln!(
+                        "{}",
+                        paint_blue(&format!("Group '{}' duplicated as '{}'.", s, n))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Copy failed: {}", e))),
+                }
+            }
+            "d" | "delete" | "del" | "rm" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: d <N|name>");
+                    continue;
+                }
+                let idx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let name = groups[idx].name.clone();
+                let count = groups[idx].members.len();
+                eprintln!(
+                    "About to delete group '{}' ({} member(s)). The member servers are kept.",
+                    name, count
+                );
+                let confirm =
+                    match section_prompt_line("Type 'yes' (or the group name) to confirm: ") {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    };
+                let allow = confirm.eq_ignore_ascii_case("yes") || confirm == name;
+                if !allow {
+                    eprintln!("Confirmation did not match: group NOT deleted.");
+                    continue;
+                }
+                match delete_group_in_vault(store, &name) {
+                    Ok(removed) => eprintln!(
+                        "{}",
+                        paint_yellow(&format!(
+                            "Group '{}' deleted. Its servers were kept.",
+                            removed
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
+                }
+            }
+            _ => {
+                eprintln!("Unrecognized command. Type '?' for help.");
+            }
+        }
+    }
+}
+
+// ── Users section (`aeroftp users [-i]`) ──────────────────────────────────
+//
+// Mirrors the groups section (D2) on the shared interactive engine
+// (`SectionVerb` / `render_section_actions` / `section_is_*` /
+// `section_prompt_line`) so `users -i` speaks the same vocabulary as
+// `profiles -i` and `groups -i`. The user-partitions DB is the single source
+// of truth, shared with the GUI Manage Users surface, so renames, ordering and
+// the default/favourite flag round-trip both ways. Per Ehud #311 (D1).
+
+/// Verb table for the `users -i` action bar. `fav_marker` rides on the Fav
+/// label (\u{2605} default, \u{2665} when chosen, #270) so it matches the GUI
+/// favourite glyph and the profiles section.
+fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
+    vec![
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Delete", "D"),
+        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Tree", "T"),
+        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Quit", "Q/0"),
+    ]
+}
+
+/// Render the user table as a string (shared by the plain `users` listing and
+/// the `users -i` loop). Columns: 1-based index, name, numeric id, and a flag
+/// summary (active / admin / password / default). `marker` annotates the
+/// default account so the favourite glyph matches the rest of the app.
+fn format_users_table(users: &[user_partitions::UserMetadata], marker: &str) -> String {
+    if users.is_empty() {
+        return "No AeroFTP users found.".to_string();
+    }
+    let mut out = String::from("  #  User                                 ID    Flags\n");
+    for (i, u) in users.iter().enumerate() {
+        let name: String = if u.name.chars().count() > 36 {
+            format!("{}\u{2026}", u.name.chars().take(35).collect::<String>())
+        } else {
+            u.name.clone()
+        };
+        let mut flags: Vec<String> = Vec::new();
+        if u.is_active {
+            flags.push("active".to_string());
+        }
+        if u.is_admin {
+            flags.push("admin".to_string());
+        }
+        if u.has_passphrase {
+            flags.push("password".to_string());
+        }
+        if u.is_default {
+            flags.push(format!("default{}", marker));
+        }
+        let flag_str = if flags.is_empty() {
+            "-".to_string()
+        } else {
+            flags.join(", ")
+        };
+        out.push_str(&format!(
+            "  {:<2} {:<37}{:<6}{}\n",
+            i + 1,
+            name,
+            u.id,
+            flag_str
+        ));
+    }
+    out.trim_end().to_string()
+}
+
+/// Resolve a user selector (1-based table index or case-insensitive name) to a
+/// 0-based position in `users`. Mirrors `resolve_group_selector`: the
+/// interactive table is index-addressed, so a bare number is the row, not the
+/// (separate) numeric user id.
+fn resolve_user_selector(
+    users: &[user_partitions::UserMetadata],
+    sel: &str,
+) -> Result<usize, String> {
+    let s = sel.trim();
+    if s.is_empty() {
+        return Err("empty selector".to_string());
+    }
+    if let Ok(n) = s.parse::<usize>() {
+        if n >= 1 && n <= users.len() {
+            return Ok(n - 1);
+        }
+        return Err(format!("index out of range (1..={})", users.len()));
+    }
+    users
+        .iter()
+        .position(|u| u.name.eq_ignore_ascii_case(s))
+        .ok_or_else(|| format!("no user named '{}'", s))
+}
+
+/// True when `candidate` matches an existing user name (case-insensitive,
+/// trimmed). Pure helper for the Copy naming.
+fn user_name_taken(users: &[user_partitions::UserMetadata], candidate: &str) -> bool {
+    users
+        .iter()
+        .any(|u| u.name.eq_ignore_ascii_case(candidate.trim()))
+}
+
+/// The auto name for a user copy: `"<src> (copy)"`, then `"... (copy 2)"`, etc.
+/// when the base is taken. Pure, case-insensitive; mirrors `next_group_copy_name`.
+fn next_user_copy_name(users: &[user_partitions::UserMetadata], src_name: &str) -> String {
+    let base = format!("{} (copy)", src_name);
+    if !user_name_taken(users, &base) {
+        return base;
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{} (copy {})", src_name, n);
+        if !user_name_taken(users, &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// Compute the id order after moving the user at `src_idx` to 1-based position
+/// `target_1based`. Pure helper feeding `cli_reorder_users`, which re-stamps a
+/// dense `sort_order`. `target_1based` is clamped to `1..=len`. Mirrors the
+/// group `apply_group_reorder` move, returning the new id sequence.
+fn user_order_after_move(
+    users: &[user_partitions::UserMetadata],
+    src_idx: usize,
+    target_1based: usize,
+) -> Vec<i64> {
+    let mut ids: Vec<i64> = users.iter().map(|u| u.id).collect();
+    if ids.is_empty() || src_idx >= ids.len() {
+        return ids;
+    }
+    let dst = target_1based.max(1).min(ids.len()) - 1;
+    let id = ids.remove(src_idx);
+    ids.insert(dst, id);
+    ids
+}
+
+fn print_users_help() {
+    eprintln!("  l / ls            reprint the user table");
+    eprintln!("  l <N|name ...>    list the saved servers of each user");
+    eprintln!("  r <N|name> [new]  rename a user (prompts for the new name when omitted)");
+    eprintln!(
+        "  c <N|name> [new]  copy a user: duplicate its servers into a new user (no passwords)"
+    );
+    eprintln!(
+        "  d <N|name>        delete a user (prompts to confirm; not the active or last user)"
+    );
+    eprintln!(
+        "  f <N|name>        toggle the default user (auto-unlocked on launch; password-free only)"
+    );
+    eprintln!("  # <N|name> <pos>  move a user to position <pos> (re-index, persisted)");
+    eprintln!("  t / tree          users -> their servers (with group tags)");
+    eprintln!("  refresh / .       reload + reprint the table");
+    eprintln!("  h / help / ?      show this help");
+    eprintln!("  0/q               quit");
+    eprintln!();
+    eprintln!(
+        "  Users are shared with the GUI Manage Users surface; changes round-trip both ways."
+    );
+    eprintln!("  Selectors: a table number (1-based) or the user name (quote names with spaces).");
+}
+
+/// `aeroftp-cli users [-i]`: list and (interactively) manage local AeroFTP
+/// users. The plain listing prints to stdout (JSON or a table); `-i` drops into
+/// the shared interactive engine. Per Ehud #311 (D1). The JSON branch matches
+/// `users list` so scripts see one schema.
+fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
+    use std::io::IsTerminal;
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    let users = match user_partitions::cli_list_users(&store) {
+        Ok(users) => users,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    if matches!(format, OutputFormat::Json) {
+        let stats = user_partitions::cli_storage_stats(&store).unwrap_or_default();
+        print_json(&serde_json::json!({
+            "users": users,
+            "storageStats": stats,
+        }));
+        return 0;
+    }
+
+    let marker = load_favorite_marker(&store);
+
+    if interactive {
+        if !std::io::stdin().is_terminal() {
+            // Non-TTY: behave like the plain listing instead of hanging on a
+            // prompt nobody can answer.
+            println!("{}", format_users_table(&users, marker));
+            eprintln!("`users -i` needs an interactive terminal; printed the listing instead.");
+            return 0;
+        }
+        return interactive_users_loop(cli, &store);
+    }
+
+    println!("{}", format_users_table(&users, marker));
+    0
+}
+
+/// Interactive `users -i` loop. Built on the shared section engine so its
+/// vocabulary matches `profiles -i` / `groups -i`. The user-partitions DB is
+/// the single source of truth: the table is reloaded at the top of every
+/// iteration, so GUI Manage Users changes show up on the next prompt. Per
+/// Ehud #311 (D1).
+fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
+    let marker = load_favorite_marker(store);
+    let verbs = users_section_verbs(marker);
+    loop {
+        let users = match user_partitions::cli_list_users(store) {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("{}", paint_red(&format!("Failed to list users: {}", e)));
+                return 5;
+            }
+        };
+        eprintln!("{}", format_users_table(&users, marker));
+        eprintln!("\nActions: {}", render_section_actions(&verbs));
+        eprintln!(
+            "Interactive: r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+        );
+
+        let line = match section_prompt_line("users> ") {
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                eprintln!();
+                return 0;
+            }
+            Err(e) => {
+                eprintln!("Read error: {}. Exiting interactive mode.", e);
+                return 1;
+            }
+        };
+        let raw = line.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let lower = raw.to_lowercase();
+        if section_is_quit(&lower) {
+            return 0;
+        }
+        if section_is_help(&lower) {
+            print_users_help();
+            continue;
+        }
+        if section_is_refresh(&lower) {
+            continue;
+        }
+
+        // Re-index: `# <selector> <pos>` (also the compact `#<selector> <pos>`).
+        if raw.starts_with('#') {
+            let tk = tokenize_quoted(raw);
+            let (sel, pos_raw) = if tk[0] == "#" {
+                if tk.len() < 3 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves user 3 to the top)");
+                    continue;
+                }
+                (tk[1].clone(), tk[2].clone())
+            } else {
+                let s = tk[0][1..].to_string();
+                if s.is_empty() || tk.len() < 2 {
+                    eprintln!("Usage: # <N|name> <pos>   (e.g. '# 3 1' moves user 3 to the top)");
+                    continue;
+                }
+                (s, tk[1].clone())
+            };
+            let idx = match resolve_user_selector(&users, &sel) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("Selector '{}' skipped: {}", sel, e);
+                    continue;
+                }
+            };
+            let pos = match pos_raw.parse::<usize>() {
+                Ok(n) if n >= 1 => n,
+                _ => {
+                    eprintln!(
+                        "Target position must be a positive number (1..={}).",
+                        users.len()
+                    );
+                    continue;
+                }
+            };
+            let name = users[idx].name.clone();
+            let ids = user_order_after_move(&users, idx, pos);
+            match user_partitions::cli_reorder_users(store, &ids) {
+                Ok(()) => eprintln!(
+                    "{}",
+                    paint_green(&format!(
+                        "User '{}' moved to #{}.",
+                        name,
+                        pos.min(users.len())
+                    ))
+                ),
+                Err(e) => eprintln!("{}", paint_red(&format!("Re-index failed: {}", e))),
+            }
+            continue;
+        }
+
+        let tokens = tokenize_quoted(raw);
+        // F-02/F-03: a quote-only line tokenizes to an empty vec; guard before
+        // indexing so it does not panic the interactive session.
+        let Some(verb) = tokens.first().map(|t| t.to_lowercase()) else {
+            continue;
+        };
+        match verb.as_str() {
+            "l" | "ls" | "list" => {
+                if tokens.len() < 2 {
+                    eprintln!("{}", format_users_table(&users, marker));
+                    continue;
+                }
+                for sel in &tokens[1..] {
+                    match resolve_user_selector(&users, sel) {
+                        Ok(i) => {
+                            let u = &users[i];
+                            match user_partitions::cli_list_server_profiles_for_user(store, u.id) {
+                                Ok(profiles) => {
+                                    eprintln!(
+                                        "\n=== {} ({} server(s)) ===",
+                                        u.name,
+                                        profiles.len()
+                                    );
+                                    if profiles.is_empty() {
+                                        eprintln!("  (no servers)");
+                                    }
+                                    for p in &profiles {
+                                        let pname = p
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .or_else(|| p.get("id").and_then(|v| v.as_str()))
+                                            .unwrap_or("(unnamed)");
+                                        eprintln!("  {}", pname);
+                                    }
+                                }
+                                Err(e) if e == "USER_LOCKED" => eprintln!(
+                                    "\n=== {} ===\n  (password-protected; switch to view its servers)",
+                                    u.name
+                                ),
+                                Err(e) => {
+                                    eprintln!("\n=== {} ===\n  (unavailable: {})", u.name, e)
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Selector '{}' skipped: {}", sel, e),
+                    }
+                }
+            }
+            "t" | "tree" => {
+                let groups = load_server_groups(store);
+                for u in &users {
+                    let active = if u.is_active { " *" } else { "" };
+                    let default_tag = if u.is_default {
+                        format!(" (default{})", marker)
+                    } else {
+                        String::new()
+                    };
+                    eprintln!("\n{}{}{}", u.name, active, default_tag);
+                    match user_partitions::cli_list_server_profiles_for_user(store, u.id) {
+                        Ok(profiles) => {
+                            if profiles.is_empty() {
+                                eprintln!("  (no servers)");
+                            }
+                            for p in &profiles {
+                                let pid = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let pname = p
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.is_empty())
+                                    .unwrap_or("(unnamed)");
+                                let tags: Vec<&str> = groups
+                                    .iter()
+                                    .filter(|g| g.members.iter().any(|m| m == pid))
+                                    .map(|g| g.name.as_str())
+                                    .collect();
+                                if tags.is_empty() {
+                                    eprintln!("  - {}", pname);
+                                } else {
+                                    eprintln!("  - {}  [{}]", pname, tags.join(", "));
+                                }
+                            }
+                        }
+                        Err(e) if e == "USER_LOCKED" => {
+                            eprintln!("  (password-protected; switch to view)")
+                        }
+                        Err(e) => eprintln!("  (unavailable: {})", e),
+                    }
+                }
+            }
+            "f" | "fav" | "favorite" | "favourite" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: f <N|name>   (toggle the default/auto-unlock user)");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let u = &users[idx];
+                let make_default = !u.is_default;
+                match user_partitions::cli_set_default_user(store, u.id, make_default) {
+                    Ok(()) => {
+                        if make_default {
+                            eprintln!(
+                                "{}",
+                                paint_green(&format!(
+                                    "User '{}' is now the default (auto-unlocked on launch).",
+                                    u.name
+                                ))
+                            );
+                        } else {
+                            eprintln!(
+                                "{}",
+                                paint_yellow(&format!("User '{}' is no longer the default.", u.name))
+                            );
+                        }
+                    }
+                    Err(e) if e == "DEFAULT_REQUIRES_NO_PASSPHRASE" => eprintln!(
+                        "{}",
+                        paint_red(&format!(
+                            "User '{}' is password-protected, so it cannot auto-unlock. Remove its password to make it the default.",
+                            u.name
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Fav failed: {}", e))),
+                }
+            }
+            "r" | "rename" | "mv" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: r <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let user = users[idx].clone();
+                let new_name = if tokens.len() >= 3 {
+                    tokens[2].clone()
+                } else {
+                    match section_prompt_line(&format!(
+                        "New name for user '{}' (empty to abort): ",
+                        user.name
+                    )) {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    }
+                };
+                if new_name.is_empty() {
+                    eprintln!("Empty input: rename aborted.");
+                    continue;
+                }
+                match user_partitions::cli_rename_user(store, user.id, &new_name) {
+                    Ok(()) => eprintln!(
+                        "{}",
+                        paint_green(&format!(
+                            "User '{}' renamed to '{}'.",
+                            user.name,
+                            new_name.trim()
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Rename failed: {}", e))),
+                }
+            }
+            "c" | "copy" | "dup" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: c <N|name> [new-name]");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let src = users[idx].clone();
+                // Resolve the target name: explicit (must be free) else "<src> (copy)".
+                let target_name = match tokens.get(2).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    Some(n) => {
+                        if user_name_taken(&users, n) {
+                            eprintln!(
+                                "{}",
+                                paint_red(&format!("A user named '{}' already exists.", n))
+                            );
+                            continue;
+                        }
+                        n.to_string()
+                    }
+                    None => next_user_copy_name(&users, &src.name),
+                };
+                // Read the source servers first (no passwords are copied: the
+                // keyring credentials stay with the original user).
+                let profiles = match user_partitions::cli_list_server_profiles_for_user(
+                    store, src.id,
+                ) {
+                    Ok(p) => p,
+                    Err(e) if e == "USER_LOCKED" => {
+                        eprintln!(
+                            "{}",
+                            paint_red(&format!(
+                                "User '{}' is password-protected: switch to it first so its servers can be read.",
+                                src.name
+                            ))
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("{}", paint_red(&format!("Copy failed: {}", e)));
+                        continue;
+                    }
+                };
+                let new_user = match user_partitions::cli_create_user(
+                    store,
+                    &target_name,
+                    src.avatar_emoji.as_deref(),
+                    src.avatar_color.as_deref(),
+                    None,
+                ) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        eprintln!("{}", paint_red(&format!("Copy failed: {}", e)));
+                        continue;
+                    }
+                };
+                match user_partitions::cli_replace_server_profiles_for_user(
+                    store,
+                    new_user.id,
+                    &profiles,
+                ) {
+                    Ok(()) => eprintln!(
+                        "{}",
+                        paint_blue(&format!(
+                            "User '{}' duplicated as '{}' ({} server(s), no passwords copied).",
+                            src.name,
+                            target_name,
+                            profiles.len()
+                        ))
+                    ),
+                    Err(e) => eprintln!(
+                        "{}",
+                        paint_red(&format!(
+                            "User '{}' created but copying its servers failed: {}",
+                            target_name, e
+                        ))
+                    ),
+                }
+            }
+            "d" | "delete" | "del" | "rm" => {
+                if tokens.len() < 2 {
+                    eprintln!("Usage: d <N|name>");
+                    continue;
+                }
+                let idx = match resolve_user_selector(&users, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let user = users[idx].clone();
+                if users.len() <= 1 {
+                    eprintln!("Cannot delete the last AeroFTP user.");
+                    continue;
+                }
+                if user.is_active {
+                    eprintln!(
+                        "Refusing to delete the active user. Switch first (aeroftp users switch)."
+                    );
+                    continue;
+                }
+                eprintln!(
+                    "About to delete user '{}'. Its saved servers and settings are removed.",
+                    user.name
+                );
+                let confirm =
+                    match section_prompt_line("Type 'yes' (or the user name) to confirm: ") {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    };
+                let allow = confirm.eq_ignore_ascii_case("yes") || confirm == user.name;
+                if !allow {
+                    eprintln!("Confirmation did not match: user NOT deleted.");
+                    continue;
+                }
+                if user.has_passphrase {
+                    let mut passphrase = match read_user_passphrase(
+                        cli,
+                        &user.name,
+                        &format!("Account password for user '{}': ", user.name),
+                        true,
+                        true,
+                    ) {
+                        Ok(Some(value)) => value,
+                        Ok(None) => String::new(),
+                        Err(err) => {
+                            eprintln!("{}", paint_red(&err));
+                            continue;
+                        }
+                    };
+                    let verified = user_partitions::cli_verify_user_passphrase(
+                        store,
+                        user.id,
+                        Some(&passphrase),
+                    );
+                    passphrase.zeroize();
+                    if let Err(err) = verified {
+                        eprintln!("{}", paint_red(&format!("Password check failed: {}", err)));
+                        continue;
+                    }
+                }
+                match user_partitions::cli_delete_user(store, user.id) {
+                    Ok(()) => eprintln!(
+                        "{}",
+                        paint_yellow(&format!("User '{}' deleted.", user.name))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
+                }
+            }
+            _ => {
+                eprintln!("Unrecognized command. Type '?' for help.");
+            }
+        }
+    }
 }
 
 /// rclone-config-style prompt loop on `aeroftp profiles -i`.
@@ -13349,6 +14870,7 @@ fn interactive_profiles_loop(
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
     overrides: &ProfilesViewOverrides,
+    start_in_tui: bool,
 ) -> i32 {
     use std::io::{self, BufRead, Write};
 
@@ -13358,7 +14880,19 @@ fn interactive_profiles_loop(
     let mut tombstones: Vec<(usize, serde_json::Value)> = Vec::new();
     // Command queued by the raw-mode `tui` navigator: when set, it is consumed
     // instead of reading a line, so the existing action dispatch runs it.
-    let mut pending_command: Option<String> = None;
+    // `--tui` (Ehud #311) seeds it with "tui" so the menu opens immediately, and
+    // `direct_tui` makes a Quit from that directly-opened menu exit the program.
+    let mut pending_command: Option<String> = if start_in_tui {
+        Some("tui".to_string())
+    } else {
+        None
+    };
+    // `--tui` is session-sticky (issue #311): direct_tui stays set for the whole
+    // session, so an explicit Quit exits while completing or cancelling an action
+    // loops back to the menu (via reopen_tui) instead of dropping into the `-i`
+    // line prompt the user never asked for.
+    let direct_tui = start_in_tui;
+    let mut reopen_tui = false;
 
     loop {
         if !tombstones.is_empty() {
@@ -13370,11 +14904,25 @@ fn interactive_profiles_loop(
             return 0;
         }
 
+        // Re-open the --tui menu once the previous action has drained, so the
+        // navigator loops back to itself instead of falling into the line prompt
+        // (issue #311). Armed only under --tui; plain `-i` never sets reopen_tui.
+        if reopen_tui && pending_command.is_none() {
+            reopen_tui = false;
+            pending_command = Some("tui".to_string());
+        }
+
         let raw_owned: String = if let Some(cmd) = pending_command.take() {
             cmd
         } else {
+            // Labeled action vocabulary (Ehud #311 comment): spell out what each
+            // key does so the prompt is self-explanatory instead of a cryptic
+            // `l/t/d/f/c/r/e`. Mirrors the `tui` action-bar labels and the
+            // profile-table column order; the syntax line below keeps the
+            // selector/target details.
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nActions: {}\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
+                render_section_actions(&profiles_section_verbs(fav_marker))
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -13398,10 +14946,10 @@ fn interactive_profiles_loop(
             continue;
         }
         let lower = raw.to_lowercase();
-        if lower == "q" || lower == "quit" || lower == "exit" || lower == "0" || lower == "-1" {
+        if section_is_quit(&lower) {
             return 0;
         }
-        if lower == "help" || lower == "?" {
+        if section_is_help(&lower) {
             eprintln!("  l <selectors>   list root of each profile");
             eprintln!("  t <selectors> [:N]  tree of each profile (default depth 2; :N sets depth, :0 = full)");
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
@@ -13421,12 +14969,16 @@ fn interactive_profiles_loop(
                 "  u [N|name]      switch active user (lists accounts when bare); reloads profiles (compact 'u3'/'3u' also work)"
             );
             eprintln!(
+                "  g <sel> <group> add/remove  ·  g rename <old> <new>  ·  g delete <group>   manage profile groups"
+            );
+            eprintln!(
                 "  tui / nav       inline action menu: pick an action (single key or arrows + Enter), then type the target"
             );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!(
                 "  refresh / .     clear screen + reprint table (reloads from vault; 'clear' also works)"
             );
+            eprintln!("  h / help / ?    show this help");
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
@@ -13439,7 +14991,7 @@ fn interactive_profiles_loop(
         // empty Enter deliberately does nothing, since wiping the terminal on
         // an accidental keystroke is intrusive. Re-runs the same view, which
         // re-reads the vault and picks up changes made in another session.
-        if lower == "refresh" || lower == "clear" || lower == "." {
+        if section_is_refresh(&lower) {
             refresh_profiles_view(overrides);
             continue;
         }
@@ -13456,9 +15008,25 @@ fn interactive_profiles_loop(
                 eprintln!("The inline action menu needs an interactive terminal.");
                 continue;
             }
+            // A `--tui`-opened menu (direct_tui) is session-sticky: an explicit
+            // Quit exits the program, while completing or cancelling an action
+            // loops back to the menu (reopen_tui) instead of dropping into the line
+            // prompt the user never asked for. A `tui` typed at the `-i` prompt is
+            // one-shot: every outcome returns to that prompt, as before. (#311)
+            let was_direct = direct_tui;
             match profiles_tui_pick(&current, fav_marker) {
-                Ok(ProfilesTuiOutcome::Quit) => {}
-                Ok(ProfilesTuiOutcome::Command(cmd)) => pending_command = Some(cmd),
+                Ok(ProfilesTuiOutcome::Quit) => {
+                    if was_direct {
+                        return 0;
+                    }
+                }
+                Ok(ProfilesTuiOutcome::Command(cmd)) => {
+                    pending_command = Some(cmd);
+                    reopen_tui = was_direct;
+                }
+                Ok(ProfilesTuiOutcome::Cancel) => {
+                    reopen_tui = was_direct;
+                }
                 Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
             }
             continue;
@@ -14365,6 +15933,10 @@ fn interactive_profiles_loop(
 enum ProfilesTuiOutcome {
     /// User picked an action for a profile: the equivalent line-mode command.
     Command(String),
+    /// User picked an action but left the target blank: cancel this action only,
+    /// with no change. Under `--tui` this re-opens the menu instead of exiting the
+    /// program (issue #311); at the `-i` prompt it returns to the prompt.
+    Cancel,
     /// User left the navigator (q/Esc) without choosing an action.
     Quit,
 }
@@ -14442,7 +16014,8 @@ fn profiles_tui_pick(
     // never a consequential one. Re-index is the riskiest action and used to be
     // the default focus; starting on Quit makes every action opt-in, so a stray
     // Enter just leaves instead of triggering a re-index. Robust to reordering.
-    let mut selected = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
+    let quit_idx = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
+    let mut selected = quit_idx;
 
     // Restore the terminal no matter how we leave (early return, panic unwind).
     struct RawGuard;
@@ -14554,8 +16127,12 @@ fn profiles_tui_pick(
 
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Char('0') | KeyCode::Esc => {
-                    break None;
+                // Esc escapes silently (wipes the bar). Q/0 SELECT Quit, which is then
+                // redrawn highlighted like any other picked action (Ehud #311: Quit was
+                // only highlighted while focused, never when chosen via its hotkey).
+                KeyCode::Esc => break None,
+                KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Char('0') => {
+                    break Some(quit_idx)
                 }
                 KeyCode::Enter => break Some(selected),
                 // Arrows, Tab and PageUp/PageDown all step the highlight one
@@ -14584,12 +16161,11 @@ fn profiles_tui_pick(
         }
     };
 
-    // For a real action keep the bar on screen with the chosen option still
-    // highlighted (Ehud: the highlight should stay so it's obvious which option
-    // was picked), then drop to a fresh line for the typed target. For a plain
-    // quit, wipe the bar so only the table above remains.
-    let action_idx = chosen.filter(|&idx| !matches!(actions[idx].2, ProfilesActionTarget::None));
-    match action_idx {
+    // Keep the chosen option highlighted on screen (Ehud #311: picking Quit via
+    // Q/0 or Enter should highlight it just like any other action, then drop to a
+    // fresh line). Only Esc (chosen == None) is a true escape that wipes the bar,
+    // leaving just the table above.
+    match chosen {
         Some(idx) => {
             draw_bar(&mut err, idx, &mut prev_widths);
             let _ = queue!(err, Print("\r\n"));
@@ -14608,6 +16184,7 @@ fn profiles_tui_pick(
     }
     drop(guard);
 
+    let action_idx = chosen.filter(|&idx| !matches!(actions[idx].2, ProfilesActionTarget::None));
     let Some(idx) = action_idx else {
         return Ok(ProfilesTuiOutcome::Quit);
     };
@@ -14630,8 +16207,9 @@ fn profiles_tui_pick(
     }
     let line = line.trim();
     if line.is_empty() {
-        // Nothing typed: treat as cancel, back to the prompt with no change.
-        return Ok(ProfilesTuiOutcome::Quit);
+        // Nothing typed: cancel this action only, no change. Distinct from Quit so
+        // a blank target under --tui re-opens the menu rather than exiting (#311).
+        return Ok(ProfilesTuiOutcome::Cancel);
     }
 
     Ok(ProfilesTuiOutcome::Command(format!("{} {}", key, line)))
@@ -15276,15 +16854,24 @@ fn cmd_profile_add(
         "gitlab",
         "immich",
         "pixelunion",
-        "blomp",
     ];
-    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) {
+    // Dev-only providers: kept working in debug builds for development but
+    // hidden from the release CLI's allowlist and "Supported:" advertisement,
+    // mirroring the GUI's isDevOnlyProvider (import.meta.env.DEV) rule so the
+    // CLI does not surface providers the release intentionally hides.
+    const DEV_ONLY_PROTOCOLS: &[&str] = &["blomp"];
+    let dev_known = cfg!(debug_assertions) && DEV_ONLY_PROTOCOLS.contains(&proto_lower.as_str());
+    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) && !dev_known {
+        let mut supported: Vec<&str> = KNOWN_PROTOCOLS.to_vec();
+        if cfg!(debug_assertions) {
+            supported.extend_from_slice(DEV_ONLY_PROTOCOLS);
+        }
         print_error(
             format,
             &format!(
                 "Unknown protocol '{}'. Supported: {}",
                 protocol,
-                KNOWN_PROTOCOLS.join(", ")
+                supported.join(", ")
             ),
             5,
         );
@@ -17432,7 +19019,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
     profile_protocols_seen.sort();
     profile_protocols_seen.dedup();
 
-    let info = serde_json::json!({
+    let mut info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "description": "AeroFTP CLI - multi-protocol file transfer with encrypted vault profiles",
         "usage": "aeroftp-cli <command> --profile \"Server Name\" [args]",
@@ -17600,6 +19187,27 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "aeroftp-cli profiles --json"
         ]
     });
+
+    // Hide dev-only providers from the release capability catalog, mirroring the
+    // GUI's isDevOnlyProvider rule; kept in debug builds for development. Using
+    // `cfg!` (not a `#[cfg]` attribute) keeps the mutable borrow in the AST in
+    // every build so `mut info` never reads as unused.
+    if !cfg!(debug_assertions) {
+        if let Some(features) = info
+            .get_mut("protocol_features")
+            .and_then(|v| v.as_object_mut())
+        {
+            features.remove("googlephotos");
+        }
+        // F-06: also drop it from the sibling transfer-capabilities array, which
+        // is built from a list that still includes "googlephotos".
+        if let Some(caps) = info
+            .get_mut("protocol_transfer_capabilities")
+            .and_then(|v| v.as_array_mut())
+        {
+            caps.retain(|v| v.as_str() != Some("googlephotos"));
+        }
+    }
 
     println!(
         "{}",
@@ -25847,6 +27455,7 @@ async fn cmd_import_bridge(src: &str, path: Option<String>, json: bool) -> i32 {
 /// `rclone_import` / `winscp_import` / `filezilla_import` (the same
 /// functions called by the GUI Export modal).
 struct ProfileExportScaffold {
+    id: String,
     name: String,
     host: String,
     port: u32,
@@ -25922,6 +27531,19 @@ fn collect_export_scaffold(
         // MUV-3: active user's partition with fallback to the legacy vault.
         let secret = if id.is_empty() {
             String::new()
+        } else if protocol == "jottacloud" {
+            // Jotta authenticates via its OIDC refresh blob ({refresh_token,
+            // token_endpoint, username}), not a `server_<id>` password. The
+            // provider persists it under the per-profile key
+            // `jottacloud_refresh_<id>` when a profile id is set, or the
+            // singleton `jottacloud_refresh` otherwise (see
+            // `JottacloudProvider::refresh_token_account`). Try per-profile
+            // first, then fall back to the singleton, so export_rclone can
+            // rebuild the rclone `token` line from it.
+            let uid = active_credential_user_id(store);
+            read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
+                .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
+                .unwrap_or_default()
         } else {
             match read_server_cred(
                 store,
@@ -25975,7 +27597,14 @@ fn collect_export_scaffold(
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
 
-        if secret.is_empty() && !has_sftp_key {
+        // #128-D: OAuth-token providers (Drive/Dropbox/OneDrive/Box/pCloud/
+        // Yandex) carry no `server_<id>` password; their token + BYO
+        // client_id/secret are injected from the vault at export time, so an
+        // empty vault password is legitimate (like key-auth SFTP).
+        let is_rclone_oauth =
+            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol).is_some();
+
+        if secret.is_empty() && !has_sftp_key && !is_rclone_oauth {
             out.skipped
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
@@ -25985,6 +27614,7 @@ fn collect_export_scaffold(
             out.passwords.insert(name.to_string(), secret.clone());
         }
         out.profiles.push(ProfileExportScaffold {
+            id: id.to_string(),
             name: name.to_string(),
             host,
             port,
@@ -26040,29 +27670,19 @@ async fn cmd_export_rclone(
     };
     let filter = parse_profile_name_filter(profiles);
 
-    // rclone supports password-auth backends (FTP/SFTP/WebDAV/Mega/Azure/
-    // Swift/Koofr) and S3 (access_key/secret). OAuth backends need their
-    // own `rclone config` flow and are reported as skipped.
-    let supported = [
-        "ftp", "ftps", "sftp", "s3", "webdav", "mega", "azure", "swift", "koofr",
-    ];
-    let oauth = [
-        "googledrive",
-        "dropbox",
-        "onedrive",
-        "box",
-        "pcloud",
-        "yandexdisk",
-        "zohoworkdrive",
-        "internxt",
-        "kdrive",
-        "fourshared",
-        "drime",
-        "filen",
-        "jottacloud",
-        "filelu",
-        "opendrive",
-    ];
+    // Single source of truth shared with the GUI bridge: the credential
+    // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Azure/Swift/Koofr/OpenDrive/
+    // Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
+    // OneDrive/Box/pCloud/Yandex), whose token + BYO client_id/secret are
+    // injected below. Jottacloud is appended CLI-only: its rclone export
+    // rebuilds the persisted OIDC refresh token into a working token (verified
+    // end-to-end against a live account; `collect_export_scaffold` loads the
+    // refresh blob). The GUI bridge has no refresh-blob injection so it gates
+    // Jottacloud, hence it is not in `bridge_supported_protocols`.
+    let mut supported: Vec<&str> =
+        ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("rclone").to_vec();
+    supported.push("jottacloud");
+    let oauth: [&str; 0] = [];
 
     let collected =
         match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
@@ -26082,14 +27702,43 @@ async fn cmd_export_rclone(
     let exportable: Vec<RcloneExportServer> = collected
         .profiles
         .iter()
-        .map(|p| RcloneExportServer {
-            name: p.name.clone(),
-            host: p.host.clone(),
-            port: p.port,
-            username: p.username.clone(),
-            protocol: Some(p.protocol.clone()),
-            options: p.options.clone(),
-            provider_id: p.provider_id.clone(),
+        .map(|p| {
+            // #128-D: inject the vaulted OAuth token + BYO client_id/secret so
+            // OAuth remotes export usable (refreshable) from the CLI too, using
+            // the exact same helper the GUI bridge calls.
+            let mut options = p.options.clone();
+            ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
+                &mut options,
+                &store,
+                &p.protocol,
+                &p.id,
+            );
+            // #128-D: same for the vaulted Filen CLI API key (issue #230), which
+            // rclone's `filen` backend requires and cannot derive from the
+            // password.
+            ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
+                &mut options,
+                &store,
+                &p.protocol,
+                &p.id,
+            );
+            // #128-D: and the vaulted OneDrive Graph drive_id/drive_type, which
+            // rclone's `onedrive` backend needs and AeroFTP captures at connect.
+            ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
+                &mut options,
+                &store,
+                &p.protocol,
+                &p.id,
+            );
+            RcloneExportServer {
+                name: p.name.clone(),
+                host: p.host.clone(),
+                port: p.port,
+                username: p.username.clone(),
+                protocol: Some(p.protocol.clone()),
+                options,
+                provider_id: p.provider_id.clone(),
+            }
         })
         .collect();
 
@@ -28038,6 +29687,10 @@ struct CliCatalogCompany {
     country: String,
     free_gb: Option<f64>,
     free_note: Option<String>,
+    /// Has a genuine free allowance but signup requires a credit card (Amazon
+    /// S3, Azure Blob, Yandex Object Storage). Kept out of the paid bucket.
+    #[serde(default)]
+    free_requires_card: bool,
     regions: Vec<String>,
     protocols: Vec<CliCatalogMethod>,
 }
@@ -28232,8 +29885,10 @@ fn cmd_catalog(
         return 0;
     }
 
-    // One row per company (default).
-    let company_has_free = |c: &CliCatalogCompany| c.protocols.iter().any(|m| !m.paid);
+    // One row per company (default). A free allowance via a card-gated signup
+    // (free_requires_card) still counts as "has free", so it stays out of --paid.
+    let company_has_free =
+        |c: &CliCatalogCompany| c.free_requires_card || c.protocols.iter().any(|m| !m.paid);
     let mut companies: Vec<&CliCatalogCompany> = catalog
         .iter()
         .filter(|c| {
@@ -37622,6 +39277,69 @@ mod fuse_mount {
             eprintln!("Press Ctrl+C to unmount");
         }
 
+        run_fuse_session(
+            provider,
+            mountpoint,
+            base_path,
+            cache_ttl,
+            allow_other,
+            read_only,
+            knobs,
+            quiet,
+            format,
+        )
+        .await
+    }
+
+    /// Validate that `mountpoint` exists, is a directory and is empty (the FUSE
+    /// session would otherwise refuse or shadow existing files). Returns the exit
+    /// code to use on failure, or `None` when the mountpoint is usable.
+    fn validate_empty_mountpoint(mountpoint: &str, format: OutputFormat) -> Option<i32> {
+        let mp = std::path::Path::new(mountpoint);
+        if !mp.exists() {
+            print_error(
+                format,
+                &format!("Mount point does not exist: {}", mountpoint),
+                5,
+            );
+            return Some(5);
+        }
+        if !mp.is_dir() {
+            print_error(
+                format,
+                &format!("Mount point is not a directory: {}", mountpoint),
+                5,
+            );
+            return Some(5);
+        }
+        if let Ok(mut rd) = std::fs::read_dir(mp) {
+            if rd.next().is_some() {
+                print_error(
+                    format,
+                    &format!("Mount point is not empty: {}", mountpoint),
+                    5,
+                );
+                return Some(5);
+            }
+        }
+        None
+    }
+
+    /// Core FUSE session: wrap an already-connected provider, mount it, and block
+    /// until a shutdown signal, then unmount + disconnect. Shared by the remote
+    /// mount (`cmd_mount`) and the unlocked-vault mount (`cmd_mount_vault`).
+    #[allow(clippy::too_many_arguments)]
+    async fn run_fuse_session(
+        provider: Box<dyn StorageProvider>,
+        mountpoint: &str,
+        base_path: String,
+        cache_ttl: u64,
+        allow_other: bool,
+        read_only: bool,
+        knobs: super::MountKnobs,
+        quiet: bool,
+        format: OutputFormat,
+    ) -> i32 {
         let provider_arc = Arc::new(AsyncMutex::new(provider));
 
         let fs = AeroFuseFs::new(
@@ -37711,10 +39429,128 @@ mod fuse_mount {
         }
         0
     }
+
+    /// Mount an UNLOCKED vault (Cryptomator dir or `.aerovault`/`.aerozip` file)
+    /// as a READ-ONLY filesystem (#322 AeroMount Deliverable B). The password is
+    /// read from STDIN (never argv) so it never lands in the process table; the
+    /// vault is unlocked in THIS process and its keys are zeroized on exit, so the
+    /// mount is ephemeral (the GUI kills this child on vault-lock / quit). The
+    /// decrypted bytes are surfaced through a read-only `VaultStorageProvider`.
+    pub async fn cmd_mount_vault(
+        mountpoint: &str,
+        kind: &str,
+        vault_path: &str,
+        read_only: bool,
+        cli: &Cli,
+        format: OutputFormat,
+    ) -> i32 {
+        use std::io::Read as _;
+
+        if let Some(code) = validate_empty_mountpoint(mountpoint, format) {
+            return code;
+        }
+
+        // Read the password from stdin (the GUI writes it to the child's pipe;
+        // a CLI user pipes it). Trim a single trailing newline only.
+        let mut password = String::new();
+        if std::io::stdin().read_to_string(&mut password).is_err() {
+            print_error(format, "Failed to read password from stdin", 5);
+            return 5;
+        }
+        if password.ends_with('\n') {
+            password.pop();
+            if password.ends_with('\r') {
+                password.pop();
+            }
+        }
+
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+        // Build the read-only backend for the requested container kind.
+        let backend: Result<Box<dyn StorageProvider>, String> = (|| {
+            let name = match kind {
+                "cryptomator" => {
+                    let readable = ftp_client_gui_lib::cryptomator::open_cryptomator_for_mount(
+                        std::path::Path::new(vault_path),
+                        &password,
+                    )?;
+                    (
+                        Box::new(readable)
+                            as Box<dyn ftp_client_gui_lib::readable_vault::ReadableVault>,
+                        "Cryptomator vault",
+                    )
+                }
+                "aerovault" => {
+                    // An empty password means the plaintext `.aerozip` lane.
+                    let pw = if password.is_empty() {
+                        None
+                    } else {
+                        Some(password.as_str())
+                    };
+                    // Detects v3 / plaintext `.aerozip` / legacy v2 internally and
+                    // returns the right boxed `ReadableVault` for each.
+                    let readable =
+                        ftp_client_gui_lib::aerovault_v3::open_aerovault_for_mount(vault_path, pw)?;
+                    (readable, "AeroVault")
+                }
+                other => return Err(format!("Unknown vault kind: {other}")),
+            };
+            let (readable, label) = name;
+            let provider = ftp_client_gui_lib::vault_storage_provider::VaultStorageProvider::new(
+                label.to_string(),
+                readable,
+            )?;
+            Ok(Box::new(provider) as Box<dyn StorageProvider>)
+        })();
+
+        // Zeroize the password copy as soon as the vault is unlocked.
+        {
+            use zeroize::Zeroize as _;
+            password.zeroize();
+        }
+
+        let provider = match backend {
+            Ok(p) => p,
+            Err(e) => {
+                print_error(format, &format!("Open vault failed: {e}"), 6);
+                return 6;
+            }
+        };
+
+        if !quiet {
+            eprintln!(
+                "Mounting unlocked vault on {} (read-only{})",
+                mountpoint,
+                if read_only {
+                    ""
+                } else {
+                    ", IGNORED: forced read-only"
+                }
+            );
+            eprintln!("Unmounts when this process exits (vault lock / quit)");
+        }
+
+        // Read-only is forced regardless of the flag: write-back into a live
+        // vault is a later phase (design 4.3).
+        run_fuse_session(
+            provider,
+            mountpoint,
+            "/".to_string(),
+            30,
+            false, // never allow_other for a decrypted vault
+            true,  // read-only
+            super::MountKnobs::default(),
+            quiet,
+            format,
+        )
+        .await
+    }
 }
 
 #[cfg(target_os = "linux")]
 use fuse_mount::cmd_mount;
+#[cfg(target_os = "linux")]
+use fuse_mount::cmd_mount_vault;
 
 /// Windows mount: WebDAV bridge - starts a local WebDAV server and maps it as a drive letter.
 #[cfg(windows)]
@@ -48379,6 +50215,27 @@ async fn main() {
                 7
             }
         }
+        Commands::MountVault {
+            mountpoint,
+            kind,
+            vault_path,
+            read_only,
+        } => {
+            #[cfg(target_os = "linux")]
+            {
+                cmd_mount_vault(mountpoint, kind, vault_path, *read_only, &cli, format).await
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = (mountpoint, kind, vault_path, read_only);
+                print_error(
+                    format,
+                    "Mounting an unlocked vault is only supported on Linux for now",
+                    7,
+                );
+                7
+            }
+        }
         Commands::Sync {
             url,
             local,
@@ -48809,7 +50666,12 @@ async fn main() {
             )
             .await
         }
-        Commands::Vault { command } => {
+        Commands::Archive { command } => cli_aerovz::cmd_archive(command, &cli, format),
+        Commands::Vault { command } => 'vault_command: {
+            if let Some(message) = cli_aerovz::vault_plaintext_lane_rejection(command) {
+                print_error(format, &message, 5);
+                break 'vault_command 5;
+            }
             use ftp_client_gui_lib::{aerovault, aerovault_v2, aerovault_v3};
             let resolve_pw = |p: &Option<String>| -> String {
                 if let Some(pw) = p {
@@ -48966,6 +50828,7 @@ async fn main() {
                     password,
                     files,
                     receipt,
+                    to_dir,
                     vault_version,
                 } => {
                     let pw = resolve_pw(password);
@@ -48974,16 +50837,73 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
-                    if ver == "v3" {
-                        match aerovault_v3::vault_v3_add_files_inner(
+                    // `--to-dir`: place the files inside a subdirectory. v3 creates the
+                    // dir on add; v2 requires it to exist, so create it first (idempotent).
+                    if let Some(dir) = to_dir {
+                        let res = if ver == "v3" {
+                            aerovault_v3::vault_v3_add_files_to_dir(
+                                path.clone(),
+                                pw.clone(),
+                                files.clone(),
+                                dir.clone(),
+                            )
+                            .await
+                        } else if ver == "v2" {
+                            let _ = aerovault_v2::vault_v2_create_directory(
+                                path.clone(),
+                                pw.clone(),
+                                dir.clone(),
+                            )
+                            .await;
+                            aerovault_v2::vault_v2_add_files_to_dir(
+                                path.clone(),
+                                pw.clone(),
+                                files.clone(),
+                                dir.clone(),
+                            )
+                            .await
+                        } else {
+                            Err("--to-dir is only supported for v2/v3 vaults".to_string())
+                        };
+                        match res {
+                            Ok(value) => {
+                                print_json(&value);
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
+                        }
+                    } else if ver == "v3" {
+                        // Ehud #5: live progress for the long compress+encrypt pass.
+                        // create_progress_bar is hidden when output is not a TTY
+                        // (e.g. --json piped) or NO_COLOR is set, so it never dirties
+                        // machine-readable output. Drawn to stderr.
+                        let total_bytes: u64 = files
+                            .iter()
+                            .map(|f| std::fs::metadata(f).map(|m| m.len()).unwrap_or(0))
+                            .sum();
+                        let pb = create_progress_bar(
+                            "AeroVault: compress + encrypt",
+                            total_bytes.max(1),
+                        );
+                        let pb_cb = pb.clone();
+                        let progress: Option<aerovault_v3::VaultProgressFn> =
+                            Some(Box::new(move |_pct, done, total| {
+                                pb_cb.set_length(total.max(1));
+                                pb_cb.set_position(done);
+                            }));
+                        match aerovault_v3::vault_v3_add_files_with_progress(
                             path.clone(),
                             pw,
                             files.clone(),
-                            None,
+                            progress,
                         )
                         .await
                         {
                             Ok(info) => {
+                                pb.finish_and_clear();
                                 let mut code = 0;
                                 if let Some(rep) = &info.report {
                                     // Behind-the-scenes log to stderr
@@ -49026,6 +50946,7 @@ async fn main() {
                                 code
                             }
                             Err(e) => {
+                                pb.finish_and_clear();
                                 print_error(format, &e, 4);
                                 4
                             }
@@ -49488,6 +51409,597 @@ async fn main() {
                         }
                     }
                 }
+                VaultCommands::ChangeMode {
+                    path,
+                    password,
+                    security_level,
+                    profile,
+                    error_correction,
+                    recovery_level,
+                } => {
+                    let pw = resolve_pw(password);
+                    // Map the QR-style overhead level (named or numeric) to a percentage.
+                    let recovery_pct: u32 =
+                        match recovery_level.trim().to_ascii_lowercase().as_str() {
+                            "low" => 7,
+                            "medium" | "med" => 15,
+                            "quartile" => 25,
+                            "high" => 30,
+                            other => other.trim_end_matches('%').parse::<u32>().unwrap_or(20),
+                        };
+                    match aerovault_v3::vault_v3_change_mode(
+                        path.clone(),
+                        pw,
+                        security_level.clone(),
+                        Some(profile.clone()),
+                        *error_correction,
+                        Some(recovery_pct),
+                    )
+                    .await
+                    {
+                        Ok(report) => {
+                            match format {
+                                OutputFormat::Json => print_json(&report),
+                                OutputFormat::Text => {
+                                    let fmt =
+                                        report.get("format").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let files =
+                                        report.get("files").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let dirs =
+                                        report.get("dirs").and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let cascade = report
+                                        .get("cascade")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let ec = report
+                                        .get("error_correction")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let level = if fmt == 3 {
+                                        "archive (v3)".to_string()
+                                    } else if cascade {
+                                        "paranoid (v2, cascade)".to_string()
+                                    } else {
+                                        "v2".to_string()
+                                    };
+                                    println!(
+                                        "Re-packed vault to {level}: {files} files, {dirs} dirs{}",
+                                        if ec { ", Error Correction enabled" } else { "" }
+                                    );
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 1);
+                            1
+                        }
+                    }
+                }
+                VaultCommands::AddDir {
+                    path,
+                    password,
+                    source_dir,
+                    prefix,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res: Result<(usize, usize), String> = if ver == "v3" {
+                        aerovault_v3::vault_v3_add_directory_core(
+                            path.clone(),
+                            pw,
+                            source_dir.clone(),
+                            prefix.clone(),
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_add_directory_core(
+                            path.clone(),
+                            pw,
+                            source_dir.clone(),
+                            prefix.clone(),
+                            |_, _, _| {},
+                        )
+                        .await
+                    } else {
+                        Err("add-dir is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok((files, dirs)) => {
+                            match format {
+                                OutputFormat::Json => print_json(&serde_json::json!({
+                                    "added_files": files,
+                                    "added_dirs": dirs,
+                                    "total_entries": files + dirs,
+                                })),
+                                OutputFormat::Text => println!(
+                                    "Added {files} file(s), {dirs} dir(s) from {source_dir}"
+                                ),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::ExtractAll {
+                    path,
+                    password,
+                    dest,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res: Result<u64, String> = if ver == "v3" {
+                        aerovault_v3::vault_v3_extract_all_impl(
+                            path.clone(),
+                            pw,
+                            dest.clone(),
+                            None,
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_extract_all(path.clone(), pw, dest.clone())
+                            .await
+                            .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                    } else {
+                        Err("extract-all is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(n) => {
+                            match format {
+                                OutputFormat::Json => print_json(&serde_json::json!({
+                                    "extracted": n,
+                                    "dest": dest,
+                                })),
+                                OutputFormat::Text => {
+                                    println!(
+                                        "Extracted {n} entr{} to {dest}",
+                                        if n == 1 { "y" } else { "ies" }
+                                    )
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Mkdir {
+                    path,
+                    password,
+                    dir,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_create_directory(path.clone(), pw, dir.clone()).await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_create_directory(path.clone(), pw, dir.clone()).await
+                    } else {
+                        Err("mkdir is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!("Created directory {dir}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Rm {
+                    path,
+                    password,
+                    entries,
+                    recursive,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_delete_entries(
+                            path.clone(),
+                            pw,
+                            entries.clone(),
+                            *recursive,
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_delete_entries(
+                            path.clone(),
+                            pw,
+                            entries.clone(),
+                            *recursive,
+                        )
+                        .await
+                    } else {
+                        Err("rm is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!(
+                                    "Deleted {} entr{}",
+                                    entries.len(),
+                                    if entries.len() == 1 { "y" } else { "ies" }
+                                ),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Mv {
+                    path,
+                    password,
+                    from,
+                    to,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_move_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_move_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else {
+                        Err("mv is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!("Moved {from} -> {to}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Cp {
+                    path,
+                    password,
+                    from,
+                    to,
+                    vault_version,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res = if ver == "v3" {
+                        aerovault_v3::vault_v3_copy_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else if ver == "v2" {
+                        aerovault_v2::vault_v2_copy_entry(
+                            path.clone(),
+                            pw,
+                            from.clone(),
+                            to.clone(),
+                        )
+                        .await
+                    } else {
+                        Err("cp is only supported for v2/v3 vaults".to_string())
+                    };
+                    match res {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => println!("Copied {from} -> {to}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::ChangePassword {
+                    path,
+                    password,
+                    new_password,
+                    vault_version,
+                } => {
+                    let old_pw = resolve_pw(password);
+                    let new_pw = new_password
+                        .clone()
+                        .or_else(|| std::env::var("AEROFTP_VAULT_NEW_PASSWORD").ok())
+                        .filter(|p| !p.is_empty());
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    match new_pw {
+                        None => {
+                            print_error(
+                                format,
+                                "Provide the new password via --new-password or AEROFTP_VAULT_NEW_PASSWORD",
+                                6,
+                            );
+                            6
+                        }
+                        Some(new_pw) => {
+                            let res = if ver == "v3" {
+                                aerovault_v3::vault_v3_change_password(path.clone(), old_pw, new_pw)
+                                    .await
+                            } else if ver == "v2" {
+                                aerovault_v2::vault_v2_change_password(path.clone(), old_pw, new_pw)
+                                    .await
+                            } else {
+                                Err("change-password is only supported for v2/v3 vaults"
+                                    .to_string())
+                            };
+                            match res {
+                                Ok(msg) => {
+                                    match format {
+                                        OutputFormat::Json => print_json(&serde_json::json!({
+                                            "ok": true,
+                                            "message": msg,
+                                        })),
+                                        OutputFormat::Text => println!("{msg}"),
+                                    }
+                                    0
+                                }
+                                Err(e) => {
+                                    print_error(format, &e, 1);
+                                    1
+                                }
+                            }
+                        }
+                    }
+                }
+                VaultCommands::Compact { path, password } => {
+                    let pw = resolve_pw(password);
+                    let ver = detect_vault_version(path).await;
+                    if ver != "v2" {
+                        print_error(format, "compact is only supported for v2 vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v2::vault_v2_compact(path.clone(), pw).await {
+                            Ok(result) => {
+                                print_json(&result);
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::ScanDir { source_dir } => {
+                    match aerovault_v2::vault_v2_scan_directory(source_dir.clone()).await {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => {
+                                    let files = value["file_count"].as_u64().unwrap_or(0);
+                                    let dirs = value["dir_count"].as_u64().unwrap_or(0);
+                                    let size = value["total_size"].as_u64().unwrap_or(0);
+                                    println!(
+                                        "{files} file(s), {dirs} dir(s), {size} byte(s) in {source_dir}"
+                                    );
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::SyncCompare {
+                    path,
+                    password,
+                    local_dir,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = detect_vault_version(path).await;
+                    if ver != "v2" {
+                        print_error(format, "sync is currently supported for v2 vaults only", 7);
+                        7
+                    } else {
+                        match aerovault_v2::vault_v2_sync_compare(
+                            path.clone(),
+                            pw,
+                            local_dir.clone(),
+                        )
+                        .await
+                        {
+                            Ok(cmp) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&cmp),
+                                    OutputFormat::Text => {
+                                        println!(
+                                            "vault-only: {}, local-only: {}, conflicts: {}, unchanged: {}",
+                                            cmp.vault_only.len(),
+                                            cmp.local_only.len(),
+                                            cmp.conflicts.len(),
+                                            cmp.unchanged
+                                        );
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
+                        }
+                    }
+                }
+                VaultCommands::SyncApply {
+                    path,
+                    password,
+                    local_dir,
+                    direction,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = detect_vault_version(path).await;
+                    if ver != "v2" {
+                        print_error(format, "sync is currently supported for v2 vaults only", 7);
+                        7
+                    } else {
+                        // Derive the action list from a fresh comparison. to-vault pushes
+                        // the local-only files plus conflicts (local wins); to-local pulls
+                        // the vault-only files plus conflicts (vault wins). The opposite
+                        // side's extra files are left untouched (no destructive deletes).
+                        match aerovault_v2::vault_v2_sync_compare(
+                            path.clone(),
+                            pw.clone(),
+                            local_dir.clone(),
+                        )
+                        .await
+                        {
+                            Ok(cmp) => {
+                                let act = if direction == "to-vault" {
+                                    "to_vault"
+                                } else {
+                                    "to_local"
+                                };
+                                let mut actions: Vec<aerovault_v2::VaultSyncAction> = Vec::new();
+                                let primary = if direction == "to-vault" {
+                                    &cmp.local_only
+                                } else {
+                                    &cmp.vault_only
+                                };
+                                for name in primary {
+                                    actions.push(aerovault_v2::VaultSyncAction {
+                                        name: name.clone(),
+                                        action: act.to_string(),
+                                    });
+                                }
+                                for c in &cmp.conflicts {
+                                    actions.push(aerovault_v2::VaultSyncAction {
+                                        name: c.name.clone(),
+                                        action: act.to_string(),
+                                    });
+                                }
+                                match aerovault_v2::vault_v2_sync_apply(
+                                    path.clone(),
+                                    pw,
+                                    local_dir.clone(),
+                                    actions,
+                                )
+                                .await
+                                {
+                                    Ok(res) => {
+                                        match format {
+                                            OutputFormat::Json => print_json(&res),
+                                            OutputFormat::Text => {
+                                                println!(
+                                                    "Synced {} -> vault, {} -> local, {} skipped, {} error(s)",
+                                                    res.to_vault,
+                                                    res.to_local,
+                                                    res.skipped,
+                                                    res.errors.len()
+                                                );
+                                                for e in &res.errors {
+                                                    eprintln!("  {e}");
+                                                }
+                                            }
+                                        }
+                                        if res.errors.is_empty() {
+                                            0
+                                        } else {
+                                            1
+                                        }
+                                    }
+                                    Err(e) => {
+                                        print_error(format, &e, 4);
+                                        4
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
+                        }
+                    }
+                }
+                VaultCommands::RecoveryStatus { path } => {
+                    match aerovault_v3::vault_v3_recovery_status(path.clone()).await {
+                        Ok(value) => {
+                            match format {
+                                OutputFormat::Json => print_json(&value),
+                                OutputFormat::Text => {
+                                    let embedded = value["embedded"].as_bool().unwrap_or(false);
+                                    let detached = value["detached"].as_bool().unwrap_or(false);
+                                    println!(
+                                        "Error Correction recovery: embedded={embedded}, detached={detached}"
+                                    );
+                                }
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
             }
         }
         Commands::Correct { command } => cmd_correct(command, format),
@@ -49556,6 +52068,7 @@ async fn main() {
             interactive,
             group,
             health,
+            tui,
         } => list_vault_profiles(
             &cli,
             format,
@@ -49567,9 +52080,20 @@ async fn main() {
                 interactive: *interactive,
                 group: group.clone(),
                 health: *health,
+                start_in_tui: *tui,
             },
         ),
-        Commands::Users { command } => cmd_users(&cli, command, format),
+        Commands::Groups {
+            _ignored: _,
+            interactive,
+        } => cmd_groups(&cli, format, *interactive),
+        Commands::Users {
+            command,
+            interactive,
+        } => match command {
+            Some(cmd) => cmd_users(&cli, cmd, format),
+            None => cmd_users_section(&cli, format, *interactive),
+        },
         Commands::ProfileAdd {
             name,
             protocol,
@@ -50326,6 +52850,225 @@ mod tests {
     }
 
     #[test]
+    fn section_actions_render_label_key_joined() {
+        let verbs = vec![
+            SectionVerb::new("re-index", "#"),
+            SectionVerb::new("Rename", "R"),
+            SectionVerb::new("Quit", "Q/0"),
+        ];
+        assert_eq!(
+            render_section_actions(&verbs),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Quit(Q/0)"
+        );
+    }
+
+    #[test]
+    fn profiles_action_bar_matches_documented_vocabulary() {
+        // The shared engine must reproduce the exact `profiles -i` action bar,
+        // including the favourite glyph riding on the Fav verb (#270/#311).
+        assert_eq!(
+            render_section_actions(&profiles_section_verbs("\u{2605}")),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Help(H) \u{00b7} Quit(Q/0)"
+        );
+        // The chosen-heart marker (#270) flows through unchanged.
+        assert!(
+            render_section_actions(&profiles_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)")
+        );
+    }
+
+    #[test]
+    fn section_keyword_predicates_cover_the_shared_vocabulary() {
+        for q in ["q", "quit", "exit", "0", "-1"] {
+            assert!(section_is_quit(q), "{q} should quit");
+        }
+        for h in ["h", "help", "?"] {
+            assert!(section_is_help(h), "{h} should open help");
+        }
+        for r in ["refresh", "clear", "."] {
+            assert!(section_is_refresh(r), "{r} should refresh");
+        }
+        // Disjoint: a refresh keyword is not a quit keyword, and vice versa.
+        assert!(!section_is_quit("refresh"));
+        assert!(!section_is_refresh("q"));
+        assert!(!section_is_help("."));
+    }
+
+    fn grp(name: &str, order: i64, members: &[&str]) -> CliServerGroup {
+        CliServerGroup {
+            id: format!("grp_{}", name),
+            name: name.to_string(),
+            color: None,
+            order,
+            members: members.iter().map(|m| m.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn resolve_group_selector_takes_index_or_name() {
+        let groups = vec![grp("Work", 0, &[]), grp("Home Lab", 1, &[])];
+        // 1-based index.
+        assert_eq!(resolve_group_selector(&groups, "1").unwrap(), 0);
+        assert_eq!(resolve_group_selector(&groups, "2").unwrap(), 1);
+        // Case-insensitive name.
+        assert_eq!(resolve_group_selector(&groups, "work").unwrap(), 0);
+        assert_eq!(resolve_group_selector(&groups, "Home Lab").unwrap(), 1);
+        // Out of range / unknown.
+        assert!(resolve_group_selector(&groups, "3").is_err());
+        assert!(resolve_group_selector(&groups, "nope").is_err());
+        assert!(resolve_group_selector(&groups, "").is_err());
+    }
+
+    #[test]
+    fn group_copy_name_disambiguates() {
+        let mut groups = vec![grp("Work", 0, &[])];
+        assert_eq!(next_group_copy_name(&groups, "Work"), "Work (copy)");
+        groups.push(grp("Work (copy)", 1, &[]));
+        assert_eq!(next_group_copy_name(&groups, "Work"), "Work (copy 2)");
+        groups.push(grp("Work (copy 2)", 2, &[]));
+        assert_eq!(next_group_copy_name(&groups, "Work"), "Work (copy 3)");
+        // Taken check is case-insensitive.
+        assert!(group_name_taken(&groups, "WORK (COPY)"));
+        assert!(!group_name_taken(&groups, "Fresh"));
+    }
+
+    #[test]
+    fn group_reorder_moves_and_restamps_dense_order() {
+        // Pre-sorted by order, as load_server_groups returns.
+        let mut groups = vec![grp("A", 0, &[]), grp("B", 1, &[]), grp("C", 2, &[])];
+        // Move C to the top.
+        let (name, dst) = apply_group_reorder(&mut groups, "c", 1).unwrap();
+        assert_eq!(name, "C");
+        assert_eq!(dst, 0);
+        let order: Vec<(&str, i64)> = groups.iter().map(|g| (g.name.as_str(), g.order)).collect();
+        assert_eq!(order, vec![("C", 0), ("A", 1), ("B", 2)]);
+        // Over-large target clamps to the last position.
+        let (_, dst) = apply_group_reorder(&mut groups, "C", 99).unwrap();
+        assert_eq!(dst, 2);
+        assert_eq!(
+            groups.iter().map(|g| g.name.clone()).collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+        // Unknown group is an error; empty list is an error.
+        assert!(apply_group_reorder(&mut groups, "missing", 1).is_err());
+        assert!(apply_group_reorder(&mut Vec::new(), "A", 1).is_err());
+    }
+
+    #[test]
+    fn groups_table_renders_header_and_counts() {
+        assert!(format_groups_table(&[]).contains("No groups yet"));
+        let table = format_groups_table(&[grp("Work", 0, &["p1", "p2"]), grp("Home", 1, &[])]);
+        assert!(table.contains("Group"));
+        assert!(table.contains("Members"));
+        // Numbered 1-based, with member counts.
+        assert!(table.contains("1 "));
+        assert!(table.contains("Work"));
+        assert!(table
+            .lines()
+            .any(|l| l.contains("Work") && l.trim_end().ends_with('2')));
+        assert!(table
+            .lines()
+            .any(|l| l.contains("Home") && l.trim_end().ends_with('0')));
+    }
+
+    #[test]
+    fn groups_action_bar_matches_d2_vocabulary() {
+        assert_eq!(
+            render_section_actions(&groups_section_verbs()),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} List/ls(L) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+        );
+    }
+
+    fn usr(id: i64, name: &str, default: bool) -> user_partitions::UserMetadata {
+        user_partitions::UserMetadata {
+            id,
+            name: name.to_string(),
+            avatar_emoji: None,
+            avatar_color: None,
+            has_passphrase: false,
+            sort_order: id,
+            created_at: 0,
+            updated_at: 0,
+            last_unlocked_at: None,
+            is_active: false,
+            is_admin: false,
+            is_default: default,
+        }
+    }
+
+    #[test]
+    fn resolve_user_selector_takes_index_or_name() {
+        let users = vec![usr(2, "alice", false), usr(5, "Home Box", false)];
+        // 1-based table index (NOT the numeric user id).
+        assert_eq!(resolve_user_selector(&users, "1").unwrap(), 0);
+        assert_eq!(resolve_user_selector(&users, "2").unwrap(), 1);
+        // Case-insensitive name.
+        assert_eq!(resolve_user_selector(&users, "ALICE").unwrap(), 0);
+        assert_eq!(resolve_user_selector(&users, "Home Box").unwrap(), 1);
+        // Out of range / unknown / empty.
+        assert!(resolve_user_selector(&users, "3").is_err());
+        assert!(resolve_user_selector(&users, "nope").is_err());
+        assert!(resolve_user_selector(&users, "").is_err());
+    }
+
+    #[test]
+    fn user_copy_name_disambiguates() {
+        let mut users = vec![usr(1, "alice", false)];
+        assert_eq!(next_user_copy_name(&users, "alice"), "alice (copy)");
+        users.push(usr(2, "alice (copy)", false));
+        assert_eq!(next_user_copy_name(&users, "alice"), "alice (copy 2)");
+        users.push(usr(3, "alice (copy 2)", false));
+        assert_eq!(next_user_copy_name(&users, "alice"), "alice (copy 3)");
+        // Taken check is case-insensitive.
+        assert!(user_name_taken(&users, "ALICE (COPY)"));
+        assert!(!user_name_taken(&users, "bob"));
+    }
+
+    #[test]
+    fn user_reorder_moves_within_dense_id_order() {
+        let users = vec![
+            usr(10, "A", false),
+            usr(20, "B", false),
+            usr(30, "C", false),
+        ];
+        // Move C (idx 2) to the top.
+        assert_eq!(user_order_after_move(&users, 2, 1), vec![30, 10, 20]);
+        // Move A (idx 0) down to position 2.
+        assert_eq!(user_order_after_move(&users, 0, 2), vec![20, 10, 30]);
+        // Over-large target clamps to the last slot; no-op stays identity.
+        assert_eq!(user_order_after_move(&users, 0, 99), vec![20, 30, 10]);
+        // Out-of-range source index returns the order unchanged.
+        assert_eq!(user_order_after_move(&users, 9, 1), vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn users_table_renders_header_and_default_marker() {
+        assert!(format_users_table(&[], "\u{2605}").contains("No AeroFTP users"));
+        let mut alice = usr(2, "alice", true);
+        alice.is_active = true;
+        let table = format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}");
+        assert!(table.contains("User"));
+        assert!(table.contains("ID"));
+        assert!(table.contains("Flags"));
+        // 1-based row numbering, the numeric id, and the default star.
+        assert!(table
+            .lines()
+            .any(|l| l.contains("alice") && l.contains("active") && l.contains("default\u{2605}")));
+        assert!(table
+            .lines()
+            .any(|l| l.contains("bob") && l.trim_end().ends_with('-')));
+    }
+
+    #[test]
+    fn users_action_bar_matches_d1_vocabulary() {
+        assert_eq!(
+            render_section_actions(&users_section_verbs("\u{2605}")),
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+        );
+        // The Fav glyph follows the user's chosen favourite marker (#270).
+        assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));
+    }
+
+    #[test]
     fn crypt_rel_path_round_trips_each_component() {
         use ftp_client_gui_lib::aerocrypt::names;
         let master = [5u8; 32];
@@ -50925,6 +53668,7 @@ mod tests {
                 interactive: false,
                 group: None,
                 health: false,
+                tui: false,
             },
         }
     }
@@ -51189,6 +53933,15 @@ mod tests {
             7
         );
         assert_eq!(provider_error_to_exit_code(&ProviderError::Timeout), 8);
+        // A hard per-file size limit (OpenDrive free/Basic = 100 MB) is a
+        // deterministic client error, not an authorization failure: it shares
+        // exit code 5 with the other non-retryable client errors so a retry
+        // loop will not pointlessly re-upload the same oversized file.
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::FileTooLarge("test".into())),
+            5
+        );
+        assert!(!is_retryable_exit(5));
     }
 
     #[test]
@@ -53754,6 +56507,7 @@ mod tests {
             interactive: true,
             group: None,
             health: false,
+            start_in_tui: false,
         };
         assert_eq!(profiles_view_args(&plain), vec!["profiles".to_string()]);
         // `interactive` must NOT leak into the refresh args.
@@ -53768,6 +56522,7 @@ mod tests {
             interactive: true,
             group: Some("Production".to_string()),
             health: true,
+            start_in_tui: false,
         };
         assert_eq!(
             profiles_view_args(&full),

@@ -1,6 +1,6 @@
 # DAG Transfer Engine
 
-*Last updated: 2026-05-24 — corresponds to release v4.0.0.*
+*Last updated: 2026-06-22 (current as of the 4.0.x series; engine introduced in the v4.0.0 convergence).*
 
 AeroFTP routes every file transfer through a shared, provider-agnostic
 node-graph engine. This document describes what the engine is, why it
@@ -23,14 +23,14 @@ read, disk write, api).
 
 Three layers compose the engine:
 
-- **`transfer_dag` core** — pure, provider-free graph engine. Owns
+- **`transfer_dag` core** - pure, provider-free graph engine. Owns
   the executor, the graph and node types, the resource manager, the
   AIMD backpressure controller, and the observer pipeline.
-- **`TransferDagBuilder`** — single source of truth for every shape
+- **`TransferDagBuilder`** - single source of truth for every shape
   the engine schedules: `single_file`, `from_batch`, `from_batch_shaped`,
   `from_sync_plan`, `from_sync_plan_shaped`, `shaped_file`, `shaped_copy`,
   `shaped_ranges`.
-- **Three thin runners** — `transfer_dag_single_file`,
+- **Three thin runners** - `transfer_dag_single_file`,
   `transfer_dag_batch`, `transfer_dag_sync`. Each is a bridge: it
   builds a graph through the builder, hands it to `execute_dag`, and
   binds each node kind to real provider I/O through a runner closure.
@@ -66,7 +66,7 @@ Three converging needs justified the convergence:
    capability.
 3. **One scheduler, one place to fix.** The AIMD backpressure
    controller, the file / chunk / http / api budgets, the resource
-   manager, the session pool — every scarce resource lives in
+   manager, the session pool - every scarce resource lives in
    `transfer_dag/resources` and is governed once for every transfer.
    Backends pick what they reserve (a one-line `ResourceRequest` per
    node kind); they do not own a scheduler of their own.
@@ -104,7 +104,7 @@ provider (S3, B2, …), the runner allocates a per-transfer
 - An `Arc<Mutex<Option<MultipartHandle>>>` initialized lazily: the
   first `UploadPart` invocation that wins the mutex opens the session
   via `StorageProvider::begin_multipart_upload(remote, total_size,
-  content_type)`. Subsequent invocations observe an initialized
+  content_type, local_source_path)`. Subsequent invocations observe an initialized
   handle and skip the call.
 - An `Arc<Mutex<Vec<UploadedPart>>>` that collects per-part receipts.
 - An `Arc<HashMap<usize, u32>>` mapping each `UploadPart` node id to
@@ -151,7 +151,7 @@ ceiling.
 
 The controller is per-transfer (constructed once at the top of
 `execute_dag` and dropped when the transfer ends); persistence across
-runs is out of scope for v4.0.0.
+runs remains out of scope.
 
 ## Provider trait surface
 
@@ -164,7 +164,7 @@ matter:
 
 | Trait method                              | Purpose                                     |
 | ----------------------------------------- | ------------------------------------------- |
-| `begin_multipart_upload(remote, total_size, content_type)` | Open a multipart session. |
+| `begin_multipart_upload(remote, total_size, content_type, local_source_path)` | Open a multipart session. |
 | `upload_part(&handle, part_number, data)` | Upload one part of a multipart session.     |
 | `complete_multipart_upload(handle, parts)` | Finalize a multipart session.              |
 | `abort_multipart_upload(handle)`          | Release session state on failure.           |
@@ -198,9 +198,8 @@ The `provider_transfer_executor.rs` module still hosts the
 `TransferExecutor` implementations (`ProviderDownloadExecutor`,
 `ProviderUploadExecutor`) the batch runner consumes through
 `execute_with_session`, the segmented download eligibility gate, and
-the `ProviderListSessionModel` enum the scan layer reads. Its delete
-target is post-v4.0.0 cleanup window (see
-`docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+the `ProviderListSessionModel` enum the scan layer reads. Its full
+removal is deferred to a post-convergence cleanup window.
 
 ## What changed in v4.0.0
 
@@ -214,11 +213,9 @@ target is post-v4.0.0 cleanup window (see
 
 ## See also
 
-- `docs.aeroftp.app/architecture/dag-transfer-engine.md` — long-form
+- `docs.aeroftp.app/architecture/dag-transfer-engine.md` - long-form
   architectural walk-through, design rationale, performance numbers.
-- `docs/PROVIDER-INTEGRATION-GUIDE.md` — how to plug a new storage
+- `docs/PROVIDER-INTEGRATION-GUIDE.md` - how to plug a new storage
   backend into the engine (capability advertisement, trait methods,
   session pool integration).
-- `docs/THREAT-MODEL.md` — STRIDE analysis for the engine surface.
-- `docs/dev/roadmap/APPENDIX-DAG-ENGINE/` — internal roadmap, design
-  decisions, status logs.
+- `docs/THREAT-MODEL.md` - STRIDE analysis for the engine surface.

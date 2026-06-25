@@ -1,5 +1,7 @@
 # AeroFTP CLI - Agent Integration Guide
 
+> _Last updated: 2026-06-22_
+
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
 > It describes how to use AeroFTP CLI for remote operations without credentials.
 
@@ -352,7 +354,7 @@ External MCP clients can now connect directly through AeroFTP without wrapping C
 aeroftp-cli agent --mcp
 ```
 
-Current MCP mode (v4.0.2) exposes:
+Current MCP mode (v4.0.x) exposes:
 - 34 curated tools across safe / medium / destructive tiers: file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`)
 - resources for saved profiles, status, capabilities, and pooled connections
 - prompt templates for deploy, backup, sync, and clean workflows
@@ -360,10 +362,11 @@ Current MCP mode (v4.0.2) exposes:
 
 Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that can spawn a stdio server.
 
+**JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` runs a JSON-RPC 2.0 loop over stdin/stdout for programmatic agent-to-agent integration, emitting an `agent/ready` notification with the live CLI tool count on startup.
+
 ### Coming Soon
 
 - **Mutative server operations**: Available as dedicated tools - `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete`, `remote_rename`
-- **JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` for programmatic agent-to-agent integration
 - **Cross-server operations**: `server_diff`, `server_sync` between two remote servers
 - **Agent session tokens**: Pre-authorized scoped sessions for headless automation
 
@@ -398,7 +401,7 @@ Architecture details: [docs.aeroftp.app/architecture/dag-transfer-engine](https:
 
 Saved profiles cover both direct-auth and browser-authorized providers.
 
-**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, GitHub, GitLab, MEGA (Native + MEGAcmd), Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob, Immich, SourceForge (SFTP preset)
+**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, Backblaze B2, Swift (OpenStack), Azure Blob, GitHub, GitLab, MEGA (Native + MEGAcmd), Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Immich, ImageKit, Uploadcare, Cloudinary, Drime Cloud, SourceForge (SFTP preset)
 
 **Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared
 
@@ -406,4 +409,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v4.0.4 - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v4.0.x - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

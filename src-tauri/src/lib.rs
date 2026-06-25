@@ -36,6 +36,7 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+pub mod archive_progress;
 pub mod aws_credentials_import;
 pub mod bridge_commands;
 pub mod bridge_shared;
@@ -56,7 +57,7 @@ pub mod credential_store;
 mod cross_profile_commands;
 pub mod cross_profile_transfer;
 mod crypto;
-mod cryptomator;
+pub mod cryptomator;
 mod cyber_tools;
 pub mod cyberduck_import;
 mod debug_tests;
@@ -69,7 +70,10 @@ pub mod lftp_import;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod putty_import;
+pub mod readable_vault;
 pub mod s3cmd_import;
+pub mod vault_mount;
+pub mod vault_storage_provider;
 pub mod vault_telemetry;
 // `pub` only so `tests/integration_delta_sync.rs` (separate crate) can
 // inject a MockDeltaTransport. Everything but the hidden inner helper
@@ -1304,6 +1308,57 @@ fn rclone_overlay_encode_path(
     }
 }
 
+/// Normalize a plaintext crypt anchor: `""`/`"/"` => whole-remote scope; else an
+/// absolute, slash-trimmed `/Foo/Bar`. (Twin of aerocrypt_provider::norm_anchor.)
+fn rclone_norm_anchor(scope: Option<&str>) -> String {
+    let s = scope.unwrap_or("").trim();
+    if s.is_empty() || s == "/" {
+        return String::new();
+    }
+    format!("/{}", s.trim_matches('/'))
+}
+
+/// Normalize an absolute path: leading slash, no trailing slash.
+fn rclone_norm_abs(p: &str) -> String {
+    let trimmed = p.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    format!("/{}", trimmed.trim_start_matches('/'))
+}
+
+/// Encode a plaintext navigation target for `cd`, encrypting ONLY the components
+/// BELOW the overlay's anchor. CWP-20B (B3): mirrors
+/// aerocrypt_provider::encode_plain_target so an absolute in-scope jump (path bar)
+/// keeps the cleartext anchor prefix and encrypts only the tail, instead of
+/// wrongly encrypting the anchor segment. FAIL-CLOSED: an absolute target not
+/// under the anchor is refused.
+fn rclone_encode_plain_target(
+    keys: &rclone_crypt::RcloneCryptKeys,
+    crypt_scope: Option<&str>,
+    target: &str,
+) -> Result<String, String> {
+    if !target.starts_with('/') {
+        return rclone_overlay_encode_path(keys, target);
+    }
+    let anchor = rclone_norm_anchor(crypt_scope);
+    if anchor.is_empty() {
+        return rclone_overlay_encode_path(keys, target);
+    }
+    let t = rclone_norm_abs(target);
+    if t == anchor {
+        return Ok(anchor);
+    }
+    if let Some(below) = t.strip_prefix(&format!("{}/", anchor)) {
+        let enc_below = rclone_overlay_encode_path(keys, below)?;
+        return Ok(format!("{}/{}", anchor, enc_below));
+    }
+    Err(format!(
+        "crypt navigation target {:?} is outside the overlay scope {:?}",
+        target, anchor
+    ))
+}
+
 fn rclone_overlay_decode_path(
     keys: &rclone_crypt::RcloneCryptKeys,
     encrypted_path: &str,
@@ -1350,6 +1405,7 @@ async fn rclone_crypt_provider_list(
     vault_id: String,
     path: Option<String>,
     plain_path: Option<bool>,
+    crypt_scope: Option<String>,
 ) -> Result<RcloneCryptBrowserListResponse, String> {
     let (name_key, data_key, name_tweak, mode, off_suffix, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
@@ -1387,7 +1443,7 @@ async fn rclone_crypt_provider_list(
                 .map_err(|e| format!("Failed to go up: {}", e))?;
         } else if !target.is_empty() && target != "." {
             let target_path = if plain_path.unwrap_or(false) {
-                rclone_overlay_encode_path(&keys, target)?
+                rclone_encode_plain_target(&keys, crypt_scope.as_deref(), target)?
             } else {
                 target.to_string()
             };
@@ -2196,6 +2252,9 @@ fn exit_app(app: &tauri::AppHandle) {
     let app_clone = app.clone();
     tauri::async_runtime::block_on(async move {
         crate::mount_manager::stop_all().await;
+        // Unmount any ephemeral read-only vault mounts (#322 Deliverable B): they
+        // must not outlive the app holding the keys.
+        crate::vault_mount::stop_all().await;
         let _ = app_clone;
     });
     app.exit(0);
@@ -5892,6 +5951,51 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             version: env!("DEP_VERSION_IMAGE").into(),
             category: "Core".into(),
         },
+        DependencyInfo {
+            name: "tokio-util".into(),
+            version: env!("DEP_VERSION_TOKIO_UTIL").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "futures-util".into(),
+            version: env!("DEP_VERSION_FUTURES_UTIL").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "async-trait".into(),
+            version: env!("DEP_VERSION_ASYNC_TRAIT").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "tracing-subscriber".into(),
+            version: env!("DEP_VERSION_TRACING_SUBSCRIBER").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "toml".into(),
+            version: env!("DEP_VERSION_TOML").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "semver".into(),
+            version: env!("DEP_VERSION_SEMVER").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "uuid".into(),
+            version: env!("DEP_VERSION_UUID").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "regex".into(),
+            version: env!("DEP_VERSION_REGEX").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "notify-debouncer-full".into(),
+            version: env!("DEP_VERSION_NOTIFY_DEBOUNCER_FULL").into(),
+            category: "Core".into(),
+        },
         // Protocols
         DependencyInfo {
             name: "suppaftp".into(),
@@ -5926,6 +6030,51 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo {
             name: "rustls".into(),
             version: env!("DEP_VERSION_RUSTLS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "ssh2".into(),
+            version: env!("DEP_VERSION_SSH2").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "tokio-rustls".into(),
+            version: env!("DEP_VERSION_TOKIO_RUSTLS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "rustls-native-certs".into(),
+            version: env!("DEP_VERSION_RUSTLS_NATIVE_CERTS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "webpki-roots".into(),
+            version: env!("DEP_VERSION_WEBPKI_ROOTS").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "axum".into(),
+            version: env!("DEP_VERSION_AXUM").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "http".into(),
+            version: env!("DEP_VERSION_HTTP").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "url".into(),
+            version: env!("DEP_VERSION_URL").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "urlencoding".into(),
+            version: env!("DEP_VERSION_URLENCODING").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "percent-encoding".into(),
+            version: env!("DEP_VERSION_PERCENT_ENCODING").into(),
             category: "Protocols".into(),
         },
         // Security
@@ -6004,6 +6153,91 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             version: env!("DEP_VERSION_AEROVAULT").into(),
             category: "Security".into(),
         },
+        DependencyInfo {
+            name: "keyring".into(),
+            version: env!("DEP_VERSION_KEYRING").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "aes".into(),
+            version: env!("DEP_VERSION_AES").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "cbc".into(),
+            version: env!("DEP_VERSION_CBC").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "ctr".into(),
+            version: env!("DEP_VERSION_CTR").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "crypto_secretbox".into(),
+            version: env!("DEP_VERSION_CRYPTO_SECRETBOX").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "pbkdf2".into(),
+            version: env!("DEP_VERSION_PBKDF2").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "sha1".into(),
+            version: env!("DEP_VERSION_SHA1").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "ripemd".into(),
+            version: env!("DEP_VERSION_RIPEMD").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "md-5".into(),
+            version: env!("DEP_VERSION_MD_5").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "zeroize".into(),
+            version: env!("DEP_VERSION_ZEROIZE").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "subtle".into(),
+            version: env!("DEP_VERSION_SUBTLE").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "data-encoding".into(),
+            version: env!("DEP_VERSION_DATA_ENCODING").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "base64".into(),
+            version: env!("DEP_VERSION_BASE64").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "hex".into(),
+            version: env!("DEP_VERSION_HEX").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "num-bigint-dig".into(),
+            version: env!("DEP_VERSION_NUM_BIGINT_DIG").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "totp-rs".into(),
+            version: env!("DEP_VERSION_TOTP_RS").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "sigstore".into(),
+            version: env!("DEP_VERSION_SIGSTORE").into(),
+            category: "Security".into(),
+        },
         // Archives
         DependencyInfo {
             name: "sevenz-rust".into(),
@@ -6039,6 +6273,158 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             name: "unrar".into(),
             version: env!("DEP_VERSION_UNRAR").into(),
             category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "zstd".into(),
+            version: env!("DEP_VERSION_ZSTD").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "reed-solomon-erasure".into(),
+            version: env!("DEP_VERSION_REED_SOLOMON_ERASURE").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "xxhash-rust".into(),
+            version: env!("DEP_VERSION_XXHASH_RUST").into(),
+            category: "Archives".into(),
+        },
+        // CLI & Tools
+        DependencyInfo {
+            name: "clap".into(),
+            version: env!("DEP_VERSION_CLAP").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "clap_complete".into(),
+            version: env!("DEP_VERSION_CLAP_COMPLETE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "indicatif".into(),
+            version: env!("DEP_VERSION_INDICATIF").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "rpassword".into(),
+            version: env!("DEP_VERSION_RPASSWORD").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "ctrlc".into(),
+            version: env!("DEP_VERSION_CTRLC").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "globset".into(),
+            version: env!("DEP_VERSION_GLOBSET").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "ratatui".into(),
+            version: env!("DEP_VERSION_RATATUI").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "crossterm".into(),
+            version: env!("DEP_VERSION_CROSSTERM").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "libunftp".into(),
+            version: env!("DEP_VERSION_LIBUNFTP").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "unftp-core".into(),
+            version: env!("DEP_VERSION_UNFTP_CORE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "rusqlite".into(),
+            version: env!("DEP_VERSION_RUSQLITE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "dirs".into(),
+            version: env!("DEP_VERSION_DIRS").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "filetime".into(),
+            version: env!("DEP_VERSION_FILETIME").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "tempfile".into(),
+            version: env!("DEP_VERSION_TEMPFILE").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "walkdir".into(),
+            version: env!("DEP_VERSION_WALKDIR").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "mime_guess".into(),
+            version: env!("DEP_VERSION_MIME_GUESS").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "open".into(),
+            version: env!("DEP_VERSION_OPEN").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "similar".into(),
+            version: env!("DEP_VERSION_SIMILAR").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "trash".into(),
+            version: env!("DEP_VERSION_TRASH").into(),
+            category: "CLI & Tools".into(),
+        },
+        DependencyInfo {
+            name: "arboard".into(),
+            version: env!("DEP_VERSION_ARBOARD").into(),
+            category: "CLI & Tools".into(),
+        },
+        // System
+        DependencyInfo {
+            name: "libc".into(),
+            version: env!("DEP_VERSION_LIBC").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "windows".into(),
+            version: env!("DEP_VERSION_WINDOWS").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "winreg".into(),
+            version: env!("DEP_VERSION_WINREG").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "fuser".into(),
+            version: env!("DEP_VERSION_FUSER").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "gtk".into(),
+            version: env!("DEP_VERSION_GTK").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "hound".into(),
+            version: env!("DEP_VERSION_HOUND").into(),
+            category: "System".into(),
+        },
+        DependencyInfo {
+            name: "whisper-rs".into(),
+            version: env!("DEP_VERSION_WHISPER_RS").into(),
+            category: "System".into(),
         },
         // Tauri Plugins
         DependencyInfo {
@@ -6079,6 +6465,11 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo {
             name: "tauri-plugin-autostart".into(),
             version: env!("DEP_VERSION_TAURI_PLUGIN_AUTOSTART").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-window-state".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_WINDOW_STATE").into(),
             category: "Plugins".into(),
         },
     ]
@@ -7439,6 +7830,328 @@ fn zip_entry_should_store(data: &[u8], level: i64) -> bool {
     }
 }
 
+/// Files at or above this size skip the full-buffer store-if-larger trial: the trial
+/// deflates the whole buffer once and `write_all` deflates it again, so for large
+/// payloads that doubles the CPU and stalls the progress bar at 0% during the
+/// (unobservable) trial pass. Above the cap we decide store-vs-deflate from a head
+/// sample and stream the file, giving a real byte-by-byte bar with a single pass.
+const ZIP_STORE_TRIAL_CAP: u64 = 8 * 1024 * 1024;
+/// Head sample used to decide store-vs-deflate for files above `ZIP_STORE_TRIAL_CAP`.
+const ZIP_STORE_SAMPLE_BYTES: usize = 256 * 1024;
+
+/// Build the base ZIP entry options (compression method + level), without encryption.
+fn zip_base_options(level: i64, store: bool) -> zip::write::SimpleFileOptions {
+    use zip::write::SimpleFileOptions;
+    if store {
+        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored)
+    } else {
+        SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .compression_level(Some(level))
+    }
+}
+
+/// Sample-based store decision for a large file: deflate only the head and keep the
+/// payload Stored if even that does not shrink (incompressible). Far cheaper than a
+/// full-buffer trial on a multi-gigabyte file.
+fn zip_large_should_store(path: &std::path::Path, level: i64) -> Result<bool, String> {
+    use std::io::Read;
+    if level <= 0 {
+        return Ok(true);
+    }
+    let mut f = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut sample = vec![0u8; ZIP_STORE_SAMPLE_BYTES];
+    let n = f
+        .read(&mut sample)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    sample.truncate(n);
+    Ok(zip_entry_should_store(&sample, level))
+}
+
+/// Add one regular file as a ZIP entry, emitting byte-true progress.
+///
+/// Small files (< `ZIP_STORE_TRIAL_CAP`) keep the exact store-if-larger trial (#276)
+/// and report their size on completion; large files stream through a `ProgressReader`
+/// so a single big file fills the bar 0->100 within itself.
+fn add_zip_file_entry(
+    zip: &mut zip::ZipWriter<std::fs::File>,
+    entry_name: String,
+    file_path: &std::path::Path,
+    level: i64,
+    secret_password: &Option<SecretString>,
+    progress: &mut crate::archive_progress::ArchiveProgress,
+) -> Result<(), String> {
+    use std::io::{Read, Write};
+
+    let file_size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
+
+    if file_size < ZIP_STORE_TRIAL_CAP {
+        let mut f =
+            std::fs::File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let base = zip_base_options(level, zip_entry_should_store(&buffer, level));
+        if let Some(pwd) = secret_password {
+            zip.start_file(
+                entry_name,
+                base.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+            )
+            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+        } else {
+            zip.start_file(entry_name, base)
+                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+        }
+        zip.write_all(&buffer)
+            .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
+        progress.add(buffer.len() as u64);
+    } else {
+        let store = level == 0 || zip_large_should_store(file_path, level)?;
+        let base = zip_base_options(level, store);
+        if let Some(pwd) = secret_password {
+            zip.start_file(
+                entry_name,
+                base.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+            )
+            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+        } else {
+            zip.start_file(entry_name, base)
+                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+        }
+        let f =
+            std::fs::File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut reader = crate::archive_progress::ProgressReader::new(f, progress);
+        std::io::copy(&mut reader, zip).map_err(|e| format!("Failed to write to ZIP: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Sum the bytes of every regular file that a compress over `paths` will read,
+/// mirroring the write-side traversal (recurse directories, skip symlinks). Used as
+/// the progress denominator so the bar closes exactly at the real input total.
+///
+/// This is a scan-time snapshot: if a file is modified between this sum and the write
+/// pass, the per-chunk counter is clamped to the total (`ArchiveProgress::add`) and the
+/// final 100% frame is forced (`finish`), so the bar never overshoots and always closes
+/// at 100% - the only visible effect of concurrent modification is a mid-run jump.
+fn sum_compress_input_bytes(paths: &[String]) -> u64 {
+    use walkdir::WalkDir;
+    let mut total = 0u64;
+    for path in paths {
+        let p = std::path::Path::new(path);
+        if p.is_file() {
+            total = total.saturating_add(std::fs::metadata(p).map(|m| m.len()).unwrap_or(0));
+        } else if p.is_dir() {
+            for entry in WalkDir::new(p).into_iter().filter_map(|e| e.ok()) {
+                if let Ok(md) = std::fs::symlink_metadata(entry.path()) {
+                    if md.file_type().is_symlink() {
+                        continue;
+                    }
+                    if md.is_file() {
+                        total = total.saturating_add(md.len());
+                    }
+                }
+            }
+        }
+    }
+    total
+}
+
+/// Real (canary) compression-size estimate.
+///
+/// Rather than a fixed per-format ratio table, this compresses a bounded
+/// SAMPLE of the actual input with the real codec at the chosen level and
+/// extrapolates the measured ratio to the full input. When the whole input
+/// fits under the sample cap it is compressed in full, so the result is exact
+/// (`exact = true`). The sample is capped so the call stays near-instant even
+/// for very large inputs.
+#[derive(serde::Serialize)]
+struct CompressEstimate {
+    /// Total uncompressed size of the input (recursive, symlinks skipped).
+    input_bytes: u64,
+    /// Estimated size of the compressed output.
+    estimated_bytes: u64,
+    /// estimated_bytes / input_bytes * 100.
+    ratio_pct: f64,
+    /// How many bytes were actually read+compressed to derive the ratio.
+    sampled_bytes: u64,
+    /// True when the entire input was compressed (no extrapolation).
+    exact: bool,
+}
+
+/// Maximum bytes read+compressed for the canary sample (keeps the call fast).
+const CANARY_SAMPLE_CAP: u64 = 4 * 1024 * 1024;
+
+/// Collect every regular file (recursive) under the given paths, with sizes.
+/// Zero-byte files and symlinks are skipped.
+fn collect_input_files(paths: &[String]) -> Vec<(std::path::PathBuf, u64)> {
+    use walkdir::WalkDir;
+    let mut out = Vec::new();
+    for path in paths {
+        let p = std::path::Path::new(path);
+        if p.is_file() {
+            if let Ok(md) = std::fs::metadata(p) {
+                if md.len() > 0 {
+                    out.push((p.to_path_buf(), md.len()));
+                }
+            }
+        } else if p.is_dir() {
+            for entry in WalkDir::new(p).into_iter().filter_map(|e| e.ok()) {
+                if let Ok(md) = std::fs::symlink_metadata(entry.path()) {
+                    if md.file_type().is_symlink() || !md.is_file() || md.len() == 0 {
+                        continue;
+                    }
+                    out.push((entry.path().to_path_buf(), md.len()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Append up to `len` bytes from `path` starting at `offset` into `buf`.
+fn read_region_append(path: &std::path::Path, offset: u64, len: usize, buf: &mut Vec<u8>) {
+    use std::io::{Read, Seek, SeekFrom};
+    if len == 0 {
+        return;
+    }
+    if let Ok(mut f) = std::fs::File::open(path) {
+        if f.seek(SeekFrom::Start(offset)).is_ok() {
+            let _ = f.take(len as u64).read_to_end(buf);
+        }
+    }
+}
+
+/// Build the canary sample. If the whole input fits the cap, read it all
+/// (exact); otherwise read three spread regions of the largest file plus the
+/// heads of the remaining files, bounded by the cap, for representativeness.
+fn build_canary_sample(files: &[(std::path::PathBuf, u64)], total: u64, cap: u64) -> Vec<u8> {
+    let mut buf = Vec::new();
+    if total <= cap {
+        for (p, _) in files {
+            read_region_append(p, 0, usize::MAX, &mut buf);
+        }
+        return buf;
+    }
+    let largest = files
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, (_, s))| *s)
+        .map(|(i, _)| i);
+    let mut remaining = cap as usize;
+    if let Some(i) = largest {
+        let (p, size) = &files[i];
+        let want = (cap / 2).min(*size) as usize;
+        let region = (want / 3).max(1);
+        let positions = [
+            0u64,
+            size.saturating_sub(region as u64) / 2,
+            size.saturating_sub(region as u64),
+        ];
+        for off in positions {
+            if remaining == 0 {
+                break;
+            }
+            let take = region.min(remaining);
+            read_region_append(p, off, take, &mut buf);
+            remaining = remaining.saturating_sub(take);
+        }
+    }
+    for (idx, (p, size)) in files.iter().enumerate() {
+        if Some(idx) == largest || remaining == 0 {
+            continue;
+        }
+        let take = (*size as usize).min(remaining).min(256 * 1024);
+        read_region_append(p, 0, take, &mut buf);
+        remaining = remaining.saturating_sub(take);
+    }
+    buf
+}
+
+/// Compress `buf` in memory with the codec the frontend maps each format to.
+fn compress_sample(buf: &[u8], codec: &str, level: i32) -> Result<usize, String> {
+    use std::io::Write;
+    match codec {
+        "store" => Ok(buf.len()),
+        // zip and tar.gz both deflate; the few-byte gzip header is immaterial here.
+        "deflate" | "gzip" => {
+            let lvl = level.clamp(0, 9) as u32;
+            let mut e =
+                flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(lvl));
+            e.write_all(buf).map_err(|e| e.to_string())?;
+            Ok(e.finish().map_err(|e| e.to_string())?.len())
+        }
+        // 7z (LZMA2) is estimated with xz, which is also LZMA2-based.
+        "xz" => {
+            let lvl = level.clamp(0, 9) as u32;
+            let mut e = xz2::write::XzEncoder::new(Vec::new(), lvl);
+            e.write_all(buf).map_err(|e| e.to_string())?;
+            Ok(e.finish().map_err(|e| e.to_string())?.len())
+        }
+        "bzip2" => {
+            let lvl = level.clamp(1, 9) as u32;
+            let mut e = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::new(lvl));
+            e.write_all(buf).map_err(|e| e.to_string())?;
+            Ok(e.finish().map_err(|e| e.to_string())?.len())
+        }
+        "zstd" => {
+            let out = zstd::stream::encode_all(buf, level).map_err(|e| e.to_string())?;
+            Ok(out.len())
+        }
+        other => Err(format!("Unknown codec: {other}")),
+    }
+}
+
+/// Estimate the compressed size of `paths` for a given codec/level via a
+/// bounded canary sample. Runs on a blocking thread (I/O + CPU bound).
+#[tauri::command]
+async fn estimate_compressed_size(
+    paths: Vec<String>,
+    codec: String,
+    level: i64,
+) -> Result<CompressEstimate, String> {
+    for p in &paths {
+        validate_path(p)?;
+    }
+    tokio::task::spawn_blocking(move || {
+        let files = collect_input_files(&paths);
+        let total: u64 = files.iter().map(|(_, s)| *s).sum();
+        if total == 0 {
+            return Ok(CompressEstimate {
+                input_bytes: 0,
+                estimated_bytes: 0,
+                ratio_pct: 0.0,
+                sampled_bytes: 0,
+                exact: true,
+            });
+        }
+        let sample = build_canary_sample(&files, total, CANARY_SAMPLE_CAP);
+        if sample.is_empty() {
+            return Ok(CompressEstimate {
+                input_bytes: total,
+                estimated_bytes: total,
+                ratio_pct: 100.0,
+                sampled_bytes: 0,
+                exact: false,
+            });
+        }
+        let out = compress_sample(&sample, &codec, level as i32)?;
+        let ratio = out as f64 / sample.len() as f64;
+        let estimated = (total as f64 * ratio).round() as u64;
+        Ok(CompressEstimate {
+            input_bytes: total,
+            estimated_bytes: estimated,
+            ratio_pct: ratio * 100.0,
+            sampled_bytes: sample.len() as u64,
+            // F-08: only "exact" if the whole input was actually sampled; a
+            // silently-skipped unreadable file leaves sample.len() < total.
+            exact: total <= CANARY_SAMPLE_CAP && sample.len() as u64 == total,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
 async fn compress_files(
@@ -7446,6 +8159,19 @@ async fn compress_files(
     output_path: String,
     password: Option<String>,
     compression_level: Option<i64>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    compress_files_impl(paths, output_path, password, compression_level, Some(app)).await
+}
+
+/// Implementation shared by the GUI command (passes `Some(app)` for live progress)
+/// and the headless `compress_files_core` wrapper used by the CLI / AI tools (`None`).
+async fn compress_files_impl(
+    paths: Vec<String>,
+    output_path: String,
+    password: Option<String>,
+    compression_level: Option<i64>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     validate_path(&output_path)?;
     for p in &paths {
@@ -7453,13 +8179,21 @@ async fn compress_files(
     }
 
     use std::fs::File;
-    use std::io::{Read, Write};
     use walkdir::WalkDir;
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
 
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
+
+    // Byte-true progress denominator: the real input total, mirroring the write-side
+    // traversal so the bar closes exactly at the total (HANDOFF section 3.3.A).
+    let total_bytes = sum_compress_input_bytes(&paths);
+    let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
+        app,
+        crate::archive_progress::phase::COMPRESSING,
+        total_bytes,
+    );
 
     // Atomic write: build into <output>.aerotmp, rename on success.
     let temp = ArchiveTempFile::new(&output_path);
@@ -7486,34 +8220,16 @@ async fn compress_files(
             let file_name = path
                 .file_name()
                 .ok_or("Invalid file name")?
-                .to_string_lossy();
-
-            let mut f = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
-            let mut buffer = Vec::new();
-            f.read_to_end(&mut buffer)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
-
-            // store-if-larger: don't let deflate inflate an incompressible file.
-            let entry_options = if zip_entry_should_store(&buffer, level) {
-                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored)
-            } else {
-                SimpleFileOptions::default()
-                    .compression_method(zip::CompressionMethod::Deflated)
-                    .compression_level(Some(level))
-            };
-
-            if let Some(ref pwd) = secret_password {
-                zip.start_file(
-                    file_name.to_string(),
-                    entry_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
-                )
-                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-            } else {
-                zip.start_file(file_name.to_string(), entry_options)
-                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-            }
-            zip.write_all(&buffer)
-                .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
+                .to_string_lossy()
+                .to_string();
+            add_zip_file_entry(
+                &mut zip,
+                file_name,
+                path,
+                level,
+                &secret_password,
+                &mut progress,
+            )?;
         } else if path.is_dir() {
             let _base_name = path
                 .file_name()
@@ -7534,35 +8250,14 @@ async fn compress_files(
                 }
 
                 if metadata.is_file() {
-                    let mut f = File::open(entry_path)
-                        .map_err(|e| format!("Failed to open file: {}", e))?;
-                    let mut buffer = Vec::new();
-                    f.read_to_end(&mut buffer)
-                        .map_err(|e| format!("Failed to read file: {}", e))?;
-
-                    // store-if-larger: don't let deflate inflate an incompressible file.
-                    let entry_options = if zip_entry_should_store(&buffer, level) {
-                        SimpleFileOptions::default()
-                            .compression_method(zip::CompressionMethod::Stored)
-                    } else {
-                        SimpleFileOptions::default()
-                            .compression_method(zip::CompressionMethod::Deflated)
-                            .compression_level(Some(level))
-                    };
-
-                    if let Some(ref pwd) = secret_password {
-                        zip.start_file(
-                            relative_path.to_string_lossy().to_string(),
-                            entry_options
-                                .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
-                        )
-                        .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-                    } else {
-                        zip.start_file(relative_path.to_string_lossy().to_string(), entry_options)
-                            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-                    }
-                    zip.write_all(&buffer)
-                        .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
+                    add_zip_file_entry(
+                        &mut zip,
+                        relative_path.to_string_lossy().to_string(),
+                        entry_path,
+                        level,
+                        &secret_password,
+                        &mut progress,
+                    )?;
                 } else if metadata.is_dir() && entry_path != path {
                     let dir_path = format!("{}/", relative_path.to_string_lossy());
                     if let Some(ref pwd) = secret_password {
@@ -7588,6 +8283,7 @@ async fn compress_files(
             .map_err(|e| format!("Failed to finalize ZIP: {}", e))?,
     );
     temp.commit(&output_path)?;
+    progress.finish();
 
     Ok(output_path)
 }
@@ -7684,7 +8380,18 @@ async fn compress_7z(
     paths: Vec<String>,
     output_path: String,
     password: Option<String>,
+    compression_level: Option<i64>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    compress_7z_impl(paths, output_path, password, compression_level, Some(app)).await
+}
+
+async fn compress_7z_impl(
+    paths: Vec<String>,
+    output_path: String,
+    password: Option<String>,
     _compression_level: Option<i64>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     use sevenz_rust::*;
     use std::fs::File;
@@ -7732,6 +8439,17 @@ async fn compress_7z(
         return Err("No files to compress".to_string());
     }
 
+    // Byte-true progress denominator: sum of the entry sizes actually read.
+    let total_bytes: u64 = entries
+        .iter()
+        .map(|(_, p)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .sum();
+    let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
+        app,
+        crate::archive_progress::phase::COMPRESSING,
+        total_bytes,
+    );
+
     // Create the 7z archive (atomic temp; renamed into place on success).
     let temp = ArchiveTempFile::new(&output_path);
     let output_file =
@@ -7756,11 +8474,12 @@ async fn compress_7z(
         let source_path = Path::new(full_path);
         let entry = SevenZArchiveEntry::from_path(source_path, archive_name.clone());
 
-        // Open file and create reader
+        // Open the source and count bytes as the 7z writer pulls them through.
         let file = File::open(source_path)
             .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
+        let reader = crate::archive_progress::ProgressReader::new(file, &mut progress);
 
-        sz.push_archive_entry(entry, Some(file))
+        sz.push_archive_entry(entry, Some(reader))
             .map_err(|e| format!("Failed to add file '{}': {}", archive_name, e))?;
     }
 
@@ -7769,6 +8488,7 @@ async fn compress_7z(
     sz.finish()
         .map_err(|e| format!("Failed to finalize 7z archive: {}", e))?;
     temp.commit(&output_path)?;
+    progress.finish();
 
     Ok(output_path)
 }
@@ -7969,6 +8689,33 @@ async fn is_zip_encrypted(archive_path: String) -> Result<bool, String> {
     Ok(false)
 }
 
+/// Append one regular file to a tar `Builder`, emitting byte-true progress as the
+/// data is read. Replaces `append_path_with_name` (which opens and reads the file
+/// itself, giving no progress hook) with an explicit header + `append_data` over a
+/// `ProgressReader`. `set_metadata` carries size/mode/mtime; `append_data` sets the
+/// checksum, so the resulting entry matches the prior behavior for a stable file.
+/// `append_data` writes exactly `header.size()` bytes: as with the old helper, a file
+/// that grows mid-archive is truncated to its scan-time size and one that shrinks
+/// surfaces a short-read error (the whole compress then fails and the temp is dropped).
+fn tar_append_file<W: std::io::Write>(
+    archive: &mut tar::Builder<W>,
+    abs_path: &std::path::Path,
+    rel_path: &str,
+    progress: &mut crate::archive_progress::ArchiveProgress,
+) -> Result<(), String> {
+    let file =
+        std::fs::File::open(abs_path).map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+    let mut header = tar::Header::new_gnu();
+    header.set_metadata(&meta);
+    let reader = crate::archive_progress::ProgressReader::new(file, progress);
+    archive
+        .append_data(&mut header, rel_path, reader)
+        .map_err(|e| format!("Failed to add {}: {}", rel_path, e))
+}
+
 /// Compress files/folders into a TAR-based archive.
 /// Supports formats: "tar", "tar.gz", "tar.xz", "tar.bz2"
 #[tauri::command]
@@ -7977,6 +8724,17 @@ async fn compress_tar(
     output_path: String,
     format: String,
     compression_level: Option<i64>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    compress_tar_impl(paths, output_path, format, compression_level, Some(app)).await
+}
+
+async fn compress_tar_impl(
+    paths: Vec<String>,
+    output_path: String,
+    format: String,
+    compression_level: Option<i64>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     use std::fs::File;
     use std::path::Path;
@@ -8020,6 +8778,17 @@ async fn compress_tar(
         return Err("No files to compress".to_string());
     }
 
+    // Byte-true progress denominator: sum of the entry sizes actually read.
+    let total_bytes: u64 = entries
+        .iter()
+        .map(|(p, _)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .sum();
+    let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
+        app,
+        crate::archive_progress::phase::COMPRESSING,
+        total_bytes,
+    );
+
     // Create the archive based on format (atomic temp; renamed on success).
     let temp = ArchiveTempFile::new(&output_path);
     let file = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
@@ -8028,9 +8797,7 @@ async fn compress_tar(
         "tar" => {
             let mut archive = tar::Builder::new(file);
             for (abs_path, rel_path) in &entries {
-                archive
-                    .append_path_with_name(abs_path, rel_path)
-                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
             }
             archive
                 .finish()
@@ -8043,9 +8810,7 @@ async fn compress_tar(
             );
             let mut archive = tar::Builder::new(gz);
             for (abs_path, rel_path) in &entries {
-                archive
-                    .append_path_with_name(abs_path, rel_path)
-                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
             }
             archive
                 .into_inner()
@@ -8057,9 +8822,7 @@ async fn compress_tar(
             let xz = xz2::write::XzEncoder::new(file, compression_level.unwrap_or(6) as u32);
             let mut archive = tar::Builder::new(xz);
             for (abs_path, rel_path) in &entries {
-                archive
-                    .append_path_with_name(abs_path, rel_path)
-                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
             }
             archive
                 .into_inner()
@@ -8076,9 +8839,7 @@ async fn compress_tar(
             );
             let mut archive = tar::Builder::new(bz);
             for (abs_path, rel_path) in &entries {
-                archive
-                    .append_path_with_name(abs_path, rel_path)
-                    .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
             }
             archive
                 .into_inner()
@@ -8090,6 +8851,7 @@ async fn compress_tar(
     }
 
     temp.commit(&output_path)?;
+    progress.finish();
 
     let file_count = entries.len();
     Ok(format!(
@@ -8330,11 +9092,16 @@ async fn ftp_read_file_base64(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    max_size_mb: Option<u32>,
 ) -> Result<String, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
-    // Limit size for preview (10MB should be enough for most media files)
-    let max_size: u64 = 10 * 1024 * 1024;
+    // Preview size cap, supplied by the caller so backend and frontend share one
+    // limit. The preview path passes the UI's MAX_PREVIEW_SIZE_BYTES (25 MB);
+    // thumbnails pass a smaller value. Defaults to 25 MB. Previously hard-coded to
+    // 10 MB, which rejected full-resolution photos (10-25 MB) the UI allowed
+    // (issue #128 item B).
+    let max_size: u64 = (max_size_mb.unwrap_or(25) as u64) * 1024 * 1024;
 
     // Try provider path first (cloud providers, GitHub, etc.).
     // Mirrors `preview_remote_file` so image / binary preview works on every
@@ -8350,8 +9117,9 @@ async fn ftp_read_file_base64(
             let file_size = provider.size(&path).await.unwrap_or(0);
             if file_size > max_size {
                 return Err(format!(
-                    "File too large for preview ({:.1} MB). Max: 10 MB",
-                    file_size as f64 / 1024.0 / 1024.0
+                    "File too large for preview ({:.1} MB). Max: {} MB",
+                    file_size as f64 / 1024.0 / 1024.0,
+                    max_size / (1024 * 1024)
                 ));
             }
 
@@ -8370,8 +9138,9 @@ async fn ftp_read_file_base64(
 
     if file_size > max_size {
         return Err(format!(
-            "File too large for preview ({:.1} MB). Max: 10 MB",
-            file_size as f64 / 1024.0 / 1024.0
+            "File too large for preview ({:.1} MB). Max: {} MB",
+            file_size as f64 / 1024.0 / 1024.0,
+            max_size / (1024 * 1024)
         ));
     }
 
@@ -8952,6 +9721,12 @@ static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// system tray instead of quitting the app. Set by the frontend via
 /// `set_close_to_tray` on startup and whenever the user toggles the option.
 static CLOSE_TO_TRAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether a usable system tray was created at startup. False on minimal or
+/// immutable Linux distros that ship without libappindicator (#362): in that
+/// case close-to-tray must not hide the window, or it would vanish with no
+/// tray to restore it from. Defaults true so every other platform is unchanged.
+static TRAY_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 #[tauri::command]
 fn set_close_to_tray(enabled: bool) {
@@ -14122,6 +14897,23 @@ fn collect_provider_secrets_for_server(
         }
     }
 
+    // CWP-20B: bundle the crypt-overlay secrets (BOTH kinds — native AeroCrypt
+    // and interop rclone-crypt share these generic vault keys) so an exported
+    // Crypt profile reconnects on import without re-entering the overlay password.
+    // Protocol-agnostic: the overlay can sit on any provider-API backend.
+    if let Ok(Some(pw)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_pw_{}", server.id),
+    ) {
+        out.aerocrypt_overlay_pw = Some(pw.to_string());
+    }
+    if let Ok(Some(salt)) = user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_salt_{}", server.id),
+    ) {
+        out.aerocrypt_overlay_salt = Some(salt.to_string());
+    }
+
     out
 }
 
@@ -14155,7 +14947,11 @@ async fn export_server_profiles(
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
                     let secrets = collect_provider_secrets_for_server(&store, server);
-                    if secrets.oauth.is_some() || secrets.jotta_refresh.is_some() {
+                    if secrets.oauth.is_some()
+                        || secrets.jotta_refresh.is_some()
+                        || secrets.aerocrypt_overlay_pw.is_some()
+                        || secrets.aerocrypt_overlay_salt.is_some()
+                    {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
                 }
@@ -14186,6 +14982,14 @@ async fn import_server_profiles(
 
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
+    // CWP-20B: track which profiles actually had their crypt-overlay secret
+    // restored, so the redacted `hasStoredAeroCrypt*` flags returned to the UI
+    // reflect reality (a binding can round-trip without its secret when the
+    // export excluded credentials or the vault is unavailable).
+    let mut restored_aerocrypt_pw: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut restored_aerocrypt_salt: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
             for server in &servers {
@@ -14244,6 +15048,28 @@ async fn import_server_profiles(
                         }
                     }
                 }
+                // CWP-20B: restore the crypt-overlay secrets under the same
+                // generic vault keys the connect path reads (App.tsx
+                // get_credential aerocrypt_overlay_pw_/salt_<id>). Protocol-
+                // agnostic and shared by both overlay kinds (AeroCrypt + rclone).
+                if let Some(ref pw) = secrets.aerocrypt_overlay_pw {
+                    let key = format!("aerocrypt_overlay_pw_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, pw) {
+                        Ok(()) => {
+                            restored_aerocrypt_pw.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors.push(format!("{} aerocrypt pw: {}", profile_id, e)),
+                    }
+                }
+                if let Some(ref salt) = secrets.aerocrypt_overlay_salt {
+                    let key = format!("aerocrypt_overlay_salt_{}", profile_id);
+                    match user_partitions::store_active_credential_dual(&store, &key, salt) {
+                        Ok(()) => {
+                            restored_aerocrypt_salt.insert(profile_id.clone());
+                        }
+                        Err(e) => cred_errors.push(format!("{} aerocrypt salt: {}", profile_id, e)),
+                    }
+                }
             }
         }
         None => {
@@ -14290,6 +15116,13 @@ async fn import_server_profiles(
                 "options": s.options,
                 "providerId": s.provider_id,
                 "hasStoredCredential": s.credential.is_some(),
+                // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
+                // kinds). The flags reflect what was actually restored, not the
+                // source state, so the UI prompts for the overlay password only
+                // when the secret did not travel with the export.
+                "aeroCryptOverlay": s.aero_crypt_overlay,
+                "hasStoredAeroCryptPassword": restored_aerocrypt_pw.contains(&s.id),
+                "hasStoredAeroCryptSalt": restored_aerocrypt_salt.contains(&s.id),
             })
         })
         .collect();
@@ -14439,7 +15272,7 @@ pub async fn compress_files_core(
     password: Option<String>,
     compression_level: Option<i64>,
 ) -> Result<String, String> {
-    compress_files(paths, output_path, password, compression_level).await
+    compress_files_impl(paths, output_path, password, compression_level, None).await
 }
 
 pub async fn extract_archive_core(
@@ -14457,7 +15290,7 @@ pub async fn compress_7z_core(
     password: Option<String>,
     compression_level: Option<i64>,
 ) -> Result<String, String> {
-    compress_7z(paths, output_path, password, compression_level).await
+    compress_7z_impl(paths, output_path, password, compression_level, None).await
 }
 
 pub async fn extract_7z_core(
@@ -14480,7 +15313,7 @@ pub async fn compress_tar_core(
     // The tar writer commits to exactly `output_path`, so return that on success,
     // matching the zip/7z `_core` wrappers which already return the path.
     let out = output_path.clone();
-    compress_tar(paths, output_path, format, compression_level)
+    compress_tar_impl(paths, output_path, format, compression_level, None)
         .await
         .map(|_| out)
 }
@@ -14547,6 +15380,37 @@ async fn mount_open_in_explorer(id: String) -> Result<(), String> {
 #[tauri::command]
 async fn mount_suggest_path(profile: String) -> Result<String, String> {
     Ok(mount_manager::suggest_mountpoint(&profile))
+}
+
+/// Mount an UNLOCKED vault (Cryptomator or `.aerovault`/`.aerozip`) read-only as
+/// an ephemeral local filesystem (#322 Deliverable B). The password is forwarded
+/// to the `aeroftp-cli mount-vault` child over stdin and never stored; the mount
+/// auto-unmounts on vault lock / app quit. `key` is a stable handle (the
+/// Cryptomator `vault_id` or the `.aerovault` path) used to stop/open it later.
+#[tauri::command]
+async fn vault_mount_start(
+    key: String,
+    kind: String,
+    vault_path: String,
+    password: String,
+    display_name: String,
+) -> Result<vault_mount::VaultMountInfo, String> {
+    vault_mount::start(key, kind, vault_path, password, display_name).await
+}
+
+#[tauri::command]
+async fn vault_mount_stop(key: String) -> Result<(), String> {
+    vault_mount::stop(&key).await
+}
+
+#[tauri::command]
+async fn vault_mount_list() -> Result<Vec<vault_mount::VaultMountInfo>, String> {
+    Ok(vault_mount::list().await)
+}
+
+#[tauri::command]
+async fn vault_mount_open(key: String) -> Result<(), String> {
+    vault_mount::open_in_file_manager(&key).await
 }
 
 #[tauri::command]
@@ -14705,8 +15569,12 @@ pub fn run() {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            // Forward .aerovault file argument to frontend
-            if let Some(vault_arg) = argv.iter().skip(1).find(|a| a.ends_with(".aerovault")) {
+            // Forward .aerovault/.aerozip file argument to frontend
+            if let Some(vault_arg) = argv
+                .iter()
+                .skip(1)
+                .find(|a| a.ends_with(".aerovault") || a.ends_with(".aerozip"))
+            {
                 if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
                     let meta = std::fs::symlink_metadata(&canonical);
                     if meta.map(|m| m.is_file()).unwrap_or(false) {
@@ -15366,7 +16234,7 @@ pub fn run() {
             let (w, h) = tray_rgba.dimensions();
             let icon = tauri::image::Image::new_owned(tray_rgba.into_raw(), w, h);
 
-            let _tray = TrayIconBuilder::with_id("main")
+            let tray_builder = TrayIconBuilder::with_id("main")
                 .icon(icon)
                 .tooltip("AeroCloud - Idle")
                 .menu(&tray_menu)
@@ -15422,15 +16290,65 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
-                })
-                .build(app)?;
+                });
 
-            info!("System tray icon initialized");
+            // libappindicator-sys panics (it `expect`s, it does not return a
+            // Result) when it cannot dlopen the appindicator library, so `?`
+            // never sees it. Minimal or immutable distros such as Fedora
+            // Silverblue ship without libappindicator, so probe the library
+            // first and run tray-less instead of crashing on launch (#362).
+            #[cfg(target_os = "linux")]
+            fn appindicator_available() -> bool {
+                use std::ffi::CString;
+                const CANDIDATES: [&str; 4] = [
+                    "libayatana-appindicator3.so.1",
+                    "libappindicator3.so.1",
+                    "libayatana-appindicator3.so",
+                    "libappindicator3.so",
+                ];
+                for name in CANDIDATES {
+                    if let Ok(c) = CString::new(name) {
+                        // SAFETY: dlopen with a valid NUL-terminated name; the
+                        // handle is released immediately on a successful probe.
+                        unsafe {
+                            let handle =
+                                libc::dlopen(c.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL);
+                            if !handle.is_null() {
+                                libc::dlclose(handle);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            }
+            #[cfg(not(target_os = "linux"))]
+            fn appindicator_available() -> bool {
+                true
+            }
 
-            // Handle .aerovault file passed as CLI argument on first launch
+            let tray_available = appindicator_available();
+            TRAY_AVAILABLE.store(tray_available, std::sync::atomic::Ordering::SeqCst);
+            if tray_available {
+                let _tray = tray_builder.build(app)?;
+                info!("System tray icon initialized");
+            } else {
+                log::warn!(
+                    "System tray unavailable: libappindicator / ayatana-appindicator3 \
+                     not found. Running without a tray icon (install \
+                     libayatana-appindicator3 to enable it). See \
+                     https://github.com/axpdev-lab/aeroftp/issues/362"
+                );
+            }
+
+            // Handle .aerovault/.aerozip file passed as CLI argument on first launch
             {
                 let args: Vec<String> = std::env::args().collect();
-                if let Some(vault_arg) = args.iter().skip(1).find(|a| a.ends_with(".aerovault")) {
+                if let Some(vault_arg) = args
+                    .iter()
+                    .skip(1)
+                    .find(|a| a.ends_with(".aerovault") || a.ends_with(".aerozip"))
+                {
                     if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
                         let meta = std::fs::symlink_metadata(&canonical);
                         if meta.map(|m| m.is_file()).unwrap_or(false) {
@@ -15511,7 +16429,11 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let cloud_config = cloud_config::load_cloud_config();
                 let close_to_tray = CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::SeqCst);
-                if cloud_config.enabled || close_to_tray {
+                let tray_available = TRAY_AVAILABLE.load(std::sync::atomic::Ordering::SeqCst);
+                // Only hide to tray if a tray actually exists. On distros without
+                // libappindicator (#362) the tray is skipped, so hiding here would
+                // strand the window with no way to bring it back: close normally.
+                if (cloud_config.enabled || close_to_tray) && tray_available {
                     let reason = if close_to_tray {
                         "close-to-tray setting"
                     } else {
@@ -15599,6 +16521,7 @@ pub fn run() {
             read_file_base64,
             calculate_checksum,
             compress_files,
+            estimate_compressed_size,
             extract_archive,
             compress_7z,
             extract_7z,
@@ -15737,6 +16660,7 @@ pub fn run() {
             user_partitions::user_partitions_reorder_users,
             user_partitions::user_partitions_delete_user,
             user_partitions::user_partitions_set_admin,
+            user_partitions::user_partitions_set_default_user,
             user_partitions::user_partitions_admin_reset_passphrase,
             user_partitions::user_partitions_storage_stats,
             user_partitions::user_partitions_debug_state,
@@ -15850,6 +16774,7 @@ pub fn run() {
             aerovault_v2::vault_v2_add_files,
             aerovault_v2::vault_v2_extract_entry,
             aerovault_v2::vault_v2_extract_all,
+            aerovault_v2::vault_v2_save_all,
             aerovault_v2::vault_v2_change_password,
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
@@ -15864,6 +16789,22 @@ pub fn run() {
             aerovault_v2::vault_v2_scan_directory,
             aerovault_v2::vault_v2_add_directory,
             // AeroVault v3 draft wrapper-stack backend
+            aerovault_v3::aerovz_is_archive,
+            aerovault_v3::detect_aero_container,
+            aerovault_v3::aerovz_create_archive,
+            aerovault_v3::aerovz_open_archive,
+            aerovault_v3::aerovz_recovery_status,
+            aerovault_v3::aerovz_add_files,
+            aerovault_v3::aerovz_add_files_to_dir,
+            aerovault_v3::aerovz_add_directory,
+            aerovault_v3::aerovz_create_directory,
+            aerovault_v3::aerovz_delete_entry,
+            aerovault_v3::aerovz_delete_entries,
+            aerovault_v3::aerovz_extract_entry,
+            aerovault_v3::aerovz_extract_all,
+            aerovault_v3::aerovz_save_all,
+            aerovault_v3::aerovz_scrub,
+            aerovault_v3::aerovz_repair,
             aerovault_v3::vault_v3_create,
             aerovault_v3::vault_v3_create_with_error_correction,
             aerovault_v3::vault_v3_open,
@@ -15872,6 +16813,7 @@ pub fn run() {
             aerovault_v3::vault_v3_add_files_to_dir,
             aerovault_v3::vault_v3_extract_entry,
             aerovault_v3::vault_v3_extract_all,
+            aerovault_v3::vault_v3_save_all,
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,
@@ -15879,6 +16821,7 @@ pub fn run() {
             aerovault_v3::vault_v3_rename_entry,
             aerovault_v3::vault_v3_copy_entry,
             aerovault_v3::vault_v3_change_password,
+            aerovault_v3::vault_v3_change_mode,
             aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
             aerovault_v3::vault_v3_has_error_correction,
@@ -15897,7 +16840,9 @@ pub fn run() {
             cryptomator::cryptomator_list,
             cryptomator::cryptomator_decrypt_file,
             cryptomator::cryptomator_encrypt_file,
+            cryptomator::cryptomator_encrypt_paths,
             cryptomator::cryptomator_create,
+            cryptomator::cryptomator_save_all,
             // Rclone crypt compatibility support
             rclone_crypt::rclone_crypt_unlock,
             rclone_crypt::rclone_crypt_lock,
@@ -15957,6 +16902,7 @@ pub fn run() {
             provider_commands::cancel_connection,
             provider_commands::provider_disconnect,
             provider_commands::provider_check_connection,
+            provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
             provider_commands::provider_go_up,
@@ -16352,6 +17298,10 @@ pub fn run() {
             mount_start,
             mount_stop,
             mount_open_in_explorer,
+            vault_mount_start,
+            vault_mount_stop,
+            vault_mount_list,
+            vault_mount_open,
             mount_suggest_path,
             mount_pick_drive_letter,
             mount_set_storage_mode,
@@ -16512,7 +17462,7 @@ mod compress_store_tests {
         std::fs::write(&cmp_path, &cmp).unwrap();
         let out = dir.path().join("out.zip");
 
-        compress_files(
+        compress_files_impl(
             vec![
                 inc_path.to_string_lossy().to_string(),
                 cmp_path.to_string_lossy().to_string(),
@@ -16520,6 +17470,7 @@ mod compress_store_tests {
             out.to_string_lossy().to_string(),
             None,
             Some(6),
+            None,
         )
         .await
         .expect("compress");

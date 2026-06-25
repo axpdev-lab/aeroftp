@@ -1194,6 +1194,11 @@ impl ProviderFactory {
                 let cloudinary_config = cloudinary::CloudinaryConfig::from_provider_config(config)?;
                 Ok(Box::new(CloudinaryProvider::new(cloudinary_config)))
             }
+            // AeroMount's unlocked-vault provider is constructed directly from an
+            // in-memory `ReadableVault`, never from a persisted profile config.
+            ProviderType::AeroVaultMount => Err(ProviderError::InvalidConfig(
+                "AeroVaultMount is not created through the provider factory".to_string(),
+            )),
         }
     }
 

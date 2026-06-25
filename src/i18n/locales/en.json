@@ -188,7 +188,8 @@
             "release_asset_delete_success": "[{provider}] Removed asset {filename}",
             "release_asset_download_start": "[{provider}] Downloading release asset {filename}...",
             "release_asset_download_success": "[{provider}] Downloaded release asset {filename}",
-            "release_asset_download_error": "[{provider}] Failed to download release asset {filename}"
+            "release_asset_download_error": "[{provider}] Failed to download release asset {filename}",
+            "session_resumed": "Resumed live session to {server}"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -838,7 +839,10 @@
             "name": "Name",
             "passwordRequired": "This archive is password protected",
             "size": "Size",
-            "unlock": "Unlock"
+            "unlock": "Unlock",
+            "preview": "Preview",
+            "extract": "Extract",
+            "back": "Back"
         },
         "batchRename": {
             "addPrefix": "Add Prefix",
@@ -1079,7 +1083,9 @@
             "upload": "Upload",
             "version": "Version",
             "warning": "Warning",
-            "yes": "Yes"
+            "yes": "Yes",
+            "goToActiveSession": "Go to active session",
+            "password": "Password"
         },
         "compare": {
             "title": "Compare panels",
@@ -1091,6 +1097,7 @@
             "compressing": "Compressing...",
             "estimatedSize": "Estimated",
             "fast": "Fast",
+            "balanced": "Balanced",
             "files": "files",
             "folders": "folders",
             "format": "Format",
@@ -1100,7 +1107,18 @@
             "password": "Password (optional, AES-256)",
             "passwordHint": "Leave empty for no encryption",
             "store": "Store (no compression)",
-            "title": "Compress Files"
+            "title": "Compress Files",
+            "complete": "Compression complete",
+            "before": "Before",
+            "after": "After",
+            "saved": "Saved",
+            "increased": "Increased",
+            "done": "Done",
+            "incompressible": "Already compressed, no space to save",
+            "estimating": "Estimating…",
+            "spaceSaved": "{pct}% smaller",
+            "estimateExact": "exact",
+            "estimateApprox": "estimate"
         },
         "connection": {
             "accessKeyId": "Access Key ID",
@@ -1304,7 +1322,6 @@
             "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
             "filenApiKey": "Filen CLI API Key (optional)",
             "filenApiKeyPlaceholder": "API key from the Filen CLI",
-            "filenApiKeyStored": "A key is already saved in the vault. Leave blank to keep it, or paste a new one to replace it.",
             "filenApiKeyHelp": "Paste the API key from your Filen CLI profile to skip the 2FA code on every reconnect. The account password is still required: it decrypts your files end-to-end. Once saved, the key is stored encrypted in the vault and is not shown here again (like your 2FA secret); AeroFTP reuses it automatically. Leave blank on edit to keep the stored key.",
             "twoFactorCode": "6-digit TOTP (optional, not saved)",
             "twoFactorOptional": "6-digit code (optional)",
@@ -1321,7 +1338,8 @@
             "connecting": "Connecting...",
             "autoRetryCountdown": "Waiting for a fresh authenticator code, reconnecting to {account} in {seconds}s",
             "autoRetryFailedTitle": "Two-factor authentication failed",
-            "autoRetryFailedBody": "AeroFTP could not authenticate with the saved 2FA secret. Open Edit on the profile and verify the 2FA Secret."
+            "autoRetryFailedBody": "AeroFTP could not authenticate with the saved 2FA secret. Open Edit on the profile and verify the 2FA Secret.",
+            "codeVerified": "Two-factor code verified"
         },
         "commandPalette": {
             "category": {
@@ -1357,7 +1375,6 @@
             "createShareLink": "Create Share Link",
             "creating7z": "Creating {name} (LZMA2)",
             "createAeroVault": "Create AeroVault...",
-            "encryptFolderAsVault": "Encrypt Folder as AeroVault...",
             "openWithAeroVault": "Open with AeroVault",
             "openAsAeroVaultOverlay": "Open as AeroVault Overlay",
             "createCryptomator": "Create Cryptomator Vault...",
@@ -1440,7 +1457,9 @@
             "shareLinksFor": "Share links for",
             "deleteShareLinkPrompt": "Enter link ID to delete (or cancel):",
             "shareLinkDeleted": "Share link deleted",
-            "newDocumentName": "Document name:"
+            "newDocumentName": "Document name:",
+            "openWithAeroVaultZip": "Open with AeroVault Zip",
+            "importToAeroFTP": "Import to AeroFTP"
         },
         "aerocrypt": {
             "title": "Rclone Crypt overlay",
@@ -1487,7 +1506,9 @@
             "loading": "Loading...",
             "emptyFolder": "Empty folder",
             "nameNotDecrypted": "name not decrypted",
-            "download": "Download"
+            "download": "Download",
+            "serverHashGated": "Server-side checksum unavailable while an encrypted overlay is active (it would hash the ciphertext, not your file).",
+            "outsideScope": "Outside the encrypted area (files here are not encrypted)"
         },
         "aerocryptNative": {
             "title": "AeroCrypt overlay",
@@ -1549,7 +1570,12 @@
             "size": "Size",
             "title": "Cryptomator Vault",
             "unlock": "Unlock Vault",
-            "vaultName": "Vault Name"
+            "vaultName": "Vault Name",
+            "done": "Done",
+            "encryptingSelection": "Encrypting selected items...",
+            "ingestSkipped": "Vault created, but some items could not be added:",
+            "selectionInfo": "{count} item(s) will be encrypted into the vault",
+            "decrypting": "Decrypting…"
         },
         "debug": {
             "copyFileListToClipboard": "Copy file list to clipboard",
@@ -3608,6 +3634,8 @@
             "connectionLostTitle": "Connection Lost",
             "connectionSuccess": "Connected to {server}",
             "localPathNotFound": "Local folder \"{path}\" not found. Navigated to home directory.",
+            "dropImported": "Imported {count} item(s) into this folder",
+            "dropFailed": "Failed to import {count} item(s)",
             "zeroByteWarning": "0 B file - may indicate a transfer error",
             "copyCompleted": "Copy completed",
             "copyFailed": "Copy failed",
@@ -3953,6 +3981,11 @@
             "cancel": "Cancel",
             "cascade": "Cascade",
             "changePassword": "Change Password",
+            "changeMode": "Change Mode",
+            "changeModeHint": "Re-pack this vault under a different security level, compression profile and Error Correction (same password)",
+            "changeModeNote": "The vault is re-packed in place with the new settings; the password stays the same.",
+            "changeModeCrossFormat": "This changes the vault format and fully re-encrypts every file.",
+            "modeChanged": "Vault mode changed",
             "confirmNew": "Confirm",
             "confirmPassword": "Confirm Password",
             "create": "Create",
@@ -3960,6 +3993,7 @@
             "createNew": "Create Vault",
             "description": "AeroVault lets you create AES-256 encrypted containers to securely store your files.",
             "description_label": "Description (optional)",
+            "vaultName": "Vault Name",
             "descriptionV2": "AeroVault v2 provides military-grade encryption with nonce misuse-resistant AES-256-GCM-SIV and optional cascade encryption.",
             "directoryCreated": "Directory \"{name}\" created",
             "dirEmpty": "Directory is empty",
@@ -4055,7 +4089,9 @@
                 "errorCorrectionProtected": "Error Correction protected",
                 "errorCorrectionOverhead": "Error Correction overhead",
                 "savedTo": "Saved to {path}",
-                "saveFailed": "Could not save: {error}"
+                "saveFailed": "Could not save: {error}",
+                "composition": "Size composition",
+                "factorContainer": "Container"
             },
             "scrubErrorCorrection": "Scrub Error Correction",
             "compressionProfile": "Compression Profile",
@@ -4112,10 +4148,34 @@
             "addFolder": "Add Folder",
             "addFolderHint": "Add a whole folder, preserving its structure",
             "addFolderUnsupported": "Adding a folder is supported on v2 and v3 vaults",
+            "dropFilesHint": "Drag files or folders here, or use the buttons below",
+            "itemSingular": "item",
+            "itemPlural": "items",
+            "reportExported": "Vault report saved to {path}",
+            "reportCopied": "Vault report copied to clipboard",
+            "exportReportHint": "Export a complete technical report: vault metadata, encryption, error correction and full file list",
+            "copyReportHint": "Copy the report to the clipboard",
+            "copyReport": "Copy",
             "folderAdded": "Folder added",
             "extractAll": "Extract all",
             "extractAllHint": "Extract every file in the vault to a folder",
-            "extractedAll": "Extracted {count} file(s) to {path}"
+            "extractedAll": "Extracted {count} file(s) to {path}",
+            "zipCreated": "AeroVault Zip created successfully",
+            "createZip": "Create AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextDesc": "Not encrypted, no confidentiality. It will not open in a normal zip tool: it needs AeroFTP or the open-source aerovault crate. The format is open, so anyone motivated can recover the contents.",
+            "dropFilesZip": "Drop files to add to AeroVault Zip",
+            "zipEmpty": "AeroVault Zip is empty. Add files to get started.",
+            "zipEmptyHint": "Drag files here or click Add Files to build the Zip",
+            "openZip": "Open AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip is the AeroVault Zip plaintext lane; encrypted containers must use .aerovault.",
+            "zipRecoveryHint": "Recovery parity helps repair damaged bytes; it does not hide contents.",
+            "zipBadge": "Zip",
+            "openingZip": "Opening AeroVault Zip…",
+            "encryptedBadge": "Encrypted",
+            "notEncryptedBadge": "Not encrypted",
+            "encryptedTooltip": "Encrypted with AES-256. Contents and filenames are confidential; the password is required to open.",
+            "resetDefaults": "Reset to default"
         },
         "vaultSync": {
             "title": "Vault Sync",
@@ -4553,6 +4613,7 @@
                 "company": "Provider",
                 "region": "Region",
                 "freeStorage": "Free",
+                "freeRequiresCard": "Free tier, but signup requires a credit card",
                 "freeProtocols": "Free protocols",
                 "paidProtocols": "Paid protocols",
                 "health": "Status",
@@ -4676,6 +4737,7 @@
             "proFeatures": "Advanced",
             "enterpriseOnly": "Enterprise only",
             "freeTier": "Free tier",
+            "freeCardTier": "Free + card",
             "paidTier": "Paid",
             "totalCount": "{count} integrated providers",
             "upload": "Upload",
@@ -4916,6 +4978,40 @@
             "addToExistingWarn": "Enabling an overlay on an existing profile: any plaintext files already on this remote stay unencrypted and will show as an undecryptable mix. Use an empty remote.",
             "scopeHint": "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root).",
             "remotePathLockedNote": "The Remote path is locked: it is the encrypted overlay root and cannot change once the overlay holds data."
+        },
+        "modalView": {
+            "listView": "List view",
+            "gridView": "Icon view",
+            "iconSmall": "Small icons",
+            "iconMedium": "Medium icons",
+            "iconLarge": "Large icons"
+        },
+        "password": {
+            "match": "Passwords match",
+            "mismatch": "Passwords do not match",
+            "confirm": "Confirm password",
+            "confirmPlaceholder": "Repeat password"
+        },
+        "saveAll": {
+            "button": "Save all...",
+            "hint": "Export the whole decrypted contents at once",
+            "folder": "To folder...",
+            "zip": "To Zip (.zip)...",
+            "aerozip": "To Archive (.aerozip)...",
+            "confirmTitle": "Export decrypted contents",
+            "confirmBody": "This writes the decrypted, plaintext contents to the location you choose. Anyone who can read that location can read your files.",
+            "confirmZipNote": "A .zip is not encrypted or password-protected.",
+            "cancel": "Cancel",
+            "continue": "Continue",
+            "done": "Saved {count} file(s) to {path}",
+            "skipped": "{count} item(s) skipped"
+        },
+        "mountVault": {
+            "button": "Mount (read-only)",
+            "hint": "Browse the unlocked vault as a read-only drive. It unmounts when you lock it.",
+            "open": "Open",
+            "unmount": "Unmount",
+            "unmountHint": "Unmount this read-only vault view"
         }
     }
 }

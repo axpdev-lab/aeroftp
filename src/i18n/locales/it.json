@@ -68,7 +68,9 @@
             "check": "Verifica",
             "selectAll": "Select All",
             "required": "obbligatorio",
-            "duplicate": "Duplica"
+            "duplicate": "Duplica",
+            "goToActiveSession": "Vai alla sessione attiva",
+            "password": "Password"
         },
         "accountLock": {
             "title": "Scegli un account",
@@ -376,7 +378,6 @@
             "totpSecretHelp": "Salva il tuo secret 2FA una sola volta. AeroFTP genererà il codice a 6 cifre automaticamente ad ogni riconnessione, come fa un'app di autenticazione.",
             "filenApiKey": "Chiave API Filen CLI (facoltativa)",
             "filenApiKeyPlaceholder": "Chiave API dalla Filen CLI",
-            "filenApiKeyStored": "Una chiave è già salvata nel vault. Lasciala vuota per mantenerla, oppure incollane una nuova per sostituirla.",
             "filenApiKeyHelp": "Incolla la chiave API dal tuo profilo Filen CLI per saltare il codice 2FA a ogni riconnessione. La password dell'account resta comunque necessaria: decifra i tuoi file end-to-end. Una volta salvata, la chiave è memorizzata cifrata nel vault e non viene più mostrata qui (come il segreto 2FA); AeroFTP la riutilizza automaticamente. In modifica, lascia vuoto per mantenere la chiave salvata.",
             "manualTotalStorage": "Spazio totale (manuale)",
             "manualTotalStoragePlaceholder": "es. 10 GB, 500 GB, 2 TB",
@@ -404,7 +405,8 @@
             "connecting": "Connessione...",
             "autoRetryCountdown": "In attesa di un nuovo codice dell'autenticatore, riconnessione a {account} tra {seconds} s",
             "autoRetryFailedTitle": "Autenticazione a due fattori non riuscita",
-            "autoRetryFailedBody": "AeroFTP non è riuscito ad autenticarsi con il segreto 2FA salvato. Apri il modulo di modifica del profilo e verifica il segreto 2FA."
+            "autoRetryFailedBody": "AeroFTP non è riuscito ad autenticarsi con il segreto 2FA salvato. Apri il modulo di modifica del profilo e verifica il segreto 2FA.",
+            "codeVerified": "Codice 2FA inserito e verificato"
         },
         "protocol": {
             "selectProtocol": "Seleziona protocollo...",
@@ -747,7 +749,6 @@
             "edit": "Modifica",
             "emptyTrash": "Svuota Cestino",
             "emptyTrashConfirm": "Eliminare definitivamente tutti gli elementi nel cestino? Questa operazione non può essere annullata.",
-            "encryptFolderAsVault": "Cifra cartella come AeroVault...",
             "encryptionOptional": "Imposta Password (AES-256)",
             "encryptionOptionalHint": "Lascia vuoto per nessuna crittografia",
             "enterArchivePassword": "Questo archivio e' crittografato. Inserisci la password:",
@@ -821,7 +822,9 @@
             "azureTrashTitle": "Cestino Azure Blob",
             "lockRcloneCrypt": "Blocca overlay Rclone Crypt",
             "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Apri come AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Apri come AeroVault Overlay",
+            "openWithAeroVaultZip": "Apri con AeroVault Zip",
+            "importToAeroFTP": "Importa in AeroFTP"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -1772,6 +1775,8 @@
             "batchRenameResult": "{success} rinominati, {errors} falliti",
             "copyCompleted": "Copia completata",
             "localPathNotFound": "Cartella locale \"{path}\" non trovata. Navigato alla directory home.",
+            "dropImported": "Importati {count} elementi in questa cartella",
+            "dropFailed": "Impossibile importare {count} elementi",
             "zeroByteWarning": "File 0 B - potrebbe indicare un errore di trasferimento",
             "megacmdWarmup": "Server MEGAcmd non in esecuzione, avvio in background...",
             "stillConnecting": "Connessione ancora in corso...",
@@ -1967,7 +1972,8 @@
             "release_asset_delete_success": "[{provider}] Asset rimosso {filename}",
             "release_asset_download_start": "[{provider}] Scaricamento release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset scaricato {filename}",
-            "release_asset_download_error": "[{provider}] Scaricamento release asset fallito {filename}"
+            "release_asset_download_error": "[{provider}] Scaricamento release asset fallito {filename}",
+            "session_resumed": "Sessione attiva ripresa su {server}"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",
@@ -2869,7 +2875,10 @@
             "actions": "Azioni",
             "files": "file",
             "empty": "L'archivio è vuoto",
-            "extracting": "Estrazione"
+            "extracting": "Estrazione",
+            "preview": "Anteprima",
+            "extract": "Estrai",
+            "back": "Indietro"
         },
         "cyberTools": {
             "title": "Strumenti di Sicurezza",
@@ -2954,6 +2963,7 @@
             "description": "AeroVault ti permette di creare contenitori crittografati AES-256 per archiviare i tuoi file in sicurezza.",
             "descriptionV2": "AeroVault v2 offre crittografia di livello militare con AES-256-GCM-SIV resistente al riuso del nonce e crittografia a cascata opzionale.",
             "description_label": "Descrizione (opzionale)",
+            "vaultName": "Nome Vault",
             "dirEmpty": "La directory è vuota",
             "directoryCreated": "Directory \"{name}\" creata",
             "dropFiles": "Trascina i file per aggiungerli al vault",
@@ -3045,7 +3055,9 @@
                 "errorCorrectionProtected": "Protetto da Correzione errori",
                 "errorCorrectionOverhead": "Overhead Correzione errori",
                 "savedTo": "Salvato in {path}",
-                "saveFailed": "Impossibile salvare: {error}"
+                "saveFailed": "Impossibile salvare: {error}",
+                "composition": "Composizione del peso",
+                "factorContainer": "Contenitore"
             },
             "scrubErrorCorrection": "Scansiona Correzione errori",
             "compressionProfile": "Profilo di compressione",
@@ -3102,10 +3114,39 @@
             "addFolder": "Aggiungi cartella",
             "addFolderHint": "Aggiungi un'intera cartella mantenendone la struttura",
             "addFolderUnsupported": "L'aggiunta di una cartella è supportata sulle casseforti v2 e v3",
+            "dropFilesHint": "Trascina qui file o cartelle, oppure usa i pulsanti sotto",
+            "itemSingular": "elemento",
+            "itemPlural": "elementi",
+            "reportExported": "Report del vault salvato in {path}",
+            "reportCopied": "Report del vault copiato negli appunti",
+            "exportReportHint": "Esporta un report tecnico completo: metadati del vault, crittografia, correzione errori ed elenco file completo",
+            "copyReportHint": "Copia il report negli appunti",
+            "copyReport": "Copia",
             "folderAdded": "Cartella aggiunta",
             "extractAll": "Estrai tutto",
             "extractAllHint": "Estrai ogni file della cassaforte in una cartella",
-            "extractedAll": "Estratti {count} file in {path}"
+            "extractedAll": "Estratti {count} file in {path}",
+            "changeMode": "Cambia modalità",
+            "changeModeHint": "Reimpacchetta questa cassaforte con un livello di sicurezza, profilo di compressione e Correzione degli Errori diversi (stessa password)",
+            "changeModeNote": "La cassaforte viene reimpacchettata sul posto con le nuove impostazioni; la password resta la stessa.",
+            "modeChanged": "Modalità della cassaforte cambiata",
+            "changeModeCrossFormat": "Questo cambia il formato della cassaforte e ri-cifra completamente ogni file.",
+            "zipCreated": "AeroVault Zip creato correttamente",
+            "createZip": "Crea AeroVault Zip",
+            "zipTitle": "AeroVault Zip",
+            "zipPlaintextDesc": "Non cifrato, nessuna riservatezza. Non si apre con un normale strumento zip: serve AeroFTP o il crate open-source aerovault. Il formato è aperto, quindi chiunque sia motivato può recuperarne i contenuti.",
+            "dropFilesZip": "Trascina i file da aggiungere all'AeroVault Zip",
+            "zipEmpty": "L'AeroVault Zip è vuoto. Aggiungi file per iniziare.",
+            "zipEmptyHint": "Trascina i file qui o clicca Aggiungi file per costruire lo Zip",
+            "openZip": "Apri AeroVault Zip",
+            "zipEncryptedRejected": ".aerozip è la modalità in chiaro di AeroVault Zip; i contenitori cifrati devono usare .aerovault.",
+            "zipRecoveryHint": "La parità di recupero aiuta a riparare i byte danneggiati; non nasconde i contenuti.",
+            "zipBadge": "Zip",
+            "openingZip": "Apertura AeroVault Zip…",
+            "encryptedBadge": "Cifrato",
+            "notEncryptedBadge": "Non cifrato",
+            "encryptedTooltip": "Cifrato con AES-256. Contenuti e nomi file sono riservati; serve la password per aprire.",
+            "resetDefaults": "Ripristina predefiniti"
         },
         "aerocrypt": {
             "title": "Overlay Rclone Crypt",
@@ -3152,7 +3193,9 @@
             "loading": "Caricamento...",
             "emptyFolder": "Cartella vuota",
             "nameNotDecrypted": "nome non decifrato",
-            "download": "Scarica"
+            "download": "Scarica",
+            "serverHashGated": "Checksum lato server non disponibile con un overlay cifrato attivo (calcolerebbe l'hash del testo cifrato, non del tuo file).",
+            "outsideScope": "Fuori dalla zona cifrata (i file qui non sono cifrati)"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",
@@ -3214,7 +3257,12 @@
             "size": "Dimensione",
             "title": "Vault Cryptomator",
             "unlock": "Sblocca Vault",
-            "vaultName": "Nome Vault"
+            "vaultName": "Nome Vault",
+            "done": "Fatto",
+            "encryptingSelection": "Crittografia degli elementi selezionati in corso...",
+            "ingestSkipped": "Cassaforte creata, ma non è stato possibile aggiungere alcuni elementi:",
+            "selectionInfo": "{count} elemento/i verranno crittografati nella cassaforte",
+            "decrypting": "Decrittazione…"
         },
         "batchRename": {
             "title": "Rinomina Multipla",
@@ -3257,8 +3305,20 @@
             "folders": "cartelle",
             "store": "Archivia (senza compressione)",
             "fast": "Veloce",
+            "balanced": "Bilanciata",
             "normal": "Normale",
-            "maximum": "Massimo"
+            "maximum": "Massimo",
+            "complete": "Compressione completata",
+            "before": "Prima",
+            "after": "Dopo",
+            "saved": "Risparmiati",
+            "increased": "Aumentato",
+            "done": "Fatto",
+            "incompressible": "Già compresso, nessuno spazio da risparmiare",
+            "estimating": "Stima in corso…",
+            "spaceSaved": "{pct}% più piccolo",
+            "estimateExact": "esatto",
+            "estimateApprox": "stima"
         },
         "sidebar": {
             "places": "Posizioni",
@@ -4116,6 +4176,7 @@
             "proFeatures": "Avanzate",
             "enterpriseOnly": "Solo enterprise",
             "freeTier": "Piano gratuito",
+            "freeCardTier": "Gratis + carta",
             "paidTier": "A pagamento",
             "totalCount": "{count} provider integrati",
             "upload": "Carica",
@@ -4531,6 +4592,7 @@
                 "company": "Provider",
                 "region": "Regione",
                 "freeStorage": "Gratis",
+                "freeRequiresCard": "Piano gratuito, ma la registrazione richiede una carta di credito",
                 "freeProtocols": "Protocolli gratuiti",
                 "paidProtocols": "Protocolli a pagamento",
                 "health": "Stato",
@@ -4916,6 +4978,40 @@
             "dirtyBody": "Hai modifiche non salvate. Scartarle e chiudere?",
             "keepEditing": "Continua a modificare",
             "discardAndClose": "Scarta e chiudi"
+        },
+        "modalView": {
+            "listView": "Vista elenco",
+            "gridView": "Vista icone",
+            "iconSmall": "Icone piccole",
+            "iconMedium": "Icone medie",
+            "iconLarge": "Icone grandi"
+        },
+        "password": {
+            "match": "Le password corrispondono",
+            "mismatch": "Le password non corrispondono",
+            "confirm": "Conferma password",
+            "confirmPlaceholder": "Ripeti password"
+        },
+        "saveAll": {
+            "button": "Salva tutto...",
+            "hint": "Esporta tutto il contenuto decifrato in una volta",
+            "folder": "In una cartella...",
+            "zip": "In Zip (.zip)...",
+            "aerozip": "In Archivio (.aerozip)...",
+            "confirmTitle": "Esporta contenuto decifrato",
+            "confirmBody": "Questo scrive il contenuto decifrato, in testo non protetto, nella posizione che scegli. Chiunque possa leggere quella posizione può leggere i tuoi file.",
+            "confirmZipNote": "Un .zip non è cifrato né protetto da password.",
+            "cancel": "Annulla",
+            "continue": "Continua",
+            "done": "Salvati {count} file in {path}",
+            "skipped": "{count} elemento/i saltato/i"
+        },
+        "mountVault": {
+            "button": "Monta (sola lettura)",
+            "hint": "Sfoglia il vault sbloccato come unità in sola lettura. Si smonta quando lo blocchi.",
+            "open": "Apri",
+            "unmount": "Smonta",
+            "unmountHint": "Smonta questa vista in sola lettura del vault"
         }
     }
 }

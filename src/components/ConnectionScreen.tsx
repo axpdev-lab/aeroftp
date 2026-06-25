@@ -13,6 +13,8 @@ import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
@@ -96,6 +98,7 @@ interface ConnectionScreenProps {
     isAeroCloudConnected?: boolean;
     onOpenCloudPanel?: () => void;
     hasExistingSessions?: boolean;  // Show active sessions badge next to QuickConnect
+    sessionCount?: number;  // Number of open session tabs, shown as a count chip on the badge (#128-C)
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
     formOnly?: boolean;  // IntroHub: hide SavedServers panel, center form at max-w-640px
     editingProfile?: ServerProfile;  // IntroHub: auto-enter edit mode on mount for this profile
@@ -419,7 +422,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                                 placeholder={t('connection.fourshared.enterConsumerSecret')}
                                 className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                             />
-                            <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                            <button tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                 {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
                         </div>
@@ -473,6 +476,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     isAeroCloudConnected,
     onOpenCloudPanel,
     hasExistingSessions = false,
+    sessionCount = 0,
     serversRefreshKey = 0,
     formOnly = false,
     editingProfile,
@@ -585,11 +589,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // freely). Mirrors profile.persistModeCredentials; only meaningful for
     // profiles whose provider/protocol belongs to a mode group.
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
-    // Issue #215 (Ehud): when editing a saved Filen profile that already has a
-    // CLI API key in the vault, the field renders empty by design (the key is a
-    // long-lived secret, never re-shown). Track the stored flag so the form can
-    // tell the user a key is saved instead of looking like it "disappeared".
-    const [editingHasStoredFilenKey, setEditingHasStoredFilenKey] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     // Ehud #276 (17324431): a collapsible "Wrappers / Overlays" parent keeps the Quick
     // Connect page uncluttered. Collapsed by default, auto-opens when a binding exists.
@@ -606,6 +605,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // rewrap, tracked as a separate feature.
     const [overlayBindingLocked, setOverlayBindingLocked] = useState(false);
     const [aeroCryptPassword, setAeroCryptPassword] = useState('');
+    // Confirm field for the set-once overlay password: a typo here permanently
+    // locks the encrypted blobs, so a live match check is worth the extra field.
+    const [aeroCryptConfirm, setAeroCryptConfirm] = useState('');
     const [showAeroCryptPassword, setShowAeroCryptPassword] = useState(false);
     // P3.3b: rclone-crypt interop needs salt (password2) + filename/dir-name
     // encryption mode to auto-unlock on connect, mirroring the RcloneCryptUnlock
@@ -896,6 +898,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // as an undecryptable mix under the overlay. Warn (do not block: a brand-new
     // empty remote is a legitimate case).
     const overlayNewlyBound = !!editingProfileId && aeroCryptEnabled && !overlayBindingLocked;
+    // #322: when binding a new crypt overlay, the set-once password's confirm
+    // must match before the profile can be saved (a typo locks the blobs forever).
+    const aeroCryptConfirmMismatch = aeroCryptEnabled && overlayEligible && !overlayFieldsLocked && !!aeroCryptPassword && aeroCryptConfirm !== aeroCryptPassword;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -980,6 +985,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const saveToServers = async () => {
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
+
+        // #322: the crypt-overlay password is set-once; block a save where the
+        // freshly-typed password and its confirm disagree (a typo would lock the
+        // encrypted blobs forever). The save button is already disabled on
+        // mismatch (aeroCryptConfirmMismatch); this is defense-in-depth.
+        if (aeroCryptConfirmMismatch) return;
 
         const normalizedParams = protocol === 'uploadcare'
             ? {
@@ -1599,7 +1610,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Drop any per-mode credential snapshots from a previous edit (#215).
         modeCredentialSnapshotsRef.current = {};
         setPersistModeCredentials(!!profile.persistModeCredentials);
-        setEditingHasStoredFilenKey(!!profile.hasStoredFilenApiKey);
         setEditingProfileId(profile.id);
         editingProfileIdRef.current = profile.id;
         setConnectionName(profile.name);
@@ -1700,32 +1710,61 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // starts unselected so the user must actively choose on enable.
         setAeroCryptKind(overlayBinding?.enabled ? (overlayBinding.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt') : null);
         setAeroCryptPassword('');
+        setAeroCryptConfirm('');
         // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
         setAeroCryptDirNameEnc(overlayBinding?.directoryNameEncryption ?? true);
 
-        // Then load password from OS keyring asynchronously (if stored)
+        // Then hydrate vaulted secrets (password + Filen API key) asynchronously.
+        // Both reads target the same profile id; we resolve them up front and apply
+        // ONE combined snapshot. onConnectionParamsChange is `setConnectionParams`
+        // (a full-snapshot setter, not a functional updater), so two independent
+        // setter calls would clobber each other — the second to resolve would drop
+        // the first's value (issue #215).
         const targetProfileId = profile.id;
+        let hydratedPassword = profile.password || '';
+        let hydratedOptions = profileOptions;
+
         if (!profile.password && profile.hasStoredCredential) {
             try {
                 const storedPassword = await invoke<string>('get_credential', { account: `server_${targetProfileId}` });
-                // Only update if we're still editing the same profile (prevents race condition
-                // where user switches to editing a different server before credential fetch completes)
-                if (storedPassword && editingProfileIdRef.current === targetProfileId) {
-                    onConnectionParamsChange({
-                        server: profile.host,
-                        port: profile.port,
-                        username: profile.username,
-                        password: storedPassword,
-                        protocol: effectiveProtocol,
-                        providerId: profile.providerId,
-                        options: profileOptions
-                    });
-                }
+                if (storedPassword) hydratedPassword = storedPassword;
             } catch {
                 // Credential not found, password stays empty
             }
+        }
+
+        // #215: reload the vaulted Filen API key into the form on edit so it
+        // behaves like the password and the 2FA secret and survives switching to
+        // WebDAV/S3 and back. #230 moved the key to filen_api_key_<id> and it was
+        // previously only read back at connect time, never on edit — so the field
+        // opened blank and the protocol-switch stash carried nothing.
+        if (profile.hasStoredFilenApiKey) {
+            try {
+                const storedFilenKey = await invoke<string>('get_credential', { account: `filen_api_key_${targetProfileId}` });
+                if (storedFilenKey) {
+                    hydratedOptions = { ...hydratedOptions, filen_api_key: storedFilenKey };
+                }
+            } catch {
+                // Key not retrievable: field stays blank, the stored-key hint still applies.
+            }
+        }
+
+        // Apply once, only if a secret actually hydrated and we're still editing
+        // the same profile (guards the same race the password load always guarded:
+        // the user may switch to another server mid-fetch).
+        if (editingProfileIdRef.current === targetProfileId
+            && (hydratedPassword !== (profile.password || '') || hydratedOptions !== profileOptions)) {
+            onConnectionParamsChange({
+                server: profile.host,
+                port: profile.port,
+                username: profile.username,
+                password: hydratedPassword,
+                protocol: effectiveProtocol,
+                providerId: profile.providerId,
+                options: hydratedOptions,
+            });
         }
 
         // Issue #215: when the profile opted into persistent per-mode
@@ -1757,6 +1796,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setOverlayBindingLocked(false);
         setAeroCryptKind(null);
         setAeroCryptPassword('');
+        setAeroCryptConfirm('');
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc('standard');
         setAeroCryptDirNameEnc(true);
@@ -2408,6 +2448,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         />
                                         <button
                                             type="button"
+                                            tabIndex={-1}
                                             onClick={() => setShowAeroCryptPassword((v) => !v)}
                                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                         >
@@ -2415,6 +2456,36 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </button>
                                     </div>
                                 </div>
+                                {/* #322: strength meter + a set-once confirm with live match.
+                                    The overlay credentials are immutable once data exists, so a
+                                    confirm guards against a typo that would lock the blobs forever.
+                                    Both hidden when editing a locked binding. */}
+                                {!overlayFieldsLocked && aeroCryptPassword.length > 0 && (
+                                    <PasswordStrengthBar password={aeroCryptPassword} />
+                                )}
+                                {!overlayFieldsLocked && (
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('password.confirm')}</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showAeroCryptPassword ? 'text' : 'password'}
+                                                value={aeroCryptConfirm}
+                                                onChange={(e) => setAeroCryptConfirm(e.target.value)}
+                                                placeholder={t('password.confirmPlaceholder')}
+                                                className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                            />
+                                            <button
+                                                type="button"
+                                                tabIndex={-1}
+                                                onClick={() => setShowAeroCryptPassword((v) => !v)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                            >
+                                                {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+                                        <PasswordMatchHint password={aeroCryptPassword} confirm={aeroCryptConfirm} />
+                                    </div>
+                                )}
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
                                     encryption so the bound profile auto-unlocks like native.
                                     Native AeroCrypt reads these from .aeroftp-crypt.json. */}
@@ -2433,6 +2504,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 />
                                                 <button
                                                     type="button"
+                                                    tabIndex={-1}
                                                     onClick={() => setShowAeroCryptSalt((v) => !v)}
                                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                                 >
@@ -2587,7 +2659,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={handleConnectAndSave}
-                            disabled={loading || btnDisabled}
+                            disabled={loading || btnDisabled || aeroCryptConfirmMismatch}
                             className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (
@@ -2722,6 +2794,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 >
                                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                                     <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
+                                    {sessionCount > 0 && (
+                                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-green-200/70 dark:bg-green-800/50 text-green-800 dark:text-green-300">{sessionCount}</span>
+                                    )}
                                 </button>
                             )}
                         </div>
@@ -3257,7 +3332,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('ai.settings.enterApiKey')}
                                                         autoFocus
                                                     />
-                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -3323,7 +3398,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.jottacloudTokenPlaceholder')}
                                                         autoFocus
                                                     />
-                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -3359,7 +3434,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.drimeTokenPlaceholder')}
                                                         autoFocus
                                                     />
-                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -3978,7 +4053,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     placeholder={t('connection.kdriveTokenPlaceholder')}
                                                     autoFocus
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -4105,7 +4180,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     placeholder={t('connection.internxtPasswordPlaceholder')}
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -4274,7 +4349,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                     placeholder={t('connection.filenPasswordPlaceholder')}
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -4339,12 +4414,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showFilenApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
-                                            {editingProfileId && editingHasStoredFilenKey && !connectionParams.options?.filen_api_key && (
-                                                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                                                    <Check size={13} />
-                                                    {t('connection.filenApiKeyStored')}
-                                                </p>
-                                            )}
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.filenApiKeyHelp')}</p>
                                         </div>
 
@@ -4496,7 +4565,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
                                                         className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                     />
-                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4577,7 +4646,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                                     placeholder={t('connection.immichApiKeyPlaceholder')}
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -4691,7 +4760,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                     placeholder={t('connection.megaPasswordPlaceholder')}
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5110,7 +5179,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                                                     placeholder={t('connection.password')}
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5395,7 +5464,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.passwordPlaceholder')}
                                                 />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>

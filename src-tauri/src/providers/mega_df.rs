@@ -118,6 +118,9 @@ async fn run_mega_cmd_capture(
     let resolved_cmd = resolve_mega_cmd(cmd);
     let mut command = Command::new(&resolved_cmd);
     command.args(args);
+    // #360: tear the child down if its future is dropped (connect cancelled) or
+    // the timeout fires, instead of orphaning a blocked `mega-webdav /` process.
+    command.kill_on_drop(true);
     #[cfg(windows)]
     {
         command.creation_flags(CREATE_NO_WINDOW);

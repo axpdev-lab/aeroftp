@@ -1,12 +1,10 @@
+<p align="center">
+  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/aeroftp_banner.png" alt="AeroFTP — FTP-First. Multi-Protocol. AI-Powered. Privacy-Enhanced." width="100%">
+</p>
+
 # AeroFTP
 
-<p align="center">
-  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP Logo" width="128" height="128">
-</p>
-
-<p align="center">
-  <strong>FTP-First. Multi-Protocol. AI-Powered. Encrypted. Privacy-Enhanced.</strong>
-</p>
+> _Last updated: 2026-06-22_
 
 <p align="center">
   The modern FTP client that grew into a complete file management platform. Multi-protocol, 6 integrated product modules, 47 languages, one app.
@@ -53,7 +51,6 @@
   <a href="https://launchpad.net/aeroftp"><img src="https://img.shields.io/badge/Launchpad-aeroftp-F8C300?logo=launchpad&logoColor=black" alt="Launchpad" /></a>
   <a href="https://winstall.app/apps/axpnet.AeroFTP"><img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows&logoColor=white" alt="Winget" /></a>
   <a href="https://sourceforge.net/projects/aeroftp/"><img src="https://img.shields.io/badge/SourceForge-AeroFTP-FF6600?logo=sourceforge&logoColor=white" alt="SourceForge" /></a>
-  <a href="https://github.com/axpdev-lab/aeroftp/issues/177"><img src="https://img.shields.io/badge/community-benchmark-10B981" alt="Community Benchmark" /></a>
 </p>
 
 <!-- Row 3: Community & Listings -->
@@ -72,7 +69,7 @@
 |----------|--------|----------|-------|
 | **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR | GNOME, KDE Plasma, XFCE, Hyprland, Sway, i3 (X11 & Wayland) |
 | **Windows** | Stable | `.msi`, `.exe`, `.zip` portable, winget | Fully tested, not Microsoft Store signed |
-| **macOS (Apple Silicon)** | Beta | `.dmg` (aarch64) | Not code-signed, requires `xattr` workaround |
+| **macOS (Intel & Apple Silicon)** | Beta | `.dmg` (aarch64), `.dmg` (x64) | Not code-signed, requires `xattr` workaround |
 
 > **macOS note:** The `.dmg` is not yet signed with an Apple Developer ID certificate. macOS Gatekeeper will block it. After installing, run: `sudo xattr -rd com.apple.quarantine /Applications/AeroFTP.app`
 
@@ -89,7 +86,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague:
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift.
-2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, Google Photos, PixelUnion).
+2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
 3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, etc.).
 
 <table align="center">
@@ -104,9 +101,9 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/filen"><img src="public/icons/providers/grid/filen.png" width="36" /></a><br><sub>Filen</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/internxt"><img src="public/icons/providers/grid/internxt.png" width="36" /></a><br><sub>Internxt</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/zoho"><img src="public/icons/providers/grid/ZohoWorkDrive.png" width="36" /></a><br><sub>Zoho</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/koofr"><img src="public/icons/providers/grid/Koofr.png" width="36" /></a><br><sub>Koofr</sub></td>
   </tr>
   <tr>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/koofr"><img src="public/icons/providers/grid/Koofr.png" width="36" /></a><br><sub>Koofr</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/kdrive"><img src="public/icons/providers/grid/kdrive.png" width="36" /></a><br><sub>kDrive</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jottacloud"><img src="public/icons/providers/grid/jottacloud.png" width="36" /></a><br><sub>Jottacloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drime"><img src="public/icons/providers/grid/drime.png" width="36" /></a><br><sub>Drime</sub></td>
@@ -115,10 +112,10 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex"><img src="public/icons/providers/grid/YandexDisk.png" width="36" /></a><br><sub>Yandex Disk</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/4shared"><img src="public/icons/providers/grid/4shared.png" width="36" /></a><br><sub>4shared</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/backblaze-b2"><img src="public/icons/providers/grid/backblaze.png" width="36" /></a><br><sub>Backblaze</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
-    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud</sub></td>
   </tr>
   <tr>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/protocols/azure"><img src="public/icons/providers/grid/azure.png" width="36" /></a><br><sub>Azure</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/wasabi"><img src="public/icons/providers/grid/wasabi.png" width="36" /></a><br><sub>Wasabi</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudflare-r2"><img src="public/icons/providers/grid/cloudfare.png" width="36" /></a><br><sub>Cloudflare R2</sub></td>
@@ -126,28 +123,30 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tencent-cloud-cos"><img src="public/icons/providers/grid/tencent.png" width="36" /></a><br><sub>Tencent COS</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/alibaba-cloud-oss"><img src="public/icons/providers/grid/alibabacloud.png" width="36" /></a><br><sub>Alibaba OSS</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/oracle-cloud"><img src="public/icons/providers/grid/oracle_cloud.png" width="36" /></a><br><sub>Oracle</sub></td>
+  </tr>
+  <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/storj"><img src="public/icons/providers/grid/storj.png" width="36" /></a><br><sub>Storj</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/idrive-e2"><img src="public/icons/providers/grid/idrive_e2.png" width="36" /></a><br><sub>IDrive e2</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/minio"><img src="public/icons/providers/grid/minio.png" width="36" /></a><br><sub>MinIO</sub></td>
-  </tr>
-  <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex-object-storage"><img src="public/icons/providers/grid/yandexcloud.png" width="36" /></a><br><sub>Yandex Cloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mega-s4"><img src="public/icons/providers/grid/mega.png" width="36" /></a><br><sub>MEGA S4</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" /></a><br><sub>Quotaless</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" /></a><br><sub>Nextcloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" /></a><br><sub>Felicloud</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tabdigital"><img src="public/icons/providers/grid/tabdigital.png" width="36" /></a><br><sub>Tab.digital</sub></td>
+  </tr>
+  <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudme"><img src="public/icons/providers/grid/cloudme.png" width="36" /></a><br><sub>CloudMe</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/infinicloud"><img src="public/icons/providers/grid/infiniCloud.png" width="36" /></a><br><sub>InfiniCLOUD</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jianguoyun"><img src="public/icons/providers/grid/jianguoyun.png" width="36" /></a><br><sub>Jianguoyun</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/seafile"><img src="public/icons/providers/grid/seafile.png" width="36" /></a><br><sub>Seafile</sub></td>
-  </tr>
-  <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" /></a><br><sub>DriveHQ</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" /></a><br><sub>Hetzner</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/github"><img src="public/icons/providers/grid/github.png" width="36" /></a><br><sub>GitHub</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/gitlab"><img src="public/icons/providers/grid/gitlab.png" width="36" /></a><br><sub>GitLab</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/sourceforge"><img src="public/icons/providers/grid/sourceforge.png" width="36" /></a><br><sub>SourceForge</sub></td>
+  </tr>
+  <tr>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/immich"><img src="public/icons/providers/grid/immich.png" width="36" /></a><br><sub>Immich</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/pixelunion"><img src="public/icons/providers/grid/pixelunion.png" width="36" /></a><br><sub>PixelUnion</sub></td>
     <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/imagekit"><img src="public/icons/providers/grid/imagekit.png" width="36" /></a><br><sub>ImageKit</sub></td>
@@ -177,28 +176,27 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Provider | HQ | Free tier | Connection methods |
 | --- | --- | --- | --- |
 | 4shared | VG | 15 GB | OAuth, WebDAV |
-| Alibaba OSS | CN | paid plan | S3* |
-| Amazon S3 | US | 5 GB 12-month trial | S3* |
-| Azure Blob | US | 12-month trial | Blob* |
+| Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
+| Amazon S3 | US | 5 GB (always-free, card req.) | S3* |
+| Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
 | Backblaze B2 | US | 10 GB | API, S3 |
-| Blomp | US | 20 GB (referral bonus) | Swift |
 | Box | US | 10 GB | OAuth |
-| Cloudflare R2 | US | 10 GB (egress-free) | S3 |
+| Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
 | Cloudinary | US | credit-based | API |
 | CloudMe | SE | 3 GB | WebDAV |
 | DigitalOcean Spaces | US | paid plan | S3* |
 | Drime | FR | 20 GB | API |
 | DriveHQ | US | 1 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
-| Felicloud | - | Nextcloud host | WebDAV |
-| FileLu | US | 1 GB | API, WebDAV, S3 |
+| Felicloud | - | 10 GB (Nextcloud host) | WebDAV |
+| FileLu | US | 10 GB | API, WebDAV, S3 |
 | Filen | DE | 10 GB (E2E) | API, S3, WebDAV |
 | GitHub | US | repo storage | API |
 | GitLab | US | repo storage | API |
-| Google Cloud Storage | US | 5 GB (always-free tier) | S3 |
+| Google Cloud Storage | US | 5 GB (always-free, card req.) | S3* |
 | Google Drive | US | 15 GB | OAuth |
 | Hetzner Storage Box | DE | paid plan | SFTP* |
-| IDrive e2 | US | 10 GB | S3 |
+| IDrive e2 | US | 7-day trial | S3* |
 | ImageKit | IN | 20 GB (media CDN) | API |
 | Immich | - | self-hosted | API |
 | InfiniCloud | JP | 20 GB | WebDAV |
@@ -213,35 +211,27 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Nextcloud | - | self-hosted | WebDAV |
 | OneDrive | US | 5 GB | OAuth |
 | OpenDrive | US | 5 GB | API, WebDAV |
-| Oracle Cloud | US | 20 GB (always-free) | S3 |
+| Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
 | pCloud | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
-| Storj | US | 25 GB (decentralized) | S3 |
-| Tab.digital | IN | managed Nextcloud | WebDAV* |
-| Tencent COS | CN | paid plan | S3* |
+| Storj | US | 30-day trial | S3* |
+| Tab.digital | IN | 8 GB (managed Nextcloud) | WebDAV |
+| Tencent COS | CN | 6-month trial | S3* |
 | Uploadcare | US | 3 GB (media CDN) | API |
 | Wasabi | US | 30-day trial | S3* |
 | Yandex Disk | RU | 5 GB | OAuth, WebDAV |
-| Yandex Object Storage | RU | paid plan | S3* |
+| Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>50 providers, 61 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>49 providers, 60 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 
 </details>
 
 > See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
-
-### Community Benchmark
-
-Real-world protocol comparisons need real-world data. We do not have a credible basis to claim "protocol X is faster than Y on provider Z" from a single developer machine on a single ISP, so we invite the community to contribute sanitized, privacy-preserving benchmark reports.
-
-Run `aeroftp-cli --profile "My Server" benchmark quick` against any saved profile (the CLI resolves credentials from the encrypted vault, you never paste passwords) and submit the resulting JSON via the dedicated Issue template. The report contains throughput / latency statistics, never hostnames, paths, or credentials.
-
-> Full participation guide and Phase 2 decision gate: **[docs/COMMUNITY-BENCHMARK.md](docs/COMMUNITY-BENCHMARK.md)**. Tracking thread: **[#177](https://github.com/axpdev-lab/aeroftp/issues/177)**.
 
 ### Profile Bridge
 
@@ -279,6 +269,8 @@ AeroFTP bridges server profiles with **15 third-party tools**, bidirectionally (
 
 > **Credentials:** *Full* = the secret is recovered and upgraded into the vault; *Limited* = only part of the secret material (host-bound or optional); *Metadata only* = connection metadata is imported but the secret stays in the OS keychain / SSH agent / an interactive prompt. The three original tools keep dedicated bridge pages: **[rclone](https://docs.aeroftp.app/features/rclone)**, **[WinSCP](https://docs.aeroftp.app/features/winscp)**, **[FileZilla](https://docs.aeroftp.app/features/filezilla)**.
 
+> **Full compatibility matrix:** for the per-protocol and per-provider breakdown of every bridge (including which native cloud providers travel only through rclone), see the [Bridge compatibility matrix](docs/BRIDGE-COMPATIBILITY.md).
+
 > **rclone crypt interop (full read/write):** in addition to profile import/export, AeroFTP can browse, decrypt **and re-encrypt** existing `rclone crypt` remotes natively. Upload, download, rename, and delete all stream through a transparent crypto overlay session: the underlying provider sees only encrypted blobs and obfuscated filenames, while the UI shows plaintext paths. See the **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
 
 > **rclone filter conversion:** `aeroftp-cli import rclone-filter <path>` converts an rclone `--filter-from` file (with `+`/`-` rules and `#` comments) into an `.aeroignore` file. Rule order is reversed automatically to preserve rclone's first-match-wins semantics under gitignore last-match-wins. Brace alternation `{a,b}` and `!` reset directives are reported as warnings since they have no direct gitignore equivalent.
@@ -293,16 +285,17 @@ Web hosting providers can generate encrypted `.aeroftp` connection profiles from
 
 ## File Formats
 
-AeroFTP defines four user-facing file formats. Each has a single purpose and a distinct extension; double-click open works for all of them on Windows, macOS, and Linux.
+AeroFTP defines five user-facing file formats. Each has a single purpose and a distinct extension; desktop file associations are registered on Windows, macOS, and Linux, with `.aerozip` shipping CLI create/list/extract first.
 
 | Extension | Purpose | Encryption | Carries |
 |---|---|---|---|
-| `.aerovault` | Encrypted container (alternative to Cryptomator / `.zip` / `.rar`) | AES-256-GCM-SIV + Argon2id | Arbitrary files and folders inside a single sealed archive |
-| `.aeroftp` | Server-profile export and cross-tool exchange format (bridge with rclone / WinSCP / FileZilla) | AES-256-GCM + Argon2id | Selected saved profiles (host, user, protocol, paths). With *include credentials* on, also per-profile passwords and per-profile OAuth / Jottacloud tokens |
-| `.aeroftp-keystore` | Full vault backup | AES-256-GCM + Argon2id | Everything in the vault: every profile, every credential, AI provider keys, app settings, theme and background preferences, AI chats |
-| `.aeroftp-script` | Portable batch script for `aeroftp-cli batch` (safer alternative to `.sh` / `.ps1`, runs on every OS where AeroFTP is supported) | None (no secrets) | AeroFTP CLI command lines; references saved profiles by name, never inline credentials |
+| <img src="src-tauri/icons/mimetypes/application-x-aerovault-64.png" width="32" height="32" alt="" /><br>`.aerovault` | Encrypted container (alternative to Cryptomator / `.zip` / `.rar`) | AES-256-GCM-SIV + Argon2id | Arbitrary files and folders inside a single sealed archive |
+| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-64.png" width="32" height="32" alt="" /><br>`.aeroftp` | Server-profile export and cross-tool exchange format (bridge with rclone / WinSCP / FileZilla) | AES-256-GCM + Argon2id | Selected saved profiles (host, user, protocol, paths). With *include credentials* on, also per-profile passwords and per-profile OAuth / Jottacloud tokens |
+| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-keystore-64.png" width="32" height="32" alt="" /><br>`.aeroftp-keystore` | Full vault backup | AES-256-GCM + Argon2id | Everything in the vault: every profile, every credential, AI provider keys, app settings, theme and background preferences, AI chats |
+| <img src="src-tauri/icons/mimetypes/application-x-aerozip-64.png" width="32" height="32" alt="" /><br>`.aerozip` | Plaintext recoverable archive (`aeroftp-cli archive create/list/extract`) | None - integrity + Reed-Solomon recovery, **not confidentiality** | Arbitrary files and folders inside a compressed, self-healing archive readable by anyone with the file |
+| <img src="src-tauri/icons/mimetypes/application-x-aeroftp-script-64.png" width="32" height="32" alt="" /><br>`.aeroftp-script` | Portable batch script for `aeroftp-cli batch` (safer alternative to `.sh` / `.ps1`, runs on every OS where AeroFTP is supported) | None (no secrets) | AeroFTP CLI command lines; references saved profiles by name, never inline credentials |
 
-The first three are encrypted with a user-chosen password at export time. `.aeroftp-script` is plaintext on purpose: it never carries secrets, so it can be checked into a repository, scheduled by cron / Task Scheduler, or shared with a teammate without any vault round-trip.
+The first three are encrypted with a user-chosen password at export time. `.aerozip` is plaintext on purpose: it provides integrity and recovery (Reed-Solomon parity is on by default and opt-out, `--recovery-level 0` for a smaller parity-free archive), not secrecy. `.aeroftp-script` is also plaintext on purpose: it never carries secrets, so it can be checked into a repository, scheduled by cron / Task Scheduler, or shared with a teammate without any vault round-trip.
 
 ---
 
@@ -353,6 +346,7 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 - **Cross-platform autostart**: installs `~/.config/systemd/user/aeroftp-mount-<id>.service` units on Linux (Type=simple, Restart=on-failure) and Task Scheduler ONLOGON entries on Windows. Master-password vault mode blocks autostart with a clear UI explanation since the daemon cannot prompt for a password.
 - **Open mount in file manager**: a one-click action on the My Servers context menu that auto-creates a sensible default mount for the selected profile when none exists yet, waits 800 ms for the FUSE / WebDAV layer to settle, then opens the OS file manager at the mountpoint.
 - **No secrets in mount configs**: credentials are always resolved by the spawned `aeroftp-cli` through `--profile` against the same vault the GUI uses, mount configs only carry the profile id.
+- **Read-only vault mount + Save-All (v4.0.9, Linux first)**: mount an *unlocked* Cryptomator vault, `.aerovault` or `.aerozip` as a read-only filesystem to browse its decrypted contents in your OS file manager, or run **Save-All** to export the whole decrypted tree in one shot to a folder, a `.zip` or a `.aerozip`. The password is passed to the mount process over stdin and never stored, and the mount auto-unmounts when you lock the vault or quit. macOS and Windows are a later step.
 
 ---
 
@@ -488,7 +482,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 77 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `crypt`, `import`/`export`, `serve`, `users`) across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 83 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 > **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
 
@@ -496,6 +490,7 @@ Production CLI sharing the same Rust backend as the GUI. 77 top-level commands (
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
 aeroftp-cli get sftp://user@host "/data/*.csv"            # Glob download
 aeroftp-cli check --profile "My Server" /local /remote --checksum  # Verify local matches remote
+aeroftp-cli archive create backup.aerozip ./docs       # Plaintext archive: recovery, not secrecy
 aeroftp-cli sync --profile "My Server" /local /remote --watch      # Continuous bidirectional sync
 aeroftp-cli serve http sftp://user@host /data             # Serve remote as local HTTP
 aeroftp-cli serve webdav s3://key:secret@s3.aws.com       # Serve remote as local WebDAV
@@ -505,7 +500,7 @@ aeroftp-cli ncdu sftp://user@host /data                    # Interactive disk us
 aeroftp-cli daemon start                                   # Background job queue
 ```
 
-**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp-script` batch files, `check` / `cryptcheck` for local-vs-remote verification (size/checksum against cleartext or encrypted remotes), `dedupe` / `cleanup` for orphan management, `hashsum` for remote file hashing (sha256/md5/blake3), `link` for shareable URLs, `--bwlimit "08:00,512k 18:00,off"` time-based bandwidth schedule (local time), `serve http/webdav/ftp/sftp`, MCP server mode, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
+**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp-script` batch files, `archive create/list/extract` for plaintext `.aerozip` recovery archives, `check` / `cryptcheck` for local-vs-remote verification (size/checksum against cleartext or encrypted remotes), `dedupe` / `cleanup` for orphan management, `hashsum` for remote file hashing (sha256/md5/blake3), `link` for shareable URLs, `--bwlimit "08:00,512k 18:00,off"` time-based bandwidth schedule (local time), `serve http/webdav/ftp/sftp`, MCP server mode, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
 **MCP server (35+ tools)**: curated tools for agents covering safe / medium / destructive operation tiers: file ops (`aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_upload_file`), batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with per-file `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` with two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree` between two saved profiles in one batch), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`), and pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection`). Real-time `notifications/progress` during uploads, downloads, and sync. The pool auto-recovers from transport-level failures (stale FTP data channels, broken pipes) without manual intervention. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
 
@@ -550,6 +545,7 @@ Output is published in [`docs/security/security-report-latest.html`](docs/securi
 |---|---|---|---|---|
 | May 2026 | v3.7.5 | **0** | 25 | Closed CVE-2026-42184 (tauri origin confusion), GHSA-2p6r-x3vv-xqm2 (rpassword), 2x openssl GHSA |
 | Jun 2026 | v4.0.5 | **0** | 23 | russh 0.61.2 cleared GHSA-wwx6-x28x-8259 (HIGH) + GHSA-hpv4-5h6f-wqr3 (MEDIUM) + SFTP parsing advisories; 2 suppressions removed |
+| Jun 2026 | v4.0.7 | **0** | 28 | Full self-hosted run (`cargo audit` + `npm audit` + `osv-scanner` 2.4.0): 0 open, 28 advisories suppressed per `audit.toml`; dual blind AeroVault audit remediation shipped (grade A) |
 
 Each month we publish the run results here. Past Aikido Security reports remain linked in the Security Posture table below for archive.
 
@@ -732,7 +728,7 @@ Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/l
 ### macOS
 
 Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/latest):
-- **.dmg** - Universal disk image
+- **.dmg** - Apple Silicon (aarch64) and Intel (x64) disk images (separate per-architecture builds)
 
 > **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch - right-click the app and select "Open" to bypass. See [#47](https://github.com/axpdev-lab/aeroftp/issues/47) for known issues on Apple Silicon.
 

@@ -177,6 +177,90 @@ fn rclone_token_to_aeroftp(blob: &str) -> Option<String> {
     serde_json::to_string_pretty(&aeroftp).ok()
 }
 
+/// Inverse of [`rclone_token_to_aeroftp`]: convert AeroFTP's stored
+/// `StoredTokens` JSON (Unix `expires_at`) into the rclone `token = {...}`
+/// blob (RFC 3339 `expiry`) the OAuth backends expect. Returns `None` when the
+/// stored value lacks a usable `access_token`. `token_type` defaults to
+/// `Bearer`; `refresh_token` and `expiry` are emitted only when present (rclone
+/// treats a missing expiry as "refresh on first use", the safe default for an
+/// exported token). Issue #128-D.
+fn aeroftp_token_to_rclone(blob: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(blob).ok()?;
+    let access_token = value.get("access_token")?.as_str()?.to_string();
+    if access_token.is_empty() {
+        return None;
+    }
+    let token_type = value
+        .get("token_type")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Bearer")
+        .to_string();
+    let mut out = serde_json::Map::new();
+    out.insert(
+        "access_token".into(),
+        serde_json::Value::String(access_token),
+    );
+    out.insert("token_type".into(), serde_json::Value::String(token_type));
+    if let Some(refresh) = value
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        out.insert(
+            "refresh_token".into(),
+            serde_json::Value::String(refresh.to_string()),
+        );
+    }
+    if let Some(expiry) = value
+        .get("expires_at")
+        .and_then(|v| v.as_i64())
+        .and_then(|ts| chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0))
+    {
+        out.insert(
+            "expiry".into(),
+            serde_json::Value::String(expiry.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        );
+    }
+    serde_json::to_string(&serde_json::Value::Object(out)).ok()
+}
+
+/// Append the rclone OAuth credential block for an OAuth-token backend.
+///
+/// AeroFTP mints its OAuth tokens with the user's own (BYO) OAuth app, so
+/// rclone can refresh them only when the config carries the SAME
+/// `client_id`/`client_secret`; rclone's built-in app cannot. The export path
+/// injects all three from the vault into the profile `options` under private
+/// `__aeroftp_oauth_*` keys. When every piece is present we emit a usable,
+/// refreshable remote; otherwise we emit a guidance comment instead of a
+/// silently broken half-remote. Issue #128-D.
+fn push_oauth_credentials(output: &mut String, options: Option<&serde_json::Value>) {
+    let get = |k: &str| {
+        options
+            .and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    };
+    let token = get("__aeroftp_oauth_token").and_then(aeroftp_token_to_rclone);
+    let client_id = get("__aeroftp_oauth_client_id");
+    let client_secret = get("__aeroftp_oauth_client_secret");
+    match (token, client_id, client_secret) {
+        (Some(tok), Some(cid), Some(csec)) => {
+            output.push_str(&format!("client_id = {}\n", cid));
+            output.push_str(&format!("client_secret = {}\n", csec));
+            output.push_str(&format!("token = {}\n", tok));
+        }
+        _ => {
+            output.push_str(
+                "# OAuth credentials not exported (client_id/client_secret/token\n\
+                 # unavailable in the vault). Run `rclone config reconnect <remote>:`\n\
+                 # to authorize this remote before use.\n",
+            );
+        }
+    }
+}
+
 /// Build the Jotta refresh-token blob in the shape `JottacloudProvider`
 /// persists locally (issue #214). rclone stores `username`, `token = {...}`
 /// (with the same fields as OAuth2 providers) and a `client_id`. We extract
@@ -448,6 +532,43 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             jotta_refresh: None,
         }),
 
+        // ---- Filen ----
+        // rclone's `filen` backend stores `email` + obscured `password` +
+        // obscured `api_key` (all three required), plus advanced keys it derives
+        // during `rclone config` (`master_keys`, `auth_version`, ...). AeroFTP
+        // needs the account password (it re-derives the master keys / E2E
+        // material from it on connect) and can optionally take the CLI api_key,
+        // which skips the /v3/login 2FA window (issue #230). We import both; the
+        // advanced rclone keys are ignored because AeroFTP re-derives them. The
+        // api_key lands in `options.filen_api_key`, which the save path relocates
+        // to the vault under `filen_api_key_<id>`.
+        "filen" => {
+            let email = get_str("email").unwrap_or("").to_string();
+            if email.is_empty() {
+                return None;
+            }
+            let mut options = serde_json::Map::new();
+            if let Some(api_key) = get_password("api_key").filter(|k| !k.is_empty()) {
+                options.insert("filen_api_key".into(), serde_json::Value::String(api_key));
+            }
+            Some(MappedProfile {
+                protocol: "filen".to_string(),
+                provider_id: Some("filen".to_string()),
+                host: "filen.io".to_string(),
+                port: 443,
+                username: email,
+                password: get_password("password"),
+                options: if options.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(options))
+                },
+                initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
+            })
+        }
+
         // ---- Box ----
         "box" => Some(MappedProfile {
             protocol: "box".to_string(),
@@ -463,18 +584,34 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
         }),
 
         // ---- pCloud ----
-        "pcloud" => Some(MappedProfile {
-            protocol: "pcloud".to_string(),
-            provider_id: Some("pcloud".to_string()),
-            host: get_str("hostname").unwrap_or("eapi.pcloud.com").to_string(),
-            port: 443,
-            username: name.to_string(),
-            password: None,
-            options: None,
-            initial_path: None,
-            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
-            jotta_refresh: None,
-        }),
+        // rclone's pcloud `hostname` defaults to api.pcloud.com (US); only EU
+        // accounts carry eapi.pcloud.com. Derive the region so the imported
+        // profile dials the right API instead of silently defaulting to US.
+        "pcloud" => {
+            let hostname = get_str("hostname").unwrap_or("api.pcloud.com");
+            let region = if hostname.to_ascii_lowercase().contains("eapi") {
+                "eu"
+            } else {
+                "us"
+            };
+            let mut options = serde_json::Map::new();
+            options.insert(
+                "region".into(),
+                serde_json::Value::String(region.to_string()),
+            );
+            Some(MappedProfile {
+                protocol: "pcloud".to_string(),
+                provider_id: Some("pcloud".to_string()),
+                host: hostname.to_string(),
+                port: 443,
+                username: name.to_string(),
+                password: None,
+                options: Some(serde_json::Value::Object(options)),
+                initial_path: None,
+                oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+                jotta_refresh: None,
+            })
+        }
 
         // ---- Azure Blob Storage ----
         "azureblob" => {
@@ -564,7 +701,9 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
         }
 
         // ---- Yandex Disk ----
-        "yandexdisk" => Some(MappedProfile {
+        // rclone's backend type is `yandex`; older configs and some forks used
+        // `yandexdisk`. Accept both so a real `rclone config` remote imports.
+        "yandex" | "yandexdisk" => Some(MappedProfile {
             protocol: "yandexdisk".to_string(),
             provider_id: Some("yandex-disk".to_string()),
             host: "webdav.yandex.ru".to_string(),
@@ -913,12 +1052,31 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
 
                 // Issue #214: capture per-profile OAuth / Jotta blobs so the
                 // vault writer can store them under the new per-profile key.
+                // #128-D: also recover the BYO OAuth app client_id/secret that
+                // rclone stores in plain in the remote section, so a fresh
+                // device can refresh the imported token (rclone refreshes an
+                // AeroFTP-minted token only with the same OAuth app).
                 if mapped.oauth_token.is_some() || mapped.jotta_refresh.is_some() {
+                    let (oauth_client_id, oauth_client_secret) = if mapped.oauth_token.is_some() {
+                        let pick = |k: &str| {
+                            remote
+                                .get(k)
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string)
+                        };
+                        (pick("client_id"), pick("client_secret"))
+                    } else {
+                        (None, None)
+                    };
                     provider_secrets.insert(
                         id.clone(),
                         crate::profile_export::ProviderSecrets {
                             oauth: mapped.oauth_token,
                             jotta_refresh: mapped.jotta_refresh,
+                            oauth_client_id,
+                            oauth_client_secret,
+                            ..Default::default()
                         },
                     );
                 }
@@ -939,6 +1097,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                     credential: mapped.password,
                     has_stored_credential: None,
                     public_url_base: None,
+                    ..Default::default()
                 });
             }
             None => {
@@ -970,7 +1129,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
 // ============ Export to rclone.conf ============
 
 /// A server profile to export as rclone remote.
-#[derive(serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcloneExportServer {
     pub name: String,
@@ -1061,6 +1220,36 @@ fn endpoint_is_loopback(endpoint: &str) -> bool {
 
 /// Export server profiles to rclone.conf INI format.
 /// Passwords are obscured using rclone's AES-256-CTR scheme for compatibility.
+/// Strip CR/LF from a value bound for an rclone INI `key = value` line.
+///
+/// rclone's INI does not support multi-line values for these keys, so a profile
+/// field containing a newline could otherwise inject a second `[section]` into
+/// the generated `rclone.conf` (e.g. a host of `h\n[evil]\ntype = local`).
+/// Stripping is loss-free for any value rclone could actually load and closes
+/// the injection vector for the bridge import -> re-export round-trip.
+fn ini_value(s: &str) -> String {
+    s.replace(['\r', '\n'], "")
+}
+
+/// Return a copy of `server` with every free-text field (host, username, and
+/// each string value in `options`) stripped of CR/LF, so the rest of the export
+/// can write them verbatim without risk of `[section]` forgery. The remote name
+/// is handled separately by `sanitize_rclone_remote_name`; secrets pulled from
+/// the password map are wrapped with `ini_value` at their write sites.
+fn sanitize_export_server(server: &RcloneExportServer) -> RcloneExportServer {
+    let mut out = server.clone();
+    out.host = ini_value(&server.host);
+    out.username = ini_value(&server.username);
+    if let Some(serde_json::Value::Object(map)) = out.options.as_mut() {
+        for value in map.values_mut() {
+            if let serde_json::Value::String(s) = value {
+                *s = ini_value(s);
+            }
+        }
+    }
+    out
+}
+
 pub fn export_rclone(
     servers: &[RcloneExportServer],
     passwords: &HashMap<String, String>,
@@ -1076,6 +1265,10 @@ pub fn export_rclone(
     let mut exported = 0;
 
     for server in servers {
+        // INI value safety: clean every free-text field before it is written so
+        // a crafted host/username/option can never forge a new [section].
+        let server = sanitize_export_server(server);
+        let server = &server;
         let proto = server.protocol.as_deref().unwrap_or("ftp");
         let options = server.options.as_ref();
         let password = passwords.get(&server.name);
@@ -1202,7 +1395,7 @@ pub fn export_rclone(
                     // `AWS4-HMAC-SHA256` signature mismatch on every
                     // request because rclone hashes the obscured string
                     // verbatim instead of reversing it first.
-                    output.push_str(&format!("secret_access_key = {}\n", pw));
+                    output.push_str(&format!("secret_access_key = {}\n", ini_value(pw)));
                 }
                 let mut pinned_bucket: Option<String> = None;
                 let mut endpoint_from_opts: Option<String> = None;
@@ -1385,12 +1578,49 @@ pub fn export_rclone(
             }
             "googledrive" => {
                 output.push_str("type = drive\n");
+                push_oauth_credentials(&mut output, options);
             }
             "dropbox" => {
                 output.push_str("type = dropbox\n");
+                push_oauth_credentials(&mut output, options);
             }
             "onedrive" => {
                 output.push_str("type = onedrive\n");
+                // rclone's `onedrive` backend needs `drive_id` + `drive_type`
+                // (it fails at use with "unable to get drive_id and drive_type"),
+                // even though the schema does not mark them Required. AeroFTP runs
+                // on the `/me/drive` shortcut and captures both at connect time
+                // into the vault; the bridge injects them into options here. If a
+                // profile was never connected after this fix, they are absent and
+                // the user must run `rclone config reconnect` / reconnect once in
+                // AeroFTP to populate them. `region` is emitted when captured.
+                if let Some(opts) = options {
+                    if let Some(region) = opts
+                        .get("region")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        output.push_str(&format!("region = {}\n", region));
+                    }
+                    if let Some(drive_id) = opts
+                        .get("drive_id")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        output.push_str(&format!("drive_id = {}\n", drive_id));
+                    }
+                    if let Some(drive_type) = opts
+                        .get("drive_type")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        output.push_str(&format!("drive_type = {}\n", drive_type));
+                    }
+                }
+                push_oauth_credentials(&mut output, options);
             }
             "mega" => {
                 output.push_str("type = mega\n");
@@ -1402,14 +1632,77 @@ pub fn export_rclone(
                     ));
                 }
             }
+            "filen" => {
+                // rclone's `filen` backend marks `email`, `password` AND
+                // `api_key` all Required, and obtains the api_key only via the
+                // Filen CLI `export-api-key` command: it does NOT derive it from
+                // email + password. So a remote without an api_key is unusable
+                // (it fails at first use with "failed to reveal api key: input
+                // too short"). AeroFTP keeps the optional Filen CLI API key in
+                // the vault under `filen_api_key_<id>` (issue #230); the export
+                // path injects it into `options.filen_api_key`. When it is
+                // present we emit a usable remote; when it is absent we emit a
+                // commented scaffold telling the user to add the api_key rather
+                // than a broken `type = filen` block.
+                output.push_str("type = filen\n");
+                output.push_str(&format!("email = {}\n", server.username));
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    output.push_str(&format!(
+                        "password = {}\n",
+                        obscure_password(pw).unwrap_or_default()
+                    ));
+                }
+                let api_key = options
+                    .and_then(|o| o.get("filen_api_key"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty());
+                if let Some(api_key) = api_key {
+                    // The api_key is an rclone `IsPassword` field, so it is
+                    // emitted obscured like `password`.
+                    output.push_str(&format!(
+                        "api_key = {}\n",
+                        obscure_password(api_key).unwrap_or_default()
+                    ));
+                } else {
+                    // No api_key available: rclone's filen backend Requires it
+                    // and cannot derive it from the password, so the remote is
+                    // incomplete. Emit a guidance comment (mirroring the OAuth
+                    // "reconnect" path) instead of a silently broken remote.
+                    output.push_str(
+                        "# api_key required but unavailable: rclone's filen backend\n\
+                         # cannot derive it from your password. Get one with the Filen\n\
+                         # CLI `export-api-key` command, obscure it (`rclone obscure`),\n\
+                         # and add `api_key = <obscured>` here, or set a `Filen CLI API\n\
+                         # Key` on this profile in AeroFTP and re-export.\n",
+                    );
+                }
+            }
             "box" => {
                 output.push_str("type = box\n");
+                push_oauth_credentials(&mut output, options);
             }
             "pcloud" => {
                 output.push_str("type = pcloud\n");
-                if server.host != "eapi.pcloud.com" {
-                    output.push_str(&format!("hostname = {}\n", server.host));
+                // rclone's pcloud `hostname` must be a real API host:
+                // api.pcloud.com (US, the default) or eapi.pcloud.com (EU).
+                // AeroFTP stores the region in options.region ("us"/"eu") or, on
+                // OAuth profiles, only as a display label in `host`
+                // ("pCloud (US)"/"pCloud (EU)"), never a hostname. Emitting that
+                // label verbatim produced an unusable remote. Map it: emit the
+                // EU host only for EU; omit for US (rclone defaults to it).
+                let is_eu = options
+                    .and_then(|o| o.get("region"))
+                    .and_then(|v| v.as_str())
+                    .map(|r| r.eq_ignore_ascii_case("eu"))
+                    .unwrap_or_else(|| {
+                        let h = server.host.to_ascii_lowercase();
+                        h.contains("eu") || h.contains("eapi")
+                    });
+                if is_eu {
+                    output.push_str("hostname = eapi.pcloud.com\n");
                 }
+                push_oauth_credentials(&mut output, options);
             }
             "azure" => {
                 output.push_str("type = azureblob\n");
@@ -1419,7 +1712,7 @@ pub fn export_rclone(
                     // (base64). rclone's azureblob backend does NOT mark
                     // this field as `IsPassword: true`, so it must be
                     // emitted plain (same reasoning as S3 secret_access_key).
-                    output.push_str(&format!("key = {}\n", pw));
+                    output.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
@@ -1437,7 +1730,7 @@ pub fn export_rclone(
                     // reasoning as S3 secret_access_key and Azure key). Emitting
                     // an obscured value makes rclone send the obscured string as
                     // the password, which fails authentication.
-                    output.push_str(&format!("key = {}\n", pw));
+                    output.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
                     if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
@@ -1455,7 +1748,10 @@ pub fn export_rclone(
                 }
             }
             "yandexdisk" => {
-                output.push_str("type = yandexdisk\n");
+                // rclone's backend type is `yandex` (not `yandexdisk`); the old
+                // value produced a config rclone refused to load.
+                output.push_str("type = yandex\n");
+                push_oauth_credentials(&mut output, options);
             }
             "koofr" => {
                 output.push_str("type = koofr\n");
@@ -1470,6 +1766,59 @@ pub fn export_rclone(
             }
             "jottacloud" => {
                 output.push_str("type = jottacloud\n");
+                // The password slot carries the Jotta OIDC refresh blob
+                // (`{refresh_token, token_endpoint, username}`), the same shape
+                // AeroFTP persists under `jottacloud_refresh_<id>`. rclone
+                // accepts a token with only a refresh_token: it has no
+                // access_token and a zero expiry, so rclone refreshes on first
+                // use against the OIDC endpoint and authenticates without an
+                // interactive re-login. Device and mountpoint are rediscovered
+                // by rclone at runtime.
+                if let Some(blob) = password {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(blob) {
+                        let refresh = v
+                            .get("refresh_token")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
+                        let endpoint = v
+                            .get("token_endpoint")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
+                        let user = v
+                            .get("username")
+                            .and_then(|x| x.as_str())
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or(&server.username);
+                        if !user.is_empty() {
+                            output.push_str(&format!("user = {}\n", ini_value(user)));
+                        }
+                        if !refresh.is_empty() {
+                            // rclone's jottacloud backend expects a full
+                            // oauth2.Token. A bare `{"refresh_token":...}` is
+                            // reported as "no refresh token", and an EMPTY
+                            // access_token makes rclone discard the token the
+                            // same way. Emit a non-empty placeholder access
+                            // token with an already-past expiry so rclone treats
+                            // it as expired-but-refreshable and refreshes
+                            // against the OIDC endpoint on first use.
+                            let token = serde_json::json!({
+                                "access_token": "expired",
+                                "token_type": "Bearer",
+                                "refresh_token": refresh,
+                                "expiry": "2000-01-01T00:00:00Z",
+                            });
+                            output.push_str(&format!("token = {}\n", token));
+                        }
+                        if !endpoint.is_empty() {
+                            output.push_str(&format!("token_endpoint = {}\n", ini_value(endpoint)));
+                        }
+                        // rclone refuses a jottacloud remote without a known
+                        // config schema version ("outdated config - please
+                        // reconfigure this backend"). Version 1 is the current
+                        // schema for the standard auth flow.
+                        output.push_str("configVersion = 1\n");
+                    }
+                }
             }
             "opendrive" => {
                 output.push_str("type = opendrive\n");
@@ -1479,6 +1828,22 @@ pub fn export_rclone(
                         "password = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
+                }
+            }
+            "backblaze" => {
+                // AeroFTP's native Backblaze protocol maps to rclone's `b2`
+                // backend: `account` (the key ID) + `key` (the application key).
+                // `key` is NOT an rclone IsPassword field, so it is emitted plain
+                // (same as S3 secret_access_key / Swift key). The bucket is part
+                // of the remote path in rclone (`remote:bucket`), not a config
+                // key, so it is intentionally not emitted here.
+                output.push_str("type = b2\n");
+                output.push_str(&format!("account = {}\n", server.username));
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
+                    // F-01: strip CR/LF like the other plain-secret sinks
+                    // (s3 secret_access_key, azure/swift key) so a crafted
+                    // application key can't forge a second [section].
+                    output.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
             }
             // Protocols without rclone equivalent: skip
@@ -1491,8 +1856,25 @@ pub fn export_rclone(
         exported += 1;
     }
 
-    // Atomic write + secure permissions
+    // Atomic write + secure permissions. Create the temp file 0600 *before*
+    // writing so the OAuth refresh blob / obscured passwords are never world-
+    // readable, not even in the window between write and the post-rename chmod.
     let tmp_path = file_path.with_extension("tmp");
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .map_err(|e| format!("Write rclone.conf: {}", e))?;
+        f.write_all(output.as_bytes())
+            .map_err(|e| format!("Write rclone.conf: {}", e))?;
+    }
+    #[cfg(not(unix))]
     std::fs::write(&tmp_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
     std::fs::rename(&tmp_path, file_path).map_err(|e| format!("Rename temp file: {}", e))?;
@@ -1508,6 +1890,13 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Write `conf` to a uniquely-named temp file and return its path.
+    fn tmp_write(conf: &str, name: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(name);
+        std::fs::write(&path, conf).expect("write temp conf");
+        path
+    }
 
     #[test]
     fn test_parse_ini() {
@@ -1897,6 +2286,45 @@ user = t
     }
 
     #[test]
+    fn test_export_rclone_jottacloud_emits_refreshable_token() {
+        // Jotta authenticates via an OIDC refresh blob, passed in through the
+        // password slot in the shape AeroFTP persists. The exported remote must
+        // carry a full oauth2 token (non-empty access_token placeholder +
+        // refresh_token + past expiry) and `configVersion = 1`, otherwise
+        // rclone rejects it ("outdated config" / "no refresh token").
+        let servers = vec![RcloneExportServer {
+            name: "Jotta".to_string(),
+            host: "jfs.jottacloud.com".to_string(),
+            port: 443,
+            username: "deviceuser".to_string(),
+            protocol: Some("jottacloud".to_string()),
+            options: None,
+            provider_id: Some("jottacloud".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert(
+            "Jotta".to_string(),
+            r#"{"refresh_token":"rt-secret","token_endpoint":"https://id.jottacloud.com/auth/realms/jottacloud/protocol/openid-connect/token","username":"deviceuser"}"#
+                .to_string(),
+        );
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-rclone-jotta.conf");
+        let exported = export_rclone(&servers, &passwords, &tmp).expect("should export");
+        assert_eq!(exported, 1);
+        let content = std::fs::read_to_string(&tmp).expect("read export");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(content.contains("type = jottacloud"));
+        assert!(content.contains("user = deviceuser"));
+        assert!(content.contains("\"refresh_token\":\"rt-secret\""));
+        assert!(content.contains("\"access_token\":\"expired\""));
+        assert!(content.contains(
+            "token_endpoint = https://id.jottacloud.com/auth/realms/jottacloud/protocol/openid-connect/token"
+        ));
+        assert!(content.contains("configVersion = 1"));
+    }
+
+    #[test]
     fn test_export_rclone_ftps_uses_explicit_tls_only() {
         // rclone treats `tls = true` as implicit FTPS and rejects it when
         // `explicit_tls = true` is also present. AeroFTP's `ftps` profiles are
@@ -2032,6 +2460,446 @@ user = t
             swift.credential.as_deref(),
             Some("148%BlomPass"),
             "swift key must round-trip as plaintext"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_filen_roundtrip() {
+        // #128: a Filen profile exports to rclone's `filen` backend as
+        // `email` + obscured `password` + obscured `api_key`, and imports back
+        // to the same account (password as the credential, api_key relocated
+        // into options.filen_api_key for the vault).
+        let servers = vec![RcloneExportServer {
+            name: "filen-acct".to_string(),
+            host: "filen.io".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("filen".to_string()),
+            options: Some(serde_json::json!({ "filen_api_key": "secret-cli-key" })),
+            provider_id: Some("filen".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("filen-acct".to_string(), "S3cr3tPass!".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-filen.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = filen"), "missing type:\n{conf}");
+        assert!(
+            conf.contains("email = me@example.com"),
+            "missing email:\n{conf}"
+        );
+        assert!(
+            conf.contains("password = ") && !conf.contains("password = S3cr3tPass!"),
+            "password must be present and obscured:\n{conf}"
+        );
+        assert!(
+            conf.contains("api_key = ") && !conf.contains("api_key = secret-cli-key"),
+            "api_key must be present and obscured:\n{conf}"
+        );
+
+        let result = import_rclone(&tmp_write(&conf, "aeroftp-test-import-filen.conf")).unwrap();
+        let filen = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("filen"))
+            .expect("filen server present");
+        assert_eq!(filen.username, "me@example.com");
+        assert_eq!(
+            filen.credential.as_deref(),
+            Some("S3cr3tPass!"),
+            "password must round-trip"
+        );
+        assert_eq!(
+            filen
+                .options
+                .as_ref()
+                .and_then(|o| o.get("filen_api_key"))
+                .and_then(|v| v.as_str()),
+            Some("secret-cli-key"),
+            "api_key must round-trip into options.filen_api_key"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_filen_without_api_key_emits_guidance_comment() {
+        // #128-D: rclone's `filen` backend marks `api_key` Required and cannot
+        // derive it from the password. A Filen profile saved with only
+        // email+password (no Filen CLI API Key) must export `type = filen` +
+        // email + password PLUS a guidance comment, NEVER a half-remote with a
+        // missing api_key that fails at use with "input too short".
+        let servers = vec![RcloneExportServer {
+            name: "filen-noapikey".to_string(),
+            host: "filen.io".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("filen".to_string()),
+            options: None,
+            provider_id: Some("filen".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("filen-noapikey".to_string(), "S3cr3tPass!".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-filen-noapikey.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = filen"), "missing type:\n{conf}");
+        assert!(
+            conf.contains("email = me@example.com"),
+            "missing email:\n{conf}"
+        );
+        assert!(
+            conf.contains("password = ") && !conf.contains("password = S3cr3tPass!"),
+            "password must be present and obscured:\n{conf}"
+        );
+        // No api_key value line, but a guidance comment must appear.
+        let has_real_api_key_line = conf
+            .lines()
+            .any(|l| l.trim_start().starts_with("api_key ="));
+        assert!(
+            !has_real_api_key_line,
+            "must NOT emit a broken api_key line:\n{conf}"
+        );
+        assert!(
+            conf.contains("# api_key required but unavailable"),
+            "must emit the api_key guidance comment:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_onedrive_emits_drive_id_and_type() {
+        // #128-D: rclone's `onedrive` backend needs `drive_id` + `drive_type`
+        // (it fails at use with "unable to get drive_id and drive_type"). AeroFTP
+        // captures both at connect and the bridge injects them into options; the
+        // export arm must emit them verbatim.
+        let servers = vec![RcloneExportServer {
+            name: "onedrive-acct".to_string(),
+            host: "graph.microsoft.com".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("onedrive".to_string()),
+            options: Some(serde_json::json!({
+                "drive_id": "D980DD4FB1784A97",
+                "drive_type": "personal",
+                "__aeroftp_oauth_token": "{\"access_token\":\"tok\",\"token_type\":\"Bearer\"}",
+                "__aeroftp_oauth_client_id": "cid",
+                "__aeroftp_oauth_client_secret": "csec",
+            })),
+            provider_id: Some("onedrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-onedrive.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("type = onedrive"), "type:\n{conf}");
+        assert!(
+            conf.contains("drive_id = D980DD4FB1784A97"),
+            "must emit drive_id:\n{conf}"
+        );
+        assert!(
+            conf.contains("drive_type = personal"),
+            "must emit drive_type:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_import_rclone_filen_reveals_real_rclone_obscured() {
+        // The obscured values below were produced by the real rclone binary
+        // (`rclone obscure`), so this pins our reveal codec to rclone's actual
+        // output for the `filen` backend's IsPassword fields.
+        let conf = "\
+[filen-real]
+type = filen
+email = real@example.com
+password = MohwAn6swmCQmBhRD-iaWciNBrBXM-ph2axM
+api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
+";
+        let path = tmp_write(conf, "aeroftp-test-import-filen-real.conf");
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let filen = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("filen"))
+            .expect("filen server present");
+        assert_eq!(filen.username, "real@example.com");
+        assert_eq!(filen.credential.as_deref(), Some("TestPass123"));
+        assert_eq!(
+            filen
+                .options
+                .as_ref()
+                .and_then(|o| o.get("filen_api_key"))
+                .and_then(|v| v.as_str()),
+            Some("fake-api-key-abc"),
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_backblaze_key_is_plaintext() {
+        // AeroFTP's native Backblaze protocol exports to rclone's `b2` backend.
+        // `key` is NOT an rclone IsPassword field, so it must be emitted plain
+        // (verified against `rclone config providers`: b2.key IsPassword=false).
+        let servers = vec![RcloneExportServer {
+            name: "b2-acct".to_string(),
+            host: "api.backblazeb2.com".to_string(),
+            port: 443,
+            username: "0011deadbeef".to_string(),
+            protocol: Some("backblaze".to_string()),
+            options: Some(serde_json::json!({ "bucket": "my-bucket" })),
+            provider_id: Some("backblaze-native".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("b2-acct".to_string(), "K001abcdEFG키".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-b2.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = b2"), "missing type:\n{conf}");
+        assert!(
+            conf.contains("account = 0011deadbeef"),
+            "missing account:\n{conf}"
+        );
+        assert!(
+            conf.contains("key = K001abcdEFG키"),
+            "b2 key must be emitted plain, not obscured:\n{conf}"
+        );
+    }
+
+    /// #128-D: `aeroftp_token_to_rclone` is the exact inverse of
+    /// `rclone_token_to_aeroftp`. An rclone token blob converted into AeroFTP's
+    /// `StoredTokens` shape and back must preserve every field, so an exported
+    /// remote carries the same credentials rclone produced.
+    #[test]
+    fn test_token_conversion_roundtrips_both_ways() {
+        let rclone_blob = r#"{
+            "access_token": "ya29.aShortLived",
+            "token_type": "Bearer",
+            "refresh_token": "1//04longLivedRefresh",
+            "expiry": "2030-06-01T08:30:00Z"
+        }"#;
+        let aero = rclone_token_to_aeroftp(rclone_blob).expect("rclone -> aero");
+        let back = aeroftp_token_to_rclone(&aero).expect("aero -> rclone");
+        let parsed: serde_json::Value = serde_json::from_str(&back).unwrap();
+        assert_eq!(parsed["access_token"], "ya29.aShortLived");
+        assert_eq!(parsed["token_type"], "Bearer");
+        assert_eq!(parsed["refresh_token"], "1//04longLivedRefresh");
+        // 2030-06-01T08:30:00Z survives the Unix round-trip.
+        assert_eq!(parsed["expiry"], "2030-06-01T08:30:00Z");
+    }
+
+    /// A `StoredTokens` value with no usable access token must not produce a
+    /// token line (the export arm then emits the reconnect guidance instead).
+    #[test]
+    fn test_aeroftp_token_to_rclone_rejects_empty_access() {
+        assert!(aeroftp_token_to_rclone(r#"{"access_token":""}"#).is_none());
+        assert!(aeroftp_token_to_rclone(r#"{"refresh_token":"r"}"#).is_none());
+    }
+
+    /// #128-D: every OAuth-token provider exports a USABLE rclone remote when
+    /// the export path injected the token + BYO client_id/secret, and the token
+    /// re-imports to the same AeroFTP profile. Drive/Dropbox/OneDrive/Box/
+    /// pCloud/Yandex share the same code path; the table pins each backend type.
+    #[test]
+    fn test_export_rclone_oauth_providers_roundtrip() {
+        let cases = [
+            ("googledrive", "drive"),
+            ("dropbox", "dropbox"),
+            ("onedrive", "onedrive"),
+            ("box", "box"),
+            ("pcloud", "pcloud"),
+            ("yandexdisk", "yandex"),
+        ];
+        // The injected token is AeroFTP's StoredTokens shape (Unix expires_at).
+        let stored_tokens = r#"{"access_token":"acc-123","refresh_token":"ref-456","expires_at":1893499200,"token_type":"Bearer","scopes":[]}"#;
+        for (protocol, rclone_type) in cases {
+            let servers = vec![RcloneExportServer {
+                name: format!("{}-acct", protocol),
+                host: "example.com".to_string(),
+                port: 443,
+                username: "me@example.com".to_string(),
+                protocol: Some(protocol.to_string()),
+                options: Some(serde_json::json!({
+                    "__aeroftp_oauth_token": stored_tokens,
+                    "__aeroftp_oauth_client_id": "client-id-xyz",
+                    "__aeroftp_oauth_client_secret": "client-secret-xyz",
+                })),
+                provider_id: Some(protocol.to_string()),
+            }];
+            let passwords = HashMap::new();
+            let tmp = std::env::temp_dir().join(format!("aeroftp-test-oauth-{}.conf", protocol));
+            export_rclone(&servers, &passwords, &tmp).expect("should export");
+            let conf = std::fs::read_to_string(&tmp).expect("read conf");
+            std::fs::remove_file(&tmp).ok();
+
+            assert!(
+                conf.contains(&format!("type = {}", rclone_type)),
+                "{protocol}: expected rclone type {rclone_type}:\n{conf}"
+            );
+            assert!(
+                conf.contains("client_id = client-id-xyz"),
+                "{protocol}: client_id must be emitted:\n{conf}"
+            );
+            assert!(
+                conf.contains("client_secret = client-secret-xyz"),
+                "{protocol}: client_secret must be emitted:\n{conf}"
+            );
+            assert!(
+                conf.contains("token = ") && conf.contains("acc-123"),
+                "{protocol}: token blob must be emitted:\n{conf}"
+            );
+            // The private injection keys must never leak into the config.
+            assert!(
+                !conf.contains("__aeroftp_oauth"),
+                "{protocol}: private injection keys must not leak:\n{conf}"
+            );
+
+            // Re-import recovers the token onto the same protocol.
+            let result = import_rclone(&tmp_write(
+                &conf,
+                &format!("aeroftp-reimport-{}.conf", protocol),
+            ))
+            .unwrap();
+            let server = result
+                .servers
+                .iter()
+                .find(|s| s.protocol.as_deref() == Some(protocol))
+                .unwrap_or_else(|| panic!("{protocol}: server must re-import:\n{conf}"));
+            let secrets = result
+                .provider_secrets
+                .get(&server.id)
+                .unwrap_or_else(|| panic!("{protocol}: provider_secrets must carry the token"));
+            let oauth = secrets.oauth.as_deref().expect("oauth blob present");
+            let parsed: serde_json::Value = serde_json::from_str(oauth).unwrap();
+            assert_eq!(parsed["access_token"], "acc-123", "{protocol}");
+            assert_eq!(parsed["refresh_token"], "ref-456", "{protocol}");
+            // BYO app credentials recovered for a fresh-device reconnect.
+            assert_eq!(
+                secrets.oauth_client_id.as_deref(),
+                Some("client-id-xyz"),
+                "{protocol}: client_id must round-trip"
+            );
+            assert_eq!(
+                secrets.oauth_client_secret.as_deref(),
+                Some("client-secret-xyz"),
+                "{protocol}: client_secret must round-trip"
+            );
+        }
+    }
+
+    /// #128-D: pCloud's rclone `hostname` must be a real API host, not the
+    /// display label AeroFTP stores in `host`. US omits it (rclone default
+    /// api.pcloud.com); EU emits eapi.pcloud.com. Region may arrive via the
+    /// host label or `options.region`.
+    #[test]
+    fn test_export_rclone_pcloud_region_hostname() {
+        // US profile: host is a display label, no options.region -> no hostname.
+        let us = vec![RcloneExportServer {
+            name: "pcloud-us".to_string(),
+            host: "pCloud (US)".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("pcloud".to_string()),
+            options: None,
+            provider_id: Some("pcloud".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-pcloud-us.conf");
+        export_rclone(&us, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("type = pcloud"), "type:\n{conf}");
+        assert!(
+            !conf.contains("hostname ="),
+            "US must omit hostname (rclone defaults to api.pcloud.com):\n{conf}"
+        );
+        assert!(
+            !conf.contains("pCloud (US)"),
+            "the display label must never be emitted as a hostname:\n{conf}"
+        );
+
+        // EU via the host label.
+        let eu = vec![RcloneExportServer {
+            name: "pcloud-eu".to_string(),
+            host: "pCloud (EU)".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("pcloud".to_string()),
+            options: None,
+            provider_id: Some("pcloud".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-pcloud-eu.conf");
+        export_rclone(&eu, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            conf.contains("hostname = eapi.pcloud.com"),
+            "EU must emit eapi.pcloud.com:\n{conf}"
+        );
+
+        // EU via options.region, and the import maps the hostname back to region.
+        let eu2 = vec![RcloneExportServer {
+            name: "pcloud-eu2".to_string(),
+            host: "anything".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("pcloud".to_string()),
+            options: Some(serde_json::json!({ "region": "EU" })),
+            provider_id: Some("pcloud".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-pcloud-eu2.conf");
+        export_rclone(&eu2, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("hostname = eapi.pcloud.com"), "EU2:\n{conf}");
+        let result = import_rclone(&tmp_write(&conf, "aeroftp-reimport-pcloud-eu.conf")).unwrap();
+        let p = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("pcloud"))
+            .expect("pcloud server");
+        assert_eq!(p.host, "eapi.pcloud.com", "host maps to EU API");
+        assert_eq!(
+            p.options
+                .as_ref()
+                .and_then(|o| o.get("region"))
+                .and_then(|v| v.as_str()),
+            Some("eu"),
+            "imported region must be EU"
+        );
+    }
+
+    /// Without injected secrets the OAuth arm must emit a `reconnect` guidance
+    /// comment, never a half-formed `token =` line: no silently broken remote.
+    #[test]
+    fn test_export_rclone_oauth_without_secrets_emits_reconnect_comment() {
+        let servers = vec![RcloneExportServer {
+            name: "drive-noauth".to_string(),
+            host: "www.googleapis.com".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("googledrive".to_string()),
+            options: None,
+            provider_id: Some("googledrive".to_string()),
+        }];
+        let passwords = HashMap::new();
+        let tmp = std::env::temp_dir().join("aeroftp-test-oauth-noauth.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("type = drive"), "type present:\n{conf}");
+        assert!(
+            !conf.contains("token = "),
+            "must not emit a token line without credentials:\n{conf}"
+        );
+        assert!(
+            conf.contains("rclone config reconnect"),
+            "must emit reconnect guidance:\n{conf}"
         );
     }
 
@@ -2285,6 +3153,104 @@ user = t
         assert!(
             !conf.contains("no_check_certificate"),
             "public endpoint must keep cert verification:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_rejects_ini_section_injection() {
+        // A profile whose host/username/options carry CR/LF must not be able to
+        // forge a second [section] in the generated rclone.conf.
+        let servers = vec![RcloneExportServer {
+            name: "victim".to_string(),
+            host: "h\n[evil]\ntype = local".to_string(),
+            port: 21,
+            username: "u\r\n[evil2]\ntype = local".to_string(),
+            protocol: Some("ftp".to_string()),
+            options: Some(serde_json::json!({ "bucket": "b\n[evil3]\ntype = local" })),
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("victim".to_string(), "p\n[evil4]\ntype = local".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-ini-injection.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        // The injected text may survive as an inline substring of a value line
+        // (e.g. `host = h[evil]type = local`), which is harmless; what must NOT
+        // happen is a forged section header or backend line of its own. Check
+        // line-anchored.
+        for line in conf.lines() {
+            let t = line.trim();
+            assert!(
+                !t.starts_with("[evil"),
+                "forged section header must not be its own line: {line:?}\n{conf}"
+            );
+            assert_ne!(
+                t, "type = local",
+                "forged backend line must not appear: {line:?}\n{conf}"
+            );
+        }
+        // Exactly one real section header for the single exported remote.
+        let headers: Vec<&str> = conf
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with('[') && l.ends_with(']'))
+            .collect();
+        assert_eq!(
+            headers,
+            ["[victim]"],
+            "exactly one real section header expected:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_b2_key_rejects_ini_injection() {
+        // F-05: the ftp test above only exercises obscure_password (base64,
+        // newline-free). Backblaze b2 writes the application key verbatim and so
+        // MUST run it through ini_value; a CR/LF key must not forge a second
+        // [section]. This regresses F-01 (the b2 gap that skipped ini_value).
+        let servers = vec![RcloneExportServer {
+            name: "victim".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "account-key-id".to_string(),
+            protocol: Some("backblaze".to_string()),
+            options: None,
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert(
+            "victim".to_string(),
+            "appkey\n[evil]\ntype = local".to_string(),
+        );
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-ini-injection-b2.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        for line in conf.lines() {
+            let t = line.trim();
+            assert!(
+                !t.starts_with("[evil"),
+                "b2 forged section header on its own line: {line:?}\n{conf}"
+            );
+            assert_ne!(
+                t, "type = local",
+                "b2 forged backend line: {line:?}\n{conf}"
+            );
+        }
+        let headers: Vec<&str> = conf
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with('[') && l.ends_with(']'))
+            .collect();
+        assert_eq!(
+            headers,
+            ["[victim]"],
+            "exactly one real section header expected:\n{conf}"
         );
     }
 }

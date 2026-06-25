@@ -130,6 +130,7 @@ mod tests {
                 DispatchRoute::Gui,
             ),
             (vec!["aeroftp", "/tmp/x.aerovault"], DispatchRoute::Gui),
+            (vec!["aeroftp", "/tmp/x.aerozip"], DispatchRoute::Gui),
             (vec!["aeroftp", "/etc/hostname"], DispatchRoute::Gui),
             (vec!["aftp", "ls"], DispatchRoute::Cli),
             (vec!["aeroftp-cli", "ls"], DispatchRoute::Cli),

@@ -77,6 +77,12 @@ export interface CatalogCompany {
     freeStorageGb: number | null;
     /** Short qualifier when freeStorageGb is null or needs nuance. */
     freeNote?: string;
+    /** The company HAS a genuine (typically permanent) free allowance, but
+     *  signup REQUIRES a credit card / payment method on file (e.g. Amazon S3,
+     *  Azure Blob, Yandex Object Storage). This is the "third state" between a
+     *  no-card free tier and a paid-only product: such companies are kept OUT
+     *  of the paid bucket but marked distinctly. See `companyTier`. */
+    freeRequiresCard?: boolean;
     /** Reachability probe URL (global API endpoint). Omitted for
      *  per-account / self-hosted services, which then show no health dot. */
     healthCheckUrl?: string;
@@ -84,6 +90,17 @@ export interface CatalogCompany {
      *  used when the user clicks the row (rather than a specific badge). */
     protocols: CatalogProtocolRef[];
 }
+
+/**
+ * Providers kept in the codebase for DEV work but hidden from the production UI
+ * until they are ready: Blomp (storage proxy 403, awaiting a reliable API) and
+ * Google Photos (Photos API problem, fix pending on our side). Single source for
+ * the "disabled in production, available in DEV" rule applied across the provider
+ * lists (Discover catalog, Providers & Integrations dialog, protocol grid).
+ */
+export const DEV_ONLY_LOGO_IDS: ReadonlySet<string> = new Set(['blomp', 'googlephotos']);
+
+export const isDevOnlyProvider = (logoId: string): boolean => DEV_ONLY_LOGO_IDS.has(logoId);
 
 /**
  * The catalog. Ordered by descending free storage for readability; the
@@ -110,9 +127,9 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Blomp', logoId: 'blomp', countryCode: 'US', freeStorageGb: 20,
       freeNote: 'referral bonus',
       protocols: [{ label: 'Swift', protocol: 'swift', providerId: 'blomp', category: 'cloud-storage' }] },
-    { company: 'Storj', logoId: 'storj', countryCode: 'US', freeStorageGb: 25,
-      freeNote: 'decentralized',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'storj', category: 'object-storage' }] },
+    { company: 'Storj', logoId: 'storj', countryCode: 'US', freeStorageGb: null,
+      freeNote: '30-day trial',
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'storj', category: 'object-storage', paid: true }] },
     { company: 'Google Drive', logoId: 'googledrive', countryCode: 'US', freeStorageGb: 15,
       healthCheckUrl: 'https://www.googleapis.com',
       protocols: [{ label: 'OAuth', protocol: 'googledrive', category: 'cloud-storage' }] },
@@ -153,14 +170,15 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           { label: 'API', protocol: 'backblaze', providerId: 'backblaze-native', category: 'cloud-storage' },
           { label: 'S3', protocol: 's3', providerId: 'backblaze', category: 'object-storage' },
       ] },
-    { company: 'IDrive e2', logoId: 'idrive-e2', countryCode: 'US', freeStorageGb: 10,
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'idrive-e2', category: 'object-storage' }] },
+    { company: 'IDrive e2', logoId: 'idrive-e2', countryCode: 'US', freeStorageGb: null,
+      freeNote: '7-day trial',
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'idrive-e2', category: 'object-storage', paid: true }] },
     { company: 'Cloudflare R2', logoId: 'cloudflare-r2', countryCode: 'US', freeStorageGb: 10,
-      freeNote: 'egress-free',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'cloudflare-r2', category: 'object-storage' }] },
+      freeNote: 'egress-free, card req.', freeRequiresCard: true,
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'cloudflare-r2', category: 'object-storage', paid: true }] },
     { company: 'Oracle Cloud', logoId: 'oracle-cloud', countryCode: 'US', freeStorageGb: 20,
-      freeNote: 'always-free',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'oracle-cloud', category: 'object-storage' }] },
+      freeNote: 'always-free, card req.', freeRequiresCard: true,
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'oracle-cloud', category: 'object-storage', paid: true }] },
     { company: 'OneDrive', logoId: 'onedrive', countryCode: 'US', freeStorageGb: 5,
       healthCheckUrl: 'https://graph.microsoft.com',
       protocols: [{ label: 'OAuth', protocol: 'onedrive', category: 'cloud-storage' }] },
@@ -182,12 +200,12 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           { label: 'OAuth', protocol: 'yandexdisk', category: 'cloud-storage' },
           { label: 'WebDAV', protocol: 'webdav', providerId: 'yandexdisk-webdav', category: 'webdav' },
       ] },
-    { company: 'Yandex Object Storage', logoId: 'yandex-storage', countryCode: 'RU', freeStorageGb: null,
-      freeNote: 'paid plan',
+    { company: 'Yandex Object Storage', logoId: 'yandex-storage', countryCode: 'RU', freeStorageGb: 1,
+      freeNote: 'always-free, card req.', freeRequiresCard: true,
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'yandex-storage', category: 'object-storage', paid: true, note: 'Yandex Object Storage' }] },
     { company: 'Google Cloud Storage', logoId: 'google-cloud-storage', countryCode: 'US', freeStorageGb: 5,
-      freeNote: 'always-free tier', healthCheckUrl: 'https://storage.googleapis.com',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'google-cloud-storage', category: 'object-storage' }] },
+      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://storage.googleapis.com',
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'google-cloud-storage', category: 'object-storage', paid: true }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 3,
@@ -199,7 +217,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Internxt', logoId: 'internxt', countryCode: 'ES', freeStorageGb: 1,
       freeNote: 'E2E', healthCheckUrl: 'https://api.internxt.com',
       protocols: [{ label: 'API', protocol: 'internxt', category: 'cloud-storage' }] },
-    { company: 'FileLu', logoId: 'filelu', countryCode: 'US', freeStorageGb: 1,
+    { company: 'FileLu', logoId: 'filelu', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://filelu.com',
       protocols: [
           { label: 'API', protocol: 'filelu', category: 'cloud-storage' },
@@ -211,14 +229,14 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Jianguoyun', logoId: 'jianguoyun', countryCode: 'CN', freeStorageGb: 1,
       freeNote: 'monthly traffic cap',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'jianguoyun', category: 'webdav' }] },
-    { company: 'Felicloud', logoId: 'felicloud', countryCode: '', freeStorageGb: null,
+    { company: 'Felicloud', logoId: 'felicloud', countryCode: '', freeStorageGb: 10,
       freeNote: 'Nextcloud host',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'felicloud', category: 'webdav' }] },
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
       protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
-    { company: 'Amazon S3', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: null,
-      freeNote: '5 GB 12-month trial', healthCheckUrl: 'https://s3.amazonaws.com',
+    { company: 'Amazon S3', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
+      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://s3.amazonaws.com',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', category: 'object-storage', paid: true }] },
     { company: 'Wasabi', logoId: 'wasabi', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
@@ -226,21 +244,21 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'DigitalOcean Spaces', logoId: 'digitalocean-spaces', countryCode: 'US', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'digitalocean-spaces', category: 'object-storage', paid: true }] },
-    { company: 'Alibaba OSS', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: null,
-      freeNote: 'paid plan',
+    { company: 'Alibaba OSS', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: 5,
+      freeNote: 'overseas only, card req.', freeRequiresCard: true,
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'alibaba-oss', category: 'object-storage', paid: true }] },
     { company: 'Tencent COS', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
-      freeNote: 'paid plan',
+      freeNote: '6-month trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'tencent-cos', category: 'object-storage', paid: true }] },
-    { company: 'Azure Blob', logoId: 'azure', countryCode: 'US', freeStorageGb: null,
-      freeNote: '12-month trial', healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
+    { company: 'Azure Blob', logoId: 'azure', countryCode: 'US', freeStorageGb: 5,
+      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
       protocols: [{ label: 'Blob', protocol: 'azure', category: 'object-storage', paid: true }] },
     { company: 'Hetzner Storage Box', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', category: 'protocols', paid: true }] },
-    { company: 'Tab.digital', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: null,
+    { company: 'Tab.digital', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: 8,
       freeNote: 'managed Nextcloud',
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav', paid: true }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav' }] },
     { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: 16,
       freeNote: 'managed Immich', healthCheckUrl: 'https://pixelunion.eu',
       protocols: [{ label: 'API', protocol: 'immich', providerId: 'pixelunion', category: 'media-services' }] },
@@ -285,6 +303,22 @@ export function paidProtocols(c: CatalogCompany): CatalogProtocolRef[] {
 /** True when the company has at least one free-tier connection method. */
 export function hasFreeTier(c: CatalogCompany): boolean {
     return c.protocols.some(p => !p.paid);
+}
+
+/**
+ * The three commercial buckets the list-view tier filter sorts companies into:
+ * - `free`      : a free tier you can use without a credit card (Tab.digital, MEGA, ...).
+ * - `free-card` : a genuine free allowance, but signup requires a card on file
+ *                 (Amazon S3, Azure Blob, Yandex Object Storage). Kept OUT of paid.
+ * - `paid`      : no free tier at all, only a trial and/or paid plans (Wasabi,
+ *                 DigitalOcean Spaces, Hetzner, MEGA S4, Alibaba OSS, Tencent COS).
+ */
+export type CompanyTier = 'free' | 'free-card' | 'paid';
+
+/** Classify a company into its commercial bucket for the tier filter. */
+export function companyTier(c: CatalogCompany): CompanyTier {
+    if (c.freeRequiresCard) return 'free-card';
+    return hasFreeTier(c) ? 'free' : 'paid';
 }
 
 /** True when any of the company's connection methods belongs to `category`. */
@@ -362,6 +396,7 @@ export interface CliCatalogCompany {
     country: string;
     freeGb: number | null;
     freeNote: string | null;
+    freeRequiresCard: boolean;
     regions: string[];
     protocols: CliCatalogProtocol[];
 }
@@ -379,6 +414,7 @@ export function buildCliCatalog(): CliCatalogCompany[] {
         country: c.countryCode,
         freeGb: c.freeStorageGb,
         freeNote: c.freeNote ?? null,
+        freeRequiresCard: !!c.freeRequiresCard,
         regions: companyRegions(c),
         protocols: c.protocols.map(p => ({
             label: p.label,
@@ -407,7 +443,9 @@ function mdCell(s: string): string {
  * em-dash in user-facing output).
  */
 export function buildProvidersMarkdown(): string {
-    const rows = [...PROVIDER_CATALOG]
+    // Public docs never list dev-only providers (Blomp, Google Photos).
+    const publicCatalog = PROVIDER_CATALOG.filter(c => !isDevOnlyProvider(c.logoId));
+    const rows = [...publicCatalog]
         .sort((a, b) => a.company.toLowerCase().localeCompare(b.company.toLowerCase(), 'en'))
         .map(c => {
             const hq = c.countryCode ? c.countryCode.toUpperCase() : '-';
@@ -424,7 +462,7 @@ export function buildProvidersMarkdown(): string {
             return `| ${mdCell(c.company)} | ${hq} | ${mdCell(free)} | ${mdCell(methods)} |`;
         });
 
-    const methodCount = PROVIDER_CATALOG.reduce((n, c) => n + c.protocols.length, 0);
+    const methodCount = publicCatalog.reduce((n, c) => n + c.protocols.length, 0);
 
     return [
         '<!-- Generated from src/components/providerCatalog.ts by `npm run gen:providers-table`. Do not edit by hand. -->',
@@ -433,7 +471,7 @@ export function buildProvidersMarkdown(): string {
         '| --- | --- | --- | --- |',
         ...rows,
         '',
-        `<sub>${PROVIDER_CATALOG.length} providers, ${methodCount} connection methods. \`*\` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>`,
+        `<sub>${publicCatalog.length} providers, ${methodCount} connection methods. \`*\` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>`,
     ].join('\n');
 }
 

@@ -320,6 +320,7 @@ pub fn import_duplicacy_with_env(
             credential,
             has_stored_credential,
             public_url_base: None,
+            ..Default::default()
         });
     }
 

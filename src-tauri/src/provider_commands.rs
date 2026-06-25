@@ -207,6 +207,38 @@ impl Drop for ConnectTokenGuard<'_> {
     }
 }
 
+/// Run a connect future, abortable via the shared [`ConnectionCancelRegistry`]
+/// under `connect_token`, returning `CONNECT_CANCELLED` if an Esc / "still
+/// connecting" Cancel fires first. Registers the token for the future's
+/// lifetime (de-registered by a drop guard on every exit path) and races it
+/// against `token.cancelled()` with `tokio::select!`; dropping the future on
+/// cancel tears down the in-flight work (HTTP connect, subprocess) cleanly.
+///
+/// When `connect_token` is `None` the future simply runs to completion with no
+/// cancellation point. This is the same plumbing `provider_connect` does inline
+/// (#270.5), factored out so the OAuth connect path and the MEGAcmd WebDAV URL
+/// preflight, which run outside `provider_connect`, become cancellable too
+/// (#360).
+pub(crate) async fn run_cancellable_connect<T, F>(
+    cancel_registry: &ConnectionCancelRegistry,
+    connect_token: Option<&str>,
+    fut: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    let cancel_token = connect_token.map(|key| cancel_registry.register(key));
+    let _cancel_guard =
+        connect_token.map(|key| ConnectTokenGuard::new(cancel_registry, key.to_string()));
+    match cancel_token.as_ref() {
+        Some(token) => tokio::select! {
+            res = fut => res,
+            _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
+        },
+        None => fut.await,
+    }
+}
+
 /// RAII guard around `ProviderState::in_flight_transfers`. Acquired by the
 /// command-level entry points before they hand a `SharedProvider` clone to
 /// a spawned DAG transfer task and dropped only when that task returns,
@@ -1032,6 +1064,60 @@ pub async fn provider_check_connection(
             server_info: None,
         }),
     }
+}
+
+/// Lightweight liveness probe for the currently connected provider (#128-C).
+///
+/// Runs a bare `list(".")` on the active session and reports whether it
+/// succeeds, WITHOUT the silent-reconnect retry that `provider_list_files`
+/// performs. That reconnect would re-run the provider login (for Filen / MEGA /
+/// Internxt a fresh TOTP window), which is exactly what the caller wants to
+/// avoid: re-entering an already-connected 2FA account through the 🏠 Home
+/// button must not force a new 2FA code. `Ok(false)` (no provider, not
+/// connected, or the list failed) tells the UI to fall back to the normal
+/// disconnect + reconnect flow.
+#[tauri::command]
+pub async fn provider_probe_alive(
+    state: State<'_, ProviderState>,
+    protocol: Option<String>,
+    username: Option<String>,
+) -> Result<bool, String> {
+    // The backend keeps only the most-recently-connected provider (single slot).
+    // Confirm that slot still holds THIS account before probing, so a probe can
+    // never make the UI reuse a different account's live session.
+    {
+        let config_lock = state.config.lock().await;
+        let Some(config) = config_lock.as_ref() else {
+            return Ok(false);
+        };
+        // Normalize to lowercase alphanumerics so `filen`/`Filen`, `s3`/`S3`,
+        // `googledrive`/`GoogleDrive` all compare equal across the IPC boundary.
+        let norm = |s: &str| -> String {
+            s.chars()
+                .filter(char::is_ascii_alphanumeric)
+                .flat_map(char::to_lowercase)
+                .collect()
+        };
+        if let Some(expected) = protocol.as_deref() {
+            let actual = format!("{:?}", config.provider_type);
+            if norm(&actual) != norm(expected) {
+                return Ok(false);
+            }
+        }
+        if let (Some(expected), Some(actual)) = (username.as_deref(), config.username.as_deref()) {
+            if !expected.is_empty() && !expected.eq_ignore_ascii_case(actual) {
+                return Ok(false);
+            }
+        }
+    }
+    let mut provider_lock = state.provider.lock().await;
+    let Some(provider) = provider_lock.as_mut() else {
+        return Ok(false);
+    };
+    if !provider.is_connected() {
+        return Ok(false);
+    }
+    Ok(provider.list(".").await.is_ok())
 }
 
 /// List files in the specified path
@@ -3654,6 +3740,12 @@ pub struct OAuthConnectionParams {
     /// When omitted the legacy singleton key is used. Issue #214.
     #[serde(default)]
     pub profile_id: String,
+    /// #360: frontend-generated token identifying this connect attempt. When
+    /// present, `oauth2_full_auth` / `oauth2_connect` register a cancellation
+    /// token under it so an Esc / "still connecting" Cancel can abort them via
+    /// `cancel_connection`. Absent for callers that opt out.
+    #[serde(default, alias = "connectToken")]
+    pub connect_token: Option<String>,
 }
 
 fn default_region() -> String {
@@ -3764,6 +3856,7 @@ pub struct OAuth2ConnectResult {
 #[tauri::command]
 pub async fn oauth2_connect(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{
@@ -3775,92 +3868,108 @@ pub async fn oauth2_connect(
 
     info!("Connecting to OAuth2 provider: {}", params.provider);
 
-    let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
-        "google_drive" | "googledrive" | "google" => {
-            let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
-            let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Google Drive connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "googlephotos" | "google_photos" => {
-            let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
-            let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Google Photos connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "dropbox" => {
-            let config = DropboxConfig::new(&params.client_id, &params.client_secret);
-            let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Dropbox connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "onedrive" | "microsoft" => {
-            let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
-            let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("OneDrive connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "box" => {
-            let config = BoxConfig {
-                client_id: params.client_id.clone(),
-                client_secret: params.client_secret.clone(),
-            };
-            let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Box connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "pcloud" => {
-            // pCloud tokens are region-locked: always prefer vault-stored region
-            // (detected during token exchange) over serde default "us"
-            let region = crate::credential_store::CredentialStore::from_cache()
-                .and_then(|store| store.get("oauth_pcloud_region").ok())
-                .unwrap_or(params.region.clone());
-            let config = PCloudConfig {
-                client_id: params.client_id.clone(),
-                client_secret: params.client_secret.clone(),
-                region,
-            };
-            let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("pCloud connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
-            let config =
-                ZohoWorkdriveConfig::new(&params.client_id, &params.client_secret, &params.region);
-            let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
-            p.connect()
-                .await
-                .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
-            Box::new(p)
-        }
-        "yandexdisk" | "yandex_disk" | "yandex" => {
-            // Yandex Disk OAuth: retrieve token from stored OAuth tokens
-            use crate::providers::{OAuth2Manager, OAuthProvider};
-            let manager = OAuth2Manager::new();
-            let tokens = manager
-                .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
-                .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
-            let mut p =
-                crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
-            p.connect()
-                .await
-                .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
-            Box::new(p)
-        }
-        other => return Err(format!("Unknown OAuth2 provider: {}", other)),
+    // #360: build + connect the provider under the connect token so an Esc /
+    // "still connecting" Cancel aborts a slow OAuth API connect (the My Servers
+    // OAuth path previously could not be cancelled at all).
+    let build_provider = async {
+        let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
+            "google_drive" | "googledrive" | "google" => {
+                let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
+                let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Google Drive connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "googlephotos" | "google_photos" => {
+                let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
+                let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Google Photos connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "dropbox" => {
+                let config = DropboxConfig::new(&params.client_id, &params.client_secret);
+                let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Dropbox connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "onedrive" | "microsoft" => {
+                let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
+                let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("OneDrive connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "box" => {
+                let config = BoxConfig {
+                    client_id: params.client_id.clone(),
+                    client_secret: params.client_secret.clone(),
+                };
+                let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Box connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "pcloud" => {
+                // pCloud tokens are region-locked: always prefer vault-stored region
+                // (detected during token exchange) over serde default "us"
+                let region = crate::credential_store::CredentialStore::from_cache()
+                    .and_then(|store| store.get("oauth_pcloud_region").ok())
+                    .unwrap_or(params.region.clone());
+                let config = PCloudConfig {
+                    client_id: params.client_id.clone(),
+                    client_secret: params.client_secret.clone(),
+                    region,
+                };
+                let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("pCloud connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
+                let config = ZohoWorkdriveConfig::new(
+                    &params.client_id,
+                    &params.client_secret,
+                    &params.region,
+                );
+                let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
+                Box::new(p)
+            }
+            "yandexdisk" | "yandex_disk" | "yandex" => {
+                // Yandex Disk OAuth: retrieve token from stored OAuth tokens
+                use crate::providers::{OAuth2Manager, OAuthProvider};
+                let manager = OAuth2Manager::new();
+                let tokens = manager
+                    .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
+                    .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
+                let mut p =
+                    crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
+                p.connect()
+                    .await
+                    .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
+                Box::new(p)
+            }
+            other => return Err(format!("Unknown OAuth2 provider: {}", other)),
+        };
+        Ok::<Box<dyn StorageProvider>, String>(provider)
     };
+
+    let provider = run_cancellable_connect(
+        &cancel_registry,
+        params.connect_token.as_deref(),
+        build_provider,
+    )
+    .await?;
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
@@ -3882,13 +3991,28 @@ pub async fn oauth2_connect(
 
 /// Full OAuth2 authentication flow - starts server, opens browser, waits for callback, completes auth
 #[tauri::command]
-pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, String> {
+pub async fn oauth2_full_auth(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    params: OAuthConnectionParams,
+) -> Result<String, String> {
     use crate::providers::{
         oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
         OAuth2Manager, OAuthConfig,
     };
 
     info!("Starting full OAuth2 flow for {}", params.provider);
+
+    // #360: register the connect token so an Esc / "still connecting" Cancel can
+    // abort the browser-callback wait below (the longest phase of the flow).
+    // The guard de-registers it on every exit path.
+    let cancel_token = params
+        .connect_token
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = params
+        .connect_token
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     // Some providers require exact redirect_uri matching, so use a fixed port
     let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
@@ -3975,6 +4099,16 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
             .map_err(|e| format!("Callback error: {}", e))?,
         _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
             return Err("OAuth timeout: no response within 5 minutes".to_string());
+        }
+        // #360: Esc / Cancel aborts the wait; dropping callback_task (AbortOnDrop)
+        // releases the bound listener port.
+        _ = async {
+            match cancel_token.as_ref() {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => {
+            return Err(CONNECT_CANCELLED.to_string());
         }
     };
 
@@ -4326,10 +4460,20 @@ pub async fn mega_df_query(profile_id: String) -> Result<(u64, u64), String> {
 /// Endpoint URL field can auto-fill instead of the user copying it from the
 /// MEGAcmd terminal (#215).
 #[tauri::command]
-pub async fn mega_webdav_url() -> Result<String, String> {
-    crate::providers::mega_df::mega_webdav_url_query()
-        .await
-        .map_err(|e| format!("{}", e))
+pub async fn mega_webdav_url(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    connect_token: Option<String>,
+) -> Result<String, String> {
+    // #360: this `mega-webdav /` blocks (up to its 30s timeout) when the MEGAcmd
+    // daemon is not running. The My Servers connect runs it as a preflight, so
+    // make it cancellable: an Esc / "still connecting" Cancel drops the future
+    // (which, with kill_on_drop, also tears down the blocked subprocess).
+    run_cancellable_connect(&cancel_registry, connect_token.as_deref(), async {
+        crate::providers::mega_df::mega_webdav_url_query()
+            .await
+            .map_err(|e| format!("{}", e))
+    })
+    .await
 }
 
 /// Get disk usage for a path in bytes
@@ -4962,6 +5106,10 @@ pub async fn provider_compare_directories(
 pub struct FourSharedAuthParams {
     pub consumer_key: String,
     pub consumer_secret: String,
+    /// #360: connect token for Esc / "still connecting" Cancel (see
+    /// `OAuthConnectionParams::connect_token`).
+    #[serde(default, alias = "connectToken")]
+    pub connect_token: Option<String>,
 }
 
 /// Result from starting 4shared OAuth flow
@@ -5088,10 +5236,23 @@ pub async fn fourshared_complete_auth(
 
 /// Full 4shared OAuth 1.0 flow: start server, open browser, wait for callback, exchange tokens
 #[tauri::command]
-pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String, String> {
+pub async fn fourshared_full_auth(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    params: FourSharedAuthParams,
+) -> Result<String, String> {
     use crate::providers::oauth1;
 
     info!("Starting full 4shared OAuth 1.0 flow");
+
+    // #360: register the connect token so Esc / Cancel can abort the callback wait.
+    let cancel_token = params
+        .connect_token
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = params
+        .connect_token
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -5130,14 +5291,23 @@ pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String
         port
     );
 
-    // Step 3: Wait for callback
-    let (token, verifier) = tokio::time::timeout(
-        tokio::time::Duration::from_secs(300),
-        wait_for_oauth1_callback(listener),
-    )
-    .await
-    .map_err(|_| "OAuth timeout: no response within 5 minutes".to_string())?
-    .map_err(|e| format!("Callback error: {}", e))?;
+    // Step 3: Wait for callback (cancellable via Esc / "still connecting", #360)
+    let (token, verifier) = tokio::select! {
+        res = tokio::time::timeout(
+            tokio::time::Duration::from_secs(300),
+            wait_for_oauth1_callback(listener),
+        ) => res
+            .map_err(|_| "OAuth timeout: no response within 5 minutes".to_string())?
+            .map_err(|e| format!("Callback error: {}", e))?,
+        _ = async {
+            match cancel_token.as_ref() {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => {
+            return Err(CONNECT_CANCELLED.to_string());
+        }
+    };
 
     if token != request_token {
         return Err("OAuth token mismatch: possible CSRF attack".to_string());
@@ -5368,12 +5538,14 @@ Connection: close
 #[tauri::command]
 pub async fn fourshared_connect(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: FourSharedAuthParams,
 ) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{types::FourSharedConfig, FourSharedProvider};
 
     info!("Connecting to 4shared...");
 
+    let connect_token = params.connect_token.clone();
     let (access_token, access_token_secret) = load_fourshared_tokens()?;
 
     let config = FourSharedConfig {
@@ -5384,10 +5556,14 @@ pub async fn fourshared_connect(
     };
 
     let mut provider = FourSharedProvider::new(config);
-    provider
-        .connect()
-        .await
-        .map_err(|e| format!("4shared connection failed: {}", e))?;
+    // #360: cancellable connect (Esc / "still connecting" Cancel).
+    run_cancellable_connect(&cancel_registry, connect_token.as_deref(), async {
+        provider
+            .connect()
+            .await
+            .map_err(|e| format!("4shared connection failed: {}", e))
+    })
+    .await?;
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
@@ -7484,11 +7660,12 @@ pub struct UsedScanProgress {
 }
 
 /// Explicit recursive "used storage" scan for the connected provider
-/// (item 4b). Shares `used_scan::scan_used_bytes` with the CLI so the
-/// method (S3 flat listing, WebDAV Depth:infinity, generic BFS) and caps
-/// are identical. NEVER called automatically: the GUI "Calculate used
-/// storage" action invokes it. Persisting the figure into the profile's
-/// lastQuota is done frontend-side (same path as the cached API quota).
+/// (item 4b). Shares the S3/WebDAV fast-path fallback semantics with
+/// `used_scan`, but keeps the GUI BFS inline so it can re-lock the
+/// provider per directory. NEVER called automatically: the GUI "Calculate
+/// used storage" action invokes it. Persisting the figure into the
+/// profile's lastQuota is done frontend-side (same path as the cached API
+/// quota).
 #[tauri::command]
 pub async fn provider_scan_used(
     state: State<'_, ProviderState>,
@@ -7517,27 +7694,23 @@ pub async fn provider_scan_used(
     };
 
     // --- Single-shot specializations (one short lock each) -------------
-    // S3: flat ListObjectsV2; WebDAV: PROPFIND Depth:infinity. These are a
-    // single request, so holding the lock briefly does not freeze the UI.
+    // S3: flat ListObjectsV2; WebDAV: PROPFIND Depth:infinity. The shared
+    // helper treats any fast-path failure, and empty/non-recursed WebDAV
+    // responses, as a miss so we fall through to the per-directory BFS.
     {
         let mut guard = state.provider.lock().await;
         let provider = guard
             .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-        if let Some(s3) = provider
-            .as_any_mut()
-            .downcast_mut::<crate::providers::S3Provider>()
+        if let Some(fast) =
+            crate::used_scan::provider_list_recursive_fastpath(provider, &root).await
         {
-            let entries = s3
-                .list_recursive(&root)
-                .await
-                .map_err(|e| format!("Used-storage scan failed: {}", e))?;
             let mut used = 0u64;
             let mut files = 0u64;
             let mut dirs = 0u64;
             let mut truncated = false;
-            for e in entries {
+            for e in fast.entries {
                 if e.is_dir {
                     dirs += 1;
                     continue;
@@ -7555,50 +7728,8 @@ pub async fn provider_scan_used(
                 file_count: files,
                 dir_count: dirs,
                 truncated,
-                method: "s3-list-recursive".to_string(),
+                method: fast.method.to_string(),
             });
-        }
-
-        if let Some(dav) = provider
-            .as_any_mut()
-            .downcast_mut::<crate::providers::WebDavProvider>()
-        {
-            if let Ok(entries) = dav.list_recursive(&root).await {
-                let mut used = 0u64;
-                let mut files = 0u64;
-                let mut dirs = 0u64;
-                let mut truncated = false;
-                for e in entries {
-                    if e.is_dir {
-                        dirs += 1;
-                        continue;
-                    }
-                    if files >= MAX_ENTRIES {
-                        truncated = true;
-                        break;
-                    }
-                    used = used.saturating_add(e.size);
-                    files += 1;
-                }
-                // Some servers (CloudMe, DriveHQ, jianguoyun) answer 207 to
-                // Depth:infinity without recursing (only the requested
-                // collection, maybe its immediate subdirs), so files==0
-                // even though the tree has files. Trust infinity ONLY when
-                // it actually found files; otherwise fall through to the
-                // per-directory BFS, which returns the true figure (a
-                // genuinely file-less tree also yields 0 via BFS).
-                if files > 0 {
-                    emit_progress(files, used, false);
-                    return Ok(UsedScanResult {
-                        used,
-                        file_count: files,
-                        dir_count: dirs,
-                        truncated,
-                        method: "webdav-infinity".to_string(),
-                    });
-                }
-            }
-            // infinity rejected/limited/non-recursive: fall through to BFS.
         }
     }
 
@@ -10333,7 +10464,7 @@ pub async fn b2_permanent_delete(
 #[cfg(test)]
 mod tests {
     use super::{
-        drain_in_flight_transfers, remote_matches_repo, ConnectTokenGuard,
+        drain_in_flight_transfers, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
         ConnectionCancelRegistry, ProviderConnectionParams, ProviderState, TransferOperationGuard,
         CONNECT_CANCELLED,
     };
@@ -10459,6 +10590,39 @@ mod tests {
             0,
             "guard must de-register the token on drop"
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_cancellable_connect_cancel_returns_marker() {
+        // #360: an in-flight connect phase (here a never-resolving future)
+        // aborts with CONNECT_CANCELLED once its token is cancelled, and the
+        // token is de-registered afterwards.
+        let registry = ConnectionCancelRegistry::new();
+        let key = "conn-helper-cancel";
+        let fut = run_cancellable_connect::<(), _>(&registry, Some(key), async {
+            std::future::pending::<Result<(), String>>().await
+        });
+        tokio::pin!(fut);
+        // Let the helper register + start polling, then cancel.
+        tokio::select! {
+            _ = &mut fut => panic!("future must not resolve before cancel"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert_eq!(registry.active_count(), 1);
+        assert!(registry.cancel(key));
+        assert_eq!(fut.await.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(registry.active_count(), 0, "guard must de-register on drop");
+    }
+
+    #[tokio::test]
+    async fn test_run_cancellable_connect_without_token_runs_to_completion() {
+        // No token: the future simply runs and its result passes through, with
+        // nothing registered (the OAuth/MEGAcmd opt-out path).
+        let registry = ConnectionCancelRegistry::new();
+        let outcome: Result<u32, String> =
+            run_cancellable_connect(&registry, None, async { Ok(42) }).await;
+        assert_eq!(outcome.unwrap(), 42);
+        assert_eq!(registry.active_count(), 0);
     }
 
     #[test]

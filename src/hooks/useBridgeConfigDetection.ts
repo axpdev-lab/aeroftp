@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+// AeroFile bridge-config recognition.
+//
+// Given the local files currently listed in an AeroFile panel, this hook
+// returns the subset that are recognizable third-party client configs
+// (rclone.conf, WinSCP.ini, FileZilla sitemanager.xml, ...), mapped to the
+// matching bridge-source descriptor so the row can show a badge and the
+// right-click menu can offer "Import to AeroFTP".
+//
+// It is deliberately economical: a pure name/extension pre-filter
+// (isBridgeConfigCandidate) decides which files to probe, the per-directory
+// probe count is capped, probes run with bounded concurrency, and results are
+// cached by (path, size, mtime) so revisiting or re-sorting a directory never
+// re-probes. The authoritative match comes from the Rust `bridge_identify`
+// command (content head sniff), never from the file name alone.
+
+import { useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import type { LocalFile } from '../types';
+import { GENERIC_BRIDGE_SOURCES, type BridgeSourceDescriptor } from '../components/bridge/bridgeSources';
+import { isBridgeConfigCandidate } from '../components/bridge/bridgeDetect';
+
+/** Absolute path -> the recognized bridge source for that file. */
+export type BridgeConfigMap = Map<string, BridgeSourceDescriptor>;
+
+interface BridgeIdentifyResult {
+    fileName: string;
+    candidates: string[];
+}
+
+// Backstops so a pathological directory cannot trigger a probe storm.
+const MAX_PROBES_PER_DIR = 120;
+const PROBE_CONCURRENCY = 6;
+
+const cacheKey = (f: LocalFile) => JSON.stringify([f.path, f.size ?? "", f.modified ?? ""]);
+
+/**
+ * Detect bridge-config files among `files`. Pass `enabled = false` (e.g. for a
+ * hidden second panel) to skip all work and return an empty map.
+ */
+export function useBridgeConfigDetection(files: LocalFile[], enabled: boolean): BridgeConfigMap {
+    const [map, setMap] = useState<BridgeConfigMap>(() => new Map());
+    // cacheKey -> descriptor (matched) | null (probed, no match). Persists for
+    // the lifetime of the panel so navigation/sorting is free after the first
+    // scan; the size+mtime in the key invalidates a path whose file changed.
+    const cacheRef = useRef<Map<string, BridgeSourceDescriptor | null>>(new Map());
+
+    useEffect(() => {
+        if (!enabled) {
+            setMap(prev => (prev.size === 0 ? prev : new Map()));
+            return;
+        }
+        let cancelled = false;
+
+        const candidates = files
+            .filter(f => !f.is_dir && isBridgeConfigCandidate(f.name))
+            .slice(0, MAX_PROBES_PER_DIR);
+
+        // Build the visible map from whatever is already cached (instant), then
+        // probe the rest and rebuild.
+        const rebuild = () => {
+            if (cancelled) return;
+            const next: BridgeConfigMap = new Map();
+            for (const f of candidates) {
+                const cached = cacheRef.current.get(cacheKey(f));
+                if (cached) next.set(f.path, cached);
+            }
+            setMap(next);
+        };
+        rebuild();
+
+        const toProbe = candidates.filter(f => !cacheRef.current.has(cacheKey(f)));
+        if (toProbe.length === 0) return () => { cancelled = true; };
+
+        (async () => {
+            let i = 0;
+            const worker = async () => {
+                while (!cancelled && i < toProbe.length) {
+                    const f = toProbe[i++];
+                    try {
+                        const res = await invoke<BridgeIdentifyResult>('bridge_identify', { filePath: f.path });
+                        const desc = res.candidates
+                            .map(id => GENERIC_BRIDGE_SOURCES.find(s => s.id === id))
+                            .find((s): s is BridgeSourceDescriptor => !!s) ?? null;
+                        cacheRef.current.set(cacheKey(f), desc);
+                    } catch {
+                        // Unreadable / vanished / too large: treat as a non-match.
+                        cacheRef.current.set(cacheKey(f), null);
+                    }
+                }
+            };
+            await Promise.all(
+                Array.from({ length: Math.min(PROBE_CONCURRENCY, toProbe.length) }, worker),
+            );
+            rebuild();
+        })();
+
+        return () => { cancelled = true; };
+    }, [files, enabled]);
+
+    return map;
+}

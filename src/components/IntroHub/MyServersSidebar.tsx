@@ -1,23 +1,19 @@
 import * as React from 'react';
 import {
     Search, X, Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
-    HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight,
+    HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import type { ServerGroup } from '../../utils/serverGroups';
-
-// Filters grouped into sidebar sections. The chip list grew past what a single
-// wrapping row could hold once user groups (#320) landed, so the filters live in
-// a vertical, collapsible sidebar that scales with any number of groups.
-const QUICK_IDS: MyServersFilterBy[] = ['all', 'favorites', 'encrypted'];
-const PROTOCOL_IDS: MyServersFilterBy[] = ['ftp', 's3', 'webdav', 'cloud', 'media', 'dev', 'local-bridge'];
+import { visibleQuickFilters, visibleProtocolFilters } from '../../utils/sidebarFilters';
 
 const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     all: Server,
     favorites: Star,
     encrypted: ShieldCheck,
+    active: Activity,
     ftp: Globe,
     s3: Database,
     webdav: Server,
@@ -45,6 +41,7 @@ interface MyServersSidebarProps {
     groupCounts: Record<string, number>;
     onGroupSelect: (groupId: string) => void;
     onGroupContextMenu: (e: React.MouseEvent, groupId: string) => void;
+    onGroupReorder: (groupId: string, targetIndex: number) => void;
     onNewGroup: () => void;
 }
 
@@ -63,13 +60,42 @@ export function MyServersSidebar({
     groupCounts,
     onGroupSelect,
     onGroupContextMenu,
+    onGroupReorder,
     onNewGroup,
 }: MyServersSidebarProps) {
     const t = useTranslation();
 
+    // Drag-reorder of user groups (HTML5 native DnD; the app had no list-reorder
+    // pattern, only `useDraggableModal` for windows). `dragGroupId` is the chip
+    // being dragged, `dragOverGroupId` the hovered drop target (for the insert
+    // marker). Dropping on a target moves the dragged group to that slot and
+    // persists a dense 0..N `order`, converging with `aeroftp-cli groups -i`.
+    const [dragGroupId, setDragGroupId] = React.useState<string | null>(null);
+    const [dragOverGroupId, setDragOverGroupId] = React.useState<string | null>(null);
+    const handleGroupDrop = (targetId: string) => {
+        if (dragGroupId && dragGroupId !== targetId) {
+            const targetIndex = groups.findIndex((g) => g.id === targetId);
+            if (targetIndex >= 0) onGroupReorder(dragGroupId, targetIndex);
+        }
+        setDragGroupId(null);
+        setDragOverGroupId(null);
+    };
+
     // A static filter never reads as active while a group chip is selected: the
     // two narrowings are mutually exclusive (mirrors the old toolbar behaviour).
     const filterActive = (id: MyServersFilterBy) => activeGroupId === null && activeFilter === id;
+
+    // The "Active Sessions" filter is contextual: it only shows while at least
+    // one saved server has an open session (chipCounts.active > 0). Issue #128-C.
+    const showActive = (chipCounts.active ?? 0) > 0;
+
+    // Vault-aware sidebar (D3): standard buckets show only when non-empty, so a
+    // fresh vault is not papered over with a dozen 0-count protocol chips. `all`
+    // stays pinned (the escape hatch); `favorites`/`encrypted` hide at 0. User
+    // groups are the owner exception: ALWAYS visible even at 0 members (rendered
+    // straight from `groups` below). Mirrors the `profiles -i`/`groups -i` rule.
+    const visibleQuick = visibleQuickFilters(chipCounts);
+    const visibleProtocols = visibleProtocolFilters(chipCounts);
 
     const borderSide = side === 'left' ? 'border-r' : 'border-l';
 
@@ -108,21 +134,36 @@ export function MyServersSidebar({
                 >
                     {side === 'left' ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
                 </button>
-                {[...QUICK_IDS, ...PROTOCOL_IDS].map((id) =>
+                {showActive && railBtn(
+                    'active', Activity, filterActive('active'), () => onFilterChange('active'),
+                    `${t(labelKeyOf('active'))} (${chipCounts.active ?? 0})`, undefined,
+                    filterActive('active') ? undefined : 'text-green-500',
+                )}
+                {[...visibleQuick, ...visibleProtocols].map((id) =>
                     railBtn(id, FILTER_ICON[id], filterActive(id), () => onFilterChange(id), `${t(labelKeyOf(id))} (${chipCounts[id] ?? 0})`),
                 )}
                 {groups.length > 0 && <div className="w-6 h-px bg-gray-200 dark:bg-gray-700 my-1" />}
-                {groups.map((group) =>
-                    railBtn(
-                        group.id,
-                        Folder,
-                        activeGroupId === group.id,
-                        () => onGroupSelect(group.id),
-                        `${group.name} (${groupCounts[group.id] ?? 0})`,
-                        (e) => onGroupContextMenu(e, group.id),
-                        undefined,
-                    ),
-                )}
+                {groups.map((group) => (
+                    <div
+                        key={group.id}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', group.id); e.dataTransfer.effectAllowed = 'move'; setDragGroupId(group.id); }}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverGroupId(group.id); }}
+                        onDrop={(e) => { e.preventDefault(); handleGroupDrop(group.id); }}
+                        onDragEnd={() => { setDragGroupId(null); setDragOverGroupId(null); }}
+                        className={dragOverGroupId === group.id && dragGroupId !== group.id ? 'rounded-lg ring-2 ring-emerald-400' : undefined}
+                    >
+                        {railBtn(
+                            group.id,
+                            Folder,
+                            activeGroupId === group.id,
+                            () => onGroupSelect(group.id),
+                            `${group.name} (${groupCounts[group.id] ?? 0})`,
+                            (e) => onGroupContextMenu(e, group.id),
+                            undefined,
+                        )}
+                    </div>
+                ))}
                 {railBtn('new-group', FolderPlus, false, () => onNewGroup(), t('introHub.group.newGroup'))}
             </div>
         );
@@ -205,23 +246,50 @@ export function MyServersSidebar({
 
             {/* Scrollable filter list */}
             <div className="flex-1 overflow-y-auto px-1.5 pb-2">
-                {renderSectionLabel(t('introHub.sidebar.quick'))}
-                {QUICK_IDS.map(renderFilterRow)}
+                {/* Active Sessions: contextual filter, shown only while a session
+                    is open. Green accent + pulsing dot tie it to the header badge. */}
+                {showActive && (
+                    <button
+                        onClick={() => onFilterChange('active')}
+                        className={`flex items-center gap-2.5 w-full mt-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                            filterActive('active')
+                                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 font-medium'
+                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                        <span className="w-2 h-2 shrink-0 rounded-full bg-green-500 animate-pulse" />
+                        <span className="flex-1 text-left truncate">{t(labelKeyOf('active'))}</span>
+                        <span className={`text-[11px] tabular-nums ${filterActive('active') ? 'text-green-500 dark:text-green-300' : 'text-gray-400 dark:text-gray-500'}`}>{chipCounts.active ?? 0}</span>
+                    </button>
+                )}
 
-                {renderSectionLabel(t('introHub.sidebar.protocols'))}
-                {PROTOCOL_IDS.map(renderFilterRow)}
+                {visibleQuick.length > 0 && renderSectionLabel(t('introHub.sidebar.quick'))}
+                {visibleQuick.map(renderFilterRow)}
+
+                {visibleProtocols.length > 0 && renderSectionLabel(t('introHub.sidebar.protocols'))}
+                {visibleProtocols.map(renderFilterRow)}
 
                 {renderSectionLabel(t('introHub.sidebar.groups'))}
                 {groups.map((group) => {
                     const active = activeGroupId === group.id;
                     const count = groupCounts[group.id] ?? 0;
+                    const isDropTarget = dragOverGroupId === group.id && dragGroupId !== group.id;
                     return (
                         <button
                             key={group.id}
+                            draggable
+                            onDragStart={(e) => { e.dataTransfer.setData('text/plain', group.id); e.dataTransfer.effectAllowed = 'move'; setDragGroupId(group.id); }}
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverGroupId(group.id); }}
+                            onDrop={(e) => { e.preventDefault(); handleGroupDrop(group.id); }}
+                            onDragEnd={() => { setDragGroupId(null); setDragOverGroupId(null); }}
                             onClick={() => onGroupSelect(group.id)}
                             onContextMenu={(e) => onGroupContextMenu(e, group.id)}
                             title={t('introHub.group.chipHint')}
                             className={`flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                                isDropTarget ? 'ring-2 ring-emerald-400 ' : ''
+                            }${
+                                dragGroupId === group.id ? 'opacity-50 ' : ''
+                            }${
                                 active
                                     ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium'
                                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'

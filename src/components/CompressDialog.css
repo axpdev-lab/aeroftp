@@ -95,31 +95,3 @@ html.cyber .compress-dialog {
     box-shadow: 0 0 0 1px var(--compress-card-active-border);
 }
 
-/* ── Indeterminate progress bar ────────────────── */
-.compress-progress-bar {
-    height: 3px;
-    background: var(--compress-border);
-    overflow: hidden;
-    border-radius: 2px;
-}
-
-.compress-progress-bar .bar {
-    height: 100%;
-    width: 40%;
-    background: var(--compress-accent);
-    border-radius: 2px;
-    animation: compress-slide 1.5s ease-in-out infinite;
-}
-
-@keyframes compress-slide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(350%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .compress-progress-bar .bar {
-        animation: none;
-        width: 100%;
-        opacity: 0.5;
-    }
-}

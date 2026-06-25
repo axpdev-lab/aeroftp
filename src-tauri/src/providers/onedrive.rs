@@ -968,6 +968,33 @@ impl StorageProvider for OneDriveProvider {
             if let Some(email) = body["owner"]["user"]["email"].as_str() {
                 self.account_email = Some(email.to_string());
             }
+            // #128-D: persist the Graph drive id + driveType so an rclone export
+            // can emit a usable remote. rclone's `onedrive` backend needs
+            // `drive_id` + `drive_type` (it fails at use with "unable to get
+            // drive_id and drive_type"); AeroFTP operates on the `/me/drive`
+            // shortcut and never stored them. The `/me/drive` response carries
+            // both, so capture them into the vault under per-profile keys the
+            // bridge export injects into `options.drive_id`/`drive_type`.
+            if !self.profile_id.is_empty() {
+                if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                    if let Some(drive_id) =
+                        body["id"].as_str().map(str::trim).filter(|s| !s.is_empty())
+                    {
+                        let _ = store
+                            .store(&format!("onedrive_drive_id_{}", self.profile_id), drive_id);
+                    }
+                    if let Some(drive_type) = body["driveType"]
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        let _ = store.store(
+                            &format!("onedrive_drive_type_{}", self.profile_id),
+                            drive_type,
+                        );
+                    }
+                }
+            }
         }
 
         self.connected = true;

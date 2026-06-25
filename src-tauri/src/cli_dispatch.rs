@@ -44,6 +44,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "tree",
     "ncdu",
     "mount",
+    "mount-vault",
     "transfer",
     "transfer-doctor",
     "batch",
@@ -57,6 +58,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "catalog",
     "tui",
     "profiles",
+    "groups",
     "users",
     "profile-add",
     "profile-duplicate",
@@ -84,6 +86,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "correct",
     "compress",
     "extract",
+    "archive",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -167,7 +170,10 @@ fn executable_stem(argv0: &OsString) -> Option<String> {
 }
 
 fn is_gui_file_suffix(arg: &str) -> bool {
-    arg.ends_with(".aerovault") || arg.ends_with(".aeroftp") || arg.ends_with(".aeroftp-keystore")
+    arg.ends_with(".aerovault")
+        || arg.ends_with(".aerozip")
+        || arg.ends_with(".aeroftp")
+        || arg.ends_with(".aeroftp-keystore")
 }
 
 pub fn resolve_target(exe_path: &Path, route: DispatchRoute) -> Option<PathBuf> {
@@ -207,6 +213,7 @@ mod tests {
                 DispatchRoute::Gui,
             ),
             (vec!["aeroftp", "/tmp/x.aerovault"], DispatchRoute::Gui),
+            (vec!["aeroftp", "/tmp/x.aerozip"], DispatchRoute::Gui),
             (vec!["aeroftp", "/etc/hostname"], DispatchRoute::Gui),
             (vec!["aftp", "ls"], DispatchRoute::Cli),
             (vec!["aeroftp-cli", "ls"], DispatchRoute::Cli),

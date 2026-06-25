@@ -1,5 +1,7 @@
 # The AeroFTP Wrapper Stack
 
+> _Last updated: 2026-06-22_
+
 > Status: living document. Covers the at-rest transformation pipeline shared by
 > AeroVault (static container) and, progressively, AeroSync (streaming engine).
 >
@@ -179,6 +181,21 @@ swap.
    | Box | 250 MB |
    | OpenDrive | 100 MB |
 
+   These are plan-level account caps (the largest single file a provider's free
+   plan will store), a billing and quota policy, not an API limit. AeroFTP does
+   not enforce them; chunking is what lets a larger file land anyway. This is a
+   different metric from the "Simple Upload Limit" in
+   [PROVIDER-INTEGRATION-GUIDE: Upload Pattern Summary](../PROVIDER-INTEGRATION-GUIDE.md#upload-pattern-summary),
+   which is the API single-request ceiling before a chunked strategy is needed.
+   For OpenDrive that ceiling is "Unlimited", because every upload runs as a
+   chunked session (`create_file`, `open_file_upload`, `upload_file_chunk2`,
+   `close_file_upload`) with no documented single-request cap, verified in
+   `src-tauri/src/providers/opendrive.rs`. The OpenDrive 100 MB free-plan cap is
+   confirmed by the OpenDrive account dashboard (Basic plan, "File size: 100 MB")
+   and by the OpenDrive API itself, which rejects a larger single upload with
+   `403 File size limit exceeded. Maximum allowed file size: 100 MB`. The other
+   rows are provider-published research.
+
 2. **Metadata obfuscation.** An observer (provider, attacker, subpoena) sees
    similarly sized opaque chunks and cannot tell an executable from a video
    from a note, assuming names and contents are encrypted.
@@ -249,10 +266,10 @@ unified format AeroSync uses), with the operational `scrub` / `repair` /
 
 ## Where this is today
 
-- **AeroVault v3 (Beta, opt-in):** packing, chunking, per-chunk zstd,
+- **AeroVault v3 (the "Archive" tier, opt-in):** packing, chunking, per-chunk zstd,
   per-chunk AES-256-GCM-SIV, BLAKE3 chunk id and cipher hash, the extension
-  slot reserved for v4 Error Correction. The format stays Beta and is not the default tier
-  until it has had a public spec review pass.
+  slot reserved for v4 Error Correction. The format stays opt-in (not the
+  default `advanced` tier) until it has had a public spec review pass.
 - **AeroSync:** the streaming surface inherits the wrappers progressively;
   chunk-first ordering is non-negotiable there because the whole product
   depends on "edit one byte, move one chunk".

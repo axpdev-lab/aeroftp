@@ -21,4 +21,15 @@
     <glob pattern="*.aeroftp-keystore"/>
     <icon name="application-x-aeroftp-keystore"/>
   </mime-type>
+  <mime-type type="application/x-aerozip">
+    <comment>AeroVault Zip Archive</comment>
+    <comment xml:lang="it">Archivio AeroVault Zip</comment>
+    <glob pattern="*.aerozip"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="AEROVAULT3">
+        <match type="byte" offset="11" value="0x01" mask="0x01"/>
+      </match>
+    </magic>
+    <icon name="application-x-aerozip"/>
+  </mime-type>
 </mime-info>

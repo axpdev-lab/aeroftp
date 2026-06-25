@@ -11,7 +11,7 @@
 
 import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
-import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, Braces, KeyRound, Server, Database, Boxes, TerminalSquare, ShieldCheck } from 'lucide-react';
+import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, Braces, KeyRound, Server, Database, Boxes, TerminalSquare, ShieldCheck, CreditCard } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { CatalogCategoryId } from '../../types/catalog';
 import { PROVIDER_LOGOS, S3BucketLogo } from '../ProviderLogos';
@@ -29,11 +29,11 @@ import {
     paidProtocols,
     companyRegions,
     companyLaunchProtocol,
-    hasFreeTier,
+    companyTier,
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
-type TierFilter = 'all' | 'free' | 'paid';
+type TierFilter = 'all' | 'free' | 'freecard' | 'paid';
 
 const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
     { id: 'company', labelKey: 'introHub.list.company', sortable: true, defaultVisible: true, defaultWidth: 200, minWidth: 140, pinnedStart: true, defaultAlign: 'left' },
@@ -144,8 +144,9 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         let rows = q ? companies.filter(c => searchText(c).includes(q)) : companies.slice();
-        if (tierFilter === 'free') rows = rows.filter(hasFreeTier);
-        else if (tierFilter === 'paid') rows = rows.filter(c => !hasFreeTier(c));
+        if (tierFilter === 'free') rows = rows.filter(c => companyTier(c) === 'free');
+        else if (tierFilter === 'freecard') rows = rows.filter(c => companyTier(c) === 'free-card');
+        else if (tierFilter === 'paid') rows = rows.filter(c => companyTier(c) === 'paid');
         const dir = effectiveSort.dir === 'asc' ? 1 : -1;
         rows.sort((a, b) => {
             switch (effectiveSort.colId) {
@@ -267,9 +268,20 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
             case 'freeGb':
                 return (
                     <td key={col.id} className={`py-1.5 px-3 tabular-nums ${alignClass(col.id)}`}>
-                        {c.freeStorageGb != null
-                            ? <span className="text-gray-900 dark:text-gray-100">{c.freeStorageGb} GB</span>
-                            : <span className="text-[10px] text-gray-400 dark:text-gray-500" title={c.freeNote}>{c.freeNote || '-'}</span>}
+                        <span className="inline-flex items-center gap-1 justify-end">
+                            {c.freeStorageGb != null
+                                ? <span className="text-gray-900 dark:text-gray-100">{c.freeStorageGb} GB</span>
+                                : <span className="text-[10px] text-gray-400 dark:text-gray-500" title={c.freeNote}>{c.freeNote || '-'}</span>}
+                            {c.freeRequiresCard && (
+                                <span
+                                    className="shrink-0 inline-flex text-amber-500 dark:text-amber-400"
+                                    title={t('introHub.list.freeRequiresCard')}
+                                    aria-label={t('introHub.list.freeRequiresCard')}
+                                >
+                                    <CreditCard size={12} />
+                                </span>
+                            )}
+                        </span>
                     </td>
                 );
             case 'free': {
@@ -343,6 +355,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                     {([
                         ['all', t('introHub.filter.all')],
                         ['free', t('providers.freeTier')],
+                        ['freecard', t('providers.freeCardTier')],
                         ['paid', t('providers.paidTier')],
                     ] as [TierFilter, string][]).map(([id, label]) => (
                         <button

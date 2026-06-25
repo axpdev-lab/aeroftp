@@ -1,5 +1,7 @@
 # Community Benchmark
 
+> _Last updated: 2026-06-22_
+
 Help AeroFTP build a real-world protocol comparison dataset without giving up
 your privacy.
 
@@ -87,6 +89,15 @@ Run a small custom test:
 aeroftp-cli --profile "SFTP Lab" benchmark custom --sizes 1M,10M --runs 2 --operations upload,download
 ```
 
+Compare several saved profiles in one run (prints a combined comparison table):
+
+```bash
+aeroftp-cli benchmark standard --compare "S3 Backblaze,SFTP Lab,WebDAV Nextcloud"
+```
+
+Use `-i` to type the profiles interactively, or `--tui` for a full-screen
+checklist.
+
 Run only metadata operations:
 
 ```bash
@@ -110,7 +121,7 @@ The benchmark creates temporary files under the profile's configured remote
 base path:
 
 ```text
-.aeroftp-bench/<random-report-id>/
+aeroftp-bench/<random-report-id>/
 ```
 
 It uploads test payloads, downloads them back, measures metadata operations when
@@ -122,9 +133,9 @@ limits are controlled by the provider.
 
 ## Report Format
 
-Reports use schema version 1. The public contract is tracked in
-`docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md`, but contributors do
-not need to read the full spec.
+Reports use schema version 1. The authoritative field set is the serialized
+`BenchmarkReport` struct in `src-tauri/src/bin/aeroftp_cli.rs`, but contributors
+do not need to read the full spec.
 
 At a high level, each report contains:
 
@@ -144,7 +155,7 @@ Each result entry records:
 
 | Field | Meaning |
 | ----- | ------- |
-| `protocol` | Protocol family, for example `sftp`, `webdav`, `s3`, `gdrive` |
+| `protocol` | Protocol family, for example `SFTP`, `WebDAV`, `S3`, `Google Drive` |
 | `provider_hint` | Coarse provider hint, or `null` with `--anonymize-extra` |
 | `operation` | Single-file: `upload`, `download`, `list`, `stat`, `delete`. Many-files: `upload-all`, `download-all`, `list-dir`, `stat-all`, `delete-all` |
 | `payload_size_bytes` | Payload size for that measurement (per-file size for the many-files axis) |
@@ -293,8 +304,9 @@ That gate prevents us from maintaining empty infrastructure.
 If the command says the report failed sanitization, do not bypass it. Open a bug
 report and include the error message. The sweep is intentionally strict.
 
-If cleanup fails, delete `/.aeroftp-bench/` manually from that profile before
-running another benchmark.
+If cleanup fails, delete the `aeroftp-bench/` directory manually from that
+profile (under the profile's base path, or under your `--test-root-prefix`)
+before running another benchmark.
 
 If a provider returns rate-limit or quota errors, retry later with `quick` or a
 smaller custom run:

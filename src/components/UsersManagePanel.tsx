@@ -27,17 +27,21 @@ import { UserAvatar } from './UserAvatar';
 import { IconPickerDialog } from './IconPickerDialog';
 import { DestructiveResetDialog } from './UsersAdmin/DestructiveResetDialog';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import {
     addUser,
     changeUserPassphrase,
     deleteUser,
     getUserStorageStats,
     getUnlockStatus,
+    defaultUserIdFromList,
     initUserPartitions,
+    legacyDefaultToMigrate,
     listUsers,
     readDefaultAccountId,
     renameUser,
     reorderUsers,
+    setDefaultUser,
     setUserAdmin,
     setUserAvatar,
     writeDefaultAccountId,
@@ -93,6 +97,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [newAvatar, setNewAvatar] = React.useState(AVATAR_CHOICES[0]);
     const [newColor, setNewColor] = React.useState(COLOR_CHOICES[0]);
     const [newPassphrase, setNewPassphrase] = React.useState('');
+    const [newConfirmPassphrase, setNewConfirmPassphrase] = React.useState('');
     const [showNewPassphrase, setShowNewPassphrase] = React.useState(false);
     const [editingUserId, setEditingUserId] = React.useState<number | null>(null);
     const [editingName, setEditingName] = React.useState('');
@@ -100,6 +105,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         userId: number;
         oldPassphrase: string;
         newPassphrase: string;
+        confirmNewPassphrase: string;
         showOld: boolean;
         showNew: boolean;
     } | null>(null);
@@ -113,7 +119,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     // N3 (#270): the default account that skips the welcome screen on next
     // boot. Mirrors the AccountLockScreen checkbox and shares the same
     // localStorage helpers; only applies to password-free accounts.
-    const [defaultAccountId, setDefaultAccountId] = React.useState<number | null>(() => readDefaultAccountId());
+    const [defaultAccountId, setDefaultAccountId] = React.useState<number | null>(null);
     // No-recovery acknowledgement gates submit when an account password is
     // being set for the first time (add-user with passphrase, or set
     // passphrase on an existing user). MU-LS gate decision: warn at setup,
@@ -147,20 +153,29 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 getUserStorageStats(),
                 getUnlockStatus(),
             ]);
-            setUsers(nextUsers);
             setStats(nextStats);
             setUnlockStatus(nextStatus);
-            // Reconcile the stored default against reality: a deleted or now
-            // passphrase-protected account must not stay the silent-boot target.
-            const storedDefault = readDefaultAccountId();
-            const validDefault = nextUsers.find(
-                (u) => u.id === storedDefault && !u.hasPassphrase,
-            );
-            if (storedDefault != null && !validDefault) {
+            // The default/favourite account is now a DB flag (#311), shared with
+            // the CLI `users -i` Fav verb. One-time upgrade: migrate a legacy
+            // localStorage default into the DB, then forget the localStorage key.
+            const legacyId = legacyDefaultToMigrate(nextUsers, readDefaultAccountId());
+            if (legacyId != null) {
+                try {
+                    await setDefaultUser(legacyId, true);
+                    const migrated = nextUsers.map((u) => ({ ...u, isDefault: u.id === legacyId }));
+                    setUsers(migrated);
+                    setDefaultAccountId(legacyId);
+                } catch {
+                    // Migration is best-effort; fall back to the DB state as read.
+                    setUsers(nextUsers);
+                    setDefaultAccountId(defaultUserIdFromList(nextUsers));
+                }
                 writeDefaultAccountId(null);
-                setDefaultAccountId(null);
             } else {
-                setDefaultAccountId(storedDefault);
+                setUsers(nextUsers);
+                setDefaultAccountId(defaultUserIdFromList(nextUsers));
+                // Drop any stale localStorage value now that the DB is the source.
+                if (readDefaultAccountId() != null) writeDefaultAccountId(null);
             }
         } catch (err) {
             setError(mapUserPartitionError(err, t));
@@ -169,16 +184,26 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         }
     }, [t]);
 
-    const toggleDefaultAccount = React.useCallback((user: UserMetadata) => {
-        // Only password-free accounts can skip the welcome screen (a protected
-        // account always shows its prompt), matching the AccountLockScreen rule.
-        if (user.hasPassphrase) return;
-        setDefaultAccountId((current) => {
-            const next = current === user.id ? null : user.id;
-            writeDefaultAccountId(next);
-            return next;
-        });
-    }, []);
+    const toggleDefaultAccount = React.useCallback(
+        async (user: UserMetadata) => {
+            // Only password-free accounts can skip the welcome screen (a protected
+            // account always shows its prompt), matching the AccountLockScreen rule.
+            if (user.hasPassphrase) return;
+            const makeDefault = defaultAccountId !== user.id;
+            setBusyUserId(user.id);
+            setError('');
+            try {
+                // Single-winner DB flag, shared with the CLI `users -i` Fav verb.
+                await setDefaultUser(user.id, makeDefault);
+                await refresh();
+            } catch (err) {
+                setError(mapUserPartitionError(err, t));
+            } finally {
+                setBusyUserId(null);
+            }
+        },
+        [defaultAccountId, refresh, t],
+    );
 
     React.useEffect(() => {
         if (isOpen) void refresh();
@@ -202,11 +227,18 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(t('manageUsers.errAckRequired'));
             return;
         }
+        // #322: a mistyped no-recovery password would lock the account out, so
+        // require the confirm to match when a password is being set.
+        if (newPassphrase && newConfirmPassphrase !== newPassphrase) {
+            setError(t('password.mismatch'));
+            return;
+        }
         setError('');
         try {
             await addUser(newName.trim(), newAvatar, newColor, newPassphrase || null);
             setNewName('');
             setNewPassphrase('');
+            setNewConfirmPassphrase('');
             setAcknowledgeNoRecoveryNew(false);
             setNewAvatar(AVATAR_CHOICES[0]);
             setNewColor(COLOR_CHOICES[0]);
@@ -291,6 +323,11 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         // First-time setup requires explicit acknowledgement.
         if (!user.hasPassphrase && passphraseForm.newPassphrase && !acknowledgeNoRecoveryForm) {
             setError(t('manageUsers.errAckRequired'));
+            return;
+        }
+        // #322: when a new password is being set, its confirm must match.
+        if (passphraseForm.newPassphrase && passphraseForm.confirmNewPassphrase !== passphraseForm.newPassphrase) {
+            setError(t('password.mismatch'));
             return;
         }
         setBusyUserId(user.id);
@@ -482,7 +519,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                                         autoComplete="new-password"
                                     />
-                                    <button
+                                    <button tabIndex={-1}
                                         type="button"
                                         onClick={() => setShowNewPassphrase((value) => !value)}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -496,6 +533,22 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                     {t('manageUsers.noRecovery')}
                                 </div>
                             </div>
+                            {newPassphrase && (
+                                <div className="mt-2 sm:max-w-[calc(100%-0px)] sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2">
+                                    <div className="relative">
+                                        <input
+                                            type={showNewPassphrase ? 'text' : 'password'}
+                                            value={newConfirmPassphrase}
+                                            onChange={(event) => setNewConfirmPassphrase(event.target.value)}
+                                            placeholder={t('password.confirmPlaceholder')}
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+                                            autoComplete="new-password"
+                                            aria-label={t('password.confirm')}
+                                        />
+                                        <PasswordMatchHint password={newPassphrase} confirm={newConfirmPassphrase} />
+                                    </div>
+                                </div>
+                            )}
                             <p className="mt-2 flex items-start gap-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
                                 <Info size={13} className="mt-0.5 flex-shrink-0" />
                                 <span>{t('manageUsers.passwordChoiceNote')}</span>
@@ -647,7 +700,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             {!user.hasPassphrase && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleDefaultAccount(user)}
+                                                    onClick={() => void toggleDefaultAccount(user)}
                                                     disabled={busyUserId === user.id}
                                                     className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
                                                         defaultAccountId === user.id
@@ -680,6 +733,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         userId: user.id,
                                                         oldPassphrase: '',
                                                         newPassphrase: '',
+                                                        confirmNewPassphrase: '',
                                                         showOld: false,
                                                         showNew: false,
                                                     })}
@@ -738,7 +792,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm dark:border-gray-600 dark:bg-gray-900"
                                                         autoComplete="current-password"
                                                     />
-                                                    <button
+                                                    <button tabIndex={-1}
                                                         type="button"
                                                         onClick={() => setPassphraseForm({ ...passphraseForm, showOld: !passphraseForm.showOld })}
                                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -757,7 +811,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm dark:border-gray-600 dark:bg-gray-900"
                                                     autoComplete="new-password"
                                                 />
-                                                <button
+                                                <button tabIndex={-1}
                                                     type="button"
                                                     onClick={() => setPassphraseForm({ ...passphraseForm, showNew: !passphraseForm.showNew })}
                                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -766,6 +820,20 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     {passphraseForm.showNew ? <EyeOff size={15} /> : <Eye size={15} />}
                                                 </button>
                                             </div>
+                                            {passphraseForm.newPassphrase && (
+                                                <div className="relative sm:col-span-3">
+                                                    <input
+                                                        type={passphraseForm.showNew ? 'text' : 'password'}
+                                                        value={passphraseForm.confirmNewPassphrase}
+                                                        onChange={(event) => setPassphraseForm({ ...passphraseForm, confirmNewPassphrase: event.target.value })}
+                                                        placeholder={t('password.confirmPlaceholder')}
+                                                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-9 text-sm dark:border-gray-600 dark:bg-gray-900"
+                                                        autoComplete="new-password"
+                                                        aria-label={t('password.confirm')}
+                                                    />
+                                                    <PasswordMatchHint password={passphraseForm.newPassphrase} confirm={passphraseForm.confirmNewPassphrase} />
+                                                </div>
+                                            )}
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="submit"

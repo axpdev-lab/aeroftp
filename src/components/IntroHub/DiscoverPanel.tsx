@@ -17,7 +17,7 @@ import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { openUrl } from '../../utils/openUrl';
 import { CatalogTable } from './CatalogTable';
-import { PROVIDER_CATALOG, companyInCategory } from '../providerCatalog';
+import { PROVIDER_CATALOG, companyInCategory, isDevOnlyProvider } from '../providerCatalog';
 
 /** All category sidebar entries share these keys; 'all' is a virtual category. */
 type DiscoverCategoryId = CatalogCategoryId | 'all';
@@ -251,9 +251,13 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     // grid cards use (catalog -> protocol map -> registry preset), so the list
     // and grid health dots match across every category.
     const catalogCompanies = useMemo<CatalogCompany[]>(() => {
-        const base = activeCategory === 'all'
+        // Hide dev-only providers (Blomp, Google Photos) in production; show them in DEV.
+        const source = import.meta.env.DEV
             ? PROVIDER_CATALOG
-            : PROVIDER_CATALOG.filter(c => companyInCategory(c, activeCategory));
+            : PROVIDER_CATALOG.filter(c => !isDevOnlyProvider(c.logoId));
+        const base = activeCategory === 'all'
+            ? source
+            : source.filter(c => companyInCategory(c, activeCategory));
         return base.map(c => ({ ...c, healthCheckUrl: resolveCompanyHealthUrl(c) }));
     }, [activeCategory]);
 

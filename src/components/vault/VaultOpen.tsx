@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
+import { useEffect, useRef } from 'react';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels } from './useVaultState';
@@ -12,13 +13,36 @@ interface VaultOpenProps {
 
 export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
     const t = useTranslation();
+    const isZip = state.isPlaintextZip;
+    const passwordRef = useRef<HTMLInputElement>(null);
+
+    // Focus the password field when the open form appears, so the user can type
+    // straight away without clicking it first.
+    useEffect(() => {
+        if (!isZip) {
+            const id = window.setTimeout(() => passwordRef.current?.focus(), 50);
+            return () => window.clearTimeout(id);
+        }
+    }, [isZip]);
+
+    // Plaintext Zip needs no password: useVaultState auto-unlocks it straight to
+    // browse, so this screen would only flash a pointless confirm step. Show a
+    // brief loading state instead of the password-less "Open" form.
+    if (isZip) {
+        return (
+            <div className="p-8 flex flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
+                <Loader2 size={22} className="animate-spin" />
+                <span className="text-sm">{t('vault.openingZip') || t('vault.zipTitle')}</span>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 flex flex-col gap-3">
             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{state.vaultPath}</p>
 
             {/* Show detected version and security level */}
-            {state.vaultSecurity && (() => {
+            {state.vaultSecurity && !isZip && (() => {
                 const levelConfig = securityLevels[state.vaultSecurity.level];
                 const LevelIcon = levelConfig.icon;
                 return (
@@ -31,23 +55,27 @@ export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
                 );
             })()}
 
-            <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
-            <div className="relative">
-                <input type={state.showPassword ? 'text' : 'password'} value={state.password}
-                    onChange={e => state.setPassword(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && state.handleUnlock()}
-                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
-                <button tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                    {state.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-            </div>
+            {!isZip && (
+                <>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
+                    <div className="relative">
+                        <input ref={passwordRef} type={state.showPassword ? 'text' : 'password'} value={state.password}
+                            onChange={e => state.setPassword(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && state.handleUnlock()}
+                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
+                        <button tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                            {state.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                    </div>
+                </>
+            )}
             <div className="flex gap-2 justify-end mt-2">
                 <button onClick={() => { state.resetState(); state.setMode('home'); }} className="px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                     {t('vault.cancel')}
                 </button>
-                <button onClick={state.handleUnlock} disabled={state.loading} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm disabled:opacity-50">
+                <button onClick={state.handleUnlock} disabled={state.loading} className={`flex items-center gap-2 px-4 py-1.5 ${isZip ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'} text-white rounded text-sm disabled:opacity-50`}>
                     {state.loading && <Loader2 size={14} className="animate-spin" />}
-                    {t('vault.unlock')}
+                    {isZip ? t('vault.openZip') : t('vault.unlock')}
                 </button>
             </div>
         </div>

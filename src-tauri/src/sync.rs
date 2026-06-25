@@ -2839,6 +2839,16 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         || lower.contains("552 ")
     {
         (SyncErrorKind::QuotaExceeded, false)
+    } else if lower.contains("file too large")
+        || lower.contains("file size limit")
+        || lower.contains("maximum allowed file size")
+    {
+        // A single file exceeds a hard per-file size limit (e.g. OpenDrive
+        // free/Basic = 100 MB). Deterministic: retrying the same oversized
+        // file never succeeds. Matched BEFORE permission-denied because the
+        // underlying 403 body would otherwise fall through to Unknown once
+        // the message no longer says "permission denied".
+        (SyncErrorKind::QuotaExceeded, false)
     } else if lower.contains("permission denied")
         || lower.contains("access denied")
         || lower.contains("403 ")
@@ -2851,6 +2861,15 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         || lower.contains("550 ")
     {
         // 550 can be either permission or not-found; prefer permission if already matched
+        (SyncErrorKind::PathNotFound, false)
+    } else if lower.contains("invalid path")
+        || lower.contains("not a writable file")
+        || lower.contains("parent directory is missing")
+        || lower.contains("parent directory does not exist")
+    {
+        // A WebDAV PUT to a missing-parent or directory target (Koofr returns
+        // 404 here, others 409, see webdav::upload_failure_error). Deterministic:
+        // the same file can never land at that path, so retrying is pointless.
         (SyncErrorKind::PathNotFound, false)
     } else if lower.contains("auth")
         || lower.contains("login")
@@ -4855,6 +4874,33 @@ mod tests {
     fn test_classify_sync_error_quota() {
         let err = classify_sync_error("552 Insufficient storage space", Some("/path"));
         assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_file_too_large() {
+        // The OpenDrive FileTooLarge error reaches the executor as a string;
+        // it must classify as non-retryable, NOT fall through to permission
+        // denied or Unknown (which would retry the same oversized file).
+        let err = classify_sync_error(
+            "File too large: File size limit exceeded. Maximum allowed file size: 100 MB",
+            Some("/big.bin"),
+        );
+        assert_eq!(err.kind, SyncErrorKind::QuotaExceeded);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn test_classify_sync_error_webdav_invalid_upload_target() {
+        // The Koofr 404 / 409 upload error reaches the executor as a string;
+        // it must classify as non-retryable so a sync does not loop on a file
+        // that can never land at that path.
+        let err = classify_sync_error(
+            "Invalid path: Upload target is not a writable file: the parent directory is \
+             missing or the path is a directory",
+            Some("/koofr/x.bin"),
+        );
+        assert_eq!(err.kind, SyncErrorKind::PathNotFound);
         assert!(!err.retryable);
     }
 

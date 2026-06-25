@@ -425,7 +425,40 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         // Legacy sources, now generic. Protocol sets mirror what the
         // respective `export_*` writers in `rclone_import`/`winscp_import`/
         // `filezilla_import` actually emit (anything else is skipped on export).
-        "rclone" | "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
+        // rclone round-trips every provider whose secret AeroFTP actually holds
+        // and whose rclone backend takes that same secret directly: the cloud
+        // accounts authenticated by a stored password / access key (Filen, MEGA,
+        // Azure, Swift, Koofr, OpenDrive, Backblaze B2) on top of the standard
+        // ftp/sftp/s3/webdav set (issue #128). #128-D adds the OAuth-token
+        // providers (Drive/Dropbox/OneDrive/Box/pCloud/Yandex): their export
+        // arms now emit the rclone `token` blob plus the BYO client_id/secret
+        // that minted it, so rclone can refresh and the remote is usable.
+        // Jottacloud is intentionally NOT here: it exports via a dedicated path
+        // that rebuilds its persisted OIDC refresh token into a working rclone
+        // token, which only the CLI (`cmd_export_rclone`/`collect_export_scaffold`)
+        // implements. The GUI bridge export has no refresh-blob injection, so it
+        // gates Jottacloud rather than emit a broken remote (see `cmd_export_rclone`).
+        "rclone" => &[
+            "ftp",
+            "ftps",
+            "sftp",
+            "webdav",
+            "s3",
+            "filen",
+            "mega",
+            "azure",
+            "swift",
+            "koofr",
+            "opendrive",
+            "backblaze",
+            "googledrive",
+            "dropbox",
+            "onedrive",
+            "box",
+            "pcloud",
+            "yandexdisk",
+        ],
+        "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
         "filezilla" => &["ftp", "ftps", "sftp", "s3"],
         _ => &[],
     }

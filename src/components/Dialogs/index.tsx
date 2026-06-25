@@ -16,6 +16,7 @@ import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
 import { dispatchMasterPasswordChanged } from '../../utils/masterPasswordEvents';
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
+import { PasswordMatchHint } from '../common/PasswordMatchHint';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -1202,6 +1203,7 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
+                        <PasswordMatchHint password={password} confirm={confirmPassword} />
                     </div>
 
                     {/* Auto-lock Timeout */}

@@ -232,6 +232,8 @@ fn protocol_feature_key(pt: ProviderType) -> &'static str {
         ProviderType::Uploadcare => "uploadcare",
         ProviderType::Backblaze => "backblaze",
         ProviderType::Cloudinary => "cloudinary",
+        // Synthetic local mount provider; never reaches the MCP protocol table.
+        ProviderType::AeroVaultMount => "aerovaultmount",
     }
 }
 

@@ -12,6 +12,7 @@ import {
     buildProvidersMarkdown,
     companyInCategory,
     companyLaunchProtocol,
+    companyTier,
 } from './providerCatalog';
 
 describe('CLI catalog drift guard', () => {
@@ -100,10 +101,47 @@ describe('provider catalog category model (issue #224)', () => {
         const yandexStorage = PROVIDER_CATALOG.find(c => c.company === 'Yandex Object Storage');
         expect(yandexStorage).toBeDefined();
         expect(yandexStorage!.logoId).toBe('yandex-storage');
-        expect(yandexStorage!.protocols.every(p => p.paid)).toBe(true);
 
         // The free parent rows must NOT carry the moved S3 method anymore.
         const yandexDisk = PROVIDER_CATALOG.find(c => c.company === 'Yandex Disk')!;
         expect(yandexDisk.protocols.some(p => p.providerId === 'yandex-storage')).toBe(false);
+    });
+});
+
+describe('commercial tier model: free / free-card / paid', () => {
+    const tierOf = (name: string) => {
+        const c = PROVIDER_CATALOG.find(x => x.company === name);
+        expect(c, `${name} present`).toBeDefined();
+        return companyTier(c!);
+    };
+
+    it('free-card companies have a free allowance but require a card, and stay OUT of the paid bucket', () => {
+        // Alibaba OSS has a permanent 5 GB/mo fixed quota (overseas regions) but a card on file.
+        for (const name of ['Amazon S3', 'Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+            const c = PROVIDER_CATALOG.find(x => x.company === name)!;
+            expect(c.freeRequiresCard, `${name} freeRequiresCard`).toBe(true);
+            expect(c.freeStorageGb, `${name} has a free GB figure`).not.toBeNull();
+            expect(companyTier(c), `${name} tier`).toBe('free-card');
+        }
+    });
+
+    it('paid-only companies have no free tier (trial or paid plan only)', () => {
+        // Storj and IDrive e2 discontinued their permanent free tiers (now trial-only).
+        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'MEGA S4 Object Storage', 'Tencent COS', 'Storj', 'IDrive e2']) {
+            expect(tierOf(name), `${name} tier`).toBe('paid');
+        }
+    });
+
+    it('no-card free tiers classify as plain free', () => {
+        expect(tierOf('Tab.digital')).toBe('free');
+        expect(tierOf('MEGA')).toBe('free');
+    });
+
+    it('freeRequiresCard companies are never reported as paid-only by the CLI projection', () => {
+        const cli = buildCliCatalog();
+        for (const name of ['Amazon S3', 'Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+            const row = cli.find(c => c.company === name)!;
+            expect(row.freeRequiresCard, `${name} CLI freeRequiresCard`).toBe(true);
+        }
     });
 });

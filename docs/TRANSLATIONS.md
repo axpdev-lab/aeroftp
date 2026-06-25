@@ -1,7 +1,7 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 6 May 2026
-> Version: v3.8.0
+> Last Updated: 2026-06-22
+> Version: v4.0.x
 > Languages: 47 | Coverage: 100%
 
 ---
@@ -118,7 +118,7 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 
 ## Translation Keys (4400+)
 
-Translations are organized by 36+ namespaces:
+Translations are organized by 90+ namespaces (95 in the current 4.0.x series), covering core UI plus per-provider, security/vault, sync, AI, and tooling sections:
 
 | Namespace | Description | Keys (approx.) |
 |-----------|-------------|----------------|
@@ -393,4 +393,4 @@ const { t, language, setLanguage } = useI18n();
 ---
 
 **Maintainer**: axpnet
-**Last Updated**: 6 May 2026
+**Last Updated**: 2026-06-22

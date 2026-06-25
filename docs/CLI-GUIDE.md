@@ -1,14 +1,14 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v4.0.5 (June 2026) - last reviewed 16 June 2026
+> **Version reference**: v4.0.x series - last reviewed 22 June 2026
 > **License**: GPL-3.0
 
 ---
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), local archives (`compress`/`extract`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), plaintext `.aerozip` archives (`archive`), local archives (`compress`/`extract`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
 
 ### Direct URL Protocols
 
@@ -47,6 +47,22 @@ aeroftp-cli --version
 
 aeroftp-cli --help
 ```
+
+### Windows portable ZIP
+
+The Windows portable build (`AeroFTP-<version>-portable-windows-x64.zip`, no
+installer) ships `aeroftp-cli.exe` next to `AeroFTP.exe` (since v4.0.8). It is
+not on `PATH` automatically: either call it by its full path, `cd` into the
+extracted folder, or add that folder to your `PATH`.
+
+```powershell
+# From inside the extracted portable folder
+.\aeroftp-cli.exe --version
+.\aeroftp-cli.exe --help
+```
+
+The portable CLI shares the portable `data\` folder, so the servers and vault
+you set up in the GUI are visible to the CLI and vice versa.
 
 ### Building from Source
 
@@ -347,6 +363,36 @@ Emits a pretty-printed JSON **array** to stdout with a stable, machine-parsable 
 | `Hashes` | object | Only with `--hash`: `{ "<algo>": "<hex>" }`, server-side only (never downloads). Omitted for directories and when the backend does not expose the requested digest cheaply. |
 
 Flags: `-R`/`--recursive`, `--files-only`, `--dirs-only` (mutually exclusive with `--files-only`), `--stat` (single object for the path itself, not its contents), `--no-modtime`, `--no-mimetype`, `--hash`, `--hash-type <md5|sha1|sha256|sha512|blake3>` (default `sha256`). The global `--max-depth` caps recursion. `--hash` is server-side only: it reports a digest the backend already exposes (S3/MinIO/R2 ETag `md5`, B2 `contentSha1`, pCloud, SFTP `sha256sum` over an exec channel) without ever downloading the file. It is off by default; the `Hashes` field is omitted for directories and for any file whose backend does not provide the requested digest cheaply (it never falls back to downloading). Exit code `0` on success, `2` on a missing path. Same path and `--profile` rules as `ls`.
+
+### archive - Plaintext `.aerozip` Archives
+
+```bash
+# Create a passwordless archive with compression + recovery parity
+aeroftp-cli archive create backup.aerozip ./docs ./photos
+
+# Recovery parity is on by default; disable it for a smaller, parity-free file
+aeroftp-cli archive create backup.aerozip ./docs --recovery-level 0   # also: off / none
+
+# Tune archive-local compression; --profile remains a hidden compatibility alias
+aeroftp-cli archive create backup.aerozip ./docs --compression-profile archive
+
+# List entries; renamed files are accepted by header detection
+aeroftp-cli archive list backup.aerozip
+
+# Extract, repairing from embedded recovery parity first when possible
+aeroftp-cli archive extract backup.aerozip ./restore
+
+# Machine-readable reports
+aeroftp-cli --json archive create backup.aerozip ./docs
+```
+
+`archive` is for `.aerozip` plaintext archives (`application/x-aerozip`) backed by the internal `aerovz` lane. It uses the AeroVault v3 wrapper stack without encryption: chunking, zstd compression, integrity checks, and Reed-Solomon recovery parity.
+
+Important threat-model note: `.aerozip` is **not confidential**. It has no password and the CLI rejects `--password`; anyone who can read the archive can read the contents. Use `vault create` and `.aerovault` when you need encryption.
+
+`archive create` writes the current product extension (`.aerozip`). `archive list` and `archive extract` identify plaintext archives from the container header, so a renamed file still opens as long as the header marks the plaintext lane. Encrypted `.aerovault` containers are rejected by `archive`, and plaintext archives are rejected by encrypted `vault` commands.
+
+JSON reports include `encrypted: false`, `confidential: false`, file/entry/chunk counts, compression ratio, MIME, and recovery status/overhead.
 
 ### get - Download Files
 
@@ -1568,6 +1614,10 @@ aeroftp-cli users rename alice alicia
 aeroftp-cli users sort alice bob carol    # order for the GUI dropdown / lock screen
 aeroftp-cli users delete alice
 aeroftp-cli users lock                    # lock the in-memory session
+
+# Interactive prompt (TTY): re-index (#), Rename (R), Copy (C), Delete (D),
+# Fav (F, marks the default user auto-unlocked on launch), List (L), Tree (T)
+aeroftp-cli users -i
 ```
 
 Each user keeps an isolated set of server profiles and AeroSync settings inside its own partition. An opt-in admin role gates user management, with a last-admin guard so an installation cannot lock itself out.
@@ -1580,6 +1630,21 @@ aeroftp-cli --user alice sync --profile "Backup" /local /remote
 ```
 
 When the selected partition is passphrase-protected, supply it with `--user-passphrase`, `--passphrase-file`, or the `AEROFTP_USER_PASSPHRASE` environment variable; otherwise the CLI prompts on a TTY. `--user` is optional everywhere and defaults to the active user, so existing scripts keep working unchanged.
+
+### groups - Server-Profile Groups
+
+`groups` manages the named group labels on saved profiles (the My Servers group chips). Membership lives in the vault under `config_server_groups`, shared with the GUI, so a change made in the CLI shows up in My Servers and vice versa. The GUI list is drag-reorderable; the CLI exposes the same order via re-index.
+
+```bash
+# List the group chips (optionally as JSON)
+aeroftp-cli groups
+aeroftp-cli groups --json
+
+# Interactive prompt (TTY): re-index (#), Rename (R), Copy (C), Delete (D), List (L)
+aeroftp-cli groups -i
+```
+
+The interactive prompt shares the same `-i` engine as `profiles -i` and `users -i`: select a target by index or name, `.` refreshes the screen, `h` shows help, and only an explicit Quit exits the sticky loop.
 
 ### profiles - List Saved Profiles
 
@@ -1804,6 +1869,8 @@ Notes on honesty of the matrix:
 - **FTP/FTPS** advertise file-level parallelism through the session pool (up to 8 concurrent file slots) rather than strict concurrent range GET on a single file; the capability surface deliberately does not overclaim single-file range parallelism for FTP.
 - **SFTP** reports a single-lease provider-generic profile by design (the shared SFTP pool is not the provider-generic path). SFTP-specific acceleration is still available and is documented separately: byte-level delta via [`--delta`](#get---download-files) and segmented single-file download via [`pget`](#pget---segmented-parallel-download).
 - The discovery surfaces report `source: "profile_defaults"` (`agent-info` per-profile) or `source: "protocol_defaults"` (`agent-info` `protocol_transfer_capabilities`, `agent-connect` discovery path). Only a real connection upgrades a block to `source: "live_provider"`, which can differ from the defaults above when a specific server exposes more or fewer primitives.
+
+Per-file size limits are intentionally not a column here. A maximum single-file size is a provider plan or account policy, not a transfer-scheduler capability, so it is not part of the generated `TransferCapabilities` block this table is built from. For those limits see [wrapper-stack: Free-tier max single file](architecture/wrapper-stack.md#chunking-in-depth) (the largest single file a provider's free plan accepts, which AeroFTP's chunking is built to bypass) and [PROVIDER-INTEGRATION-GUIDE: Upload Pattern Summary](PROVIDER-INTEGRATION-GUIDE.md#upload-pattern-summary) (the API single-request ceiling before a chunked upload strategy is needed).
 
 ---
 
@@ -2304,6 +2371,7 @@ The following providers have been tested live via CLI with `--profile`:
 
 ## Recent Highlights
 
+- **v4.0.x - AeroVault from the CLI + multi-user**: single-file `.aerovault` create/add/extract/info for the v1/v2/v3 families, Reed-Solomon error correction (`vault create --error-correction` / `--ec`, `vault info` with an `ecc` object, `vault scrub <path>`, `vault repair <path> [--dry-run]`, all with `--json` output) shipped in v4.0.5, and per-user encrypted vault partitions (Argon2id-derived keys, the `users` subcommand and `--user` global flag) shipped since v4.0.0.
 - **v3.7.2 - CLI security hardening + community polish**: Codex CLI external audit closes 17 paired findings (CLI-AUDIT-01..17). Highlights: GUI tool execution now enforces backend approval, MCP / AI core remote dispatcher path validation (null bytes, traversal, control chars, option-like forms, length cap), `server_exec` strictly read-only (rejects get/put/mkdir/rm/mv with explicit-use error), MCP profile lookup requires exact id/name or unique substring (no silent first-match), `local_copy_files` and `local_stat_batch` validate every path including symlink rejection, SFTP packet parser bounds-checked end to end, `.aerotmp` writes use `create_new` and refuse symlinked temp paths, inline upload temp files use `tempfile::Builder::tempfile()`, daemon auth token created with `O_NOFOLLOW` + mode 0600, `sync --direction <invalid>` fails before connecting with exit code 5, `sync-doctor` resolves remote paths the same way `sync` does, `sync-doctor --checksum` no longer suggests the non-existent flag, `transfer` checks cancellation between plan and execution returning exit code 130, `agent-info --json` treats missing profile list as empty, CLI help footer documents the extended exit-code contract (9, 10, 11, 130). CLI `profiles` dynamic terminal-width-aware layout (Ehud, #161), unified `--breakdown` table folding TOTAL into the breakdown rows, `--hide=fav` / `favorite` / `favourite` / `favs` alias surface documented. Direct `rsa = "0.9"` dependency dropped, `jsonwebtoken` switched to `aws-lc-rs`. `audit.toml` documents the two remaining transitive RSA paths (sigstore, russh) with written threat-model justifications.
 - **v3.7.1 - Mount Manager + community polish**: GUI Mount Manager dialog wraps `aeroftp-cli mount` with persistent configs, sidecar JSON or vault-backed storage, cross-platform autostart (systemd-user / Task Scheduler ONLOGON), and an "Open mount in file manager" shortcut. CLI `profiles -i` interactive prompt loop with compact `1l` / `2t` / `3d` tokens. Filen Desktop local WebDAV / S3 bridges connect on the first try thanks to the layered WebDAV scheme detection rewrite.
 - **v3.7.0 - AeroRsync session-cached batch + crypto overlay**: new `AerorsyncBatch` trait amortizes one SSH session across many delta transfers; `SyncReport` exposes `delta_files[]` and `bytes_on_wire`. Cross-profile transfer (`aeroftp_transfer`, `aeroftp_transfer_tree`) and six new ops tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) bring MCP to 39 tools. rclone crypt becomes full read/write through transparent overlay session; AeroVault gets matching overlay-session model.

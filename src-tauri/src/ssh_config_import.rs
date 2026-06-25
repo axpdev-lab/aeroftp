@@ -201,6 +201,7 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
         credential: None,
         has_stored_credential: Some(false),
         public_url_base: None,
+        ..Default::default()
     })
 }
 

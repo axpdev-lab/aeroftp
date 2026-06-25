@@ -33,7 +33,9 @@ export interface TwoFactorPromptDialogProps {
     /** Submit handler. Receives the 6-digit code. Caller drives the retry
      *  and is expected to flip `loading` while the connect runs. */
     onSubmit: (code: string) => void | Promise<void>;
-    /** Cancel handler: Esc, click outside, or the explicit Cancel button. */
+    /** Cancel handler: Esc or the explicit Cancel / close button. A click on
+     *  the backdrop is inert (the modal is locked), so a stray click outside
+     *  can never abort an in-progress 2FA login. */
     onCancel: () => void;
     /** Whether a connect attempt is currently in flight. Disables the form. */
     loading?: boolean;
@@ -86,7 +88,9 @@ export function TwoFactorPromptDialog({
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-sm animate-fade-in"
-            onClick={(e) => { if (e.target === e.currentTarget && !loading) onCancel(); }}
+            // Locked modal (#128): a backdrop click is inert, like AeroSync /
+            // cross-profile transfer. A stray click outside must not cancel an
+            // in-progress 2FA login; use Esc, Cancel, or the X to dismiss.
             role="dialog"
             aria-modal="true"
             aria-labelledby="twofa-title"

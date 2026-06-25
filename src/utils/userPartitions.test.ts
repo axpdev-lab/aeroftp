@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     clearUsersListCache,
     decideBootAccountAction,
+    defaultUserIdFromList,
+    legacyDefaultToMigrate,
     needsAccountLockScreen,
     readUsersListCache,
     writeUsersListCache,
@@ -28,6 +30,7 @@ const makeUser = (overrides: Partial<UserMetadata> = {}): UserMetadata => ({
     lastUnlockedAt: null,
     isActive: true,
     isAdmin: true,
+    isDefault: false,
     ...overrides,
 });
 
@@ -123,6 +126,51 @@ describe('decideBootAccountAction (#270)', () => {
         const protectedA = { id: 1, hasPassphrase: true };
         expect(decideBootAccountAction([protectedA], locked(false), null))
             .toEqual({ kind: 'picker' });
+    });
+});
+
+describe('default user (DB flag, #311)', () => {
+    it('reads the single default off the user list', () => {
+        expect(defaultUserIdFromList([])).toBeNull();
+        expect(
+            defaultUserIdFromList([
+                { id: 1, isDefault: false },
+                { id: 2, isDefault: true },
+            ]),
+        ).toBe(2);
+        expect(
+            defaultUserIdFromList([
+                { id: 1, isDefault: false },
+                { id: 2, isDefault: false },
+            ]),
+        ).toBeNull();
+    });
+
+    describe('legacyDefaultToMigrate', () => {
+        const A = { id: 1, hasPassphrase: false, isDefault: false };
+        const protectedB = { id: 2, hasPassphrase: true, isDefault: false };
+
+        it('migrates a valid password-free legacy default into the DB', () => {
+            expect(legacyDefaultToMigrate([A, protectedB], 1)).toBe(1);
+        });
+
+        it('does nothing when the DB already carries a default', () => {
+            expect(
+                legacyDefaultToMigrate([{ ...A, isDefault: true }, protectedB], 2),
+            ).toBeNull();
+        });
+
+        it('does nothing when there is no legacy value', () => {
+            expect(legacyDefaultToMigrate([A, protectedB], null)).toBeNull();
+        });
+
+        it('skips a stale legacy id that no longer exists', () => {
+            expect(legacyDefaultToMigrate([A, protectedB], 999)).toBeNull();
+        });
+
+        it('skips a legacy id that is now passphrase-protected', () => {
+            expect(legacyDefaultToMigrate([A, protectedB], 2)).toBeNull();
+        });
     });
 });
 

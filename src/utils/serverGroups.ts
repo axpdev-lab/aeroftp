@@ -29,6 +29,28 @@ export function newServerGroupId(): string {
 }
 
 /**
+ * Move the group `id` to a new 0-based position and re-stamp a dense, gap-free
+ * `order` (0..N) on the whole list. Pure mirror of the CLI `apply_group_reorder`
+ * so the GUI drag-reorder and `aeroftp-cli groups -i` re-index converge on the
+ * same vault order. `targetIndex` is clamped to `0..len-1`. Returns the original
+ * array unchanged (same reference) when the id is unknown or the move is a no-op.
+ */
+export function reorderServerGroups(
+    groups: ServerGroup[],
+    id: string,
+    targetIndex: number,
+): ServerGroup[] {
+    const src = groups.findIndex((g) => g.id === id);
+    if (src < 0) return groups;
+    const dst = Math.max(0, Math.min(groups.length - 1, targetIndex));
+    if (dst === src) return groups;
+    const next = groups.slice();
+    const [moved] = next.splice(src, 1);
+    next.splice(dst, 0, moved);
+    return next.map((g, i) => (g.order === i ? g : { ...g, order: i }));
+}
+
+/**
  * Coerce an untrusted payload (vault or localStorage) into a clean, sorted
  * `ServerGroup[]`. Drops malformed entries instead of throwing so a single bad
  * record never blanks the whole list.

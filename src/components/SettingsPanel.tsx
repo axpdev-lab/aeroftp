@@ -27,6 +27,7 @@ import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } f
 import { IMAGE_PREVIEW_BG_PRESETS, readImagePreviewBg, writeImagePreviewBg, resolveImagePreviewBgStyle, resolveImagePreviewBgHex } from '../utils/imagePreviewBg';
 import { TotpSetup } from './TotpSetup';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
+import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
 import { Checkbox } from './ui/Checkbox';
 import { CustomIconsManager } from './CustomIconsManager';
@@ -2509,6 +2510,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                     </button>
                                                 </div>
+                                                <PasswordMatchHint password={newMasterPassword} confirm={confirmMasterPassword} />
                                             </div>
 
                                             {/* Auto-lock Timeout */}
@@ -3032,6 +3034,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <input type={showKeystoreExportPassword ? 'text' : 'password'} placeholder={t('settings.confirmPassword')} value={keystoreExportConfirm} onChange={(e) => setKeystoreExportConfirm(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
                                                     </div>
                                                 </div>
+                                                <PasswordMatchHint password={keystoreExportPassword} confirm={keystoreExportConfirm} />
                                                 <PasswordStrengthBar password={keystoreExportPassword} />
                                                 {/* F-012 W2: portability disclosure. Passphrase-less accounts only
                                                     open on another device if this build embeds a portable key;

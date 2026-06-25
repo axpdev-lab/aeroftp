@@ -11,6 +11,13 @@ import { ArchiveEntry, ArchiveType } from '../types';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useArchiveProgress } from '../hooks/useArchiveProgress';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { TransferProgressBar } from './TransferProgressBar';
+import { useModalFileView } from './modalview/useModalFileView';
+import { ModalViewToolbar } from './modalview/ModalViewToolbar';
+import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
 
 interface ArchiveBrowserProps {
     archivePath: string;
@@ -117,6 +124,10 @@ const TreeRow: React.FC<{
 export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, archiveType, isEncrypted, onClose }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const modalView = useModalFileView();
+    // Folder the icon-grid is showing (the list/tree view ignores this and stays
+    // fully expandable). '' = archive root.
+    const [gridPath, setGridPath] = useState('');
     const [entries, setEntries] = useState<ArchiveEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -124,7 +135,22 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const [showPassword, setShowPassword] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(isEncrypted);
     const [extracting, setExtracting] = useState<string | null>(null);
+    // Real byte-true extract progress (>=10MB only); RAR reports indeterminate.
+    const progress = useArchiveProgress(extracting !== null);
+    // Lock the modal during an extraction so a stray click / reflexive X can't abandon
+    // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals).
+    const guarded = useGuardedClose({ guard: extracting !== null ? 'busy' : null, onClose });
     const tempPreviewPathsRef = useRef<string[]>([]);
+    const archivePasswordRef = useRef<HTMLInputElement>(null);
+
+    // Focus the password field when the encrypted-archive prompt appears, so the
+    // user can type straight away without clicking it first.
+    useEffect(() => {
+        if (needsPassword) {
+            const id = window.setTimeout(() => archivePasswordRef.current?.focus(), 50);
+            return () => window.clearTimeout(id);
+        }
+    }, [needsPassword]);
 
     // Cleanup temp preview files on unmount (A7-03)
     useEffect(() => {
@@ -242,19 +268,85 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const fileCount = entries.filter(e => !e.isDir).length;
     const totalSize = entries.reduce((sum, e) => sum + e.size, 0);
 
+    // --- Grid (icon) view: navigate the tree one folder at a time ---
+    const nodeAtPath = (path: string): TreeNode => {
+        if (!path) return tree;
+        let cur = tree;
+        for (const part of path.split('/').filter(Boolean)) {
+            const next = cur.children.get(part);
+            if (!next) return cur;
+            cur = next;
+        }
+        return cur;
+    };
+    const gridNode = nodeAtPath(gridPath);
+    const gridChildren = Array.from(gridNode.children.values()).sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+        return a.name.localeCompare(b.name);
+    });
+    const gridItems: ModalGridItem[] = gridChildren.map(n => ({
+        key: n.fullPath,
+        label: n.name,
+        isDir: n.isDir,
+        size: n.isDir ? undefined : n.size,
+    }));
+    const gridGetIcon = (item: ModalGridItem, px: number): React.ReactNode => (
+        item.isDir
+            ? <Folder size={px} className="text-yellow-500 dark:text-yellow-400" />
+            : <File size={px} className="text-gray-500 dark:text-gray-400" />
+    );
+    const gridActivate = (item: ModalGridItem) => {
+        const node = gridChildren.find(n => n.fullPath === item.key);
+        if (!node) return;
+        if (node.isDir) setGridPath(node.fullPath);
+        else handleExtract(node.fullPath);
+    };
+    const gridActions = (item: ModalGridItem): React.ReactNode => {
+        const node = gridChildren.find(n => n.fullPath === item.key);
+        if (!node || node.isDir) return null;
+        return (
+            <>
+                <button
+                    onClick={(e) => { e.stopPropagation(); handlePreview(node.fullPath); }}
+                    className="p-1 rounded bg-white/80 dark:bg-gray-800/80 hover:bg-blue-100 dark:hover:bg-gray-600"
+                    title={t('archive.preview') || 'Preview'}
+                >
+                    <Eye size={12} />
+                </button>
+                <button
+                    onClick={(e) => { e.stopPropagation(); handleExtract(node.fullPath); }}
+                    className="p-1 rounded bg-white/80 dark:bg-gray-800/80 hover:bg-blue-100 dark:hover:bg-gray-600"
+                    title={t('archive.extract') || 'Extract'}
+                >
+                    <Download size={12} />
+                </button>
+            </>
+        );
+    };
+    const gridCrumbs = gridPath.split('/').filter(Boolean);
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[700px] max-h-[80vh] flex flex-col animate-scale-in">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-browser-title"
+            onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}
+        >
+            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[840px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                         <Archive size={18} className="text-blue-500 dark:text-blue-400" />
-                        <span className="font-medium truncate max-w-[400px]">{archiveName}</span>
+                        <span id="archive-browser-title" className="font-medium truncate max-w-[400px]">{archiveName}</span>
                         <span className="text-xs text-gray-500 dark:text-gray-400 uppercase">{archiveType}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')}>
-                        <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {!loading && !needsPassword && entries.length > 0 && <ModalViewToolbar view={modalView} />}
+                        <button onClick={guarded.requestClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={t('common.close')} aria-label={t('common.close')}>
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Password prompt */}
@@ -267,6 +359,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <input
+                                    ref={archivePasswordRef}
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
@@ -274,7 +367,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                                     placeholder={t('archive.enterPassword') || 'Enter password...'}
                                     className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8"
                                 />
-                                <button
+                                <button tabIndex={-1}
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400"
                                 >
@@ -305,8 +398,54 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                     </div>
                 )}
 
+                {/* Icon grid view (navigates folder-by-folder) */}
+                {!loading && !needsPassword && entries.length > 0 && modalView.viewMode === 'grid' && (
+                    <div className="flex-1 overflow-auto flex flex-col">
+                        {/* Grid breadcrumb */}
+                        <div className="flex items-center gap-1 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+                            {gridPath && (
+                                <button
+                                    onClick={() => setGridPath(gridCrumbs.slice(0, -1).join('/') + (gridCrumbs.length > 1 ? '/' : ''))}
+                                    className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                                    title={t('archive.back') || 'Back'}
+                                >
+                                    <ChevronRight size={14} className="rotate-180" />
+                                </button>
+                            )}
+                            <button onClick={() => setGridPath('')} className="hover:text-gray-900 dark:hover:text-white">
+                                {archiveName}
+                            </button>
+                            {gridCrumbs.map((part, i) => (
+                                <React.Fragment key={i}>
+                                    <span>/</span>
+                                    <button
+                                        onClick={() => setGridPath(gridCrumbs.slice(0, i + 1).join('/') + '/')}
+                                        className="hover:text-gray-900 dark:hover:text-white truncate max-w-[140px]"
+                                    >
+                                        {part}
+                                    </button>
+                                </React.Fragment>
+                            ))}
+                        </div>
+                        {gridItems.length === 0 ? (
+                            <div className="flex-1 flex items-center justify-center py-12 text-gray-500 dark:text-gray-400 text-sm">
+                                {t('archive.empty') || 'Archive is empty'}
+                            </div>
+                        ) : (
+                            <ModalFileGrid
+                                items={gridItems}
+                                gridSize={modalView.gridSize}
+                                getIcon={gridGetIcon}
+                                onActivate={gridActivate}
+                                renderActions={gridActions}
+                                formatSize={formatSize}
+                            />
+                        )}
+                    </div>
+                )}
+
                 {/* Tree view */}
-                {!loading && !needsPassword && entries.length > 0 && (
+                {!loading && !needsPassword && entries.length > 0 && modalView.viewMode === 'list' && (
                     <div className="flex-1 overflow-auto">
                         <table className="w-full">
                             <thead className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-gray-50 dark:bg-gray-800">
@@ -338,11 +477,28 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                     </div>
                 )}
 
-                {/* Extracting indicator */}
+                {/* Extracting indicator: spinner for the instant case, a real byte-true
+                    bar once the backend reports (>=10MB); RAR shows an honest
+                    indeterminate bar since its extract is opaque. */}
                 {extracting && (
-                    <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-sm border-t border-gray-200 dark:border-gray-700 flex items-center gap-2">
-                        <Loader2 size={14} className="animate-spin" />
-                        {t('archive.extracting') || 'Extracting'} {extracting.split('/').pop()}...
+                    <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-sm border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-2">
+                            <Loader2 size={14} className="animate-spin shrink-0" />
+                            <span className="truncate">{t('archive.extracting') || 'Extracting'} {extracting.split('/').pop()}...</span>
+                        </div>
+                        {progress && (
+                            <div className="mt-2">
+                                <TransferProgressBar
+                                    percentage={progress.percentage}
+                                    transferredBytes={progress.indeterminate ? undefined : progress.transferred}
+                                    totalBytes={progress.indeterminate ? undefined : progress.total}
+                                    speedBps={progress.speedBps}
+                                    etaSeconds={progress.etaSeconds}
+                                    variant={progress.indeterminate ? 'indeterminate' : 'gradient'}
+                                    size="lg"
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -351,6 +507,13 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
                     <span>{fileCount} {t('archive.files') || 'files'}, {formatSize(totalSize)}</span>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

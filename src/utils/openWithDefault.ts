@@ -3,6 +3,7 @@
 
 export type OpenWithDefaultRoute =
   | { kind: 'aerovault' }
+  | { kind: 'aerozip' }
   | { kind: 'aeroftp-profile' }
   | { kind: 'aeroftp-keystore' }
   | { kind: 'terminal'; command: string }
@@ -69,6 +70,7 @@ export function getOpenWithDefaultRoute(path: string, isDir = false, platform = 
   if (!isDir) {
     const lower = lowerPath(path);
     if (lower.endsWith('.aerovault')) return { kind: 'aerovault' };
+    if (lower.endsWith('.aerozip')) return { kind: 'aerozip' };
     if (lower.endsWith('.aeroftp-keystore')) return { kind: 'aeroftp-keystore' };
     if (lower.endsWith('.aeroftp')) return { kind: 'aeroftp-profile' };
 

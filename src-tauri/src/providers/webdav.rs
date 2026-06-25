@@ -2924,16 +2924,7 @@ impl StorageProvider for WebDavProvider {
                 }
                 Ok(())
             }
-            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
-                "Parent directory does not exist".to_string(),
-            )),
-            StatusCode::INSUFFICIENT_STORAGE => Err(ProviderError::ServerError(
-                "Insufficient storage space".to_string(),
-            )),
-            status => Err(ProviderError::TransferFailed(format!(
-                "Upload failed with status: {}",
-                status
-            ))),
+            status => Err(upload_failure_error(status)),
         }
     }
 
@@ -4116,6 +4107,31 @@ pub async fn webdav_empty_trash(
         .map_err(|e| e.to_string())
 }
 
+/// Map a non-success WebDAV upload (PUT) status to a `ProviderError`.
+///
+/// RFC 4918 §9.7.1 says a PUT whose parent collection is missing should answer
+/// `409 Conflict`, but Koofr's WebDAV gateway returns `404 Not Found` for that
+/// case (and also when the target path is itself an existing collection rather
+/// than a file). Without this, a Koofr upload to a missing-parent or directory
+/// target surfaced as the opaque, retryable "Upload failed with status: 404"
+/// (discussion #277). Both `409` and `404` are folded into one actionable,
+/// non-retryable `InvalidPath` error so the message is clear and a sync/retry
+/// loop does not keep re-uploading a file that can never land at that path.
+fn upload_failure_error(status: StatusCode) -> ProviderError {
+    match status {
+        StatusCode::CONFLICT | StatusCode::NOT_FOUND => ProviderError::InvalidPath(
+            "Upload target is not a writable file: the parent directory is missing or the \
+             path is a directory (some WebDAV servers such as Koofr return 404 instead of \
+             409 here)"
+                .to_string(),
+        ),
+        StatusCode::INSUFFICIENT_STORAGE => {
+            ProviderError::ServerError("Insufficient storage space".to_string())
+        }
+        other => ProviderError::TransferFailed(format!("Upload failed with status: {}", other)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4130,6 +4146,30 @@ mod tests {
             verify_cert: true,
             anonymous: false,
         }
+    }
+
+    #[test]
+    fn upload_404_and_409_map_to_clear_non_retryable_error() {
+        // Koofr returns 404 (not RFC 4918's 409) when the PUT parent is missing
+        // or the target is a directory. Both must become the same actionable,
+        // non-retryable InvalidPath error rather than an opaque "status: 404".
+        for status in [StatusCode::NOT_FOUND, StatusCode::CONFLICT] {
+            match upload_failure_error(status) {
+                ProviderError::InvalidPath(msg) => {
+                    assert!(msg.contains("parent directory is missing"), "msg: {}", msg)
+                }
+                other => panic!("{} should map to InvalidPath, got {:?}", status, other),
+            }
+        }
+        // Other failures keep their existing mappings.
+        assert!(matches!(
+            upload_failure_error(StatusCode::INSUFFICIENT_STORAGE),
+            ProviderError::ServerError(_)
+        ));
+        assert!(matches!(
+            upload_failure_error(StatusCode::BAD_GATEWAY),
+            ProviderError::TransferFailed(_)
+        ));
     }
 
     #[test]

@@ -14,6 +14,7 @@ import {
     FileType, Database, FileSpreadsheet, FileText, Folder, FolderUp
 } from 'lucide-react';
 import { AeroVaultFileIcon } from '../../components/icons/AeroVaultFileIcon';
+import { AeroVaultZipFileIcon } from '../../components/icons/AeroVaultZipFileIcon';
 import { AeroFtpFileIcon } from '../../components/icons/AeroFtpFileIcon';
 import { AeroFtpKeystoreIcon } from '../../components/icons/AeroFtpKeystoreIcon';
 import type { IconThemeProvider, FileIconResult } from './types';
@@ -79,6 +80,9 @@ export const createMinimalTheme = (effectiveTheme: EffectiveTheme): IconThemePro
             const ext = filename.split('.').pop()?.toLowerCase() || '';
             if (ext === 'aerovault') {
                 return { icon: <AeroVaultFileIcon size={size} />, color: 'text-emerald-500' };
+            }
+            if (ext === 'aerozip') {
+                return { icon: <AeroVaultZipFileIcon size={size} />, color: 'text-amber-500' };
             }
             if (ext === 'aeroftp-keystore') {
                 return { icon: <AeroFtpKeystoreIcon size={size} />, color: 'text-amber-500' };

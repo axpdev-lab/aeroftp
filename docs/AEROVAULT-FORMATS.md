@@ -12,7 +12,8 @@ different family. This document is the authoritative format/naming contract
 |----------------------|----------------|---------------------|-----------------------|-------------|----------------|
 | "Standard"* / `vault_create` | v1 ZIP (WinZip AE) | `PK\x03\x04` (ZIP) | n/a | ZIP metadata | `aerovault.rs` |
 | "Advanced", "Paranoid" / CLI `-V v2` | **`AEROVAULT2`** | `AEROVAULT2` | `3` (current) or `2` (legacy read-only) | 512 bytes | `aerovault` crate (`aerovault_v2.rs` wrapper) |
-| "Experimental" / CLI `-V v3` | **`AEROVAULT3`** | `AEROVAULT3` | `3` | 1024 bytes | `aerovault_v3.rs` (app-native) |
+| "Archive" / CLI `-V v3` | **`AEROVAULT3`** | `AEROVAULT3` | `3` | 1024 bytes | `aerovault_v3.rs` (app-native) |
+| "AeroVault Zip" / CLI `archive` | **`AEROVAULT3` plaintext** | `AEROVAULT3` | `3` | 1024 bytes | `aerovault_v3.rs` + `cli_aerovz.rs` |
 
 \* As of the 2026-06-03 remediation the GUI "Standard" level creates an
 `AEROVAULT2` container (Argon2id + AES-256-GCM-SIV), not a v1 ZIP. The v1 ZIP
@@ -37,6 +38,22 @@ formats that share the digit 3 by coincidence of versioning, not by design.**
   byte `3`, the current hardened crate format).
 - CLI `aeroftp-cli vault create -V v3` → `AEROVAULT3` container (app-native).
 
+## The plaintext sibling: AeroVault Zip (`.aerozip`)
+
+`.aerozip` (`application/x-aerozip`, GUI "AeroVault Zip", CLI
+`aeroftp-cli archive create/list/extract`) is **not a fourth encrypted family**.
+It is the **`AEROVAULT3` wrapper stack with the cipher layers turned off**: same
+`AEROVAULT3` magic and 1024-byte header, content-defined chunking, per-chunk zstd
+compression and optional Reed-Solomon recovery parity, but **no Argon2id key
+derivation and no AES/ChaCha20 encryption**. It is integrity-and-recovery only and
+**provides no confidentiality**: anyone with the file can read its contents.
+
+- Recovery parity is on by default and opt-out: `--recovery-level 0` (also `off` /
+  `none`) creates a smaller, parity-free archive.
+- It is fail-closed against the encrypted lane in both directions: the `archive`
+  parsers reject an encrypted `AEROVAULT3` ("it is encrypted"), and the `vault`
+  parsers reject a plaintext one. A header flag distinguishes the two.
+
 ## Cross-open behaviour (intentional, fail-closed)
 
 | Open with \ Container | `AEROVAULT2` | `AEROVAULT3` | v1 ZIP |
@@ -49,7 +66,10 @@ Cross-family opens are **rejected before any allocation or decrypt** by a magic
 check, so there is no cross-parser confusion or type-confusion primitive. This
 non-interoperability is by design: the two binary layouts are not convertible in
 place. To move data between families, extract from one and re-add to the other
-(the GUI and CLI both expose extract + create).
+(the GUI and CLI both expose extract + create). A "Change Mode" repack that
+performs this extract-and-rebuild as a single operation (v2<->v3, and v2
+standard<->cascade), atomically swapping the rebuilt container, is in preparation
+for a future release and is not yet shipped.
 
 ## Header authentication
 
@@ -71,4 +91,4 @@ place. To move data between families, extract from one and re-add to the other
 - `AEROVAULT3` block AAD = `b"AeroVault v3 block"` + block_index (u64 LE) + the
   128-bit keyed-BLAKE3 chunk id as its 32-character hex string.
 
-_Last updated: 2026-06-03 (dual-independent audit remediation)._
+_Last updated: 2026-06-22._
