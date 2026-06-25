@@ -169,6 +169,14 @@ fn find_preset(key: &str) -> Option<&'static CheckPreset> {
     CHECK_CATALOG.iter().find(|preset| preset.key == key)
 }
 
+/// Ordered list of curated check keys. Single source of truth for the tool
+/// schema enum and the validation allowlist (see `ai_core::tools` and
+/// `ai_tools::validate_tool_args`), so adding a check to `CHECK_CATALOG`
+/// propagates everywhere without hand-maintained duplicate lists.
+pub(crate) fn check_keys() -> Vec<&'static str> {
+    CHECK_CATALOG.iter().map(|preset| preset.key).collect()
+}
+
 /// Validate the optional test-name filter. The filter is appended as a separate
 /// argv element (no shell), but a leading dash could still inject a flag into
 /// the underlying tool, so reject it along with control/whitespace characters.

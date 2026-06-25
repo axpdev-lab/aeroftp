@@ -161,6 +161,12 @@ pub enum ToolError {
 pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
     let local_surfaces = Surfaces::GUI | Surfaces::CLI;
     let remote_surfaces = Surfaces::GUI | Surfaces::CLI | Surfaces::MCP;
+    // Schema enums derived from the curated catalogs so the advertised tool
+    // surface stays in lockstep with what is actually runnable (no duplicate
+    // hand-maintained lists). See coding_checks::check_keys /
+    // coding_diagnostics::diagnostics_sources.
+    let check_enum: Value = crate::coding_checks::check_keys().into();
+    let diagnostics_enum: Value = crate::coding_diagnostics::diagnostics_sources().into();
     vec![
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
         ToolDef {
@@ -605,10 +611,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "workspace_root": {"type": "string"},
                     "check": {
                         "type": "string",
-                        "enum": [
-                            "cargo-check", "cargo-build", "cargo-test", "cargo-clippy",
-                            "cargo-fmt-check", "tsc", "vitest", "eslint", "npm-build"
-                        ]
+                        "enum": check_enum.clone()
                     },
                     "filter": {"type": "string"},
                     "timeout_secs": {"type": "integer"}
@@ -629,10 +632,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": [
-                                "cargo-check", "cargo-build", "cargo-test", "cargo-clippy",
-                                "cargo-fmt-check", "tsc", "vitest", "eslint", "npm-build"
-                            ]
+                            "enum": check_enum.clone()
                         }
                     },
                     "continue_on_failure": {"type": "boolean"},
@@ -652,7 +652,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "workspace_root": {"type": "string"},
                     "source": {
                         "type": "string",
-                        "enum": ["cargo", "tsc"]
+                        "enum": diagnostics_enum.clone()
                     },
                     "timeout_secs": {"type": "integer"}
                 },
@@ -2194,6 +2194,47 @@ mod tests {
             danger: DangerLevel::Safe,
             surfaces,
         }
+    }
+
+    fn schema_enum(tool: &str, pointer: &str) -> Vec<String> {
+        let def = find_tool(tool).unwrap_or_else(|| panic!("tool {tool} missing"));
+        def.input_schema
+            .pointer(pointer)
+            .and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("enum {pointer} missing for {tool}"))
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn coding_schema_enums_track_catalogs() {
+        // The advertised tool surface must stay derived from the curated
+        // catalogs; a hand-edited enum that drifts from CHECK_CATALOG /
+        // DIAGNOSTICS_CATALOG would fail here.
+        let checks: Vec<String> = crate::coding_checks::check_keys()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(!checks.is_empty());
+        assert_eq!(
+            schema_enum("coding_run_checks", "/properties/check/enum"),
+            checks
+        );
+        assert_eq!(
+            schema_enum("coding_verify", "/properties/checks/items/enum"),
+            checks
+        );
+
+        let sources: Vec<String> = crate::coding_diagnostics::diagnostics_sources()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(!sources.is_empty());
+        assert_eq!(
+            schema_enum("coding_diagnostics", "/properties/source/enum"),
+            sources
+        );
     }
 
     #[test]

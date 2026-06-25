@@ -1178,23 +1178,13 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 errors.push("Missing 'workspace_root' parameter".to_string());
             }
 
-            const KNOWN_CHECKS: &[&str] = &[
-                "cargo-check",
-                "cargo-build",
-                "cargo-test",
-                "cargo-clippy",
-                "cargo-fmt-check",
-                "tsc",
-                "vitest",
-                "eslint",
-                "npm-build",
-            ];
+            let known_checks = crate::coding_checks::check_keys();
             match args.get("check").and_then(|v| v.as_str()) {
-                Some(check) if KNOWN_CHECKS.contains(&check) => {}
+                Some(check) if known_checks.contains(&check) => {}
                 Some(check) => errors.push(format!(
                     "Unknown check '{}'. Known checks: {}",
                     check,
-                    KNOWN_CHECKS.join(", ")
+                    known_checks.join(", ")
                 )),
                 None => errors.push("Missing 'check' parameter".to_string()),
             }
@@ -1232,17 +1222,7 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 errors.push("Missing 'workspace_root' parameter".to_string());
             }
 
-            const KNOWN_CHECKS: &[&str] = &[
-                "cargo-check",
-                "cargo-build",
-                "cargo-test",
-                "cargo-clippy",
-                "cargo-fmt-check",
-                "tsc",
-                "vitest",
-                "eslint",
-                "npm-build",
-            ];
+            let known_checks = crate::coding_checks::check_keys();
             match args.get("checks").and_then(|v| v.as_array()) {
                 Some(checks) if checks.is_empty() => {
                     errors.push("'checks' array cannot be empty".to_string());
@@ -1253,7 +1233,7 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 Some(checks) => {
                     for check in checks {
                         match check.as_str() {
-                            Some(name) if KNOWN_CHECKS.contains(&name) => {}
+                            Some(name) if known_checks.contains(&name) => {}
                             Some(name) => errors.push(format!("Unknown check '{}'", name)),
                             None => errors.push("'checks' must contain only strings".to_string()),
                         }
@@ -1285,11 +1265,13 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 errors.push("Missing 'workspace_root' parameter".to_string());
             }
 
+            let known_sources = crate::coding_diagnostics::diagnostics_sources();
             match args.get("source").and_then(|v| v.as_str()) {
-                Some(source) if ["cargo", "tsc"].contains(&source) => {}
+                Some(source) if known_sources.contains(&source) => {}
                 Some(source) => errors.push(format!(
-                    "Unknown diagnostics source '{}'. Use: cargo, tsc",
-                    source
+                    "Unknown diagnostics source '{}'. Use: {}",
+                    source,
+                    known_sources.join(", ")
                 )),
                 None => errors.push("Missing 'source' parameter".to_string()),
             }

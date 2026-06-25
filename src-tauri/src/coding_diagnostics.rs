@@ -99,6 +99,16 @@ fn find_preset(source: &str) -> Option<&'static DiagnosticsPreset> {
         .find(|preset| preset.source == source)
 }
 
+/// Ordered list of curated diagnostics source keys. Single source of truth for
+/// the tool schema enum and the validation allowlist, so adding a source to
+/// `DIAGNOSTICS_CATALOG` propagates everywhere without duplicate lists.
+pub(crate) fn diagnostics_sources() -> Vec<&'static str> {
+    DIAGNOSTICS_CATALOG
+        .iter()
+        .map(|preset| preset.source)
+        .collect()
+}
+
 /// Parse one cargo `compiler-message` JSON line into a diagnostic. Returns
 /// `None` for non-diagnostic messages, summary lines without spans, and levels
 /// other than error/warning.
