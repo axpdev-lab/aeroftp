@@ -90,6 +90,9 @@ pub mod delta_transport;
 #[cfg(feature = "aerorsync")]
 pub mod local_sync;
 mod number_parsing;
+pub mod peer;
+pub mod peer_commands;
+pub mod peer_identity;
 pub mod portable;
 pub mod profile_loader;
 mod rsync_output;
@@ -97,6 +100,9 @@ pub mod storage_dedup;
 pub mod used_scan;
 mod user_crypto;
 pub mod user_partitions;
+// Re-export the partition DEK type so the (public) peer_identity storage facade
+// can name it in its signatures without widening the whole user_crypto module.
+pub use user_crypto::SecretKey;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`
@@ -16457,6 +16463,10 @@ pub fn run() {
         .manage(AppState::new())
         .manage(provider_commands::ProviderState::new())
         .manage(provider_commands::ConnectionCancelRegistry::new())
+        // AeroShare: registry of the background drive sync tasks consumed by
+        // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
+        // open-or-tray = serving, Quit = stop).
+        .manage(peer::runtime::PeerRuntime::default())
         .manage(session_manager::MultiProviderState::new());
 
     // Add PTY state for terminal support (all platforms)
@@ -16672,6 +16682,30 @@ pub fn run() {
             user_partitions::user_partitions_set_user_credential,
             user_partitions::user_partitions_delete_user_credential,
             user_partitions::user_partitions_find_cross_user_dedup,
+            // AeroShare P1 (task 4/5): the peer handshake + inventory surface
+            peer_commands::peer_identity_get,
+            peer_commands::peer_share_start,
+            peer_commands::peer_drive_add,
+            peer_commands::peer_friends_list,
+            peer_commands::peer_contact_add,
+            peer_commands::peer_contact_remove,
+            peer_commands::peer_drives_list,
+            // AeroShare Share surface slice 2: the "Shared by me" panel
+            peer_commands::peer_shares_list,
+            peer_commands::peer_share_stop,
+            peer_commands::peer_share_resume,
+            peer_commands::peer_share_remove,
+            // AeroShare "Send file to user" one-shot (AirDrop)
+            peer_commands::peer_send_file,
+            peer_commands::peer_receiver_start,
+            peer_commands::peer_receiver_stop,
+            peer_commands::peer_receiver_status,
+            peer_commands::peer_incoming_respond,
+            peer_commands::peer_friends_presence,
+            peer_commands::peer_send_knock,
+            peer_commands::peer_send_action,
+            peer_commands::aeroshare_notify,
+            peer_commands::aeroshare_inbox_root,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,

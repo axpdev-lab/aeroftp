@@ -60,6 +60,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "profiles",
     "groups",
     "users",
+    "peer",
     "profile-add",
     "profile-duplicate",
     "profile-duplicate-mode",

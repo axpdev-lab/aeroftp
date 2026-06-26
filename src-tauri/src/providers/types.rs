@@ -87,6 +87,10 @@ pub enum ProviderType {
     /// vault as a read-only filesystem. Never created through the provider
     /// factory and never persisted to a profile; it has no network endpoint.
     AeroVaultMount,
+    /// AeroShare peer drive (user-to-user E2EE folder over iroh). Browses the
+    /// LOCAL replica folder kept fresh by the PeerRuntime sync task; Phase 1
+    /// is read-only ("their drive"), the write direction lands in Phase 2.
+    Peer,
 }
 
 impl fmt::Display for ProviderType {
@@ -126,6 +130,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Backblaze => write!(f, "Backblaze B2"),
             ProviderType::Cloudinary => write!(f, "Cloudinary"),
             ProviderType::AeroVaultMount => write!(f, "AeroMount (unlocked vault)"),
+            ProviderType::Peer => write!(f, "AeroShare"),
         }
     }
 }
@@ -173,6 +178,7 @@ impl ProviderType {
             "uploadcare" => Some(Self::Uploadcare),
             "b2" | "backblaze" | "backblazeb2" => Some(Self::Backblaze),
             "cloudinary" => Some(Self::Cloudinary),
+            "peer" | "aeroshare" => Some(Self::Peer),
             _ => None,
         }
     }
@@ -214,6 +220,8 @@ impl ProviderType {
             ProviderType::Backblaze => 443,
             ProviderType::Cloudinary => 443,
             ProviderType::AeroVaultMount => 0, // local, no network endpoint
+            // Transport is iroh (QUIC + relay); there is no host:port to dial.
+            ProviderType::Peer => 443,
         }
     }
 
@@ -253,7 +261,8 @@ impl ProviderType {
             ProviderType::ImageKit |
             ProviderType::Uploadcare |
             ProviderType::Backblaze |
-            ProviderType::Cloudinary
+            ProviderType::Cloudinary |
+            ProviderType::Peer // E2EE per-drive content key + sealed capabilities
         )
     }
 
@@ -1662,6 +1671,15 @@ pub enum ProviderError {
         ch_display: String,
         provider: String,
     },
+
+    /// The endpoint is structurally read-only for this session, by design and
+    /// not by missing permissions: an AeroShare friend's drive in Phase 1 is a
+    /// replica you browse/pull from; every mutation must happen on the
+    /// publisher's side. Distinct from `PermissionDenied` (a server rejected
+    /// the credentials/ACL) and `NotSupported` (the protocol lacks the verb).
+    /// The wording is stable so the GUI can detect and localize it.
+    #[error("Read-only endpoint: {0}")]
+    ReadOnly(String),
 
     #[error("Unknown error: {0}")]
     Unknown(String),

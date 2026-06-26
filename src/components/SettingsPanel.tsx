@@ -7,7 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell } from 'lucide-react';
+import { AeroShareContacts } from './AeroShare/AeroShareContacts';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -148,6 +149,21 @@ interface AppSettings {
     reconnectAttempts: number;
     reconnectDelay: number;
     ftpMode: 'passive' | 'active';
+    /** AeroShare experimental master flag (P2P-GUI-DESIGN.md D-GUI-2). When
+     *  false (default) every AeroShare surface is hidden. Read app-wide via
+     *  {@link useAeroShareEnabled}. */
+    aeroShareEnabled: boolean;
+    /** "Send file to user" RECEIVE toggle. When on, the app runs a standing
+     *  receive loop so friends can send files (one-shot, E2EE). Default OFF.
+     *  Read app-wide via {@link useAeroShareReceiveSettings}. */
+    aeroShareReceiving: boolean;
+    /** OPT-IN: auto-accept incoming sends from SAVED friends (skip the prompt).
+     *  Unknown senders always prompt. Default OFF (prompt everyone). */
+    aeroShareAutoAcceptFriends: boolean;
+    /** OPT-IN: fire an OS system notification for every received file (incl.
+     *  auto-accepted ones), so the user knows even when AeroFTP is not focused.
+     *  Default OFF. Read app-wide via {@link useAeroShareReceiveSettings}. */
+    aeroShareNotifyOnReceive: boolean;
     // Transfers
     maxConcurrentTransfers: number;
     retryCount: number;
@@ -205,6 +221,10 @@ const defaultSettings: AppSettings = {
     reconnectAttempts: 3,
     reconnectDelay: 5,
     ftpMode: 'passive',
+    aeroShareEnabled: false,
+    aeroShareReceiving: false,
+    aeroShareAutoAcceptFriends: false,
+    aeroShareNotifyOnReceive: false,
     maxConcurrentTransfers: 5,
     retryCount: 3,
     downloadSegments: 0,
@@ -234,7 +254,7 @@ const defaultSettings: AppSettings = {
     disableUpdateChecks: false,
 };
 
-type TabId = 'general' | 'connection' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
+type TabId = 'general' | 'connection' | 'aeroshare' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
 type AppearanceSubTabId = 'interface' | 'theme' | 'icons' | 'backgrounds';
 
 // Check Update Button with loading animation and Activity Log support
@@ -776,6 +796,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             label: t('settings.connection'),
             icon: <Wifi size={16} />,
         },
+        { id: 'aeroshare', label: 'AeroShare', icon: <Share2 size={16} /> },
         { id: 'aerocloud', label: 'AeroCloud', icon: <Cloud size={16} /> },
         {
             id: 'cloudproviders',
@@ -1219,6 +1240,103 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </label>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.ftpModeDesc')}</p>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'aeroshare' && (
+                                <div className="space-y-6">
+                                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">AeroShare</h3>
+
+                                    <div className="space-y-4">
+                                        {/* AeroShare experimental master flag (P2P-GUI-DESIGN.md
+                                            D-GUI-2). Default OFF: hides every AeroShare surface
+                                            (friend cards, Add friend, handshake dialog, the Send
+                                            dialog) until the §9 release-gating checklist clears. The
+                                            Rubrica below stays visible regardless, so contacts can be
+                                            managed even when AeroShare is off. */}
+                                        <div>
+                                            <Checkbox
+                                                checked={settings.aeroShareEnabled}
+                                                onChange={(v) => updateSetting('aeroShareEnabled', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium flex items-center gap-2">
+                                                            <Share2 size={15} className="text-violet-500" />
+                                                            {t('aeroShare.experimentalLabel')}
+                                                        </p>
+                                                        <p className="text-sm text-gray-500">{t('aeroShare.experimentalDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
+                                            <p className="text-xs text-amber-600 mt-2 ml-6">{t('aeroShare.experimentalNote')}</p>
+                                        </div>
+
+                                        {/* "Send file to user" RECEIVE settings: the Ricezione
+                                            toggle + the auto-accept-from-friends opt-in (shown only
+                                            when AeroShare is on). The accept opt-in is a sub-option
+                                            of receiving. */}
+                                        {settings.aeroShareEnabled && (
+                                            <div className="ml-6 space-y-3">
+                                                <Checkbox
+                                                    checked={settings.aeroShareReceiving}
+                                                    onChange={(v) => updateSetting('aeroShareReceiving', v)}
+                                                    label={
+                                                        <div>
+                                                            <p className="font-medium flex items-center gap-2">
+                                                                <Download size={15} className="text-violet-500" />
+                                                                {t('aeroShare.receiveLabel')}
+                                                            </p>
+                                                            <p className="text-sm text-gray-500">{t('aeroShare.receiveDesc')}</p>
+                                                        </div>
+                                                    }
+                                                />
+                                                {settings.aeroShareReceiving && (
+                                                    <div className="ml-6 space-y-3">
+                                                        <Checkbox
+                                                            checked={settings.aeroShareAutoAcceptFriends}
+                                                            onChange={(v) => updateSetting('aeroShareAutoAcceptFriends', v)}
+                                                            label={
+                                                                <div>
+                                                                    <p className="font-medium">{t('aeroShare.autoAcceptLabel')}</p>
+                                                                    <p className="text-sm text-gray-500">{t('aeroShare.autoAcceptDesc')}</p>
+                                                                </div>
+                                                            }
+                                                        />
+                                                        {/* OS notification on receive: the production-critical
+                                                            awareness gap - with auto-accept on the receive is
+                                                            SILENT, so without this the user does not know a file
+                                                            arrived when the window is unfocused. Opt-in, default OFF. */}
+                                                        <Checkbox
+                                                            checked={settings.aeroShareNotifyOnReceive}
+                                                            onChange={(v) => updateSetting('aeroShareNotifyOnReceive', v)}
+                                                            label={
+                                                                <div>
+                                                                    <p className="font-medium flex items-center gap-2">
+                                                                        <Bell size={15} className="text-violet-500" />
+                                                                        {t('aeroShare.notifyOnReceiveLabel')}
+                                                                    </p>
+                                                                    <p className="text-sm text-gray-500">{t('aeroShare.notifyOnReceiveDesc')}</p>
+                                                                </div>
+                                                            }
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Rubrica (address book): the SAME reusable component as
+                                            the AeroShare dialog's Contacts tab (no code duplication),
+                                            and ALWAYS shown - contacts remain manageable even when
+                                            AeroShare is disabled. */}
+                                        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+                                            <p className="font-medium flex items-center gap-2 mb-2">
+                                                <Users size={15} className="text-violet-500" />
+                                                {t('aeroShare.contacts.title')}
+                                            </p>
+                                            <AeroShareContacts compact />
                                         </div>
                                     </div>
                                 </div>

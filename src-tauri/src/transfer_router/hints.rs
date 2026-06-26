@@ -83,7 +83,11 @@ pub fn from_provider_type(
         | ProviderType::Uploadcare
         | ProviderType::Cloudinary
         // Synthetic local mount; never routed through the transfer router.
-        | ProviderType::AeroVaultMount => ProviderHint::OAuthCloud,
+        | ProviderType::AeroVaultMount
+        // AeroShare peer drive: reads come from the LOCAL replica folder, so
+        // there is no network class to route on. Unmeasured -> the module's
+        // safe default until a benchmark says otherwise.
+        | ProviderType::Peer => ProviderHint::OAuthCloud,
     }
 }
 

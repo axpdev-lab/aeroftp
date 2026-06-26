@@ -25,3 +25,14 @@ export function visibleQuickFilters(counts: Partial<Record<MyServersFilterBy, nu
 export function visibleProtocolFilters(counts: Partial<Record<MyServersFilterBy, number>>): MyServersFilterBy[] {
     return PROTOCOL_FILTER_IDS.filter((id) => (counts[id] ?? 0) > 0);
 }
+
+/** The AeroShare (peer) friend chip: shown only when the experimental flag is on
+ *  AND at least one friend profile exists, so it appears alongside the other
+ *  quick chips as the friend surface (PHASE 2 design: reuse the AeroShare filter,
+ *  no separate server-group). Hidden entirely when the flag is off. */
+export function visiblePeerFilter(
+    counts: Partial<Record<MyServersFilterBy, number>>,
+    aeroShareEnabled: boolean,
+): MyServersFilterBy[] {
+    return aeroShareEnabled && (counts.peer ?? 0) > 0 ? ['peer'] : [];
+}

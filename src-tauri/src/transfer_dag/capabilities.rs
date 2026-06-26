@@ -181,7 +181,9 @@ impl TransferCapabilities {
             | ProviderType::Cloudinary
             // Synthetic local mount; never enters the transfer DAG. Keep the
             // conservative no-special-capabilities default.
-            | ProviderType::AeroVaultMount => {}
+            | ProviderType::AeroVaultMount
+            // AeroShare peer drive: local replica reads, hint defaults apply.
+            | ProviderType::Peer => {}
         }
 
         if !caps.multipart_upload.is_available() {

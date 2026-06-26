@@ -6,6 +6,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { I18nProvider } from './i18n';
 import { ActivityLogProvider } from './hooks/useActivityLog';
+import { NotificationCenterProvider } from './hooks/useNotificationCenter';
 import { IconThemeProvider } from './hooks/useIconTheme';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { loader } from '@monaco-editor/react';
@@ -27,9 +28,11 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <I18nProvider>
       <ErrorBoundary>
         <ActivityLogProvider>
-          <IconThemeProvider>
-            <App />
-          </IconThemeProvider>
+          <NotificationCenterProvider>
+            <IconThemeProvider>
+              <App />
+            </IconThemeProvider>
+          </NotificationCenterProvider>
         </ActivityLogProvider>
       </ErrorBoundary>
     </I18nProvider>

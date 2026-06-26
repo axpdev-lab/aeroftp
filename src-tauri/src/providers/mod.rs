@@ -54,6 +54,7 @@ pub mod oauth2;
 pub mod onedrive;
 pub mod opendrive;
 pub mod pcloud;
+pub mod peer;
 pub mod retry_after;
 pub mod s3;
 pub mod sftp;
@@ -110,6 +111,7 @@ pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 pub use onedrive::OneDriveProvider;
 pub use opendrive::OpenDriveProvider;
 pub use pcloud::PCloudProvider;
+pub use peer::PeerProvider;
 pub use s3::S3Provider;
 pub use sftp::SftpProvider;
 pub use swift::SwiftProvider;
@@ -1199,6 +1201,10 @@ impl ProviderFactory {
             ProviderType::AeroVaultMount => Err(ProviderError::InvalidConfig(
                 "AeroVaultMount is not created through the provider factory".to_string(),
             )),
+            ProviderType::Peer => {
+                let peer_config = peer::PeerProviderConfig::from_provider_config(config)?;
+                Ok(Box::new(PeerProvider::new(peer_config)))
+            }
         }
     }
 
@@ -1239,6 +1245,7 @@ impl ProviderFactory {
             ProviderType::Uploadcare,
             ProviderType::Backblaze,
             ProviderType::Cloudinary,
+            ProviderType::Peer,
         ]
     }
 }
