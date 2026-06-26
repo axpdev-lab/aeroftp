@@ -1418,4 +1418,35 @@ mod tests {
         assert_eq!(out, "The key '003d90ca' is not valid");
         assert!(!out.contains("&apos;"));
     }
+
+    /// Row 4: an over-long first line is clipped near the 200-char cap with an
+    /// ellipsis (defence against multi-KB provider error bodies in the UI/log).
+    #[test]
+    fn sanitize_api_error_truncates_long_first_line() {
+        let long = format!("ERR {}", "x".repeat(300));
+        let out = sanitize_api_error(&long);
+        assert!(out.starts_with("ERR "));
+        assert!(out.ends_with("..."), "over-long line gets an ellipsis");
+        assert!(out.len() <= 210, "clipped near the 200-char cap, got {}", out.len());
+    }
+
+    /// Row 4: only the first line survives a multi-line body, and an embedded
+    /// API key is redacted (defence-in-depth via ai::sanitize_error_message).
+    #[test]
+    fn sanitize_api_error_keeps_first_line_and_redacts_secrets() {
+        let body = "Auth failed: sk-ant-1234567890abcdefghij rejected\nstack trace line 2";
+        let out = sanitize_api_error(body);
+        assert!(
+            !out.contains("sk-ant-1234567890abcdefghij"),
+            "the API key must be redacted"
+        );
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("stack trace"), "only the first line is kept");
+    }
+
+    /// Row 4: an empty body degrades to a stable placeholder, never panics.
+    #[test]
+    fn sanitize_api_error_empty_body_falls_back() {
+        assert_eq!(sanitize_api_error(""), "unknown error");
+    }
 }

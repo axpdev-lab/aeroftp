@@ -2638,4 +2638,112 @@ Time:2026-01-01</Message>
         assert_eq!(q.effective_access_tier(), Some("Cool"));
         assert!(q.archive_tier_delete);
     }
+
+    // ── Row 4: offline XML listing parser (body -> entries) ────────────
+    // parse_blob_list is the body->struct half of the provider; these lock
+    // its behaviour without any live HTTP (deterministic, CI-safe).
+
+    /// A real "List Blobs" page (root prefix): one virtual directory, one
+    /// direct blob with size + Last-Modified, one DEEPER blob that must be
+    /// filtered out (it lives under the virtual dir, not at this level), and
+    /// a NextMarker signalling another page.
+    #[test]
+    fn parse_blob_list_extracts_dirs_files_and_pagination_marker() {
+        let p = test_provider(); // current_prefix == ""
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults ServiceEndpoint="https://myacc.blob.core.windows.net/" ContainerName="mycontainer">
+  <Blobs>
+    <BlobPrefix>
+      <Name>photos/</Name>
+    </BlobPrefix>
+    <Blob>
+      <Name>readme.txt</Name>
+      <Properties>
+        <Last-Modified>Mon, 01 Jan 2026 12:00:00 GMT</Last-Modified>
+        <Content-Length>1234</Content-Length>
+        <Content-Type>text/plain</Content-Type>
+        <BlobType>BlockBlob</BlobType>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>photos/deep.jpg</Name>
+      <Properties>
+        <Content-Length>9999</Content-Length>
+      </Properties>
+    </Blob>
+  </Blobs>
+  <NextMarker>2!ABC</NextMarker>
+</EnumerationResults>"#;
+
+        let (items, marker) = p.parse_blob_list(xml);
+
+        // The nested blob (photos/deep.jpg) is filtered -> only the prefix and
+        // the top-level file survive.
+        assert_eq!(items.len(), 2, "nested blob must be filtered out");
+
+        let dir = items
+            .iter()
+            .find(|i| i.is_prefix)
+            .expect("the virtual directory must be present");
+        assert_eq!(dir.name, "photos");
+        assert_eq!(dir.size, 0);
+
+        let file = items
+            .iter()
+            .find(|i| !i.is_prefix)
+            .expect("the top-level blob must be present");
+        assert_eq!(file.name, "readme.txt");
+        assert_eq!(file.size, 1234);
+        assert_eq!(
+            file.last_modified.as_deref(),
+            Some("Mon, 01 Jan 2026 12:00:00 GMT")
+        );
+
+        assert!(!items.iter().any(|i| i.name.contains("deep")));
+        assert_eq!(marker.as_deref(), Some("2!ABC"));
+    }
+
+    /// Inside a sub-prefix the current_prefix is stripped from every entry,
+    /// and an absent NextMarker yields None (last page).
+    #[test]
+    fn parse_blob_list_strips_current_prefix_and_reports_last_page() {
+        let mut p = test_provider();
+        p.current_prefix = "photos/".to_string();
+        let xml = r#"<?xml version="1.0"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>photos/sunset.jpg</Name>
+      <Properties>
+        <Content-Length>2048</Content-Length>
+      </Properties>
+    </Blob>
+    <BlobPrefix>
+      <Name>photos/2026/</Name>
+    </BlobPrefix>
+  </Blobs>
+</EnumerationResults>"#;
+
+        let (items, marker) = p.parse_blob_list(xml);
+        assert_eq!(items.len(), 2);
+
+        let file = items.iter().find(|i| !i.is_prefix).unwrap();
+        assert_eq!(file.name, "sunset.jpg", "current_prefix must be stripped");
+        assert_eq!(file.size, 2048);
+
+        let dir = items.iter().find(|i| i.is_prefix).unwrap();
+        assert_eq!(dir.name, "2026", "sub-prefix relative to current_prefix");
+
+        assert_eq!(marker, None, "no NextMarker -> last page");
+    }
+
+    /// A malformed / non-list body never panics: it yields no items and no
+    /// marker (the async caller then surfaces the HTTP error instead).
+    #[test]
+    fn parse_blob_list_tolerates_garbage_body() {
+        let p = test_provider();
+        let (items, marker) = p.parse_blob_list("not xml at all <<<");
+        assert!(items.is_empty());
+        assert_eq!(marker, None);
+    }
 }

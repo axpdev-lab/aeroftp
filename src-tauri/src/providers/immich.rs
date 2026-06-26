@@ -1526,4 +1526,41 @@ mod tests {
         let d = ImmichProvider::device_asset_id("other.jpg", 1024);
         assert_ne!(a, d, "different name must change hash");
     }
+
+    /// Row 4: the whole 5xx range (not just 500) routes to ConnectionFailed,
+    /// and the mapped error carries the caller context + sanitized body so
+    /// the surfaced message is actionable.
+    #[test]
+    fn map_api_error_covers_5xx_boundary_and_message_contract() {
+        use reqwest::StatusCode;
+        for code in [502u16, 503, 599] {
+            let status = StatusCode::from_u16(code).unwrap();
+            assert!(
+                matches!(
+                    ImmichProvider::map_api_error(status, "boom", "op"),
+                    ProviderError::ConnectionFailed(_)
+                ),
+                "HTTP {code} must map to ConnectionFailed"
+            );
+        }
+
+        // Context + body flow into the message (no Debug dependency).
+        if let ProviderError::NotFound(m) =
+            ImmichProvider::map_api_error(StatusCode::NOT_FOUND, "missing asset", "Get asset")
+        {
+            assert!(m.contains("Get asset"), "context preserved");
+            assert!(m.contains("missing asset"), "body preserved");
+        } else {
+            panic!("404 must map to NotFound");
+        }
+
+        // 429 explicitly labels the rate-limit case.
+        if let ProviderError::Other(m) =
+            ImmichProvider::map_api_error(StatusCode::TOO_MANY_REQUESTS, "slow", "List")
+        {
+            assert!(m.contains("Rate limited"));
+        } else {
+            panic!("429 must map to Other");
+        }
+    }
 }
