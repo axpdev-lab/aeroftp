@@ -15305,8 +15305,9 @@ fn section_prompt_line(prompt: &str) -> std::io::Result<Option<String>> {
 /// The labelled action bar for `profiles -i`. Ordered safe-first (#311
 /// discussioncomment-17411227, @EhudKirsh): `Help` leads, then the read-only
 /// inspection verbs (`List`/`Tree`/`Refresh`) and cross-navigation
-/// (`Groups`/`Users`), then the mutating verbs with `re-index` out of the front
-/// and the destructive `Delete` last before `Quit`. Keys are unchanged, so no
+/// (`Groups`/`Users`), then the mutating verbs (`New` catalog-driven create #311
+/// row 1, leading the block) with `re-index` out of the front and the destructive
+/// `Delete` last before `Quit`. Keys are unchanged, so no
 /// automation breaks. `fav_marker` (\u{2605} default, \u{2665} if chosen, #270)
 /// rides on the Fav verb so the bar shows the user's chosen glyph.
 fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
@@ -15317,6 +15318,7 @@ fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
         SectionVerb::new("Refresh", "."),
         SectionVerb::new("Groups", "G"),
         SectionVerb::new("Users", "U"),
+        SectionVerb::new("New", "N"),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Edit", "E"),
         SectionVerb::new("Copy", "C"),
@@ -16860,7 +16862,7 @@ fn interactive_profiles_loop(
             // profile-table column order; the syntax line below keeps the
             // selector/target details.
             eprintln!(
-                "\nActions: {}\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
+                "\nActions: {}\nInteractive: n [query] new profile  ·  l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
                 render_section_actions(&profiles_section_verbs(fav_marker))
             );
             eprint!("profiles> ");
@@ -16889,6 +16891,7 @@ fn interactive_profiles_loop(
             return 0;
         }
         if section_is_help(&lower) {
+            eprintln!("  n [query]       new profile via the catalog picker (substring-match a provider, then name + fields)");
             eprintln!("  l <selectors>   list root of each profile");
             eprintln!("  t <selectors> [:N]  tree of each profile (default depth 2; :N sets depth, :0 = full)");
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
@@ -17201,6 +17204,32 @@ fn interactive_profiles_loop(
                 Err(e) => {
                     eprintln!("Switch failed: {}", e);
                 }
+            }
+            continue;
+        }
+
+        // New(N): create a profile from inside the loop via the service-first
+        // catalog picker (#311 row 1, Phase B), the rclone `n) New remote` model.
+        // `n [query]` substring-matches `aero catalog`; creds are added later in
+        // the GUI Edit modal, same contract as `profile-add`. A non-target verb,
+        // so it is handled here before the selector dispatch (like `tui`/`#`).
+        if lower == "n" || lower == "new" || lower.starts_with("n ") || lower.starts_with("new ") {
+            let tokens = tokenize_quoted(raw);
+            let query = if tokens.len() >= 2 {
+                tokens[1..].join(" ")
+            } else {
+                String::new()
+            };
+            match interactive_new_profile(cli, store, &current, &query) {
+                Ok(Some(_)) => match load_active_user_profiles(cli, store) {
+                    Ok(p) => {
+                        current = p;
+                        tombstones.clear();
+                    }
+                    Err(e) => eprintln!("Created, but could not reload profiles: {}", e),
+                },
+                Ok(None) => {}
+                Err(e) => eprintln!("{}", paint_red(&format!("New profile failed: {}", e))),
             }
             continue;
         }
@@ -19174,11 +19203,74 @@ fn cmd_profile_add(
             return 5;
         }
     };
-    let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
+    let resolved_initial_path = initial_path.unwrap_or("/");
+    let new_id = match persist_new_profile_entry(
+        cli,
+        &store,
+        trimmed_name,
+        &proto_lower,
+        host,
+        resolved_port,
+        username,
+        resolved_initial_path,
+        local_initial_path,
+        color,
+        provider_id,
+        manual_total_bytes,
+    ) {
+        Ok(id) => id,
+        Err(e) => {
+            let code = if e.starts_with("Failed to read") { 6 } else { 5 };
+            print_error(format, &e, code);
+            return code;
+        }
+    };
+
+    match format {
+        OutputFormat::Json => {
+            let out = serde_json::json!({
+                "id": new_id,
+                "name": trimmed_name,
+                "protocol": proto_lower,
+                "port": resolved_port,
+            });
+            println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+        }
+        _ => {
+            println!(
+                "Created profile '{}' ({}, port {}) with id={}",
+                trimmed_name, proto_lower, resolved_port, new_id
+            );
+        }
+    }
+    0
+}
+
+/// Build and persist a new profile entry for the active user from already-resolved
+/// fields, prepending it so it surfaces at the top of the table, and returning the
+/// new id. The credential is NOT set here (it is added later in the GUI Edit modal),
+/// matching the CLI `profile-add` contract. Shared by `cmd_profile_add` and the
+/// interactive `profiles -i` New(N) verb (#311 row 1, Phase B). Errors are returned
+/// as messages so each caller maps them to its own exit code / rendering.
+#[allow(clippy::too_many_arguments)]
+fn persist_new_profile_entry(
+    cli: &Cli,
+    store: &CredentialStore,
+    name: &str,
+    protocol: &str,
+    host: Option<&str>,
+    port: u16,
+    username: Option<&str>,
+    initial_path: &str,
+    local_initial_path: Option<&str>,
+    color: Option<&str>,
+    provider_id: Option<&str>,
+    manual_total_bytes: Option<u64>,
+) -> Result<String, String> {
+    let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, store) {
         Ok(p) => p,
         Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
-            print_error(format, &format!("Failed to read profiles: {}", e), 6);
-            return 6;
+            return Err(format!("Failed to read profiles: {}", e));
         }
         Err(_) => Vec::new(),
     };
@@ -19202,25 +19294,21 @@ fn cmd_profile_add(
 
     let mut entry = serde_json::Map::new();
     entry.insert("id".into(), serde_json::Value::String(new_id.clone()));
-    entry.insert(
-        "name".into(),
-        serde_json::Value::String(trimmed_name.to_string()),
-    );
+    entry.insert("name".into(), serde_json::Value::String(name.to_string()));
     entry.insert(
         "protocol".into(),
-        serde_json::Value::String(proto_lower.clone()),
+        serde_json::Value::String(protocol.to_string()),
     );
     if let Some(h) = host {
         entry.insert("host".into(), serde_json::Value::String(h.to_string()));
     }
-    entry.insert("port".into(), serde_json::json!(resolved_port));
+    entry.insert("port".into(), serde_json::json!(port));
     if let Some(u) = username {
         entry.insert("username".into(), serde_json::Value::String(u.to_string()));
     }
-    let resolved_initial_path = initial_path.unwrap_or("/");
     entry.insert(
         "initialPath".into(),
-        serde_json::Value::String(resolved_initial_path.to_string()),
+        serde_json::Value::String(initial_path.to_string()),
     );
     if let Some(lp) = local_initial_path {
         entry.insert(
@@ -19245,29 +19333,262 @@ fn cmd_profile_add(
 
     profiles.insert(0, serde_json::Value::Object(entry));
 
-    if let Err(e) = save_active_user_profiles(cli, &store, &profiles) {
-        print_error(format, &format!("Failed to write profiles: {}", e), 5);
-        return 5;
+    save_active_user_profiles(cli, store, &profiles)
+        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    Ok(new_id)
+}
+
+/// Protocols whose endpoint is user-supplied (self-hosted / generic network),
+/// so the interactive New(N) flow prompts host/port/username/path for them. Every
+/// other catalog protocol is an OAuth/API/token cloud where those fields are
+/// derived from the `provider_id`, so New(N) just records the name and the user
+/// finishes the credentials in the GUI Edit modal (same contract as `profile-add`).
+fn protocol_needs_network_fields(protocol: &str) -> bool {
+    matches!(
+        protocol,
+        "ftp" | "ftps" | "sftp" | "webdav" | "webdavs" | "s3" | "swift"
+    )
+}
+
+/// The default port shown in the New(N) prompt for a network protocol.
+fn default_port_for_protocol(protocol: &str) -> u16 {
+    match protocol {
+        "ftp" | "ftps" => 21,
+        "sftp" => 22,
+        "webdav" | "webdavs" => 443,
+        _ => 0,
+    }
+}
+
+/// One catalog connection method flattened with its company context, the unit the
+/// New(N) picker lists and the user selects.
+struct CatalogPick<'a> {
+    company: &'a str,
+    method: &'a CliCatalogMethod,
+}
+
+/// Substring-match the embedded provider catalog (#311 row 1 picker UX, owner pick:
+/// typed `n [query]`). Matches the query against company name, method label,
+/// protocol, provider id, note and country, returning one row per matching
+/// (company, method), sorted company-then-label. Empty query returns nothing (the
+/// caller asks the user to narrow), so the 50+ company catalog never floods the
+/// line-mode prompt.
+fn catalog_pick_matches<'a>(catalog: &'a [CliCatalogCompany], query: &str) -> Vec<CatalogPick<'a>> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let mut rows: Vec<CatalogPick<'a>> = Vec::new();
+    for c in catalog {
+        for m in &c.protocols {
+            let hay = format!(
+                "{} {} {} {} {} {}",
+                c.company,
+                c.country,
+                m.label,
+                m.protocol,
+                m.provider_id.as_deref().unwrap_or(""),
+                m.note.as_deref().unwrap_or(""),
+            )
+            .to_ascii_lowercase();
+            if hay.contains(&q) {
+                rows.push(CatalogPick {
+                    company: &c.company,
+                    method: m,
+                });
+            }
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.company
+            .cmp(b.company)
+            .then(a.method.label.cmp(&b.method.label))
+    });
+    rows
+}
+
+/// The catalog-driven New(N) verb for `profiles -i` (#311 row 1, Phase B), the
+/// rclone `n) New remote` model: pick a provider from `aero catalog` by substring,
+/// name it, fill the protocol-aware fields, and persist on the shared engine.
+/// Credentials are added later in the GUI Edit modal, exactly like `profile-add`.
+/// `query` is the inline text from `n <query>` (empty = prompt for it). Returns
+/// `Ok(Some(id))` on a created profile, `Ok(None)` when the user aborts at any
+/// prompt, `Err` on a read/write failure.
+fn interactive_new_profile(
+    cli: &Cli,
+    store: &CredentialStore,
+    existing: &[serde_json::Value],
+    query: &str,
+) -> Result<Option<String>, String> {
+    let catalog =
+        load_cli_catalog().map_err(|e| format!("Failed to parse provider catalog: {}", e))?;
+
+    // Resolve the query: inline `n <query>` wins, else prompt. An empty answer
+    // aborts so a stray `n` never traps the user in a prompt.
+    let mut query = query.trim().to_string();
+    if query.is_empty() {
+        match section_prompt_line("New profile - search provider (name/protocol, empty to abort): ")
+        {
+            Ok(Some(l)) => query = l.trim().to_string(),
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(format!("Read error: {}", e)),
+        }
+        if query.is_empty() {
+            eprintln!("Empty search: new profile aborted.");
+            return Ok(None);
+        }
     }
 
-    match format {
-        OutputFormat::Json => {
-            let out = serde_json::json!({
-                "id": new_id,
-                "name": trimmed_name,
-                "protocol": proto_lower,
-                "port": resolved_port,
-            });
-            println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
-        }
-        _ => {
-            println!(
-                "Created profile '{}' ({}, port {}) with id={}",
-                trimmed_name, proto_lower, resolved_port, new_id
+    let matches = catalog_pick_matches(&catalog, &query);
+    if matches.is_empty() {
+        eprintln!(
+            "No provider matches '{}'. Try a company name, protocol (sftp/s3/webdav) or `aero catalog`.",
+            query
+        );
+        return Ok(None);
+    }
+
+    // Single unambiguous match skips the numbered pick; otherwise list and prompt.
+    let chosen = if matches.len() == 1 {
+        &matches[0]
+    } else {
+        eprintln!("\nMatches for '{}':", query);
+        for (i, p) in matches.iter().enumerate() {
+            eprintln!(
+                "  {:>2}) {:<24} {:<8} [{}]{}",
+                i + 1,
+                truncate_display(p.company, 24),
+                truncate_display(&p.method.label, 8),
+                p.method.provider_id.as_deref().unwrap_or(&p.method.protocol),
+                if p.method.paid { "  (paid)" } else { "" },
             );
         }
+        let sel = match section_prompt_line("pick # (0 to abort): ") {
+            Ok(Some(l)) => l.trim().to_string(),
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(format!("Read error: {}", e)),
+        };
+        if sel.is_empty() || sel == "0" {
+            eprintln!("New profile aborted.");
+            return Ok(None);
+        }
+        match sel.parse::<usize>() {
+            Ok(n) if n >= 1 && n <= matches.len() => &matches[n - 1],
+            _ => {
+                eprintln!("Pick out of range (1..={}). New profile aborted.", matches.len());
+                return Ok(None);
+            }
+        }
+    };
+
+    let protocol = chosen.method.protocol.clone();
+    let provider_id = chosen.method.provider_id.clone();
+
+    // Name: default to the company name, reject a case-insensitive duplicate.
+    let default_name = chosen.company.to_string();
+    let name = match section_prompt_line(&format!("Profile name [{}]: ", default_name)) {
+        Ok(Some(l)) => {
+            let t = l.trim().to_string();
+            if t.is_empty() {
+                default_name.clone()
+            } else {
+                t
+            }
+        }
+        Ok(None) => return Ok(None),
+        Err(e) => return Err(format!("Read error: {}", e)),
+    };
+    if existing.iter().any(|p| {
+        p.get("name")
+            .and_then(|v| v.as_str())
+            .map(|n| n.eq_ignore_ascii_case(&name))
+            .unwrap_or(false)
+    }) {
+        eprintln!(
+            "{}",
+            paint_red(&format!("A profile named '{}' already exists.", name))
+        );
+        return Ok(None);
     }
-    0
+
+    // Protocol-aware fields. Network protocols (self-hosted / generic) prompt
+    // host/port/username/path; OAuth/API clouds record just the name and finish
+    // in the GUI Edit modal. All network fields are optional (blank = defer).
+    let mut host: Option<String> = None;
+    let mut username: Option<String> = None;
+    let mut initial_path = String::from("/");
+    let mut port = default_port_for_protocol(&protocol);
+
+    if protocol_needs_network_fields(&protocol) {
+        match section_prompt_line("Host (blank to set later in the GUI): ") {
+            Ok(Some(l)) => {
+                let t = l.trim();
+                if !t.is_empty() {
+                    host = Some(t.to_string());
+                }
+            }
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(format!("Read error: {}", e)),
+        }
+        match section_prompt_line(&format!("Port [{}]: ", port)) {
+            Ok(Some(l)) => {
+                let t = l.trim();
+                if !t.is_empty() {
+                    match t.parse::<u16>() {
+                        Ok(p) => port = p,
+                        Err(_) => {
+                            eprintln!("Invalid port '{}'; keeping default {}.", t, port);
+                        }
+                    }
+                }
+            }
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(format!("Read error: {}", e)),
+        }
+        match section_prompt_line("Username (blank to set later): ") {
+            Ok(Some(l)) => {
+                let t = l.trim();
+                if !t.is_empty() {
+                    username = Some(t.to_string());
+                }
+            }
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(format!("Read error: {}", e)),
+        }
+        match section_prompt_line("Remote path [/]: ") {
+            Ok(Some(l)) => {
+                let t = l.trim();
+                if !t.is_empty() {
+                    initial_path = t.to_string();
+                }
+            }
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(format!("Read error: {}", e)),
+        }
+    }
+
+    let id = persist_new_profile_entry(
+        cli,
+        store,
+        &name,
+        &protocol,
+        host.as_deref(),
+        port,
+        username.as_deref(),
+        &initial_path,
+        None,
+        None,
+        provider_id.as_deref(),
+        None,
+    )?;
+    eprintln!(
+        "{}",
+        paint_green(&format!(
+            "Profile '{}' created ({}, port {}, id={}). Add credentials in the GUI Edit modal.",
+            name, protocol, port, id
+        ))
+    );
+    Ok(Some(id))
 }
 
 /// Duplicate a vault profile under a fresh id. Mirrors the GUI's
@@ -55224,12 +55545,78 @@ mod tests {
         // including the favourite glyph riding on the Fav verb (#270/#311).
         assert_eq!(
             render_section_actions(&profiles_section_verbs("\u{2605}")),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The chosen-heart marker (#270) flows through unchanged.
         assert!(
             render_section_actions(&profiles_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)")
         );
+    }
+
+    #[test]
+    fn catalog_pick_matches_substring_across_company_and_protocol() {
+        let catalog = load_cli_catalog().expect("embedded catalog parses");
+
+        // Empty query never floods the prompt with the whole catalog.
+        assert!(catalog_pick_matches(&catalog, "").is_empty());
+        assert!(catalog_pick_matches(&catalog, "   ").is_empty());
+
+        // Company-name substring (case-insensitive) finds MEGA's methods.
+        let mega = catalog_pick_matches(&catalog, "mega");
+        assert!(
+            mega.iter().any(|p| p.company == "MEGA"),
+            "expected a MEGA company match, got {:?}",
+            mega.iter().map(|p| p.company).collect::<Vec<_>>()
+        );
+
+        // A protocol token matches every method that speaks it, spanning companies.
+        let s3 = catalog_pick_matches(&catalog, "s3");
+        assert!(s3.len() > 1, "expected several S3 methods, got {}", s3.len());
+        assert!(s3.iter().all(|p| {
+            let hay = format!(
+                "{} {} {}",
+                p.method.protocol,
+                p.method.label,
+                p.method.provider_id.as_deref().unwrap_or("")
+            )
+            .to_ascii_lowercase();
+            hay.contains("s3")
+        }));
+
+        // Rows are sorted company-then-label (stable, predictable picker order).
+        let mut sorted = s3.iter().map(|p| (p.company, &p.method.label)).collect::<Vec<_>>();
+        let original = sorted.clone();
+        sorted.sort();
+        assert_eq!(original, sorted, "picker rows must be pre-sorted");
+
+        // A nonsense query yields nothing (caller asks the user to narrow).
+        assert!(catalog_pick_matches(&catalog, "zzqqxx-not-a-provider").is_empty());
+    }
+
+    #[test]
+    fn new_profile_field_defaults_track_protocol() {
+        // Network protocols prompt for host/port/path; clouds defer to the GUI.
+        for proto in ["ftp", "ftps", "sftp", "webdav", "webdavs", "s3", "swift"] {
+            assert!(
+                protocol_needs_network_fields(proto),
+                "{proto} should prompt network fields"
+            );
+        }
+        for proto in ["mega", "dropbox", "googledrive", "onedrive", "box", "filen"] {
+            assert!(
+                !protocol_needs_network_fields(proto),
+                "{proto} is an OAuth/API cloud, no host prompt"
+            );
+        }
+
+        // Default ports mirror cmd_profile_add's resolution.
+        assert_eq!(default_port_for_protocol("ftp"), 21);
+        assert_eq!(default_port_for_protocol("ftps"), 21);
+        assert_eq!(default_port_for_protocol("sftp"), 22);
+        assert_eq!(default_port_for_protocol("webdav"), 443);
+        assert_eq!(default_port_for_protocol("webdavs"), 443);
+        assert_eq!(default_port_for_protocol("s3"), 0);
+        assert_eq!(default_port_for_protocol("mega"), 0);
     }
 
     #[test]
