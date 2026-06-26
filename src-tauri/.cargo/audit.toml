@@ -27,6 +27,13 @@
 #           RUSTSEC-2026-0118 + RUSTSEC-2026-0119 (hickory-proto, fixed in 0.26.1) and
 #           RUSTSEC-2026-0002 (lru, patched 0.18.0 / unaffected 0.7.8). Only the two
 #           UNMAINTAINED iroh-graph advisories remain (atomic-polyfill, paste).)
+# Reviewed: 2026-06-26 (sigstore 0.13 -> 0.14 bump: REMOVED the two tough ignores
+#           GHSA-4v58-8p28-2rq3 + GHSA-8m7c-8m39-rv4x (sigstore 0.14 pulls tough 0.22,
+#           both fixed) and RUSTSEC-2026-0173 proc-macro-error2 (no longer in the graph:
+#           oci-spec 0.9 drops the getset edge). 0.14 also adds bundle-format v0.3 parsing,
+#           so verify_sigstore_bundle finally returns SigstoreVerified on real releases;
+#           only the `verify` feature is enabled, dropping the broken `sign` path. RSA
+#           Path A kept: openidconnect 4.0.1 still reaches rsa 0.9.10, dormant/non-blocking.)
 
 [advisories]
 ignore = [
@@ -38,7 +45,7 @@ ignore = [
     # two transitive paths to the `rsa` crate never expose a decrypt oracle:
     #
     #   Path A (rsa 0.9.10):
-    #     rsa <- openidconnect 4.0.1 <- sigstore 0.13.0 <- aeroftp
+    #     rsa <- openidconnect 4.0.1 <- sigstore 0.14.0 <- aeroftp
     #   Used by `verify_sigstore_bundle` in src-tauri/src/lib.rs to verify
     #   GitHub Actions Sigstore bundles attached to release artifacts.
     #   Fulcio signs short-lived certificates with ECDSA P-256, not RSA.
@@ -140,34 +147,6 @@ ignore = [
     "RUSTSEC-2025-0057",  # fxhash
 
     # ----------------------------------------------------------------
-    # tough 0.21.0 - delegated metadata validation issues (transitive via sigstore)
-    # ----------------------------------------------------------------
-    # Two GHSA advisories cover `tough 0.21.0`, both fixed in 0.22.0:
-    #   GHSA-4v58-8p28-2rq3 (HIGH 7.1) - missing expiration/hash/length checks
-    #     on delegated TUF target metadata in `load_delegations`.
-    #   GHSA-8m7c-8m39-rv4x (HIGH 7.0) - signature uniqueness not enforced on
-    #     delegated role metadata, allowing duplicated-signature threshold bypass.
-    #
-    # Both vulnerabilities require an attacker with **delegated TUF signing
-    # authority** on the metadata tree being consumed. AeroFTP only consumes
-    # the official Sigstore public-good TUF root via `sigstore::trust::sigstore::SigstoreTrustRoot`.
-    # Exploitation would require compromising Sigstore project KMS keys; this
-    # is a Sigstore-project supply-chain attack, not an AeroFTP-reachable one.
-    #
-    # Additionally, the verification path is explicitly NON-BLOCKING in
-    # `verify_sigstore_bundle` (src-tauri/src/lib.rs ~2300): any failure (including
-    # tampered TUF cache poisoning) degrades to `VerificationMode::Unavailable`
-    # rather than refusing the update. Update integrity is primarily anchored
-    # by the SHA-256 hash of the release artifact pinned in the AppCast feed.
-    #
-    # Cannot be fixed locally: `tough = "^0.22"` is not selectable while
-    # `sigstore = "0.13.0"` (latest stable) requires `tough = "^0.21"`. Awaiting
-    # sigstore-rs 0.14 or a [patch] from upstream. Tracked alongside the
-    # russh/RSA decommission in APPENDIX-SIGSTORE.
-    "GHSA-4v58-8p28-2rq3",  # tough delegated metadata validation
-    "GHSA-8m7c-8m39-rv4x",  # tough delegated signature threshold
-
-    # ----------------------------------------------------------------
     # Tauri 2.11.0 Origin Confusion (Windows/Android only) - intentional pin
     # ----------------------------------------------------------------
     # GHSA-7gmj-67g7-phm9 / CVE-2026-42184 (CVSS:4.0/AV:N/VI:H) flags Tauri's
@@ -234,19 +213,6 @@ ignore = [
     # Full evaluation: docs/security-evidence/REED-SOLOMON-ERASURE-EVALUATION-2026-06.md.
     "RUSTSEC-2024-0384",  # instant unmaintained (ECC wrapper via parking_lot 0.11)
 
-    # ----------------------------------------------------------------
-    # proc-macro-error2 2.0.1 unmaintained (build-dep via sigstore / oci-spec)
-    # ----------------------------------------------------------------
-    # RUSTSEC-2026-0173 (published 2026-06-07). Pulled at BUILD time only:
-    #   proc-macro-error2 2.0.1 <- getset 0.1.6 <- oci-spec 0.8.4 <-
-    #   oci-client 0.15.0 <- sigstore 0.13.0 <- aeroftp
-    # It is a derive-macro helper for `getset`; it runs in the compiler and is
-    # NOT present in the runtime binary (same class as proc-macro-error /
-    # RUSTSEC-2024-0370 ignored above). Unrelated to the ECC work; it surfaced on
-    # the pre-existing sigstore path when the advisory was published. Cannot be
-    # dropped without a sigstore/oci-spec upstream bump (sigstore 0.13.0 is the
-    # latest stable). Tracked with the other sigstore-path advisories above.
-    "RUSTSEC-2026-0173",  # proc-macro-error2 unmaintained (build-time, sigstore path)
     # ----------------------------------------------------------------
     # iroh 1.0 P2P stack - two transitive UNMAINTAINED advisories (peer-l0 normal dependency)
     # ----------------------------------------------------------------

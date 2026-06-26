@@ -120,7 +120,7 @@ rand_010 = { package = "rand", version = "0.10" }
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2.3.3"
 semver = "1.0.28"
-sigstore = { version = "0.13", default-features = false, features = ["bundle", "sigstore-trust-root", "native-tls"] }
+sigstore = { version = "0.14", default-features = false, features = ["verify", "sigstore-trust-root", "native-tls"] }
 
 # Secure Credential Storage (v1.3.2 hotfix)
 argon2 = "0.5"
