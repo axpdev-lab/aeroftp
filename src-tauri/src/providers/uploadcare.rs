@@ -193,15 +193,26 @@ impl UploadcareProvider {
     }
 
     async fn parse_error(&self, resp: reqwest::Response) -> ProviderError {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        let parsed = serde_json::from_str::<UcError>(&body).ok();
+        Self::classify_uploadcare_error(status, &body)
+    }
+
+    /// Pure status+body -> ProviderError classifier (extracted from `parse_error`
+    /// so it can be unit-tested without a live `reqwest::Response`). Uploadcare
+    /// spreads its human text across `detail`/`error`/`message` (in that order);
+    /// the HTTP status then selects the variant.
+    fn classify_uploadcare_error(status: u16, body: &str) -> ProviderError {
+        let parsed = serde_json::from_str::<UcError>(body).ok();
         let msg = parsed
             .as_ref()
             .and_then(|e| e.detail.clone().or(e.error.clone()).or(e.message.clone()))
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| sanitize_api_error(&body));
+            .unwrap_or_else(|| sanitize_api_error(body));
 
+        // Real responses always carry a valid HTTP status; the defensive fallback
+        // never fires in practice but keeps the fn total.
+        let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         match status {
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                 ProviderError::AuthenticationFailed(msg)
@@ -951,6 +962,59 @@ fn validate_uploadcare_api_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Row 4 (#347): human text is taken from detail/error/message (in that order)
+    // and the HTTP status selects the variant; auth folds 401 and 403 together.
+    #[test]
+    fn classify_uploadcare_error_maps_status_and_prefers_detail() {
+        // `detail` wins over `error`/`message`.
+        let body = r#"{"detail":"from detail","error":"from error","message":"from message"}"#;
+        assert!(matches!(
+            UploadcareProvider::classify_uploadcare_error(404, body),
+            ProviderError::NotFound(ref m) if m == "from detail"
+        ));
+        // No `detail` -> `error`; no `error` -> `message`.
+        assert!(matches!(
+            UploadcareProvider::classify_uploadcare_error(404, r#"{"error":"e","message":"m"}"#),
+            ProviderError::NotFound(ref m) if m == "e"
+        ));
+        assert!(matches!(
+            UploadcareProvider::classify_uploadcare_error(404, r#"{"message":"m"}"#),
+            ProviderError::NotFound(ref m) if m == "m"
+        ));
+
+        for code in [401u16, 403] {
+            assert!(
+                matches!(
+                    UploadcareProvider::classify_uploadcare_error(code, r#"{"detail":"no"}"#),
+                    ProviderError::AuthenticationFailed(_)
+                ),
+                "HTTP {code} must map to AuthenticationFailed"
+            );
+        }
+        assert!(matches!(
+            UploadcareProvider::classify_uploadcare_error(400, r#"{"detail":"bad"}"#),
+            ProviderError::InvalidConfig(_)
+        ));
+        assert!(matches!(
+            UploadcareProvider::classify_uploadcare_error(503, r#"{"detail":"down"}"#),
+            ProviderError::ServerError(_)
+        ));
+        // Non client/server status -> Other carrying "HTTP <code> <reason>".
+        match UploadcareProvider::classify_uploadcare_error(301, r#"{"detail":"moved"}"#) {
+            ProviderError::Other(msg) => assert!(msg.contains("HTTP 301"), "got: {msg}"),
+            e => panic!("expected Other, got {e:?}"),
+        }
+    }
+
+    // A non-envelope body falls back to the sanitized raw body (never lost/empty).
+    #[test]
+    fn classify_uploadcare_error_falls_back_to_sanitized_body() {
+        match UploadcareProvider::classify_uploadcare_error(500, "<html>err</html>") {
+            ProviderError::ServerError(msg) => assert!(!msg.is_empty()),
+            e => panic!("expected ServerError, got {e:?}"),
+        }
+    }
 
     // ---- S3-T13 multipart trait wiring ----
 
