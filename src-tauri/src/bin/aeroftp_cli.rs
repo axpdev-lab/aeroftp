@@ -10488,6 +10488,29 @@ fn load_server_groups(store: &CredentialStore) -> Vec<CliServerGroup> {
     groups
 }
 
+/// Count the active user's server groups WITHOUT the one-time legacy seed that
+/// `load_server_groups` performs through `groups_blob_get` (audit F2): merely
+/// listing users (`aeroftp-cli users` / `users -i`) should never write to the
+/// vault. Reads the per-user blob; when that row is still absent it peeks the
+/// legacy global blob READ-ONLY so the count is accurate without seeding. A
+/// locked / absent active user yields `None` (renders "-"), the partition being
+/// unreadable rather than known-empty.
+fn active_user_group_count_no_seed(store: &CredentialStore) -> Option<usize> {
+    let raw = match user_partitions::cli_get_active_setting(store, "server_groups") {
+        Ok(Some(v)) => v
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| v.to_string()),
+        Ok(None) => store.get("config_server_groups").unwrap_or_default(),
+        Err(_) => return None,
+    };
+    if raw.is_empty() {
+        return Some(0);
+    }
+    let groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
+    Some(groups.len())
+}
+
 // --- Per-user server groups + favourites (Ehud #311) ------------------------
 //
 // Groups and favourites predate the multi-user partitions, so they originally
@@ -14010,6 +14033,33 @@ fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
     0
 }
 
+/// A one-shot summary queued by a `groups -i` / `users -i` action that replaces
+/// the next top-of-loop table print, so a delete or a re-index is shown visually
+/// (struck tombstone, or struck-old + green-new arrow) instead of silently
+/// reloading the renumbered table. Mirrors the `profiles -i` tombstone/reorder
+/// pending state (#311, point 5). Only the minimal delta is stored; the live
+/// rows are rebuilt from the freshly reloaded list at print time so the summary
+/// can never go stale.
+enum SectionPending {
+    /// Just-deleted rows keyed by their original zero-based index.
+    Tombstones { stones: Vec<(usize, Vec<String>)> },
+    /// A re-index move, zero-based source and destination.
+    Reorder { src: usize, dst: usize },
+}
+
+/// Data columns (sans the leading `#`) the `groups -i` re-index/delete summary
+/// paints, matching the live `format_groups_table` columns.
+const GROUPS_SUMMARY_HEADERS: &[&str] = &["Group", "Profiles"];
+
+/// Build the generic summary rows for the groups table: one `[name, profiles]`
+/// cell vector per group, in table order. Parity with `format_groups_table`.
+fn groups_summary_rows(groups: &[CliServerGroup]) -> Vec<Vec<String>> {
+    groups
+        .iter()
+        .map(|g| vec![g.name.clone(), g.members.len().to_string()])
+        .collect()
+}
+
 /// Interactive `groups -i` loop. Built on the shared section engine
 /// (`render_section_actions`, `section_is_*`, `section_prompt_line`) so its
 /// vocabulary matches `profiles -i`. The vault is the single source of truth:
@@ -14018,9 +14068,37 @@ fn cmd_groups(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 {
 /// next prompt. Per Ehud #311.
 fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
     let verbs = groups_section_verbs();
+    // One-shot summary queued by the previous iteration's delete / re-index; it
+    // replaces this iteration's plain table print (#311, point 5).
+    let mut pending: Option<SectionPending> = None;
     loop {
         let groups = load_server_groups(store);
-        eprintln!("{}", format_groups_table(&groups));
+        match pending.take() {
+            Some(SectionPending::Tombstones { stones }) => {
+                eprintln!(
+                    "{}",
+                    format_section_summary_with_tombstones(
+                        GROUPS_SUMMARY_HEADERS,
+                        &groups_summary_rows(&groups),
+                        &stones,
+                        use_color(),
+                    )
+                );
+            }
+            Some(SectionPending::Reorder { src, dst }) => {
+                eprintln!(
+                    "{}",
+                    format_section_summary_with_reorder(
+                        GROUPS_SUMMARY_HEADERS,
+                        &groups_summary_rows(&groups),
+                        src,
+                        dst,
+                        use_color(),
+                    )
+                );
+            }
+            None => eprintln!("{}", format_groups_table(&groups)),
+        }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
             "Interactive: r/c/d <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
@@ -14092,10 +14170,17 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             };
             let gname = groups[idx].name.clone();
             match reorder_group_in_vault(store, &gname, pos) {
-                Ok((name, dst)) => eprintln!(
-                    "{}",
-                    paint_green(&format!("Group '{}' moved to #{}.", name, dst + 1))
-                ),
+                Ok((name, dst)) => {
+                    eprintln!(
+                        "{}",
+                        paint_green(&format!("Group '{}' moved to #{}.", name, dst + 1))
+                    );
+                    // Show the move on the next table print (struck old + green
+                    // new index with a gutter arrow), unless it was a no-op.
+                    if dst != idx {
+                        pending = Some(SectionPending::Reorder { src: idx, dst });
+                    }
+                }
                 Err(e) => eprintln!("{}", paint_red(&format!("Re-index failed: {}", e))),
             }
             continue;
@@ -14255,14 +14340,20 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                     eprintln!("Confirmation did not match: group NOT deleted.");
                     continue;
                 }
+                // Capture the deleted row (name + member count) at its current
+                // table index so the next print can show it as a struck tombstone.
+                let tomb = (idx, vec![name.clone(), count.to_string()]);
                 match delete_group_in_vault(store, &name) {
-                    Ok(removed) => eprintln!(
-                        "{}",
-                        paint_yellow(&format!(
-                            "Group '{}' deleted. Its servers were kept.",
-                            removed
-                        ))
-                    ),
+                    Ok(removed) => {
+                        eprintln!(
+                            "{}",
+                            paint_yellow(&format!(
+                                "Group '{}' deleted. Its servers were kept.",
+                                removed
+                            ))
+                        );
+                        pending = Some(SectionPending::Tombstones { stones: vec![tomb] });
+                    }
                     Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
                 }
             }
@@ -14312,7 +14403,9 @@ fn users_table_counts(
     let profile_counts = user_partitions::cli_storage_stats(store)
         .map(|stats| stats.into_iter().map(|s| (s.user_id, s.profile_count)).collect())
         .unwrap_or_default();
-    let active_group_count = Some(load_server_groups(store).len());
+    // Non-seeding count (audit F2): listing users must not trigger the legacy
+    // groups seed `load_server_groups` would.
+    let active_group_count = active_user_group_count_no_seed(store);
     (profile_counts, active_group_count)
 }
 
@@ -14530,6 +14623,59 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
     0
 }
 
+/// Data columns (sans the leading `#`) the `users -i` re-index/delete summary
+/// paints, matching the live `format_users_table` columns.
+const USERS_SUMMARY_HEADERS: &[&str] = &["User", "ID", "Profiles", "Groups", "Flags"];
+
+/// Build the generic summary rows for the user table, mirroring the per-row
+/// cells `format_users_table` paints (name, id, profile count, group count,
+/// flag summary) so the re-index/delete summary lines up with the live table.
+fn users_summary_rows(
+    users: &[user_partitions::UserMetadata],
+    marker: &str,
+    profile_counts: &std::collections::HashMap<i64, i64>,
+    active_group_count: Option<usize>,
+) -> Vec<Vec<String>> {
+    users
+        .iter()
+        .map(|u| {
+            let mut flags: Vec<String> = Vec::new();
+            if u.is_active {
+                flags.push("active".to_string());
+            }
+            if u.is_admin {
+                flags.push("admin".to_string());
+            }
+            if u.has_passphrase {
+                flags.push("password".to_string());
+            }
+            if u.is_default {
+                flags.push(format!("default{}", marker));
+            }
+            let flag_str = if flags.is_empty() {
+                "-".to_string()
+            } else {
+                flags.join(", ")
+            };
+            let prof = profile_counts.get(&u.id).copied().unwrap_or(0);
+            let grps = if u.is_active {
+                active_group_count
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            } else {
+                "-".to_string()
+            };
+            vec![
+                u.name.clone(),
+                u.id.to_string(),
+                prof.to_string(),
+                grps,
+                flag_str,
+            ]
+        })
+        .collect()
+}
+
 /// Interactive `users -i` loop. Built on the shared section engine so its
 /// vocabulary matches `profiles -i` / `groups -i`. The user-partitions DB is
 /// the single source of truth: the table is reloaded at the top of every
@@ -14538,6 +14684,9 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
 fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
     let marker = load_favorite_marker(store);
     let verbs = users_section_verbs(marker);
+    // One-shot summary queued by the previous iteration's delete / re-index; it
+    // replaces this iteration's plain table print (#311, point 5).
+    let mut pending: Option<SectionPending> = None;
     loop {
         let users = match user_partitions::cli_list_users(store) {
             Ok(u) => u,
@@ -14547,10 +14696,35 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             }
         };
         let (prof_counts, active_groups) = users_table_counts(store);
-        eprintln!(
-            "{}",
-            format_users_table(&users, marker, &prof_counts, active_groups)
-        );
+        match pending.take() {
+            Some(SectionPending::Tombstones { stones }) => {
+                eprintln!(
+                    "{}",
+                    format_section_summary_with_tombstones(
+                        USERS_SUMMARY_HEADERS,
+                        &users_summary_rows(&users, marker, &prof_counts, active_groups),
+                        &stones,
+                        use_color(),
+                    )
+                );
+            }
+            Some(SectionPending::Reorder { src, dst }) => {
+                eprintln!(
+                    "{}",
+                    format_section_summary_with_reorder(
+                        USERS_SUMMARY_HEADERS,
+                        &users_summary_rows(&users, marker, &prof_counts, active_groups),
+                        src,
+                        dst,
+                        use_color(),
+                    )
+                );
+            }
+            None => eprintln!(
+                "{}",
+                format_users_table(&users, marker, &prof_counts, active_groups)
+            ),
+        }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
             "Interactive: r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
@@ -14622,15 +14796,19 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             };
             let name = users[idx].name.clone();
             let ids = user_order_after_move(&users, idx, pos);
+            // Clamp the 1-based target to a 0-based destination, matching
+            // `user_order_after_move`, so the summary anchors on the real slot.
+            let dst = pos.clamp(1, users.len().max(1)) - 1;
             match user_partitions::cli_reorder_users(store, &ids) {
-                Ok(()) => eprintln!(
-                    "{}",
-                    paint_green(&format!(
-                        "User '{}' moved to #{}.",
-                        name,
-                        pos.min(users.len())
-                    ))
-                ),
+                Ok(()) => {
+                    eprintln!(
+                        "{}",
+                        paint_green(&format!("User '{}' moved to #{}.", name, dst + 1))
+                    );
+                    if dst != idx {
+                        pending = Some(SectionPending::Reorder { src: idx, dst });
+                    }
+                }
                 Err(e) => eprintln!("{}", paint_red(&format!("Re-index failed: {}", e))),
             }
             continue;
@@ -14981,11 +15159,29 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                         continue;
                     }
                 }
+                // Capture the deleted row at its current table index so the next
+                // print shows it as a struck tombstone. Build the cells the same
+                // way `users_summary_rows` does for one user.
+                let tomb = (
+                    idx,
+                    users_summary_rows(
+                        std::slice::from_ref(&user),
+                        marker,
+                        &prof_counts,
+                        active_groups,
+                    )
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default(),
+                );
                 match user_partitions::cli_delete_user(store, user.id) {
-                    Ok(()) => eprintln!(
-                        "{}",
-                        paint_yellow(&format!("User '{}' deleted.", user.name))
-                    ),
+                    Ok(()) => {
+                        eprintln!(
+                            "{}",
+                            paint_yellow(&format!("User '{}' deleted.", user.name))
+                        );
+                        pending = Some(SectionPending::Tombstones { stones: vec![tomb] });
+                    }
                     Err(e) => eprintln!("{}", paint_red(&format!("Delete failed: {}", e))),
                 }
             }
@@ -16873,6 +17069,329 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
             eprintln!("{}{}{}{}  {}", g, sep, old_field, new_field, body);
         }
     }
+}
+
+/// Column-generic counterpart of [`print_profiles_summary_with_tombstones`] for
+/// the `groups -i` / `users -i` sections (#311, point 5). The profile helper is
+/// hard-wired to the profile JSON columns; this one takes `headers` (the data
+/// columns; the leading `#` index column is added here) plus rows as plain cell
+/// vectors so any section can reuse the same struck-tombstone presentation.
+/// `live` is the post-delete table (one `Vec<String>` per row, each holding one
+/// cell per header); `tombstones` are the just-deleted rows keyed by their
+/// original zero-based index, re-inserted at that slot as red strikethrough rows
+/// with a `-` index. Column widths grow to fit the content (clamped so a long
+/// cell cannot blow out the table) and the `\u{2500}` rule spans the full width,
+/// matching the profile version.
+fn format_section_summary_with_tombstones(
+    headers: &[&str],
+    live: &[Vec<String>],
+    tombstones: &[(usize, Vec<String>)],
+    color: bool,
+) -> String {
+    let red = |s: &str| {
+        if color {
+            format!("\x1b[31m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    };
+    let strikethrough = |s: &str| {
+        if color {
+            format!("\x1b[9m{}\x1b[29m", s)
+        } else {
+            s.to_string()
+        }
+    };
+
+    struct Row<'a> {
+        live_index: Option<usize>, // 1-based; None on a tombstone
+        cells: &'a [String],
+        tombstone: bool,
+    }
+    let mut rows: Vec<Row> = live
+        .iter()
+        .enumerate()
+        .map(|(i, c)| Row {
+            live_index: Some(i + 1),
+            cells: c.as_slice(),
+            tombstone: false,
+        })
+        .collect();
+    for (zero, c) in tombstones.iter() {
+        let pos = (*zero).min(rows.len());
+        rows.insert(
+            pos,
+            Row {
+                live_index: None,
+                cells: c.as_slice(),
+                tombstone: true,
+            },
+        );
+    }
+
+    // Per-column width over the header and every cell, clamped so one runaway
+    // value cannot stretch the whole table.
+    let mut col_w: Vec<usize> = headers
+        .iter()
+        .map(|h| h.chars().count().clamp(1, 40))
+        .collect();
+    for r in &rows {
+        for (ci, w) in col_w.iter_mut().enumerate() {
+            let len = r.cells.get(ci).map(|s| s.chars().count()).unwrap_or(0);
+            *w = (*w).max(len).clamp(1, 40);
+        }
+    }
+    let idx_w = rows.len().to_string().len().max(1);
+
+    // Leading blank line so the summary stands apart from the action output.
+    let mut out = String::from("\n");
+    let mut header_line = format!("  {:>idx$}", "#", idx = idx_w);
+    for (ci, h) in headers.iter().enumerate() {
+        header_line.push_str(&format!("  {:<w$}", truncate_cell(h, col_w[ci]), w = col_w[ci]));
+    }
+    out.push_str(&header_line);
+    out.push('\n');
+    let total_w = idx_w + col_w.iter().map(|w| 2 + w).sum::<usize>();
+    out.push_str(&format!("  {}\n", "\u{2500}".repeat(total_w)));
+    for r in &rows {
+        let idx_cell = match r.live_index {
+            Some(i) => format!("{:>w$}", i, w = idx_w),
+            None => format!("{:>w$}", "-", w = idx_w),
+        };
+        let mut line = format!("  {}", idx_cell);
+        for (ci, w) in col_w.iter().enumerate() {
+            let cell = r.cells.get(ci).map(|s| s.as_str()).unwrap_or("");
+            line.push_str(&format!("  {:<w$}", truncate_cell(cell, *w), w = *w));
+        }
+        if r.tombstone {
+            out.push_str(&red(&strikethrough(&line)));
+        } else {
+            out.push_str(&line);
+        }
+        out.push('\n');
+    }
+    // Trim the trailing newline; callers `eprintln!` the result.
+    out.truncate(out.trim_end_matches('\n').len());
+    out
+}
+
+/// Column-generic counterpart of [`print_profiles_summary_with_reorder`] for the
+/// `groups -i` / `users -i` sections (#311, point 5). Same visual contract: the
+/// index splits into a struck-red OLD sub-column and a green NEW sub-column, the
+/// moved row appears as a struck ghost at its old slot plus a live row at its new
+/// slot, and a left-gutter arrow joins them. `headers` names the data columns
+/// (the index column is rendered here); `rows` is the POST-move table as plain
+/// cell vectors; `src`/`dst` are the zero-based source and destination. Caller
+/// guarantees `src != dst`.
+fn format_section_summary_with_reorder(
+    headers: &[&str],
+    rows_cells: &[Vec<String>],
+    src: usize,
+    dst: usize,
+    color: bool,
+) -> String {
+    let red = |s: &str| {
+        if color {
+            format!("\x1b[31m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    };
+    let strikethrough = |s: &str| {
+        if color {
+            format!("\x1b[9m{}\x1b[29m", s)
+        } else {
+            s.to_string()
+        }
+    };
+    let green = |s: &str| {
+        if color {
+            format!("\x1b[32m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    };
+
+    // Same analytic old -> new index map as the profile version: the list
+    // changed only by removing `src` and reinserting it at `dst`.
+    let down = src < dst;
+    let new_index_of = |old: usize| -> usize {
+        if old == src {
+            dst
+        } else if down && old > src && old <= dst {
+            old - 1
+        } else if !down && old >= dst && old < src {
+            old + 1
+        } else {
+            old
+        }
+    };
+
+    struct Row {
+        old_num: Option<String>,
+        new_num: Option<String>,
+        new_changed: bool,
+        row_ci: usize, // index into `rows_cells` (the post-move list)
+        old_index: Option<usize>,
+        ghost: bool,
+        live_row: bool,
+    }
+
+    let n = rows_cells.len();
+    let mut rows: Vec<Row> = Vec::with_capacity(n + 1);
+    for old in 0..n {
+        let new = new_index_of(old);
+        if old == src {
+            rows.push(Row {
+                old_num: Some((old + 1).to_string()),
+                new_num: None,
+                new_changed: false,
+                row_ci: dst,
+                old_index: Some(old + 1),
+                ghost: true,
+                live_row: false,
+            });
+        } else if new != old {
+            rows.push(Row {
+                old_num: Some((old + 1).to_string()),
+                new_num: Some((new + 1).to_string()),
+                new_changed: true,
+                row_ci: new,
+                old_index: Some(old + 1),
+                ghost: false,
+                live_row: false,
+            });
+        } else {
+            rows.push(Row {
+                old_num: None,
+                new_num: Some((new + 1).to_string()),
+                new_changed: false,
+                row_ci: new,
+                old_index: Some(old + 1),
+                ghost: false,
+                live_row: false,
+            });
+        }
+    }
+
+    let anchor = rows
+        .iter()
+        .position(|r| r.old_index == Some(dst + 1))
+        .unwrap_or(rows.len().saturating_sub(1));
+    let live_pos = if down { anchor + 1 } else { anchor };
+    rows.insert(
+        live_pos,
+        Row {
+            old_num: None,
+            new_num: Some((dst + 1).to_string()),
+            new_changed: true,
+            row_ci: dst,
+            old_index: None,
+            ghost: false,
+            live_row: true,
+        },
+    );
+
+    let ghost_pos = rows.iter().position(|r| r.ghost).unwrap_or(0);
+    let live_row_pos = rows.iter().position(|r| r.live_row).unwrap_or(0);
+    let arrow_top = ghost_pos.min(live_row_pos);
+    let arrow_bot = ghost_pos.max(live_row_pos);
+    let gutter = |i: usize, is_live: bool| -> String {
+        if i == arrow_top || i == arrow_bot {
+            let corner = if i == arrow_top {
+                '\u{250c}'
+            } else {
+                '\u{2514}'
+            };
+            let head = if is_live { '>' } else { '\u{2500}' };
+            format!("{}\u{2500}{}", corner, head)
+        } else if i > arrow_top && i < arrow_bot {
+            format!("{}  ", '\u{2502}')
+        } else {
+            "   ".to_string()
+        }
+    };
+
+    let mut col_w: Vec<usize> = headers
+        .iter()
+        .map(|h| h.chars().count().clamp(1, 40))
+        .collect();
+    for r in &rows {
+        let cells = &rows_cells[r.row_ci];
+        for (ci, w) in col_w.iter_mut().enumerate() {
+            let len = cells.get(ci).map(|s| s.chars().count()).unwrap_or(0);
+            *w = (*w).max(len).clamp(1, 40);
+        }
+    }
+    let old_w = rows
+        .iter()
+        .filter_map(|r| r.old_num.as_ref().map(|s| s.chars().count()))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let new_w = rows
+        .iter()
+        .filter_map(|r| r.new_num.as_ref().map(|s| s.chars().count()))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+
+    // Leading blank line so the summary stands apart from the action output.
+    let mut out = String::from("\n");
+    let mut header_line = format!("    {}{:>nw$}", " ".repeat(old_w), "#", nw = new_w);
+    for (ci, h) in headers.iter().enumerate() {
+        header_line.push_str(&format!("  {:<w$}", truncate_cell(h, col_w[ci]), w = col_w[ci]));
+    }
+    out.push_str(&header_line);
+    out.push('\n');
+    let total_w = old_w + new_w + col_w.iter().map(|w| 2 + w).sum::<usize>();
+    out.push_str(&format!("    {}\n", "\u{2500}".repeat(total_w)));
+    for (i, r) in rows.iter().enumerate() {
+        let cells = &rows_cells[r.row_ci];
+        let mut body = String::new();
+        for (ci, w) in col_w.iter().enumerate() {
+            if ci > 0 {
+                body.push_str("  ");
+            }
+            let cell = cells.get(ci).map(|s| s.as_str()).unwrap_or("");
+            body.push_str(&format!("{:<w$}", truncate_cell(cell, *w), w = *w));
+        }
+        let g = gutter(i, r.live_row);
+        let sep = if r.ghost { '\u{2500}' } else { ' ' };
+        let old_field = match &r.old_num {
+            Some(num) => {
+                let pad = old_w.saturating_sub(num.chars().count());
+                let fill = if r.ghost {
+                    "\u{2500}".repeat(pad)
+                } else {
+                    " ".repeat(pad)
+                };
+                format!("{}{}", fill, red(&strikethrough(num)))
+            }
+            None => " ".repeat(old_w),
+        };
+        if r.ghost {
+            let tail = strikethrough(&format!("{}  {}", " ".repeat(new_w), body));
+            out.push_str(&format!("{}{}{}{}", g, sep, old_field, tail));
+        } else {
+            let new_field = match &r.new_num {
+                Some(num) => {
+                    let pad = new_w.saturating_sub(num.chars().count());
+                    let cell = if r.new_changed {
+                        green(num)
+                    } else {
+                        num.clone()
+                    };
+                    format!("{}{}", " ".repeat(pad), cell)
+                }
+                None => " ".repeat(new_w),
+            };
+            out.push_str(&format!("{}{}{}{}  {}", g, sep, old_field, new_field, body));
+        }
+        out.push('\n');
+    }
+    out.truncate(out.trim_end_matches('\n').len());
+    out
 }
 
 /// Parse a compact token like `1l`, `l1`, `12d`, `t  3` into `(index, action)`.
@@ -53003,6 +53522,76 @@ mod tests {
             render_section_actions(&verbs),
             "re-index(#) \u{00b7} Rename(R) \u{00b7} Quit(Q/0)"
         );
+    }
+
+    #[test]
+    fn section_summary_tombstone_marks_deleted_row() {
+        // Column-generic delete summary (#311, point 5): a deleted row stays as a
+        // struck red tombstone with a `-` index; the survivors keep their
+        // renumbered 1-based index.
+        let headers = ["Group", "Profiles"];
+        let live = vec![
+            vec!["alpha".to_string(), "2".to_string()],
+            vec!["gamma".to_string(), "0".to_string()],
+        ];
+        let stones = vec![(1usize, vec!["beta".to_string(), "5".to_string()])];
+
+        // Colour forced on: the deleted row is wrapped in red + strikethrough.
+        let colored = format_section_summary_with_tombstones(&headers, &live, &stones, true);
+        assert!(colored.contains('\u{2500}'), "expected a header rule");
+        assert!(
+            colored.contains("\x1b[31m\x1b[9m"),
+            "tombstone row should be red + strikethrough: {colored:?}"
+        );
+
+        // Colour off: no ANSI, and the tombstone carries a `-` index while the
+        // live rows renumber 1..N around the gap.
+        let plain = format_section_summary_with_tombstones(&headers, &live, &stones, false);
+        assert!(!plain.contains('\x1b'), "colour off => no ANSI escapes");
+        let beta_line = plain
+            .lines()
+            .find(|l| l.contains("beta"))
+            .expect("beta row present");
+        assert!(
+            beta_line.trim_start().starts_with('-'),
+            "tombstone index is '-': {beta_line:?}"
+        );
+        assert!(plain
+            .lines()
+            .find(|l| l.contains("alpha"))
+            .unwrap()
+            .trim_start()
+            .starts_with('1'));
+        assert!(plain
+            .lines()
+            .find(|l| l.contains("gamma"))
+            .unwrap()
+            .trim_start()
+            .starts_with('2'));
+    }
+
+    #[test]
+    fn section_summary_reorder_marks_old_and_new_index() {
+        // Column-generic re-index summary (#311, point 5): moving the old #3 to #1
+        // shows the moved row twice (a struck ghost at its old slot + a live row at
+        // the new slot), with the old index struck-red and the new index green.
+        let headers = ["Group", "Profiles"];
+        // Pre-move [alpha, beta, gamma]; move src=2 -> dst=0 => [gamma, alpha, beta].
+        let rows = vec![
+            vec!["gamma".to_string(), "0".to_string()],
+            vec!["alpha".to_string(), "2".to_string()],
+            vec!["beta".to_string(), "5".to_string()],
+        ];
+
+        let colored = format_section_summary_with_reorder(&headers, &rows, 2, 0, true);
+        assert!(colored.contains('\u{2500}'), "expected a header rule");
+        assert!(colored.contains("\x1b[9m"), "old index should be struck");
+        assert!(colored.contains("\x1b[32m"), "new index should be green");
+
+        let plain = format_section_summary_with_reorder(&headers, &rows, 2, 0, false);
+        assert!(!plain.contains('\x1b'), "colour off => no ANSI escapes");
+        let gamma_count = plain.lines().filter(|l| l.contains("gamma")).count();
+        assert_eq!(gamma_count, 2, "moved row shown as ghost + live row");
     }
 
     #[test]
