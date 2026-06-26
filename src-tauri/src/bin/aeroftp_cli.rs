@@ -34959,16 +34959,19 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
         let end = (top + visible).min(n);
         let selected = checked.iter().filter(|&&c| c).count();
 
-        queue!(
-            err,
-            terminal::Clear(terminal::ClearType::All),
-            cursor::MoveTo(0, 0)
-        )?;
-        write!(
-            err,
-            "{}\r\n\r\n",
-            paint_bold("Pick profiles to compare", color_on)
-        )?;
+        // Repaint in place rather than clearing the whole screen each frame
+        // (#277): a full `Clear(All)` blanks every row before repainting it, so
+        // the title and list visibly flicker / shake on each keypress. Instead
+        // home the cursor and clear each line only to its end as we overwrite
+        // it, then wipe just the rows below the (possibly shorter) list, so
+        // nothing the user is looking at ever goes blank.
+        queue!(err, cursor::MoveTo(0, 0))?;
+        write!(err, "{}", paint_bold("Pick profiles to compare", color_on))?;
+        queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        write!(err, "\r\n")?;
+        // Blank separator line, cleared in case it held content last frame.
+        queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        write!(err, "\r\n")?;
         for (off, &is_checked) in checked[top..end].iter().enumerate() {
             let i = top + off;
             // Ehud (#277): a checkmark reads better than an x for "selected".
@@ -34980,17 +34983,25 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             } else {
                 line
             };
-            write!(err, "{}\r\n", line)?;
+            write!(err, "{}", line)?;
+            queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+            write!(err, "\r\n")?;
         }
+        // Wipe any rows the previous frame drew below the current list (e.g.
+        // after scrolling to a shorter final page) without disturbing the rows
+        // just painted above the cursor.
+        queue!(err, terminal::Clear(terminal::ClearType::FromCursorDown))?;
         queue!(err, cursor::MoveTo(0, rows.saturating_sub(2)))?;
         write!(
             err,
-            "{}\r\n",
+            "{}",
             paint_dim(
                 &format!("{}-{} of {}   {} selected", top + 1, end, n, selected),
                 color_on
             )
         )?;
+        queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        write!(err, "\r\n")?;
         write!(
             err,
             "{}",
@@ -34999,6 +35010,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
                 color_on
             )
         )?;
+        queue!(err, terminal::Clear(terminal::ClearType::UntilNewLine))?;
         err.flush()?;
 
         match event::read()? {
