@@ -336,14 +336,25 @@ impl CloudinaryProvider {
     }
 
     async fn parse_error(&self, resp: reqwest::Response) -> ProviderError {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        let parsed = serde_json::from_str::<CloudinaryError>(&body).ok();
+        Self::classify_cloudinary_error(status, &body)
+    }
+
+    /// Pure status+body -> ProviderError classifier (extracted from `parse_error`
+    /// so it can be unit-tested without a live `reqwest::Response`). Cloudinary
+    /// returns a JSON `{ "error": { "message" } }`; the message (or the sanitized
+    /// raw body) is the human text, and the HTTP status picks the variant.
+    fn classify_cloudinary_error(status: u16, body: &str) -> ProviderError {
+        let parsed = serde_json::from_str::<CloudinaryError>(body).ok();
         let msg = parsed
             .and_then(|e| e.error.and_then(|b| b.message))
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| sanitize_api_error(&body));
+            .unwrap_or_else(|| sanitize_api_error(body));
 
+        // Real responses always carry a valid HTTP status; the defensive fallback
+        // never fires in practice but keeps the fn total.
+        let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         match status {
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                 ProviderError::AuthenticationFailed(msg)
@@ -1583,6 +1594,66 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Row 4 (#347): the JSON `error.message` becomes the human text and the HTTP
+    // status selects the variant; auth folds 401 and 403 together.
+    #[test]
+    fn classify_cloudinary_error_maps_status_to_variant() {
+        let body = r#"{"error":{"message":"resource not found"}}"#;
+        assert!(matches!(
+            CloudinaryProvider::classify_cloudinary_error(404, body),
+            ProviderError::NotFound(ref m) if m == "resource not found"
+        ));
+
+        let auth = r#"{"error":{"message":"bad signature"}}"#;
+        for code in [401u16, 403] {
+            assert!(
+                matches!(
+                    CloudinaryProvider::classify_cloudinary_error(code, auth),
+                    ProviderError::AuthenticationFailed(ref m) if m == "bad signature"
+                ),
+                "HTTP {code} must map to AuthenticationFailed"
+            );
+        }
+
+        let conflict = r#"{"error":{"message":"already there"}}"#;
+        assert!(matches!(
+            CloudinaryProvider::classify_cloudinary_error(409, conflict),
+            ProviderError::AlreadyExists(_)
+        ));
+
+        // Other 4xx -> InvalidConfig; 5xx -> ServerError.
+        assert!(matches!(
+            CloudinaryProvider::classify_cloudinary_error(400, r#"{"error":{"message":"bad req"}}"#),
+            ProviderError::InvalidConfig(ref m) if m == "bad req"
+        ));
+        assert!(matches!(
+            CloudinaryProvider::classify_cloudinary_error(500, r#"{"error":{"message":"boom"}}"#),
+            ProviderError::ServerError(ref m) if m == "boom"
+        ));
+
+        // 3xx (non client/server) -> Other with "HTTP <code> <reason>: <msg>".
+        match CloudinaryProvider::classify_cloudinary_error(302, r#"{"error":{"message":"moved"}}"#)
+        {
+            ProviderError::Other(msg) => assert!(msg.contains("HTTP 302"), "got: {msg}"),
+            e => panic!("expected Other, got {e:?}"),
+        }
+    }
+
+    // When the body is not the Cloudinary error envelope, the message falls back
+    // to the sanitized raw body rather than being lost.
+    #[test]
+    fn classify_cloudinary_error_falls_back_to_sanitized_body() {
+        match CloudinaryProvider::classify_cloudinary_error(404, "<html>nope</html>") {
+            ProviderError::NotFound(msg) => assert!(!msg.is_empty(), "message must not be empty"),
+            e => panic!("expected NotFound, got {e:?}"),
+        }
+        // Empty `error.message` is treated as absent -> sanitized body.
+        match CloudinaryProvider::classify_cloudinary_error(404, r#"{"error":{"message":"   "}}"#) {
+            ProviderError::NotFound(_) => {}
+            e => panic!("expected NotFound, got {e:?}"),
+        }
+    }
 
     #[test]
     fn test_normalize_path_trims_and_strips_dots() {
