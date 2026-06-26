@@ -1,15 +1,18 @@
-import { secureGetWithFallback, secureStoreAndClean } from './secureStorage';
+import { secureGet } from './secureStorage';
+import { getActiveUserSetting, setActiveUserSetting } from './userPartitions';
 
 // Server groups are the generalisation of the ⭐ favourites: where a favourite
 // is a single anonymous bucket of server ids, a group is a *named* bucket. They
-// live in the vault under `server_groups` (the secureStorage layer prefixes it
-// to `config_server_groups`) with a legacy localStorage copy under
-// `aeroftp-server-groups` as an offline fallback, exactly like
-// `favoriteServers.ts`. Membership is stored here in the group blob, NOT on the
-// ServerProfile, so the profile schema is untouched and an unknown id simply
-// renders nothing (graceful, forward/backward compatible). See discussion #320.
+// are PER-USER (Ehud #311): stored in the active user's encrypted partition
+// under the `server_groups` setting scope, which the CLI reads. They predate
+// multi-user, so the first read for a user best-effort seeds from the legacy
+// GLOBAL vault blob (`config_server_groups`, reached via `secureGet`). The old
+// `aeroftp-server-groups` localStorage mirror is intentionally NOT used: it is
+// per-origin, not per-user, so it would leak one local user's groups to
+// another. Membership is stored in the group blob, NOT on the ServerProfile, so
+// the profile schema is untouched and an unknown id simply renders nothing
+// (graceful, forward/backward compatible). See discussion #320.
 export const GROUPS_VAULT_KEY = 'server_groups';
-export const GROUPS_STORAGE_KEY = 'aeroftp-server-groups';
 
 export interface ServerGroup {
     /** Stable id: `grp_${ts}_${rand}`. */
@@ -75,29 +78,29 @@ export function normalizeServerGroups(raw: unknown): ServerGroup[] {
     return groups.sort((a, b) => a.order - b.order);
 }
 
-/** Synchronous read from the localStorage fallback (for first-paint seeding). */
-export function readServerGroupsFromLocalStorage(): ServerGroup[] {
+/**
+ * Authoritative read of the active user's groups from their partition. On the
+ * first read for a user (no per-user value yet) it best-effort seeds, once,
+ * from the legacy global blob so groups created before multi-user carry over.
+ * Returns [] on any failure (groups are cosmetic, never hard-fail).
+ */
+export async function loadServerGroups(): Promise<ServerGroup[]> {
     try {
-        const stored = localStorage.getItem(GROUPS_STORAGE_KEY);
-        return stored ? normalizeServerGroups(JSON.parse(stored)) : [];
+        const perUser = await getActiveUserSetting<unknown>(GROUPS_VAULT_KEY);
+        if (perUser != null) return normalizeServerGroups(perUser);
+        // First read for this user: seed once from the legacy global blob.
+        const legacy = await secureGet<unknown>(GROUPS_VAULT_KEY);
+        const seeded = normalizeServerGroups(legacy);
+        if (seeded.length > 0) await setActiveUserSetting(GROUPS_VAULT_KEY, seeded);
+        return seeded;
     } catch {
         return [];
     }
 }
 
-/** Authoritative read from the vault, falling back to localStorage. */
-export async function loadServerGroups(): Promise<ServerGroup[]> {
-    try {
-        const groups = await secureGetWithFallback<unknown>(GROUPS_VAULT_KEY, GROUPS_STORAGE_KEY);
-        return normalizeServerGroups(groups);
-    } catch {
-        return readServerGroupsFromLocalStorage();
-    }
-}
-
-/** Dual-write to the vault + localStorage backup. Best-effort. */
+/** Persist the active user's groups to their partition. Best-effort. */
 export async function saveServerGroups(groups: ServerGroup[]): Promise<void> {
-    await secureStoreAndClean(GROUPS_VAULT_KEY, GROUPS_STORAGE_KEY, groups);
+    await setActiveUserSetting(GROUPS_VAULT_KEY, groups);
 }
 
 /**

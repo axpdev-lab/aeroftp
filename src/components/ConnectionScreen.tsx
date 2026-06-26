@@ -820,7 +820,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (key && key.trim()) {
             return tryStoreCredential(`filen_api_key_${profileId}`, key);
         }
-        return !!hadStored;
+        // The field was present but cleared. On edit the key is hydrated into the
+        // form (the saved profile options never carry it), so a blank value here
+        // is an explicit "remove the key", not the password-style "left blank to
+        // keep". Delete the vaulted key (idempotent) and report none stored, so
+        // the green Save persists the removal exactly like "Convert to <mode>"
+        // does. Previously this returned `hadStored`, silently keeping the vault
+        // key so reopening re-hydrated the "deleted" key (issues #128 / #215).
+        if (hadStored) {
+            try {
+                await invoke('delete_credential', { account: `filen_api_key_${profileId}` });
+            } catch (err) {
+                console.error('Failed to delete Filen API key credential:', err);
+            }
+        }
+        return false;
     };
 
     // Issue #215: Detect when the operator has switched to a different
@@ -998,6 +1012,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // encrypted blobs forever). The save button is already disabled on
         // mismatch (aeroCryptConfirmMismatch); this is defense-in-depth.
         if (aeroCryptConfirmMismatch) return;
+
+        // #128: saving a Quick Connect profile (typically to add the Filen API
+        // key so a 2FA login is no longer needed) must cancel any pending
+        // saved-secret 2FA auto-retry, otherwise the green bottom-right countdown
+        // popup keeps ticking and fires a stale TOTP reconnect. The countdown
+        // state lives in App; signal it to clear (connectToFtp already does the
+        // same for a manual connect, #128 item E).
+        window.dispatchEvent(new CustomEvent('aeroftp-cancel-totp-autoretry'));
 
         const normalizedParams = protocol === 'uploadcare'
             ? {

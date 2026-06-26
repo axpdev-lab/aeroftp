@@ -5766,6 +5766,20 @@ interface UpdateVerificationInfo {
     return () => window.clearTimeout(id);
   }, [totpAutoRetry]);
 
+  // #128: saving a Quick Connect profile (e.g. to add the Filen API key) cancels
+  // any pending saved-secret 2FA auto-retry, so the bottom-right countdown popup
+  // stops and never fires a stale TOTP reconnect. ConnectionScreen.saveToServers
+  // dispatches this when the user clicks the green Save (it can sit two layers
+  // down via IntroHub, so a window event is the cleanest channel).
+  useEffect(() => {
+    const cancel = () => {
+      setTotpAutoRetry(null);
+      totpRetryCountRef.current = 0;
+    };
+    window.addEventListener('aeroftp-cancel-totp-autoretry', cancel);
+    return () => window.removeEventListener('aeroftp-cancel-totp-autoretry', cancel);
+  }, []);
+
   // FTP operations
   const connectToFtp = async (
     overrideParams?: ConnectionParams,

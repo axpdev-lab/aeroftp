@@ -13,7 +13,6 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
@@ -32,12 +31,11 @@ import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
-import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favoriteServers';
+import { loadFavoriteServers, saveFavoriteServers } from '../../utils/favoriteServers';
 import {
     ServerGroup,
     loadServerGroups,
     saveServerGroups,
-    readServerGroupsFromLocalStorage,
     newServerGroupId,
     pruneServerFromGroups,
     reorderServerGroups,
@@ -399,41 +397,27 @@ export function MyServersPanel({
     // Drag & reorder
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
-    // Favorites live in the vault (key `config_favorite_servers`) so the CLI
-    // can read them and render the ⭐ column. Boot synchronously from
-    // localStorage to avoid an empty first paint, then reconcile from the
-    // vault in the effect below (issue #195).
-    const [favorites, setFavorites] = useState<Set<string>>(() => {
-        try {
-            const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
-            return stored ? new Set(JSON.parse(stored)) : new Set();
-        } catch { return new Set(); }
-    });
+    // Favourites are PER-USER (Ehud #311): they live in the active user's
+    // encrypted partition (setting scope `favorite_servers`) so the CLI reads
+    // the same set and renders the ⭐ column. No localStorage seed: that store
+    // is per-origin, not per-user, so it would leak one user's favourites to
+    // another. We start empty and load the active user's set in the effect
+    // below (issue #195; loadFavoriteServers seeds once from the legacy global
+    // blob for accounts created before multi-user).
+    const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
     useEffect(() => {
         let cancelled = false;
         (async () => {
             try {
-                const vaultFavs = await secureGetWithFallback<string[]>(
-                    FAVORITES_VAULT_KEY,
-                    FAVORITES_STORAGE_KEY,
-                );
-                if (cancelled || !Array.isArray(vaultFavs)) return;
+                const vaultFavs = await loadFavoriteServers();
+                if (cancelled) return;
                 setFavorites(prev => {
                     if (prev.size === vaultFavs.length && vaultFavs.every(id => prev.has(id))) {
                         return prev;
                     }
                     return new Set(vaultFavs);
                 });
-                // First-run migration: backfill the vault from any legacy
-                // localStorage-only payload. Idempotent.
-                try {
-                    const legacy = localStorage.getItem(FAVORITES_STORAGE_KEY);
-                    const legacyArr: string[] = legacy ? JSON.parse(legacy) : [];
-                    if (legacyArr.length > 0 && vaultFavs.length === 0) {
-                        await secureStoreAndClean(FAVORITES_VAULT_KEY, FAVORITES_STORAGE_KEY, legacyArr);
-                    }
-                } catch { /* ignore legacy migration errors */ }
-            } catch { /* vault unreachable: keep localStorage view */ }
+            } catch { /* partition unreachable: keep the current view */ }
         })();
         return () => { cancelled = true; };
         // Re-sync on every `lastUpdate` bump, not just on mount: a Convert /
@@ -443,10 +427,10 @@ export function MyServersPanel({
         // vanished from the converted row even though the quota stayed (it
         // lives on the reloaded profile). Issue #215, Ehud.
     }, [lastUpdate]);
-    // Server groups (#320): the named generalisation of favourites. Same vault
-    // storage pattern (key `config_server_groups`), boot synchronously from
-    // localStorage, reconcile from the vault below.
-    const [groups, setGroups] = useState<ServerGroup[]>(() => readServerGroupsFromLocalStorage());
+    // Server groups (#320): the named generalisation of favourites, also
+    // PER-USER (#311). Start empty and reconcile from the active user's
+    // partition below; no localStorage seed (same per-origin leak reason).
+    const [groups, setGroups] = useState<ServerGroup[]>([]);
     const [activeGroupId, setActiveGroupId] = useState<string | null>(() => {
         return localStorage.getItem('aeroftp_myservers_group') || null;
     });
@@ -465,7 +449,7 @@ export function MyServersPanel({
                     if (JSON.stringify(prev) === JSON.stringify(vaultGroups)) return prev;
                     return vaultGroups;
                 });
-            } catch { /* vault unreachable: keep localStorage view */ }
+            } catch { /* partition unreachable: keep the current view */ }
         })();
         return () => { cancelled = true; };
         // Same staleness fix as favourites above: carryServerGroups moves group
@@ -474,7 +458,7 @@ export function MyServersPanel({
     const persistGroups = useCallback((next: ServerGroup[]) => {
         setGroups(next);
         saveServerGroups(next).catch(() => {
-            // secureStoreAndClean already mirrored to localStorage as a backup.
+            // Best-effort: groups are cosmetic, a write hiccup never blocks UI.
         });
     }, []);
     const selectGroup = useCallback((groupId: string) => {
@@ -672,9 +656,9 @@ export function MyServersPanel({
             if (next.has(serverId)) next.delete(serverId);
             else next.add(serverId);
             const payload = [...next];
-            secureStoreAndClean(FAVORITES_VAULT_KEY, FAVORITES_STORAGE_KEY, payload).catch(() => {
-                // Vault write failed: secureStoreAndClean already persisted to
-                // localStorage as a backup, so the UI stays consistent.
+            saveFavoriteServers(payload).catch(() => {
+                // Best-effort: favourites are cosmetic, a write hiccup never
+                // blocks the toggle; the in-memory Set stays consistent.
             });
             return next;
         });
