@@ -44,7 +44,8 @@ export const KEYSTORE_LS_WHITELIST: string[] = [
     'aerofile_places_section_tags_expanded',
 
     // Server card UX
-    'aeroftp-favorite-servers',
+    // ('aeroftp-favorite-servers' retired: favourites now live in the per-user
+    //  encrypted partition, not this global localStorage key.)
     'aeroftp_myservers_filter',
     'aeroftp_hide_server_username',
     'aeroftp-my-servers-density',
