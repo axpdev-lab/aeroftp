@@ -11943,6 +11943,75 @@ fn toggle_group_membership_in_vault(
     Ok((group_name, now_member))
 }
 
+/// What an explicit add/remove of one profile actually did to a group's member
+/// list, so the caller can report idempotent no-ops honestly (#311 row 8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MembershipOutcome {
+    Added,
+    AlreadyMember,
+    Removed,
+    NotMember,
+}
+
+/// Apply an explicit (non-toggle) membership change to a group's member-id list,
+/// reporting what actually happened. Pure (no vault), so the add/already/remove/
+/// not-member logic is unit-tested directly; `set_group_membership_in_vault`
+/// wraps it and persists only on a real change.
+fn apply_membership_change(
+    members: &mut Vec<String>,
+    profile_id: &str,
+    want_member: bool,
+) -> MembershipOutcome {
+    let pos = members.iter().position(|m| m == profile_id);
+    match (want_member, pos) {
+        (true, Some(_)) => MembershipOutcome::AlreadyMember,
+        (true, None) => {
+            members.push(profile_id.to_string());
+            MembershipOutcome::Added
+        }
+        (false, Some(p)) => {
+            members.remove(p);
+            MembershipOutcome::Removed
+        }
+        (false, None) => MembershipOutcome::NotMember,
+    }
+}
+
+/// Explicitly set (not toggle, not create) whether a profile is a member of an
+/// EXISTING group: the groups-side counterpart to `profiles -i`'s `g` toggle,
+/// powering `groups -i`'s `a`/`x` verbs (#311 row 8, disc 17444150). The group
+/// must already exist (resolve it via `resolve_group_selector` first); returns
+/// the canonical group name and the outcome. Only writes the per-user blob when
+/// something actually changed, so repeated `a`/`x` are cheap no-ops.
+fn set_group_membership_in_vault(
+    store: &CredentialStore,
+    profile_id: &str,
+    group_name: &str,
+    want_member: bool,
+) -> Result<(String, MembershipOutcome), String> {
+    let raw = groups_blob_get(store);
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let g = groups
+        .iter_mut()
+        .find(|g| g.name.eq_ignore_ascii_case(group_name.trim()))
+        .ok_or_else(|| format!("group '{}' not found", group_name.trim()))?;
+    let canonical = g.name.clone();
+    let outcome = apply_membership_change(&mut g.members, profile_id, want_member);
+    if matches!(
+        outcome,
+        MembershipOutcome::Added | MembershipOutcome::Removed
+    ) {
+        let payload = serde_json::to_string(&groups)
+            .map_err(|e| format!("Failed to serialize groups: {}", e))?;
+        groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
+    }
+    Ok((canonical, outcome))
+}
+
 /// Rename a group, looked up case-insensitively by its current name. Returns
 /// the canonical old name on success. Mirrors `renameGroup` in serverGroups.ts.
 fn rename_group_in_vault(
@@ -15216,8 +15285,9 @@ fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
 
 /// The labelled action bar for `groups -i` (Ehud #311, D2 verb set). Same
 /// safe-first ordering as `profiles -i` (disc 17411227): `Help` leads, read-only
-/// `List`/`Refresh` next, then the mutating verbs with `re-index` out of the
-/// front and `Delete` last before `Quit`. Keys unchanged.
+/// `List`/`Refresh` next, then the mutating verbs (`Add`/`Remove` member
+/// profiles, #311 row 8) with `re-index` out of the front and `Delete` last
+/// before `Quit`. Keys unchanged.
 fn groups_section_verbs() -> Vec<SectionVerb> {
     vec![
         SectionVerb::new("Help", "H/?"),
@@ -15225,6 +15295,8 @@ fn groups_section_verbs() -> Vec<SectionVerb> {
         SectionVerb::new("Refresh", "."),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
+        SectionVerb::new("Add", "A"),
+        SectionVerb::new("Remove", "X"),
         SectionVerb::new("re-index", "#"),
         SectionVerb::new("Delete", "D"),
         SectionVerb::new("Quit", "Q/0"),
@@ -15278,6 +15350,8 @@ fn print_groups_help() {
     eprintln!("  l <N|name ...>    list the member profiles of each group");
     eprintln!("  r <N|name> [new]  rename a group (prompts for the new name when omitted)");
     eprintln!("  c <N|name> [new]  copy a group: duplicate its membership under a new name");
+    eprintln!("  a <group> <p...>  add profile(s) to a group (existing group; idempotent)");
+    eprintln!("  x <group> <p...>  remove profile(s) from a group");
     eprintln!("  d <N|name>        delete a group (the member servers are kept)");
     eprintln!("  # <N|name> <pos>  move a group to position <pos> (re-index, persisted)");
     eprintln!("  refresh / .       reload + reprint the table");
@@ -15286,6 +15360,10 @@ fn print_groups_help() {
     eprintln!();
     eprintln!("  Groups are shared with the GUI My Servers chips; changes round-trip both ways.");
     eprintln!("  Selectors: a table number (1-based) or the group name (quote names with spaces).");
+    eprintln!(
+        "  For a/x the <group> is a group selector and <p...> are profile selectors (number as in"
+    );
+    eprintln!("  `profiles -i`, name, id, or unique substring); add the group from `profiles -i` first.");
 }
 
 /// `aeroftp-cli groups [-i]`: list and (interactively) manage server-profile
@@ -15403,7 +15481,7 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
-            "Interactive: r/c/d <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+            "Interactive: r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
         );
 
         let line = match section_prompt_line("groups> ") {
@@ -15506,6 +15584,79 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         };
         match verb.as_str() {
+            // Add/remove member profiles to/from an existing group (#311 row 8):
+            // the groups-side of membership management, the counterpart to
+            // `profiles -i`'s `g` toggle. Group first (the section's entity),
+            // then one or more profile selectors resolved against the active
+            // user's profile list (same numbering as `profiles -i`).
+            "a" | "add" | "x" | "remove" => {
+                let adding = matches!(verb.as_str(), "a" | "add");
+                let usage = if adding {
+                    "Usage: a <group> <profile N|name ...>   (add profiles to a group)"
+                } else {
+                    "Usage: x <group> <profile N|name ...>   (remove profiles from a group)"
+                };
+                if tokens.len() < 3 {
+                    eprintln!("{}", usage);
+                    continue;
+                }
+                let gidx = match resolve_group_selector(&groups, &tokens[1]) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        eprintln!("Group '{}' skipped: {}", tokens[1], e);
+                        continue;
+                    }
+                };
+                let gname = groups[gidx].name.clone();
+                let profiles = load_active_user_profiles(cli, store).unwrap_or_default();
+                if profiles.is_empty() {
+                    eprintln!("The active user has no profiles to add or remove.");
+                    continue;
+                }
+                for sel in &tokens[2..] {
+                    let pidx = match resolve_profile_selector(&profiles, sel) {
+                        Ok(i) => i,
+                        Err(e) => {
+                            eprintln!("Profile '{}' skipped: {}", sel, e);
+                            continue;
+                        }
+                    };
+                    let id = profiles[pidx]
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let pname = profiles[pidx]
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    if id.is_empty() {
+                        eprintln!("Profile '{}' has no id; skipping.", pname);
+                        continue;
+                    }
+                    match set_group_membership_in_vault(store, &id, &gname, adding) {
+                        Ok((g, MembershipOutcome::Added)) => eprintln!(
+                            "{}",
+                            paint_green(&format!("'{}' added to group '{}'.", pname, g))
+                        ),
+                        Ok((g, MembershipOutcome::Removed)) => eprintln!(
+                            "{}",
+                            paint_yellow(&format!("'{}' removed from group '{}'.", pname, g))
+                        ),
+                        Ok((g, MembershipOutcome::AlreadyMember)) => {
+                            eprintln!("'{}' is already in group '{}'.", pname, g)
+                        }
+                        Ok((g, MembershipOutcome::NotMember)) => {
+                            eprintln!("'{}' is not in group '{}'.", pname, g)
+                        }
+                        Err(e) => eprintln!(
+                            "{}",
+                            paint_red(&format!("Membership change for '{}' failed: {}", pname, e))
+                        ),
+                    }
+                }
+            }
             "l" | "ls" | "list" => {
                 if tokens.len() < 2 {
                     eprintln!("{}", format_groups_table(&groups));
@@ -55041,8 +55192,43 @@ mod tests {
     fn groups_action_bar_matches_d2_vocabulary() {
         assert_eq!(
             render_section_actions(&groups_section_verbs()),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Refresh(.) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Refresh(.) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} Remove(X) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
+    }
+
+    #[test]
+    fn apply_membership_change_is_explicit_and_idempotent() {
+        // The pure core of `groups -i` a/x (#311 row 8): add when absent, no-op
+        // report when already in, remove when present, no-op report when absent.
+        let mut members = vec!["srv_a".to_string()];
+
+        // Add a new profile -> Added, list grows.
+        assert_eq!(
+            apply_membership_change(&mut members, "srv_b", true),
+            MembershipOutcome::Added
+        );
+        assert_eq!(members, vec!["srv_a".to_string(), "srv_b".to_string()]);
+
+        // Add one already in -> AlreadyMember, list unchanged (no duplicate).
+        assert_eq!(
+            apply_membership_change(&mut members, "srv_a", true),
+            MembershipOutcome::AlreadyMember
+        );
+        assert_eq!(members, vec!["srv_a".to_string(), "srv_b".to_string()]);
+
+        // Remove a member -> Removed, list shrinks.
+        assert_eq!(
+            apply_membership_change(&mut members, "srv_a", false),
+            MembershipOutcome::Removed
+        );
+        assert_eq!(members, vec!["srv_b".to_string()]);
+
+        // Remove a non-member -> NotMember, list unchanged.
+        assert_eq!(
+            apply_membership_change(&mut members, "srv_z", false),
+            MembershipOutcome::NotMember
+        );
+        assert_eq!(members, vec!["srv_b".to_string()]);
     }
 
     fn usr(id: i64, name: &str, default: bool) -> user_partitions::UserMetadata {
