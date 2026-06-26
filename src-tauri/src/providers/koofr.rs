@@ -423,10 +423,23 @@ impl KoofrProvider {
 
     /// Parse error from response body
     async fn parse_error(resp: reqwest::Response) -> ProviderError {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
+        Self::classify_koofr_error(status, &body)
+    }
 
-        if let Ok(err) = serde_json::from_str::<KoofrError>(&body) {
+    /// Pure status+body -> ProviderError classifier (extracted from `parse_error`
+    /// so it can be unit-tested without a live `reqwest::Response`). The Koofr API
+    /// returns a JSON `{ "error": { "code", "message" } }`; the body-level code
+    /// drives the mapping, falling back to the HTTP status for the message shape.
+    fn classify_koofr_error(status: u16, body: &str) -> ProviderError {
+        // Preserve the original message shape: `reqwest::StatusCode` Displays as
+        // "<code> <reason>" (e.g. "404 Not Found"), so reconstruct it from the u16.
+        let status_text = reqwest::StatusCode::from_u16(status)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| status.to_string());
+
+        if let Ok(err) = serde_json::from_str::<KoofrError>(body) {
             if let Some(inner) = err.error {
                 let code = inner.code.as_deref().unwrap_or("Unknown");
                 let message = inner.message.as_deref().unwrap_or("Unknown error");
@@ -436,7 +449,7 @@ impl KoofrProvider {
                     "Unauthorized" => ProviderError::AuthenticationFailed(message.to_string()),
                     _ => ProviderError::ServerError(format!(
                         "Koofr API error ({}): {}: {}",
-                        status, code, message
+                        status_text, code, message
                     )),
                 };
             }
@@ -444,8 +457,8 @@ impl KoofrProvider {
 
         ProviderError::ServerError(format!(
             "Koofr API error ({}): {}",
-            status,
-            sanitize_api_error(&body)
+            status_text,
+            sanitize_api_error(body)
         ))
     }
 
@@ -1882,6 +1895,74 @@ mod tests {
         );
         assert_eq!(KoofrProvider::split_path("/a/b"), ("/a", "b"));
         assert_eq!(KoofrProvider::split_path("file.txt"), ("/", "file.txt"));
+    }
+
+    // Row 4 (#347): the body-level Koofr error code drives the variant; a code we
+    // do not special-case folds into ServerError with the HTTP status in the message.
+    #[test]
+    fn classify_koofr_error_maps_body_codes_to_variants() {
+        let nf = r#"{"error":{"code":"NotFound","message":"file not found"}}"#;
+        assert!(matches!(
+            KoofrProvider::classify_koofr_error(404, nf),
+            ProviderError::NotFound(ref m) if m == "file not found"
+        ));
+
+        let forbidden = r#"{"error":{"code":"Forbidden","message":"no access"}}"#;
+        assert!(matches!(
+            KoofrProvider::classify_koofr_error(403, forbidden),
+            ProviderError::PermissionDenied(ref m) if m == "no access"
+        ));
+
+        let unauth = r#"{"error":{"code":"Unauthorized","message":"bad app password"}}"#;
+        assert!(matches!(
+            KoofrProvider::classify_koofr_error(401, unauth),
+            ProviderError::AuthenticationFailed(ref m) if m == "bad app password"
+        ));
+
+        // Unknown body code -> ServerError carrying the status (Display form) + code + message.
+        let other = r#"{"error":{"code":"Teapot","message":"short and stout"}}"#;
+        match KoofrProvider::classify_koofr_error(409, other) {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("409 Conflict"), "got: {msg}");
+                assert!(msg.contains("Teapot"), "got: {msg}");
+                assert!(msg.contains("short and stout"), "got: {msg}");
+            }
+            e => panic!("expected ServerError, got {e:?}"),
+        }
+    }
+
+    // Missing/empty code or message fall back to the "Unknown"/"Unknown error" defaults.
+    #[test]
+    fn classify_koofr_error_defaults_missing_code_and_message() {
+        let only_error = r#"{"error":{}}"#;
+        match KoofrProvider::classify_koofr_error(500, only_error) {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("500 Internal Server Error"), "got: {msg}");
+                assert!(msg.contains("Unknown"), "got: {msg}");
+                assert!(msg.contains("Unknown error"), "got: {msg}");
+            }
+            e => panic!("expected ServerError, got {e:?}"),
+        }
+    }
+
+    // A body that is not the Koofr error envelope (or has no `error` field) falls
+    // through to the sanitized-body ServerError branch, still tagged with the status.
+    #[test]
+    fn classify_koofr_error_falls_back_to_sanitized_body() {
+        // Valid JSON but no `error` key.
+        match KoofrProvider::classify_koofr_error(502, r#"{"unexpected":"shape"}"#) {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("502 Bad Gateway"), "got: {msg}");
+            }
+            e => panic!("expected ServerError, got {e:?}"),
+        }
+        // Non-JSON garbage body: still a ServerError, never a panic.
+        match KoofrProvider::classify_koofr_error(503, "<html>maintenance</html>") {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("503 Service Unavailable"), "got: {msg}");
+            }
+            e => panic!("expected ServerError, got {e:?}"),
+        }
     }
 
     #[test]
