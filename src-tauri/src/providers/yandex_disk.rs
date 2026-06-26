@@ -429,9 +429,17 @@ impl YandexDiskProvider {
 
     /// Parse an API error response into a ProviderError.
     async fn parse_error(&self, resp: reqwest::Response) -> ProviderError {
-        let status = resp.status();
+        let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        if let Ok(err) = serde_json::from_str::<YdError>(&body) {
+        Self::classify_yandex_error(status, &body)
+    }
+
+    /// Pure status+body -> ProviderError classifier (extracted from `parse_error`
+    /// so it can be unit-tested without a live `reqwest::Response`). Yandex Disk
+    /// returns a JSON `{ "error", "description" }`; the body-level `error` string is
+    /// tried first (richer, status-independent mapping), then the HTTP status.
+    fn classify_yandex_error(status: u16, body: &str) -> ProviderError {
+        if let Ok(err) = serde_json::from_str::<YdError>(body) {
             match err.error.as_str() {
                 "UnauthorizedError" => {
                     return ProviderError::AuthenticationFailed(yandex_auth_message(
@@ -453,19 +461,23 @@ impl YandexDiskProvider {
                 _ => {}
             }
         }
-        match status.as_u16() {
+        match status {
             401 => {
-                ProviderError::AuthenticationFailed(yandex_auth_message(&sanitize_api_error(&body)))
+                ProviderError::AuthenticationFailed(yandex_auth_message(&sanitize_api_error(body)))
             }
             403 => ProviderError::PermissionDenied("Forbidden".into()),
-            404 => ProviderError::NotFound(sanitize_api_error(&body)),
-            409 => ProviderError::AlreadyExists(sanitize_api_error(&body)),
+            404 => ProviderError::NotFound(sanitize_api_error(body)),
+            409 => ProviderError::AlreadyExists(sanitize_api_error(body)),
             429 => ProviderError::ServerError("Rate limit exceeded".into()),
             507 => ProviderError::TransferFailed("Insufficient storage".into()),
+            // Preserve the original message shape: `reqwest::StatusCode` Displays as
+            // "<code> <reason>", so reconstruct it from the u16.
             _ => ProviderError::ServerError(format!(
                 "HTTP {}: {}",
-                status,
-                sanitize_api_error(&body)
+                reqwest::StatusCode::from_u16(status)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| status.to_string()),
+                sanitize_api_error(body)
             )),
         }
     }
@@ -1885,6 +1897,93 @@ mod tests {
         assert_eq!(encode_yd_path("/"), "disk:/");
         assert_eq!(encode_yd_path(""), "disk:/");
         assert_eq!(encode_yd_path("disk:/"), "disk:/");
+    }
+
+    // Row 4 (#347): the body-level `error` string maps to a rich variant
+    // independent of the HTTP status (Yandex returns 409/404 etc. with these).
+    #[test]
+    fn classify_yandex_error_maps_body_error_codes() {
+        let unauth = r#"{"error":"UnauthorizedError","description":"token bad"}"#;
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(401, unauth),
+            ProviderError::AuthenticationFailed(_)
+        ));
+
+        for code in ["DiskNotFoundError", "DiskPathDoesntExistsError"] {
+            let body = format!(r#"{{"error":"{code}","description":"missing"}}"#);
+            assert!(
+                matches!(
+                    YandexDiskProvider::classify_yandex_error(404, &body),
+                    ProviderError::NotFound(ref m) if m == "missing"
+                ),
+                "{code} must map to NotFound"
+            );
+        }
+
+        for code in [
+            "DiskResourceAlreadyExistsError",
+            "PlatformResourceAlreadyExists",
+        ] {
+            let body = format!(r#"{{"error":"{code}","description":"dup"}}"#);
+            assert!(
+                matches!(
+                    YandexDiskProvider::classify_yandex_error(409, &body),
+                    ProviderError::AlreadyExists(ref m) if m == "dup"
+                ),
+                "{code} must map to AlreadyExists"
+            );
+        }
+
+        let root = r#"{"error":"DiskPathPointsToRootError","description":"is root"}"#;
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(400, root),
+            ProviderError::InvalidPath(_)
+        ));
+
+        let quota = r#"{"error":"DiskStorageQuotaExhaustedError","description":"full"}"#;
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(507, quota),
+            ProviderError::TransferFailed(_)
+        ));
+    }
+
+    // Row 4 (#347): when the body has no recognised `error` code, the HTTP
+    // status drives the variant. The catch-all keeps the `StatusCode` Display form.
+    #[test]
+    fn classify_yandex_error_falls_back_to_http_status() {
+        // Empty/garbage body -> status-only mapping.
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(401, ""),
+            ProviderError::AuthenticationFailed(_)
+        ));
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(403, ""),
+            ProviderError::PermissionDenied(ref m) if m == "Forbidden"
+        ));
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(404, "not json"),
+            ProviderError::NotFound(_)
+        ));
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(409, ""),
+            ProviderError::AlreadyExists(_)
+        ));
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(429, ""),
+            ProviderError::ServerError(ref m) if m == "Rate limit exceeded"
+        ));
+        assert!(matches!(
+            YandexDiskProvider::classify_yandex_error(507, ""),
+            ProviderError::TransferFailed(ref m) if m == "Insufficient storage"
+        ));
+        // Catch-all preserves "HTTP <code> <reason>: <body>".
+        match YandexDiskProvider::classify_yandex_error(500, "boom") {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("HTTP 500 Internal Server Error"), "got: {msg}");
+                assert!(msg.contains("boom"), "got: {msg}");
+            }
+            e => panic!("expected ServerError, got {e:?}"),
+        }
     }
 
     // Compile-time invariants for the chunked upload path. These are
