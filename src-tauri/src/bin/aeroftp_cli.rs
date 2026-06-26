@@ -13776,30 +13776,10 @@ fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
 /// the loop started (discussion #266). Mirrors how `l`/`t` reuse the binary
 /// for bit-identical output.
 fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
-    if use_color() {
-        // Clear the screen + scrollback and home the cursor, one clean table per
-        // refresh. We go through crossterm rather than a raw `ESC[2J ESC[3J ESC[H`
-        // so the wipe is consistent on EVERY host (#341). On legacy Windows
-        // consoles (classic blue PowerShell, standalone CMD, pwsh in conhost)
-        // ENABLE_VIRTUAL_TERMINAL_PROCESSING is off by default, so a raw ANSI clear
-        // is ignored and the tables just stack; crossterm enables VT first (or
-        // falls back to the WinAPI console clear when VT is unavailable), so modern
-        // terminals (WezTerm, Alacritty, Windows Terminal) and legacy consoles all
-        // clear the same way. On Linux/macOS this emits the identical ANSI as
-        // before. ClearType::Purge is the scrollback wipe (the ESC[3J equivalent).
-        use crossterm::{
-            cursor::MoveTo,
-            execute,
-            terminal::{Clear, ClearType},
-        };
-        let mut err = std::io::stderr();
-        let _ = execute!(
-            err,
-            Clear(ClearType::All),
-            Clear(ClearType::Purge),
-            MoveTo(0, 0)
-        );
-    }
+    // One clean table per refresh (#341): see `section_clear_screen`, shared with
+    // `groups -i` / `users -i` so all three sections wipe identically on every
+    // host (crossterm VT/WinAPI; no-op when colour is disabled).
+    section_clear_screen();
     let args = profiles_view_args(ov);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let _ = run_self_subcommand(&refs);
@@ -13856,6 +13836,30 @@ fn section_is_refresh(lower: &str) -> bool {
     matches!(lower, "refresh" | "clear" | ".")
 }
 
+/// Clear the screen + scrollback and home the cursor for an interactive `-i`
+/// section's Refresh (#341/#311): one clean table per refresh instead of the
+/// previous tables stacking. Goes through crossterm (which enables VT first, or
+/// falls back to the WinAPI console clear) so the wipe is consistent on every
+/// host, and is a no-op when colour/VT is disabled. Shared by `profiles -i`,
+/// `groups -i` and `users -i` so Refresh behaves identically across all three.
+fn section_clear_screen() {
+    if !use_color() {
+        return;
+    }
+    use crossterm::{
+        cursor::MoveTo,
+        execute,
+        terminal::{Clear, ClearType},
+    };
+    let mut err = std::io::stderr();
+    let _ = execute!(
+        err,
+        Clear(ClearType::All),
+        Clear(ClearType::Purge),
+        MoveTo(0, 0)
+    );
+}
+
 /// Prompt on stderr, read one line from stdin. `Ok(None)` on EOF (Ctrl-D) so the
 /// caller can quit cleanly; the trailing newline is kept (callers trim). The
 /// result is NOT lowercased: callers decide case handling.
@@ -13887,7 +13891,7 @@ fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
         SectionVerb::new("Refresh", "."),
-        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Help", "H/?"),
         SectionVerb::new("Quit", "Q/0"),
     ]
 }
@@ -13900,7 +13904,7 @@ fn groups_section_verbs() -> Vec<SectionVerb> {
         SectionVerb::new("Copy", "C"),
         SectionVerb::new("Delete", "D"),
         SectionVerb::new("List/ls", "L"),
-        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Help", "H/?"),
         SectionVerb::new("Refresh", "."),
         SectionVerb::new("Quit", "Q/0"),
     ]
@@ -13912,7 +13916,8 @@ fn format_groups_table(groups: &[CliServerGroup]) -> String {
     if groups.is_empty() {
         return "No groups yet. Create one in the GUI, or via `aeroftp-cli profiles -i` (g <selector> <group>).".to_string();
     }
-    let mut out = String::from("  #  Group                                Members\n");
+    let header = "  #  Group                                Members";
+    let mut out = format!("{}\n{}\n", header, "\u{2500}".repeat(header.chars().count()));
     for (i, g) in groups.iter().enumerate() {
         let name: String = if g.name.chars().count() > 36 {
             format!("{}\u{2026}", g.name.chars().take(35).collect::<String>())
@@ -14045,7 +14050,9 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         }
         if section_is_refresh(&lower) {
-            // The table reloads and reprints at the top of the loop.
+            // Wipe the screen so the reloaded table at the top of the loop is the
+            // only thing on screen, matching `profiles -i` (#341/#311).
+            section_clear_screen();
             continue;
         }
 
@@ -14094,7 +14101,18 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         }
 
-        let tokens = tokenize_quoted(raw);
+        let mut tokens = tokenize_quoted(raw);
+        // Compact rclone-style selector (`l1` / `1l` / `d2`, #311): a single
+        // glued token expands to `<verb> <N>` so it dispatches just like the
+        // spaced `<verb> <N>`. Guarded to one token so multi-target forms
+        // (`l 1 2 3`) are left untouched. Mirrors `profiles -i`.
+        if tokens.len() == 1 {
+            if let Some((idx, act)) = parse_interactive_token(&lower) {
+                if matches!(act, 'l' | 'r' | 'c' | 'd') {
+                    tokens = vec![act.to_string(), idx.to_string()];
+                }
+            }
+        }
         // F-02/F-03: a quote-only line tokenizes to an empty vec; guard before
         // indexing so it does not panic the interactive session.
         let Some(verb) = tokens.first().map(|t| t.to_lowercase()) else {
@@ -14276,7 +14294,7 @@ fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
         SectionVerb::new(format!("Fav{}", fav_marker), "F"),
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
-        SectionVerb::new("Help", "H"),
+        SectionVerb::new("Help", "H/?"),
         SectionVerb::new("Refresh", "."),
         SectionVerb::new("Quit", "Q/0"),
     ]
@@ -14290,7 +14308,8 @@ fn format_users_table(users: &[user_partitions::UserMetadata], marker: &str) -> 
     if users.is_empty() {
         return "No AeroFTP users found.".to_string();
     }
-    let mut out = String::from("  #  User                                 ID    Flags\n");
+    let header = "  #  User                                 ID    Flags";
+    let mut out = format!("{}\n{}\n", header, "\u{2500}".repeat(header.chars().count()));
     for (i, u) in users.iter().enumerate() {
         let name: String = if u.name.chars().count() > 36 {
             format!("{}\u{2026}", u.name.chars().take(35).collect::<String>())
@@ -14513,6 +14532,9 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         }
         if section_is_refresh(&lower) {
+            // Wipe the screen so the reloaded table at the top of the loop is the
+            // only thing on screen, matching `profiles -i` (#341/#311).
+            section_clear_screen();
             continue;
         }
 
@@ -14566,7 +14588,18 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         }
 
-        let tokens = tokenize_quoted(raw);
+        let mut tokens = tokenize_quoted(raw);
+        // Compact rclone-style selector (`l1` / `1l` / `f2`, #311): a single
+        // glued token expands to `<verb> <N>` so it dispatches just like the
+        // spaced `<verb> <N>`. Guarded to one token so multi-target forms
+        // (`l 1 2 3`) are left untouched. Mirrors `profiles -i`.
+        if tokens.len() == 1 {
+            if let Some((idx, act)) = parse_interactive_token(&lower) {
+                if matches!(act, 'l' | 'r' | 'c' | 'd' | 'f') {
+                    tokens = vec![act.to_string(), idx.to_string()];
+                }
+            }
+        }
         // F-02/F-03: a quote-only line tokenizes to an empty vec; guard before
         // indexing so it does not panic the interactive session.
         let Some(verb) = tokens.first().map(|t| t.to_lowercase()) else {
@@ -52927,7 +52960,7 @@ mod tests {
         // including the favourite glyph riding on the Fav verb (#270/#311).
         assert_eq!(
             render_section_actions(&profiles_section_verbs("\u{2605}")),
-            "re-index(#) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Help(H) \u{00b7} Quit(Q/0)"
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Help(H/?) \u{00b7} Quit(Q/0)"
         );
         // The chosen-heart marker (#270) flows through unchanged.
         assert!(
@@ -53033,7 +53066,7 @@ mod tests {
     fn groups_action_bar_matches_d2_vocabulary() {
         assert_eq!(
             render_section_actions(&groups_section_verbs()),
-            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} List/ls(L) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} List/ls(L) \u{00b7} Help(H/?) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
         );
     }
 
@@ -53121,7 +53154,7 @@ mod tests {
     fn users_action_bar_matches_d1_vocabulary() {
         assert_eq!(
             render_section_actions(&users_section_verbs("\u{2605}")),
-            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Help(H) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Help(H/?) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
         );
         // The Fav glyph follows the user's chosen favourite marker (#270).
         assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));
