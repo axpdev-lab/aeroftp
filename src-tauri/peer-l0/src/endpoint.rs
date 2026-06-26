@@ -2,7 +2,10 @@
 //! (This will be merged into the main tree later.)
 
 use anyhow::{Context, Result};
-use iroh::{endpoint::Connection, Endpoint, NodeId};
+// iroh 1.0 renamed `NodeId` to `EndpointId` (node -> endpoint terminology). We keep the
+// `NodeId` name locally via an alias: it matches our AFID/"node" domain and the crate's
+// public API (`PeerEndpoint::node_id`), keeping the 0.92 -> 1.0 port minimal.
+use iroh::{endpoint::Connection, Endpoint, EndpointId as NodeId};
 use iroh_blobs::Hash;
 use std::net::SocketAddr;
 use std::time::Instant;
@@ -156,7 +159,7 @@ impl PeerEndpoint {
         // an ALPN here makes the dialer's `connect(node, ALPN)` fail negotiation,
         // which is exactly how a knock silently no-op'd before `PEER_KNOCK_ALPN`
         // was added (and how an action failed to connect before `PEER_ACTION_ALPN`).
-        let mut base = Endpoint::builder()
+        let mut base = Endpoint::builder(iroh::endpoint::presets::Minimal)
             .alpns(vec![
                 crate::PEER_L0_ALPN.to_vec(),
                 crate::send::PEER_SEND_ALPN.to_vec(),
@@ -185,7 +188,7 @@ impl PeerEndpoint {
             .bind()
             .await
             .context("failed to bind iroh endpoint")?;
-        let node_id = endpoint.node_id();
+        let node_id = endpoint.id();
 
         info!(%node_id, "PeerEndpoint (L0 isolated) ready");
 
@@ -367,7 +370,7 @@ pub async fn build_base_endpoint(cfg: PeerEndpointConfig) -> Result<Endpoint> {
         }
         _ => iroh::RelayMode::Staging,
     };
-    let mut base = Endpoint::builder().relay_mode(relay_mode);
+    let mut base = Endpoint::builder(iroh::endpoint::presets::Minimal).relay_mode(relay_mode);
     if let Some(seed) = cfg.identity_secret_key {
         base = base.secret_key(iroh::SecretKey::from_bytes(&seed));
     }

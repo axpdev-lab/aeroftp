@@ -13,7 +13,7 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use iroh::NodeId;
+use iroh::EndpointId as NodeId; // iroh 1.0: NodeId -> EndpointId (see endpoint.rs)
 use iroh_blobs::Hash;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -590,12 +590,7 @@ async fn run_one_listen(
     };
     let connect_duration = connect_start.elapsed().as_millis() as u64;
 
-    let mut path = "unknown".to_string();
-
-    let remote_node_str = conn
-        .remote_node_id()
-        .map(|id| id.to_string())
-        .unwrap_or_default();
+    let remote_node_str = conn.remote_id().to_string();
     let _remote_fp = if remote_node_str.len() > 12 {
         &remote_node_str[..12]
     } else {
@@ -610,10 +605,7 @@ async fn run_one_listen(
         }
     };
 
-    let remote_node_str2 = conn
-        .remote_node_id()
-        .map(|id| id.to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
+    let remote_node_str2 = conn.remote_id().to_string();
     let _remote_fp = if remote_node_str2.len() > 12 {
         &remote_node_str2[..12]
     } else {
@@ -659,9 +651,8 @@ async fn run_one_listen(
 
     // Snapshot the path type (direct/mixed/relay) while the connection is still
     // open, for the L0 gate's hole-punch-vs-relay accounting.
-    if let Ok(rid) = conn.remote_node_id() {
-        path = conn_type_label(ep, rid).await;
-    }
+    let rid = conn.remote_id();
+    let path = conn_type_label(ep, rid).await;
 
     println!(
         "Received and decrypted {} bytes. BLAKE3 verified after decryption.",
@@ -731,65 +722,45 @@ async fn run_one_listen(
 /// Best-effort classification of the iroh path actually in use to `node`
 /// (direct hole-punch vs relay-only vs mixed), snapshot right after a successful
 /// transfer. Recorded into the ConnectivitySample's `path` so the L0 gate can
-/// compute hole-punch-vs-relay rates — the "is a relay mandatory?" question (§8).
+/// compute hole-punch-vs-relay rates, the "is a relay mandatory?" question (§8).
 ///
-/// Phase 2 refinement (dialer conn-type): the watcher often starts as `None` (or
-/// "unknown") for the first few hundred ms after `connect()`. We now await the first
-/// non-None `ConnectionType` (bounded ~2000ms timeout) before falling back to a
-/// snapshot `get()`. This makes the *dialer* (call site ~625) report "direct"/"mixed"/"relay"
-/// instead of "unknown" on fast local connects. Listener side (which waited in accept)
-/// was already reliable; we call the same awaited helper from both for consistency.
-/// Keep the exact Debug-prefix mapping for Direct/Mixed/Relay/None.
+/// iroh 1.0 port: `Endpoint::conn_type(node) -> Watcher<ConnectionType>` was removed.
+/// The 1.0 equivalent is `Endpoint::remote_info(id) -> Option<RemoteInfo>`, a SNAPSHOT
+/// (not a watcher) listing the remote's transport addresses and their usage. We classify
+/// the ACTIVE addresses into direct (`TransportAddr::Ip`) vs relay (`TransportAddr::Relay`)
+/// to reproduce the direct/mixed/relay label. A snapshot can have no active address for
+/// the first few hundred ms after `connect()`, so we poll briefly (bounded ~2000ms) until
+/// one shows, matching the old behaviour of awaiting the first non-None ConnectionType.
 async fn conn_type_label(ep: &aeroftp_peer_l0::endpoint::PeerEndpoint, node: NodeId) -> String {
-    use iroh::Watcher;
+    use iroh::endpoint::TransportAddrUsage;
 
-    let Some(mut w) = ep.raw().conn_type(node) else {
-        return "unknown".to_string();
-    };
-
-    // Fast path: if already non-None (typical for listener after accept, or warm dial), use it.
-    let initial = format!("{:?}", w.get());
-    if !initial.starts_with("None") {
-        return classify_conn_type_debug(&initial);
-    }
-
-    // Await first non-None ConnectionType. On sub-second connects the initial get() is still
-    // None because iroh has not yet classified (or updated the watcher). Bounded timeout
-    // prevents hanging the sample collection; on timeout we fall back to current get()
-    // (which may legitimately still be None/"unknown" or "none").
-    let timeout = Duration::from_millis(2000);
-    let fut = async {
-        // Exits when the watcher disconnects (`Err`); then use whatever we have.
-        while let Ok(val) = w.updated().await {
-            let s = format!("{:?}", val);
-            if !s.starts_with("None") {
-                return classify_conn_type_debug(&s);
+    let deadline = Instant::now() + Duration::from_millis(2000);
+    loop {
+        if let Some(info) = ep.raw().remote_info(node).await {
+            let mut has_direct = false;
+            let mut has_relay = false;
+            for a in info.addrs() {
+                if !matches!(a.usage(), TransportAddrUsage::Active) {
+                    continue;
+                }
+                if a.addr().is_ip() {
+                    has_direct = true;
+                } else if a.addr().is_relay() {
+                    has_relay = true;
+                }
             }
-            // still None after this update; wait for the next one
+            match (has_direct, has_relay) {
+                (true, true) => return "mixed".to_string(),
+                (true, false) => return "direct".to_string(),
+                (false, true) => return "relay".to_string(),
+                // No active path classified yet: keep polling until the deadline.
+                (false, false) => {}
+            }
         }
-        classify_conn_type_debug(&format!("{:?}", w.get()))
-    };
-
-    match ::tokio::time::timeout(timeout, fut).await {
-        Ok(s) => s,
-        Err(_) => {
-            // timeout: honest fallback to latest snapshot (may be "none" or "unknown")
-            classify_conn_type_debug(&format!("{:?}", w.get()))
+        if Instant::now() >= deadline {
+            return "unknown".to_string();
         }
-    }
-}
-
-fn classify_conn_type_debug(s: &str) -> String {
-    if s.starts_with("Direct") {
-        "direct".to_string()
-    } else if s.starts_with("Mixed") {
-        "mixed".to_string()
-    } else if s.starts_with("Relay") {
-        "relay".to_string()
-    } else if s.starts_with("None") {
-        "none".to_string()
-    } else {
-        "unknown".to_string()
+        ::tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
 

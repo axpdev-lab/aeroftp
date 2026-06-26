@@ -157,7 +157,7 @@ pub(crate) fn issue_capabilities(
     content_key: &[u8; 32],
     ticket: &iroh_docs::DocTicket,
 ) -> Result<()> {
-    let node_addrs: Vec<String> = ticket.nodes.iter().map(|n| n.node_id.to_string()).collect();
+    let node_addrs: Vec<String> = ticket.nodes.iter().map(|n| n.id.to_string()).collect();
     if let Some(dir) = &cap.cap_out {
         std::fs::create_dir_all(dir).ok();
     }
@@ -369,7 +369,7 @@ pub async fn run_docs_publish(
     use iroh_gossip::net::Gossip;
 
     let endpoint = crate::endpoint::build_base_endpoint(cfg).await?;
-    let node_id = endpoint.node_id();
+    let node_id = endpoint.id();
 
     println!("=== AERO FTP PEER L1 DOCS PUBLISH (bare, no E2EE) ===");
     println!("NodeID: {}", node_id);
@@ -410,10 +410,7 @@ pub async fn run_docs_publish(
             .await?;
 
         router = Router::builder(endpoint.clone())
-            .accept(
-                iroh_blobs::ALPN,
-                BlobsProtocol::new(&blobs, endpoint.clone(), None),
-            )
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, None))
             .accept(iroh_gossip::ALPN, gossip)
             .accept(iroh_docs::ALPN, docs.clone())
             .spawn();
@@ -477,10 +474,7 @@ pub async fn run_docs_publish(
             .await?;
 
         router = Router::builder(endpoint.clone())
-            .accept(
-                iroh_blobs::ALPN,
-                BlobsProtocol::new(&blobs, endpoint.clone(), None),
-            )
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, None))
             .accept(iroh_gossip::ALPN, gossip)
             .accept(iroh_docs::ALPN, docs.clone())
             .spawn();
@@ -736,10 +730,7 @@ pub async fn run_docs_replicate(
             .await
             .context("Docs::persistent().spawn for rep --store")?;
         let router = Router::builder(endpoint.clone())
-            .accept(
-                iroh_blobs::ALPN,
-                BlobsProtocol::new(&blobs_fs, endpoint.clone(), None),
-            )
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs_fs, None))
             .accept(iroh_gossip::ALPN, gossip)
             .accept(iroh_docs::ALPN, docs_p.clone())
             .spawn();
@@ -815,10 +806,7 @@ pub async fn run_docs_replicate(
             .await?;
 
         let _router = Router::builder(endpoint.clone())
-            .accept(
-                iroh_blobs::ALPN,
-                BlobsProtocol::new(&blobs, endpoint.clone(), None),
-            )
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, None))
             .accept(iroh_gossip::ALPN, gossip)
             .accept(iroh_docs::ALPN, docs.clone())
             .spawn();

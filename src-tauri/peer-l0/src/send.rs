@@ -18,7 +18,7 @@
 //! `NodeId == sender AFID.ed`, the dial-by-AFID seam proven in
 //! `endpoint::tests::node_id_equals_identity_ed_key`). iroh authenticates the
 //! connection by that node key (QUIC/TLS), so the recipient learns the sender's
-//! AFID ed CRYPTOGRAPHICALLY from `conn.remote_node_id()` - no separate offer
+//! AFID ed CRYPTOGRAPHICALLY from `conn.remote_id()` - no separate offer
 //! signature needed. The recipient cross-checks the claimed `sender_afid` in the
 //! offer against the authenticated `remote_node_id` and rejects any mismatch.
 //!
@@ -39,7 +39,7 @@ use crate::protocol::{
 };
 use anyhow::{bail, Context, Result};
 use iroh::endpoint::Connection;
-use iroh::NodeId;
+use iroh::EndpointId as NodeId; // iroh 1.0: NodeId -> EndpointId (see endpoint.rs)
 use iroh_blobs::Hash;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -406,13 +406,13 @@ where
         };
         // A presence ping: answer by closing cleanly, never an offer. Branch
         // BEFORE handle_incoming so a probe is not mistaken for a failed transfer.
-        if conn.alpn().as_deref() == Some(PEER_PING_ALPN) {
+        if conn.alpn() == PEER_PING_ALPN {
             conn.close(0u32.into(), b"pong");
             continue;
         }
         // A knock: a predefined-code signal (no file), on its own ALPN so it is
         // never mistaken for a transfer. One bad knock must not kill the loop.
-        if conn.alpn().as_deref() == Some(PEER_KNOCK_ALPN) {
+        if conn.alpn() == PEER_KNOCK_ALPN {
             if let Err(e) = handle_incoming_knock(&conn, &notify).await {
                 warn!("AeroShare incoming knock failed: {e}");
             }
@@ -420,7 +420,7 @@ where
         }
         // An action: a structured agent-to-agent message (no file), on its own
         // ALPN. Like a knock, one bad action must never kill the receive loop.
-        if conn.alpn().as_deref() == Some(PEER_ACTION_ALPN) {
+        if conn.alpn() == PEER_ACTION_ALPN {
             if let Err(e) = handle_incoming_action(&conn, &notify).await {
                 warn!("AeroShare incoming action failed: {e}");
             }
@@ -552,9 +552,7 @@ where
 
     let claimed = IdentityPublic::from_aeroftp_id(&knock.sender_afid)
         .context("knock carries an invalid sender AeroFTP-ID")?;
-    let remote = conn
-        .remote_node_id()
-        .context("could not read the authenticated remote node id")?;
+    let remote = conn.remote_id();
     if remote.as_bytes() != &claimed.ed_bytes() {
         conn.close(1u32.into(), b"sender-mismatch");
         bail!("knock sender AFID does not match the authenticated connection identity");
@@ -638,9 +636,7 @@ where
 
     let claimed = IdentityPublic::from_aeroftp_id(&action.sender_afid)
         .context("action carries an invalid sender AeroFTP-ID")?;
-    let remote = conn
-        .remote_node_id()
-        .context("could not read the authenticated remote node id")?;
+    let remote = conn.remote_id();
     if remote.as_bytes() != &claimed.ed_bytes() {
         conn.close(1u32.into(), b"sender-mismatch");
         bail!("action sender AFID does not match the authenticated connection identity");
@@ -681,9 +677,7 @@ where
     // iroh-authenticated remote node id. Reject forgery / spoofed AFIDs.
     let claimed = IdentityPublic::from_aeroftp_id(&offer.sender_afid)
         .context("offer carries an invalid sender AeroFTP-ID")?;
-    let remote = conn
-        .remote_node_id()
-        .context("could not read the authenticated remote node id")?;
+    let remote = conn.remote_id();
     if remote.as_bytes() != &claimed.ed_bytes() {
         conn.close(1u32.into(), b"sender-mismatch");
         bail!("sender AFID does not match the authenticated connection identity");
