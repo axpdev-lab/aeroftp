@@ -27,13 +27,21 @@ path = "src/main.rs"
 # both already coexist in the app graph (cargo check green with iroh added).
 # The crate stays isolated for sequencing/lint reasons, not dependency ones;
 # convergence is planned as WI-3c (path dep + audit ruling on iroh's graph).
-# `discovery-pkarr-dht` (WI-5a): pulls pkarr's Mainline-DHT backend so the endpoint can
-# resolve/publish node records on the BitTorrent DHT alongside (or instead of) n0's DNS.
-# Decentralized discovery = the A+ independence move; additive, no iroh version bump.
-iroh = { version = "0.92", features = ["discovery-pkarr-dht"] }
-iroh-blobs = "0.94"
-iroh-docs = "0.92"
-iroh-gossip = "0.92"
+# Mainline-DHT discovery (WI-5a): the endpoint resolves/publishes node records on the
+# BitTorrent DHT alongside (or instead of) n0's DNS. Decentralized discovery = the A+
+# independence move. iroh 1.0 dropped the `discovery-pkarr-dht` cargo feature; the DHT
+# backend now lives in the `pkarr` crate and is wired in via `Builder::add_discovery`
+# (see endpoint.rs `apply_discovery`). The iroh 0.92 -> 1.0 bump clears the 6 Dependabot
+# advisories that iroh 0.92 pinned via hickory-proto (x4) and lru (x2).
+iroh = "1.0"
+iroh-blobs = "0.103"
+iroh-docs = "0.101"
+iroh-gossip = "0.101"
+# Mainline-DHT address lookup: iroh 1.0 moved the pkarr Mainline-DHT backend out of the
+# `discovery-pkarr-dht` cargo feature into this companion crate. It provides the DHT
+# publisher + resolver that `apply_discovery` adds via `Builder::address_lookup` for the
+# `Dht`/`Both` modes (n0 DNS stays via iroh's built-in PkarrPublisher/DnsAddressLookup).
+iroh-mainline-address-lookup = "0.4"
 blake3 = "1"
 bytes = "1"
 futures-lite = "2"

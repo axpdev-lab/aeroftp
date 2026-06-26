@@ -9,11 +9,13 @@ use std::time::Instant;
 use tracing::{debug, info};
 
 /// Which discovery service(s) the endpoint publishes its node record to and resolves
-/// peers from. This is the independence seam (WI-5a / A+ de-n0-ization):
-/// - `Both` (default): n0 DNS **and** the BitTorrent Mainline DHT, concurrently. iroh
-///   appends both via `add_discovery` (`ConcurrentDiscovery`), so this is purely
-///   ADDITIVE — n0 keeps working, the DHT is layered on for decentralized resolution.
-/// - `Dht`: Mainline DHT ONLY (no n0 anywhere) — the zero-n0 path exercised by GATE
+/// peers from. This is the independence seam (WI-5a / A+ de-n0-ization). In iroh 1.0
+/// "discovery" is called "address lookup": each backend is added via
+/// `Builder::address_lookup` and the endpoint combines them in an internal
+/// `AddressLookupServices`, so layering several is purely ADDITIVE.
+/// - `Both` (default): n0 DNS **and** the BitTorrent Mainline DHT, concurrently. n0 keeps
+///   working, the DHT is layered on for decentralized resolution.
+/// - `Dht`: Mainline DHT ONLY (no n0 anywhere), the zero-n0 path exercised by GATE
 ///   IND-1. Bootstrap = 20-year-old BitTorrent infra, neither the owner nor a single
 ///   operator.
 /// - `N0`: legacy n0-only (the pre-WI-5a behaviour).
@@ -53,14 +55,29 @@ pub struct PeerEndpointConfig {
 
 /// Apply the selected discovery service(s) to an endpoint builder. Factored out so the
 /// L0 (`PeerEndpoint::new`) and L1 (`build_base_endpoint`) paths stay in lockstep.
+///
+/// iroh 1.0 port: the old `discovery_n0()` / `discovery_dht()` builder shortcuts are gone.
+/// n0 discovery is now two services (a `PkarrPublisher` that publishes our record to n0's
+/// pkarr relay + a `DnsAddressLookup` that resolves peers from n0's DNS), each added via
+/// `Builder::address_lookup`. The Mainline DHT backend moved out of iroh's
+/// `discovery-pkarr-dht` cargo feature into the `iroh-mainline-address-lookup` crate
+/// (`DhtAddressLookup`, publishing on by default); adding it alongside the n0 services is
+/// the same ADDITIVE concurrent layering as before.
 fn apply_discovery(
     builder: iroh::endpoint::Builder,
     mode: DiscoveryMode,
 ) -> iroh::endpoint::Builder {
+    use iroh::address_lookup::{DnsAddressLookup, PkarrPublisher};
+    use iroh_mainline_address_lookup::DhtAddressLookup;
     match mode {
-        DiscoveryMode::N0 => builder.discovery_n0(),
-        DiscoveryMode::Dht => builder.discovery_dht(),
-        DiscoveryMode::Both => builder.discovery_n0().discovery_dht(),
+        DiscoveryMode::N0 => builder
+            .address_lookup(PkarrPublisher::n0_dns())
+            .address_lookup(DnsAddressLookup::n0_dns()),
+        DiscoveryMode::Dht => builder.address_lookup(DhtAddressLookup::builder()),
+        DiscoveryMode::Both => builder
+            .address_lookup(PkarrPublisher::n0_dns())
+            .address_lookup(DnsAddressLookup::n0_dns())
+            .address_lookup(DhtAddressLookup::builder()),
     }
 }
 
