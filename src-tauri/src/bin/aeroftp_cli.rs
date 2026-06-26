@@ -12012,6 +12012,50 @@ fn set_group_membership_in_vault(
     Ok((canonical, outcome))
 }
 
+/// Create a new empty group (no members) by name, rejecting a case-insensitive
+/// duplicate. Powers `groups -i`'s New(N) verb (#311 row 1, Phase A); members
+/// are added afterwards via `a`/`x` here or `g` in `profiles -i`. Returns the
+/// stored (trimmed) name on success.
+fn create_empty_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Group name cannot be empty".to_string());
+    }
+    let raw = groups_blob_get(store);
+    let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    if groups.iter().any(|g| g.name.eq_ignore_ascii_case(trimmed)) {
+        return Err(format!("a group named '{}' already exists", trimmed));
+    }
+    let order = groups.iter().map(|g| g.order).max().unwrap_or(-1) + 1;
+    groups.push(CliServerGroup {
+        id: format!(
+            "grp_{}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0),
+            trimmed
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .take(6)
+                .collect::<String>()
+                .to_lowercase()
+        ),
+        name: trimmed.to_string(),
+        color: None,
+        order,
+        members: Vec::new(),
+    });
+    let payload =
+        serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
+    groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
+    Ok(trimmed.to_string())
+}
+
 /// Rename a group, looked up case-insensitively by its current name. Returns
 /// the canonical old name on success. Mirrors `renameGroup` in serverGroups.ts.
 fn rename_group_in_vault(
@@ -15285,14 +15329,15 @@ fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
 
 /// The labelled action bar for `groups -i` (Ehud #311, D2 verb set). Same
 /// safe-first ordering as `profiles -i` (disc 17411227): `Help` leads, read-only
-/// `List`/`Refresh` next, then the mutating verbs (`Add`/`Remove` member
-/// profiles, #311 row 8) with `re-index` out of the front and `Delete` last
-/// before `Quit`. Keys unchanged.
+/// `List`/`Refresh` next, then the mutating verbs (`New` empty group #311 row 1,
+/// `Add`/`Remove` member profiles #311 row 8) with `re-index` out of the front
+/// and `Delete` last before `Quit`. Keys unchanged.
 fn groups_section_verbs() -> Vec<SectionVerb> {
     vec![
         SectionVerb::new("Help", "H/?"),
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Refresh", "."),
+        SectionVerb::new("New", "N"),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
         SectionVerb::new("Add", "A"),
@@ -15348,6 +15393,7 @@ fn resolve_group_selector(groups: &[CliServerGroup], sel: &str) -> Result<usize,
 fn print_groups_help() {
     eprintln!("  l / ls            reprint the group table");
     eprintln!("  l <N|name ...>    list the member profiles of each group");
+    eprintln!("  n [name]          new empty group (prompts for the name when omitted)");
     eprintln!("  r <N|name> [new]  rename a group (prompts for the new name when omitted)");
     eprintln!("  c <N|name> [new]  copy a group: duplicate its membership under a new name");
     eprintln!("  a <group> <p...>  add profile(s) to a group (existing group; idempotent)");
@@ -15481,7 +15527,7 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
-            "Interactive: r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+            "Interactive: n [name] new group  \u{00b7}  r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
         );
 
         let line = match section_prompt_line("groups> ") {
@@ -15584,6 +15630,40 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         };
         match verb.as_str() {
+            // New(N): create a new empty group from inside the loop (#311 row 1,
+            // Phase A), the rclone `n) New remote` model. Members are added after
+            // with `a`/`x` here or `g` in `profiles -i`.
+            "n" | "new" => {
+                let name = if tokens.len() >= 2 {
+                    tokens[1..].join(" ")
+                } else {
+                    match section_prompt_line("New group name (empty to abort): ") {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    }
+                };
+                if name.is_empty() {
+                    eprintln!("Empty input: new group aborted.");
+                    continue;
+                }
+                match create_empty_group_in_vault(store, &name) {
+                    Ok(n) => eprintln!(
+                        "{}",
+                        paint_green(&format!(
+                            "Group '{}' created (empty). Add members with `a`/`x` here or `g` in `profiles -i`.",
+                            n
+                        ))
+                    ),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Create failed: {}", e))),
+                }
+            }
             // Add/remove member profiles to/from an existing group (#311 row 8):
             // the groups-side of membership management, the counterpart to
             // `profiles -i`'s `g` toggle. Group first (the section's entity),
@@ -15838,6 +15918,7 @@ fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
         SectionVerb::new("Refresh", "."),
+        SectionVerb::new("New", "N"),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
         SectionVerb::new(format!("Fav{}", fav_marker), "F"),
@@ -16011,6 +16092,9 @@ fn user_order_after_move(
 fn print_users_help() {
     eprintln!("  l / ls            reprint the user table");
     eprintln!("  l <N|name ...>    list the saved servers of each user");
+    eprintln!(
+        "  n [name]          new local user (prompts for the name + optional passphrase)"
+    );
     eprintln!("  r <N|name> [new]  rename a user (prompts for the new name when omitted)");
     eprintln!(
         "  c <N|name> [new]  copy a user: duplicate its servers into a new user (no passwords)"
@@ -16192,7 +16276,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
-            "Interactive: r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+            "Interactive: n [name] new user  \u{00b7}  r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
         );
 
         let line = match section_prompt_line("users> ") {
@@ -16297,6 +16381,60 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             continue;
         };
         match verb.as_str() {
+            // New(N): create a local user from inside the loop (#311 row 1,
+            // Phase A), the rclone `n) New remote` model. Optional account
+            // passphrase (blank = none). Reuses the shared `cli_create_user`.
+            "n" | "new" => {
+                let name = if tokens.len() >= 2 {
+                    tokens[1..].join(" ")
+                } else {
+                    match section_prompt_line("New user name (empty to abort): ") {
+                        Ok(Some(l)) => l.trim().to_string(),
+                        Ok(None) => {
+                            eprintln!();
+                            return 0;
+                        }
+                        Err(e) => {
+                            eprintln!("Read error: {}.", e);
+                            continue;
+                        }
+                    }
+                };
+                if name.is_empty() {
+                    eprintln!("Empty input: new user aborted.");
+                    continue;
+                }
+                // Clean duplicate message before prompting for a passphrase, so a
+                // doomed create fails fast instead of surfacing the raw DB unique
+                // constraint (cli_create_user still guards as the source of truth).
+                if users.iter().any(|u| u.name.eq_ignore_ascii_case(&name)) {
+                    eprintln!(
+                        "{}",
+                        paint_red(&format!("Create failed: a user named '{}' already exists.", name))
+                    );
+                    continue;
+                }
+                let pass = match section_prompt_line("Account passphrase (empty for none): ") {
+                    Ok(Some(l)) => l.trim_matches(['\n', '\r']).to_string(),
+                    Ok(None) => {
+                        eprintln!();
+                        return 0;
+                    }
+                    Err(e) => {
+                        eprintln!("Read error: {}.", e);
+                        continue;
+                    }
+                };
+                let pass_opt = if pass.is_empty() {
+                    None
+                } else {
+                    Some(pass.as_str())
+                };
+                match user_partitions::cli_create_user(store, &name, None, None, pass_opt) {
+                    Ok(u) => eprintln!("{}", paint_green(&format!("User '{}' created.", u.name))),
+                    Err(e) => eprintln!("{}", paint_red(&format!("Create failed: {}", e))),
+                }
+            }
             "l" | "ls" | "list" => {
                 if tokens.len() < 2 {
                     eprintln!(
@@ -55192,7 +55330,7 @@ mod tests {
     fn groups_action_bar_matches_d2_vocabulary() {
         assert_eq!(
             render_section_actions(&groups_section_verbs()),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Refresh(.) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} Remove(X) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} Remove(X) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
     }
 
@@ -55325,7 +55463,7 @@ mod tests {
     fn users_action_bar_matches_d1_vocabulary() {
         assert_eq!(
             render_section_actions(&users_section_verbs("\u{2605}")),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The Fav glyph follows the user's chosen favourite marker (#270).
         assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));
