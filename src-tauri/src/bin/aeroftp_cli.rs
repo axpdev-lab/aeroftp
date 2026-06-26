@@ -15411,7 +15411,9 @@ fn print_groups_help() {
     eprintln!(
         "  For a/x the <group> is a group selector and <p...> are profile selectors (number as in"
     );
-    eprintln!("  `profiles -i`, name, id, or unique substring); add the group from `profiles -i` first.");
+    eprintln!(
+        "  `profiles -i`, name, id, or unique substring); add the group from `profiles -i` first."
+    );
 }
 
 /// `aeroftp-cli groups [-i]`: list and (interactively) manage server-profile
@@ -16094,9 +16096,7 @@ fn user_order_after_move(
 fn print_users_help() {
     eprintln!("  l / ls            reprint the user table");
     eprintln!("  l <N|name ...>    list the saved servers of each user");
-    eprintln!(
-        "  n [name]          new local user (prompts for the name + optional passphrase)"
-    );
+    eprintln!("  n [name]          new local user (prompts for the name + optional passphrase)");
     eprintln!("  r <N|name> [new]  rename a user (prompts for the new name when omitted)");
     eprintln!(
         "  c <N|name> [new]  copy a user: duplicate its servers into a new user (no passwords)"
@@ -16412,7 +16412,10 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                 if users.iter().any(|u| u.name.eq_ignore_ascii_case(&name)) {
                     eprintln!(
                         "{}",
-                        paint_red(&format!("Create failed: a user named '{}' already exists.", name))
+                        paint_red(&format!(
+                            "Create failed: a user named '{}' already exists.",
+                            name
+                        ))
                     );
                     continue;
                 }
@@ -19220,7 +19223,11 @@ fn cmd_profile_add(
     ) {
         Ok(id) => id,
         Err(e) => {
-            let code = if e.starts_with("Failed to read") { 6 } else { 5 };
+            let code = if e.starts_with("Failed to read") {
+                6
+            } else {
+                5
+            };
             print_error(format, &e, code);
             return code;
         }
@@ -19459,7 +19466,10 @@ fn interactive_new_profile(
                 i + 1,
                 truncate_display(p.company, 24),
                 truncate_display(&p.method.label, 8),
-                p.method.provider_id.as_deref().unwrap_or(&p.method.protocol),
+                p.method
+                    .provider_id
+                    .as_deref()
+                    .unwrap_or(&p.method.protocol),
                 if p.method.paid { "  (paid)" } else { "" },
             );
         }
@@ -19475,7 +19485,10 @@ fn interactive_new_profile(
         match sel.parse::<usize>() {
             Ok(n) if n >= 1 && n <= matches.len() => &matches[n - 1],
             _ => {
-                eprintln!("Pick out of range (1..={}). New profile aborted.", matches.len());
+                eprintln!(
+                    "Pick out of range (1..={}). New profile aborted.",
+                    matches.len()
+                );
                 return Ok(None);
             }
         }
@@ -55571,7 +55584,11 @@ mod tests {
 
         // A protocol token matches every method that speaks it, spanning companies.
         let s3 = catalog_pick_matches(&catalog, "s3");
-        assert!(s3.len() > 1, "expected several S3 methods, got {}", s3.len());
+        assert!(
+            s3.len() > 1,
+            "expected several S3 methods, got {}",
+            s3.len()
+        );
         assert!(s3.iter().all(|p| {
             let hay = format!(
                 "{} {} {}",
@@ -55584,7 +55601,10 @@ mod tests {
         }));
 
         // Rows are sorted company-then-label (stable, predictable picker order).
-        let mut sorted = s3.iter().map(|p| (p.company, &p.method.label)).collect::<Vec<_>>();
+        let mut sorted = s3
+            .iter()
+            .map(|p| (p.company, &p.method.label))
+            .collect::<Vec<_>>();
         let original = sorted.clone();
         sorted.sort();
         assert_eq!(original, sorted, "picker rows must be pre-sorted");

@@ -1427,7 +1427,11 @@ mod tests {
         let out = sanitize_api_error(&long);
         assert!(out.starts_with("ERR "));
         assert!(out.ends_with("..."), "over-long line gets an ellipsis");
-        assert!(out.len() <= 210, "clipped near the 200-char cap, got {}", out.len());
+        assert!(
+            out.len() <= 210,
+            "clipped near the 200-char cap, got {}",
+            out.len()
+        );
     }
 
     /// Row 4: only the first line survives a multi-line body, and an embedded
