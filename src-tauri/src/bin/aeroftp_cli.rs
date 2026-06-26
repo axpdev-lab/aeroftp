@@ -15231,7 +15231,11 @@ fn format_groups_table(groups: &[CliServerGroup]) -> String {
         return "No groups yet. Create one in the GUI, or via `aeroftp-cli profiles -i` (g <selector> <group>).".to_string();
     }
     let header = "  #  Group                                Profiles";
-    let mut out = format!("{}\n{}\n", header, "\u{2500}".repeat(header.chars().count()));
+    let mut out = format!(
+        "{}\n{}\n",
+        header,
+        "\u{2500}".repeat(header.chars().count())
+    );
     for (i, g) in groups.iter().enumerate() {
         let name: String = if g.name.chars().count() > 36 {
             format!("{}\u{2026}", g.name.chars().take(35).collect::<String>())
@@ -15692,7 +15696,12 @@ fn users_table_counts(
     store: &CredentialStore,
 ) -> (std::collections::HashMap<i64, i64>, Option<usize>) {
     let profile_counts = user_partitions::cli_storage_stats(store)
-        .map(|stats| stats.into_iter().map(|s| (s.user_id, s.profile_count)).collect())
+        .map(|stats| {
+            stats
+                .into_iter()
+                .map(|s| (s.user_id, s.profile_count))
+                .collect()
+        })
         .unwrap_or_default();
     // Non-seeding count (audit F2): listing users must not trigger the legacy
     // groups seed `load_server_groups` would.
@@ -15720,7 +15729,11 @@ fn format_users_table(
         "  {:<2} {:<37}{:<6}{:<10}{:<8}{}",
         "#", "User", "ID", "Profiles", "Groups", "Flags"
     );
-    let mut out = format!("{}\n{}\n", header, "\u{2500}".repeat(header.chars().count()));
+    let mut out = format!(
+        "{}\n{}\n",
+        header,
+        "\u{2500}".repeat(header.chars().count())
+    );
     for (i, u) in users.iter().enumerate() {
         let name: String = if u.name.chars().count() > 36 {
             format!("{}\u{2026}", u.name.chars().take(35).collect::<String>())
@@ -18438,7 +18451,11 @@ fn format_section_summary_with_tombstones(
     let mut out = String::from("\n");
     let mut header_line = format!("  {:>idx$}", "#", idx = idx_w);
     for (ci, h) in headers.iter().enumerate() {
-        header_line.push_str(&format!("  {:<w$}", truncate_cell(h, col_w[ci]), w = col_w[ci]));
+        header_line.push_str(&format!(
+            "  {:<w$}",
+            truncate_cell(h, col_w[ci]),
+            w = col_w[ci]
+        ));
     }
     out.push_str(&header_line);
     out.push('\n');
@@ -18631,7 +18648,11 @@ fn format_section_summary_with_reorder(
     let mut out = String::from("\n");
     let mut header_line = format!("    {}{:>nw$}", " ".repeat(old_w), "#", nw = new_w);
     for (ci, h) in headers.iter().enumerate() {
-        header_line.push_str(&format!("  {:<w$}", truncate_cell(h, col_w[ci]), w = col_w[ci]));
+        header_line.push_str(&format!(
+            "  {:<w$}",
+            truncate_cell(h, col_w[ci]),
+            w = col_w[ci]
+        ));
     }
     out.push_str(&header_line);
     out.push('\n');
@@ -55085,7 +55106,8 @@ mod tests {
         alice.is_active = true;
         // Profile counts per user id; the active user (alice) also has a group count.
         let counts: HashMap<i64, i64> = [(2, 3), (5, 1)].into_iter().collect();
-        let table = format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}", &counts, Some(2));
+        let table =
+            format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}", &counts, Some(2));
         assert!(table.contains("User"));
         assert!(table.contains("ID"));
         assert!(table.contains("Flags"));
