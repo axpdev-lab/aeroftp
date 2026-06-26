@@ -90,6 +90,15 @@ fn filen_is_rate_limited(status: u16) -> bool {
     matches!(status, 429 | 503)
 }
 
+/// Whether a failed Filen egest/ingest HTTP status is a transient class worth
+/// retrying. Server errors (5xx) plus the two recoverable 4xx signals (408
+/// Request Timeout, 429 Too Many Requests) are retried with backoff; every
+/// other 4xx is authoritative and surfaced immediately. Extracted as a pure fn
+/// from `download_filen_chunk` so the retry policy boundary is unit-tested.
+fn filen_status_is_retryable(status: u16) -> bool {
+    (500..=599).contains(&status) || status == 408 || status == 429
+}
+
 /// KE-E3: Compute the marker tail to append to a Filen `ProviderError`
 /// message when the response was rate-limited and a usable `Retry-After`
 /// header was present. Pure-fn for test coverage.
@@ -2968,8 +2977,7 @@ async fn download_filen_chunk(
                 .collect::<String>();
             // Retry only on classes that may recover. 4xx (except 408/429)
             // are authoritative, so we surface them immediately.
-            let retryable =
-                status.is_server_error() || status.as_u16() == 408 || status.as_u16() == 429;
+            let retryable = filen_status_is_retryable(status.as_u16());
             let err = format!("status {}: {}", status, body_preview);
             if !retryable {
                 return Err(err);
@@ -3214,5 +3222,41 @@ mod tests {
         );
         assert!(msg.contains("400"));
         assert!(!msg.contains("retry-after-secs"));
+    }
+
+    // Row 4 (#347): the base composition of format_filen_error, prefix then the
+    // StatusCode Display form then the body preview, with no marker when there is
+    // no Retry-After header.
+    #[test]
+    fn format_filen_error_composes_prefix_status_and_body() {
+        let msg = format_filen_error(
+            "List dir failed",
+            reqwest::StatusCode::NOT_FOUND,
+            "no such folder",
+            None,
+        );
+        assert_eq!(msg, "List dir failed: 404 Not Found - no such folder");
+        assert!(!msg.contains("retry-after-secs"));
+    }
+
+    // Row 4 (#347): the transient-class retry boundary for Filen egest/ingest.
+    // 5xx and the two recoverable 4xx (408, 429) retry; every other 4xx is
+    // authoritative and surfaced immediately.
+    #[test]
+    fn filen_status_is_retryable_covers_transient_classes_only() {
+        // Retryable: the whole 5xx range plus 408 and 429.
+        for code in [500u16, 502, 503, 504, 599, 408, 429] {
+            assert!(
+                filen_status_is_retryable(code),
+                "HTTP {code} must be retryable"
+            );
+        }
+        // Authoritative: other 4xx and any 2xx/3xx.
+        for code in [400u16, 401, 403, 404, 409, 410, 200, 301] {
+            assert!(
+                !filen_status_is_retryable(code),
+                "HTTP {code} must NOT be retried"
+            );
+        }
     }
 }
