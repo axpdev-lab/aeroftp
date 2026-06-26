@@ -1,13 +1,48 @@
-import { secureGetWithFallback, secureStoreAndClean } from './secureStorage';
+import { secureGet } from './secureStorage';
+import { getActiveUserSetting, setActiveUserSetting } from './userPartitions';
 
-// Favourites live in the vault under `favorite_servers` (the secureStorage
-// layer prefixes it to `config_favorite_servers`, which the CLI reads to render
-// the ⭐ column). A legacy localStorage copy under `aeroftp-favorite-servers`
-// is kept as an offline fallback. Both keys are shared by MyServersPanel (the
-// toggle UI) and ConnectionScreen (carry-over on protocol switch), so they live
-// here as the single source of truth.
+// Favourites are PER-USER (Ehud #311): they live in the active user's encrypted
+// partition under the `favorite_servers` setting scope, which the CLI reads to
+// render the ⭐ column. They predate the multi-user system, so the first read
+// for a user best-effort seeds from the legacy GLOBAL vault blob
+// (`config_favorite_servers`, reached via `secureGet(FAVORITES_VAULT_KEY)`).
+// The old `aeroftp-favorite-servers` localStorage mirror is intentionally NOT
+// used here: localStorage is per-origin, not per-user, so caching favourites
+// there would leak one local user's set to another. Both consumers
+// (MyServersPanel toggle UI, ConnectionScreen carry-over) go through the
+// load/save helpers below, the single source of truth.
 export const FAVORITES_VAULT_KEY = 'favorite_servers';
-export const FAVORITES_STORAGE_KEY = 'aeroftp-favorite-servers';
+
+/**
+ * Load the active user's favourite server ids from their partition. On the
+ * first read for a user (no per-user value yet) it best-effort seeds, once,
+ * from the legacy global blob so favourites created before multi-user carry
+ * over. Returns [] on any failure (favourites are cosmetic, never hard-fail).
+ */
+export async function loadFavoriteServers(): Promise<string[]> {
+    try {
+        const perUser = await getActiveUserSetting<unknown>(FAVORITES_VAULT_KEY);
+        if (perUser != null) {
+            return Array.isArray(perUser)
+                ? perUser.filter((id): id is string => typeof id === 'string')
+                : [];
+        }
+        // First read for this user: seed once from the legacy global blob.
+        const legacy = await secureGet<unknown>(FAVORITES_VAULT_KEY);
+        const seeded = Array.isArray(legacy)
+            ? legacy.filter((id): id is string => typeof id === 'string')
+            : [];
+        if (seeded.length > 0) await setActiveUserSetting(FAVORITES_VAULT_KEY, seeded);
+        return seeded;
+    } catch {
+        return [];
+    }
+}
+
+/** Persist the active user's favourite server ids to their partition. */
+export async function saveFavoriteServers(ids: string[]): Promise<void> {
+    await setActiveUserSetting(FAVORITES_VAULT_KEY, ids);
+}
 
 /**
  * Carry the ⭐ favourite flag from one profile id to another when a saved
@@ -27,15 +62,12 @@ export async function carryFavoriteServer(
     removeOld: boolean,
 ): Promise<void> {
     try {
-        const favs = await secureGetWithFallback<string[]>(
-            FAVORITES_VAULT_KEY,
-            FAVORITES_STORAGE_KEY,
-        );
-        if (!Array.isArray(favs) || !favs.includes(oldId)) return;
+        const favs = await loadFavoriteServers();
+        if (!favs.includes(oldId)) return;
         const next = new Set(favs);
         if (removeOld) next.delete(oldId);
         next.add(newId);
-        await secureStoreAndClean(FAVORITES_VAULT_KEY, FAVORITES_STORAGE_KEY, [...next]);
+        await saveFavoriteServers([...next]);
     } catch {
         // Favourites are best-effort cosmetic state; never block a profile
         // switch on a vault hiccup.

@@ -10407,11 +10407,7 @@ fn parse_col_spec(raw: &str) -> Result<ColSpec, String> {
 /// any failure: a missing or malformed entry collapses to "no favourites",
 /// which keeps the CLI working for new vaults and during the rollout.
 fn load_favorite_server_ids(store: &CredentialStore) -> std::collections::HashSet<String> {
-    use std::collections::HashSet;
-    let raw = match store.get("config_favorite_servers") {
-        Ok(v) => v,
-        Err(_) => return HashSet::new(),
-    };
+    let raw = favs_blob_get(store);
     serde_json::from_str::<Vec<String>>(&raw)
         .map(|ids| ids.into_iter().collect())
         .unwrap_or_default()
@@ -10443,7 +10439,7 @@ fn load_favorite_marker(store: &CredentialStore) -> &'static str {
 /// `MyServersPanel.toggleFavorite` so GUI and CLI converge on the same
 /// `config_favorite_servers` key without one clobbering the other.
 fn toggle_favorite_in_vault(store: &CredentialStore, profile_id: &str) -> Result<bool, String> {
-    let raw = store.get("config_favorite_servers").unwrap_or_default();
+    let raw = favs_blob_get(store);
     let mut ids: Vec<String> = if raw.is_empty() {
         Vec::new()
     } else {
@@ -10459,9 +10455,7 @@ fn toggle_favorite_in_vault(store: &CredentialStore, profile_id: &str) -> Result
     }
     let payload = serde_json::to_string(&ids)
         .map_err(|e| format!("Failed to serialize favourites: {}", e))?;
-    store
-        .store("config_favorite_servers", &payload)
-        .map_err(|e| format!("Failed to write favourites: {}", e))?;
+    favs_blob_put(store, &payload).map_err(|e| format!("Failed to write favourites: {}", e))?;
     Ok(now_favoured)
 }
 
@@ -10485,16 +10479,87 @@ struct CliServerGroup {
 /// vec on any failure (missing or malformed entry collapses to "no groups"),
 /// mirroring `load_favorite_server_ids`.
 fn load_server_groups(store: &CredentialStore) -> Vec<CliServerGroup> {
-    let raw = match store.get("config_server_groups") {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
+    let raw = groups_blob_get(store);
     if raw.is_empty() {
         return Vec::new();
     }
     let mut groups: Vec<CliServerGroup> = serde_json::from_str(&raw).unwrap_or_default();
     groups.sort_by_key(|g| g.order);
     groups
+}
+
+// --- Per-user server groups + favourites (Ehud #311) ------------------------
+//
+// Groups and favourites predate the multi-user partitions, so they originally
+// lived in a single global vault blob (`config_server_groups` /
+// `config_favorite_servers`) shared across every local user. These four helpers
+// route the two blobs through the active user's encrypted partition instead, so
+// each user keeps their own groups/favourites. They are the ONLY place that
+// touches the legacy global key, so the best-effort one-time seed lives in one
+// spot. These are cosmetic, recreatable settings: a locked / absent active user
+// never hard-fails, it just renders as "no groups / no favourites".
+
+/// Read the active user's `server_groups` blob (raw JSON string, empty when
+/// none). On first read for a user (`Ok(None)`) it best-effort seeds from the
+/// legacy global `config_server_groups` vault key once, so pre-existing groups
+/// carry over. A locked / absent active user yields an empty string.
+fn groups_blob_get(store: &CredentialStore) -> String {
+    match user_partitions::cli_get_active_setting(store, "server_groups") {
+        Ok(Some(v)) => {
+            return v
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| v.to_string());
+        }
+        Ok(None) => {}
+        Err(_) => return String::new(), // locked / no active user: groups are cosmetic
+    }
+    // Seed once from the legacy global blob (groups predate multi-user).
+    let legacy = store.get("config_server_groups").unwrap_or_default();
+    if !legacy.is_empty() {
+        let _ = groups_blob_put(store, &legacy);
+    }
+    legacy
+}
+
+/// Persist the active user's `server_groups` blob. The payload (a serialized
+/// JSON array) is stored as a real JSON value so the GUI, which writes the array
+/// directly via `setActiveUserSetting`, and the CLI converge on one shape.
+/// `groups_blob_get` reads either shape back (legacy string seed or array). A
+/// malformed payload degrades to an empty array rather than corrupting the row.
+fn groups_blob_put(store: &CredentialStore, payload: &str) -> Result<(), String> {
+    let value: serde_json::Value =
+        serde_json::from_str(payload).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
+    user_partitions::cli_set_active_setting(store, "server_groups", &value)
+}
+
+/// Read the active user's `favorite_servers` blob (raw JSON string, empty when
+/// none). Best-effort one-time seed from the legacy global
+/// `config_favorite_servers` vault key, mirroring [`groups_blob_get`].
+fn favs_blob_get(store: &CredentialStore) -> String {
+    match user_partitions::cli_get_active_setting(store, "favorite_servers") {
+        Ok(Some(v)) => {
+            return v
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| v.to_string());
+        }
+        Ok(None) => {}
+        Err(_) => return String::new(), // locked / no active user: favourites are cosmetic
+    }
+    let legacy = store.get("config_favorite_servers").unwrap_or_default();
+    if !legacy.is_empty() {
+        let _ = favs_blob_put(store, &legacy);
+    }
+    legacy
+}
+
+/// Persist the active user's `favorite_servers` blob as a real JSON value (an
+/// array of ids), mirroring [`groups_blob_put`] so the CLI and GUI converge.
+fn favs_blob_put(store: &CredentialStore, payload: &str) -> Result<(), String> {
+    let value: serde_json::Value =
+        serde_json::from_str(payload).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
+    user_partitions::cli_set_active_setting(store, "favorite_servers", &value)
 }
 
 /// Names of the groups a profile belongs to, in `order`. Empty when ungrouped.
@@ -10519,7 +10584,7 @@ fn toggle_group_membership_in_vault(
     if trimmed.is_empty() {
         return Err("Group name cannot be empty".to_string());
     }
-    let raw = store.get("config_server_groups").unwrap_or_default();
+    let raw = groups_blob_get(store);
     let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
         Vec::new()
     } else {
@@ -10560,9 +10625,7 @@ fn toggle_group_membership_in_vault(
     }
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
-    store
-        .store("config_server_groups", &payload)
-        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
     Ok((group_name, now_member))
 }
 
@@ -10577,7 +10640,7 @@ fn rename_group_in_vault(
     if new_trimmed.is_empty() {
         return Err("New group name cannot be empty".to_string());
     }
-    let raw = store.get("config_server_groups").unwrap_or_default();
+    let raw = groups_blob_get(store);
     let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
         Vec::new()
     } else {
@@ -10591,9 +10654,7 @@ fn rename_group_in_vault(
     g.name = new_trimmed.to_string();
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
-    store
-        .store("config_server_groups", &payload)
-        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
     Ok(was)
 }
 
@@ -10601,7 +10662,7 @@ fn rename_group_in_vault(
 /// group is just a label, so removing it only drops the grouping, mirroring
 /// `deleteGroup` in serverGroups.ts. Returns the canonical name removed.
 fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, String> {
-    let raw = store.get("config_server_groups").unwrap_or_default();
+    let raw = groups_blob_get(store);
     let mut groups: Vec<CliServerGroup> = if raw.is_empty() {
         Vec::new()
     } else {
@@ -10614,9 +10675,7 @@ fn delete_group_in_vault(store: &CredentialStore, name: &str) -> Result<String, 
     let removed = groups.remove(pos).name;
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
-    store
-        .store("config_server_groups", &payload)
-        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
     Ok(removed)
 }
 
@@ -10718,9 +10777,7 @@ fn copy_group_in_vault(
     });
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
-    store
-        .store("config_server_groups", &payload)
-        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
     Ok((src.name, target_name))
 }
 
@@ -10738,9 +10795,7 @@ fn reorder_group_in_vault(
     let (canonical, dst) = apply_group_reorder(&mut groups, name, target_1based)?;
     let payload =
         serde_json::to_string(&groups).map_err(|e| format!("Failed to serialize groups: {}", e))?;
-    store
-        .store("config_server_groups", &payload)
-        .map_err(|e| format!("Failed to write groups: {}", e))?;
+    groups_blob_put(store, &payload).map_err(|e| format!("Failed to write groups: {}", e))?;
     Ok((canonical, dst))
 }
 
@@ -10749,20 +10804,21 @@ fn reorder_group_in_vault(
 /// `serverGroups.ts`: the group rows themselves stay (a group is just a label),
 /// only the membership is dropped. Best-effort; a malformed blob is left alone.
 fn prune_profile_from_groups_and_favorites(store: &CredentialStore, profile_id: &str) {
-    // Favourites: drop the id from `config_favorite_servers`.
-    if let Ok(raw) = store.get("config_favorite_servers") {
-        if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&raw) {
+    // Favourites: drop the id from the active user's `favorite_servers` blob.
+    let fav_raw = favs_blob_get(store);
+    if !fav_raw.is_empty() {
+        if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
             let before = ids.len();
             ids.retain(|i| i != profile_id);
             if ids.len() != before {
                 if let Ok(payload) = serde_json::to_string(&ids) {
-                    let _ = store.store("config_favorite_servers", &payload);
+                    let _ = favs_blob_put(store, &payload);
                 }
             }
         }
     }
     // Groups: drop the id from every group's `members`.
-    let raw = store.get("config_server_groups").unwrap_or_default();
+    let raw = groups_blob_get(store);
     if !raw.is_empty() {
         if let Ok(mut groups) = serde_json::from_str::<Vec<CliServerGroup>>(&raw) {
             let mut changed = false;
@@ -10775,7 +10831,7 @@ fn prune_profile_from_groups_and_favorites(store: &CredentialStore, profile_id: 
             }
             if changed {
                 if let Ok(payload) = serde_json::to_string(&groups) {
-                    let _ = store.store("config_server_groups", &payload);
+                    let _ = groups_blob_put(store, &payload);
                 }
             }
         }
@@ -17398,13 +17454,14 @@ fn cmd_profile_relocate_user(
 
     if relocation.moved {
         // Drop the moved id from the favourites set (best effort).
-        if let Ok(fav_raw) = store.get("config_favorite_servers") {
+        let fav_raw = favs_blob_get(&store);
+        if !fav_raw.is_empty() {
             if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
                 let before = ids.len();
                 ids.retain(|id| id != &source_id);
                 if ids.len() != before {
                     if let Ok(payload) = serde_json::to_string(&ids) {
-                        let _ = store.store("config_favorite_servers", &payload);
+                        let _ = favs_blob_put(&store, &payload);
                     }
                 }
             }
@@ -17789,7 +17846,8 @@ fn duplicate_or_convert_mode_in_vault(
     // is replaced; on duplicate the new id is added alongside. Best-effort: a
     // missing or malformed favourites set leaves it untouched.
     if !source_id.is_empty() {
-        if let Ok(fav_raw) = store.get("config_favorite_servers") {
+        let fav_raw = favs_blob_get(store);
+        if !fav_raw.is_empty() {
             if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
                 if ids.iter().any(|id| id == &source_id) {
                     if replace_in_slot {
@@ -17799,7 +17857,7 @@ fn duplicate_or_convert_mode_in_vault(
                         ids.push(new_id.clone());
                     }
                     if let Ok(payload) = serde_json::to_string(&ids) {
-                        let _ = store.store("config_favorite_servers", &payload);
+                        let _ = favs_blob_put(store, &payload);
                     }
                 }
             }
@@ -17954,13 +18012,14 @@ fn delete_profile_in_vault(
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.
-    if let Ok(fav_raw) = store.get("config_favorite_servers") {
+    let fav_raw = favs_blob_get(store);
+    if !fav_raw.is_empty() {
         if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
             let before = ids.len();
             ids.retain(|id| id != profile_id);
             if ids.len() != before {
                 if let Ok(payload) = serde_json::to_string(&ids) {
-                    let _ = store.store("config_favorite_servers", &payload);
+                    let _ = favs_blob_put(store, &payload);
                 }
             }
         }

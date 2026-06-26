@@ -3502,6 +3502,44 @@ pub fn cli_replace_server_profiles_for_user(
     result
 }
 
+/// CLI counterpart of [`user_partitions_get_active_setting`]: read a per-user
+/// `user_settings` scope for the active user, decrypted as JSON. Returns
+/// `Ok(None)` when no row exists. Used by the CLI to keep low-stakes per-user
+/// state (server groups, favourites) in the active user's partition instead of
+/// the single global vault blob. `__`-reserved scopes are rejected.
+pub fn cli_get_active_setting(
+    store: &CredentialStore,
+    scope: &str,
+) -> Result<Option<Value>, String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = get_active_user_setting(&conn, &root_key, scope);
+    root_key.zeroize();
+    result
+}
+
+/// CLI counterpart of [`user_partitions_set_active_setting`]: upsert a per-user
+/// `user_settings` scope for the active user.
+pub fn cli_set_active_setting(
+    store: &CredentialStore,
+    scope: &str,
+    value: &Value,
+) -> Result<(), String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = set_active_user_setting(&conn, &root_key, scope, value);
+    root_key.zeroize();
+    result
+}
+
 /// MUV-5: resolve the active user's server profiles for the MCP subprocess.
 ///
 /// The MCP server runs headless and must scope to the persisted active user
