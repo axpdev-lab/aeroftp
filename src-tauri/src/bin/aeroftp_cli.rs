@@ -15126,7 +15126,7 @@ impl SectionVerb {
     }
 }
 
-/// Render an action bar from a verb table: `re-index(#) \u{00b7} Rename(R) \u{00b7} ...`.
+/// Render an action bar from a verb table: `Help(H/?) \u{00b7} List/ls(L) \u{00b7} ...`.
 fn render_section_actions(verbs: &[SectionVerb]) -> String {
     verbs
         .iter()
@@ -15189,37 +15189,44 @@ fn section_prompt_line(prompt: &str) -> std::io::Result<Option<String>> {
     }
 }
 
-/// The labelled action bar for `profiles -i`, mirroring the profile-table column
-/// order. `fav_marker` (\u{2605} default, \u{2665} if chosen, #270) rides on the
-/// Fav verb so the bar shows the user's chosen glyph.
+/// The labelled action bar for `profiles -i`. Ordered safe-first (#311
+/// discussioncomment-17411227, @EhudKirsh): `Help` leads, then the read-only
+/// inspection verbs (`List`/`Tree`/`Refresh`) and cross-navigation
+/// (`Groups`/`Users`), then the mutating verbs with `re-index` out of the front
+/// and the destructive `Delete` last before `Quit`. Keys are unchanged, so no
+/// automation breaks. `fav_marker` (\u{2605} default, \u{2665} if chosen, #270)
+/// rides on the Fav verb so the bar shows the user's chosen glyph.
 fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
     vec![
-        SectionVerb::new("re-index", "#"),
-        SectionVerb::new("Rename", "R"),
-        SectionVerb::new("Edit", "E"),
-        SectionVerb::new("Copy", "C"),
-        SectionVerb::new("Delete", "D"),
-        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
-        SectionVerb::new("Groups", "G"),
-        SectionVerb::new("Users", "U"),
+        SectionVerb::new("Help", "H/?"),
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
         SectionVerb::new("Refresh", "."),
-        SectionVerb::new("Help", "H/?"),
+        SectionVerb::new("Groups", "G"),
+        SectionVerb::new("Users", "U"),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Edit", "E"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Delete", "D"),
         SectionVerb::new("Quit", "Q/0"),
     ]
 }
 
-/// The labelled action bar for `groups -i` (Ehud #311, D2 verb set).
+/// The labelled action bar for `groups -i` (Ehud #311, D2 verb set). Same
+/// safe-first ordering as `profiles -i` (disc 17411227): `Help` leads, read-only
+/// `List`/`Refresh` next, then the mutating verbs with `re-index` out of the
+/// front and `Delete` last before `Quit`. Keys unchanged.
 fn groups_section_verbs() -> Vec<SectionVerb> {
     vec![
-        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Help", "H/?"),
+        SectionVerb::new("List/ls", "L"),
+        SectionVerb::new("Refresh", "."),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
+        SectionVerb::new("re-index", "#"),
         SectionVerb::new("Delete", "D"),
-        SectionVerb::new("List/ls", "L"),
-        SectionVerb::new("Help", "H/?"),
-        SectionVerb::new("Refresh", "."),
         SectionVerb::new("Quit", "Q/0"),
     ]
 }
@@ -15668,20 +15675,23 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
 // of truth, shared with the GUI Manage Users surface, so renames, ordering and
 // the default/favourite flag round-trip both ways. Per Ehud #311 (D1).
 
-/// Verb table for the `users -i` action bar. `fav_marker` rides on the Fav
-/// label (\u{2605} default, \u{2665} when chosen, #270) so it matches the GUI
-/// favourite glyph and the profiles section.
+/// Verb table for the `users -i` action bar. Same safe-first ordering as
+/// `profiles -i` (#311 disc 17411227): `Help` leads, read-only
+/// `List`/`Tree`/`Refresh` next, then the mutating verbs with `re-index` out of
+/// the front and `Delete` last before `Quit`. Keys unchanged. `fav_marker` rides
+/// on the Fav label (\u{2605} default, \u{2665} when chosen, #270) so it matches
+/// the GUI favourite glyph and the profiles section.
 fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
     vec![
-        SectionVerb::new("re-index", "#"),
-        SectionVerb::new("Rename", "R"),
-        SectionVerb::new("Copy", "C"),
-        SectionVerb::new("Delete", "D"),
-        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("Help", "H/?"),
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
-        SectionVerb::new("Help", "H/?"),
         SectionVerb::new("Refresh", "."),
+        SectionVerb::new("Rename", "R"),
+        SectionVerb::new("Copy", "C"),
+        SectionVerb::new(format!("Fav{}", fav_marker), "F"),
+        SectionVerb::new("re-index", "#"),
+        SectionVerb::new("Delete", "D"),
         SectionVerb::new("Quit", "Q/0"),
     ]
 }
@@ -54925,7 +54935,7 @@ mod tests {
         // including the favourite glyph riding on the Fav verb (#270/#311).
         assert_eq!(
             render_section_actions(&profiles_section_verbs("\u{2605}")),
-            "re-index(#) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Help(H/?) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The chosen-heart marker (#270) flows through unchanged.
         assert!(
@@ -55031,7 +55041,7 @@ mod tests {
     fn groups_action_bar_matches_d2_vocabulary() {
         assert_eq!(
             render_section_actions(&groups_section_verbs()),
-            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} List/ls(L) \u{00b7} Help(H/?) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Refresh(.) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
     }
 
@@ -55129,7 +55139,7 @@ mod tests {
     fn users_action_bar_matches_d1_vocabulary() {
         assert_eq!(
             render_section_actions(&users_section_verbs("\u{2605}")),
-            "re-index(#) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Delete(D) \u{00b7} Fav\u{2605}(F) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Help(H/?) \u{00b7} Refresh(.) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The Fav glyph follows the user's chosen favourite marker (#270).
         assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));
