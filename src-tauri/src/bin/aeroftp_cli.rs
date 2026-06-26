@@ -13916,7 +13916,7 @@ fn format_groups_table(groups: &[CliServerGroup]) -> String {
     if groups.is_empty() {
         return "No groups yet. Create one in the GUI, or via `aeroftp-cli profiles -i` (g <selector> <group>).".to_string();
     }
-    let header = "  #  Group                                Members";
+    let header = "  #  Group                                Profiles";
     let mut out = format!("{}\n{}\n", header, "\u{2500}".repeat(header.chars().count()));
     for (i, g) in groups.iter().enumerate() {
         let name: String = if g.name.chars().count() > 36 {
@@ -14300,15 +14300,42 @@ fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
     ]
 }
 
+/// Per-user counts for the users table (#311): a `user_id -> profile_count` map
+/// from `cli_storage_stats` (a row count, so no unlock is needed for any user),
+/// plus the ACTIVE user's group count. Groups live in each user's encrypted
+/// partition, so only the active (unlocked) user's count is readable; the others
+/// render "-". Best-effort: a stats error yields empty counts (the table still
+/// renders), and the active group count is the cosmetic `load_server_groups` len.
+fn users_table_counts(
+    store: &CredentialStore,
+) -> (std::collections::HashMap<i64, i64>, Option<usize>) {
+    let profile_counts = user_partitions::cli_storage_stats(store)
+        .map(|stats| stats.into_iter().map(|s| (s.user_id, s.profile_count)).collect())
+        .unwrap_or_default();
+    let active_group_count = Some(load_server_groups(store).len());
+    (profile_counts, active_group_count)
+}
+
 /// Render the user table as a string (shared by the plain `users` listing and
-/// the `users -i` loop). Columns: 1-based index, name, numeric id, and a flag
-/// summary (active / admin / password / default). `marker` annotates the
-/// default account so the favourite glyph matches the rest of the app.
-fn format_users_table(users: &[user_partitions::UserMetadata], marker: &str) -> String {
+/// the `users -i` loop). Columns: 1-based index, name, numeric id, per-user
+/// `Profiles` and `Groups` counts (#311), and a flag summary (active / admin /
+/// password / default). `marker` annotates the default account so the favourite
+/// glyph matches the rest of the app. `profile_counts` / `active_group_count`
+/// come from [`users_table_counts`]; an absent profile count renders 0 and a
+/// non-active user's group count renders "-" (its partition is encrypted).
+fn format_users_table(
+    users: &[user_partitions::UserMetadata],
+    marker: &str,
+    profile_counts: &std::collections::HashMap<i64, i64>,
+    active_group_count: Option<usize>,
+) -> String {
     if users.is_empty() {
         return "No AeroFTP users found.".to_string();
     }
-    let header = "  #  User                                 ID    Flags";
+    let header = format!(
+        "  {:<2} {:<37}{:<6}{:<10}{:<8}{}",
+        "#", "User", "ID", "Profiles", "Groups", "Flags"
+    );
     let mut out = format!("{}\n{}\n", header, "\u{2500}".repeat(header.chars().count()));
     for (i, u) in users.iter().enumerate() {
         let name: String = if u.name.chars().count() > 36 {
@@ -14334,11 +14361,21 @@ fn format_users_table(users: &[user_partitions::UserMetadata], marker: &str) -> 
         } else {
             flags.join(", ")
         };
+        let prof = profile_counts.get(&u.id).copied().unwrap_or(0);
+        let grps = if u.is_active {
+            active_group_count
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        } else {
+            "-".to_string()
+        };
         out.push_str(&format!(
-            "  {:<2} {:<37}{:<6}{}\n",
+            "  {:<2} {:<37}{:<6}{:<10}{:<8}{}\n",
             i + 1,
             name,
             u.id,
+            prof,
+            grps,
             flag_str
         ));
     }
@@ -14470,19 +14507,26 @@ fn cmd_users_section(cli: &Cli, format: OutputFormat, interactive: bool) -> i32 
     }
 
     let marker = load_favorite_marker(&store);
+    let (prof_counts, active_groups) = users_table_counts(&store);
 
     if interactive {
         if !std::io::stdin().is_terminal() {
             // Non-TTY: behave like the plain listing instead of hanging on a
             // prompt nobody can answer.
-            println!("{}", format_users_table(&users, marker));
+            println!(
+                "{}",
+                format_users_table(&users, marker, &prof_counts, active_groups)
+            );
             eprintln!("`users -i` needs an interactive terminal; printed the listing instead.");
             return 0;
         }
         return interactive_users_loop(cli, &store);
     }
 
-    println!("{}", format_users_table(&users, marker));
+    println!(
+        "{}",
+        format_users_table(&users, marker, &prof_counts, active_groups)
+    );
     0
 }
 
@@ -14502,7 +14546,11 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                 return 5;
             }
         };
-        eprintln!("{}", format_users_table(&users, marker));
+        let (prof_counts, active_groups) = users_table_counts(store);
+        eprintln!(
+            "{}",
+            format_users_table(&users, marker, &prof_counts, active_groups)
+        );
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
             "Interactive: r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
@@ -14608,7 +14656,10 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         match verb.as_str() {
             "l" | "ls" | "list" => {
                 if tokens.len() < 2 {
-                    eprintln!("{}", format_users_table(&users, marker));
+                    eprintln!(
+                        "{}",
+                        format_users_table(&users, marker, &prof_counts, active_groups)
+                    );
                     continue;
                 }
                 for sel in &tokens[1..] {
@@ -53050,7 +53101,7 @@ mod tests {
         assert!(format_groups_table(&[]).contains("No groups yet"));
         let table = format_groups_table(&[grp("Work", 0, &["p1", "p2"]), grp("Home", 1, &[])]);
         assert!(table.contains("Group"));
-        assert!(table.contains("Members"));
+        assert!(table.contains("Profiles"));
         // Numbered 1-based, with member counts.
         assert!(table.contains("1 "));
         assert!(table.contains("Work"));
@@ -53134,17 +53185,26 @@ mod tests {
 
     #[test]
     fn users_table_renders_header_and_default_marker() {
-        assert!(format_users_table(&[], "\u{2605}").contains("No AeroFTP users"));
+        use std::collections::HashMap;
+        let empty: HashMap<i64, i64> = HashMap::new();
+        assert!(format_users_table(&[], "\u{2605}", &empty, None).contains("No AeroFTP users"));
         let mut alice = usr(2, "alice", true);
         alice.is_active = true;
-        let table = format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}");
+        // Profile counts per user id; the active user (alice) also has a group count.
+        let counts: HashMap<i64, i64> = [(2, 3), (5, 1)].into_iter().collect();
+        let table = format_users_table(&[alice, usr(5, "bob", false)], "\u{2605}", &counts, Some(2));
         assert!(table.contains("User"));
         assert!(table.contains("ID"));
         assert!(table.contains("Flags"));
+        // The new per-user count columns (#311).
+        assert!(table.contains("Profiles"));
+        assert!(table.contains("Groups"));
         // 1-based row numbering, the numeric id, and the default star.
         assert!(table
             .lines()
             .any(|l| l.contains("alice") && l.contains("active") && l.contains("default\u{2605}")));
+        // bob is non-active, so his Groups count renders "-"; the row still ends
+        // with the (empty) Flags column "-".
         assert!(table
             .lines()
             .any(|l| l.contains("bob") && l.trim_end().ends_with('-')));
