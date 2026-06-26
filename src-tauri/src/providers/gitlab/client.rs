@@ -120,33 +120,36 @@ impl GitLabHttpClient {
             return Ok(response);
         }
 
-        // Rate limit
+        // Rate limit: classified without reading the body (the message is fixed),
+        // preserving the original early return that never consumed the body.
         if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(ProviderError::Other(
-                "GitLab rate limit exceeded. Please wait and try again.".to_string(),
-            ));
+            return Err(Self::classify_gitlab_error(status.as_u16(), ""));
         }
 
         let body: String = response.text().await.unwrap_or_else(|_| String::from("{}"));
-        let sanitized = sanitize_api_error(&body);
+        Err(Self::classify_gitlab_error(status.as_u16(), &body))
+    }
 
+    /// Pure status+body -> ProviderError classifier (extracted from `execute` so
+    /// it can be unit-tested without a live `reqwest::Response`). Mirrors the
+    /// original inline match exactly; `execute` short-circuits 429 before reading
+    /// the body but routes through here so the rate-limit message stays identical.
+    fn classify_gitlab_error(status: u16, body: &str) -> ProviderError {
+        if status == 429 {
+            return ProviderError::Other(
+                "GitLab rate limit exceeded. Please wait and try again.".to_string(),
+            );
+        }
+        let sanitized = sanitize_api_error(body);
         match status {
-            StatusCode::UNAUTHORIZED => Err(ProviderError::AuthenticationFailed(
-                "GitLab: Invalid or expired token".to_string(),
-            )),
-            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(format!(
-                "GitLab: Access denied - {}",
-                sanitized
-            ))),
-            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
-                "GitLab: Resource not found - {}",
-                sanitized
-            ))),
-            _ => Err(ProviderError::Other(format!(
-                "GitLab API error ({}): {}",
-                status.as_u16(),
-                sanitized
-            ))),
+            401 => {
+                ProviderError::AuthenticationFailed("GitLab: Invalid or expired token".to_string())
+            }
+            403 => {
+                ProviderError::PermissionDenied(format!("GitLab: Access denied - {}", sanitized))
+            }
+            404 => ProviderError::NotFound(format!("GitLab: Resource not found - {}", sanitized)),
+            _ => ProviderError::Other(format!("GitLab API error ({}): {}", status, sanitized)),
         }
     }
 
@@ -300,4 +303,57 @@ impl GitLabHttpClient {
 
 fn is_server_error(err: &ProviderError) -> bool {
     matches!(err, ProviderError::Other(msg) if msg.contains("API error (5"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Row 4 (#347): the GitLab `execute` status match, now a pure classifier.
+    #[test]
+    fn classify_gitlab_error_maps_status_to_variant() {
+        assert!(matches!(
+            GitLabHttpClient::classify_gitlab_error(401, "{}"),
+            ProviderError::AuthenticationFailed(_)
+        ));
+        assert!(matches!(
+            GitLabHttpClient::classify_gitlab_error(403, r#"{"message":"403 Forbidden"}"#),
+            ProviderError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            GitLabHttpClient::classify_gitlab_error(404, r#"{"message":"404 Not Found"}"#),
+            ProviderError::NotFound(_)
+        ));
+        // 429 keeps its fixed rate-limit message and ignores the body.
+        match GitLabHttpClient::classify_gitlab_error(429, "anything") {
+            ProviderError::Other(msg) => assert!(msg.contains("rate limit"), "got: {msg}"),
+            e => panic!("expected Other, got {e:?}"),
+        }
+    }
+
+    // The 5xx catch-all must carry "API error (5..)" so `execute_with_retry`'s
+    // `is_server_error` gate fires and retries the request once.
+    #[test]
+    fn classify_gitlab_error_5xx_is_retryable_via_is_server_error() {
+        for code in [500u16, 502, 503] {
+            let err = GitLabHttpClient::classify_gitlab_error(code, "boom");
+            match &err {
+                ProviderError::Other(msg) => {
+                    assert!(msg.contains(&format!("API error ({code})")), "got: {msg}");
+                }
+                e => panic!("expected Other, got {e:?}"),
+            }
+            assert!(
+                is_server_error(&err),
+                "HTTP {code} error must be classified as retryable"
+            );
+        }
+        // A 4xx (not 401/403/404) is Other but NOT retryable.
+        let four = GitLabHttpClient::classify_gitlab_error(418, "teapot");
+        assert!(matches!(four, ProviderError::Other(_)));
+        assert!(
+            !is_server_error(&four),
+            "4xx must not be retried as a server error"
+        );
+    }
 }
