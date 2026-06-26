@@ -109,3 +109,59 @@ mainline parses bencoded UDP from the public BitTorrent DHT, the same class of u
 input iroh's discovery stack already handles. Signed-record verification stays pkarr's ed25519;
 no new cryptographic surface. The lever defaults keep behavior identical when the env vars are
 unset (discovery `both` still includes n0; tickets stay `full`).
+
+## iroh 1.0 migration (2026-06-26): exit path TAKEN
+
+The exit path predicted above ("drop these ignores when iroh ships a release that
+resolves with russh 0.60+ AND uses hickory-proto >= 0.26.1") arrived: iroh 1.0.0
+satisfies both. The whole family was bumped on branch `feat/iroh-1.0-migration`:
+
+| Crate | 0.92 line | 1.0 line |
+|-------|-----------|----------|
+| iroh | 0.92 | 1.0.0 |
+| iroh-blobs | 0.94 | 0.103.0 |
+| iroh-docs | 0.92 | 0.101.0 |
+| iroh-gossip | 0.92 | 0.101.0 |
+
+Resolution facts (both `src-tauri/Cargo.lock` and `src-tauri/peer-l0/Cargo.lock`):
+- iroh 1.0 requires `hickory-resolver ^0.26` and resolves to **hickory-proto 0.26.1**
+  (was 0.25.2), which carries the NSEC3 and O(n^2)-encode fixes.
+- iroh-relay 1.0 uses **lru 0.18.0** (patched, >= 0.16.3). The vulnerable lru 0.13.0
+  is gone. The only remaining lru is 0.7.8 (via reed-solomon-erasure), which
+  RUSTSEC-2026-0002 marks `unaffected = ["< 0.9.0"]`.
+- iroh 1.0 pins `ed25519-dalek =3.0.0-rc.0`, which already coexists with the app's
+  **russh 0.61.2** (the 0.60.3-era russh/dalek "wall" documented above is gone since
+  the v4.0.5 russh bump).
+- **pkarr and stun-rs are no longer in the graph.** iroh 1.0 dropped the
+  `discovery-pkarr-dht` cargo feature; the Mainline DHT backend moved to the separate
+  `iroh-mainline-address-lookup` crate (added at 0.4 in peer-l0).
+
+### Advisory outcome
+| ID | Crate | 0.92 status | 1.0 status |
+|----|-------|-------------|------------|
+| RUSTSEC-2026-0118 | hickory-proto | ignored (DoS) | **CLEARED** (0.26.1) |
+| RUSTSEC-2026-0119 | hickory-proto | ignored (DoS) | **CLEARED** (0.26.1) |
+| RUSTSEC-2026-0002 | lru | ignored (unsound) | **CLEARED** (0.18.0 patched / 0.7.8 unaffected) |
+| RUSTSEC-2023-0089 | atomic-polyfill | ignored (unmaintained) | still present, still ignored |
+| RUSTSEC-2024-0436 | paste | ignored (unmaintained) | still present, still ignored |
+
+The three vulnerability/unsound advisories (the six Dependabot alerts: hickory-proto
+x4 + lru x2 across the two lockfiles) are cleared. The two that remain are
+"unmaintained" advisories, NOT vulnerabilities, on compile-time / shim crates:
+- **atomic-polyfill** (RUSTSEC-2023-0089): `heapless 0.7 <- postcard <- iroh-blobs /
+  iroh-docs <- peer-l0` (target-conditional heapless feature). Superseded by
+  `portable-atomic`; no runtime surface.
+- **paste** (RUSTSEC-2024-0436): `netlink-packet-core <- netdev <- netwatch <- iroh`
+  (the old stun-rs path is gone). Compile-time proc-macro; superseded by `pastey`.
+
+The DHT independence posture (WI-5a) is preserved: `apply_discovery` re-wires n0 DNS
+(PkarrPublisher + DnsAddressLookup) and the Mainline DHT (DhtAddressLookup) through
+iroh 1.0's `Builder::address_lookup` API; the `DiscoveryMode::{N0,Dht,Both}` lever is
+unchanged.
+
+Gates after the migration (branch `feat/iroh-1.0-migration`): peer-l0 `cargo check`
+(lib + bin) + `cargo test` 14/14 + clippy `-D warnings` green; app `cargo check
+--all-targets` + `cargo test` + clippy `-D warnings` + `cargo fmt` green; **`cargo
+audit` exit 0 with RUSTSEC-2026-0118 / -2026-0119 / -2026-0002 REMOVED from the
+ignore list** (only the two unmaintained advisories remain). The matching audit.toml
+block was rewritten in the same change.

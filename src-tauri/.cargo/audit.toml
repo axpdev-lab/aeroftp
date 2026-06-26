@@ -23,6 +23,10 @@
 #           the two deferred russh ignores GHSA-wwx6-x28x-8259 + GHSA-hpv4-5h6f-wqr3,
 #           now fixed. RUSTSEC-2023-0071 Path B kept: russh 0.61.2 still reaches `rsa`
 #           via its forked ssh-key for SSH key parsing, sign-only (no decrypt oracle).)
+# Reviewed: 2026-06-26 (iroh 0.92 -> 1.0 migration: REMOVED three now-moot ignores
+#           RUSTSEC-2026-0118 + RUSTSEC-2026-0119 (hickory-proto, fixed in 0.26.1) and
+#           RUSTSEC-2026-0002 (lru, patched 0.18.0 / unaffected 0.7.8). Only the two
+#           UNMAINTAINED iroh-graph advisories remain (atomic-polyfill, paste).)
 
 [advisories]
 ignore = [
@@ -244,64 +248,42 @@ ignore = [
     # latest stable). Tracked with the other sigstore-path advisories above.
     "RUSTSEC-2026-0173",  # proc-macro-error2 unmaintained (build-time, sigstore path)
     # ----------------------------------------------------------------
-    # iroh 0.92 P2P stack - five transitive advisories (peer-l0 normal dependency)
+    # iroh 1.0 P2P stack - two transitive UNMAINTAINED advisories (peer-l0 normal dependency)
     # ----------------------------------------------------------------
     # The user-to-user P2P drive (T-PEER / AeroShare) links the isolated
     # `aeroftp-peer-l0` crate as a NORMAL dependency (path = "peer-l0"); WI-3d
     # promoted it from [dev-dependencies] so the iroh drive engine ships in the
     # binary (the app drives it via src/peer/). peer-l0 remains the iroh isolation
-    # boundary, so these five advisories now apply to the shipped binary. It pulls
-    # iroh 0.92 + iroh-blobs 0.94 + iroh-docs 0.92 +
-    # iroh-gossip 0.92, whose transitive graph carries the five advisories below.
-    # ALL five originate exclusively in iroh's relay/discovery/networking deps;
-    # none touch the app's own crypto or the russh/sigstore paths. Full
-    # investigation + reproduction: docs/security-evidence/IROH-PEER-L0-ADVISORIES-2026-06.md.
+    # boundary. It now pulls iroh 1.0 + iroh-blobs 0.103 + iroh-docs 0.101 +
+    # iroh-gossip 0.101 (the 0.92 -> 1.0 migration, 2026-06-26).
     #
-    # Why ignored, not fixed: removal is blocked on every path (all verified):
-    #   - cargo update is pinned: hickory-resolver 0.25.2 requires hickory-proto
-    #     ^0.25 the whole way up; iroh 0.92 requires hickory-resolver ^0.25.1.
-    #   - bumping iroh REINTRODUCES a hard conflict: iroh-docs 0.100 pins
-    #     ed25519-dalek =3.0.0-pre.7 while russh 0.60.3 pins =3.0.0-pre.6
-    #     (irreconcilable exact pins; intermediate iroh hits aead/curve25519
-    #     conflicts). iroh 0.92 is the UNIQUE version that resolves cleanly with
-    #     the app's russh/sigstore stack.
-    #   - the crates are non-optional in iroh 0.92 (hickory-resolver, pkarr,
-    #     stun-rs are hard deps), so no feature flag drops them.
-    # Exit path: drop these ignores when iroh ships a release that both resolves
-    # with russh 0.60+ and uses hickory-proto >=0.26.1. Tracked with T-PEER.
+    # The migration CLEARED the three vulnerability/unsound advisories the 0.92 line
+    # pinned (this is the exit path the earlier evidence doc anticipated):
+    #   - RUSTSEC-2026-0118 + RUSTSEC-2026-0119 (hickory-proto DoS): iroh 1.0 resolves
+    #     to hickory-proto 0.26.1, which carries both fixes (NSEC3 loop + O(n^2) encode).
+    #   - RUSTSEC-2026-0002 (lru IterMut unsound): iroh 1.0's relay stack uses lru
+    #     0.18.0 (patched, >= 0.16.3); the only other lru in the graph is 0.7.8 (via
+    #     reed-solomon-erasure), which the advisory marks unaffected (< 0.9.0). The
+    #     vulnerable lru 0.13.0 and the pkarr crate are gone from the graph entirely.
+    # iroh 1.0 also dropped stun-rs and pkarr (the Mainline DHT moved to the separate
+    # `iroh-mainline-address-lookup` crate). Full record + per-advisory reachability:
+    # docs/security-evidence/IROH-PEER-L0-ADVISORIES-2026-06.md.
     #
-    #   RUSTSEC-2026-0118 (hickory-proto, DoS, no 0.25-line fix) - NSEC3
-    #     closest-encloser proof can enter an unbounded loop on cross-zone
-    #     responses. NOT REACHABLE here: the vulnerable code is gated behind
-    #     hickory's `dnssec-ring`/`dnssec-aws-lc-rs` features; hickory-resolver's
-    #     default excludes dnssec and NO crate in the iroh graph enables it
-    #     (verified via `cargo tree -e features` over the locked graph), so the
-    #     NSEC3 validation path is not even compiled. DNSSEC validation is off.
-    "RUSTSEC-2026-0118",  # hickory-proto NSEC3 (DNSSEC off -> not compiled)
+    # Only two UNMAINTAINED advisories (NOT vulnerabilities) remain in iroh 1.0's
+    # graph, both compile-time / shim crates with no runtime exploitation surface:
+    #
+    #   RUSTSEC-2023-0089 (atomic-polyfill, unmaintained) - an atomics shim reached
+    #     via heapless 0.7 <- postcard <- iroh-blobs / iroh-docs <- peer-l0. Not a
+    #     vulnerability; a transitive build-block superseded upstream by
+    #     `portable-atomic`. (Behind a target-conditional heapless feature, so it
+    #     shows only under `cargo tree --target all`, but is in the lock audit reads.)
+    "RUSTSEC-2023-0089",  # atomic-polyfill unmaintained (heapless/postcard transitive)
 
-    #   RUSTSEC-2026-0119 (hickory-proto, DoS) - O(n^2) name compression during
-    #     message ENCODING. Low reachability: iroh's discovery client encodes tiny
-    #     single-name queries; the quadratic case needs a message with many
-    #     records (large/server-side). Upstream-fixed in hickory-proto 0.26.1,
-    #     gated behind the iroh-bump wall above. Availability-class only.
-    "RUSTSEC-2026-0119",  # hickory-proto O(n^2) encode (low reachability, DoS)
-
-    #   RUSTSEC-2026-0002 (lru, unsound) - `IterMut` violates Stacked Borrows by
-    #     invalidating an internal pointer. lru 0.13.0 <- pkarr 3.10 <- iroh-relay
-    #     <- iroh. Latent UB in the pkarr discovery cache only; no known exploit,
-    #     soundness-class, never fed untrusted input in our use.
-    "RUSTSEC-2026-0002",  # lru IterMut unsound (pkarr discovery cache)
-
-    #   RUSTSEC-2023-0089 (atomic-polyfill, unmaintained) - atomics shim reached
-    #     via heapless 0.7 <- postcard <- irpc <- iroh. Not a vulnerability; a
-    #     transitive build-block superseded upstream by `portable-atomic`.
-    "RUSTSEC-2023-0089",  # atomic-polyfill unmaintained (irpc/postcard transitive)
-
-    #   RUSTSEC-2024-0436 (paste, unmaintained) - compile-time proc-macro reached
-    #     via stun-rs <- iroh and netlink-packet-utils <- netwatch <- iroh. No
-    #     runtime surface (proc-macro, build-time only); superseded by `pastey`.
-    #     Not a vulnerability.
-    "RUSTSEC-2024-0436",  # paste unmaintained (compile-time proc-macro)
+    #   RUSTSEC-2024-0436 (paste, unmaintained) - a compile-time proc-macro reached
+    #     in iroh 1.0 via netlink-packet-core <- netdev <- netwatch <- iroh (the old
+    #     stun-rs path is gone in 1.0). No runtime surface (proc-macro, build-time
+    #     only); superseded by `pastey`. Not a vulnerability.
+    "RUSTSEC-2024-0436",  # paste unmaintained (compile-time proc-macro, netwatch path)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
