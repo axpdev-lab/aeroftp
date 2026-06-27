@@ -985,9 +985,22 @@ async fn eject_volume_windows(mount_point: &str) -> Result<String, String> {
 
     // Namespace(17) = ssfDRIVES (This PC); ParseName(<drive>) selects the drive;
     // InvokeVerb('Eject') performs the safe removal.
+    //
+    // InvokeVerb('Eject') is fire-and-forget: the shell completes the eject
+    // asynchronously and the COM object must stay alive until it finishes. A
+    // process that only calls InvokeVerb and exits immediately tears down the COM
+    // object before the eject completes, so the drive is never removed yet the
+    // verb still returns success (silent false positive). We therefore poll until
+    // the drive disappears and map the outcome to a meaningful exit code
+    // (0 = ejected, 1 = still present) so a genuine failure surfaces as Err and
+    // raises the failure toast instead of a fake success.
     let script = format!(
-        "(New-Object -comObject Shell.Application).Namespace(17).ParseName('{}').InvokeVerb('Eject')",
-        drive
+        "$sh = New-Object -comObject Shell.Application; \
+         $sh.Namespace(17).ParseName('{drive}').InvokeVerb('Eject'); \
+         $deadline = (Get-Date).AddSeconds(10); \
+         while ((Test-Path '{drive}') -and (Get-Date) -lt $deadline) {{ Start-Sleep -Milliseconds 200 }}; \
+         if (Test-Path '{drive}') {{ exit 1 }} else {{ exit 0 }}",
+        drive = drive
     );
 
     let result = std::process::Command::new("powershell")
@@ -1008,7 +1021,17 @@ async fn eject_volume_windows(mount_point: &str) -> Result<String, String> {
         Ok(msg)
     } else {
         let stderr = String::from_utf8_lossy(&result.stderr);
-        Err(format!("Failed to eject {}: {}", drive, stderr.trim()))
+        let detail = stderr.trim();
+        if detail.is_empty() {
+            // exit 1 from the poll: the drive is still present after the timeout,
+            // typically because a file or app is still holding it open.
+            Err(format!(
+                "Failed to eject {}: the drive is still in use",
+                drive
+            ))
+        } else {
+            Err(format!("Failed to eject {}: {}", drive, detail))
+        }
     }
 }
 
