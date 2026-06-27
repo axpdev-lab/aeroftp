@@ -5179,6 +5179,14 @@
                 "remove": "Remover",
                 "removeConfirm": "Remover?"
             }
+        },
+        "extractWindow": {
+            "title": "Extrair",
+            "inspecting": "A inspecionar o arquivo...",
+            "chooseFolder": "Escolha uma pasta de destino",
+            "passwordPrompt": "Este item está encriptado. Introduza a palavra-passe para extrair.",
+            "showPassword": "Mostrar palavra-passe",
+            "hidePassword": "Ocultar palavra-passe"
         }
     }
 }

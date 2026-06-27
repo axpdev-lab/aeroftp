@@ -5179,6 +5179,14 @@
                 "remove": "წაშლა",
                 "removeConfirm": "წავშალო?"
             }
+        },
+        "extractWindow": {
+            "title": "ამოღება",
+            "inspecting": "არქივის შემოწმება...",
+            "chooseFolder": "აირჩიეთ სამიზნე საქაღალდე",
+            "passwordPrompt": "ეს ელემენტი დაშიფრულია. შეიყვანეთ პაროლი ამოსაღებად.",
+            "showPassword": "პაროლის ჩვენება",
+            "hidePassword": "პაროლის დამალვა"
         }
     }
 }

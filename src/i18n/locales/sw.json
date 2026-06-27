@@ -5179,6 +5179,14 @@
                 "remove": "Ondoa",
                 "removeConfirm": "Ondoa?"
             }
+        },
+        "extractWindow": {
+            "title": "Toa",
+            "inspecting": "Inakagua kumbukumbu...",
+            "chooseFolder": "Chagua folda lengwa",
+            "passwordPrompt": "Kipengee hiki kimesimbwa. Weka nenosiri ili kukitoa.",
+            "showPassword": "Onyesha nenosiri",
+            "hidePassword": "Ficha nenosiri"
         }
     }
 }

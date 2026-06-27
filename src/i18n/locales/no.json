@@ -5198,6 +5198,14 @@
                 "remove": "Fjern",
                 "removeConfirm": "Fjerne?"
             }
+        },
+        "extractWindow": {
+            "title": "Pakk ut",
+            "inspecting": "Inspiserer arkiv...",
+            "chooseFolder": "Velg en målmappe",
+            "passwordPrompt": "Dette elementet er kryptert. Skriv inn passordet for å pakke ut.",
+            "showPassword": "Vis passord",
+            "hidePassword": "Skjul passord"
         }
     }
 }

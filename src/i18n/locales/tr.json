@@ -5179,6 +5179,14 @@
                 "remove": "Kaldır",
                 "removeConfirm": "Kaldırılsın mı?"
             }
+        },
+        "extractWindow": {
+            "title": "Çıkar",
+            "inspecting": "Arşiv inceleniyor...",
+            "chooseFolder": "Bir hedef klasör seçin",
+            "passwordPrompt": "Bu öğe şifreli. Çıkarmak için parolayı girin.",
+            "showPassword": "Parolayı göster",
+            "hidePassword": "Parolayı gizle"
         }
     }
 }

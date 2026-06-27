@@ -57,6 +57,17 @@ function copyMonacoAssets(): Plugin {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), copyMonacoAssets()],
+  build: {
+    rollupOptions: {
+      // Multi-page: the main app plus the dedicated lightweight `extract` window
+      // (Deliverable G). Each HTML entry gets its own bundle so extract.html does
+      // not pull in the full App.
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        extract: resolve(__dirname, 'extract.html'),
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

@@ -5179,6 +5179,14 @@
                 "remove": "Odstrániť",
                 "removeConfirm": "Odstrániť?"
             }
+        },
+        "extractWindow": {
+            "title": "Rozbaliť",
+            "inspecting": "Kontrola archívu...",
+            "chooseFolder": "Vyberte cieľový priečinok",
+            "passwordPrompt": "Táto položka je šifrovaná. Na rozbalenie zadajte heslo.",
+            "showPassword": "Zobraziť heslo",
+            "hidePassword": "Skryť heslo"
         }
     }
 }

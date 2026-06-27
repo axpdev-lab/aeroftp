@@ -5179,6 +5179,14 @@
                 "remove": "Видалити",
                 "removeConfirm": "Видалити?"
             }
+        },
+        "extractWindow": {
+            "title": "Видобути",
+            "inspecting": "Перевірка архіву...",
+            "chooseFolder": "Виберіть цільову папку",
+            "passwordPrompt": "Цей елемент зашифровано. Введіть пароль для видобування.",
+            "showPassword": "Показати пароль",
+            "hidePassword": "Сховати пароль"
         }
     }
 }

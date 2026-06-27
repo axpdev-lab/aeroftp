@@ -5179,6 +5179,14 @@
                 "remove": "Elimină",
                 "removeConfirm": "Elimini?"
             }
+        },
+        "extractWindow": {
+            "title": "Extrage",
+            "inspecting": "Se inspectează arhiva...",
+            "chooseFolder": "Alegeți un folder de destinație",
+            "passwordPrompt": "Acest element este criptat. Introduceți parola pentru a-l extrage.",
+            "showPassword": "Afișează parola",
+            "hidePassword": "Ascunde parola"
         }
     }
 }

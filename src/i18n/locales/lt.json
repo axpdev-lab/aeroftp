@@ -5179,6 +5179,14 @@
                 "remove": "Pašalinti",
                 "removeConfirm": "Pašalinti?"
             }
+        },
+        "extractWindow": {
+            "title": "Išskleisti",
+            "inspecting": "Tikrinamas archyvas...",
+            "chooseFolder": "Pasirinkite paskirties aplanką",
+            "passwordPrompt": "Šis elementas užšifruotas. Įveskite slaptažodį, kad išskleistumėte.",
+            "showPassword": "Rodyti slaptažodį",
+            "hidePassword": "Slėpti slaptažodį"
         }
     }
 }

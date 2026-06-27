@@ -5179,6 +5179,14 @@
                 "remove": "Hapus",
                 "removeConfirm": "Hapus?"
             }
+        },
+        "extractWindow": {
+            "title": "Ekstrak",
+            "inspecting": "Memeriksa arsip...",
+            "chooseFolder": "Pilih folder tujuan",
+            "passwordPrompt": "Item ini terenkripsi. Masukkan kata sandi untuk mengekstrak.",
+            "showPassword": "Tampilkan kata sandi",
+            "hidePassword": "Sembunyikan kata sandi"
         }
     }
 }

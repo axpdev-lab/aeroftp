@@ -5179,6 +5179,14 @@
                 "remove": "削除",
                 "removeConfirm": "削除しますか?"
             }
+        },
+        "extractWindow": {
+            "title": "展開",
+            "inspecting": "アーカイブを検査中...",
+            "chooseFolder": "展開先フォルダーを選択",
+            "passwordPrompt": "この項目は暗号化されています。展開するにはパスワードを入力してください。",
+            "showPassword": "パスワードを表示",
+            "hidePassword": "パスワードを非表示"
         }
     }
 }

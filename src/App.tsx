@@ -430,6 +430,7 @@ import { useTranslation } from './i18n';
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
+import { dispatchGeneralExtract } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
@@ -12406,14 +12407,9 @@ interface UpdateVerificationInfo {
                   notify.info(t('contextMenu.extracting'), file.name);
                   const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
                   const toastOpts = { filename: file.name, archiveBytes: file.size };
-                  let extractedTotal = 0;
-                  if (is7zArchive) {
-                    ({ extractedTotal } = await runExtractWithToast<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder }, toastOpts));
-                  } else if (isRarArchive) {
-                    ({ extractedTotal } = await runExtractWithToast<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password, createSubfolder }, toastOpts));
-                  } else {
-                    ({ extractedTotal } = await runExtractWithToast<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password }, toastOpts));
-                  }
+                  // tar is never encrypted, so this branch is zip/7z/rar only.
+                  const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : 'zip';
+                  const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password, toastOpts });
                   activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
                   await loadLocalFiles(currentLocalPath);
@@ -12429,16 +12425,8 @@ interface UpdateVerificationInfo {
           notify.info(t('contextMenu.extracting'), file.name);
           const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
           const toastOpts = { filename: file.name, archiveBytes: file.size };
-          let extractedTotal = 0;
-          if (isZipArchive) {
-            ({ extractedTotal } = await runExtractWithToast<string>('extract_archive', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null }, toastOpts));
-          } else if (is7zArchive) {
-            ({ extractedTotal } = await runExtractWithToast<string>('extract_7z', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder }, toastOpts));
-          } else if (isRarArchive) {
-            ({ extractedTotal } = await runExtractWithToast<string>('extract_rar', { archivePath: file.path, outputDir: currentLocalPath, password: null, createSubfolder }, toastOpts));
-          } else if (isTarArchive) {
-            ({ extractedTotal } = await runExtractWithToast<string>('extract_tar', { archivePath: file.path, outputDir: currentLocalPath, createSubfolder }, toastOpts));
-          }
+          const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : 'zip';
+          const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null, toastOpts });
           activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
           await loadLocalFiles(currentLocalPath);

@@ -9365,6 +9365,254 @@ async fn is_rar_encrypted(archive_path: String) -> Result<bool, String> {
     Ok(false)
 }
 
+// ─── OS "Extract here / to folder" intent (Deliverable G) ────────────────────
+//
+// These back the dedicated lightweight `extract` window (Option B): the file
+// manager verbs launch `aeroftp --extract-here <path>` / `--extract-to <path>`,
+// the argv is parsed by `parse_extract_intent`, and a tiny webview that loads
+// `extract.html` is opened WITHOUT booting the main app (no vault unlock, no
+// sync). The clear-archive "Extract here" case is handled by the CLI directly
+// and never reaches this code. The window calls `extract_probe` to learn the
+// container kind + whether a password is needed, then (for "Extract to folder")
+// `resolve_unique_extract_dir` to derive a never-clobbering stem subfolder.
+
+/// One-shot probe result handed to the dedicated extract window so it knows
+/// which extractor to drive and whether to prompt for a password.
+#[derive(serde::Serialize)]
+struct ExtractProbe {
+    /// "zip" | "sevenz" | "rar" | "tar" | "aerozip" | "aerovault_v2" | "aerovault_v3"
+    kind: String,
+    /// True when extraction needs a password (encrypted general archive, or any
+    /// non-plaintext aero container). `.aerozip` plaintext is always false.
+    encrypted: bool,
+    /// Archive size in bytes, so the window can pass the toast threshold to
+    /// `runExtractWithToast` without a second stat.
+    archive_bytes: u64,
+}
+
+/// Strip the full archive extension from a file name, returning the stem used to
+/// name an "Extract to folder" subfolder. Handles the multi-part tar extensions
+/// (.tar.gz / .tar.xz / .tar.bz2) and the aero* + general single extensions,
+/// falling back to a last-dot strip. Pure: unit-tested.
+fn archive_extract_stem(file_name: &str) -> String {
+    let lower = file_name.to_ascii_lowercase();
+    for ext in [".tar.gz", ".tar.xz", ".tar.bz2"] {
+        if lower.ends_with(ext) {
+            return file_name[..file_name.len() - ext.len()].to_string();
+        }
+    }
+    for ext in [
+        ".tgz",
+        ".txz",
+        ".tbz2",
+        ".tar",
+        ".zip",
+        ".7z",
+        ".rar",
+        ".aerozip",
+        ".aerovault",
+    ] {
+        if lower.ends_with(ext) {
+            return file_name[..file_name.len() - ext.len()].to_string();
+        }
+    }
+    match file_name.rfind('.') {
+        Some(i) if i > 0 => file_name[..i].to_string(),
+        _ => file_name.to_string(),
+    }
+}
+
+/// Resolve a never-clobbering destination subfolder for "Extract to folder":
+/// `parent/stem`, or `parent/stem (2)`, `(3)`, ... if earlier candidates exist.
+/// `exists` abstracts the filesystem so the policy is unit-testable. Pure.
+fn unique_extract_dir_with<P: Fn(&std::path::Path) -> bool>(
+    parent: &std::path::Path,
+    archive_name: &str,
+    exists: P,
+) -> Result<std::path::PathBuf, String> {
+    let stem = archive_extract_stem(archive_name);
+    let stem = if stem.trim().is_empty() {
+        "extracted"
+    } else {
+        stem.as_str()
+    };
+    let first = parent.join(stem);
+    if !exists(&first) {
+        return Ok(first);
+    }
+    for n in 2..10_000u32 {
+        let cand = parent.join(format!("{stem} ({n})"));
+        if !exists(&cand) {
+            return Ok(cand);
+        }
+    }
+    Err("could not find a free destination folder".to_string())
+}
+
+#[tauri::command]
+async fn resolve_unique_extract_dir(
+    parent_dir: String,
+    archive_name: String,
+) -> Result<String, String> {
+    let parent = std::path::Path::new(&parent_dir);
+    let dir = unique_extract_dir_with(parent, &archive_name, |p| p.exists())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+/// Probe an archive/vault path for the dedicated extract window. Aero containers
+/// are detected by content magic first (the extension is cosmetic for them), so
+/// an encrypted `.aerozip` is correctly routed to the v3 vault extractor.
+#[tauri::command]
+async fn extract_probe(path: String) -> Result<ExtractProbe, String> {
+    let archive_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+
+    // Aero containers first: detect_aero_container reads the AEROVAULT3 header.
+    // (`aerovault` in lib.rs is the local module, so reach the helpers and the
+    // external crate version check through `crate::aerovault_v3::*`.)
+    if let Some(fmt) = crate::aerovault_v3::detect_aero_container(path.clone()).await? {
+        if fmt == "zip" {
+            return Ok(ExtractProbe {
+                kind: "aerozip".to_string(),
+                encrypted: false,
+                archive_bytes,
+            });
+        }
+        // Encrypted aero container: pick the extractor by header version.
+        let kind = if crate::aerovault_v3::is_vault_v3(path.clone()).await? {
+            "aerovault_v3"
+        } else {
+            "aerovault_v2"
+        };
+        return Ok(ExtractProbe {
+            kind: kind.to_string(),
+            encrypted: true,
+            archive_bytes,
+        });
+    }
+
+    // General formats by extension; encryption sniffed per format.
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".zip") {
+        let encrypted = is_zip_encrypted(path.clone()).await?;
+        return Ok(ExtractProbe {
+            kind: "zip".to_string(),
+            encrypted,
+            archive_bytes,
+        });
+    }
+    if lower.ends_with(".7z") {
+        let encrypted = is_7z_encrypted(path.clone()).await?;
+        return Ok(ExtractProbe {
+            kind: "sevenz".to_string(),
+            encrypted,
+            archive_bytes,
+        });
+    }
+    if lower.ends_with(".rar") {
+        let encrypted = is_rar_encrypted(path.clone()).await?;
+        return Ok(ExtractProbe {
+            kind: "rar".to_string(),
+            encrypted,
+            archive_bytes,
+        });
+    }
+    if lower.ends_with(".tar")
+        || lower.ends_with(".tar.gz")
+        || lower.ends_with(".tgz")
+        || lower.ends_with(".tar.xz")
+        || lower.ends_with(".txz")
+        || lower.ends_with(".tar.bz2")
+        || lower.ends_with(".tbz2")
+    {
+        return Ok(ExtractProbe {
+            kind: "tar".to_string(),
+            encrypted: false,
+            archive_bytes,
+        });
+    }
+
+    Err(format!("Unsupported archive type: {path}"))
+}
+
+/// Monotonic label sequence so concurrent extract intents each get a window.
+static EXTRACT_WINDOW_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Recognize the OS "Extract here / to folder" verbs in a process argv, returning
+/// `(mode, canonical_path)` where mode is "here" or "to". The path is canonicalized
+/// and must be an existing file (same validation as the .aerovault open intent).
+fn parse_extract_intent(argv: &[String]) -> Option<(String, String)> {
+    let mut iter = argv.iter().skip(1);
+    while let Some(arg) = iter.next() {
+        let mode = match arg.as_str() {
+            "--extract-here" => "here",
+            "--extract-to" => "to",
+            _ => continue,
+        };
+        let raw = iter.next()?;
+        let canonical = std::fs::canonicalize(raw).ok()?;
+        if canonical
+            .symlink_metadata()
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            return Some((mode.to_string(), canonical.to_string_lossy().to_string()));
+        }
+        return None;
+    }
+    None
+}
+
+/// Open the dedicated lightweight `extract` window for the given intent. The
+/// `mode`/`path` are injected as `window.__AEROFTP_EXTRACT__` before the page
+/// scripts run (same mechanism as the splash version injection). The main window
+/// is intentionally left untouched: this never boots the full app.
+fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
+    let payload = serde_json::json!({ "mode": mode, "path": path }).to_string();
+    let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
+
+    let url: WebviewUrl = {
+        #[cfg(dev)]
+        {
+            WebviewUrl::App("extract.html".into())
+        }
+        #[cfg(all(not(dev), target_os = "linux"))]
+        {
+            WebviewUrl::External(
+                url::Url::parse("http://127.0.0.1:14321/extract.html")
+                    .expect("valid localhost URL"),
+            )
+        }
+        #[cfg(all(not(dev), not(target_os = "linux")))]
+        {
+            WebviewUrl::App("extract.html".into())
+        }
+    };
+
+    let n = EXTRACT_WINDOW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let label = if n == 0 {
+        "extract".to_string()
+    } else {
+        format!("extract-{n}")
+    };
+
+    let builder = WebviewWindowBuilder::new(app, &label, url)
+        .title("AeroFTP")
+        .inner_size(460.0, 320.0)
+        .min_inner_size(380.0, 240.0)
+        .resizable(false)
+        .center()
+        .initialization_script(&init);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+    let builder = match portable::webview_data_dir() {
+        Some(dir) => builder.data_directory(dir),
+        None => builder,
+    };
+    if let Err(e) = builder.build() {
+        log::error!("Failed to open extract window ({label}): {e}");
+    }
+}
+
 #[tauri::command]
 async fn ftp_read_file_base64(
     state: State<'_, AppState>,
@@ -15841,6 +16089,13 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // OS "Extract here / to folder" verb (Deliverable G): open the dedicated
+            // extract window WITHOUT raising or booting the main app, then stop. The
+            // main window must stay exactly as the user left it (possibly hidden).
+            if let Some((mode, path)) = parse_extract_intent(&argv) {
+                open_extract_window(app, &mode, &path);
+                return;
+            }
             // When a second instance is launched, show and focus the existing window
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -15903,7 +16158,7 @@ pub fn run() {
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
-                .with_denylist(&["splashscreen"])
+                .with_denylist(&["splashscreen", "extract"])
                 .skip_initial_state("main")
                 .with_state_flags(
                     tauri_plugin_window_state::StateFlags::SIZE
@@ -15977,6 +16232,21 @@ pub fn run() {
                     );
                 } else {
                     log::info!("tauri-plugin-localhost is listening on 127.0.0.1:{}", port);
+                }
+            }
+
+            // OS "Extract here / to folder" verb on a COLD launch (no instance was
+            // running): open ONLY the dedicated extract window and skip the rest of
+            // setup entirely (no main window, no splash, no tray, no chat DB). The
+            // localhost server is already bound above, which is all the tiny
+            // extract.html webview needs. The process exits when that window closes.
+            // Subsequent launches while running are handled by the single-instance
+            // hook above. This is the Option B "skip the heavy boot" short-circuit.
+            {
+                let early_args: Vec<String> = std::env::args().collect();
+                if let Some((mode, path)) = parse_extract_intent(&early_args) {
+                    open_extract_window(app.handle(), &mode, &path);
+                    return Ok(());
                 }
             }
 
@@ -16822,6 +17092,8 @@ pub fn run() {
             is_rar_encrypted,
             compress_tar,
             extract_tar,
+            extract_probe,
+            resolve_unique_extract_dir,
             ftp_read_file_base64,
             read_local_file,
             read_local_file_base64,
@@ -17731,6 +18003,70 @@ mod window_size_heal_tests {
             MAIN_MIN_INNER_H
         ));
         assert!(!restored_size_is_degenerate(1540.0, 1050.0));
+    }
+}
+
+#[cfg(test)]
+mod extract_intent_tests {
+    use super::{archive_extract_stem, parse_extract_intent, unique_extract_dir_with};
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn stem_strips_single_and_multi_extensions() {
+        assert_eq!(archive_extract_stem("photos.zip"), "photos");
+        assert_eq!(archive_extract_stem("backup.7z"), "backup");
+        assert_eq!(archive_extract_stem("data.rar"), "data");
+        assert_eq!(archive_extract_stem("logs.tar"), "logs");
+        assert_eq!(archive_extract_stem("logs.tar.gz"), "logs");
+        assert_eq!(archive_extract_stem("logs.TAR.GZ"), "logs");
+        assert_eq!(archive_extract_stem("logs.tar.xz"), "logs");
+        assert_eq!(archive_extract_stem("logs.tar.bz2"), "logs");
+        assert_eq!(archive_extract_stem("vault.aerovault"), "vault");
+        assert_eq!(archive_extract_stem("bundle.aerozip"), "bundle");
+    }
+
+    #[test]
+    fn stem_keeps_dotted_basename_and_unknown_extension() {
+        // A versioned name keeps its internal dots, only the archive ext goes.
+        assert_eq!(archive_extract_stem("release.1.2.3.zip"), "release.1.2.3");
+        // Dotfile with no real extension is returned as-is.
+        assert_eq!(archive_extract_stem(".bashrc"), ".bashrc");
+        // No extension at all.
+        assert_eq!(archive_extract_stem("noext"), "noext");
+    }
+
+    #[test]
+    fn unique_dir_returns_plain_stem_when_free() {
+        let dir = unique_extract_dir_with(Path::new("/out"), "photos.zip", |_| false).unwrap();
+        assert_eq!(dir, PathBuf::from("/out/photos"));
+    }
+
+    #[test]
+    fn unique_dir_skips_existing_with_numbered_suffix() {
+        // /out/photos and /out/photos (2) already exist; expect (3).
+        let taken: HashSet<PathBuf> = [
+            PathBuf::from("/out/photos"),
+            PathBuf::from("/out/photos (2)"),
+        ]
+        .into_iter()
+        .collect();
+        let dir = unique_extract_dir_with(Path::new("/out"), "photos.zip", |p| taken.contains(p))
+            .unwrap();
+        assert_eq!(dir, PathBuf::from("/out/photos (3)"));
+    }
+
+    #[test]
+    fn parse_intent_recognizes_both_verbs_or_none() {
+        // No verb -> None (the path is unused here, so a bare argv is fine).
+        let none = parse_extract_intent(&["aeroftp".to_string(), "/some/file.zip".to_string()]);
+        assert!(none.is_none());
+        // Unknown flag -> None.
+        let other = parse_extract_intent(&["aeroftp".to_string(), "--autostart".to_string()]);
+        assert!(other.is_none());
+        // A real verb with a missing path argument -> None (no panic).
+        let dangling = parse_extract_intent(&["aeroftp".to_string(), "--extract-here".to_string()]);
+        assert!(dangling.is_none());
     }
 }
 

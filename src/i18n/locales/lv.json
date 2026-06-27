@@ -5179,6 +5179,14 @@
                 "remove": "Noņemt",
                 "removeConfirm": "Noņemt?"
             }
+        },
+        "extractWindow": {
+            "title": "Izvilkt",
+            "inspecting": "Pārbauda arhīvu...",
+            "chooseFolder": "Izvēlieties mērķa mapi",
+            "passwordPrompt": "Šis vienums ir šifrēts. Ievadiet paroli, lai izvilktu.",
+            "showPassword": "Rādīt paroli",
+            "hidePassword": "Slēpt paroli"
         }
     }
 }

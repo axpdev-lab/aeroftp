@@ -5179,6 +5179,14 @@
                 "remove": "Eltávolítás",
                 "removeConfirm": "Eltávolítja?"
             }
+        },
+        "extractWindow": {
+            "title": "Kibontás",
+            "inspecting": "Archívum vizsgálata...",
+            "chooseFolder": "Válasszon célmappát",
+            "passwordPrompt": "Ez az elem titkosítva van. Adja meg a jelszót a kibontáshoz.",
+            "showPassword": "Jelszó megjelenítése",
+            "hidePassword": "Jelszó elrejtése"
         }
     }
 }

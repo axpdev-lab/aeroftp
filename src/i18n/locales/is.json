@@ -5198,6 +5198,14 @@
                 "remove": "Fjarlægja",
                 "removeConfirm": "Fjarlægja?"
             }
+        },
+        "extractWindow": {
+            "title": "Afþjappa",
+            "inspecting": "Skoða safn...",
+            "chooseFolder": "Veldu áfangamöppu",
+            "passwordPrompt": "Þetta atriði er dulkóðað. Sláðu inn lykilorðið til að afþjappa.",
+            "showPassword": "Sýna lykilorð",
+            "hidePassword": "Fela lykilorð"
         }
     }
 }

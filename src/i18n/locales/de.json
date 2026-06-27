@@ -5179,6 +5179,14 @@
                 "remove": "Entfernen",
                 "removeConfirm": "Entfernen?"
             }
+        },
+        "extractWindow": {
+            "title": "Entpacken",
+            "inspecting": "Archiv wird geprüft...",
+            "chooseFolder": "Zielordner auswählen",
+            "passwordPrompt": "Dieses Element ist verschlüsselt. Passwort zum Entpacken eingeben.",
+            "showPassword": "Passwort anzeigen",
+            "hidePassword": "Passwort verbergen"
         }
     }
 }

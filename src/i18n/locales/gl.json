@@ -5198,6 +5198,14 @@
                 "remove": "Quitar",
                 "removeConfirm": "Quitar?"
             }
+        },
+        "extractWindow": {
+            "title": "Extraer",
+            "inspecting": "Inspeccionando o arquivo...",
+            "chooseFolder": "Escolla un cartafol de destino",
+            "passwordPrompt": "Este elemento está cifrado. Introduza o contrasinal para extraelo.",
+            "showPassword": "Amosar o contrasinal",
+            "hidePassword": "Ocultar o contrasinal"
         }
     }
 }

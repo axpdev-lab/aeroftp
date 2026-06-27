@@ -5179,6 +5179,14 @@
                 "remove": "Ukloni",
                 "removeConfirm": "Ukloniti?"
             }
+        },
+        "extractWindow": {
+            "title": "Raspakiraj",
+            "inspecting": "Provjera arhive...",
+            "chooseFolder": "Odaberite odredišnu mapu",
+            "passwordPrompt": "Ova je stavka šifrirana. Unesite lozinku za raspakiravanje.",
+            "showPassword": "Prikaži lozinku",
+            "hidePassword": "Sakrij lozinku"
         }
     }
 }

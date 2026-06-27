@@ -5179,6 +5179,14 @@
                 "remove": "Уклони",
                 "removeConfirm": "Уклонити?"
             }
+        },
+        "extractWindow": {
+            "title": "Распакуј",
+            "inspecting": "Провера архиве...",
+            "chooseFolder": "Изаберите одредишну фасциклу",
+            "passwordPrompt": "Ова ставка је шифрована. Унесите лозинку за распакивање.",
+            "showPassword": "Прикажи лозинку",
+            "hidePassword": "Сакриј лозинку"
         }
     }
 }
