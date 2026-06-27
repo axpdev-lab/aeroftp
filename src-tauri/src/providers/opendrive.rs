@@ -59,16 +59,41 @@ impl OpenDriveConfig {
             .ok_or_else(|| ProviderError::InvalidConfig("Password is required".into()))?;
 
         Ok(Self {
-            host: if config.host.is_empty() {
-                "dev.opendrive.com".to_string()
-            } else {
-                config.host.clone()
-            },
+            host: normalize_opendrive_api_host(&config.host),
             username,
             password: password.into(),
             initial_path: config.initial_path.clone(),
         })
     }
+}
+
+/// OpenDrive's REST API lives on `dev.opendrive.com`; its WebDAV frontend on
+/// `webdav.opendrive.com`. A profile switched from the WebDAV preset into the
+/// native API mode without a preset could keep the WebDAV host, so the API call
+/// would hit the WebDAV HTML auth page instead of the JSON API (#368). Normalize
+/// an empty, WebDAV-frontend, or bare-domain host to the API host; auto-correct
+/// with a warning so already-saved bad profiles self-heal across CLI/MCP/GUI.
+/// Any other host (a deliberate custom endpoint) is passed through untouched.
+/// `OpenDriveProvider::new` adds the scheme and the `/api/v1` suffix, so a bare
+/// hostname is the expected return shape.
+fn normalize_opendrive_api_host(host: &str) -> String {
+    let trimmed = host.trim();
+    let bare = trimmed
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+    if bare.is_empty() || bare.contains("webdav.opendrive.com") || bare == "opendrive.com" {
+        if !bare.is_empty() {
+            tracing::warn!(
+                "[OpenDrive] API host '{}' points at the WebDAV frontend or a bare domain; \
+                 using dev.opendrive.com (AeroFTP appends /api/v1)",
+                trimmed
+            );
+        }
+        return "dev.opendrive.com".to_string();
+    }
+    trimmed.to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -2413,6 +2438,48 @@ impl StorageProvider for OpenDriveProvider {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn normalize_api_host_corrects_webdav_and_bare_domain() {
+        // The footgun (#368): a preset-less mode switch from OpenDrive WebDAV
+        // leaves the WebDAV frontend host, so the API call hits the HTML auth
+        // page. These must all snap to the API host.
+        assert_eq!(normalize_opendrive_api_host(""), "dev.opendrive.com");
+        assert_eq!(
+            normalize_opendrive_api_host("webdav.opendrive.com"),
+            "dev.opendrive.com"
+        );
+        assert_eq!(
+            normalize_opendrive_api_host("https://webdav.opendrive.com/"),
+            "dev.opendrive.com"
+        );
+        assert_eq!(
+            normalize_opendrive_api_host("WEBDAV.OpenDrive.com"),
+            "dev.opendrive.com"
+        );
+        assert_eq!(
+            normalize_opendrive_api_host("opendrive.com"),
+            "dev.opendrive.com"
+        );
+    }
+
+    #[test]
+    fn normalize_api_host_passes_through_valid_and_custom_hosts() {
+        // The correct API host and any deliberate custom endpoint are untouched
+        // (only surrounding whitespace is trimmed).
+        assert_eq!(
+            normalize_opendrive_api_host("dev.opendrive.com"),
+            "dev.opendrive.com"
+        );
+        assert_eq!(
+            normalize_opendrive_api_host("  dev.opendrive.com  "),
+            "dev.opendrive.com"
+        );
+        assert_eq!(
+            normalize_opendrive_api_host("https://my-proxy.example.com"),
+            "https://my-proxy.example.com"
+        );
+    }
 
     #[test]
     fn parse_u64_value_accepts_number_string_bool_and_null() {

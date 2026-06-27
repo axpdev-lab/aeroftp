@@ -1977,7 +1977,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     protocol: newProtocol,
                     providerId: undefined,
                     port: restored?.port ?? getDefaultPort(newProtocol),
-                    server: restored ? restored.server : connectionParams.server,
+                    // Reset to the protocol's canonical native host so a switch
+                    // from a sibling preset (OpenDrive WebDAV at
+                    // webdav.opendrive.com) does not carry a wrong host into the
+                    // native API mode, which would hit the WebDAV frontend (#368).
+                    // A restored stash already holds this mode's own host, so it
+                    // wins; other protocols keep the current server as before.
+                    server: restored
+                        ? restored.server
+                        : newProtocol === 'opendrive'
+                            ? 'dev.opendrive.com'
+                            : connectionParams.server,
                     username: switchCreds.username,
                     password: switchCreds.password,
                     options: restored ? (restored.options ?? {}) : {},

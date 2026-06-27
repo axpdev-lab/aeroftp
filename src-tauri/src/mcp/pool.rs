@@ -11,7 +11,9 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::credential_store::CredentialStore;
-use crate::profile_loader::{apply_profile_options, apply_s3_profile_defaults};
+use crate::profile_loader::{
+    apply_local_bridge_credential_defaults, apply_profile_options, apply_s3_profile_defaults,
+};
 use crate::providers::{ProviderConfig, ProviderFactory, ProviderType, StorageProvider};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -415,7 +417,7 @@ fn create_provider_from_vault(
     .map(|s| s.to_string())
     .unwrap_or_default();
 
-    let (resolved_username, password) =
+    let (mut resolved_username, mut password) =
         if let Ok(cred_val) = serde_json::from_str::<serde_json::Value>(&raw_cred) {
             if let Some(obj) = cred_val.as_object() {
                 let u = obj
@@ -444,6 +446,17 @@ fn create_provider_from_vault(
         } else {
             (username.to_string(), raw_cred)
         };
+
+    // Filen Desktop local bridges default to admin/admin unless the user changed
+    // them; the GUI applies that fallback at connect time but the saved profile
+    // stays blank, so the MCP pool must apply parity here (#368). Shared with the
+    // CLI via profile_loader to prevent drift. Explicit values win. Runs before
+    // the OAuth-token emptiness check below (bridges are WebDAV/S3, not OAuth).
+    apply_local_bridge_credential_defaults(
+        matched.get("providerId").and_then(|v| v.as_str()),
+        &mut resolved_username,
+        &mut password,
+    );
 
     let username: &str = &resolved_username;
 

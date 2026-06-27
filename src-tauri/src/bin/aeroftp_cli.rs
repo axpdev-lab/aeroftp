@@ -22567,7 +22567,7 @@ fn profile_to_provider_config(
     // Load credentials from the scoped user's partition, falling back to the
     // legacy vault (MUV-3). Password is stored as a raw string (not JSON) in
     // server_{id}.
-    let (cred_user, cred_pass) = if !id.is_empty() {
+    let (mut cred_user, mut cred_pass) = if !id.is_empty() {
         match read_server_cred(
             &store,
             scoped_credential_user_id(cli, &store),
@@ -22604,6 +22604,16 @@ fn profile_to_provider_config(
     } else {
         (username.clone(), String::new())
     };
+
+    // Filen Desktop local bridges default to admin/admin unless the user changed
+    // them; the GUI applies that fallback at connect time but the saved profile
+    // stays blank, so the CLI must apply parity here (#368). Shared with the MCP
+    // pool via profile_loader to prevent drift. Explicit values win.
+    ftp_client_gui_lib::profile_loader::apply_local_bridge_credential_defaults(
+        profile.get("providerId").and_then(|v| v.as_str()),
+        &mut cred_user,
+        &mut cred_pass,
+    );
 
     let provider_type = match protocol {
         "ftp" => ProviderType::Ftp,

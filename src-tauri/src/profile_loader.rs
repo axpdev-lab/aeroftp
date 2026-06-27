@@ -93,6 +93,36 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
     }
 }
 
+/// Filen Desktop local bridges (filen-desktop-webdav / filen-desktop-s3)
+/// authenticate to a loopback server whose credentials default to admin/admin
+/// unless the user changed them in Filen Desktop > Network Drive. The GUI applies
+/// this fallback at connect time (App.tsx normalizeProviderConnectionParams), but
+/// the saved profile keeps the fields blank, so every non-GUI surface (CLI,
+/// benchmark, MCP, schedulers) must apply the same fallback when materializing the
+/// ProviderConfig. Without it the bridge rejects empty credentials with "Invalid
+/// credentials" (WebDAV) / "signature does not match" (S3). Explicit values win.
+///
+/// The backend maps username/password to the right sink for both transports:
+/// `WebDavConfig` reads them directly, `S3Config` maps them to
+/// access_key_id/secret_access_key, so this one helper fixes both bridges.
+pub fn apply_local_bridge_credential_defaults(
+    provider_id: Option<&str>,
+    username: &mut String,
+    password: &mut String,
+) {
+    if matches!(
+        provider_id,
+        Some("filen-desktop-webdav") | Some("filen-desktop-s3")
+    ) {
+        if username.trim().is_empty() {
+            *username = "admin".to_string();
+        }
+        if password.trim().is_empty() {
+            *password = "admin".to_string();
+        }
+    }
+}
+
 fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "backblaze" => Some("auto"),
@@ -350,6 +380,65 @@ mod tests {
             extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
             Some("profile")
         );
+    }
+
+    #[test]
+    fn local_bridge_blank_credentials_default_to_admin() {
+        // The headless parity fix (#368): a saved Filen Desktop bridge profile
+        // keeps the credential fields blank (the GUI fills admin/admin only at
+        // connect time), so the CLI/MCP must inject the same fallback.
+        for id in ["filen-desktop-webdav", "filen-desktop-s3"] {
+            let mut user = String::new();
+            let mut pass = String::new();
+            apply_local_bridge_credential_defaults(Some(id), &mut user, &mut pass);
+            assert_eq!(
+                user, "admin",
+                "{id}: blank username should default to admin"
+            );
+            assert_eq!(
+                pass, "admin",
+                "{id}: blank password should default to admin"
+            );
+        }
+    }
+
+    #[test]
+    fn local_bridge_explicit_credentials_win() {
+        // A user who changed the bridge creds in Filen Desktop keeps them.
+        let mut user = "alice".to_string();
+        let mut pass = "s3cret".to_string();
+        apply_local_bridge_credential_defaults(Some("filen-desktop-webdav"), &mut user, &mut pass);
+        assert_eq!(user, "alice");
+        assert_eq!(pass, "s3cret");
+    }
+
+    #[test]
+    fn local_bridge_only_one_field_blank_gets_filled() {
+        // Only-username-set: blank password fills, username untouched.
+        let mut user = "alice".to_string();
+        let mut pass = String::new();
+        apply_local_bridge_credential_defaults(Some("filen-desktop-s3"), &mut user, &mut pass);
+        assert_eq!(user, "alice");
+        assert_eq!(pass, "admin");
+
+        // Only-password-set: blank username fills, password untouched.
+        let mut user = "   ".to_string(); // whitespace counts as blank
+        let mut pass = "keep".to_string();
+        apply_local_bridge_credential_defaults(Some("filen-desktop-webdav"), &mut user, &mut pass);
+        assert_eq!(user, "admin");
+        assert_eq!(pass, "keep");
+    }
+
+    #[test]
+    fn local_bridge_other_providers_untouched() {
+        // Any non-bridge provider id (or none) must never get the admin fallback.
+        for id in [Some("custom-s3"), Some("webdav"), Some("filen"), None] {
+            let mut user = String::new();
+            let mut pass = String::new();
+            apply_local_bridge_credential_defaults(id, &mut user, &mut pass);
+            assert_eq!(user, "", "{id:?}: username must stay blank");
+            assert_eq!(pass, "", "{id:?}: password must stay blank");
+        }
     }
 
     #[test]
