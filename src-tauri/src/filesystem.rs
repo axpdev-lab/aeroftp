@@ -691,6 +691,17 @@ async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
             )
         };
 
+        // Skip ejected or empty removable/optical slots. After a safe-remove (or an
+        // always-empty card-reader / optical bay) the drive letter lingers in
+        // GetLogicalDrives but has no media, so GetVolumeInformationW fails and the
+        // reported size is 0. Without this, PLACES kept a ghost "Removable Disk (X:)
+        // 0 B / 0 B" row after a successful eject (#351). The frontend already
+        // re-enumerates after eject, so dropping the no-media slot here makes the row
+        // disappear, matching Explorer's behaviour for a removed volume.
+        if matches!(volume_type, "removable" | "optical") && vol_ok.is_err() && total_bytes == 0 {
+            continue;
+        }
+
         // Display name: "Volume Name (X:)" or "Local Disk (X:)"
         let display_name = if vol_name.is_empty() {
             match volume_type {
