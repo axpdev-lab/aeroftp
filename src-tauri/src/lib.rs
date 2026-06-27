@@ -16134,6 +16134,15 @@ pub fn run() {
                 .inner_size(420.0, 340.0)
                 .resizable(false)
                 .decorations(false)
+                // Inject the real app version (single source of truth: the crate
+                // version, bumped on every release) so the splash never drifts
+                // from the published version again (#367). Runs before the page's
+                // own scripts; splash.html reads it with a hardcoded fallback.
+                .initialization_script(concat!(
+                    "window.__AEROFTP_VERSION__ = \"",
+                    env!("CARGO_PKG_VERSION"),
+                    "\";"
+                ))
                 .center();
             let splash_builder = match portable::webview_data_dir() {
                 Some(dir) => splash_builder.data_directory(dir),

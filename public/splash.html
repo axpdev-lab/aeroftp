@@ -98,6 +98,18 @@
     </div>
   </div>
   <script>
+    // Show the real running version, injected by the Rust splash builder
+    // (window.__AEROFTP_VERSION__ = the crate version). The static text above is
+    // only a fallback for when the splash is opened outside the app (e.g. a
+    // browser). Single source of truth = Cargo.toml, so this never drifts (#367).
+    (function () {
+      const v = window.__AEROFTP_VERSION__;
+      if (v) {
+        const el = document.querySelector('.version');
+        if (el) el.textContent = 'v' + v + ' · GPL-3.0';
+      }
+    })();
+
     const steps = [
       { text: 'Initializing Tauri runtime...', delay: 180 },
       { text: 'Loading protocol handlers...', delay: 220 },
