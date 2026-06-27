@@ -43,6 +43,39 @@ Var AeroFTPAppDataPresentPre
 ; Runtime bootstrap, the desktop-shortcut respect logic — was inert in
 ; every shipped Windows installer. See bug report
 ; docs/dev/aeroftp-windows-path-hook-bug-report-2026-04-25.md.
+; ── Deliverable G: "Extract here / Extract to folder" context-menu verbs ──
+; These two helper macros write (and delete) the AeroFTP extract verbs under a
+; given HKCU class base key. They are ADDITIVE verbs (owner decision c): they
+; never write a default `shell\open`, so double-click behaviour of the general
+; archive formats (.zip/.7z/.tar*/.rar) is left untouched and whatever app the
+; user already has stays their default extractor. For those general formats the
+; caller points BASEKEY at `Software\Classes\SystemFileAssociations\.<ext>`,
+; which layers the verb on top of the system ProgID regardless of who owns it;
+; for our own aero* ProgIDs the caller points BASEKEY at the ProgID directly so
+; the verbs sit next to their existing "Open with AeroFTP" entry.
+;
+; The command launches the cross-platform GUI extract intent already shipped on
+; main: `AeroFTP.exe --extract-here "%1"` / `--extract-to "%1"`. The dedicated
+; extract window (extract.html, a tiny bundle) computes the never-clobber stem
+; subfolder (resolve_unique_extract_dir), prompts for a password on encrypted
+; archives and vaults, and shows the native destination picker for "to folder".
+; We target the GUI binary directly (not the dispatcher) because on Windows the
+; product binary keeps the name AeroFTP.exe and parses --extract-here/-to from
+; its own argv; a cold launch opens ONLY the extract window and exits.
+!macro AeroFTPWriteExtractVerbs BASEKEY
+    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractHere" "" "Extract Here with AeroFTP"
+    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractHere" "Icon" '"$INSTDIR\AeroFTP.exe",0'
+    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractHere\command" "" '"$INSTDIR\AeroFTP.exe" --extract-here "%1"'
+    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder" "" "Extract to Folder with AeroFTP..."
+    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder" "Icon" '"$INSTDIR\AeroFTP.exe",0'
+    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder\command" "" '"$INSTDIR\AeroFTP.exe" --extract-to "%1"'
+!macroend
+
+!macro AeroFTPDeleteExtractVerbs BASEKEY
+    DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractHere"
+    DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder"
+!macroend
+
 !macro NSIS_HOOK_PREINSTALL
     StrCpy $AeroFTPWasInstalled "no"
     StrCpy $AeroFTPHadDesktopShortcut "no"
@@ -211,6 +244,25 @@ Var AeroFTPAppDataPresentPre
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore" "Extension" ".aeroftp-keystore"
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerozip" "Extension" ".aerozip"
 
+    ; --- "Extract here / Extract to folder" context-menu verbs (Deliverable G) ---
+    ; Additive verbs only (owner decision c): never a default shell\open for the
+    ; general archive formats, so their double-click Open handler is untouched.
+    ; General formats attach via SystemFileAssociations\.<ext> (works regardless
+    ; of which app owns the .zip/.7z/... ProgID). The double-extension tarballs
+    ; .tar.gz / .tar.xz / .tar.bz2 register under their LAST component (.gz/.xz/
+    ; .bz2) because that is the only handle Explorer keys associations on. Our
+    ; own aero* archive ProgIDs get the verbs alongside their Open entry.
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.zip"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.7z"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.rar"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.tar"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.tgz"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.gz"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.xz"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.bz2"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\AeroFTP.AeroVault"
+    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\AeroFTP.AeroZip"
+
     ; Flush Explorer's icon cache so the doc-style MIME icons are
     ; rendered immediately after install (otherwise users would have
     ; to log out / restart Explorer to see the change). The cache file
@@ -293,6 +345,20 @@ Var AeroFTPAppDataPresentPre
     DeleteRegKey HKLM "Software\Classes\.aerozip"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroZip"
     DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerozip"
+
+    ; Remove the "Extract here / Extract to folder" verbs (Deliverable G).
+    ; Mirror of the POSTINSTALL block: drop only our two verb subkeys, never the
+    ; parent SystemFileAssociations\.<ext> key (Windows and other apps share it).
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.zip"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.7z"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.rar"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.tar"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.tgz"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.gz"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.xz"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.bz2"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\AeroFTP.AeroVault"
+    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\AeroFTP.AeroZip"
 
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
