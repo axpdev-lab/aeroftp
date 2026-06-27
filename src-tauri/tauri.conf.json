@@ -77,7 +77,11 @@
                     "gstreamer1.0-plugins-good",
                     "gstreamer1.0-plugins-bad"
                 ],
+                "recommends": [
+                    "python3-nautilus"
+                ],
                 "files": {
+                    "/usr/share/nautilus-python/extensions/aeroftp_extract_nautilus.py": "resources/aeroftp_extract_nautilus.py",
                     "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml": "../com.aeroftp.AeroFTP.metainfo.xml",
                     "/usr/share/mime/packages/com.aeroftp.AeroVault.xml": "../com.aeroftp.AeroVault.xml",
                     "/usr/share/polkit-1/actions/com.aeroftp.update.policy": "resources/com.aeroftp.update.policy",
