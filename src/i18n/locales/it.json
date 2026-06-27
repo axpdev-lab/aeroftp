@@ -3345,6 +3345,7 @@
             "add_to_sidebar": "Aggiungi alla Sidebar",
             "remove_from_sidebar": "Rimuovi dalla Sidebar",
             "eject": "Espelli",
+            "ejectFailed": "Espulsione non riuscita",
             "mount": "Monta",
             "free_of_total": "{free} liberi su {total}",
             "switch_to_tree": "Passa alla vista ad albero",

@@ -3060,7 +3060,8 @@
             "new_folder": "Folder Baharu",
             "clear_recent": "Kosongkan Terkini",
             "no_recent": "Tiada lokasi terkini",
-            "mount": "Lekap"
+            "mount": "Lekap",
+            "ejectFailed": "Gagal mengeluarkan"
         },
         "viewMode": {
             "list": "Senarai",

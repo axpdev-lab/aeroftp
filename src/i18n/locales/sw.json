@@ -3060,7 +3060,8 @@
             "new_folder": "Folda Mpya",
             "clear_recent": "Futa Hivi Karibuni",
             "no_recent": "Hakuna maeneo ya hivi karibuni",
-            "mount": "Pachika"
+            "mount": "Pachika",
+            "ejectFailed": "Kutoa kumeshindwa"
         },
         "viewMode": {
             "list": "Orodha",

@@ -3060,7 +3060,8 @@
             "custom_locations": "कस्टम स्थान",
             "open_in_terminal": "टर्मिनल में खोलें",
             "copy_path": "पथ कॉपी करें",
-            "new_folder": "नया फ़ोल्डर"
+            "new_folder": "नया फ़ोल्डर",
+            "ejectFailed": "इजेक्ट विफल"
         },
         "viewMode": {
             "list": "सूची",

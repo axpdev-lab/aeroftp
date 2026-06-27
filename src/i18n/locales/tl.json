@@ -3060,7 +3060,8 @@
             "new_folder": "Bagong Folder",
             "clear_recent": "I-clear ang Kamakailang",
             "no_recent": "Walang kamakailang lokasyon",
-            "mount": "I-mount"
+            "mount": "I-mount",
+            "ejectFailed": "Nabigo ang pag-eject"
         },
         "viewMode": {
             "list": "Listahan",

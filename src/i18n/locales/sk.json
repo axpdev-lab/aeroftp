@@ -3060,7 +3060,8 @@
             "new_folder": "Novy priecinok",
             "clear_recent": "Vymazat nedavne",
             "no_recent": "Ziadne nedavne umiestnenia",
-            "mount": "Pripojit"
+            "mount": "Pripojit",
+            "ejectFailed": "Vysunutie zlyhalo"
         },
         "viewMode": {
             "list": "Zoznam",

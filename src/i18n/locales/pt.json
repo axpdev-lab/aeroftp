@@ -3060,7 +3060,8 @@
             "new_folder": "Nova Pasta",
             "clear_recent": "Limpar Recentes",
             "no_recent": "Nenhum local recente",
-            "mount": "Montar"
+            "mount": "Montar",
+            "ejectFailed": "Falha ao ejetar"
         },
         "viewMode": {
             "list": "Lista",

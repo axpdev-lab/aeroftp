@@ -3060,7 +3060,8 @@
             "new_folder": "Thư mục mới",
             "clear_recent": "Xóa mục gần đây",
             "no_recent": "Không có vị trí gần đây",
-            "mount": "Gắn kết"
+            "mount": "Gắn kết",
+            "ejectFailed": "Tháo thất bại"
         },
         "viewMode": {
             "list": "Danh sách",

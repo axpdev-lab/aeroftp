@@ -3060,7 +3060,8 @@
             "new_folder": "Nova carpeta",
             "clear_recent": "Esborrar recents",
             "no_recent": "No hi ha ubicacions recents",
-            "mount": "Muntar"
+            "mount": "Muntar",
+            "ejectFailed": "Ha fallat l'expulsió"
         },
         "viewMode": {
             "list": "Llista",

@@ -3060,7 +3060,8 @@
             "new_folder": "Nova fascikla",
             "clear_recent": "Obriši nedavne",
             "no_recent": "Nema nedavnih lokacija",
-            "mount": "Montiraj"
+            "mount": "Montiraj",
+            "ejectFailed": "Избацивање није успело"
         },
         "viewMode": {
             "list": "Lista",

@@ -3053,7 +3053,8 @@
             "custom_locations": "Անհատական վայրեր",
             "open_in_terminal": "Բացել տերմինալում",
             "copy_path": "Պատճենել ուղին",
-            "new_folder": "Նոր պանակ"
+            "new_folder": "Նոր պանակ",
+            "ejectFailed": "Արտամղումը ձախողվեց"
         },
         "viewMode": {
             "list": "Ցուցակ",

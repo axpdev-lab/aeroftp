@@ -3060,7 +3060,8 @@
             "new_folder": "Nova slozka",
             "clear_recent": "Vymazat nedavne",
             "no_recent": "Zadna nedavna umisteni",
-            "mount": "Pripojit"
+            "mount": "Pripojit",
+            "ejectFailed": "Vysunutí selhalo"
         },
         "viewMode": {
             "list": "Seznam",

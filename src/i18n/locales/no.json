@@ -3060,7 +3060,8 @@
             "new_folder": "Ny mappe",
             "clear_recent": "Tøm nylige",
             "no_recent": "Ingen nylige steder",
-            "mount": "Monter"
+            "mount": "Monter",
+            "ejectFailed": "Utløsing mislyktes"
         },
         "viewMode": {
             "list": "Liste",

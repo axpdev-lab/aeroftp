@@ -3356,6 +3356,7 @@
             "documents": "Documents",
             "downloads": "Downloads",
             "eject": "Eject",
+            "ejectFailed": "Eject failed",
             "folders": "Folders",
             "free_of_total": "{free} free of {total}",
             "home": "Home",

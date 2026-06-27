@@ -3060,7 +3060,8 @@
             "new_folder": "Nowy folder",
             "clear_recent": "Wyczyść ostatnie",
             "no_recent": "Brak ostatnich lokalizacji",
-            "mount": "Zamontuj"
+            "mount": "Zamontuj",
+            "ejectFailed": "Wysuwanie nie powiodło się"
         },
         "viewMode": {
             "list": "Lista",

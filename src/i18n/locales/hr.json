@@ -3060,7 +3060,8 @@
             "custom_locations": "Prilagođene lokacije",
             "open_in_terminal": "Otvori u terminalu",
             "copy_path": "Kopiraj putanju",
-            "new_folder": "Nova mapa"
+            "new_folder": "Nova mapa",
+            "ejectFailed": "Izbacivanje nije uspjelo"
         },
         "viewMode": {
             "list": "Popis",

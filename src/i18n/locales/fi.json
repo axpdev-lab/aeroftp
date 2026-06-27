@@ -3060,7 +3060,8 @@
             "new_folder": "Uusi kansio",
             "clear_recent": "Tyhjennä viimeaikaiset",
             "no_recent": "Ei viimeaikaisia sijainteja",
-            "mount": "Liitä"
+            "mount": "Liitä",
+            "ejectFailed": "Poistaminen epäonnistui"
         },
         "viewMode": {
             "list": "Lista",

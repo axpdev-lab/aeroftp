@@ -10,7 +10,7 @@ import {
   Home, Monitor, FileText, Image, Music, Download, Video,
   Trash2, Folder, HardDrive, Usb, Disc, Globe,
   LayoutList, FolderTree as FolderTreeIcon, ChevronDown, ChevronRight,
-  Plus, X, Power, Loader2, Clock, Play,
+  Plus, X, Loader2, Clock, Play,
   type LucideIcon,
 } from 'lucide-react';
 import { UserDirectory, VolumeInfo, UnmountedPartition, SidebarMode, LabelCount } from '../types/aerofile';
@@ -68,6 +68,29 @@ const volumeIcon: Record<string, LucideIcon> = {
   network: Globe,
   optical: Disc,
 };
+
+/**
+ * Standard eject glyph (triangle over a bar, like the Unicode U+23CF and the
+ * OS "Safely Remove" tray control). lucide-react has no Eject icon, so this
+ * inline SVG is sized and stroked to match the other 14px sidebar icons.
+ */
+const EjectIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M12 5 4 14h16z" />
+    <rect x="4" y="17" width="16" height="2.5" rx="0.75" />
+  </svg>
+);
 
 // ---------------------------------------------------------------------------
 // Props
@@ -351,12 +374,21 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       await invoke('eject_volume', { mountPoint });
       // Refresh volumes after eject
       await fetchVolumes();
-    } catch {
-      // Eject failed: volume may be busy
+    } catch (err) {
+      // Eject failed (busy/locked drive, or platform error): give the user
+      // visible feedback instead of dead silence.
+      window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+        detail: {
+          type: 'error',
+          title: t('sidebar.ejectFailed'),
+          message: typeof err === 'string' ? err : String(err),
+          duration: 8000,
+        },
+      }));
     } finally {
       if (mountedRef.current) setEjectingMount(null);
     }
-  }, [fetchVolumes]);
+  }, [fetchVolumes, t]);
 
   // -----------------------------------------------------------------------
   // Mount unmounted partition
@@ -564,7 +596,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
                       {isEjecting ? (
                         <Loader2 size={14} className="animate-spin" />
                       ) : (
-                        <Power size={14} />
+                        <EjectIcon size={14} />
                       )}
                     </button>
                   )}

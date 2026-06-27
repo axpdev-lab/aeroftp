@@ -3060,7 +3060,8 @@
             "new_folder": "Yeni Klasör",
             "clear_recent": "Son Kullanılanları Temizle",
             "no_recent": "Son konum yok",
-            "mount": "Bağla"
+            "mount": "Bağla",
+            "ejectFailed": "Çıkarma başarısız"
         },
         "viewMode": {
             "list": "Liste",

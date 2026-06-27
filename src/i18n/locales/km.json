@@ -3060,7 +3060,8 @@
             "new_folder": "ថតថ្មី",
             "clear_recent": "សម្អាតថ្មីៗ",
             "no_recent": "គ្មានទីតាំងដែលបានប្រើថ្មីៗ",
-            "mount": "Mount"
+            "mount": "Mount",
+            "ejectFailed": "ការដកចេញបានបរាជ័យ"
         },
         "viewMode": {
             "list": "បញ្ជី",

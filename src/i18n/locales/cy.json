@@ -3060,7 +3060,8 @@
             "new_folder": "Ffolder Newydd",
             "clear_recent": "Clirio Diweddar",
             "no_recent": "Dim lleoliadau diweddar",
-            "mount": "Mowntio"
+            "mount": "Mowntio",
+            "ejectFailed": "Methodd y diarddel"
         },
         "viewMode": {
             "list": "Rhestr",

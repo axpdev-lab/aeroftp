@@ -3060,7 +3060,8 @@
             "new_folder": "Uus kaust",
             "clear_recent": "Tühjenda hiljutised",
             "no_recent": "Hiljutisi asukohti pole",
-            "mount": "Ühenda"
+            "mount": "Ühenda",
+            "ejectFailed": "Väljastamine ebaõnnestus"
         },
         "viewMode": {
             "list": "Loend",

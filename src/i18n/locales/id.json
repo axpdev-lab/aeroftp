@@ -3060,7 +3060,8 @@
             "new_folder": "Folder Baru",
             "clear_recent": "Bersihkan Terbaru",
             "no_recent": "Tidak ada tempat terbaru",
-            "mount": "Mount"
+            "mount": "Mount",
+            "ejectFailed": "Gagal mengeluarkan"
         },
         "viewMode": {
             "list": "Daftar",

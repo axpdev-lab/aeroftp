@@ -3060,7 +3060,8 @@
             "new_folder": "Ný Mappa",
             "clear_recent": "Hreinsa Nýlegt",
             "no_recent": "Engir nýlegir staðir",
-            "mount": "Tengja"
+            "mount": "Tengja",
+            "ejectFailed": "Útkast mistókst"
         },
         "viewMode": {
             "list": "Listi",

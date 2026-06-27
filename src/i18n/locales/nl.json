@@ -3060,7 +3060,8 @@
             "new_folder": "Nieuwe map",
             "clear_recent": "Recente wissen",
             "no_recent": "Geen recente locaties",
-            "mount": "Koppelen"
+            "mount": "Koppelen",
+            "ejectFailed": "Uitwerpen mislukt"
         },
         "viewMode": {
             "list": "Lijst",

@@ -3060,7 +3060,8 @@
             "new_folder": "Új mappa",
             "clear_recent": "Legutóbbiak törlése",
             "no_recent": "Nincsenek legutóbbi helyek",
-            "mount": "Csatlakoztatás"
+            "mount": "Csatlakoztatás",
+            "ejectFailed": "A kiadás sikertelen"
         },
         "viewMode": {
             "list": "Lista",

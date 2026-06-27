@@ -3060,7 +3060,8 @@
             "new_folder": "Naujas aplankas",
             "clear_recent": "Išvalyti naujausius",
             "no_recent": "Nėra naujų vietų",
-            "mount": "Prijungti"
+            "mount": "Prijungti",
+            "ejectFailed": "Nepavyko išstumti"
         },
         "viewMode": {
             "list": "Sąrašas",

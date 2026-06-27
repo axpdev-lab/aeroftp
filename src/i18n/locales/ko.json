@@ -3060,7 +3060,8 @@
             "new_folder": "새 폴더",
             "clear_recent": "최근 목록 지우기",
             "no_recent": "최근 위치 없음",
-            "mount": "마운트"
+            "mount": "마운트",
+            "ejectFailed": "꺼내기 실패"
         },
         "viewMode": {
             "list": "목록",

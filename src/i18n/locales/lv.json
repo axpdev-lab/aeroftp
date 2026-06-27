@@ -3060,7 +3060,8 @@
             "new_folder": "Jauna mape",
             "clear_recent": "Notīrīt nesenos",
             "no_recent": "Nav nesenu vietu",
-            "mount": "Montēt"
+            "mount": "Montēt",
+            "ejectFailed": "Neizdevās izstumt"
         },
         "viewMode": {
             "list": "Saraksts",

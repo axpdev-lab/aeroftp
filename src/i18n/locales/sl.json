@@ -3060,7 +3060,8 @@
             "new_folder": "Nova mapa",
             "clear_recent": "Počisti nedavno",
             "no_recent": "Ni nedavnih lokacij",
-            "mount": "Priklopi"
+            "mount": "Priklopi",
+            "ejectFailed": "Izvrženje ni uspelo"
         },
         "viewMode": {
             "list": "Seznam",

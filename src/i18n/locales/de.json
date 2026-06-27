@@ -3060,7 +3060,8 @@
             "new_folder": "Neuer Ordner",
             "clear_recent": "Zuletzt verwendete löschen",
             "no_recent": "Keine zuletzt verwendeten Orte",
-            "mount": "Einbinden"
+            "mount": "Einbinden",
+            "ejectFailed": "Auswerfen fehlgeschlagen"
         },
         "viewMode": {
             "list": "Liste",

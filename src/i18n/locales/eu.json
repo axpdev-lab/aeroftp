@@ -3060,7 +3060,8 @@
             "custom_locations": "Kokapen pertsonalizatuak",
             "open_in_terminal": "Ireki terminalean",
             "copy_path": "Kopiatu bidea",
-            "new_folder": "Karpeta berria"
+            "new_folder": "Karpeta berria",
+            "ejectFailed": "Kanporatzeak huts egin du"
         },
         "viewMode": {
             "list": "Zerrenda",

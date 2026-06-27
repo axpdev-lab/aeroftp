@@ -3060,7 +3060,8 @@
             "new_folder": "Ny mapp",
             "clear_recent": "Rensa senaste",
             "no_recent": "Inga senaste platser",
-            "mount": "Montera"
+            "mount": "Montera",
+            "ejectFailed": "Utmatning misslyckades"
         },
         "viewMode": {
             "list": "Lista",

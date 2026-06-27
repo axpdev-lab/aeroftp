@@ -3060,7 +3060,8 @@
             "new_folder": "新建文件夹",
             "clear_recent": "清除最近记录",
             "no_recent": "没有最近访问的位置",
-            "mount": "挂载"
+            "mount": "挂载",
+            "ejectFailed": "弹出失败"
         },
         "viewMode": {
             "list": "列表",

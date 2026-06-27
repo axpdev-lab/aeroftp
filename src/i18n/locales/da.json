@@ -3060,7 +3060,8 @@
             "new_folder": "Ny mappe",
             "clear_recent": "Ryd seneste",
             "no_recent": "Ingen seneste placeringer",
-            "mount": "Montér"
+            "mount": "Montér",
+            "ejectFailed": "Udskubning mislykkedes"
         },
         "viewMode": {
             "list": "Liste",

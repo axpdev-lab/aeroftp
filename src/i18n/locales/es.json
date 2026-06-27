@@ -3060,7 +3060,8 @@
             "new_folder": "Nueva carpeta",
             "clear_recent": "Limpiar recientes",
             "no_recent": "Sin ubicaciones recientes",
-            "mount": "Montar"
+            "mount": "Montar",
+            "ejectFailed": "Error al expulsar"
         },
         "viewMode": {
             "list": "Lista",

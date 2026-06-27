@@ -3060,7 +3060,8 @@
             "custom_locations": "Localizacións personalizadas",
             "open_in_terminal": "Abrir no terminal",
             "copy_path": "Copiar ruta",
-            "new_folder": "Novo cartafol"
+            "new_folder": "Novo cartafol",
+            "ejectFailed": "Produciuse un erro ao expulsar"
         },
         "viewMode": {
             "list": "Lista",

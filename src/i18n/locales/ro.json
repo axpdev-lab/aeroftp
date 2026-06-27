@@ -3060,7 +3060,8 @@
             "new_folder": "Dosar nou",
             "clear_recent": "Șterge recente",
             "no_recent": "Nicio locație recentă",
-            "mount": "Montare"
+            "mount": "Montare",
+            "ejectFailed": "Scoaterea a eșuat"
         },
         "viewMode": {
             "list": "Listă",

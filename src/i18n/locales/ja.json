@@ -3025,7 +3025,8 @@
             "new_folder": "新規フォルダ",
             "clear_recent": "最近をクリア",
             "no_recent": "最近の場所はありません",
-            "mount": "マウント"
+            "mount": "マウント",
+            "ejectFailed": "取り出しに失敗しました"
         },
         "viewMode": {
             "list": "リスト",
