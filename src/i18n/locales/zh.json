@@ -5183,6 +5183,7 @@
         "extractWindow": {
             "title": "解压",
             "inspecting": "正在检查归档...",
+            "chooseFolder": "选择目标文件夹",
             "passwordPrompt": "此项目已加密。请输入密码以解压。",
             "showPassword": "显示密码",
             "hidePassword": "隐藏密码"

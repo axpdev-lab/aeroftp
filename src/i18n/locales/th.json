@@ -5183,6 +5183,7 @@
         "extractWindow": {
             "title": "แตกไฟล์",
             "inspecting": "กำลังตรวจสอบไฟล์เก็บถาวร...",
+            "chooseFolder": "เลือกโฟลเดอร์ปลายทาง",
             "passwordPrompt": "รายการนี้ถูกเข้ารหัส กรอกรหัสผ่านเพื่อแตกไฟล์",
             "showPassword": "แสดงรหัสผ่าน",
             "hidePassword": "ซ่อนรหัสผ่าน"

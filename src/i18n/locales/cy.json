@@ -5202,6 +5202,7 @@
         "extractWindow": {
             "title": "Echdynnu",
             "inspecting": "Archwilio'r archif...",
+            "chooseFolder": "Dewiswch ffolder cyrchfan",
             "passwordPrompt": "Mae'r eitem hon wedi'i hamgryptio. Rhowch y cyfrinair i'w echdynnu.",
             "showPassword": "Dangos y cyfrinair",
             "hidePassword": "Cuddio'r cyfrinair"

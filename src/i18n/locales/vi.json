@@ -5183,6 +5183,7 @@
         "extractWindow": {
             "title": "Giải nén",
             "inspecting": "Đang kiểm tra kho lưu trữ...",
+            "chooseFolder": "Chọn thư mục đích",
             "passwordPrompt": "Mục này được mã hóa. Nhập mật khẩu để giải nén.",
             "showPassword": "Hiện mật khẩu",
             "hidePassword": "Ẩn mật khẩu"

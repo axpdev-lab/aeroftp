@@ -5183,6 +5183,7 @@
         "extractWindow": {
             "title": "Ekstrak",
             "inspecting": "Memeriksa arkib...",
+            "chooseFolder": "Pilih folder destinasi",
             "passwordPrompt": "Item ini disulitkan. Masukkan kata laluan untuk mengekstrak.",
             "showPassword": "Tunjukkan kata laluan",
             "hidePassword": "Sembunyikan kata laluan"

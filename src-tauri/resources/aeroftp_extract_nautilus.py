@@ -11,14 +11,14 @@ they do not clutter the top level next to the system's own extract entries. Labe
 follow the desktop language, reusing the app's own `contextMenu.extractHere` /
 `contextMenu.extractToFolder` translations (47 languages, kept in lockstep below).
 
-  Extract here -> try the headless CLI `aeroftp extract <file> <dir>` (a clear
-                  archive extracts in place with no UI), falling back to
-                  `aeroftp --extract-here <file>` (the dedicated password window)
-                  only when it is encrypted. Decision 2: a clear extract never
-                  boots the app.
-  Extract to folder -> extracts into a never-clobbering subfolder named after the
-                  archive, in the archive's own directory, automatically (no folder
-                  picker, like standard extractors). Same clear/encrypted split.
+  Extract here -> a folder named after the archive, in the archive's own
+                  directory (never loose files, never clobbering: stem, stem (2)).
+                  A clear archive extracts via the headless CLI with no UI; an
+                  encrypted one falls back to the dedicated password window.
+  Extract to folder -> the dedicated window shows a native destination picker,
+                  then extracts into a folder named after the archive inside the
+                  chosen folder. Mirrors the standard GNOME "Extract" / "Extract
+                  to..." pair exactly.
 
 The work runs detached so Nautilus never blocks.
 """
@@ -211,20 +211,20 @@ class AeroFTPExtractMenuProvider(GObject.GObject, Nautilus.MenuProvider):
     """Adds the AeroFile submenu (extract verbs) to archives / vaults."""
 
     def _extract_here(self, _menu, path: str) -> None:
-        # Clear archive: pure CLI into the archive's own directory (decision 2),
-        # falling back to the dedicated password window when it is encrypted.
-        parent = os.path.dirname(path) or "."
-        script = 'aeroftp extract "$1" "$2" >/dev/null 2>&1 || aeroftp --extract-here "$1"'
-        _spawn(["sh", "-c", script, "sh", path, parent])
-
-    def _extract_to_folder(self, _menu, path: str) -> None:
-        # Like standard extractors: a subfolder named after the archive, in the
-        # archive's own directory, no folder picker. Never clobbers an existing
-        # folder. Clear archive stays pure CLI; encrypted falls back to the window.
+        # Standard GNOME "Extract here": a subfolder named after the archive, in
+        # the archive's own directory (never loose files, never clobbering: stem,
+        # stem (2)...). Clear archive stays pure CLI; encrypted falls back to the
+        # dedicated password window, which extracts into the same kind of subfolder.
         parent = os.path.dirname(path) or "."
         dest = _unique_subfolder(parent, os.path.basename(path))
-        script = 'aeroftp extract "$1" "$2" >/dev/null 2>&1 || aeroftp --extract-to "$1"'
+        script = 'aeroftp extract "$1" "$2" >/dev/null 2>&1 || aeroftp --extract-here "$1"'
         _spawn(["sh", "-c", script, "sh", path, dest])
+
+    def _extract_to_folder(self, _menu, path: str) -> None:
+        # Standard GNOME "Extract to...": the dedicated window shows a native
+        # destination picker, then extracts into a subfolder named after the
+        # archive inside the chosen folder (password first if it is encrypted).
+        _spawn(["aeroftp", "--extract-to", path])
 
     def _items_for(self, files):
         if len(files) != 1:

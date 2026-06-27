@@ -6058,6 +6058,37 @@ async fn cmd_extract(
     let archive_bytes = std::fs::metadata(&archive_string)
         .map(|m| m.len())
         .unwrap_or(0);
+
+    // Fail BEFORE the extract core creates any output directory when the archive
+    // is encrypted but no password was given. Otherwise the core makes the
+    // destination folder and only then fails decrypting, leaving an empty folder
+    // behind (the file-manager "Extract to folder" verb then falls back to the
+    // password window and creates a second, real folder). Exit 6 = auth.
+    if password.is_none() {
+        let encrypted = match fmt {
+            ArchiveFormat::Zip => ftp_client_gui_lib::is_zip_encrypted_core(archive_string.clone())
+                .await
+                .unwrap_or(false),
+            ArchiveFormat::SevenZ => {
+                ftp_client_gui_lib::is_7z_encrypted_core(archive_string.clone())
+                    .await
+                    .unwrap_or(false)
+            }
+            ArchiveFormat::Rar => ftp_client_gui_lib::is_rar_encrypted_core(archive_string.clone())
+                .await
+                .unwrap_or(false),
+            _ => false,
+        };
+        if encrypted {
+            print_error(
+                format,
+                &format!("'{archive}' is encrypted: a password is required (--password)"),
+                6,
+            );
+            return 6;
+        }
+    }
+
     let result = match fmt {
         ArchiveFormat::Zip => {
             ftp_client_gui_lib::extract_archive_core(
