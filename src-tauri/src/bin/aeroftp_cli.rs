@@ -35508,6 +35508,36 @@ fn benchmark_tod_bucket() -> &'static str {
     }
 }
 
+/// Best-effort public-IP probe for the benchmark fairness check (issue #368
+/// #1). A single short HTTPS GET to an IP-echo endpoint; any failure (offline,
+/// blocked, timeout) yields `None` and the fairness check is silently skipped,
+/// so the benchmark never gains a hard network dependency. The value is only
+/// compared locally to detect a VPN/network switch mid-run and is never written
+/// to the published report (the sanitizer would redact an IPv4 anyway).
+async fn benchmark_public_ip() -> Option<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .ok()?;
+    // api.ipify.org returns the bare IPv4/IPv6 as text/plain.
+    let resp = client.get("https://api.ipify.org").send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let trimmed = resp.text().await.ok()?.trim().to_string();
+    if trimmed.is_empty() || trimmed.len() > 64 {
+        return None;
+    }
+    Some(trimmed)
+}
+
+/// Warning text shown when the public IP changed between the start and end of a
+/// benchmark (issue #368 #1): the run spanned a VPN/network switch, so latency
+/// and throughput numbers across profiles are not comparable. No raw IP is
+/// included so the message is safe to surface in the report's error list.
+const BENCHMARK_IP_CHANGED_WARNING: &str =
+    "public IP changed during the benchmark (VPN/network switch detected): results across profiles are NOT comparable, re-run on a stable connection";
+
 fn benchmark_rounded_hour_utc() -> String {
     use chrono::{Datelike, Timelike, Utc};
     let now = Utc::now();
@@ -35571,6 +35601,58 @@ fn benchmark_remote_roots_from_prefix(prefix: &str, report_id: &str) -> (String,
         format!("{}/{}", bench_base, report_id)
     };
     (bench_base, test_root)
+}
+
+/// Create a remote directory and every missing parent (mkdir -p semantics).
+///
+/// Several backends do not auto-create intermediate path components and reject
+/// a folder creation whose parent collection does not exist. pCloud WebDAV
+/// (issue #368) returned `Parent directory does not exist` for the scratch
+/// `aeroftp-bench/<uuid>` tree because the `aeroftp-bench` base had not been
+/// created first. The benchmark scratch tree is at least two levels deep under
+/// the profile root, so we create each component in turn, treating
+/// `AlreadyExists` as success. Returns the error of the deepest component that
+/// still failed (so the caller can decide whether to hard-fail), or `Ok` when
+/// the full path now exists.
+async fn benchmark_mkdir_p(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+) -> Result<(), ProviderError> {
+    let mut last_err: Option<ProviderError> = None;
+    for acc in benchmark_mkdir_ladder(path) {
+        match provider.mkdir(&acc).await {
+            Ok(()) | Err(ProviderError::AlreadyExists(_)) => last_err = None,
+            Err(e) => last_err = Some(e),
+        }
+    }
+    match last_err {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// Pure path-splitting helper for [`benchmark_mkdir_p`]: turn a remote path into
+/// the ordered list of cumulative ancestor paths to create, preserving a
+/// leading slash for absolute paths. `"a/b/c"` yields `[a, a/b, a/b/c]`;
+/// `"/x/y"` yields `[/x, /x/y]`. An empty (or slash-only) path yields `[]`.
+fn benchmark_mkdir_ladder(path: &str) -> Vec<String> {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.trim_start_matches('/').is_empty() {
+        return Vec::new();
+    }
+    let absolute = trimmed.starts_with('/');
+    let mut acc = String::new();
+    let mut out = Vec::new();
+    for comp in trimmed.split('/').filter(|c| !c.is_empty()) {
+        if acc.is_empty() && !absolute {
+            acc.push_str(comp);
+        } else {
+            acc.push('/');
+            acc.push_str(comp);
+        }
+        out.push(acc.clone());
+    }
+    out
 }
 
 /// Pattern table reused by both [`benchmark_sanitize`] (replacement pass) and
@@ -35761,6 +35843,17 @@ async fn cmd_benchmark(
     // doc-comment for the rationale (Backblaze multipart SIGPIPE workaround).
     let _sigpipe_guard = SigpipeIgnoreGuard::new();
 
+    // IP fairness check (issue #368 #1): snapshot the public IP at the start of
+    // a standalone run so we can warn if it changes mid-run (a VPN switch makes
+    // the numbers incomparable). In compare mode (`out.is_some()`) the sweep
+    // owns one start/end snapshot spanning all profiles, so we skip the
+    // per-profile probe here.
+    let start_public_ip = if out.is_none() {
+        benchmark_public_ip().await
+    } else {
+        None
+    };
+
     let cfg =
         match resolve_benchmark_config(level, sizes_override, runs_override, operations_override) {
             Ok(c) => c,
@@ -35796,22 +35889,31 @@ async fn cmd_benchmark(
     };
     // Create the scratch directory tree before any upload. `bench_base` may
     // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
-    // is unique per run: if its creation fails the upload will hit "parent not
-    // found" anyway, so we surface the mkdir error explicitly here.
-    if let Err(e) = provider.mkdir(&bench_base).await {
-        if !matches!(e, ProviderError::AlreadyExists(_))
-            && !cli.quiet
-            && matches!(format, OutputFormat::Text)
-        {
-            eprintln!("warning: could not create benchmark base dir: {}", e);
+    // is unique per run. We track whether WE created the base this run so the
+    // final cleanup only removes a base dir we own (issue #368: the reporter
+    // had to delete `aeroftp-bench` by hand on every drive afterwards).
+    let base_created = match provider.mkdir(&bench_base).await {
+        Ok(()) => true,
+        Err(ProviderError::AlreadyExists(_)) => false,
+        Err(e) => {
+            if !cli.quiet && matches!(format, OutputFormat::Text) {
+                eprintln!("warning: could not create benchmark base dir: {}", e);
+            }
+            false
         }
-    }
-    if let Err(e) = provider.mkdir(&test_root).await {
+    };
+    // Create `test_root` with parents (mkdir -p). Some WebDAV servers (pCloud,
+    // issue #368) refuse a folder whose parent collection does not yet exist
+    // and do not auto-create intermediates, so a single mkdir of the nested
+    // scratch path failed with "Parent directory does not exist" even though
+    // the base creation above had also been rejected. Creating each component
+    // in turn makes the scratch tree robust across all 22 backends.
+    if let Err(e) = benchmark_mkdir_p(&mut provider, &test_root).await {
         if !matches!(e, ProviderError::AlreadyExists(_)) {
             print_error(
                 format,
                 &format!(
-                    "benchmark cannot create scratch dir '{}': {}. Provider may not allow folder creation in the configured root.",
+                    "benchmark cannot create scratch dir '{}': {}. Provider may not allow folder creation in the configured root (try --test-root-prefix to point at a writable sub-path).",
                     test_root, e
                 ),
                 4,
@@ -35885,6 +35987,17 @@ async fn cmd_benchmark(
             let is_warmup = iter < cfg.warmup_runs;
 
             if needs_upload {
+                // Progress indication (issue #368 #2): show the current phase
+                // and run so a long per-profile benchmark is not a blind wait.
+                if !cli.quiet && matches!(format, OutputFormat::Text) {
+                    eprintln!(
+                        "  upload   {} run {}/{}{}",
+                        format_size(size),
+                        iter + 1,
+                        total_iters,
+                        if is_warmup { " (warmup)" } else { "" }
+                    );
+                }
                 // Strict providers (4shared, several WebDAV servers) reject
                 // overwrite-on-PUT: between successive runs of the same size
                 // we delete the previous payload best-effort. Errors are
@@ -35969,6 +36082,16 @@ async fn cmd_benchmark(
             }
 
             if needs_download {
+                // Progress indication (issue #368 #2): mirror the upload phase.
+                if !cli.quiet && matches!(format, OutputFormat::Text) {
+                    eprintln!(
+                        "  download {} run {}/{}{}",
+                        format_size(size),
+                        iter + 1,
+                        total_iters,
+                        if is_warmup { " (warmup)" } else { "" }
+                    );
+                }
                 let start = Instant::now();
                 let local_download_path = local_download.path().to_string_lossy().to_string();
                 let dl_result = if !cli.partial {
@@ -36248,7 +36371,48 @@ async fn cmd_benchmark(
             )),
         }
     }
+
+    // Remove the shared `aeroftp-bench` base dir too (issue #368: the reporter
+    // had to delete it by hand on every cloud drive). Only when WE created it
+    // this run AND it is now empty: a pre-existing folder of that name, a
+    // concurrent benchmark run, or a user-chosen `--test-root-prefix` (whose
+    // base is the user's own path, never ours) must not be deleted. When a
+    // prefix override is in play `base_created` stays false on the user's
+    // existing prefix, so this is also a no-op there.
+    if base_created && test_root_prefix_override.is_none() {
+        let base_empty = match provider.list(&bench_base).await {
+            Ok(entries) => entries.is_empty(),
+            // If we cannot confirm emptiness, leave the base dir in place
+            // rather than risk deleting non-benchmark data.
+            Err(_) => false,
+        };
+        if base_empty && provider.rmdir_recursive(&bench_base).await.is_ok() {
+            // Hard-purge the soft-deleted base on consumer clouds, mirroring
+            // the test_root trash purge above.
+            let _ = provider.delete_permanent(&bench_base).await;
+        }
+    }
     let _ = provider.disconnect().await;
+
+    // Close the IP fairness check (issue #368 #1) for a standalone run: if the
+    // public IP changed since the start, flag the run as not comparable.
+    if let Some(start_ip) = &start_public_ip {
+        if let Some(end_ip) = benchmark_public_ip().await {
+            if &end_ip != start_ip {
+                errors.push(BENCHMARK_IP_CHANGED_WARNING.to_string());
+            }
+        }
+    }
+
+    // Yandex region hint (issue #368 #3): Yandex Disk endpoints are unreachable
+    // from some countries and VPN exit nodes and the request hangs until the
+    // timeout. If any error references a Yandex host, add a one-line hint so the
+    // user understands the failure is region/VPN related, not an AeroFTP bug.
+    if errors.iter().any(|e| e.to_lowercase().contains("yandex")) {
+        errors.push(
+            "hint: Yandex Disk is unreachable from some countries and VPN exit nodes; if it hangs or fails to connect, switch your VPN region and re-run".to_string(),
+        );
+    }
 
     let total_duration_ms = total_start.elapsed().as_millis() as u64;
 
@@ -36371,11 +36535,30 @@ fn results_have_fatal(results: &[BenchmarkResult]) -> bool {
     results.iter().any(|r| r.errors.fatal > 0)
 }
 
+/// Transport/protocol label for a report (issue #368 #5): the `provider_type`
+/// shared by all of a profile's results, e.g. `webdav`, `s3`, `googledrive`.
+/// Disambiguates the multi-protocol profiles (pCloud OAuth vs WebDAV, MEGA API
+/// vs MEGAcmd WebDAV) the reporter previously had to rename by hand.
+fn benchmark_report_protocol(report: &BenchmarkReport) -> String {
+    report
+        .results
+        .first()
+        .map(|r| r.protocol.clone())
+        .unwrap_or_default()
+}
+
 fn print_benchmark_text_report(report: &BenchmarkReport) {
     let color_on = use_color();
+    let protocol = benchmark_report_protocol(report);
+    let protocol_cell = if protocol.is_empty() {
+        String::new()
+    } else {
+        format!(" protocol={}", protocol)
+    };
     println!(
-        "Benchmark complete: level={:?} runs={} bytes={} duration={}ms",
+        "Benchmark complete: level={:?}{} runs={} bytes={} duration={}ms",
         report.level,
+        protocol_cell,
         report.summary.total_runs,
         format_size(report.summary.total_bytes_transferred),
         report.summary.total_duration_ms
@@ -36607,7 +36790,15 @@ async fn cmd_benchmark_compare(
     let mut failed: Vec<String> = Vec::new();
     let mut worst = 0i32;
 
-    for &i in &idxs {
+    // IP fairness check (issue #368 #1): one snapshot spanning the whole sweep.
+    // The reporter's VPN switched country mid-run, silently invalidating every
+    // profile measured after the change. Capturing the public IP once before
+    // the first profile and once after the last lets us flag the entire
+    // comparison as not comparable. Best-effort: a None snapshot disables it.
+    let sweep_start_ip = benchmark_public_ip().await;
+
+    let total_profiles = idxs.len();
+    for (pos, &i) in idxs.iter().enumerate() {
         let name = profiles[i]
             .get("name")
             .and_then(|v| v.as_str())
@@ -36615,7 +36806,16 @@ async fn cmd_benchmark_compare(
             .to_string();
         if !cli.quiet && matches!(format, OutputFormat::Text) {
             println!();
-            println!("{}", paint_bold(&format!("=== {} ===", name), use_color()));
+            // Progress indication (issue #368 #2): show position in the sweep
+            // so the user is not blindly waiting through a long multi-profile
+            // benchmark.
+            println!(
+                "{}",
+                paint_bold(
+                    &format!("=== [{}/{}] {} ===", pos + 1, total_profiles, name),
+                    use_color()
+                )
+            );
         }
         let before = sink.borrow().len();
         let code = cmd_benchmark(
@@ -36642,6 +36842,12 @@ async fn cmd_benchmark_compare(
         }
         worst = worst.max(code);
     }
+
+    // Close the sweep-wide IP fairness check (issue #368 #1).
+    let ip_changed = match (&sweep_start_ip, benchmark_public_ip().await) {
+        (Some(start), Some(end)) => start != &end,
+        _ => false,
+    };
 
     let entries = sink.into_inner();
 
@@ -36681,6 +36887,16 @@ async fn cmd_benchmark_compare(
                     println!();
                     println!("Skipped (failed to benchmark): {}", failed.join(", "));
                 }
+                if ip_changed {
+                    println!();
+                    println!(
+                        "{}",
+                        paint_bold(
+                            &format!("WARNING: {}", BENCHMARK_IP_CHANGED_WARNING),
+                            use_color()
+                        )
+                    );
+                }
             }
         }
     }
@@ -36707,14 +36923,14 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
         .iter()
         .any(|(_, r)| r.results.iter().any(|x| x.files_per_second.is_some()));
     if has_many {
-        let mut headers: Vec<&str> = vec!["profile"];
+        let mut headers: Vec<&str> = vec!["profile", "protocol"];
         headers.extend_from_slice(&many_ops);
-        let mut aligns = vec![true];
+        let mut aligns = vec![true, true];
         aligns.extend(many_ops.iter().map(|_| false));
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
-                let mut row = vec![name.clone()];
+                let mut row = vec![name.clone(), benchmark_report_protocol(r)];
                 for op in many_ops {
                     let cell = r
                         .results
@@ -36745,8 +36961,8 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
             .any(|x| x.files_per_second.is_none() && x.throughput_mbps.is_some())
     });
     if has_single {
-        let headers = ["profile", "upload Mbps", "download Mbps"];
-        let aligns = [true, false, false];
+        let headers = ["profile", "protocol", "upload Mbps", "download Mbps"];
+        let aligns = [true, true, false, false];
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
@@ -36758,7 +36974,12 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
                         .map(|t| format!("{:.2}", t.p50))
                         .unwrap_or_else(|| "-".to_string())
                 };
-                vec![name.clone(), cell(single_ops[0]), cell(single_ops[1])]
+                vec![
+                    name.clone(),
+                    benchmark_report_protocol(r),
+                    cell(single_ops[0]),
+                    cell(single_ops[1]),
+                ]
             })
             .collect();
         println!();
@@ -58651,6 +58872,41 @@ mod tests {
     fn benchmark_resolve_config_clamps_runs() {
         let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, Some(99), None).unwrap();
         assert_eq!(cfg.runs_per_size, 20);
+    }
+
+    #[test]
+    fn mkdir_ladder_builds_relative_cumulative_paths() {
+        assert_eq!(
+            benchmark_mkdir_ladder("aeroftp-bench/rid"),
+            vec!["aeroftp-bench".to_string(), "aeroftp-bench/rid".to_string()]
+        );
+    }
+
+    #[test]
+    fn mkdir_ladder_preserves_leading_slash() {
+        assert_eq!(
+            benchmark_mkdir_ladder("/Private/aeroftp-bench/rid"),
+            vec![
+                "/Private".to_string(),
+                "/Private/aeroftp-bench".to_string(),
+                "/Private/aeroftp-bench/rid".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn mkdir_ladder_empty_for_root_or_blank() {
+        assert!(benchmark_mkdir_ladder("").is_empty());
+        assert!(benchmark_mkdir_ladder("/").is_empty());
+        assert!(benchmark_mkdir_ladder("///").is_empty());
+    }
+
+    #[test]
+    fn mkdir_ladder_ignores_trailing_and_duplicate_slashes() {
+        assert_eq!(
+            benchmark_mkdir_ladder("a//b/"),
+            vec!["a".to_string(), "a/b".to_string()]
+        );
     }
 
     #[test]
