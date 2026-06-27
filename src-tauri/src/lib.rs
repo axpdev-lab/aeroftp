@@ -1663,6 +1663,7 @@ async fn rclone_crypt_provider_download_file(
 
 #[tauri::command]
 async fn rclone_crypt_provider_upload_file(
+    app: AppHandle,
     provider_state: State<'_, provider_commands::ProviderState>,
     rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
     vault_id: String,
@@ -1757,12 +1758,85 @@ async fn rclone_crypt_provider_upload_file(
         .await
         .map_err(|e| format!("Failed to write encrypted temp file: {}", e))?;
 
+    // #364: drive the Transfer Queue per-item bar for the crypt-overlay upload.
+    // The frontend adopts the queue item by plaintext name; the id must not
+    // contain `folder` so progress routes through the per-file path.
+    let upload_total = encrypted_payload.len() as u64;
+    let transfer_id = format!(
+        "rclone-crypt-file-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    );
+    emit_crypt_file_event(
+        &app,
+        "start",
+        &transfer_id,
+        &plain_name,
+        &remote_encrypted_path,
+        0,
+        upload_total,
+        0,
+        None,
+    );
+    let progress_app = app.clone();
+    let progress_id = transfer_id.clone();
+    let progress_name = plain_name.clone();
+    let progress_remote = remote_encrypted_path.clone();
+    let started = std::time::Instant::now();
+    let on_progress: Box<dyn Fn(u64, u64) + Send> = Box::new(move |transferred, total| {
+        let elapsed = started.elapsed().as_secs_f64();
+        let speed = if elapsed > 0.0 {
+            (transferred as f64 / elapsed) as u64
+        } else {
+            0
+        };
+        emit_crypt_file_event(
+            &progress_app,
+            "progress",
+            &progress_id,
+            &progress_name,
+            &progress_remote,
+            transferred,
+            total,
+            speed,
+            None,
+        );
+    });
+
     let upload_result = provider
-        .upload(&temp_path.to_string_lossy(), &remote_encrypted_path, None)
+        .upload(
+            &temp_path.to_string_lossy(),
+            &remote_encrypted_path,
+            Some(on_progress),
+        )
         .await
         .map_err(|e| format!("Failed to upload encrypted file: {}", e));
 
     let _ = tokio::fs::remove_file(&temp_path).await;
+    match &upload_result {
+        Ok(()) => emit_crypt_file_event(
+            &app,
+            "complete",
+            &transfer_id,
+            &plain_name,
+            &remote_encrypted_path,
+            upload_total,
+            upload_total,
+            0,
+            None,
+        ),
+        Err(e) => emit_crypt_file_event(
+            &app,
+            "error",
+            &transfer_id,
+            &plain_name,
+            &remote_encrypted_path,
+            0,
+            upload_total,
+            0,
+            Some(e.clone()),
+        ),
+    }
     upload_result?;
     Ok(remote_encrypted_path)
 }
@@ -1776,6 +1850,140 @@ async fn rclone_crypt_provider_upload_file(
 // inside AeroFTP were still missing.
 
 const RCLONE_OVERLAY_MAX_DEPTH: usize = 64;
+
+/// Count regular files under a local directory tree for folder-upload progress
+/// totals (#364). Bounded by [`RCLONE_OVERLAY_MAX_DEPTH`] like the uploader and
+/// best-effort: unreadable entries are skipped. `DirEntry::file_type` is used so
+/// symlinks are classified without an extra stat, matching the uploader's skip.
+pub(crate) fn rclone_overlay_count_local_files(root: &std::path::Path) -> u64 {
+    let mut total: u64 = 0;
+    let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
+    while let Some((dir, depth)) = stack.pop() {
+        if depth >= RCLONE_OVERLAY_MAX_DEPTH {
+            continue;
+        }
+        let rd = match std::fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        for entry in rd.flatten() {
+            let ft = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            if ft.is_symlink() {
+                continue;
+            }
+            if ft.is_dir() {
+                stack.push((entry.path(), depth + 1));
+            } else if ft.is_file() {
+                total += 1;
+            }
+        }
+    }
+    total
+}
+
+/// Emit a Transfer Queue `transfer_event` for a crypt-overlay folder upload so
+/// the per-item progress bar and the file-count badge advance in real time
+/// (#364). The crypt commands stage and upload encrypted blobs themselves, so
+/// they have to surface the same events the normal folder path emits. The
+/// `transfer_id` deliberately contains `folder` (the frontend routes folder
+/// progress on that substring) and `filename` is the plaintext root folder name
+/// so the existing queue item is adopted by name. `transferred`/`total` carry
+/// file counts, matching the folder-progress contract.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_crypt_folder_event(
+    app: &AppHandle,
+    event_type: &str,
+    transfer_id: &str,
+    folder_name: &str,
+    local_path: &str,
+    completed_files: u64,
+    total_files: u64,
+    speed_bps: u64,
+    error: Option<String>,
+) {
+    let percentage = if total_files > 0 {
+        ((completed_files as f64 / total_files as f64) * 100.0).round() as u8
+    } else {
+        0
+    };
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: event_type.to_string(),
+            transfer_id: transfer_id.to_string(),
+            filename: folder_name.to_string(),
+            direction: "upload".to_string(),
+            message: error,
+            progress: Some(TransferProgress {
+                transfer_id: transfer_id.to_string(),
+                filename: folder_name.to_string(),
+                transferred: completed_files,
+                total: total_files,
+                percentage,
+                speed_bps,
+                eta_seconds: 0,
+                direction: "upload".to_string(),
+                total_files: Some(total_files),
+                path: Some(local_path.to_string()),
+            }),
+            path: Some(local_path.to_string()),
+            delta_stats: None,
+            fallback_reason: None,
+        },
+    );
+}
+
+/// Emit a Transfer Queue `transfer_event` for a single crypt-overlay file
+/// upload (#364). `total_files` is omitted so the frontend routes this through
+/// the per-file progress path (`setProgress`), and the `transfer_id` must NOT
+/// contain `folder`. `filename` is the plaintext name so the queue item is
+/// adopted by name; `transferred`/`total` are upload (ciphertext) byte counts.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn emit_crypt_file_event(
+    app: &AppHandle,
+    event_type: &str,
+    transfer_id: &str,
+    plain_name: &str,
+    remote_path: &str,
+    transferred: u64,
+    total: u64,
+    speed_bps: u64,
+    error: Option<String>,
+) {
+    let percentage = if total > 0 {
+        ((transferred as f64 / total as f64) * 100.0).round() as u8
+    } else {
+        0
+    };
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: event_type.to_string(),
+            transfer_id: transfer_id.to_string(),
+            filename: plain_name.to_string(),
+            direction: "upload".to_string(),
+            message: error,
+            progress: Some(TransferProgress {
+                transfer_id: transfer_id.to_string(),
+                filename: plain_name.to_string(),
+                transferred,
+                total,
+                percentage,
+                speed_bps,
+                eta_seconds: 0,
+                direction: "upload".to_string(),
+                total_files: None,
+                path: Some(remote_path.to_string()),
+            }),
+            path: Some(remote_path.to_string()),
+            delta_stats: None,
+            fallback_reason: None,
+        },
+    );
+}
 
 fn rclone_overlay_name_is_encrypted(keys: &rclone_crypt::RcloneCryptKeys, is_dir: bool) -> bool {
     keys.filename_encryption != rclone_crypt::FilenameEncryption::Off
@@ -1982,6 +2190,7 @@ fn sanitize_local_name(name: &str) -> String {
 
 #[tauri::command]
 async fn rclone_crypt_provider_upload_folder(
+    app: AppHandle,
     provider_state: State<'_, provider_commands::ProviderState>,
     rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
     vault_id: String,
@@ -2038,6 +2247,28 @@ async fn rclone_crypt_provider_upload_folder(
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .ok_or_else(|| "Cannot determine root folder name".to_string())?;
+
+    // #364: surface Transfer Queue progress for the crypt-overlay folder upload.
+    // Pre-count the tree so the per-item bar and the file-count badge advance as
+    // each encrypted file lands, then drive them with folder progress events.
+    let total_files = rclone_overlay_count_local_files(std::path::Path::new(&local_path));
+    let transfer_id = format!(
+        "rclone-crypt-folder-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    );
+    let started = std::time::Instant::now();
+    emit_crypt_folder_event(
+        &app,
+        "start",
+        &transfer_id,
+        &local_root_name,
+        &local_path,
+        0,
+        total_files,
+        0,
+        None,
+    );
 
     let mut files_uploaded: u64 = 0;
 
@@ -2134,6 +2365,23 @@ async fn rclone_crypt_provider_upload_folder(
                     let _ = tokio::fs::remove_file(&temp).await;
                     up?;
                     files_uploaded += 1;
+                    let elapsed = started.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 {
+                        (cipher.len() as f64 / elapsed) as u64
+                    } else {
+                        0
+                    };
+                    emit_crypt_folder_event(
+                        &app,
+                        "progress",
+                        &transfer_id,
+                        &local_root_name,
+                        &local_path,
+                        files_uploaded,
+                        total_files.max(files_uploaded),
+                        speed,
+                        None,
+                    );
                 }
             }
         }
@@ -2142,6 +2390,30 @@ async fn rclone_crypt_provider_upload_folder(
     .await;
 
     let _ = provider.cd(&saved_pwd).await;
+    match &walk_result {
+        Ok(()) => emit_crypt_folder_event(
+            &app,
+            "complete",
+            &transfer_id,
+            &local_root_name,
+            &local_path,
+            files_uploaded,
+            total_files.max(files_uploaded),
+            0,
+            None,
+        ),
+        Err(e) => emit_crypt_folder_event(
+            &app,
+            "error",
+            &transfer_id,
+            &local_root_name,
+            &local_path,
+            files_uploaded,
+            total_files.max(files_uploaded),
+            0,
+            Some(e.clone()),
+        ),
+    }
     walk_result?;
 
     Ok(format!(

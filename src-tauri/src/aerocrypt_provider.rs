@@ -26,7 +26,7 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 use tokio::sync::Mutex;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -581,6 +581,7 @@ async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(
 /// overlay directory.
 #[tauri::command]
 pub async fn aerocrypt_provider_upload_file(
+    app: AppHandle,
     provider_state: State<'_, ProviderState>,
     aerocrypt_state: State<'_, AeroCryptState>,
     vault_id: String,
@@ -646,12 +647,85 @@ pub async fn aerocrypt_provider_upload_file(
         .await
         .map_err(|e| format!("Failed to write encrypted temp file: {}", e))?;
 
+    // #364: drive the Transfer Queue per-item bar for the AeroCrypt overlay
+    // upload (parity with the rclone-crypt path). Adopted by plaintext name; the
+    // id must not contain `folder` so it routes through the per-file path.
+    let upload_total = encrypted_payload.len() as u64;
+    let transfer_id = format!(
+        "aerocrypt-file-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    );
+    crate::emit_crypt_file_event(
+        &app,
+        "start",
+        &transfer_id,
+        &plain_name,
+        &remote_encrypted_path,
+        0,
+        upload_total,
+        0,
+        None,
+    );
+    let progress_app = app.clone();
+    let progress_id = transfer_id.clone();
+    let progress_name = plain_name.clone();
+    let progress_remote = remote_encrypted_path.clone();
+    let started = std::time::Instant::now();
+    let on_progress: Box<dyn Fn(u64, u64) + Send> = Box::new(move |transferred, total| {
+        let elapsed = started.elapsed().as_secs_f64();
+        let speed = if elapsed > 0.0 {
+            (transferred as f64 / elapsed) as u64
+        } else {
+            0
+        };
+        crate::emit_crypt_file_event(
+            &progress_app,
+            "progress",
+            &progress_id,
+            &progress_name,
+            &progress_remote,
+            transferred,
+            total,
+            speed,
+            None,
+        );
+    });
+
     let upload_result = provider
-        .upload(&temp_path.to_string_lossy(), &remote_encrypted_path, None)
+        .upload(
+            &temp_path.to_string_lossy(),
+            &remote_encrypted_path,
+            Some(on_progress),
+        )
         .await
         .map_err(|e| format!("Failed to upload encrypted file: {}", e));
 
     let _ = tokio::fs::remove_file(&temp_path).await;
+    match &upload_result {
+        Ok(()) => crate::emit_crypt_file_event(
+            &app,
+            "complete",
+            &transfer_id,
+            &plain_name,
+            &remote_encrypted_path,
+            upload_total,
+            upload_total,
+            0,
+            None,
+        ),
+        Err(e) => crate::emit_crypt_file_event(
+            &app,
+            "error",
+            &transfer_id,
+            &plain_name,
+            &remote_encrypted_path,
+            0,
+            upload_total,
+            0,
+            Some(e.clone()),
+        ),
+    }
     upload_result?;
     Ok(remote_encrypted_path)
 }
@@ -753,6 +827,7 @@ pub async fn aerocrypt_provider_download_folder(
 /// as an encrypted-named subtree under `remote_parent_path` (or the current dir).
 #[tauri::command]
 pub async fn aerocrypt_provider_upload_folder(
+    app: AppHandle,
     provider_state: State<'_, ProviderState>,
     aerocrypt_state: State<'_, AeroCryptState>,
     vault_id: String,
@@ -788,6 +863,26 @@ pub async fn aerocrypt_provider_upload_folder(
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .ok_or_else(|| "Cannot determine root folder name".to_string())?;
+
+    // #364: surface Transfer Queue folder progress (parity with rclone-crypt).
+    let total_files = crate::rclone_overlay_count_local_files(std::path::Path::new(&local_path));
+    let transfer_id = format!(
+        "aerocrypt-folder-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    );
+    let started = std::time::Instant::now();
+    crate::emit_crypt_folder_event(
+        &app,
+        "start",
+        &transfer_id,
+        &local_root_name,
+        &local_path,
+        0,
+        total_files,
+        0,
+        None,
+    );
 
     let mut files_uploaded: u64 = 0;
 
@@ -878,6 +973,23 @@ pub async fn aerocrypt_provider_upload_folder(
                     let _ = tokio::fs::remove_file(&temp).await;
                     up?;
                     files_uploaded += 1;
+                    let elapsed = started.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 {
+                        (cipher.len() as f64 / elapsed) as u64
+                    } else {
+                        0
+                    };
+                    crate::emit_crypt_folder_event(
+                        &app,
+                        "progress",
+                        &transfer_id,
+                        &local_root_name,
+                        &local_path,
+                        files_uploaded,
+                        total_files.max(files_uploaded),
+                        speed,
+                        None,
+                    );
                 }
             }
         }
@@ -886,6 +998,30 @@ pub async fn aerocrypt_provider_upload_folder(
     .await;
 
     let _ = provider.cd(&saved_pwd).await;
+    match &walk_result {
+        Ok(()) => crate::emit_crypt_folder_event(
+            &app,
+            "complete",
+            &transfer_id,
+            &local_root_name,
+            &local_path,
+            files_uploaded,
+            total_files.max(files_uploaded),
+            0,
+            None,
+        ),
+        Err(e) => crate::emit_crypt_folder_event(
+            &app,
+            "error",
+            &transfer_id,
+            &local_root_name,
+            &local_path,
+            files_uploaded,
+            total_files.max(files_uploaded),
+            0,
+            Some(e.clone()),
+        ),
+    }
     walk_result?;
 
     Ok(format!(
