@@ -7087,10 +7087,65 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
     validate_path(&path)?;
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        // Reveal the file in the file manager (select it), to match the Windows
+        // `/select,` and macOS `-R` behaviour. Plain `xdg-open` on a file would
+        // OPEN it in its default app instead of revealing it, so for a file we
+        // ask the file manager to show-and-select it via the D-Bus
+        // org.freedesktop.FileManager1.ShowItems method (Nautilus, Dolphin,
+        // Nemo, Caja), falling back to opening the parent directory when that
+        // service is unavailable (minimal distros). Directories open directly.
+        let is_file = std::fs::metadata(&path)
+            .map(|m| m.is_file())
+            .unwrap_or(false);
+        if is_file {
+            // Percent-encode the path into a file:// URI (keep `/` separators),
+            // so names with spaces or quotes cannot break the D-Bus array literal.
+            let encoded: String = path
+                .chars()
+                .map(|c| match c {
+                    'A'..='Z' | 'a'..='z' | '0'..='9' | '/' | '-' | '_' | '.' | '~' => {
+                        c.to_string()
+                    }
+                    _ => c
+                        .to_string()
+                        .bytes()
+                        .map(|b| format!("%{:02X}", b))
+                        .collect(),
+                })
+                .collect();
+            let uri = format!("file://{}", encoded);
+            let revealed = std::process::Command::new("gdbus")
+                .args([
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.freedesktop.FileManager1",
+                    "--object-path",
+                    "/org/freedesktop/FileManager1",
+                    "--method",
+                    "org.freedesktop.FileManager1.ShowItems",
+                    &format!("[\"{}\"]", uri),
+                    "",
+                ])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if !revealed {
+                let parent = std::path::Path::new(&path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.clone());
+                std::process::Command::new("xdg-open")
+                    .arg(&parent)
+                    .spawn()
+                    .map_err(|e| format!("Failed to open file manager: {}", e))?;
+            }
+        } else {
+            std::process::Command::new("xdg-open")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        }
     }
 
     #[cfg(target_os = "windows")]

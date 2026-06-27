@@ -833,7 +833,8 @@ function InboxModal({
   }, []);
 
   // Reveal a specific received file in the OS file manager (selects it on
-  // Windows/macOS, opens its folder on Linux).
+  // Windows/macOS, and on Linux via the file manager's D-Bus ShowItems, with a
+  // fallback to opening the parent folder when that service is unavailable).
   const revealFile = useCallback((path: string) => {
     openInFileManager(path).catch(() => {
       /* best-effort */
