@@ -20016,32 +20016,32 @@ fn cmd_profile_relocate_user(
         }
     }
 
+    // A Copy into a target that already holds the drive inserts nothing (dedup
+    // skip). A Move always materialises the profile (#366), so it reports a real
+    // relocation even when an equivalent already existed.
+    let dedup_skipped = relocation.already_present && !relocation.inserted;
     match format {
         OutputFormat::Json => {
             print_json(&serde_json::json!({
-                "status": if relocation.already_present { "already_present" } else { "ok" },
+                "status": if dedup_skipped { "already_present" } else { "ok" },
                 "action": if remove_from_source { "move" } else { "copy" },
                 "source_id": relocation.source_profile_id,
-                "new_id": if relocation.already_present { serde_json::Value::Null } else { serde_json::Value::String(relocation.new_profile_id.clone()) },
+                "new_id": if relocation.inserted { serde_json::Value::String(relocation.new_profile_id.clone()) } else { serde_json::Value::Null },
                 "name": relocation.profile_name,
                 "from_user": source_user.name,
                 "to_user": target_user.name,
                 "moved": relocation.moved,
                 "already_present": relocation.already_present,
+                "inserted": relocation.inserted,
             }));
         }
         OutputFormat::Text => {
-            if relocation.already_present {
+            if dedup_skipped {
                 println!(
-                    "'{}' is already saved in '{}'; {} skipped{}.",
+                    "'{}' is already saved in '{}'; {} skipped.",
                     relocation.profile_name,
                     target_user.name,
                     verb.to_lowercase(),
-                    if relocation.moved {
-                        " (source removed)"
-                    } else {
-                        ""
-                    }
                 );
             } else {
                 let past = if remove_from_source {

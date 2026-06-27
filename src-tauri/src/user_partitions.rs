@@ -1412,8 +1412,15 @@ pub struct ProfileRelocation {
     /// True for Move/Cut (the source row was deleted), false for Copy.
     pub moved: bool,
     /// True when the target partition already contained an equivalent server
-    /// (same dedup identity): the insert was skipped to avoid a duplicate.
+    /// (same dedup identity). For a Copy this means the insert was skipped to
+    /// avoid a duplicate; for a Move the profile is still materialised (see
+    /// `inserted`) so the source can be removed without losing the only copy.
     pub already_present: bool,
+    /// True when a fresh profile row was actually written into the target
+    /// partition. Always true for a Move (it must materialise before the source
+    /// is deleted, #366), and true for a Copy unless `already_present` skipped
+    /// it. Gates the credential mirror so a moved profile keeps its secret.
+    pub inserted: bool,
 }
 
 /// Copy or move a single server profile from `source_user_id` into
@@ -1487,15 +1494,28 @@ pub fn relocate_server_profile(
         }
     }
 
-    // 5. Insert into the target (prepend, like Duplicate) unless it is a dup.
-    if !already_present {
+    // 5. Materialise the profile in the target (prepend, like Duplicate).
+    //    Copy de-dups: when an equivalent server is already saved there the
+    //    insert is skipped to avoid a duplicate. A Move ALWAYS inserts, so the
+    //    moved profile is guaranteed to exist in the target before the source
+    //    row is removed in step 6. This is the #366 data-loss fix: previously
+    //    the insert was skipped on `already_present` while the source was still
+    //    deleted, so a stale or false-positive dedup probe destroyed the only
+    //    copy. Insert never being skipped on a Move makes that impossible.
+    let inserted = if remove_from_source || !already_present {
         let mut new_list = Vec::with_capacity(target_profiles.len() + 1);
         new_list.push(relocated);
         new_list.extend(target_profiles);
         write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
-    }
+        true
+    } else {
+        false
+    };
 
-    // 6. Move/Cut: drop the source row from the active partition.
+    // 6. Move/Cut: drop the source row from the active partition. Safe now: a
+    //    Move always inserted above, so the profile lives in the target before
+    //    we delete it here. A failed insert returns early via `?`, leaving the
+    //    source untouched.
     if remove_from_source {
         let remaining: Vec<Value> = source_profiles
             .into_iter()
@@ -1511,6 +1531,7 @@ pub fn relocate_server_profile(
         target_user_id,
         moved: remove_from_source,
         already_present,
+        inserted,
     })
 }
 
@@ -1534,8 +1555,10 @@ fn relocate_server_credential_dual(
     let new_key = format!("server_{}", relocation.new_profile_id);
 
     // Copy onto the new id only when a fresh target row was inserted; a dedup
-    // no-op leaves the target's existing secret untouched.
-    if !relocation.already_present {
+    // no-op (Copy into a target that already has the drive) leaves the target's
+    // existing secret untouched. A Move always inserts (#366), so its secret
+    // always follows the profile into the target before the source is dropped.
+    if relocation.inserted {
         if let Ok(Some(secret)) =
             read_credential_with_fallback(conn, store, root_key, source_user_id, &source_key)
         {
@@ -5403,6 +5426,7 @@ mod tests {
         .expect("copy");
         assert!(!report.moved);
         assert!(!report.already_present);
+        assert!(report.inserted);
         assert_eq!(report.new_profile_id, "srv_new");
         assert_eq!(report.profile_name, "My SFTP");
 
@@ -5437,6 +5461,7 @@ mod tests {
         .expect("move");
         assert!(report.moved);
         assert!(!report.already_present);
+        assert!(report.inserted);
 
         let source = list_server_profiles_for(&conn, &root, default.id).expect("source list");
         assert!(
@@ -5530,8 +5555,62 @@ mod tests {
         )
         .expect("second copy");
         assert!(report.already_present);
+        assert!(!report.inserted, "a Copy dedup hit must not insert");
         let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
         assert_eq!(target.len(), 1, "dedup must not create a second copy");
+    }
+
+    #[test]
+    fn relocate_move_materialises_even_when_target_has_equivalent() {
+        // #366 regression: a Move must never delete the source unless the moved
+        // profile is materialised in the target. The previous code skipped the
+        // insert on a dedup hit yet still deleted the source, so the only copy
+        // was lost. The probe still reports `already_present`, but the move must
+        // insert first and only then drop the source.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
+            .expect("seed source profile");
+        // Bob already holds an equivalent server (same host/user, different id).
+        relocate_server_profile(
+            &mut conn, &root, default.id, bob.id, "srv_src", "srv_dup", None, false,
+        )
+        .expect("seed equivalent in target");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_src",
+            "srv_moved",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("move with equivalent present");
+        assert!(report.moved);
+        assert!(
+            report.already_present,
+            "an equivalent existed in the target"
+        );
+        assert!(
+            report.inserted,
+            "a move must materialise the profile in the target"
+        );
+
+        // Source removed (it is a move) and the moved profile now lives in the
+        // target: no data loss even though the dedup probe matched.
+        let source = list_server_profiles_for(&conn, &root, default.id).expect("source list");
+        assert!(source.is_empty(), "source removed after move");
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+        assert!(
+            target.iter().any(|p| p["id"] == "srv_moved"),
+            "moved profile must exist in the target"
+        );
     }
 
     #[test]

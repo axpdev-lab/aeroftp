@@ -12,6 +12,7 @@ import {
     type UserMetadata,
 } from '../utils/userPartitions';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { UserAvatar } from './UserAvatar';
 
 // N4 (discussion #270): pick a destination account and copy/move a saved
 // server profile into its vault partition. The source is always the active
@@ -120,7 +121,10 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
                 target.hasPassphrase ? passphrase : null,
             );
             const name = result.profileName || profile.name;
-            if (result.alreadyPresent) {
+            // A Copy into a target that already holds the drive inserts nothing
+            // (dedup skip). A Move always materialises the profile (inserted),
+            // so it reports success even when an equivalent already existed.
+            if (result.alreadyPresent && !result.inserted) {
                 toastEvent(
                     'warning',
                     t(isMove ? 'savedServers.moveToUser' : 'savedServers.copyToUser'),
@@ -214,15 +218,12 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
                                                     : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
                                             }`}
                                         >
-                                            <span
-                                                className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] flex-shrink-0"
-                                                style={{
-                                                    backgroundColor: u.avatarColor || '#64748b',
-                                                    color: '#fff',
-                                                }}
-                                            >
-                                                {u.avatarEmoji || u.name.charAt(0).toUpperCase()}
-                                            </span>
+                                            <UserAvatar
+                                                name={u.name}
+                                                avatarEmoji={u.avatarEmoji}
+                                                avatarColor={u.avatarColor}
+                                                size="sm"
+                                            />
                                             <span className="flex-1 truncate">{u.name}</span>
                                             {u.hasPassphrase && (
                                                 <Lock size={12} className="text-gray-400 flex-shrink-0" />

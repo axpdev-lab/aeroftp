@@ -195,8 +195,10 @@ export const findCrossUserDedup = (
 // side (same `srv_<ts>_<rand>` convention as Duplicate) so the relocated copy
 // is independent of the original; the backend copies the `server_<id>`
 // credential onto it. A passphrase is required only when the target account is
-// protected. When the target already holds the same server the insert is
-// skipped (`alreadyPresent`).
+// protected. When the target already holds the same server a Copy is skipped
+// (`alreadyPresent` true, `inserted` false), while a Move always materialises
+// the profile in the target (`inserted` true) before removing the source, so it
+// can never lose the only copy (#366).
 export interface ProfileRelocation {
     sourceProfileId: string;
     newProfileId: string;
@@ -204,6 +206,7 @@ export interface ProfileRelocation {
     targetUserId: number;
     moved: boolean;
     alreadyPresent: boolean;
+    inserted: boolean;
 }
 
 export const relocateServerProfile = (
