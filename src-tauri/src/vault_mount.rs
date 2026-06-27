@@ -29,6 +29,7 @@ use std::sync::LazyLock;
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
+#[cfg(target_os = "linux")]
 use crate::mount_manager::locate_cli;
 
 struct ActiveVaultMount {
@@ -55,6 +56,9 @@ pub struct VaultMountInfo {
 }
 
 /// Reduce an arbitrary key to a safe single path segment for the mountpoint dir.
+/// Only the Linux FUSE mount path uses this; kept under `test` so its unit test
+/// builds on every platform.
+#[cfg(any(target_os = "linux", test))]
 fn sanitize(key: &str) -> String {
     let s: String = key
         .chars()
@@ -68,6 +72,7 @@ fn sanitize(key: &str) -> String {
 
 /// Base directory for ephemeral vault mountpoints (`0700`). Prefers the per-user
 /// runtime dir (tmpfs, auto-cleaned at logout); falls back to `~/.cache`.
+#[cfg(target_os = "linux")]
 fn mount_base_dir() -> Result<PathBuf, String> {
     let base = if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
         if !rt.is_empty() {
@@ -83,21 +88,21 @@ fn mount_base_dir() -> Result<PathBuf, String> {
     Ok(base)
 }
 
+#[cfg(target_os = "linux")]
 fn cache_fallback() -> Result<PathBuf, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     Ok(PathBuf::from(home).join(".cache/aeroftp/aeromount"))
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn set_private(p: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700));
 }
-#[cfg(not(unix))]
-fn set_private(_p: &std::path::Path) {}
 
 /// Create a fresh empty `0700` mountpoint for `key`, clearing any stale leftover
 /// (an empty dir from a previous, already-dead mount).
+#[cfg(target_os = "linux")]
 fn make_mountpoint(key: &str) -> Result<PathBuf, String> {
     let dir = mount_base_dir()?.join(sanitize(key));
     if dir.exists() {
