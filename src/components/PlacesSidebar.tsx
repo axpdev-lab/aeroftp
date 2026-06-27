@@ -383,6 +383,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
           title: t('sidebar.ejectFailed'),
           message: typeof err === 'string' ? err : String(err),
           duration: 8000,
+          // Direct user action (clicked eject) that failed: must surface even if
+          // ambient toast notifications are turned off.
+          important: true,
         },
       }));
     } finally {

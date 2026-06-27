@@ -2050,17 +2050,21 @@ interface UpdateVerificationInfo {
   // ConnectionScreen's Convert-mode flow to show the 10s Undo toast.
   useEffect(() => {
     const handler = (e: Event) => {
-      if (!showToastNotifications) return;
       const detail = (e as CustomEvent).detail as
         | {
             type?: 'success' | 'error' | 'warning' | 'info';
             title?: string;
             message?: string;
             duration?: number;
+            important?: boolean;
             action?: { label: string; onClick: () => void };
           }
         | undefined;
       if (!detail?.title) return;
+      // Ambient toasts honour the user's notifications setting, but a direct
+      // user-action failure (e.g. eject failed) marked `important` must always
+      // surface, otherwise the click looks like it silently did nothing.
+      if (!showToastNotifications && !detail.important) return;
       const type = detail.type || 'info';
       if (detail.action) {
         toast.addToastWithAction(
