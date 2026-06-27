@@ -814,7 +814,7 @@ pub async fn eject_volume(mount_point: String) -> Result<String, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        Err("Volume ejection is not yet supported on Windows".to_string())
+        eject_volume_windows(&mount_point).await
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -957,6 +957,58 @@ async fn eject_volume_macos(mount_point: &str) -> Result<String, String> {
             mount_point,
             stderr.trim()
         ))
+    }
+}
+
+/// Eject a removable volume on Windows.
+///
+/// Mirrors the tray "Safely Remove Hardware and Eject Media" behaviour by
+/// invoking the Shell.Application COM "Eject" verb on the drive, via a
+/// PowerShell child process (same shell-out strategy as the Linux/macOS arms,
+/// no extra crate dependency).
+///
+/// `mount_point` arrives as a drive root such as `E:\`; we derive the bare
+/// drive letter `E:` and validate it strictly (`^[A-Za-z]:$`) before
+/// interpolating it into the command, mirroring `validate_device_path`.
+#[cfg(target_os = "windows")]
+async fn eject_volume_windows(mount_point: &str) -> Result<String, String> {
+    // Derive the bare drive letter, e.g. "E:\\" or "E:/" or "E:" -> "E:".
+    let trimmed = mount_point.trim();
+    let drive = trimmed.trim_end_matches(|c| c == '\\' || c == '/');
+
+    // Strict validation: exactly one ASCII letter followed by a colon.
+    let bytes = drive.as_bytes();
+    let valid = bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    if !valid {
+        return Err(format!("Invalid Windows drive letter: {}", mount_point));
+    }
+
+    // Namespace(17) = ssfDRIVES (This PC); ParseName(<drive>) selects the drive;
+    // InvokeVerb('Eject') performs the safe removal.
+    let script = format!(
+        "(New-Object -comObject Shell.Application).Namespace(17).ParseName('{}').InvokeVerb('Eject')",
+        drive
+    );
+
+    let result = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute powershell: {}", e))?;
+
+    if result.status.success() {
+        let msg = format!("Volume ejected successfully: {}", drive);
+        info!("{}", msg);
+        Ok(msg)
+    } else {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        Err(format!("Failed to eject {}: {}", drive, stderr.trim()))
     }
 }
 
