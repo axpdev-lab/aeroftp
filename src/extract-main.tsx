@@ -11,12 +11,22 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import ExtractWindow from './components/ExtractWindow';
 import { I18nProvider } from './i18n';
+import { AVAILABLE_LANGUAGES, type Language } from './i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles.css';
 
+// Match the OS language (injected by the Rust open_extract_window payload), so the
+// window reads in the desktop language like the Nautilus verbs do, not whatever
+// language the main app was last left in. Falls back to the I18nProvider default
+// when the desktop language is not one we ship.
+const desktopLang = (window as { __AEROFTP_EXTRACT__?: { lang?: string } }).__AEROFTP_EXTRACT__?.lang;
+const initialLanguage = AVAILABLE_LANGUAGES.some((l) => l.code === desktopLang)
+  ? (desktopLang as Language)
+  : undefined;
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <I18nProvider>
+    <I18nProvider initialLanguage={initialLanguage}>
       <ErrorBoundary>
         <ExtractWindow />
       </ErrorBoundary>

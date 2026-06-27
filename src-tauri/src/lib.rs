@@ -9566,8 +9566,35 @@ fn parse_extract_intent(argv: &[String]) -> Option<(String, String)> {
 /// `mode`/`path` are injected as `window.__AEROFTP_EXTRACT__` before the page
 /// scripts run (same mechanism as the splash version injection). The main window
 /// is intentionally left untouched: this never boots the full app.
+/// Two-letter desktop language code from the locale environment (default "en"),
+/// so the dedicated extract window reads in the same language as the OS (and the
+/// Nautilus verbs), not whatever language the main app was last left in.
+fn detect_desktop_lang() -> String {
+    for var in ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(val) = std::env::var(var) {
+            let code = val
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .split('.')
+                .next()
+                .unwrap_or("")
+                .split('_')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            if !code.is_empty() {
+                return code;
+            }
+        }
+    }
+    "en".to_string()
+}
+
 fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
-    let payload = serde_json::json!({ "mode": mode, "path": path }).to_string();
+    let payload = serde_json::json!({ "mode": mode, "path": path, "lang": detect_desktop_lang() })
+        .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
 
     let url: WebviewUrl = {
@@ -15859,6 +15886,23 @@ pub async fn extract_rar_core(
     create_subfolder: bool,
 ) -> Result<String, String> {
     extract_rar(archive_path, output_dir, password, create_subfolder).await
+}
+
+// Encryption probes for the CLI fast path: `aeroftp extract` checks these before
+// creating any output directory, so an encrypted archive extracted without a
+// password fails cleanly (exit 6) instead of leaving an empty destination folder
+// behind (Deliverable G: the file-manager "Extract to folder" verb shells the CLI
+// first, then falls back to the dedicated password window).
+pub async fn is_zip_encrypted_core(archive_path: String) -> Result<bool, String> {
+    is_zip_encrypted(archive_path).await
+}
+
+pub async fn is_7z_encrypted_core(archive_path: String) -> Result<bool, String> {
+    is_7z_encrypted(archive_path).await
+}
+
+pub async fn is_rar_encrypted_core(archive_path: String) -> Result<bool, String> {
+    is_rar_encrypted(archive_path).await
 }
 
 // ============ Mount Manager Commands (T-MOUNT-MANAGER) ============

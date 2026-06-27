@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openFolderDialog } from '@tauri-apps/plugin-dialog';
-import { Eye, EyeOff, FolderOpen, Loader2, Lock, CheckCircle2, XCircle } from 'lucide-react';
+import { Eye, EyeOff, FolderOpen, Loader2, Lock, CheckCircle2, XCircle, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import {
     type ArchiveKind,
@@ -20,6 +20,8 @@ import { TransferToastContainer } from './Transfer/TransferToastContainer';
 interface ExtractPayload {
     mode: 'here' | 'to';
     path: string;
+    /** Two-letter desktop language code, so the window matches the OS language. */
+    lang?: string;
 }
 
 declare global {
@@ -38,7 +40,7 @@ function splitPath(p: string): { dir: string; name: string } {
     return { dir: p.slice(0, idx) || '/', name: p.slice(idx + 1) };
 }
 
-const AUTO_CLOSE_MS = 1400;
+const AUTO_CLOSE_MS = 5000;
 
 /**
  * The entire UI of the dedicated lightweight `extract` window. It renders ONLY
@@ -109,6 +111,11 @@ const ExtractWindow: React.FC = () => {
                 const probe: ExtractProbe = await probeArchive(path);
                 if (cancelled) return;
 
+                // Replicate the standard GNOME extract behavior exactly: both verbs
+                // extract into a folder named after the archive, never loose files.
+                // "Extract here" uses the archive's own directory as the root (no
+                // picker); "Extract to folder" lets the user pick the destination
+                // root first. Both never clobber an existing folder (stem, stem (2)).
                 let dest: string;
                 if (mode === 'to') {
                     setPhase('choosing');
@@ -119,14 +126,13 @@ const ExtractWindow: React.FC = () => {
                     });
                     if (cancelled) return;
                     if (!chosen || Array.isArray(chosen)) {
-                        // User cancelled the folder picker: nothing to do, close.
+                        // User cancelled the destination picker: nothing to do.
                         closeWindow();
                         return;
                     }
                     dest = await resolveUniqueExtractDir(chosen, name);
                 } else {
-                    // "Extract here": next to the archive, no subfolder.
-                    dest = archiveDir;
+                    dest = await resolveUniqueExtractDir(archiveDir, name);
                 }
                 if (cancelled) return;
                 setDestDir(dest);
@@ -155,6 +161,23 @@ const ExtractWindow: React.FC = () => {
 
     return (
         <div className="min-h-screen w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col">
+            {/* Draggable titlebar (the window is borderless): AeroFile brand + close. */}
+            <div
+                data-tauri-drag-region
+                className="flex items-center justify-between h-9 px-3 shrink-0 select-none bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
+            >
+                <div data-tauri-drag-region className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                    <FolderOpen size={13} className="text-sky-500" />
+                    AeroFile
+                </div>
+                <button
+                    onClick={closeWindow}
+                    aria-label={t('common.close')}
+                    className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded p-0.5"
+                >
+                    <X size={15} />
+                </button>
+            </div>
             <div className="flex-1 flex flex-col items-center justify-center px-6 py-5 select-none">
                 <div className="w-full max-w-sm">
                     <div className="flex items-center gap-2 mb-3">
