@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Extraer",
             "inspecting": "Inspeccionando el archivo...",
-            "chooseFolder": "Elige una carpeta de destino",
             "passwordPrompt": "Este elemento está cifrado. Introduce la contraseña para extraerlo.",
             "showPassword": "Mostrar contraseña",
             "hidePassword": "Ocultar contraseña"

@@ -5202,7 +5202,6 @@
         "extractWindow": {
             "title": "Erauzi",
             "inspecting": "Artxiboa aztertzen...",
-            "chooseFolder": "Aukeratu helburuko karpeta",
             "passwordPrompt": "Elementu hau zifratuta dago. Sartu pasahitza erauzteko.",
             "showPassword": "Erakutsi pasahitza",
             "hidePassword": "Ezkutatu pasahitza"

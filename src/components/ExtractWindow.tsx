@@ -3,7 +3,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { open as openFolderDialog } from '@tauri-apps/plugin-dialog';
 import { Eye, EyeOff, FolderOpen, Loader2, Lock, CheckCircle2, XCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import {
@@ -28,7 +27,7 @@ declare global {
     }
 }
 
-type Phase = 'probing' | 'choosing' | 'password' | 'extracting' | 'done' | 'error';
+type Phase = 'probing' | 'password' | 'extracting' | 'done' | 'error';
 
 /** Split an absolute path into its parent directory and base name, tolerant of
  *  both POSIX and Windows separators (the path is canonicalized by the backend). */
@@ -109,25 +108,14 @@ const ExtractWindow: React.FC = () => {
                 const probe: ExtractProbe = await probeArchive(path);
                 if (cancelled) return;
 
-                let dest: string;
-                if (mode === 'to') {
-                    setPhase('choosing');
-                    const chosen = await openFolderDialog({
-                        directory: true,
-                        multiple: false,
-                        title: t('extractWindow.chooseFolder'),
-                    });
-                    if (cancelled) return;
-                    if (!chosen || Array.isArray(chosen)) {
-                        // User cancelled the folder picker: nothing to do, close.
-                        closeWindow();
-                        return;
-                    }
-                    dest = await resolveUniqueExtractDir(chosen, name);
-                } else {
-                    // "Extract here": next to the archive, no subfolder.
-                    dest = archiveDir;
-                }
+                // "Extract here": next to the archive, no subfolder. "Extract to
+                // folder": a never-clobbering subfolder named after the archive,
+                // in the archive's own directory (no folder picker, like standard
+                // extractors). Both destinations are derived from the archive path.
+                const dest =
+                    mode === 'to'
+                        ? await resolveUniqueExtractDir(archiveDir, name)
+                        : archiveDir;
                 if (cancelled) return;
                 setDestDir(dest);
                 ctx.current = { kind: probe.kind, path, name, bytes: probe.archive_bytes, dest };
@@ -168,13 +156,6 @@ const ExtractWindow: React.FC = () => {
                         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                             <Loader2 size={16} className="animate-spin" />
                             {t('extractWindow.inspecting')}
-                        </div>
-                    )}
-
-                    {phase === 'choosing' && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                            <FolderOpen size={16} />
-                            {t('extractWindow.chooseFolder')}
                         </div>
                     )}
 

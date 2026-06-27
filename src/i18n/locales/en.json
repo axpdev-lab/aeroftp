@@ -1357,7 +1357,6 @@
         "extractWindow": {
             "title": "Extract",
             "inspecting": "Inspecting archive...",
-            "chooseFolder": "Choose a destination folder",
             "passwordPrompt": "This item is encrypted. Enter the password to extract.",
             "showPassword": "Show password",
             "hidePassword": "Hide password"

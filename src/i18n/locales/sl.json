@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Razširi",
             "inspecting": "Preverjanje arhiva...",
-            "chooseFolder": "Izberite ciljno mapo",
             "passwordPrompt": "Ta element je šifriran. Za razširjanje vnesite geslo.",
             "showPassword": "Pokaži geslo",
             "hidePassword": "Skrij geslo"

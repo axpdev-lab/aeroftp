@@ -723,7 +723,6 @@
         "extractWindow": {
             "title": "Estrai",
             "inspecting": "Analisi dell'archivio...",
-            "chooseFolder": "Scegli una cartella di destinazione",
             "passwordPrompt": "Questo elemento e' cifrato. Inserisci la password per estrarre.",
             "showPassword": "Mostra password",
             "hidePassword": "Nascondi password"

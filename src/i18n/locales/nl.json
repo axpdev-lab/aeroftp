@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Uitpakken",
             "inspecting": "Archief inspecteren...",
-            "chooseFolder": "Kies een doelmap",
             "passwordPrompt": "Dit item is versleuteld. Voer het wachtwoord in om uit te pakken.",
             "showPassword": "Wachtwoord tonen",
             "hidePassword": "Wachtwoord verbergen"

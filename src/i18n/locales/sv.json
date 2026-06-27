@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Extrahera",
             "inspecting": "Inspekterar arkiv...",
-            "chooseFolder": "Välj en målmapp",
             "passwordPrompt": "Det här objektet är krypterat. Ange lösenordet för att extrahera.",
             "showPassword": "Visa lösenord",
             "hidePassword": "Dölj lösenord"

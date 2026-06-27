@@ -5202,7 +5202,6 @@
         "extractWindow": {
             "title": "I-extract",
             "inspecting": "Sinusuri ang archive...",
-            "chooseFolder": "Pumili ng patutunguhang folder",
             "passwordPrompt": "Naka-encrypt ang item na ito. Ilagay ang password para i-extract.",
             "showPassword": "Ipakita ang password",
             "hidePassword": "Itago ang password"

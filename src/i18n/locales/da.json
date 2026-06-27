@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Udpak",
             "inspecting": "Undersøger arkiv...",
-            "chooseFolder": "Vælg en destinationsmappe",
             "passwordPrompt": "Dette element er krypteret. Indtast adgangskoden for at udpakke.",
             "showPassword": "Vis adgangskode",
             "hidePassword": "Skjul adgangskode"

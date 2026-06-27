@@ -5202,7 +5202,6 @@
         "extractWindow": {
             "title": "Extreu",
             "inspecting": "Inspeccionant l'arxiu...",
-            "chooseFolder": "Trieu una carpeta de destinació",
             "passwordPrompt": "Aquest element està xifrat. Introduïu la contrasenya per extreure'l.",
             "showPassword": "Mostra la contrasenya",
             "hidePassword": "Amaga la contrasenya"

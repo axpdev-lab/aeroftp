@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Pura",
             "inspecting": "Tarkistetaan arkistoa...",
-            "chooseFolder": "Valitse kohdekansio",
             "passwordPrompt": "Tämä kohde on salattu. Anna salasana purkamista varten.",
             "showPassword": "Näytä salasana",
             "hidePassword": "Piilota salasana"

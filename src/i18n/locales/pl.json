@@ -5183,7 +5183,6 @@
         "extractWindow": {
             "title": "Wyodrębnij",
             "inspecting": "Sprawdzanie archiwum...",
-            "chooseFolder": "Wybierz folder docelowy",
             "passwordPrompt": "Ten element jest zaszyfrowany. Wprowadź hasło, aby go wyodrębnić.",
             "showPassword": "Pokaż hasło",
             "hidePassword": "Ukryj hasło"
