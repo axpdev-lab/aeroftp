@@ -194,6 +194,25 @@ impl KDriveProvider {
 
     // ─── Helpers ─────────────────────────────────────────────────────────
 
+    /// Pure auth-gate decision for the kDrive `connect` handshake. A 401 means the API
+    /// token is invalid; a 404 means the configured drive_id does not exist. Both surface
+    /// as `AuthenticationFailed` with an actionable Infomaniak hint. Any other status
+    /// returns `None`, leaving the caller to read the body and map it (success or a
+    /// body-bearing `ConnectionFailed`). Extracted from `connect` so the decision is
+    /// unit-testable without a live `reqwest::Response`; behaviour is identical.
+    fn classify_kdrive_connect_auth(status: u16, drive_id: &str) -> Option<ProviderError> {
+        match status {
+            401 => Some(ProviderError::AuthenticationFailed(
+                "Invalid API token. Generate one at manager.infomaniak.com > Developer > API Tokens".to_string(),
+            )),
+            404 => Some(ProviderError::AuthenticationFailed(format!(
+                "Drive ID '{}' not found. Check your kDrive ID in the Infomaniak dashboard.",
+                drive_id
+            ))),
+            _ => None,
+        }
+    }
+
     /// M3: Insert into dir_cache with eviction when cap is reached.
     /// Clears the entire cache when it exceeds DIR_CACHE_MAX_ENTRIES,
     /// allowing it to repopulate naturally during navigation.
@@ -522,16 +541,9 @@ impl StorageProvider for KDriveProvider {
         })?;
 
         let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ProviderError::AuthenticationFailed(
-                "Invalid API token. Generate one at manager.infomaniak.com > Developer > API Tokens".to_string()
-            ));
-        }
-        if status.as_u16() == 404 {
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Drive ID '{}' not found. Check your kDrive ID in the Infomaniak dashboard.",
-                self.config.drive_id
-            )));
+        if let Some(e) = Self::classify_kdrive_connect_auth(status.as_u16(), &self.config.drive_id)
+        {
+            return Err(e);
         }
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1846,6 +1858,35 @@ mod tests {
             format!("{}/3/drive/987654/files", API_BASE)
         );
         assert_eq!(p.api_url_v2(""), format!("{}/2/drive/987654", API_BASE));
+    }
+
+    #[test]
+    fn classify_kdrive_connect_auth_maps_401_and_404_only() {
+        // 401 = invalid API token.
+        match KDriveProvider::classify_kdrive_connect_auth(401, "987654") {
+            Some(ProviderError::AuthenticationFailed(msg)) => {
+                assert!(msg.contains("Invalid API token"), "got: {msg}");
+            }
+            other => panic!("401 must map to AuthenticationFailed, got {other:?}"),
+        }
+        // 404 = unknown drive_id, and the id is embedded in the hint.
+        match KDriveProvider::classify_kdrive_connect_auth(404, "987654") {
+            Some(ProviderError::AuthenticationFailed(msg)) => {
+                assert!(
+                    msg.contains("987654"),
+                    "drive_id must be embedded, got: {msg}"
+                );
+                assert!(msg.contains("not found"), "got: {msg}");
+            }
+            other => panic!("404 must map to AuthenticationFailed, got {other:?}"),
+        }
+        // Every other status defers to the caller (None).
+        for status in [200u16, 204, 400, 403, 409, 429, 500, 502, 503] {
+            assert!(
+                KDriveProvider::classify_kdrive_connect_auth(status, "987654").is_none(),
+                "status {status} must defer to the caller"
+            );
+        }
     }
 
     #[test]
