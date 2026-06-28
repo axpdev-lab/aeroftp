@@ -1307,6 +1307,33 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         );
     };
 
+    // #215 (Ehud redesign): compact profile icon as a clickable avatar, used in
+    // the two-column forms where the icon sits immediately left of the name.
+    const renderProfileIconButton = () => {
+        const proto = connectionParams.protocol || 'ftp';
+        const PresetLogo = PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+        const hasIcon = !!customIconForSave || !!faviconForSave || !!PresetLogo;
+        const letter = (connectionName || connectionParams.server || '?').charAt(0).toUpperCase();
+        return (
+            <button
+                type="button"
+                onClick={() => setShowIconPicker(true)}
+                title={t('settings.chooseIcon')}
+                className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-colors hover:ring-2 hover:ring-blue-500/40 ${hasIcon ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[proto] || PROTOCOL_COLORS.ftp} text-white`}`}
+            >
+                {customIconForSave ? (
+                    <img src={customIconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                ) : faviconForSave ? (
+                    <img src={faviconForSave} alt="" className="w-6 h-6 rounded object-contain" />
+                ) : PresetLogo ? (
+                    <PresetLogo size={24} />
+                ) : (
+                    <span className="font-bold text-sm">{letter}</span>
+                )}
+            </button>
+        );
+    };
+
     // Handle the main action button
     const handleConnectAndSave = async () => {
         // #215 follow-up: a local-bridge mode whose helper app is confidently
@@ -2351,6 +2378,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const sfPrefix = '/home/frs/project/';
         return (
             <div className="space-y-3">
+                {/* #215 (Ehud redesign): profile name + inline icon block, moved to
+                    the top of the column. The icon sits Google-Docs style,
+                    immediately to the left of the name input. */}
+                <div className="pb-3 border-b border-gray-200 dark:border-gray-700/50">
+                    <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                        <Save size={14} />
+                        {t('connection.connectionNameOptional')}
+                    </label>
+                    <div className="flex items-center gap-2">
+                        {showIcon && renderProfileIconButton()}
+                        <input
+                            type="text"
+                            value={connectionName}
+                            onChange={(e) => setConnectionName(e.target.value)}
+                            placeholder={connectionNameKey}
+                            className="flex-1 px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        {showIcon && customIconForSave && (
+                            <button
+                                type="button"
+                                onClick={() => setCustomIconForSave(undefined)}
+                                title={t('settings.removeIcon')}
+                                className="p-1.5 shrink-0 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                </div>
                 {/* Remote Path: hidden for an AeroShare friend (a read-only replica
                     has no remote-path concept). SourceForge: prefix + project name. */}
                 {!isPeer && (
@@ -2410,21 +2466,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         </button>
                     </div>
                 </div>
-                {/* Connection name (always shown: connections are always saved) */}
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-700/50">
-                    <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                        <Save size={14} />
-                        {t('connection.connectionNameOptional')}
-                    </label>
-                    <input
-                        type="text"
-                        value={connectionName}
-                        onChange={(e) => setConnectionName(e.target.value)}
-                        placeholder={connectionNameKey}
-                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    {showIcon && renderIconPicker()}
-                </div>
+                {/* Profile name + icon block relocated to the top of this column
+                    (see the #215 redesign block above). */}
                 {/* P3: AeroCrypt Profile. Bind an encrypted overlay to this
                     profile so the standard dual-panel renders transparently
                     decrypted (Filen/MEGA-style). Remote/local scope come from the
