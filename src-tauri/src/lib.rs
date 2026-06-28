@@ -15467,6 +15467,17 @@ fn collect_provider_secrets_for_server(
         out.aerocrypt_overlay_salt = Some(salt.to_string());
     }
 
+    // Issue #215 Caveat A: bundle the per-protocol credential snapshots so a
+    // multi-protocol account keeps each mode's saved credentials on import. The
+    // `server_` prefix routes this through the active user's partition exactly
+    // like the per-profile password (modeCredentialStore already stripped the
+    // single-use TOTP/STS codes at write time).
+    if let Ok(Some(modes)) =
+        user_partitions::resolve_active_credential(store, &format!("server_modes_{}", server.id))
+    {
+        out.mode_credentials = Some(modes.to_string());
+    }
+
     out
 }
 
@@ -15504,6 +15515,7 @@ async fn export_server_profiles(
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()
                         || secrets.aerocrypt_overlay_salt.is_some()
+                        || secrets.mode_credentials.is_some()
                     {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
@@ -15623,6 +15635,19 @@ async fn import_server_profiles(
                         Err(e) => cred_errors.push(format!("{} aerocrypt salt: {}", profile_id, e)),
                     }
                 }
+                // Issue #215 Caveat A: restore the per-protocol snapshots under
+                // the same `server_modes_<id>` key the connect/edit path reads
+                // (modeCredentialStore get/store_credential). The `server_`
+                // prefix dual-writes into the active user's partition, matching
+                // how the snapshots were originally saved.
+                if let Some(ref modes) = secrets.mode_credentials {
+                    let key = format!("server_modes_{}", profile_id);
+                    if let Err(e) =
+                        user_partitions::store_active_credential_dual(&store, &key, modes)
+                    {
+                        cred_errors.push(format!("{} mode creds: {}", profile_id, e));
+                    }
+                }
             }
         }
         None => {
@@ -15676,6 +15701,12 @@ async fn import_server_profiles(
                 "aeroCryptOverlay": s.aero_crypt_overlay,
                 "hasStoredAeroCryptPassword": restored_aerocrypt_pw.contains(&s.id),
                 "hasStoredAeroCryptSalt": restored_aerocrypt_salt.contains(&s.id),
+                // Issue #215 Caveat A: surface the opt-in so the imported profile
+                // re-hydrates per-mode snapshots. It is a user preference, not a
+                // secret-presence flag, so it round-trips verbatim: ConnectionScreen
+                // only reads `server_modes_<id>` when this is true, and finds the
+                // creds restored above (or prompts normally if the export omitted them).
+                "persistModeCredentials": s.persist_mode_credentials,
             })
         })
         .collect();

@@ -86,6 +86,14 @@ pub struct ProviderSecrets {
     /// leaves it unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aerocrypt_overlay_salt: Option<String>,
+    /// Issue #215 Caveat A: per-protocol credential snapshots
+    /// (`server_modes_<id>` vault JSON) so a one-account-many-protocols profile
+    /// keeps each mode's saved credentials across export/import. Single-use
+    /// secrets (TOTP/STS) are already stripped at write time by
+    /// `modeCredentialStore.stripSingleUseSecrets`, so this blob never carries
+    /// them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode_credentials: Option<String>,
     /// #128-D: the BYO OAuth app `client_id` recovered from an imported rclone
     /// remote (`oauth_<provider>_client_id` vault singleton). AeroFTP mints its
     /// OAuth tokens with the user's own app, so rclone can only refresh them
@@ -132,6 +140,11 @@ pub struct ServerProfileExport {
     pub has_stored_aero_crypt_password: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_stored_aero_crypt_salt: Option<bool>,
+    /// Issue #215 Caveat A: round-trip the opt-in so an imported profile
+    /// re-hydrates its per-mode snapshots (ConnectionScreen reads
+    /// `profile.persistModeCredentials` before loading `server_modes_<id>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist_mode_credentials: Option<bool>,
 }
 
 // ============ Export/Import ============
@@ -146,9 +159,18 @@ pub fn export_profiles(
     let salt = crate::crypto::random_bytes(32);
     let key = crate::crypto::derive_key_strong(password, &salt).map_err(ExportError::Encryption)?;
 
-    let any_provider_secret = provider_secrets
-        .values()
-        .any(|s| s.oauth.is_some() || s.jotta_refresh.is_some());
+    // Issue #214/#215: the "has credentials" badge must reflect EVERY secret a
+    // profile can carry, not only OAuth/Jotta tokens. A profile whose only
+    // saved secret is a crypt-overlay password (CWP-20B) or a per-protocol
+    // snapshot (#215 `mode_credentials`) still contains credentials, so the
+    // import preview should say so.
+    let any_provider_secret = provider_secrets.values().any(|s| {
+        s.oauth.is_some()
+            || s.jotta_refresh.is_some()
+            || s.aerocrypt_overlay_pw.is_some()
+            || s.aerocrypt_overlay_salt.is_some()
+            || s.mode_credentials.is_some()
+    });
     let metadata = ExportMetadata {
         export_date: chrono::Utc::now().to_rfc3339(),
         aeroftp_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -269,6 +291,7 @@ mod tests {
             aero_crypt_overlay: None,
             has_stored_aero_crypt_password: None,
             has_stored_aero_crypt_salt: None,
+            persist_mode_credentials: None,
         }
     }
 
@@ -443,6 +466,72 @@ mod tests {
                 .get("crypt-rclone")
                 .and_then(|s| s.aerocrypt_overlay_salt.clone()),
             Some("rclone-pw2-salt".to_string()),
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// Issue #215 Caveat A: a multi-protocol profile that opted into
+    /// `persistModeCredentials` must re-import with that opt-in intact AND with
+    /// its per-mode credential snapshots (`server_modes_<id>`) restored, so the
+    /// user keeps each protocol's saved credentials on a fresh device. The same
+    /// round-trip also exercises the OAuth Remote Path field (`initial_path`)
+    /// the harmonized OAuth pages added: verify it survives export -> import too.
+    #[test]
+    fn round_trip_preserves_mode_credentials_and_oauth_remote_path() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_modecreds_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+
+        // A Koofr profile saved in two protocol modes, with the per-protocol
+        // "remember credentials" opt-in ON and an OAuth Remote Path set.
+        let mut server = sample_server("koofr-multi", "koofr");
+        server.persist_mode_credentials = Some(true);
+        server.initial_path = Some("/Backups/AeroFTP".to_string());
+
+        // The vault blob modeCredentialStore persists under `server_modes_<id>`:
+        // one entry per protocol mode, single-use secrets already stripped.
+        let modes_json = r#"{"koofr":{"username":"u@example.com","password":"native-pw","server":"app.koofr.net"},"webdav":{"username":"u@example.com","password":"dav-pw","server":"app.koofr.net/dav/Koofr"}}"#;
+
+        let mut secrets = HashMap::new();
+        secrets.insert(
+            "koofr-multi".to_string(),
+            ProviderSecrets {
+                mode_credentials: Some(modes_json.to_string()),
+                ..Default::default()
+            },
+        );
+
+        let metadata = export_profiles(vec![server], secrets.clone(), "pw-12345678", &tmp)
+            .expect("export should succeed");
+        assert!(
+            metadata.has_credentials,
+            "a profile carrying only per-protocol snapshots must still flip has_credentials"
+        );
+
+        let (servers, restored_secrets, _meta) =
+            import_profiles(&tmp, "pw-12345678").expect("import should succeed");
+        assert_eq!(servers.len(), 1);
+
+        let out = &servers[0];
+        assert_eq!(
+            out.persist_mode_credentials,
+            Some(true),
+            "the persistModeCredentials opt-in must survive the round-trip"
+        );
+        assert_eq!(
+            out.initial_path.as_deref(),
+            Some("/Backups/AeroFTP"),
+            "the OAuth Remote Path (initial_path) must survive the round-trip"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("koofr-multi")
+                .and_then(|s| s.mode_credentials.clone()),
+            Some(modes_json.to_string()),
+            "each protocol mode's saved credentials must survive the round-trip"
         );
 
         let _ = std::fs::remove_file(&tmp);

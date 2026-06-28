@@ -50,6 +50,9 @@ interface ImportedServer {
     aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
     hasStoredAeroCryptPassword?: boolean;
     hasStoredAeroCryptSalt?: boolean;
+    // #215 Caveat A: the per-protocol "remember credentials" opt-in, round-tripped
+    // so an imported profile re-hydrates its server_modes_<id> snapshots.
+    persistModeCredentials?: boolean;
 }
 
 interface ImportResult {
@@ -232,6 +235,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     aeroCryptOverlay: s.aeroCryptOverlay,
                     hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
                     hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
+                    // #215 Caveat A: preserve the per-protocol "remember credentials"
+                    // opt-in so the imported profile loads its restored snapshots.
+                    persistModeCredentials: s.persistModeCredentials,
                 }));
 
             const skipped = importedServers.length - newServers.length;
