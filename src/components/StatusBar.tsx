@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2, Calculator, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { AeroShareStatusButton } from './AeroShareStatusButton';
 import { formatBytes } from '../utils/formatters';
 import {
     getStorageTone,
@@ -407,6 +408,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         {cloudSyncing && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />}
                     </button>
                 )}
+
+                {/* AeroShare receiver indicator + toggle (self-contained; renders
+                    only once AeroShare is activated). Sits next to AeroCloud. */}
+                <AeroShareStatusButton />
 
                 {/* Sync Button */}
                 {onToggleSync && isConnected && (
