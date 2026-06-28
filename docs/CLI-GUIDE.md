@@ -466,6 +466,21 @@ aeroftp-cli mkdir opendrive://user@host /private-docs --access private
 
 > **`--access <private|public|hidden>`** (issue #252): on OpenDrive, sets the created folder's privacy, which cascades to existing children server-side. Defaults to **private** when omitted on an OpenDrive target.
 
+### access - Set Privacy of an Existing File or Folder
+
+```bash
+# Make an existing folder public (cascades to its children)
+aeroftp-cli access --profile "My OpenDrive" /shared-docs --to public
+
+# Hide an existing file (reachable by direct link only, not searchable)
+aeroftp-cli access --profile "My OpenDrive" /docs/invoice.pdf --to hidden
+
+# Lock a file back down to private (owner-only)
+aeroftp-cli access opendrive://user@host /docs/invoice.pdf --to private
+```
+
+The CLI counterpart of the GUI's **Properties > Permissions** tab (issue #252): changes the privacy of a path that already exists, on providers that model a three-level access scheme (OpenDrive today). File vs folder is detected automatically via `stat`, and folder privacy cascades to children server-side. The three levels are **private** (not listed or shared, reachable only by the owner), **public** (anyone with the link can access; searchable) and **hidden** (reachable by direct link only; not searchable). Use `put --access` / `mkdir --access` to set privacy at creation time, and `access` to change it afterwards. On a provider that does not model access the command reports that the level was not applied.
+
 ### rm - Delete File or Directory
 
 ```bash

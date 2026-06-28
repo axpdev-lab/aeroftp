@@ -82,3 +82,14 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
   (`webdav.opendrive.com`) into native API mode now normalizes its host to
   `dev.opendrive.com`, so the native session flow no longer leaks the WebDAV
   hostname.
+- **OpenDrive (privacy levels):** OpenDrive models a three-level access scheme
+  per file and folder: **private** (not listed or shared, reachable only by the
+  owner), **public** (anyone with the link can access; searchable) and
+  **hidden** (reachable by direct link only; not searchable). You can read and
+  change the level on an existing item from **Properties > Permissions** (a
+  multi-selection applies the same level to every selected item), set a
+  per-account **"Default privacy for new items"** on the Quick Connect form so
+  new uploads and folders inherit it, and drive the same model from the CLI with
+  `access`, `put --access` and `mkdir --access` (see the CLI guide). CLI creates
+  default to **private** when no level is given; folder privacy cascades to
+  children server-side. (issue #252)

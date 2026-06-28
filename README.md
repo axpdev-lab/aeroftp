@@ -7,7 +7,7 @@
 > _Last updated: 2026-06-28_
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. Multi-protocol, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. Multi-protocol, 7 integrated product modules, 47 languages, one app.
 </p>
 
 <p align="center">

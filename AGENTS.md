@@ -86,6 +86,7 @@ The `profiles --json` output:
 | `rm` | `aeroftp-cli rm --profile NAME /remote/file` | Delete file |
 | `rm -rf` | `aeroftp-cli rm --profile NAME /remote/dir/ -rf` | Delete directory recursively |
 | `mv` | `aeroftp-cli mv --profile NAME /old/path /new/path` | Move or rename |
+| `access` | `aeroftp-cli access --profile NAME /path --to private\|public\|hidden` | Set privacy of an existing file/folder (OpenDrive; #252) |
 
 ### Bulk Operations
 
@@ -184,7 +185,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 - `ls`, `cat`, `stat`, `find`, `tree`, `df`, `profiles`, `connect`, `agent-info`, `cleanup` (dry-run), `dedupe --mode list`
 
 ### Operations that modify remote state (inform user before executing)
-- `put`, `mkdir`, `mv`, `sync`, `transfer`, `crypt put`, `crypt init`
+- `put`, `mkdir`, `mv`, `access`, `sync`, `transfer`, `crypt put`, `crypt init`
 
 ### Destructive operations (always confirm with user first)
 - `rm`, `rm -rf`, `sync --delete`, `cleanup --force`, `dedupe --mode newest/oldest/largest/smallest`
