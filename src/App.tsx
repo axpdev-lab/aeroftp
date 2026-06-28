@@ -5826,6 +5826,33 @@ interface UpdateVerificationInfo {
     const isProvider = !!protocol && !isOAuth && usesProviderApi(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
+    // #128-C: a QuickConnect connection (incl. an OAuth re-auth) is driven by the
+    // form, not a saved card, so it carries no savedServerId. The resulting
+    // session then shows in the header "Active Sessions" badge (which counts raw
+    // session tabs) but NOT in the sidebar "Active Sessions" filter, whose count
+    // and result are both keyed on activeProfileIds = the set of session
+    // savedServerIds (it narrows the saved-server grid to the cards you are
+    // connected to: MyServersPanel filters `s => activeProfileIds.has(s.id)`).
+    // When this live connection maps 1:1 to a saved profile, adopt its id so the
+    // session also lights up the grid filter, matching the badge.
+    if (!effectiveParams.savedServerId) {
+      try {
+        const all = (await loadSavedServerProfiles()) || [];
+        // Credential protocols (FTP/SFTP/S3/WebDAV/API): precise unique match on
+        // protocol + username + host.
+        let match = resolveLiveProfile(all, effectiveParams, undefined);
+        // OAuth saved profiles carry an empty username and host=displayName, so
+        // the credential match above cannot bind them. Fall back to a
+        // provider-unique match; skip when several accounts share the provider
+        // to avoid mislinking (a no-match just leaves it unlinked, as before).
+        if (!match && isOAuth) {
+          const sameProvider = all.filter(s => (s.protocol || 'ftp') === protocol);
+          if (sameProvider.length === 1) match = sameProvider[0];
+        }
+        if (match) effectiveParams = { ...effectiveParams, savedServerId: match.id };
+      } catch { /* best-effort profile linkage only */ }
+    }
+
     if (isOAuth) {
       // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
       // Just switch to file manager view
