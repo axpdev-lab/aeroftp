@@ -1,6 +1,6 @@
 # AeroAgent - AI Assistant Documentation
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 **Status**: Public architecture overview
 **Tool catalog**: Built-in tool suite + extensible via plugins
@@ -180,6 +180,29 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | ---- | ------ | ----------- |
 | `shell_execute` | high | Execute shell command (30s timeout, 512 KB output limit) |
 
+### Coding (13 tools, GUI-only)
+
+The v4.1.0 AeroAgent coding loop (foundation) is a curated GUI tool set for local
+coding work. These tools are **GUI-only**: they are not exposed over the MCP
+server, and they are read-only or approval-gated. Mutating tools take automatic
+workspace checkpoints before they run.
+
+| Tool | Danger | Description |
+| ---- | ------ | ----------- |
+| `coding_search` | safe | Ripgrep workspace search, returns structured matches (respects `.gitignore`) |
+| `coding_diagnostics` | safe | Read-only structured diagnostics (cargo check / tsc / eslint) |
+| `coding_git_status` | safe | Branch and working-tree status |
+| `coding_git_diff` | safe | Unstaged or staged diff |
+| `coding_git_log` | safe | Recent commits, newest first |
+| `coding_git_show` | safe | Single commit metadata, per-file stats, capped diff |
+| `coding_checkpoint_create` | medium | Snapshot workspace files before mutations |
+| `coding_run_checks` | medium | Run one curated check (build / test / lint / typecheck) |
+| `coding_verify` | medium | Run an ordered list of curated checks in one pass |
+| `coding_apply_patch` | high | Dry-run or apply a unified multi-file diff (auto-checkpoint) |
+| `coding_checkpoint_restore` | high | Restore files from a workspace checkpoint |
+| `coding_git_stage` | high | Stage explicit workspace paths |
+| `coding_git_commit` | high | Commit the staged index |
+
 ---
 
 ## Safety System
@@ -188,9 +211,9 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 
 | Level | Behavior | Count |
 | ----- | -------- | ----- |
-| **safe** | Auto-execute without user confirmation | 14 tools |
-| **medium** | Show approval modal, user must confirm | 33 tools |
-| **high** | Explicit confirmation with danger warning | 5 tools |
+| **safe** | Auto-execute without user confirmation | 20 tools |
+| **medium** | Show approval modal, user must confirm | 36 tools |
+| **high** | Explicit confirmation with danger warning | 9 tools |
 
 ### Path Validation
 

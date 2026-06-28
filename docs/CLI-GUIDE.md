@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v4.0.x series - last reviewed 22 June 2026
+> **Version reference**: v4.1.0 - last reviewed 28 June 2026
 > **License**: GPL-3.0
 
 ---
@@ -1440,6 +1440,16 @@ aeroftp-cli benchmark --profile "server" --file-count 5000 --file-size 4K --json
 
 When `--file-count N` is set (`--file-size` defaults to `64K`), the run adds five dedicated operations: **`upload-all`**, **`list-dir`** (one listing of the N-file directory), **`stat-all`**, **`download-all`**, and **`delete-all`**. Each reports **`files_per_second`** and a per-file latency distribution (`latency_ms`, whose p50 is the mean per-file time) alongside raw `throughput_mbps` for the transfer ops. The aggregate payload (`file-count` x `file-size`) is capped at 5 GiB and `--file-count` at 100000.
 
+#### v4.1.0 improvements (#368)
+
+- The scratch base directory is removed after a run (guarded), honouring `--test-root-prefix`.
+- The scratch tree is built with parent directories in one step (mkdir-parents), which fixes pCloud WebDAV refusing a nested collection whose parent did not yet exist.
+- The per-profile header and the comparison tables gained a protocol / transport column.
+- A public-IP fairness snapshot flags a run as not-comparable if the public IP changed mid-sweep.
+- Multi-profile runs show `[k/N]` per profile, plus the per-operation run `k/N`.
+- A Yandex region hint is added on endpoint errors.
+- The connection-type field is clarified as downstream Mbps.
+
 ### import - Import Server Profiles
 
 `import` ingests server profiles from external tools and stores them in the AeroFTP encrypted vault. **15 sources** are supported: `rclone`, `winscp`, `filezilla`, `aws`, `ssh`, `mc`, `cyberduck`, `s3cmd`, `lftp`, `putty`, `mobaxterm`, `dreamweaver`, `kopia`, `duplicacy`, `restic`. Use `--json` on any subcommand for scripting; secrets are decoded from each tool's native obfuscation and re-wrapped in AES-256-GCM by the vault on commit. The three original sources (rclone, winscp, filezilla) have dedicated examples below; the other twelve share the same `aeroftp import <tool> [path]` interface (see [import (other tools)](#import-other-tools)).
@@ -1561,6 +1571,27 @@ aeroftp-cli export s3cmd  --output ./.s3cfg
 
 OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive, Yandex, Zoho, Koofr, Internxt, kDrive) **cannot be exported to rclone** because rclone uses its own OAuth flow with provider-issued client IDs; those entries are emitted as `# manual setup required` comments instead. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
 
+### profile-export / profile-import - Native `.aeroftp` Profile Backup
+
+`profile-export` and `profile-import` read and write AeroFTP's own password-encrypted `.aeroftp` profile backup. The file is byte-compatible with the GUI **My Servers > Export / Import**: a file exported from the CLI imports in the GUI, and a GUI export imports here. Both operate on the active user's vault.
+
+```bash
+# Export every profile of the active user (configuration only, no secrets)
+aeroftp-cli profile-export --output ./my-servers.aeroftp
+
+# Include saved secrets (opt-in): per-profile passwords, OAuth / Jottacloud
+# tokens, crypt-overlay passwords, and the per-protocol credential snapshots
+aeroftp-cli profile-export --output ./my-servers.aeroftp --include-credentials
+
+# Export only some profiles (comma-separated ids or case-insensitive names)
+aeroftp-cli profile-export --output ./subset.aeroftp --ids "Backup,3"
+
+# Re-import (profiles already present by id or host:port:username are skipped)
+aeroftp-cli profile-import --input ./my-servers.aeroftp
+```
+
+Secrets are **opt-in**: without `--include-credentials` the file carries only the profile configuration and never any secret. The password resolution order (first match wins) is the `AEROFTP_PROFILE_PASSWORD` environment variable, then `--password-stdin`, then `--password <pw>` (visible in `ps`), then an interactive prompt. Use `--json` for a machine-readable summary.
+
 ### keystore - Encrypted Full-State Backup
 
 The keystore is AeroFTP's portable backup format: a single encrypted `.aeroftp-keystore` file that bundles the entire installation state (vault entries, SQLite databases, plugins, sync snapshots, UI preferences) under a single password. The same envelope is produced and consumed by the GUI **Settings → Backup** flow, so a CLI export can be imported through the GUI and vice versa.
@@ -1615,10 +1646,20 @@ aeroftp-cli users sort alice bob carol    # order for the GUI dropdown / lock sc
 aeroftp-cli users delete alice
 aeroftp-cli users lock                    # lock the in-memory session
 
-# Interactive prompt (TTY): re-index (#), Rename (R), Copy (C), Delete (D),
-# Fav (F, marks the default user auto-unlocked on launch), List (L), Tree (T)
+# Interactive prompt (TTY). Action bar ordered safe-first (read-only verbs and
+# Help first, destructive Delete last): Help (H/?), List (L), Tree (T),
+# New (N, create a user from inside the loop), Rename (R), Copy (C),
+# Fav (F, marks the DEFAULT user; auto-unlocked on launch), Delete (D).
+# Refresh with `.` clears the screen.
 aeroftp-cli users -i
 ```
+
+`users -i` matches the `profiles -i` engine: a `New (N)` verb creates a user from
+inside the loop, the action bar is reordered safe-first with `Help`/`?` leading
+and destructive `Delete` last, `.` refreshes (clears) the screen, and the
+selectors are compact with count columns. `f` / Fav marks the **default** user,
+which is now a real `is_default` database column and is auto-unlocked on launch.
+Server groups and favourites are per-user.
 
 Each user keeps an isolated set of server profiles and AeroSync settings inside its own partition. An opt-in admin role gates user management, with a last-admin guard so an installation cannot lock itself out.
 
@@ -1633,18 +1674,22 @@ When the selected partition is passphrase-protected, supply it with `--user-pass
 
 ### groups - Server-Profile Groups
 
-`groups` manages the named group labels on saved profiles (the My Servers group chips). Membership lives in the vault under `config_server_groups`, shared with the GUI, so a change made in the CLI shows up in My Servers and vice versa. The GUI list is drag-reorderable; the CLI exposes the same order via re-index.
+`groups` manages the named group labels on saved profiles (the My Servers group chips). Membership lives in each user's encrypted partition, shared with the GUI, so a change made in the CLI shows up in My Servers and vice versa. Server groups and favourites are now per-user. The GUI list is drag-reorderable; the CLI exposes the same order via re-index.
 
 ```bash
 # List the group chips (optionally as JSON)
 aeroftp-cli groups
 aeroftp-cli groups --json
 
-# Interactive prompt (TTY): re-index (#), Rename (R), Copy (C), Delete (D), List (L)
+# Interactive prompt (TTY). Action bar ordered safe-first (read-only verbs and
+# Help first, destructive Delete last): Help (H/?), List (L),
+# New (N, create a group from inside the loop), Rename (R), Copy (C),
+# a <group> <profile...> add member profile(s), x <group> <profile...> remove,
+# re-index (#), Delete (D). Refresh with `.` clears the screen.
 aeroftp-cli groups -i
 ```
 
-The interactive prompt shares the same `-i` engine as `profiles -i` and `users -i`: select a target by index or name, `.` refreshes the screen, `h` shows help, and only an explicit Quit exits the sticky loop.
+The interactive prompt shares the same `-i` engine as `profiles -i` and `users -i`: select a target by index or name, `.` refreshes (clears) the screen, `h` / `?` shows help, and only an explicit Quit exits the sticky loop. A `New (N)` verb creates a group from inside the loop, and `a <group> <profile...>` / `x <group> <profile...>` add or remove member profiles. The action bar is reordered safe-first, with read-only verbs and Help first and the destructive Delete last.
 
 ### profiles - List Saved Profiles
 
@@ -1663,7 +1708,7 @@ Lists every server profile in the encrypted vault: display name, protocol, host,
 
 `--show` is an exclusive allowlist (the pinned `#`/`Name` plus the listed columns), `--hide` is subtractive, and both accept `*`/`all`. Column aliases include `used`, `total`, `pct`, `saved`, `saved%` (alias `savedpct`), `path`, `last`, `fav`. `saved` and `saved%` are the compression telemetry columns (Ehud [#162](https://github.com/axpdev-lab/aeroftp/issues/162)), hidden by default and populated by `aeroftp-cli --profile <name> vault add`; they also appear in `--json` as `lastCompression`.
 
-The bare `profiles` command also opens an **interactive shell** when stdin is a TTY: it prints the list and accepts single-letter actions like `l <selector>` (list root), `t <selector>` (tree depth 2), `d <selector>` (delete with tombstone), `f <selector>` (toggle favourite), `c <selector>` (duplicate), `r <selector>` (rename), `e <selector>` (inline edit). It also accepts `# <selector> <N>` to move a profile to a new 1-based position (`# 3 1` moves profile 3 to the top); the target is clamped to the profile count and the new order is persisted to the vault. After a move the table is reprinted with a visual diff: the moved profile shows as a struck-through ghost at its old slot and a live row at its new slot joined by a left-gutter arrow, and every row whose index shifted is marked `old -> new`. Reordering needs manual order, so when a sort is active (the displayed order differs from the saved order) the move is refused with a hint to re-run with `--sort manual`. On a multi-user vault, `u` lists the users and `u <selector>` switches the active user; the compact forms `u3` and `3u` are accepted as well, matching the other actions' attached-selector tokens (use the spaced `u <name>` form for names containing spaces). Type `?` for the full reference. Selectors can be 1-based indices, exact names, exact ids, or unique substrings.
+The bare `profiles` command also opens an **interactive shell** when stdin is a TTY: it prints the list and accepts single-letter actions like `l <selector>` (list root), `t <selector>` (tree depth 2), `d <selector>` (delete with tombstone), `f <selector>` (toggle favourite), `c <selector>` (duplicate), `r <selector>` (rename), `e <selector>` (inline edit). It also accepts `# <selector> <N>` to move a profile to a new 1-based position (`# 3 1` moves profile 3 to the top); the target is clamped to the profile count and the new order is persisted to the vault. After a move the table is reprinted with a visual diff: the moved profile shows as a struck-through ghost at its old slot and a live row at its new slot joined by a left-gutter arrow, and every row whose index shifted is marked `old -> new`. Reordering needs manual order, so when a sort is active (the displayed order differs from the saved order) the move is refused with a hint to re-run with `--sort manual`. On a multi-user vault, `u` lists the users and `u <selector>` switches the active user; the compact forms `u3` and `3u` are accepted as well, matching the other actions' attached-selector tokens (use the spaced `u <name>` form for names containing spaces). The `New (N)` verb creates a profile from inside the loop and is catalog-driven (it lists the provider catalog and prompts for the remaining fields). The action bar is ordered safe-first, with read-only verbs and `Help`/`?` first and the destructive `Delete` last; `.` refreshes (clears) the screen. Type `?` for the full reference. Selectors can be 1-based indices, exact names, exact ids, or unique substrings.
 
 ### profile-add - Create a New Profile
 

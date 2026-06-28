@@ -1,12 +1,13 @@
 # Security Policy
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 ## Supported Versions
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 4.0.x   | Yes (current)       |
+| 4.1.x   | Yes (current)       |
+| 4.0.x   | Security fixes only |
 | 3.8.x   | Security fixes only |
 | 3.7.x   | End of Life         |
 | < 3.7   | No                  |
@@ -92,7 +93,7 @@ For the complete AI security model with grant properties, tool classification, a
 
 All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC keyless signing:
 
-- **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates
+- **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates. As of v4.1.0 (sigstore 0.14) the in-app check parses GitHub's current v0.3 signing bundles and returns a real verified result; it stays a non-blocking second factor, with the artifact SHA-256 as the primary integrity check
 - **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
 - **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
 - **Build gates**: pushes to `main` and release tags run `cargo clippy --all-targets -- -D warnings` and `cargo audit` as hard CI gates; release artifacts are signed and published only after the lint, audit, and test jobs pass

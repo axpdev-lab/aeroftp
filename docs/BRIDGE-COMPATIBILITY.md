@@ -109,5 +109,20 @@ way: an importer reads whatever connection types it recognizes in the file.)
 
 ---
 
+## Filen Desktop bridge notes
+
+- The Filen Desktop local bridges (`filen-desktop-webdav`, `filen-desktop-s3`)
+  default to `admin` / `admin` on their loopback server. AeroFTP applies the
+  same blank-to-`admin`/`admin` fallback when those bridge presets are saved
+  with empty credentials. As of v4.1.0 this fallback also applies on the
+  headless paths (CLI, benchmark, MCP, schedulers), not only the GUI.
+- Renaming an **empty** folder on a Filen S3 bridge cannot work: a virtual
+  prefix has no underlying object for the S3 copy-then-delete rename to act on.
+  AeroFTP returns an actionable message asking you to add a file inside the
+  folder first, or to use the native Filen API or the WebDAV bridge for that
+  operation.
+
+---
+
 *This matrix tracks the shipped bridge code and is updated on every bridge change.
-Last reviewed for v4.0.9.*
+Last reviewed for v4.1.0.*

@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/aeroftp_banner.png" alt="AeroFTP — FTP-First. Multi-Protocol. AI-Powered. Privacy-Enhanced." width="100%">
+  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/aeroftp_banner.png" alt="AeroFTP - FTP-First. Multi-Protocol. AI-Powered. Privacy-Enhanced." width="100%">
 </p>
 
 # AeroFTP
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 <p align="center">
   The modern FTP client that grew into a complete file management platform. Multi-protocol, 6 integrated product modules, 47 languages, one app.
@@ -77,7 +77,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation into a broad multi-protocol file management platform through six integrated product modules - the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation into a broad multi-protocol file management platform through seven integrated product modules - the **Aero Family**.
 
 ---
 
@@ -305,6 +305,7 @@ The first three are encrypted with a user-chosen password at export time. `.aero
 AeroFTP
 ├── AeroCloud    - Personal cloud (7 transport protocols + 25+ native providers + 6 media services, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
+├── AeroShare    - Peer-to-peer user-to-user transfer (end-to-end encrypted, no server in the middle) [Beta]
 ├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
 ├── AeroSync     - Bidirectional sync engine
 │   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
@@ -355,6 +356,16 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 > [Full documentation →](https://docs.aeroftp.app/features/aerosync.html)
 
 Enterprise-grade file synchronization built for real-world reliability. Three sync profiles (Mirror, Two-way, Backup), conflict resolution center with per-file strategies, SHA-256 checksum verification, transfer journal with checkpoint/resume, configurable retry with exponential backoff, bandwidth control, post-transfer verification (4 policies), and structured error taxonomy with 10 categories. Integrates with AeroCloud for background tray sync.
+
+---
+
+### AeroShare - Peer-to-Peer Transfer (Beta)
+
+> [Full documentation →](docs/AEROSHARE-P2P.md)
+
+Send a file or a folder straight to another person, end-to-end encrypted, with no server in the middle. AeroShare opens a direct peer-to-peer channel between the two devices (built on iroh 1.0 with Mainline-DHT discovery and federated relays as fallback), so the bytes never pass through a hosted account. Always-on at launch: a Discover tile with a 256-bit E2E badge, a **+friend** button in the titlebar, a draggable hub dialog and a status-bar receiver indicator. Add a friend or share a folder and the feature auto-activates; the standing receive loop is opt-in (a one-time prompt, changeable from Settings) so you decide when your device accepts incoming transfers. Each sender gets their own Inbox and an address book remembers the people you exchange with.
+
+This is a **Beta preview** shipping in v4.1.0. The transport is hardened (iroh 1.0 cleared the prior dependency advisories) and decentralized by design, with more of the surface and notifications still being refined.
 
 ---
 

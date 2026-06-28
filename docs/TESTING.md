@@ -88,6 +88,7 @@ Legend:
 | Transfer engine (DAG) | Single-file, batch, and sync paths, with live multipart, server-side copy, and segmented download across S3, B2, SFTP, FTP, and WebDAV |
 | Profile imports | Tests for importing from rclone, FileZilla, PuTTY, WinSCP, Cyberduck, and more |
 | Archive compression | Live round-trip across zip, 7z, tar, tar.gz, tar.xz, tar.bz2 with password and level variations |
+| Provider offline parsers (v4.1.0) | A deterministic offline parser plus an HTTP-status-to-error test net now covers all 16 unit-only storage providers (Azure, Koofr, Yandex, Cloudinary, Uploadcare, GitLab, Filen, 4shared, kDrive, Jottacloud, Zoho, Internxt, Drime, Immich; GitHub was already covered; Swift is skipped, as its only profile, Blomp, is inactive) |
 
 ---
 

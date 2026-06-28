@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 22 June 2026
-> Version: v4.0.x
+> Last Updated: 28 June 2026
+> Version: v4.1.0
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
@@ -10,6 +10,12 @@
 > 3. **45+ pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive), WebDAV-compatible (Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
 >
 > The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
+
+---
+
+## AeroShare peer-to-peer transport (Beta, v4.1.0 preview)
+
+In addition to the cloud transports above, AeroFTP v4.1.0 previews **AeroShare**, an end-to-end-encrypted peer-to-peer user-to-user transfer path built on iroh 1.0. Peers discover each other through the Mainline DHT and connect over federated relays, with no central AeroFTP server in the path. It is a Beta preview in v4.1.0.
 
 ---
 

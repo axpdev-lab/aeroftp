@@ -70,3 +70,15 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 <sub>49 providers, 60 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
+
+## Provider notes
+
+- **Filen (S3 bridge):** renaming an *empty* folder over the Filen S3 bridge
+  cannot work, because a virtual prefix has no underlying object for the S3
+  copy-then-delete rename to act on. AeroFTP returns an actionable message
+  asking you to add a file inside the folder first, or to use the native Filen
+  API or the WebDAV bridge for that operation.
+- **OpenDrive (host self-heal):** a profile switched from the WebDAV preset
+  (`webdav.opendrive.com`) into native API mode now normalizes its host to
+  `dev.opendrive.com`, so the native session flow no longer leaks the WebDAV
+  hostname.

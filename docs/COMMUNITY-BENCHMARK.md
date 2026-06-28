@@ -1,6 +1,6 @@
 # Community Benchmark
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 Help AeroFTP build a real-world protocol comparison dataset without giving up
 your privacy.
@@ -130,6 +130,25 @@ enabled, and then removes the temporary benchmark directory.
 Use a non-critical test profile if you are running `standard` or `deep` on a
 free-tier provider. The CLI keeps the operation surface small, but provider rate
 limits are controlled by the provider.
+
+After a run, the scratch base directory is removed (guarded), honouring any
+`--test-root-prefix` you passed. The scratch tree is created with parent
+directories in one step, which fixes pCloud WebDAV refusing a nested collection
+whose parent did not yet exist.
+
+## Reading the run
+
+A few presentation details make multi-profile runs easier to read:
+
+- The per-profile header and the comparison tables carry a protocol / transport
+  column, so it is clear which transport each row was measured over.
+- A public-IP fairness snapshot flags a run as not-comparable if your public IP
+  changed mid-sweep (for example, the connection dropped and reconnected on a
+  different address), since that breaks the apples-to-apples comparison.
+- Multi-profile runs show `[k/N]` progress per profile, plus the per-operation
+  run `k/N` within each profile.
+- On a Yandex endpoint error, the output adds a region hint.
+- The connection-type field is clarified as downstream Mbps.
 
 ## Report Format
 

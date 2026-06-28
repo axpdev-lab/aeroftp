@@ -1,6 +1,6 @@
 # AeroFTP CLI - Agent Integration Guide
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
 > It describes how to use AeroFTP CLI for remote operations without credentials.
@@ -124,6 +124,8 @@ The `profiles --json` output:
 | `crypt ls` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt ls _ /dir` | List decrypted names |
 | `batch` | `aeroftp-cli batch script.aeroftp-script` | Run batch script (.aeroftp-script) |
 | `import` | `aeroftp-cli import rclone [--json]` | Import profiles from rclone/FileZilla |
+| `profile-export` | `aeroftp-cli profile-export backup.aeroftp [--include-credentials]` | Export profiles to an encrypted `.aeroftp` backup (GUI-compatible; secrets opt-in) |
+| `profile-import` | `aeroftp-cli profile-import backup.aeroftp` | Import profiles from an encrypted `.aeroftp` backup (reads GUI-exported files) |
 
 ### Info Operations
 
@@ -409,4 +411,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v4.0.x - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v4.1.x - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

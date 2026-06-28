@@ -1,6 +1,6 @@
 # Multi-User Account Partition
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 *Introduced in v4.0.0.*
 
@@ -43,6 +43,13 @@ aeroftp-cli --user alice sync --profile "Backup" /local /remote
 - `--user` is **per-invocation**: it selects the partition for that single command without changing the persistent active user (`users switch` does that).
 - When the selected partition is passphrase-protected, supply it with `--user-passphrase`, `--passphrase-file`, or the `AEROFTP_USER_PASSPHRASE` environment variable; otherwise the CLI prompts on a TTY.
 - `--user` is optional everywhere and defaults to the active user, so existing scripts keep working unchanged.
+
+## Per-user groups, favourites, and the default user (v4.1.0)
+
+- **Per-user groups and favourites.** Server groups and favourites used to be a single global vault blob shared across every local user. In v4.1.0 they route through each user's encrypted partition, so one user's grouping and starred servers stay private to that user. On first launch after the upgrade, a one-time best-effort seed copies the legacy global blob into the active user's partition so existing groups and favourites carry over.
+- **Default user as a real column.** The default user is now a real `is_default` database column (previously a localStorage flag), with Manage Users parity in the GUI. The default user's partition is auto-unlocked on launch.
+- **Vault-aware sidebar.** Standard buckets hide when they are empty (at zero), while user-defined groups always remain visible.
+- **CLI.** In `aeroftp-cli users -i`, the `f` / Fav action marks the default user, matching the GUI behaviour.
 
 ## Security notes
 

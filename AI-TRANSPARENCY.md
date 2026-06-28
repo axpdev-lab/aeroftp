@@ -1,6 +1,6 @@
 # AI Transparency Statement
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 ## Overview
 
@@ -49,6 +49,10 @@ Over 500 audit findings have been identified and resolved across the project's h
 ### Agent Testing
 
 AeroFTP is designed as a first-class tool for AI agents (CLI with `--json` output, vault-based credential isolation, semantic exit codes). Consequently, AI agents are also used to test the application in realistic scenarios, validating the same workflows that end users and automated agents will execute in production.
+
+### In-Product AI (AeroAgent)
+
+AeroFTP also ships an optional in-product AI assistant, AeroAgent, that the user drives from the desktop app with their own AI provider key. Its tools are curated and scoped by the developer, not open-ended: every action is read-only or approval-gated, credentials stay vault-isolated (the agent receives operation results, never passwords), and a backend-enforced grant system governs what it may do. v4.1.0 adds a foundation "coding loop" for local development work (workspace search, structured compiler diagnostics, git read plus stage and commit, run-checks and verify, and safe patching with automatic checkpoints); it is GUI-only and every mutating step is gated behind explicit user confirmation. AeroAgent assists the user; it does not act autonomously without consent.
 
 ## What AI Does NOT Do
 

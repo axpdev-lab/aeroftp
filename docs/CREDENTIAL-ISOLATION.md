@@ -1,6 +1,6 @@
 # Credential Isolation for AI Agents
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 > How AeroFTP enables AI coding agents to operate on remote servers and cloud providers without exposing credentials.
 
@@ -102,6 +102,10 @@ The credential isolation architecture is not limited to a single protocol or ser
 **OAuth and profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime (authorize or configure once in the GUI; the CLI reuses the stored credentials or tokens with automatic refresh where supported)
 
 This breadth is significant because credential proxy services that have emerged for AI agent workflows only support HTTP-based APIs. They cannot authenticate to an FTP server, negotiate an SSH handshake, or manage an OAuth token refresh cycle for a cloud storage provider. AeroFTP handles all of these natively.
+
+### AeroShare peer-to-peer transfers (v4.1.0 preview, Beta)
+
+AeroFTP v4.1.0 previews AeroShare, an end-to-end-encrypted peer-to-peer user-to-user transfer path built on iroh 1.0, with Mainline-DHT peer discovery and federated relays (optional). No central AeroFTP server sits in the transfer path. AeroShare moves files directly between peers and does not require sharing any storage-provider credential, so it stays within the same no-credential-exposure model described above.
 
 ---
 

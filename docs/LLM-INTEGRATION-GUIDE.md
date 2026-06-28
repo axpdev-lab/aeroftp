@@ -1,6 +1,6 @@
 # AeroFTP LLM Integration Guide
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 > Version: 1.1
 > Date: 2026-04-27
@@ -273,6 +273,8 @@ The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-serv
 ### Available Tools (35+ canonical)
 
 The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a matching `remote_*` alias for callers that prefer the cross-profile naming convention.
+
+> **Note**: the v4.1.0 AeroAgent coding tools (the `coding_*` workspace search, diagnostics, git, run-checks / verify, and patch tools) are GUI-only. They are **not** exposed over the MCP server, so they do not appear in the table below.
 
 | Tool | Category | Description |
 |------|----------|-------------|

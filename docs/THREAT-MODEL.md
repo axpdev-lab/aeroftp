@@ -1,6 +1,6 @@
 # AeroFTP Threat Model
 
-> _Last updated: 2026-06-25_
+> _Last updated: 2026-06-28_
 
 > Version: 1.1
 > Date: 2026-05-06
@@ -50,6 +50,13 @@
 | Backend <-> Local Filesystem | High | Same-user permissions |
 | Backend <-> Shell Execution | Critical | Full system access within user context |
 | MCP Client <-> MCP Server | Low | stdin/stdout, client is external process |
+| Peer <-> Peer (AeroShare) | Low | Network. End-to-end-encrypted P2P transfer over iroh 1.0; the remote peer is untrusted |
+
+> **AeroShare (v4.1.0 preview, Beta).** AeroShare introduces a peer-to-peer
+> user-to-user transfer path: it is end-to-end-encrypted and built on iroh 1.0,
+> with Mainline-DHT peer discovery and federated relays (optional). No central
+> AeroFTP server sits in the transfer path. The remote peer is treated as
+> untrusted.
 
 ---
 

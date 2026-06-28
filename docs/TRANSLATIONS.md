@@ -1,8 +1,11 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 2026-06-22
-> Version: v4.0.x
+> Last Updated: 2026-06-28
+> Version: v4.1.0
 > Languages: 47 | Coverage: 100%
+
+All 47 languages remain at 100% coverage, including the new v4.1.0 UI strings
+(AeroShare, `sidebar.ejectFailed`).
 
 ---
 

@@ -5,7 +5,7 @@
 > **For storage providers and integrators**: this is the only public reference of its kind in the file-client space: a complete blueprint that lets a new cloud or self-hosted storage service ship a first-class native integration in AeroFTP without reverse-engineering the codebase. If you run a storage service and want a dedicated provider entry (instead of a generic preset), this guide is the contract. We're already collaborating with one provider on a native integration using exactly this document; we welcome more. Reach out via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues) and we'll review the API together.
 
 **Version**: 3.7
-**Last Updated**: 2026-06-22
+**Last Updated**: 2026-06-28
 **Codebase**: `src-tauri/src/providers/`
 
 ---
@@ -747,6 +747,7 @@ Three providers implement client-side encryption where the server never sees pla
 - No OAuth app registration or API key is required for the standard OpenDrive personal flow.
 - Root folder uses `folder_id = 0`.
 - The live API diverges from the PDF in some cases, so robust integrations should prefer defensive fallbacks over assuming endpoint consistency.
+- Host self-heal: a profile switched from the WebDAV preset (`webdav.opendrive.com`) into native API mode normalizes its host to `dev.opendrive.com`, so the session flow does not leak the WebDAV hostname.
 
 ---
 

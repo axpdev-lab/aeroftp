@@ -1,6 +1,6 @@
 # AeroFTP Documentation
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 Welcome to the AeroFTP documentation folder. This contains all technical documentation, compatibility audits, and guides.
 
@@ -13,6 +13,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix and protocol capability notes |
+| **[AEROSHARE-P2P.md](./AEROSHARE-P2P.md)** | AeroShare peer-to-peer transfer (Beta preview, v4.1.0) - end-to-end-encrypted user-to-user transfer over iroh 1.0, always-on surface, Inbox, friends |
 | **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** | Shaped Graph Transfer (DAG) engine - node graph, capability-aware shapes (multipart fan-out, server-side copy, segmented downloads), resource classes, AIMD backpressure (v4.0.0) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[MULTI-USER.md](./MULTI-USER.md)** | Multi-User Account Partition - per-user encrypted vault partitions, Account Lock Screen, admin role, CLI `--user` flag (v4.0.0) |

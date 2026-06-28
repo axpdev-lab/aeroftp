@@ -1,6 +1,6 @@
 # AeroFTP Roadmap
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-06-28_
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
@@ -23,6 +23,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 | Status | Item | Target |
 |---|---|---|
+| 🟢 Shipped | AeroShare P2P beta preview + AeroAgent coding loop foundation + per-user groups/favourites + benchmark/bridge hardening | v4.1.0 |
 | 🟢 Shipped | AeroVault create redesign + AeroVault Zip plaintext lane + universal rclone export | v4.0.9 |
 | 🟢 Shipped | AeroProgress transfer card + AeroCrypt first-class Crypt profile + Quick Connect polish | v4.0.8 |
 | 🟢 Shipped | AeroVault dual blind security audit + error-correction crate convergence | v4.0.7 |
@@ -37,7 +38,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | 🟢 Shipped | AeroVault v3 (Archive tier) + AeroFile Dual Panel Slice A | v3.7.9 |
 | 🟢 Shipped | AeroCrypt overlay first-class + ImageKit / Uploadcare + CLI audit | v3.7.2 |
 | 🟢 Shipped | Persistent Mount Manager (GUI + CLI) | v3.7.1 |
-| 🟡 In Flight | P2P peer transfer (AeroShare) | next release |
+| 🟢 Shipped (Beta) | P2P peer transfer (AeroShare) | v4.1.0 |
 | 🟡 In Flight | Bitbucket / Gitea / Forgejo native integrations | next release |
 | 🟡 In Flight | Selectable XChaCha20 vault cipher | next release |
 | 🔵 Up Next | Share Link UX redesign (QR, analytics, team sharing) | planned |
@@ -58,6 +59,8 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟢 Just Shipped
 
+- **AeroShare peer-to-peer transfer (Beta), AeroAgent coding loop and per-user groups** (v4.1.0)
+  AeroShare arrives as a Beta preview: direct, end-to-end-encrypted device-to-device transfers with no server in the middle, built on iroh 1.0 with Mainline-DHT discovery and federated relays. It is always-on at launch (Discover tile with a 256-bit E2E badge, a titlebar **+friend** button, a draggable hub and a status-bar receiver indicator); adding a friend or sharing a folder auto-activates it, while the standing receive loop stays opt-in. AeroAgent gains a foundation coding loop (GUI-only, read-only or approval-gated): ripgrep workspace search, structured cargo/tsc/eslint diagnostics, git read plus stage and commit, a run-checks runner and an ordered verify, and safe patch with automatic checkpoints. Server groups and favourites move from a single global blob to each user's encrypted partition, and the interactive CLI grows a `New(N)` verb, `groups -i` member add/remove and a safe-first action bar ([#311](https://github.com/axpdev-lab/aeroftp/discussions/311), **Ehud Kirsh**). The benchmark gets real fixes (#368), the Filen Desktop bridges work headless, OS "Extract here / to folder" verbs land on Nautilus and Windows, Windows USB eject works, and the in-app sigstore update verification (sigstore 0.14) verifies for real again.
 - **AeroVault create redesign, the AeroVault Zip plaintext lane and universal rclone export** (v4.0.9)
   AeroVault create is rebuilt Compressor-style: a named vault, mode cards with a conditional password, a result receipt instead of a jump into the browser, and a single tabbed shell (Home, Recent, Files) shared by the standalone modal and the browser ([#322](https://github.com/axpdev-lab/aeroftp/issues/322), **Ehud Kirsh**). A new AeroVault Zip plaintext lane adds a fast, honestly-unencrypted `.aerozip` archive format with optional recovery parity and a real measured size estimate, plus grid and list views and live progress bars across the vault and archive browsers. AeroMount gains a read-only mount and a one-shot Save-All for unlocked vaults (Ehud Kirsh's idea #1). On the bridge, rclone export now reaches Filen and every OAuth cloud provider, not just Jottacloud ([#128](https://github.com/axpdev-lab/aeroftp/issues/128)), the crypt overlay reads as a padlock at every site ([#272](https://github.com/axpdev-lab/aeroftp/issues/272)), and interactive `aeroftp groups` and `aeroftp users` join `profiles -i` on one engine ([#311](https://github.com/axpdev-lab/aeroftp/discussions/311)). Hardening: rclone config export strips CR/LF from every value (Backblaze B2 included) and the quinn-proto advisory RUSTSEC-2026-0185 is patched. A pre-release audit of all 86 changes closed 12 findings before tagging.
 - **AeroProgress, Quick Connect polish and AeroCrypt as a first-class Crypt profile** (v4.0.8)
@@ -150,8 +153,6 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟡 In Flight
 
-- **P2P peer transfer (AeroShare)**
-  Direct device-to-device transfers over an iroh-based peer connection (QUIC with hole-punching), no server in the middle: a send-file flow with progress, presence, and a received-files inbox. Nearing a first usable cut.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
 - **Compression wrapper profile**
