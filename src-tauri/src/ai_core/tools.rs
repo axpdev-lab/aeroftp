@@ -645,7 +645,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "coding_diagnostics",
-            description: "Run a read-only compiler/typechecker/linter pass (cargo check, tsc, or eslint) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Use to inspect build/type/lint errors without producing binaries. Sources: cargo (cargo check --message-format=json), tsc (tsc --noEmit), eslint (eslint -f json).",
+            description: "Run a compiler/typechecker/linter pass (cargo check, tsc, or eslint) in a coding workspace and return structured diagnostics: a flat list of {file, line, column, severity, code, message} plus error/warning counts. Use to inspect build/type/lint errors without producing binaries. Note: this executes the project's own build/config code (cargo runs build.rs and proc-macros; tsc/eslint run the project's JS config), so it is treated as a mutating, approval-gated action. Sources: cargo (cargo check --message-format=json), tsc (tsc --noEmit), eslint (eslint -f json).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -658,7 +658,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 },
                 "required": ["workspace_root", "source"],
             }),
-            danger: DangerLevel::ReadOnly,
+            // Executes workspace-controlled code (build.rs / proc-macros / JS lint+tsc config),
+            // so it is Medium (mutating-class), matching coding_run_checks, not ReadOnly.
+            danger: DangerLevel::Medium,
             surfaces: Surfaces::GUI,
         },
         ToolDef {

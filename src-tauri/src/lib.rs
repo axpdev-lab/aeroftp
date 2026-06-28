@@ -15561,10 +15561,29 @@ async fn import_server_profiles(
 /// Core of [`import_server_profiles`], callable outside the Tauri command
 /// surface. Reused verbatim by `aeroftp-cli profile-import` so the
 /// decrypt + per-secret vault restore (including the #215 per-protocol
-/// snapshots) lives in one place.
+/// snapshots) lives in one place. Restores credentials for every profile in
+/// the file (the GUI computes the profile-list merge separately).
 pub async fn import_server_profiles_core(
     file_path: String,
     password: String,
+) -> Result<serde_json::Value, String> {
+    import_server_profiles_core_filtered(file_path, password, None).await
+}
+
+/// Like [`import_server_profiles_core`] but, when `restore_only` is `Some`, only
+/// the profile ids in the set have their credentials restored into the vault.
+///
+/// Audit v4.1.0 (CLI profile-import): the importer restored every secret in the
+/// file BEFORE the caller decided which profiles to skip as duplicates, so a
+/// profile reported as "skipped (already present)" silently had its existing
+/// vault credential overwritten by the one from the file. Callers that dedup the
+/// profile list (the CLI) pass the set of ids they actually add so the skip
+/// decision and the credential restore stay consistent. `None` preserves the
+/// original "restore all" behaviour for the GUI command.
+pub async fn import_server_profiles_core_filtered(
+    file_path: String,
+    password: String,
+    restore_only: Option<std::collections::HashSet<String>>,
 ) -> Result<serde_json::Value, String> {
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(&file_path), &password)
@@ -15583,6 +15602,12 @@ pub async fn import_server_profiles_core(
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
             for server in &servers {
+                // Audit v4.1.0: when the caller deduped the profile list, only
+                // restore credentials for the ids it actually added, so a
+                // "skipped" profile never has its existing credential clobbered.
+                if restore_only.as_ref().is_some_and(|allow| !allow.contains(&server.id)) {
+                    continue;
+                }
                 if let Some(ref cred) = server.credential {
                     // MUV-3: dual-write the imported credential (vault + active
                     // user's partition).
@@ -15610,6 +15635,10 @@ pub async fn import_server_profiles_core(
                 })
                 .collect();
             for (profile_id, secrets) in &provider_secrets {
+                // Same dedup-consistency gate as the server_<id> loop above.
+                if restore_only.as_ref().is_some_and(|allow| !allow.contains(profile_id)) {
+                    continue;
+                }
                 let protocol = match protocol_by_id.get(profile_id.as_str()) {
                     Some(p) => p,
                     None => continue,

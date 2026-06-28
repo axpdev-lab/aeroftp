@@ -15,6 +15,41 @@ use crate::{
 };
 
 // --------------------------------------------------------------------------------------------
+// Security: replica-path containment.
+//
+// The per-file `key` in a drive manifest is fully publisher-controlled. The receiver's
+// integrity checks (BLAKE3 + plaintext_len) are computed by the same publisher, so they do
+// NOT bound the key. A malicious or phished-into-accepting capability could ship a key such
+// as `../../../../home/victim/.bashrc` (or an absolute path: Rust's `Path::join` REPLACES the
+// base when the joined component is absolute) and escape the replica root chosen by the user,
+// turning "replicate read-only into my chosen folder" into arbitrary file write/delete.
+//
+// `safe_replica_path` rejects any key that is empty, absolute, rooted, or contains a parent
+// (`..`) component, and returns the joined path only when it provably stays under `out_path`.
+// Lexical checking is sufficient here because materialization only ever creates directories
+// and regular files (never symlinks), so no on-disk component can later redirect the path.
+// --------------------------------------------------------------------------------------------
+
+/// Join a publisher-controlled manifest key under `out_path`, or `None` if the key would escape
+/// the replica root. See the module-level note above for the threat model.
+pub(crate) fn safe_replica_path(out_path: &Path, rel_key: &str) -> Option<PathBuf> {
+    use std::path::Component;
+    if rel_key.is_empty() {
+        return None;
+    }
+    let rel = Path::new(rel_key);
+    for comp in rel.components() {
+        match comp {
+            // Plain path segments are the only thing a key may contain.
+            Component::Normal(_) | Component::CurDir => {}
+            // `..`, a leading `/`, or a Windows prefix (`C:`) can all escape the root.
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(out_path.join(rel))
+}
+
+// --------------------------------------------------------------------------------------------
 // WI-4c: capability-path helpers (per-drive RANDOM content key shared via a sealed Capability).
 // These sit ALONGSIDE the existing --secret (dev/pairing) path; the two are mutually exclusive.
 // --------------------------------------------------------------------------------------------
@@ -928,6 +963,17 @@ pub async fn run_docs_replicate(
             let expected_pt_len = f["plaintext_len"].as_u64().unwrap_or(0);
             let expected_blake3 = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
 
+            // Security: refuse any publisher-controlled key that would escape the replica root
+            // BEFORE touching the store or the disk. Skip (do not abort) so one hostile entry
+            // cannot deny replication of the legitimate ones.
+            let target = match safe_replica_path(out_path, &rel_key) {
+                Some(p) => p,
+                None => {
+                    println!("FAIL {} (unsafe key rejected: escapes replica root)", rel_key);
+                    continue;
+                }
+            };
+
             // Wait for this file's entry
             let mut file_entry = None;
             for _attempt in 0..30 {
@@ -1001,8 +1047,7 @@ pub async fn run_docs_replicate(
                 continue;
             }
 
-            // Write to out/<rel_key>
-            let target = out_path.join(&rel_key);
+            // Write to out/<rel_key> (target was containment-checked above).
             if let Some(parent) = target.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -1134,9 +1179,18 @@ pub async fn run_docs_replicate(
                                 let eblake =
                                     f["plaintext_blake3"].as_str().unwrap_or("").to_string();
 
+                                // Security: same containment check as the initial pass; reject
+                                // keys that would escape the replica root before any I/O.
+                                let target = match safe_replica_path(out_path, &rkey) {
+                                    Some(p) => p,
+                                    None => {
+                                        eprintln!("converge: unsafe key rejected {rkey}");
+                                        continue;
+                                    }
+                                };
+
                                 let is_unchanged =
                                     prev_files.get(&rkey).is_some_and(|h| h == &eblake);
-                                let target = out_path.join(&rkey);
                                 if is_unchanged && target.exists() {
                                     println!("skip unchanged {}", rkey);
                                     continue;
@@ -1174,7 +1228,7 @@ pub async fn run_docs_replicate(
                                     eprintln!("converge: integrity check failed for {rkey}");
                                     continue;
                                 }
-                                let target = out_path.join(&rkey);
+                                // target was containment-checked above.
                                 if let Some(parent) = target.parent() {
                                     std::fs::create_dir_all(parent)?;
                                 }
@@ -1185,9 +1239,13 @@ pub async fn run_docs_replicate(
                             // Deletions: any key in prev_files that is absent from the new manifest -> rm local file
                             for old_key in prev_files.keys() {
                                 if !new_state.contains_key(old_key) {
-                                    let target = out_path.join(old_key);
-                                    let _ = std::fs::remove_file(&target);
-                                    deleted += 1;
+                                    // Security: never let a publisher-controlled key drive a
+                                    // remove_file outside the replica root. Keys reach prev_files
+                                    // only after passing the guard, but re-check defensively.
+                                    if let Some(target) = safe_replica_path(out_path, old_key) {
+                                        let _ = std::fs::remove_file(&target);
+                                        deleted += 1;
+                                    }
                                 }
                             }
 
@@ -1294,4 +1352,35 @@ pub async fn run_docs_replicate(
         println!("\nL1 E2EE replication SUCCESS (entry + ciphertext blob replicated over the network; decrypted with drive key).");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod replica_path_tests {
+    use super::safe_replica_path;
+    use std::path::Path;
+
+    #[test]
+    fn accepts_plain_relative_keys() {
+        let root = Path::new("/home/u/AeroShare/drive1");
+        assert_eq!(
+            safe_replica_path(root, "a/b/c.txt"),
+            Some(root.join("a/b/c.txt"))
+        );
+        assert_eq!(safe_replica_path(root, "file.bin"), Some(root.join("file.bin")));
+        // A leading `./` is harmless and stays inside the root.
+        assert_eq!(safe_replica_path(root, "./x.txt"), Some(root.join("x.txt")));
+    }
+
+    #[test]
+    fn rejects_traversal_and_absolute_keys() {
+        let root = Path::new("/home/u/AeroShare/drive1");
+        // Empty key.
+        assert_eq!(safe_replica_path(root, ""), None);
+        // Parent-dir escape.
+        assert_eq!(safe_replica_path(root, "../../../../home/u/.bashrc"), None);
+        assert_eq!(safe_replica_path(root, "a/../../etc/passwd"), None);
+        // Absolute key would replace the base in Path::join.
+        assert_eq!(safe_replica_path(root, "/etc/passwd"), None);
+        assert_eq!(safe_replica_path(root, "/home/u/.bashrc"), None);
+    }
 }

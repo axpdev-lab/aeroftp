@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { archiveStem, inferGeneralKind, needsPasswordPrompt } from './extractOrchestrator';
+import { archiveStem, inferGeneralKind, isWrongPasswordError, needsPasswordPrompt } from './extractOrchestrator';
 
 describe('archiveStem (Extract-to-folder destination derivation)', () => {
     it('strips single archive extensions', () => {
@@ -66,5 +66,23 @@ describe('needsPasswordPrompt (encryption routing)', () => {
 
     it('encrypted archive prompts for a password', () => {
         expect(needsPasswordPrompt({ encrypted: true })).toBe(true);
+    });
+});
+
+describe('isWrongPasswordError (extract error routing)', () => {
+    it('classifies decryption-failure strings as wrong password', () => {
+        expect(isWrongPasswordError('Invalid password or corrupt archive: bad MAC')).toBe(true);
+        expect(isWrongPasswordError('Decryption failed: aead error')).toBe(true);
+        expect(isWrongPasswordError('wrong password or tampered crypt config')).toBe(true);
+        expect(isWrongPasswordError(new Error('Wrong secret'))).toBe(true);
+    });
+
+    it('does NOT misclassify real failures as wrong password', () => {
+        expect(isWrongPasswordError('No space left on device')).toBe(false);
+        expect(isWrongPasswordError('Permission denied (os error 13)')).toBe(false);
+        expect(isWrongPasswordError('Read-only file system')).toBe(false);
+        expect(isWrongPasswordError(new Error('destination is not writable'))).toBe(false);
+        expect(isWrongPasswordError('')).toBe(false);
+        expect(isWrongPasswordError(null)).toBe(false);
     });
 });

@@ -1,5 +1,15 @@
-import { secureGet } from './secureStorage';
-import { getActiveUserSetting, setActiveUserSetting } from './userPartitions';
+import {
+    getActiveUserSetting,
+    setActiveUserSetting,
+    seedActiveSettingFromLegacyGlobal,
+} from './userPartitions';
+
+/** Coerce an untrusted favourites payload into a clean string-id array. */
+function normalizeFavoriteServers(raw: unknown): string[] {
+    return Array.isArray(raw)
+        ? raw.filter((id): id is string => typeof id === 'string')
+        : [];
+}
 
 // Favourites are PER-USER (Ehud #311): they live in the active user's encrypted
 // partition under the `favorite_servers` setting scope, which the CLI reads to
@@ -22,18 +32,17 @@ export const FAVORITES_VAULT_KEY = 'favorite_servers';
 export async function loadFavoriteServers(): Promise<string[]> {
     try {
         const perUser = await getActiveUserSetting<unknown>(FAVORITES_VAULT_KEY);
-        if (perUser != null) {
-            return Array.isArray(perUser)
-                ? perUser.filter((id): id is string => typeof id === 'string')
-                : [];
-        }
-        // First read for this user: seed once from the legacy global blob.
-        const legacy = await secureGet<unknown>(FAVORITES_VAULT_KEY);
-        const seeded = Array.isArray(legacy)
-            ? legacy.filter((id): id is string => typeof id === 'string')
-            : [];
-        if (seeded.length > 0) await setActiveUserSetting(FAVORITES_VAULT_KEY, seeded);
-        return seeded;
+        if (perUser != null) return normalizeFavoriteServers(perUser);
+        // First read for this user: seed once from the legacy global blob, but
+        // ONLY for the unambiguous single migrated owner (the global blob is not
+        // partitioned, so seeding it into a freshly-created second account would
+        // leak the original user's starred set). See seedActiveSettingFromLegacyGlobal.
+        const seeded = await seedActiveSettingFromLegacyGlobal(
+            FAVORITES_VAULT_KEY,
+            normalizeFavoriteServers,
+            (ids) => ids.length === 0,
+        );
+        return seeded ?? [];
     } catch {
         return [];
     }

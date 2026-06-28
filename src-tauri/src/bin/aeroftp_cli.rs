@@ -31042,16 +31042,25 @@ async fn cmd_profile_import(
         }
     };
 
-    // Reuse the GUI import path: decrypt, restore every secret (including the
-    // #215 per-protocol snapshots) into the vault, and return the redacted
-    // profile list (no secret material).
-    let result =
-        ftp_client_gui_lib::import_server_profiles_core(input.to_string(), password.clone()).await;
-    password.zeroize();
+    // Audit v4.1.0: the merge below decides which profiles are duplicates and
+    // skipped. The shared core used to restore EVERY secret before that decision,
+    // so a "skipped" profile silently had its existing vault credential
+    // overwritten. We therefore run import in two phases against the shared path:
+    //  1. preview (restore_only = empty set): decrypt + return the redacted list
+    //     WITHOUT touching the vault, so we can compute the dedup decision;
+    //  2. restore (restore_only = ids we actually add): restore credentials only
+    //     for the new profiles, keeping the skip report and the vault consistent.
+    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
+        input.to_string(),
+        password.clone(),
+        Some(std::collections::HashSet::new()),
+    )
+    .await;
 
-    let value = match result {
+    let value = match preview {
         Ok(v) => v,
         Err(e) => {
+            password.zeroize();
             let exit = if e.contains("Invalid password") { 6 } else { 1 };
             print_error(format, &format!("import failed: {e}"), exit);
             return exit;
@@ -31083,15 +31092,38 @@ async fn cmd_profile_import(
 
     let mut added = 0usize;
     let mut skipped = 0usize;
+    // Ids of the profiles we actually add: only these get their credentials
+    // restored in phase 2.
+    let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     for p in &imported {
         let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
         if (!id.is_empty() && existing_ids.contains(id)) || existing_keys.contains(&dup_key(p)) {
             skipped += 1;
             continue;
         }
+        if !id.is_empty() {
+            restore_ids.insert(id.to_string());
+        }
         current.push(p.clone());
         added += 1;
     }
+
+    // Phase 2: restore credentials for the added profiles only.
+    if !restore_ids.is_empty() {
+        if let Err(e) = ftp_client_gui_lib::import_server_profiles_core_filtered(
+            input.to_string(),
+            password.clone(),
+            Some(restore_ids),
+        )
+        .await
+        {
+            password.zeroize();
+            let exit = if e.contains("Invalid password") { 6 } else { 1 };
+            print_error(format, &format!("import failed: {e}"), exit);
+            return exit;
+        }
+    }
+    password.zeroize();
 
     if added > 0 {
         if let Err(e) = save_active_user_profiles(cli, &store, &current) {

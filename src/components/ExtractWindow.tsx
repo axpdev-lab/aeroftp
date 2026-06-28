@@ -10,6 +10,7 @@ import {
     type ArchiveKind,
     type ExtractProbe,
     extractToDir,
+    isWrongPasswordError,
     needsPasswordPrompt,
     probeArchive,
     resolveUniqueExtractDir,
@@ -87,9 +88,15 @@ const ExtractWindow: React.FC = () => {
             window.setTimeout(closeWindow, AUTO_CLOSE_MS);
         } catch (e) {
             setError(String(e));
-            // A wrong password is recoverable: drop back to the prompt instead of
-            // a dead-end error so the user can retry without relaunching.
-            setPhase(c.kind === 'aerozip' ? 'error' : (pwd !== null ? 'password' : 'error'));
+            // A wrong password is recoverable: drop back to the prompt so the user
+            // can retry without relaunching. But ONLY when the error actually looks
+            // like a bad password: a real failure (disk full, unwritable dest,
+            // corrupt archive) must surface its true message in the error phase,
+            // not be mislabelled "wrong password" and loop forever. (aerozip has no
+            // interactive retry, so it always goes to the dead-end error.)
+            const retryPassword =
+                c.kind !== 'aerozip' && pwd !== null && isWrongPasswordError(e);
+            setPhase(retryPassword ? 'password' : 'error');
         }
     }, [closeWindow]);
 

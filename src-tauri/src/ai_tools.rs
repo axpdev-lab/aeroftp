@@ -157,6 +157,11 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "coding_git_commit"
                 | "coding_run_checks"
                 | "coding_verify"
+                // coding_diagnostics runs `cargo check` (compiles+executes build.rs/proc-macros),
+                // `npx tsc` and `npx eslint` (execute the project's JS config) inside an
+                // LLM-chosen workspace_root. Despite its ReadOnly classification it can execute
+                // arbitrary workspace code, exactly like run_checks/verify, so it MUST be gated.
+                | "coding_diagnostics"
                 | "shell_execute"
         ),
     }
@@ -353,10 +358,27 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         "entry",
         "category",
         "dry_run",
+        // The exact command being run for the code-executing coding tools, so the
+        // approver gives informed consent (e.g. `npm-build` runs an arbitrary
+        // package.json script): coding_run_checks `check`/`filter`, coding_diagnostics `source`.
+        "check",
+        "filter",
+        "source",
     ] {
         if let Some(value) = args.get(key) {
             details.push(format!("{}: {}", key, format_approval_value(value)));
         }
+    }
+
+    // coding_verify takes an ordered `checks` array; surface each entry so the
+    // approver sees the full command list, not just the workspace.
+    if let Some(checks) = args.get("checks").and_then(|value| value.as_array()) {
+        let preview: Vec<String> = checks
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(|c| truncate_display(c, 60))
+            .collect();
+        details.push(format!("checks: {}", preview.join(", ")));
     }
 
     if let Some(paths) = args.get("paths").and_then(|value| value.as_array()) {
@@ -2025,4 +2047,43 @@ pub async fn execute_ai_tool(
     crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod approval_tests {
+    use super::{build_ai_tool_approval_details, requires_backend_write_approval};
+    use serde_json::json;
+
+    #[test]
+    fn coding_diagnostics_requires_approval() {
+        // Audit v4.1.0 regression: coding_diagnostics executes workspace code
+        // (build.rs / proc-macros / JS lint+tsc config) and MUST be gated, just
+        // like the byte-identical commands under coding_run_checks/coding_verify.
+        let args = json!({ "workspace_root": "/tmp/x", "source": "cargo" });
+        assert!(requires_backend_write_approval("coding_diagnostics", &args));
+        assert!(requires_backend_write_approval("coding_run_checks", &args));
+        assert!(requires_backend_write_approval("coding_verify", &args));
+    }
+
+    #[test]
+    fn approval_details_surface_the_command() {
+        // The approver must see WHICH command runs, not just the workspace.
+        let run = build_ai_tool_approval_details(
+            "coding_run_checks",
+            &json!({ "workspace_root": "/tmp/x", "check": "npm-build" }),
+        );
+        assert!(run.iter().any(|d| d.contains("npm-build")));
+
+        let diag = build_ai_tool_approval_details(
+            "coding_diagnostics",
+            &json!({ "workspace_root": "/tmp/x", "source": "cargo" }),
+        );
+        assert!(diag.iter().any(|d| d.contains("source: cargo")));
+
+        let verify = build_ai_tool_approval_details(
+            "coding_verify",
+            &json!({ "workspace_root": "/tmp/x", "checks": ["cargo-check", "vitest"] }),
+        );
+        assert!(verify.iter().any(|d| d.contains("cargo-check") && d.contains("vitest")));
+    }
 }

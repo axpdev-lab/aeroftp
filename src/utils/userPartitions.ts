@@ -3,6 +3,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { ServerProfile } from '../types';
+import { secureGet, secureDelete } from './secureStorage';
 
 export interface UserMetadata {
     id: number;
@@ -164,6 +165,47 @@ export const getUserPartitionDebugState = (): Promise<UserPartitionDebugState> =
 
 export const getActiveUserSetting = <T = unknown>(scope: string): Promise<T | null> =>
     invoke<T | null>('user_partitions_get_active_setting', { scope });
+
+/**
+ * One-time, owner-scoped seed of a per-user setting from a LEGACY GLOBAL vault
+ * blob (the pre-multi-user `config_<scope>` written before partitions existed).
+ *
+ * SECURITY (audit v4.1.0): the legacy blob lives in the single, NON-partitioned
+ * CredentialStore, so seeding it into "whoever is active" copied the original
+ * user's groups/favourites into any newly-created account that read first. This
+ * helper closes that leak:
+ *   1. it seeds ONLY when there is a single local user, i.e. the migrated
+ *      original account is unambiguously the legitimate owner of the global
+ *      blob; the moment a second account exists we can no longer attribute the
+ *      data, so we never seed (the data is not lost, just not auto-carried);
+ *   2. after the attempt it CONSUMES (deletes) the global blob, so no account
+ *      created later can ever seed from it.
+ *
+ * Returns the seeded value (normalized by `normalize`) or null when nothing was
+ * seeded. Fully best-effort: any failure resolves to null without deleting, so a
+ * later successful pass can still migrate.
+ */
+export async function seedActiveSettingFromLegacyGlobal<T>(
+    scope: string,
+    normalize: (raw: unknown) => T,
+    isEmpty: (value: T) => boolean,
+): Promise<T | null> {
+    try {
+        const users = await listUsers();
+        // Only the unambiguous single (migrated) owner may inherit the global blob.
+        if (users.length !== 1) return null;
+        const legacy = await secureGet<unknown>(scope);
+        const seeded = normalize(legacy);
+        if (!isEmpty(seeded)) {
+            await setActiveUserSetting(scope, seeded);
+        }
+        // Consume the legacy global blob so no future account can seed from it.
+        await secureDelete(scope);
+        return isEmpty(seeded) ? null : seeded;
+    } catch {
+        return null;
+    }
+}
 
 export const setActiveUserSetting = <T = unknown>(scope: string, value: T): Promise<void> =>
     invoke<void>('user_partitions_set_active_setting', { scope, value });

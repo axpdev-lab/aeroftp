@@ -84,6 +84,28 @@ export function needsPasswordPrompt(probe: Pick<ExtractProbe, 'encrypted'>): boo
     return probe.encrypted;
 }
 
+/**
+ * True when an extraction error is (very likely) a wrong/missing password rather
+ * than a real failure (disk full, unwritable destination, corrupt archive,
+ * backend crash). Audit v4.1.0: the extract window used to relabel EVERY error
+ * on the encrypted path as "wrong password" and bounce the user back to the
+ * prompt, hiding the true cause and looping on a password that was correct. Only
+ * password-shaped errors should re-open the prompt; everything else is a real
+ * error. Matches the decryption-failure strings the extract lanes emit
+ * (`Invalid password or corrupt archive`, `Decryption failed`, `wrong password
+ * or tampered crypt config`, ...). Pure, so the routing is unit-tested.
+ */
+export function isWrongPasswordError(err: unknown): boolean {
+    const msg = String(
+        err instanceof Error ? err.message : (err ?? ''),
+    ).toLowerCase();
+    return (
+        msg.includes('password') ||
+        msg.includes('decrypt') ||
+        msg.includes('wrong secret')
+    );
+}
+
 /** Probe an archive/vault for its kind + whether a password is required. */
 export function probeArchive(path: string): Promise<ExtractProbe> {
     return invoke<ExtractProbe>('extract_probe', { path });

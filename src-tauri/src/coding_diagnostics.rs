@@ -8,10 +8,17 @@
 //! declared workspace root and parses the machine-readable output into a flat
 //! list of structured `{file, line, column, severity, code, message}` entries.
 //!
-//! This is a read-only inspection tool: it never modifies the workspace and the
-//! program plus its arguments come from a fixed catalog (the only
+//! The program plus its arguments come from a fixed catalog (the only
 //! caller-controlled value is the workspace root and an optional timeout).
 //! Arbitrary command execution remains the job of `shell_execute`.
+//!
+//! SECURITY: although it produces no binaries, this is NOT a safe read-only
+//! tool. `cargo check` compiles and executes the crate's `build.rs` and
+//! proc-macros, and `tsc`/`eslint` execute the project's JavaScript config
+//! (`.eslintrc.js`, plugins, a local `node_modules/.bin`). All of that is
+//! arbitrary code from the (possibly untrusted) workspace, so the tool is
+//! classified `DangerLevel::Medium` and routed through the same approval gate
+//! as `coding_run_checks`/`coding_verify` (see `requires_backend_write_approval`).
 
 use std::path::Path;
 use std::sync::LazyLock;

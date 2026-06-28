@@ -1,5 +1,8 @@
-import { secureGet } from './secureStorage';
-import { getActiveUserSetting, setActiveUserSetting } from './userPartitions';
+import {
+    getActiveUserSetting,
+    setActiveUserSetting,
+    seedActiveSettingFromLegacyGlobal,
+} from './userPartitions';
 
 // Server groups are the generalisation of the ⭐ favourites: where a favourite
 // is a single anonymous bucket of server ids, a group is a *named* bucket. They
@@ -88,11 +91,16 @@ export async function loadServerGroups(): Promise<ServerGroup[]> {
     try {
         const perUser = await getActiveUserSetting<unknown>(GROUPS_VAULT_KEY);
         if (perUser != null) return normalizeServerGroups(perUser);
-        // First read for this user: seed once from the legacy global blob.
-        const legacy = await secureGet<unknown>(GROUPS_VAULT_KEY);
-        const seeded = normalizeServerGroups(legacy);
-        if (seeded.length > 0) await setActiveUserSetting(GROUPS_VAULT_KEY, seeded);
-        return seeded;
+        // First read for this user: seed once from the legacy global blob, but
+        // ONLY for the unambiguous single migrated owner (the global blob is not
+        // partitioned, so seeding it into a freshly-created second account would
+        // leak the original user's group names). See seedActiveSettingFromLegacyGlobal.
+        const seeded = await seedActiveSettingFromLegacyGlobal(
+            GROUPS_VAULT_KEY,
+            normalizeServerGroups,
+            (g) => g.length === 0,
+        );
+        return seeded ?? [];
     } catch {
         return [];
     }
