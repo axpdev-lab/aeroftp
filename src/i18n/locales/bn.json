@@ -280,7 +280,9 @@
             "unstableTitle": "পরীক্ষামূলক প্রদানকারী",
             "unstableBody": "{provider} এখনও স্থিতিশীল নয় এবং পরিষেবাটি অনুপলব্ধ থাকতে পারে। আপনার কোনো দোষ ছাড়াই সংযোগ ব্যর্থ হতে পারে।",
             "persistModeCredentials": "এই অ্যাকাউন্টের প্রতিটি প্রোটোকলের জন্য শংসাপত্র মনে রাখুন",
-            "persistModeCredentialsHint": "প্রতি অ্যাকাউন্টে একটি প্রোফাইল: প্রতিটি প্রোটোকলের শংসাপত্র (API, WebDAV, S3, ...) সংরক্ষিত রাখে যাতে মোড পরিবর্তন করলে আর জিজ্ঞাসা না করে, এমনকি পুনরায় চালু করার পরেও। ভল্টে এনক্রিপ্ট করা অবস্থায় সংরক্ষিত। ডিফল্টরূপে বন্ধ।"
+            "persistModeCredentialsHint": "প্রতি অ্যাকাউন্টে একটি প্রোফাইল: প্রতিটি প্রোটোকলের শংসাপত্র (API, WebDAV, S3, ...) সংরক্ষিত রাখে যাতে মোড পরিবর্তন করলে আর জিজ্ঞাসা না করে, এমনকি পুনরায় চালু করার পরেও। ভল্টে এনক্রিপ্ট করা অবস্থায় সংরক্ষিত। ডিফল্টরূপে বন্ধ।",
+            "opendriveDefaultPrivacy": "নতুন আইটেমের জন্য ডিফল্ট গোপনীয়তা",
+            "opendriveDefaultPrivacyHelp": "আপনি যে ফোল্ডার ও ফাইল তৈরি বা আপলোড করেন তাতে প্রযোজ্য। WebDAV সংযোগ OpenDrive-এর নিজস্ব ডিফল্ট সেটিংস ব্যবহার করে।"
         },
         "browser": {
             "remote": "রিমোট",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন",
             "privacyEllipsis": "গোপনীয়তা...",
             "openWithAeroVaultZip": "AeroVault Zip দিয়ে খুলুন",
-            "importToAeroFTP": "AeroFTP-তে ইম্পোর্ট করুন"
+            "importToAeroFTP": "AeroFTP-তে ইম্পোর্ট করুন",
+            "permissionsEllipsis": "অনুমতি..."
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "শুধুমাত্র অ্যাকাউন্টের মালিক এই আইটেমটি অ্যাক্সেস করতে পারেন।",
             "privacyPublic": "সর্বজনীন",
             "privacyPublicDesc": "লিঙ্কটি থাকা যে কেউ এই আইটেমটি অ্যাক্সেস করতে পারেন।",
-            "visibility": "দৃশ্যমানতা"
+            "visibility": "দৃশ্যমানতা",
+            "applyPrivacy": "প্রয়োগ করুন",
+            "applyPrivacyAll": "{count}টি আইটেমে প্রয়োগ করুন"
         },
         "duplicates": {
             "title": "ডুপ্লিকেট খুঁজুন",

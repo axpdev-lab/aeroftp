@@ -280,7 +280,9 @@
             "unstableTitle": "Mtoa huduma wa majaribio",
             "unstableBody": "{provider} bado si thabiti na huduma huenda isipatikane. Muunganisho unaweza kushindwa bila kosa lako.",
             "persistModeCredentials": "Kumbuka kitambulisho cha kila itifaki ya akaunti hii",
-            "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi."
+            "persistModeCredentialsHint": "Wasifu mmoja kwa kila akaunti: huhifadhi kitambulisho cha kila itifaki (API, WebDAV, S3, ...) ili kubadilisha hali kusiulize tena, hata baada ya kuanzisha upya. Huhifadhiwa kwa njia fiche kwenye hazina. Imezimwa kwa chaguo-msingi.",
+            "opendriveDefaultPrivacy": "Faragha chaguo-msingi kwa vipengee vipya",
+            "opendriveDefaultPrivacyHelp": "Hutumika kwa folda na faili unazounda au kupakia. Miunganisho ya WebDAV hutumia mipangilio chaguo-msingi ya OpenDrive."
         },
         "browser": {
             "remote": "Mbali",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay",
             "privacyEllipsis": "Faragha...",
             "openWithAeroVaultZip": "Fungua kwa AeroVault Zip",
-            "importToAeroFTP": "Ingiza kwenye AeroFTP"
+            "importToAeroFTP": "Ingiza kwenye AeroFTP",
+            "permissionsEllipsis": "Ruhusa..."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Mmiliki wa akaunti pekee ndiye anaweza kufikia kipengele hiki.",
             "privacyPublic": "Ya umma",
             "privacyPublicDesc": "Mtu yeyote mwenye kiungo anaweza kufikia kipengele hiki.",
-            "visibility": "Mwonekano"
+            "visibility": "Mwonekano",
+            "applyPrivacy": "Tumia",
+            "applyPrivacyAll": "Tumia kwa vipengee {count}"
         },
         "duplicates": {
             "title": "Tafuta Nakala",

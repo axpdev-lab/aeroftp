@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentinis tiekėjas",
             "unstableBody": "{provider} dar nėra stabilus ir paslauga gali būti nepasiekiama. Ryšys gali nepavykti ne dėl jūsų kaltės.",
             "persistModeCredentials": "Įsiminti kiekvieno šios paskyros protokolo prisijungimo duomenis",
-            "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta."
+            "persistModeCredentialsHint": "Vienas profilis paskyrai: išsaugo kiekvieno protokolo prisijungimo duomenis (API, WebDAV, S3, ...), todėl perjungiant režimą jų nebeprašoma, net ir po paleidimo iš naujo. Saugoma užšifruota saugykloje. Pagal numatytuosius nustatymus išjungta.",
+            "opendriveDefaultPrivacy": "Numatytasis naujų elementų privatumas",
+            "opendriveDefaultPrivacyHelp": "Taikoma jūsų kuriamiems ar įkeliamiems aplankams ir failams. WebDAV ryšiai naudoja numatytuosius OpenDrive nustatymus."
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay",
             "privacyEllipsis": "Privatumas...",
             "openWithAeroVaultZip": "Atidaryti su AeroVault Zip",
-            "importToAeroFTP": "Importuoti į AeroFTP"
+            "importToAeroFTP": "Importuoti į AeroFTP",
+            "permissionsEllipsis": "Leidimai..."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Šį elementą gali pasiekti tik paskyros savininkas.",
             "privacyPublic": "Vieša",
             "privacyPublicDesc": "Šį elementą gali pasiekti bet kas, turintis nuorodą.",
-            "visibility": "Matomumas"
+            "visibility": "Matomumas",
+            "applyPrivacy": "Taikyti",
+            "applyPrivacyAll": "Taikyti {count} elementams"
         },
         "duplicates": {
             "title": "Rasti dublikatus",

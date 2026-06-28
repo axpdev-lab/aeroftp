@@ -1245,6 +1245,20 @@ enum Commands {
         #[arg(long, value_enum)]
         access: Option<CliAccessLevel>,
     },
+    /// Issue #252: set the privacy level of an EXISTING file or folder on
+    /// providers that model access (OpenDrive). The CLI counterpart of the
+    /// GUI Properties > Permissions tab; file-vs-folder is detected via `stat`.
+    Access {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path of the file or folder
+        #[arg(default_value = "")]
+        path: String,
+        /// Privacy level to set: private, public, or hidden
+        #[arg(long = "to", value_enum)]
+        to: CliAccessLevel,
+    },
     /// Delete a remote file or directory
     Rm {
         /// Server URL (omit when using --profile)
@@ -21744,6 +21758,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
                 {"name": "put", "syntax": "aeroftp-cli put --profile NAME ./local /remote/path [-n]", "description": "Upload file (-n: no-clobber, skip if exists)"},
                 {"name": "put -r", "syntax": "aeroftp-cli put --profile NAME ./local/ /remote/ -r", "description": "Upload directory"},
                 {"name": "mkdir", "syntax": "aeroftp-cli mkdir --profile NAME /remote/dir [-p]", "description": "Create directory (-p: parents, idempotent)"},
+                {"name": "access", "syntax": "aeroftp-cli access --profile NAME /path --to public|private|hidden", "description": "Set OpenDrive privacy of an existing file/folder (#252)"},
                 {"name": "mv", "syntax": "aeroftp-cli mv --profile NAME /old /new", "description": "Move/rename"},
                 {"name": "cp", "syntax": "aeroftp-cli cp --profile NAME /old /new", "description": "Server-side copy when supported"},
                 {"name": "link", "syntax": "aeroftp-cli link --profile NAME /path/file", "description": "Create share link when supported"},
@@ -28586,6 +28601,91 @@ async fn cmd_put_recursive(
     } else {
         4
     }
+}
+
+/// Issue #252: set the privacy level of an existing remote file or folder.
+/// CLI counterpart of the GUI Properties > Permissions tab. `stat` decides the
+/// file-vs-folder endpoint. Unlike `apply_remote_access` (the non-fatal
+/// post-step of mkdir/put), this is an explicit operation: a failure returns a
+/// non-zero exit code, and a non-OpenDrive target is a hard "not supported".
+async fn cmd_access(
+    url: &str,
+    path: &str,
+    level: CliAccessLevel,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::providers::opendrive::OpenDriveProvider;
+
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let path = &resolve_cli_remote_path(&initial_path, path);
+
+    // Detect file vs folder so we hit the right OpenDrive endpoint.
+    let is_dir = match provider.stat(path).await {
+        Ok(entry) => entry.is_dir,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("access: cannot stat '{}': {}", path, e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    // OpenDrive is the only access-modelling backend today.
+    let Some(od) = provider
+        .as_mut()
+        .as_any_mut()
+        .downcast_mut::<OpenDriveProvider>()
+    else {
+        print_error(
+            format,
+            "access is only supported on OpenDrive in this release",
+            7,
+        );
+        let _ = provider.disconnect().await;
+        return 7;
+    };
+
+    let result = if is_dir {
+        od.set_folder_access(path, level.to_opendrive()).await
+    } else {
+        od.set_file_access(path, level.to_opendrive()).await
+    };
+
+    let code = match result {
+        Ok(()) => {
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        eprintln!("OpenDrive: set {} access on {}", level.label(), path);
+                    }
+                }
+                OutputFormat::Json => print_json(&serde_json::json!({
+                    "status": "ok",
+                    "path": path,
+                    "access": level.label(),
+                    "is_dir": is_dir,
+                })),
+            }
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("set access failed on '{}': {}", path, e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
 }
 
 async fn cmd_mkdir(
@@ -52897,6 +52997,14 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             cmd_mkdir(u, p, *parents, *access, &cli, format).await
+        }
+        Commands::Access { url, path, to } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_access(u, p, *to, &cli, format).await
         }
         Commands::Rm {
             url,

@@ -280,7 +280,9 @@
             "unstableTitle": "Penyedia eksperimen",
             "unstableBody": "{provider} belum stabil dan perkhidmatan mungkin tidak tersedia. Sambungan boleh gagal bukan kerana kesalahan anda.",
             "persistModeCredentials": "Ingat kelayakan untuk setiap protokol akaun ini",
-            "persistModeCredentialsHint": "Satu profil setiap akaun: menyimpan kelayakan setiap protokol (API, WebDAV, S3, ...) supaya menukar mod tidak bertanya lagi, walaupun selepas dimulakan semula. Disimpan tersulit dalam bilik kebal. Dimatikan secara lalai."
+            "persistModeCredentialsHint": "Satu profil setiap akaun: menyimpan kelayakan setiap protokol (API, WebDAV, S3, ...) supaya menukar mod tidak bertanya lagi, walaupun selepas dimulakan semula. Disimpan tersulit dalam bilik kebal. Dimatikan secara lalai.",
+            "opendriveDefaultPrivacy": "Privasi lalai untuk item baharu",
+            "opendriveDefaultPrivacyHelp": "Digunakan pada folder dan fail yang anda cipta atau muat naik. Sambungan WebDAV menggunakan tetapan lalai OpenDrive sendiri."
         },
         "browser": {
             "remote": "Jauh",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
             "privacyEllipsis": "Privasi...",
             "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
-            "importToAeroFTP": "Import ke AeroFTP"
+            "importToAeroFTP": "Import ke AeroFTP",
+            "permissionsEllipsis": "Kebenaran..."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Hanya pemilik akaun boleh mengakses item ini.",
             "privacyPublic": "Awam",
             "privacyPublicDesc": "Sesiapa sahaja yang mempunyai pautan boleh mengakses item ini.",
-            "visibility": "Keterlihatan"
+            "visibility": "Keterlihatan",
+            "applyPrivacy": "Guna",
+            "applyPrivacyAll": "Guna pada {count} item"
         },
         "duplicates": {
             "title": "Cari Pendua",

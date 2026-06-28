@@ -280,7 +280,9 @@
             "unstableTitle": "Experimentele provider",
             "unstableBody": "{provider} is nog niet stabiel en de service is mogelijk niet beschikbaar. De verbinding kan mislukken zonder dat het uw schuld is.",
             "persistModeCredentials": "Onthoud inloggegevens voor elk protocol van dit account",
-            "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit."
+            "persistModeCredentialsHint": "Eén profiel per account: bewaart de inloggegevens van elk protocol (API, WebDAV, S3, ...) zodat het wisselen van modus er niet opnieuw om vraagt, zelfs na een herstart. Versleuteld opgeslagen in de kluis. Standaard uit.",
+            "opendriveDefaultPrivacy": "Standaardprivacy voor nieuwe items",
+            "opendriveDefaultPrivacyHelp": "Toegepast op mappen en bestanden die je maakt of uploadt. WebDAV-verbindingen gebruiken de standaardinstellingen van OpenDrive."
         },
         "browser": {
             "remote": "Extern",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Openen als AeroVault Overlay",
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Openen met AeroVault Zip",
-            "importToAeroFTP": "Importeren in AeroFTP"
+            "importToAeroFTP": "Importeren in AeroFTP",
+            "permissionsEllipsis": "Machtigingen..."
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Alleen de accounteigenaar heeft toegang tot dit item.",
             "privacyPublic": "Openbaar",
             "privacyPublicDesc": "Iedereen met de link heeft toegang tot dit item.",
-            "visibility": "Zichtbaarheid"
+            "visibility": "Zichtbaarheid",
+            "applyPrivacy": "Toepassen",
+            "applyPrivacyAll": "Toepassen op {count} items"
         },
         "duplicates": {
             "title": "Duplicaten zoeken",

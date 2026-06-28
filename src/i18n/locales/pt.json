@@ -280,7 +280,9 @@
             "unstableTitle": "Provedor experimental",
             "unstableBody": "{provider} ainda não é estável e o serviço pode estar indisponível. A conexão pode falhar sem que a culpa seja sua.",
             "persistModeCredentials": "Lembrar as credenciais para cada protocolo desta conta",
-            "persistModeCredentialsHint": "Um perfil por conta: mantém guardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que mudar de modo não as peça novamente, mesmo após reiniciar. Armazenado encriptado no cofre. Desativado por predefinição."
+            "persistModeCredentialsHint": "Um perfil por conta: mantém guardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que mudar de modo não as peça novamente, mesmo após reiniciar. Armazenado encriptado no cofre. Desativado por predefinição.",
+            "opendriveDefaultPrivacy": "Privacidade padrão para novos itens",
+            "opendriveDefaultPrivacyHelp": "Aplicada a pastas e ficheiros que criar ou carregar. As ligações WebDAV usam as predefinições do OpenDrive."
         },
         "browser": {
             "remote": "Remoto",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidade...",
             "openWithAeroVaultZip": "Abrir com AeroVault Zip",
-            "importToAeroFTP": "Importar para o AeroFTP"
+            "importToAeroFTP": "Importar para o AeroFTP",
+            "permissionsEllipsis": "Permissões..."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Apenas o proprietário da conta pode acessar este item.",
             "privacyPublic": "Público",
             "privacyPublicDesc": "Qualquer pessoa com o link pode acessar este item.",
-            "visibility": "Visibilidade"
+            "visibility": "Visibilidade",
+            "applyPrivacy": "Aplicar",
+            "applyPrivacyAll": "Aplicar a {count} itens"
         },
         "duplicates": {
             "title": "Encontrar Duplicados",

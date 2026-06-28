@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentalni pružatelj",
             "unstableBody": "{provider} još nije stabilan i usluga možda nije dostupna. Povezivanje može propasti bez vaše krivnje.",
             "persistModeCredentials": "Zapamti vjerodajnice za svaki protokol ovog računa",
-            "persistModeCredentialsHint": "Jedan profil po računu: čuva vjerodajnice svakog protokola (API, WebDAV, S3, ...) spremljene pa promjena načina više ne pita, čak i nakon ponovnog pokretanja. Pohranjeno šifrirano u trezoru. Prema zadanim postavkama isključeno."
+            "persistModeCredentialsHint": "Jedan profil po računu: čuva vjerodajnice svakog protokola (API, WebDAV, S3, ...) spremljene pa promjena načina više ne pita, čak i nakon ponovnog pokretanja. Pohranjeno šifrirano u trezoru. Prema zadanim postavkama isključeno.",
+            "opendriveDefaultPrivacy": "Zadana privatnost za nove stavke",
+            "opendriveDefaultPrivacyHelp": "Primjenjuje se na mape i datoteke koje stvorite ili prenesete. WebDAV veze koriste zadane postavke OpenDrivea."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Otvori kao AeroVault Overlay",
             "privacyEllipsis": "Privatnost...",
             "openWithAeroVaultZip": "Otvori s AeroVault Zip",
-            "importToAeroFTP": "Uvezi u AeroFTP"
+            "importToAeroFTP": "Uvezi u AeroFTP",
+            "permissionsEllipsis": "Dozvole..."
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Ovoj stavci može pristupiti samo vlasnik računa.",
             "privacyPublic": "Javno",
             "privacyPublicDesc": "Ovoj stavci može pristupiti svatko tko ima poveznicu.",
-            "visibility": "Vidljivost"
+            "visibility": "Vidljivost",
+            "applyPrivacy": "Primijeni",
+            "applyPrivacyAll": "Primijeni na {count} stavki"
         },
         "duplicates": {
             "title": "Pronađi duplikate",

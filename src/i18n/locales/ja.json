@@ -280,7 +280,9 @@
             "unstableTitle": "実験的なプロバイダー",
             "unstableBody": "{provider} はまだ安定しておらず、サービスを利用できない場合があります。お客様に問題がなくても接続に失敗することがあります。",
             "persistModeCredentials": "このアカウントの各プロトコルの認証情報を記憶する",
-            "persistModeCredentialsHint": "アカウントごとに1つのプロファイル: 各プロトコルの認証情報 (API、WebDAV、S3、...) を保存しておくため、モードを切り替えても再入力を求められません。再起動後も同様です。ボールトに暗号化して保存されます。デフォルトはオフです。"
+            "persistModeCredentialsHint": "アカウントごとに1つのプロファイル: 各プロトコルの認証情報 (API、WebDAV、S3、...) を保存しておくため、モードを切り替えても再入力を求められません。再起動後も同様です。ボールトに暗号化して保存されます。デフォルトはオフです。",
+            "opendriveDefaultPrivacy": "新しい項目の既定のプライバシー",
+            "opendriveDefaultPrivacyHelp": "作成またはアップロードするフォルダーとファイルに適用されます。WebDAV 接続は OpenDrive 独自の既定値を使用します。"
         },
         "browser": {
             "remote": "リモート",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay として開く",
             "privacyEllipsis": "プライバシー…",
             "openWithAeroVaultZip": "AeroVault Zip で開く",
-            "importToAeroFTP": "AeroFTPにインポート"
+            "importToAeroFTP": "AeroFTPにインポート",
+            "permissionsEllipsis": "アクセス権..."
         },
         "transfer": {
             "transferring": "転送中...",
@@ -3120,7 +3123,9 @@
             "privacyPrivateDesc": "アカウント所有者のみがこのアイテムにアクセスできます。",
             "privacyPublic": "公開",
             "privacyPublicDesc": "リンクを持つ全員がこのアイテムにアクセスできます。",
-            "visibility": "公開設定"
+            "visibility": "公開設定",
+            "applyPrivacy": "適用",
+            "applyPrivacyAll": "{count} 件に適用"
         },
         "duplicates": {
             "title": "重複を検索",

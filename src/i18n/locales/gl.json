@@ -280,7 +280,9 @@
             "unstableTitle": "Provedor experimental",
             "unstableBody": "{provider} aínda non é estable e o servizo pode non estar dispoñible. A conexión pode fallar sen que sexa culpa túa.",
             "persistModeCredentials": "Lembrar as credenciais para cada protocolo desta conta",
-            "persistModeCredentialsHint": "Un perfil por conta: mantén gardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo non as volva pedir, mesmo tras reiniciar. Gárdase cifrado no vault. Desactivado de forma predeterminada."
+            "persistModeCredentialsHint": "Un perfil por conta: mantén gardadas as credenciais de cada protocolo (API, WebDAV, S3, ...) para que cambiar de modo non as volva pedir, mesmo tras reiniciar. Gárdase cifrado no vault. Desactivado de forma predeterminada.",
+            "opendriveDefaultPrivacy": "Privacidade predeterminada para novos elementos",
+            "opendriveDefaultPrivacyHelp": "Aplícase ás carpetas e ficheiros que crees ou subas. As conexións WebDAV usan os valores predeterminados de OpenDrive."
         },
         "browser": {
             "remote": "Remoto",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Abrir como AeroVault Overlay",
             "privacyEllipsis": "Privacidade...",
             "openWithAeroVaultZip": "Abrir con AeroVault Zip",
-            "importToAeroFTP": "Importar a AeroFTP"
+            "importToAeroFTP": "Importar a AeroFTP",
+            "permissionsEllipsis": "Permisos..."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Só o propietario da conta pode acceder a este elemento.",
             "privacyPublic": "Público",
             "privacyPublicDesc": "Calquera persoa coa ligazón pode acceder a este elemento.",
-            "visibility": "Visibilidade"
+            "visibility": "Visibilidade",
+            "applyPrivacy": "Aplicar",
+            "applyPrivacyAll": "Aplicar a {count} elementos"
         },
         "duplicates": {
             "title": "Atopar duplicados",

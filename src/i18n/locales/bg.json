@@ -280,7 +280,9 @@
             "unstableTitle": "Експериментален доставчик",
             "unstableBody": "{provider} все още не е стабилен и услугата може да е недостъпна. Връзката може да се провали без ваша вина.",
             "persistModeCredentials": "Запомняне на идентификационните данни за всеки протокол на този акаунт",
-            "persistModeCredentialsHint": "Един профил за акаунт: запазва идентификационните данни на всеки протокол (API, WebDAV, S3, ...), така че смяната на режима повече не пита, дори след рестартиране. Съхранява се криптирано в трезора. По подразбиране изключено."
+            "persistModeCredentialsHint": "Един профил за акаунт: запазва идентификационните данни на всеки протокол (API, WebDAV, S3, ...), така че смяната на режима повече не пита, дори след рестартиране. Съхранява се криптирано в трезора. По подразбиране изключено.",
+            "opendriveDefaultPrivacy": "Поверителност по подразбиране за нови елементи",
+            "opendriveDefaultPrivacyHelp": "Прилага се към папки и файлове, които създавате или качвате. WebDAV връзките използват настройките по подразбиране на OpenDrive."
         },
         "browser": {
             "remote": "Отдалечен",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Отвори като AeroVault Overlay",
             "privacyEllipsis": "Поверителност...",
             "openWithAeroVaultZip": "Отвори с AeroVault Zip",
-            "importToAeroFTP": "Импортиране в AeroFTP"
+            "importToAeroFTP": "Импортиране в AeroFTP",
+            "permissionsEllipsis": "Разрешения..."
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Само собственикът на акаунта има достъп до този елемент.",
             "privacyPublic": "Публичен",
             "privacyPublicDesc": "Всеки с връзката има достъп до този елемент.",
-            "visibility": "Видимост"
+            "visibility": "Видимост",
+            "applyPrivacy": "Прилагане",
+            "applyPrivacyAll": "Прилагане към {count} елемента"
         },
         "duplicates": {
             "title": "Намиране на дубликати",

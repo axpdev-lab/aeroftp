@@ -280,7 +280,9 @@
             "unstableTitle": "Darparwr arbrofol",
             "unstableBody": "Nid yw {provider} yn sefydlog eto a gall y gwasanaeth fod yn anhygyrch. Gall y cysylltiad fethu heb fai arnoch chi.",
             "persistModeCredentials": "Cofio'r manylion ar gyfer pob protocol o'r cyfrif hwn",
-            "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn."
+            "persistModeCredentialsHint": "Un proffil i bob cyfrif: mae'n cadw manylion pob protocol (API, WebDAV, S3, ...) fel nad yw newid modd yn gofyn eto, hyd yn oed ar ôl ailgychwyn. Storir wedi'i amgryptio yn y gell. Wedi'i ddiffodd yn ddiofyn.",
+            "opendriveDefaultPrivacy": "Preifatrwydd diofyn ar gyfer eitemau newydd",
+            "opendriveDefaultPrivacyHelp": "Yn cael ei gymhwyso i ffolderi a ffeiliau rydych yn eu creu neu'n eu llwytho i fyny. Mae cysylltiadau WebDAV yn defnyddio rhagosodiadau OpenDrive ei hun."
         },
         "browser": {
             "remote": "Pell",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay",
             "privacyEllipsis": "Preifatrwydd...",
             "openWithAeroVaultZip": "Agor gydag AeroVault Zip",
-            "importToAeroFTP": "Mewnforio i AeroFTP"
+            "importToAeroFTP": "Mewnforio i AeroFTP",
+            "permissionsEllipsis": "Caniatâdau..."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Dim ond perchennog y cyfrif sy'n gallu cyrchu'r eitem hon.",
             "privacyPublic": "Cyhoeddus",
             "privacyPublicDesc": "Gall unrhyw un sydd â'r ddolen gyrchu'r eitem hon.",
-            "visibility": "Gwelededd"
+            "visibility": "Gwelededd",
+            "applyPrivacy": "Cymhwyso",
+            "applyPrivacyAll": "Cymhwyso i {count} eitem"
         },
         "duplicates": {
             "title": "Dod o Hyd i Ddyblygu",

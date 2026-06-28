@@ -280,7 +280,9 @@
             "unstableTitle": "Hornitzaile esperimentala",
             "unstableBody": "{provider} oraindik ez da egonkorra eta zerbitzua eskuragarri ez egotea gerta daiteke. Konexioak huts egin dezake zure errurik gabe.",
             "persistModeCredentials": "Gogoratu kontu honetako protokolo bakoitzaren kredentzialak",
-            "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta."
+            "persistModeCredentialsHint": "Profil bat konto bakoitzeko: protokolo bakoitzaren kredentzialak (API, WebDAV, S3, ...) gordeta mantentzen ditu, modua aldatzeak berriz galde ez dezan, berrabiarazi ondoren ere. Vault-ean zifratuta gordetzen da. Lehenetsita desaktibatuta.",
+            "opendriveDefaultPrivacy": "Elementu berrien lehenetsitako pribatutasuna",
+            "opendriveDefaultPrivacyHelp": "Sortzen edo igotzen dituzun karpeta eta fitxategiei aplikatzen zaie. WebDAV konexioek OpenDrive-ren lehenetsitako ezarpenak erabiltzen dituzte."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa",
             "privacyEllipsis": "Pribatutasuna...",
             "openWithAeroVaultZip": "Ireki AeroVault Zip-ekin",
-            "importToAeroFTP": "Inportatu AeroFTPra"
+            "importToAeroFTP": "Inportatu AeroFTPra",
+            "permissionsEllipsis": "Baimenak..."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Kontuaren jabeak soilik atzi dezake elementu hau.",
             "privacyPublic": "Publikoa",
             "privacyPublicDesc": "Esteka duen edonork atzi dezake elementu hau.",
-            "visibility": "Ikusgaitasuna"
+            "visibility": "Ikusgaitasuna",
+            "applyPrivacy": "Aplikatu",
+            "applyPrivacyAll": "Aplikatu {count} elementuri"
         },
         "duplicates": {
             "title": "Bilatu bikoiztuak",

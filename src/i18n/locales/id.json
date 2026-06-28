@@ -280,7 +280,9 @@
             "unstableTitle": "Penyedia eksperimental",
             "unstableBody": "{provider} belum stabil dan layanan mungkin tidak tersedia. Koneksi bisa gagal bukan karena kesalahan Anda.",
             "persistModeCredentials": "Ingat kredensial untuk setiap protokol akun ini",
-            "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default."
+            "persistModeCredentialsHint": "Satu profil per akun: menyimpan kredensial setiap protokol (API, WebDAV, S3, ...) sehingga berpindah mode tidak menanyakannya lagi, bahkan setelah memulai ulang. Disimpan terenkripsi di vault. Nonaktif secara default.",
+            "opendriveDefaultPrivacy": "Privasi default untuk item baru",
+            "opendriveDefaultPrivacyHelp": "Diterapkan ke folder dan file yang Anda buat atau unggah. Koneksi WebDAV menggunakan default OpenDrive sendiri."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
             "privacyEllipsis": "Privasi...",
             "openWithAeroVaultZip": "Buka dengan AeroVault Zip",
-            "importToAeroFTP": "Impor ke AeroFTP"
+            "importToAeroFTP": "Impor ke AeroFTP",
+            "permissionsEllipsis": "Izin..."
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Hanya pemilik akun yang dapat mengakses item ini.",
             "privacyPublic": "Publik",
             "privacyPublicDesc": "Siapa pun yang memiliki tautan dapat mengakses item ini.",
-            "visibility": "Visibilitas"
+            "visibility": "Visibilitas",
+            "applyPrivacy": "Terapkan",
+            "applyPrivacyAll": "Terapkan ke {count} item"
         },
         "duplicates": {
             "title": "Cari Duplikat",

@@ -280,7 +280,9 @@
             "unstableTitle": "Експериментален провајдер",
             "unstableBody": "{provider} сè уште не е стабилен и услугата можеби не е достапна. Поврзувањето може да не успее без ваша вина.",
             "persistModeCredentials": "Запомни ги ингеренциите за секој протокол на оваа сметка",
-            "persistModeCredentialsHint": "Еден профил по сметка: ги чува ингеренциите на секој протокол (API, WebDAV, S3, ...) зачувани, така што менувањето режим повеќе не прашува, дури и по рестартирање. Се чува шифрирано во трезорот. Стандардно исклучено."
+            "persistModeCredentialsHint": "Еден профил по сметка: ги чува ингеренциите на секој протокол (API, WebDAV, S3, ...) зачувани, така што менувањето режим повеќе не прашува, дури и по рестартирање. Се чува шифрирано во трезорот. Стандардно исклучено.",
+            "opendriveDefaultPrivacy": "Стандардна приватност за нови ставки",
+            "opendriveDefaultPrivacyHelp": "Се применува на папки и датотеки што ги создавате или прикачувате. WebDAV врските ги користат стандардните поставки на OpenDrive."
         },
         "browser": {
             "remote": "Далечински",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Отвори како AeroVault Overlay",
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори со AeroVault Zip",
-            "importToAeroFTP": "Увези во AeroFTP"
+            "importToAeroFTP": "Увези во AeroFTP",
+            "permissionsEllipsis": "Дозволи..."
         },
         "transfer": {
             "transferring": "Се пренесува...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "До овој елемент може да пристапи само сопственикот на сметката.",
             "privacyPublic": "Јавно",
             "privacyPublicDesc": "До овој елемент може да пристапи секој што ја има врската.",
-            "visibility": "Видливост"
+            "visibility": "Видливост",
+            "applyPrivacy": "Примени",
+            "applyPrivacyAll": "Примени на {count} ставки"
         },
         "duplicates": {
             "title": "Пронајди дупликати",

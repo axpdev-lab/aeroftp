@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentāls pakalpojumu sniedzējs",
             "unstableBody": "{provider} vēl nav stabils, un pakalpojums var nebūt pieejams. Savienojums var neizdoties ne jūsu vainas dēļ.",
             "persistModeCredentials": "Atcerēties akreditācijas datus katram šī konta protokolam",
-            "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts."
+            "persistModeCredentialsHint": "Viens profils kontam: saglabā katra protokola akreditācijas datus (API, WebDAV, S3, ...), tāpēc režīma pārslēgšana tos vairs neprasa, pat pēc atsāknēšanas. Glabājas šifrēti glabātavā. Pēc noklusējuma izslēgts.",
+            "opendriveDefaultPrivacy": "Noklusējuma privātums jauniem vienumiem",
+            "opendriveDefaultPrivacyHelp": "Attiecas uz mapēm un failiem, ko izveidojat vai augšupielādējat. WebDAV savienojumi izmanto OpenDrive noklusējuma iestatījumus."
         },
         "browser": {
             "remote": "Attālināts",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay",
             "privacyEllipsis": "Privātums...",
             "openWithAeroVaultZip": "Atvērt ar AeroVault Zip",
-            "importToAeroFTP": "Importēt uz AeroFTP"
+            "importToAeroFTP": "Importēt uz AeroFTP",
+            "permissionsEllipsis": "Atļaujas..."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Šim vienumam var piekļūt tikai konta īpašnieks.",
             "privacyPublic": "Publisks",
             "privacyPublicDesc": "Šim vienumam var piekļūt ikviens, kam ir saite.",
-            "visibility": "Redzamība"
+            "visibility": "Redzamība",
+            "applyPrivacy": "Lietot",
+            "applyPrivacyAll": "Lietot {count} vienumiem"
         },
         "duplicates": {
             "title": "Atrast dublikātus",

@@ -280,7 +280,9 @@
             "unstableTitle": "Experimentell leverantör",
             "unstableBody": "{provider} är inte stabil ännu och tjänsten kan vara otillgänglig. Anslutningen kan misslyckas utan att det är ditt fel.",
             "persistModeCredentials": "Kom ihåg autentiseringsuppgifter för varje protokoll på detta konto",
-            "persistModeCredentialsHint": "En profil per konto: behåller varje protokolls autentiseringsuppgifter (API, WebDAV, S3, ...) sparade så att byte av läge inte frågar igen, även efter en omstart. Lagras krypterat i valvet. Av som standard."
+            "persistModeCredentialsHint": "En profil per konto: behåller varje protokolls autentiseringsuppgifter (API, WebDAV, S3, ...) sparade så att byte av läge inte frågar igen, även efter en omstart. Lagras krypterat i valvet. Av som standard.",
+            "opendriveDefaultPrivacy": "Standardsekretess för nya objekt",
+            "opendriveDefaultPrivacyHelp": "Tillämpas på mappar och filer du skapar eller laddar upp. WebDAV-anslutningar använder OpenDrives egna standardinställningar."
         },
         "browser": {
             "remote": "Fjärr",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Öppna som AeroVault Overlay",
             "privacyEllipsis": "Sekretess...",
             "openWithAeroVaultZip": "Öppna med AeroVault Zip",
-            "importToAeroFTP": "Importera till AeroFTP"
+            "importToAeroFTP": "Importera till AeroFTP",
+            "permissionsEllipsis": "Behörigheter..."
         },
         "transfer": {
             "transferring": "Överför...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Endast kontoägaren kan komma åt detta objekt.",
             "privacyPublic": "Offentlig",
             "privacyPublicDesc": "Alla med länken kan komma åt detta objekt.",
-            "visibility": "Synlighet"
+            "visibility": "Synlighet",
+            "applyPrivacy": "Tillämpa",
+            "applyPrivacyAll": "Tillämpa på {count} objekt"
         },
         "duplicates": {
             "title": "Hitta dubbletter",

@@ -45,6 +45,10 @@ pub struct OpenDriveConfig {
     pub username: String,
     pub password: SecretString,
     pub initial_path: Option<String>,
+    /// #252: per-account default privacy applied to newly created folders
+    /// (`mkdir`) and freshly uploaded files. `None` preserves the legacy
+    /// behaviour (folders created Private, files left as OpenDrive assigns).
+    pub default_privacy: Option<OpenDriveAccessLevel>,
 }
 
 impl OpenDriveConfig {
@@ -63,6 +67,10 @@ impl OpenDriveConfig {
             username,
             password: password.into(),
             initial_path: config.initial_path.clone(),
+            default_privacy: config
+                .extra
+                .get("default_privacy")
+                .and_then(|v| OpenDriveAccessLevel::from_token(v)),
         })
     }
 }
@@ -435,6 +443,17 @@ impl OpenDriveAccessLevel {
             OpenDriveAccessLevel::Private => "0",
             OpenDriveAccessLevel::Public => "1",
             OpenDriveAccessLevel::Hidden => "2",
+        }
+    }
+
+    /// Parse the canonical lowercase token (`private`/`public`/`hidden`) used
+    /// by the Tauri commands and the persisted `default_privacy` option.
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token.trim().to_ascii_lowercase().as_str() {
+            "private" => Some(OpenDriveAccessLevel::Private),
+            "public" => Some(OpenDriveAccessLevel::Public),
+            "hidden" => Some(OpenDriveAccessLevel::Hidden),
+            _ => None,
         }
     }
 }
@@ -1726,6 +1745,38 @@ impl StorageProvider for OpenDriveProvider {
         })
         .await?;
 
+        // #252: apply the account's default privacy to the freshly uploaded
+        // file, reusing the file_id we already hold (no extra resolve). This is
+        // non-fatal: a failure warns but never changes the upload result.
+        if let Some(level) = self.config.default_privacy {
+            let level_value = level.to_api_value().to_string();
+            let file_id_for_access = file_id.clone();
+            if let Err(e) = self
+                .with_reauth(|this| {
+                    let file_id = file_id_for_access.clone();
+                    let level_value = level_value.clone();
+                    Box::pin(async move {
+                        this.post_form_unit(
+                            "file/access.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("file_id", file_id),
+                                ("file_ispublic", level_value),
+                            ],
+                        )
+                        .await
+                    })
+                })
+                .await
+            {
+                tracing::warn!(
+                    "[OpenDrive] could not apply default privacy to '{}': {}",
+                    remote_path,
+                    e
+                );
+            }
+        }
+
         if let Some(ref cb) = on_progress {
             cb(file_size, file_size);
         }
@@ -1745,10 +1796,19 @@ impl StorageProvider for OpenDriveProvider {
         }
         let folder_name =
             crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &folder_name);
+        // #252: new folders inherit the account's default privacy. Unset keeps
+        // the previous hardcoded "0" (Private).
+        let folder_is_public = self
+            .config
+            .default_privacy
+            .map(|l| l.to_api_value())
+            .unwrap_or("0")
+            .to_string();
 
         self.with_reauth(|this| {
             let parent_path = parent_path.clone();
             let folder_name = folder_name.clone();
+            let folder_is_public = folder_is_public.clone();
             Box::pin(async move {
                 let parent_id = this.folder_id_by_path(&parent_path).await?;
                 let _: CreateFolderResponse = this
@@ -1758,7 +1818,7 @@ impl StorageProvider for OpenDriveProvider {
                             ("session_id", this.session_id.clone()),
                             ("folder_name", folder_name),
                             ("folder_sub_parent", parent_id),
-                            ("folder_is_public", "0".to_string()),
+                            ("folder_is_public", folder_is_public),
                         ],
                     )
                     .await?;
@@ -2661,6 +2721,7 @@ mod tests {
             username: "u".to_string(),
             password: SecretString::from("p".to_string()),
             initial_path: None,
+            default_privacy: None,
         };
         let p = OpenDriveProvider::new(cfg);
         let hints = p.transfer_optimization_hints();

@@ -300,6 +300,22 @@ export interface FileProperties {
     };
 }
 
+// Label/description/icon for an OpenDrive privacy level (#252). Shared by the
+// single- and multi-file Properties dialogs so the editor wording stays in one
+// place. Reuses the already-translated `properties.privacy*` keys.
+const privacyLevelMeta = (
+    t: ReturnType<typeof useTranslation>,
+    token: 'public' | 'private' | 'hidden',
+): { label: string; description: string; icon: React.ReactNode } => {
+    if (token === 'public') {
+        return { label: t('properties.privacyPublic') || 'Public', description: t('properties.privacyPublicDesc') || 'Anyone with the link can access this item.', icon: <Eye size={16} /> };
+    }
+    if (token === 'hidden') {
+        return { label: t('properties.privacyHidden') || 'Hidden', description: t('properties.privacyHiddenDesc') || 'Accessible by direct link only; not searchable.', icon: <EyeOff size={16} /> };
+    }
+    return { label: t('properties.privacyPrivate') || 'Private', description: t('properties.privacyPrivateDesc') || 'Only the account owner can access this item.', icon: <Lock size={16} /> };
+};
+
 interface PropertiesDialogProps {
     file: FileProperties;
     onClose: () => void;
@@ -307,6 +323,11 @@ interface PropertiesDialogProps {
     onCalculateFolderSize?: () => void;
     folderSize?: { total_bytes: number; file_count: number; dir_count: number } | null;
     folderSizeCalculating?: boolean;
+    /** Tab to open on first render (#252: deep-link to Permissions). */
+    initialTab?: 'general' | 'permissions' | 'checksum';
+    /** OpenDrive (#252): when provided, the Permissions tab renders an editable
+     *  privacy chooser (Private/Public/Hidden) that calls this to apply. */
+    onPrivacyChange?: (level: 'public' | 'private' | 'hidden') => void | Promise<void>;
 }
 
 export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
@@ -316,10 +337,17 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     onCalculateFolderSize,
     folderSize,
     folderSizeCalculating = false,
+    initialTab,
+    onPrivacyChange,
 }) => {
     const t = useTranslation();
     const [copiedField, setCopiedField] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'general' | 'permissions' | 'checksum'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'permissions' | 'checksum'>(initialTab || 'general');
+    const [selectedPrivacy, setSelectedPrivacy] = useState<'public' | 'private' | 'hidden'>(
+        (file.permissions || '').trim().toLowerCase() === 'public' ? 'public' :
+        (file.permissions || '').trim().toLowerCase() === 'hidden' ? 'hidden' : 'private'
+    );
+    const [applyingPrivacy, setApplyingPrivacy] = useState(false);
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -422,6 +450,19 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     };
 
     const privacyInfo = getPrivacyInfo();
+
+    // The editor needs metadata for every option, not just the current one.
+    const privacyMetaFor = (token: 'public' | 'private' | 'hidden') => privacyLevelMeta(t, token);
+
+    const applyPrivacy = async () => {
+        if (!onPrivacyChange) return;
+        setApplyingPrivacy(true);
+        try {
+            await onPrivacyChange(selectedPrivacy);
+        } finally {
+            setApplyingPrivacy(false);
+        }
+    };
 
     const PropertyRow: React.FC<{ icon: React.ReactNode; label: string; value: string; copyable?: boolean; mono?: boolean }> =
         ({ icon, label, value, copyable = false, mono = false }) => (
@@ -650,7 +691,47 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                     {/* Permissions Tab */}
                     {activeTab === 'permissions' && (
                         <>
-                            {privacyInfo && (
+                            {onPrivacyChange ? (
+                                <div className="space-y-2">
+                                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                                        {t('properties.visibility') || 'Visibility'}
+                                    </div>
+                                    {(['private', 'public', 'hidden'] as const).map((lvl) => {
+                                        const meta = privacyMetaFor(lvl);
+                                        const isCurrent = privacyInfo?.token === lvl;
+                                        return (
+                                            <label
+                                                key={lvl}
+                                                className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${selectedPrivacy === lvl ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="opendrive-privacy"
+                                                    checked={selectedPrivacy === lvl}
+                                                    onChange={() => setSelectedPrivacy(lvl)}
+                                                    className="mt-1"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                                        {meta.icon}
+                                                        {meta.label}
+                                                        {isCurrent && <span className="text-xs font-normal text-gray-400">({t('common.current') || 'current'})</span>}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                    <button
+                                        onClick={applyPrivacy}
+                                        disabled={applyingPrivacy || (privacyInfo?.token === selectedPrivacy)}
+                                        className="mt-1 w-full py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        {applyingPrivacy && <Loader2 size={14} className="animate-spin" />}
+                                        {t('properties.applyPrivacy') || 'Apply'}
+                                    </button>
+                                </div>
+                            ) : privacyInfo ? (
                                 <>
                                     <PropertyRow
                                         icon={privacyInfo.icon}
@@ -661,7 +742,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                         {privacyInfo.description}
                                     </div>
                                 </>
-                            )}
+                            ) : null}
 
                             {!privacyInfo && (file.permissions || file.permissions_mode != null) && (
                                 <>
@@ -733,7 +814,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                             )}
 
                             {/* Show message when no permission data at all */}
-                            {!privacyInfo && !file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && file.is_readonly == null && file.is_hidden == null && (
+                            {!onPrivacyChange && !privacyInfo && !file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && file.is_readonly == null && file.is_hidden == null && (
                                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
                                     {t('properties.notAvailable')}
                                 </div>
@@ -806,6 +887,9 @@ export interface MultiFileProperties {
 interface MultiFilePropertiesDialogProps {
     selection: MultiFileProperties;
     onClose: () => void;
+    /** OpenDrive (#252): when provided, renders a privacy chooser that applies
+     *  the chosen level to every selected item. */
+    onPrivacyChange?: (level: 'public' | 'private' | 'hidden') => void | Promise<void>;
 }
 
 const computeCommonParent = (paths: string[]): string => {
@@ -830,9 +914,25 @@ const computeCommonParent = (paths: string[]): string => {
 export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps> = ({
     selection,
     onClose,
+    onPrivacyChange,
 }) => {
     const t = useTranslation();
     const { files, isRemote, protocol } = selection;
+
+    // OpenDrive (#252) privacy editor state. Default to the common level when
+    // the whole selection shares one, otherwise Private (max privacy).
+    const initialPrivacy = ((): 'public' | 'private' | 'hidden' => {
+        const set = new Set(files.map(f => (f.permissions || '').trim().toLowerCase()).filter(Boolean));
+        const only = set.size === 1 ? Array.from(set)[0] : null;
+        return only === 'public' || only === 'hidden' ? only : 'private';
+    })();
+    const [selectedPrivacy, setSelectedPrivacy] = useState<'public' | 'private' | 'hidden'>(initialPrivacy);
+    const [applyingPrivacy, setApplyingPrivacy] = useState(false);
+    const applyPrivacyToAll = async () => {
+        if (!onPrivacyChange) return;
+        setApplyingPrivacy(true);
+        try { await onPrivacyChange(selectedPrivacy); } finally { setApplyingPrivacy(false); }
+    };
 
     useEffect(() => {
         document.documentElement.classList.add('modal-open');
@@ -870,6 +970,8 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
     const permsSet = new Set(files.map(f => f.permissions || '').filter(Boolean));
     const permsUniform = permsSet.size === 1 ? Array.from(permsSet)[0] : null;
     const permsMixed = permsSet.size > 1;
+    const privacyUniform: 'public' | 'private' | 'hidden' | null =
+        permsUniform === 'public' || permsUniform === 'private' || permsUniform === 'hidden' ? permsUniform : null;
 
     // Read-only / hidden mixed-state (only meaningful when set on every entry).
     const aggregateBool = (pick: (f: FileProperties) => boolean | null | undefined): 'all' | 'none' | 'some' | 'unknown' => {
@@ -1012,6 +1114,54 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
                             label={t('properties.hidden')}
                             value={tristateLabel(hiddenState)!}
                         />
+                    )}
+
+                    {/* OpenDrive (#252): apply a privacy level to the whole selection */}
+                    {onPrivacyChange && (
+                        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                                    {t('properties.visibility') || 'Visibility'}
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    {permsMixed ? t('properties.mixed') : (privacyUniform ? privacyLevelMeta(t, privacyUniform).label : '')}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                {(['private', 'public', 'hidden'] as const).map((lvl) => {
+                                    const meta = privacyLevelMeta(t, lvl);
+                                    return (
+                                        <label
+                                            key={lvl}
+                                            className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${selectedPrivacy === lvl ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="opendrive-privacy-multi"
+                                                checked={selectedPrivacy === lvl}
+                                                onChange={() => setSelectedPrivacy(lvl)}
+                                                className="mt-1"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                                    {meta.icon}
+                                                    {meta.label}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">{meta.description}</div>
+                                            </div>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <button
+                                onClick={applyPrivacyToAll}
+                                disabled={applyingPrivacy}
+                                className="mt-2 w-full py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                            >
+                                {applyingPrivacy && <Loader2 size={14} className="animate-spin" />}
+                                {t('properties.applyPrivacyAll', { count: files.length })}
+                            </button>
+                        </div>
                     )}
 
                     <div className="mt-4">

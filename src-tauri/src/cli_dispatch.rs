@@ -8,6 +8,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "pget",
     "put",
     "mkdir",
+    "access",
     "rm",
     "mv",
     "cp",

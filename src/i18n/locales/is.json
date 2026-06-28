@@ -280,7 +280,9 @@
             "unstableTitle": "Tilraunaþjónustuaðili",
             "unstableBody": "{provider} er ekki enn stöðugur og þjónustan gæti verið ótiltæk. Tengingin getur mistekist án þess að það sé þér að kenna.",
             "persistModeCredentials": "Muna auðkenni fyrir hverja samskiptareglu þessa reiknings",
-            "persistModeCredentialsHint": "Ein snið á reikning: heldur auðkennum hverrar samskiptareglu (API, WebDAV, S3, ...) vistuðum svo að skipta um ham spyr ekki aftur, jafnvel eftir endurræsingu. Geymt dulkóðað í hvelfingunni. Sjálfgefið slökkt."
+            "persistModeCredentialsHint": "Ein snið á reikning: heldur auðkennum hverrar samskiptareglu (API, WebDAV, S3, ...) vistuðum svo að skipta um ham spyr ekki aftur, jafnvel eftir endurræsingu. Geymt dulkóðað í hvelfingunni. Sjálfgefið slökkt.",
+            "opendriveDefaultPrivacy": "Sjálfgefið næði fyrir nýja hluti",
+            "opendriveDefaultPrivacyHelp": "Á við möppur og skrár sem þú býrð til eða hleður upp. WebDAV-tengingar nota sjálfgefnar stillingar OpenDrive."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay",
             "privacyEllipsis": "Persónuvernd...",
             "openWithAeroVaultZip": "Opna með AeroVault Zip",
-            "importToAeroFTP": "Flytja inn í AeroFTP"
+            "importToAeroFTP": "Flytja inn í AeroFTP",
+            "permissionsEllipsis": "Heimildir..."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Aðeins eigandi reikningsins getur opnað þetta atriði.",
             "privacyPublic": "Opinbert",
             "privacyPublicDesc": "Allir sem hafa tengilinn geta opnað þetta atriði.",
-            "visibility": "Sýnileiki"
+            "visibility": "Sýnileiki",
+            "applyPrivacy": "Beita",
+            "applyPrivacyAll": "Beita á {count} hluti"
         },
         "duplicates": {
             "title": "Finna Tvírit",

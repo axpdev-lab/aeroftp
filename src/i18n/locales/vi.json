@@ -280,7 +280,9 @@
             "unstableTitle": "Nhà cung cấp thử nghiệm",
             "unstableBody": "{provider} chưa ổn định và dịch vụ có thể không khả dụng. Kết nối có thể thất bại mà không phải do lỗi của bạn.",
             "persistModeCredentials": "Ghi nhớ thông tin đăng nhập cho mọi giao thức của tài khoản này",
-            "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt."
+            "persistModeCredentialsHint": "Một hồ sơ cho mỗi tài khoản: giữ lại thông tin đăng nhập của từng giao thức (API, WebDAV, S3, ...) để việc chuyển chế độ không hỏi lại, kể cả sau khi khởi động lại. Được lưu mã hóa trong vault. Mặc định tắt.",
+            "opendriveDefaultPrivacy": "Quyền riêng tư mặc định cho mục mới",
+            "opendriveDefaultPrivacyHelp": "Áp dụng cho các thư mục và tệp bạn tạo hoặc tải lên. Kết nối WebDAV dùng giá trị mặc định của OpenDrive."
         },
         "browser": {
             "remote": "Từ xa",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay",
             "privacyEllipsis": "Quyền riêng tư...",
             "openWithAeroVaultZip": "Mở bằng AeroVault Zip",
-            "importToAeroFTP": "Nhập vào AeroFTP"
+            "importToAeroFTP": "Nhập vào AeroFTP",
+            "permissionsEllipsis": "Quyền..."
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Chỉ chủ sở hữu tài khoản mới có thể truy cập mục này.",
             "privacyPublic": "Công khai",
             "privacyPublicDesc": "Bất kỳ ai có liên kết đều có thể truy cập mục này.",
-            "visibility": "Khả năng hiển thị"
+            "visibility": "Khả năng hiển thị",
+            "applyPrivacy": "Áp dụng",
+            "applyPrivacyAll": "Áp dụng cho {count} mục"
         },
         "duplicates": {
             "title": "Tìm tệp trùng lặp",

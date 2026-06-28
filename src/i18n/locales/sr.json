@@ -280,7 +280,9 @@
             "unstableTitle": "Експериментални провајдер",
             "unstableBody": "{provider} још увек није стабилан и услуга можда није доступна. Повезивање може да не успе без ваше кривице.",
             "persistModeCredentials": "Запамти акредитиве за сваки протокол овог налога",
-            "persistModeCredentialsHint": "Један профил по налогу: чува акредитиве сваког протокола (API, WebDAV, S3, ...) сачуване, тако да промена режима више не пита, чак и након поновног покретања. Чува се шифровано у сефу. Подразумевано искључено."
+            "persistModeCredentialsHint": "Један профил по налогу: чува акредитиве сваког протокола (API, WebDAV, S3, ...) сачуване, тако да промена режима више не пита, чак и након поновног покретања. Чува се шифровано у сефу. Подразумевано искључено.",
+            "opendriveDefaultPrivacy": "Подразумевана приватност за нове ставке",
+            "opendriveDefaultPrivacyHelp": "Примењује се на фасцикле и датотеке које направите или отпремите. WebDAV везе користе подразумеване поставке OpenDrive-а."
         },
         "browser": {
             "remote": "Удаљено",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Отвори као AeroVault Overlay",
             "privacyEllipsis": "Приватност...",
             "openWithAeroVaultZip": "Отвори помоћу AeroVault Zip",
-            "importToAeroFTP": "Увези у AeroFTP"
+            "importToAeroFTP": "Увези у AeroFTP",
+            "permissionsEllipsis": "Дозволе..."
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Овој ставци може приступити само власник налога.",
             "privacyPublic": "Јавно",
             "privacyPublicDesc": "Овој ставци може приступити свако ко има везу.",
-            "visibility": "Видљивост"
+            "visibility": "Видљивост",
+            "applyPrivacy": "Примени",
+            "applyPrivacyAll": "Примени на {count} ставки"
         },
         "duplicates": {
             "title": "Pronađi duplikate",

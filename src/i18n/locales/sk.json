@@ -280,7 +280,9 @@
             "unstableTitle": "Experimentálny poskytovateľ",
             "unstableBody": "{provider} zatiaľ nie je stabilný a služba môže byť nedostupná. Pripojenie môže zlyhať bez vášho zavinenia.",
             "persistModeCredentials": "Zapamätať si prihlasovacie údaje pre každý protokol tohto účtu",
-            "persistModeCredentialsHint": "Jeden profil na účet: uchováva prihlasovacie údaje každého protokolu (API, WebDAV, S3, ...), takže prepnutie režimu sa už nepýta, ani po reštarte. Uložené šifrovane v trezore. Predvolene vypnuté."
+            "persistModeCredentialsHint": "Jeden profil na účet: uchováva prihlasovacie údaje každého protokolu (API, WebDAV, S3, ...), takže prepnutie režimu sa už nepýta, ani po reštarte. Uložené šifrovane v trezore. Predvolene vypnuté.",
+            "opendriveDefaultPrivacy": "Predvolené súkromie pre nové položky",
+            "opendriveDefaultPrivacyHelp": "Použije sa na priečinky a súbory, ktoré vytvoríte alebo nahráte. Pripojenia WebDAV používajú predvolené nastavenia OpenDrive."
         },
         "browser": {
             "remote": "Vzdialený",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Otvoriť ako AeroVault Overlay",
             "privacyEllipsis": "Súkromie...",
             "openWithAeroVaultZip": "Otvoriť pomocou AeroVault Zip",
-            "importToAeroFTP": "Importovať do AeroFTP"
+            "importToAeroFTP": "Importovať do AeroFTP",
+            "permissionsEllipsis": "Oprávnenia..."
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "K tejto položke má prístup iba vlastník účtu.",
             "privacyPublic": "Verejný",
             "privacyPublicDesc": "K tejto položke má prístup ktokoľvek s odkazom.",
-            "visibility": "Viditeľnosť"
+            "visibility": "Viditeľnosť",
+            "applyPrivacy": "Použiť",
+            "applyPrivacyAll": "Použiť na {count} položiek"
         },
         "duplicates": {
             "title": "Najst duplikaty",

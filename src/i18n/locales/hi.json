@@ -280,7 +280,9 @@
             "unstableTitle": "प्रायोगिक प्रदाता",
             "unstableBody": "{provider} अभी स्थिर नहीं है और हो सकता है कि सेवा उपलब्ध न हो। कनेक्शन आपकी किसी गलती के बिना भी विफल हो सकता है।",
             "persistModeCredentials": "इस खाते के हर प्रोटोकॉल के क्रेडेंशियल याद रखें",
-            "persistModeCredentialsHint": "हर खाते के लिए एक प्रोफ़ाइल: हर प्रोटोकॉल के क्रेडेंशियल (API, WebDAV, S3, ...) सहेजे रखता है ताकि मोड बदलने पर दोबारा न पूछे, पुनः आरंभ करने के बाद भी। वॉल्ट में एन्क्रिप्टेड रूप में संग्रहीत। डिफ़ॉल्ट रूप से बंद।"
+            "persistModeCredentialsHint": "हर खाते के लिए एक प्रोफ़ाइल: हर प्रोटोकॉल के क्रेडेंशियल (API, WebDAV, S3, ...) सहेजे रखता है ताकि मोड बदलने पर दोबारा न पूछे, पुनः आरंभ करने के बाद भी। वॉल्ट में एन्क्रिप्टेड रूप में संग्रहीत। डिफ़ॉल्ट रूप से बंद।",
+            "opendriveDefaultPrivacy": "नई वस्तुओं के लिए डिफ़ॉल्ट गोपनीयता",
+            "opendriveDefaultPrivacyHelp": "उन फ़ोल्डरों और फ़ाइलों पर लागू होती है जिन्हें आप बनाते या अपलोड करते हैं। WebDAV कनेक्शन OpenDrive की अपनी डिफ़ॉल्ट सेटिंग्स का उपयोग करते हैं।"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay के रूप में खोलें",
             "privacyEllipsis": "गोपनीयता...",
             "openWithAeroVaultZip": "AeroVault Zip से खोलें",
-            "importToAeroFTP": "AeroFTP में आयात करें"
+            "importToAeroFTP": "AeroFTP में आयात करें",
+            "permissionsEllipsis": "अनुमतियाँ..."
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "केवल खाता स्वामी ही इस आइटम तक पहुंच सकता है।",
             "privacyPublic": "सार्वजनिक",
             "privacyPublicDesc": "लिंक रखने वाला कोई भी व्यक्ति इस आइटम तक पहुंच सकता है।",
-            "visibility": "दृश्यता"
+            "visibility": "दृश्यता",
+            "applyPrivacy": "लागू करें",
+            "applyPrivacyAll": "{count} आइटम पर लागू करें"
         },
         "duplicates": {
             "title": "डुप्लिकेट खोजें",

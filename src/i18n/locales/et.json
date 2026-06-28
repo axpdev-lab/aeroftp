@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentaalne teenusepakkuja",
             "unstableBody": "{provider} ei ole veel stabiilne ja teenus võib olla kättesaamatu. Ühendus võib ebaõnnestuda ilma teie süüta.",
             "persistModeCredentials": "Jäta meelde selle konto iga protokolli mandaadid",
-            "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas."
+            "persistModeCredentialsHint": "Üks profiil konto kohta: hoiab iga protokolli mandaadid (API, WebDAV, S3, ...) salvestatuna, nii et režiimi vahetamine ei küsi enam, isegi pärast taaskäivitust. Salvestatud krüpteeritult hoidlas. Vaikimisi väljas.",
+            "opendriveDefaultPrivacy": "Uute üksuste vaikeprivaatsus",
+            "opendriveDefaultPrivacyHelp": "Rakendub kaustadele ja failidele, mille loote või üles laadite. WebDAV-ühendused kasutavad OpenDrive'i enda vaikeseadeid."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
             "privacyEllipsis": "Privaatsus...",
             "openWithAeroVaultZip": "Ava rakendusega AeroVault Zip",
-            "importToAeroFTP": "Impordi AeroFTP-sse"
+            "importToAeroFTP": "Impordi AeroFTP-sse",
+            "permissionsEllipsis": "Õigused..."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Sellele üksusele pääseb juurde ainult konto omanik.",
             "privacyPublic": "Avalik",
             "privacyPublicDesc": "Sellele üksusele pääseb juurde igaüks, kellel on link.",
-            "visibility": "Nähtavus"
+            "visibility": "Nähtavus",
+            "applyPrivacy": "Rakenda",
+            "applyPrivacyAll": "Rakenda {count} üksusele"
         },
         "duplicates": {
             "title": "Leia duplikaadid",

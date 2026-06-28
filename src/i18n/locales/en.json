@@ -1328,7 +1328,9 @@
             "unstableTitle": "Experimental provider",
             "unstableBody": "{provider} is not stable yet and the service may be unavailable. Connections can fail through no fault of your own.",
             "username": "Username",
-            "usernamePlaceholder": "your-username"
+            "usernamePlaceholder": "your-username",
+            "opendriveDefaultPrivacy": "Default privacy for new items",
+            "opendriveDefaultPrivacyHelp": "Applied to folders and files you create or upload. WebDAV connections use OpenDrive's own defaults."
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",
@@ -1467,7 +1469,8 @@
             "shareLinkDeleted": "Share link deleted",
             "newDocumentName": "Document name:",
             "openWithAeroVaultZip": "Open with AeroVault Zip",
-            "importToAeroFTP": "Import to AeroFTP"
+            "importToAeroFTP": "Import to AeroFTP",
+            "permissionsEllipsis": "Permissions..."
         },
         "aerocrypt": {
             "title": "Rclone Crypt overlay",
@@ -2475,7 +2478,9 @@
             "symlink": "Symlink Target",
             "totalSize": "Total size",
             "type": "Type",
-            "visibility": "Visibility"
+            "visibility": "Visibility",
+            "applyPrivacy": "Apply",
+            "applyPrivacyAll": "Apply to {count} items"
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",

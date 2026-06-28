@@ -2473,6 +2473,32 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     )}
                 </div>
                 )}
+                {/* OpenDrive (#252): default privacy applied to newly created
+                    folders and uploaded files. Only on the OpenDrive native API
+                    form (absent on WebDAV -> WebDAV uses OpenDrive's defaults). */}
+                {protocol === 'opendrive' && (
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">
+                            {t('connection.opendriveDefaultPrivacy')}
+                        </label>
+                        <select
+                            value={connectionParams.options?.opendriveDefaultPrivacy || 'private'}
+                            onChange={(e) => onConnectionParamsChange({
+                                ...connectionParams,
+                                options: {
+                                    ...connectionParams.options,
+                                    opendriveDefaultPrivacy: e.target.value as 'private' | 'public' | 'hidden',
+                                },
+                            })}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                        >
+                            <option value="private">{t('properties.privacyPrivate')}</option>
+                            <option value="public">{t('properties.privacyPublic')}</option>
+                            <option value="hidden">{t('properties.privacyHidden')}</option>
+                        </select>
+                        <p className="text-xs text-gray-400 mt-1.5">{t('connection.opendriveDefaultPrivacyHelp')}</p>
+                    </div>
+                )}
                 {/* Profile name + icon block relocated to the top of this column
                     (see the #215 redesign block above). */}
                 {/* P3: AeroCrypt Profile. Bind an encrypted overlay to this
@@ -3830,6 +3856,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </button>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        {/* OpenDrive default privacy for new items (#252) */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <label className="block text-sm font-medium mb-1.5">
+                                                {t('connection.opendriveDefaultPrivacy')}
+                                            </label>
+                                            <select
+                                                value={connectionParams.options?.opendriveDefaultPrivacy || 'private'}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: {
+                                                        ...connectionParams.options,
+                                                        opendriveDefaultPrivacy: e.target.value as 'private' | 'public' | 'hidden',
+                                                    },
+                                                })}
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                                            >
+                                                <option value="private">{t('properties.privacyPrivate')}</option>
+                                                <option value="public">{t('properties.privacyPublic')}</option>
+                                                <option value="hidden">{t('properties.privacyHidden')}</option>
+                                            </select>
+                                            <p className="text-xs text-gray-400 mt-1.5">{t('connection.opendriveDefaultPrivacyHelp')}</p>
                                         </div>
 
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">

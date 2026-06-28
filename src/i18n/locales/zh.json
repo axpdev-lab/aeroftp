@@ -280,7 +280,9 @@
             "unstableTitle": "实验性服务商",
             "unstableBody": "{provider} 尚不稳定，服务可能不可用。连接可能会失败，这并非您的过错。",
             "persistModeCredentials": "记住此账户每个协议的凭据",
-            "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。"
+            "persistModeCredentialsHint": "每个账户一个配置文件：保存每个协议的凭据（API、WebDAV、S3 等），这样切换模式时不再询问，即使重启后也是如此。以加密形式存储在保险库中。默认关闭。",
+            "opendriveDefaultPrivacy": "新项目的默认隐私",
+            "opendriveDefaultPrivacyHelp": "应用于您创建或上传的文件夹和文件。WebDAV 连接使用 OpenDrive 自身的默认设置。"
         },
         "browser": {
             "remote": "远程",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开",
             "privacyEllipsis": "隐私…",
             "openWithAeroVaultZip": "用 AeroVault Zip 打开",
-            "importToAeroFTP": "导入到 AeroFTP"
+            "importToAeroFTP": "导入到 AeroFTP",
+            "permissionsEllipsis": "权限…"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "仅账户所有者可以访问此项目。",
             "privacyPublic": "公开",
             "privacyPublicDesc": "任何拥有该链接的人都可以访问此项目。",
-            "visibility": "可见性"
+            "visibility": "可见性",
+            "applyPrivacy": "应用",
+            "applyPrivacyAll": "应用于 {count} 个项目"
         },
         "duplicates": {
             "title": "查找重复文件",

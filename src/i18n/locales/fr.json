@@ -280,7 +280,9 @@
             "unstableTitle": "Fournisseur expérimental",
             "unstableBody": "{provider} n'est pas encore stable et le service peut être indisponible. La connexion peut échouer sans que ce soit de votre faute.",
             "persistModeCredentials": "Mémoriser les identifiants pour chaque protocole de ce compte",
-            "persistModeCredentialsHint": "Un profil par compte : conserve les identifiants de chaque protocole (API, WebDAV, S3, ...) afin que changer de mode ne les redemande plus, même après un redémarrage. Stocké chiffré dans le coffre. Désactivé par défaut."
+            "persistModeCredentialsHint": "Un profil par compte : conserve les identifiants de chaque protocole (API, WebDAV, S3, ...) afin que changer de mode ne les redemande plus, même après un redémarrage. Stocké chiffré dans le coffre. Désactivé par défaut.",
+            "opendriveDefaultPrivacy": "Confidentialité par défaut des nouveaux éléments",
+            "opendriveDefaultPrivacyHelp": "Appliquée aux dossiers et fichiers que vous créez ou envoyez. Les connexions WebDAV utilisent les réglages par défaut d'OpenDrive."
         },
         "browser": {
             "remote": "Distant",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Ouvrir en tant qu'AeroVault Overlay",
             "privacyEllipsis": "Confidentialité...",
             "openWithAeroVaultZip": "Ouvrir avec AeroVault Zip",
-            "importToAeroFTP": "Importer dans AeroFTP"
+            "importToAeroFTP": "Importer dans AeroFTP",
+            "permissionsEllipsis": "Autorisations..."
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Seul le propriétaire du compte peut accéder à cet élément.",
             "privacyPublic": "Public",
             "privacyPublicDesc": "Toute personne disposant du lien peut accéder à cet élément.",
-            "visibility": "Visibilité"
+            "visibility": "Visibilité",
+            "applyPrivacy": "Appliquer",
+            "applyPrivacyAll": "Appliquer à {count} éléments"
         },
         "duplicates": {
             "title": "Rechercher les doublons",

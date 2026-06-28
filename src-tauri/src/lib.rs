@@ -16138,6 +16138,18 @@ pub fn run() {
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
+        // Route GTK file/folder pickers through xdg-desktop-portal instead of
+        // the in-process GtkFileChooser. Under WebKitGTK the native chooser can
+        // corrupt the GLib heap ("malloc(): unaligned fastbin chunk detected",
+        // SIGABRT) when the directory picker opens: the debug build aborts on
+        // it, and an optimized release can corrupt the heap silently. The portal
+        // runs the chooser out-of-process so it never touches our heap, and is
+        // the recommended path on Wayland; on a host with no portal GTK falls
+        // back to the native chooser. Respect a user override (GTK_USE_PORTAL=0).
+        if std::env::var_os("GTK_USE_PORTAL").is_none() {
+            std::env::set_var("GTK_USE_PORTAL", "1");
+        }
+
         // Pin a stable GTK program name so the window's WM_CLASS is always
         // "aeroftp", regardless of which path launched the binary. GNOME maps a
         // window to its .desktop entry (and thus its icon) by matching WM_CLASS

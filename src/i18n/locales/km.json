@@ -280,7 +280,9 @@
             "unstableTitle": "អ្នកផ្តល់សេវាសាកល្បង",
             "unstableBody": "{provider} មិនទាន់មានស្ថិរភាពនៅឡើយទេ ហើយសេវាកម្មអាចមិនអាចប្រើបាន។ ការតភ្ជាប់អាចបរាជ័យដោយមិនមែនជាកំហុសរបស់អ្នក។",
             "persistModeCredentials": "ចងចាំព័ត៌មានសម្ងាត់សម្រាប់ពិធីការនីមួយៗនៃគណនីនេះ",
-            "persistModeCredentialsHint": "ប្រវត្តិរូបមួយក្នុងមួយគណនី៖ រក្សាទុកព័ត៌មានសម្ងាត់របស់ពិធីការនីមួយៗ (API, WebDAV, S3, ...) ដូច្នេះការប្តូររបៀបនឹងមិនសួរម្តងទៀតទេ សូម្បីតែបន្ទាប់ពីការចាប់ផ្តើមឡើងវិញ។ រក្សាទុកដោយអ៊ិនគ្រីបក្នុង vault ។ បិទតាមលំនាំដើម។"
+            "persistModeCredentialsHint": "ប្រវត្តិរូបមួយក្នុងមួយគណនី៖ រក្សាទុកព័ត៌មានសម្ងាត់របស់ពិធីការនីមួយៗ (API, WebDAV, S3, ...) ដូច្នេះការប្តូររបៀបនឹងមិនសួរម្តងទៀតទេ សូម្បីតែបន្ទាប់ពីការចាប់ផ្តើមឡើងវិញ។ រក្សាទុកដោយអ៊ិនគ្រីបក្នុង vault ។ បិទតាមលំនាំដើម។",
+            "opendriveDefaultPrivacy": "ឯកជនភាពលំនាំដើមសម្រាប់ធាតុថ្មី",
+            "opendriveDefaultPrivacyHelp": "អនុវត្តចំពោះថត និងឯកសារដែលអ្នកបង្កើត ឬផ្ទុកឡើង។ ការតភ្ជាប់ WebDAV ប្រើការកំណត់លំនាំដើមរបស់ OpenDrive។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "បើកជា AeroVault Overlay",
             "privacyEllipsis": "ឯកជនភាព...",
             "openWithAeroVaultZip": "បើកជាមួយ AeroVault Zip",
-            "importToAeroFTP": "នាំចូលទៅ AeroFTP"
+            "importToAeroFTP": "នាំចូលទៅ AeroFTP",
+            "permissionsEllipsis": "ការអនុញ្ញាត..."
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "មានតែម្ចាស់គណនីប៉ុណ្ណោះដែលអាចចូលប្រើធាតុនេះបាន។",
             "privacyPublic": "សាធារណៈ",
             "privacyPublicDesc": "អ្នកណាដែលមានតំណអាចចូលប្រើធាតុនេះបាន។",
-            "visibility": "ភាពមើលឃើញ"
+            "visibility": "ភាពមើលឃើញ",
+            "applyPrivacy": "អនុវត្ត",
+            "applyPrivacyAll": "អនុវត្តចំពោះ {count} ធាតុ"
         },
         "duplicates": {
             "title": "ស្វែងរកស្ទួន",

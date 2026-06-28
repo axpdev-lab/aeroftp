@@ -280,7 +280,9 @@
             "unstableTitle": "실험적 제공업체",
             "unstableBody": "{provider}은(는) 아직 안정적이지 않으며 서비스를 사용할 수 없을 수 있습니다. 사용자의 잘못이 아니어도 연결이 실패할 수 있습니다.",
             "persistModeCredentials": "이 계정의 각 프로토콜에 대한 자격 증명 기억하기",
-            "persistModeCredentialsHint": "계정당 프로필 하나: 각 프로토콜의 자격 증명(API, WebDAV, S3, ...)을 저장해 두어 모드를 전환해도 다시 묻지 않으며, 다시 시작한 후에도 마찬가지입니다. 볼트에 암호화되어 저장됩니다. 기본값은 꺼짐입니다."
+            "persistModeCredentialsHint": "계정당 프로필 하나: 각 프로토콜의 자격 증명(API, WebDAV, S3, ...)을 저장해 두어 모드를 전환해도 다시 묻지 않으며, 다시 시작한 후에도 마찬가지입니다. 볼트에 암호화되어 저장됩니다. 기본값은 꺼짐입니다.",
+            "opendriveDefaultPrivacy": "새 항목의 기본 개인정보 설정",
+            "opendriveDefaultPrivacyHelp": "만들거나 업로드하는 폴더와 파일에 적용됩니다. WebDAV 연결은 OpenDrive 자체 기본값을 사용합니다."
         },
         "browser": {
             "remote": "원격",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
             "privacyEllipsis": "개인정보...",
             "openWithAeroVaultZip": "AeroVault Zip으로 열기",
-            "importToAeroFTP": "AeroFTP로 가져오기"
+            "importToAeroFTP": "AeroFTP로 가져오기",
+            "permissionsEllipsis": "권한..."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "계정 소유자만 이 항목에 접근할 수 있습니다.",
             "privacyPublic": "공개",
             "privacyPublicDesc": "링크가 있는 사람은 누구나 이 항목에 접근할 수 있습니다.",
-            "visibility": "공개 범위"
+            "visibility": "공개 범위",
+            "applyPrivacy": "적용",
+            "applyPrivacyAll": "{count}개 항목에 적용"
         },
         "duplicates": {
             "title": "중복 파일 찾기",

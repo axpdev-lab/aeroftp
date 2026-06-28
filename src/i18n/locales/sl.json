@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentalni ponudnik",
             "unstableBody": "{provider} še ni stabilen in storitev morda ni na voljo. Povezava lahko spodleti brez vaše krivde.",
             "persistModeCredentials": "Zapomni si poverilnice za vsak protokol tega računa",
-            "persistModeCredentialsHint": "En profil na račun: ohrani shranjene poverilnice vsakega protokola (API, WebDAV, S3, ...), tako da preklop načina ne sprašuje več, tudi po ponovnem zagonu. Shranjeno šifrirano v trezorju. Privzeto izklopljeno."
+            "persistModeCredentialsHint": "En profil na račun: ohrani shranjene poverilnice vsakega protokola (API, WebDAV, S3, ...), tako da preklop načina ne sprašuje več, tudi po ponovnem zagonu. Shranjeno šifrirano v trezorju. Privzeto izklopljeno.",
+            "opendriveDefaultPrivacy": "Privzeta zasebnost za nove elemente",
+            "opendriveDefaultPrivacyHelp": "Uporabljeno za mape in datoteke, ki jih ustvarite ali naložite. Povezave WebDAV uporabljajo privzete nastavitve OpenDrive."
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Odpri kot AeroVault Overlay",
             "privacyEllipsis": "Zasebnost...",
             "openWithAeroVaultZip": "Odpri z AeroVault Zip",
-            "importToAeroFTP": "Uvozi v AeroFTP"
+            "importToAeroFTP": "Uvozi v AeroFTP",
+            "permissionsEllipsis": "Dovoljenja..."
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Do tega elementa lahko dostopa samo lastnik računa.",
             "privacyPublic": "Javno",
             "privacyPublicDesc": "Do tega elementa lahko dostopa vsak, ki ima povezavo.",
-            "visibility": "Vidnost"
+            "visibility": "Vidnost",
+            "applyPrivacy": "Uporabi",
+            "applyPrivacyAll": "Uporabi za {count} elementov"
         },
         "duplicates": {
             "title": "Poišči podvojene",

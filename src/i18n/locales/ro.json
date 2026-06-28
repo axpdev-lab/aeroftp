@@ -280,7 +280,9 @@
             "unstableTitle": "Furnizor experimental",
             "unstableBody": "{provider} nu este încă stabil, iar serviciul ar putea fi indisponibil. Conexiunea poate eșua fără să fie vina ta.",
             "persistModeCredentials": "Reține datele de autentificare pentru fiecare protocol al acestui cont",
-            "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit."
+            "persistModeCredentialsHint": "Un profil per cont: păstrează salvate datele de autentificare ale fiecărui protocol (API, WebDAV, S3, ...), astfel încât schimbarea modului să nu le mai ceară, chiar și după o repornire. Stocat criptat în seif. Dezactivat implicit.",
+            "opendriveDefaultPrivacy": "Confidențialitate implicită pentru elemente noi",
+            "opendriveDefaultPrivacyHelp": "Se aplică folderelor și fișierelor pe care le creați sau le încărcați. Conexiunile WebDAV folosesc setările implicite ale OpenDrive."
         },
         "browser": {
             "remote": "La distanță",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Deschide ca AeroVault Overlay",
             "privacyEllipsis": "Confidențialitate...",
             "openWithAeroVaultZip": "Deschide cu AeroVault Zip",
-            "importToAeroFTP": "Importă în AeroFTP"
+            "importToAeroFTP": "Importă în AeroFTP",
+            "permissionsEllipsis": "Permisiuni..."
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Doar proprietarul contului poate accesa acest element.",
             "privacyPublic": "Public",
             "privacyPublicDesc": "Oricine are linkul poate accesa acest element.",
-            "visibility": "Vizibilitate"
+            "visibility": "Vizibilitate",
+            "applyPrivacy": "Aplică",
+            "applyPrivacyAll": "Aplică la {count} elemente"
         },
         "duplicates": {
             "title": "Găsește duplicate",

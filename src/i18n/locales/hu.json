@@ -280,7 +280,9 @@
             "unstableTitle": "Kísérleti szolgáltató",
             "unstableBody": "A(z) {provider} még nem stabil, és a szolgáltatás elérhetetlen lehet. A kapcsolat a te hibádon kívül is meghiúsulhat.",
             "persistModeCredentials": "Jegyezze meg a hitelesítő adatokat a fiók minden protokolljához",
-            "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva."
+            "persistModeCredentialsHint": "Egy profil fiókonként: minden protokoll hitelesítő adatait (API, WebDAV, S3, ...) elmentve tartja, így a mód váltása többé nem kérdez rá, még újraindítás után sem. Titkosítva tárolva a széfben. Alapértelmezés szerint kikapcsolva.",
+            "opendriveDefaultPrivacy": "Alapértelmezett adatvédelem új elemekhez",
+            "opendriveDefaultPrivacyHelp": "A létrehozott vagy feltöltött mappákra és fájlokra vonatkozik. A WebDAV-kapcsolatok az OpenDrive alapértelmezéseit használják."
         },
         "browser": {
             "remote": "Távoli",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként",
             "privacyEllipsis": "Adatvédelem...",
             "openWithAeroVaultZip": "Megnyitás ezzel: AeroVault Zip",
-            "importToAeroFTP": "Importálás az AeroFTP-be"
+            "importToAeroFTP": "Importálás az AeroFTP-be",
+            "permissionsEllipsis": "Engedélyek..."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Az elemhez csak a fiók tulajdonosa férhet hozzá.",
             "privacyPublic": "Nyilvános",
             "privacyPublicDesc": "Az elemhez bárki hozzáférhet, akinek megvan a hivatkozás.",
-            "visibility": "Láthatóság"
+            "visibility": "Láthatóság",
+            "applyPrivacy": "Alkalmaz",
+            "applyPrivacyAll": "Alkalmazás {count} elemre"
         },
         "duplicates": {
             "title": "Duplikátumok keresése",

@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimental na provider",
             "unstableBody": "Hindi pa stable ang {provider} at maaaring hindi available ang serbisyo. Maaaring mabigo ang koneksyon nang hindi mo kasalanan.",
             "persistModeCredentials": "Tandaan ang mga kredensyal para sa bawat protocol ng account na ito",
-            "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default."
+            "persistModeCredentialsHint": "Isang profile bawat account: pinapanatiling naka-save ang mga kredensyal ng bawat protocol (API, WebDAV, S3, ...) para hindi na magtanong muli ang paglipat ng mode, kahit pagkatapos mag-restart. Naka-encrypt na nakaimbak sa vault. Naka-off bilang default.",
+            "opendriveDefaultPrivacy": "Default na privacy para sa mga bagong item",
+            "opendriveDefaultPrivacyHelp": "Inilalapat sa mga folder at file na ginagawa o ina-upload mo. Gumagamit ang mga koneksyong WebDAV ng sariling default ng OpenDrive."
         },
         "browser": {
             "remote": "Remote",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Buksan bilang AeroVault Overlay",
             "privacyEllipsis": "Privacy...",
             "openWithAeroVaultZip": "Buksan gamit ang AeroVault Zip",
-            "importToAeroFTP": "I-import sa AeroFTP"
+            "importToAeroFTP": "I-import sa AeroFTP",
+            "permissionsEllipsis": "Mga pahintulot..."
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Tanging ang may-ari ng account ang maaaring mag-access ng item na ito.",
             "privacyPublic": "Pampubliko",
             "privacyPublicDesc": "Sinuman na may link ay maaaring mag-access ng item na ito.",
-            "visibility": "Visibility"
+            "visibility": "Visibility",
+            "applyPrivacy": "Ilapat",
+            "applyPrivacyAll": "Ilapat sa {count} item"
         },
         "duplicates": {
             "title": "Hanapin ang mga Duplikado",

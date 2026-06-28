@@ -280,7 +280,9 @@
             "unstableTitle": "Deneysel sağlayıcı",
             "unstableBody": "{provider} henüz kararlı değil ve hizmet kullanılamayabilir. Bağlantı, sizin bir hatanız olmadan başarısız olabilir.",
             "persistModeCredentials": "Bu hesabın her protokolü için kimlik bilgilerini hatırla",
-            "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı."
+            "persistModeCredentialsHint": "Hesap başına bir profil: her protokolün kimlik bilgilerini (API, WebDAV, S3, ...) kaydedilmiş tutar, böylece mod değiştirmek yeniden sormaz, yeniden başlatmadan sonra bile. Kasada şifreli olarak saklanır. Varsayılan olarak kapalı.",
+            "opendriveDefaultPrivacy": "Yeni öğeler için varsayılan gizlilik",
+            "opendriveDefaultPrivacyHelp": "Oluşturduğunuz veya yüklediğiniz klasör ve dosyalara uygulanır. WebDAV bağlantıları OpenDrive'ın kendi varsayılanlarını kullanır."
         },
         "browser": {
             "remote": "Uzak",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "AeroVault Overlay olarak aç",
             "privacyEllipsis": "Gizlilik...",
             "openWithAeroVaultZip": "AeroVault Zip ile aç",
-            "importToAeroFTP": "AeroFTP'ye içe aktar"
+            "importToAeroFTP": "AeroFTP'ye içe aktar",
+            "permissionsEllipsis": "İzinler..."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Bu öğeye yalnızca hesap sahibi erişebilir.",
             "privacyPublic": "Herkese açık",
             "privacyPublicDesc": "Bağlantıya sahip olan herkes bu öğeye erişebilir.",
-            "visibility": "Görünürlük"
+            "visibility": "Görünürlük",
+            "applyPrivacy": "Uygula",
+            "applyPrivacyAll": "{count} öğeye uygula"
         },
         "duplicates": {
             "title": "Yinelenenleri Bul",

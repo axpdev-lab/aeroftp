@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentell leverandør",
             "unstableBody": "{provider} er ikke stabil ennå, og tjenesten kan være utilgjengelig. Tilkoblingen kan mislykkes uten at det er din feil.",
             "persistModeCredentials": "Husk legitimasjon for hver protokoll på denne kontoen",
-            "persistModeCredentialsHint": "Én profil per konto: beholder hver protokolls legitimasjon (API, WebDAV, S3, ...) lagret, slik at bytte av modus ikke spør igjen, selv etter en omstart. Lagres kryptert i hvelvet. Av som standard."
+            "persistModeCredentialsHint": "Én profil per konto: beholder hver protokolls legitimasjon (API, WebDAV, S3, ...) lagret, slik at bytte av modus ikke spør igjen, selv etter en omstart. Lagres kryptert i hvelvet. Av som standard.",
+            "opendriveDefaultPrivacy": "Standard personvern for nye elementer",
+            "opendriveDefaultPrivacyHelp": "Brukes på mapper og filer du oppretter eller laster opp. WebDAV-tilkoblinger bruker OpenDrives egne standardinnstillinger."
         },
         "browser": {
             "remote": "Ekstern",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Åpne som AeroVault Overlay",
             "privacyEllipsis": "Personvern...",
             "openWithAeroVaultZip": "Åpne med AeroVault Zip",
-            "importToAeroFTP": "Importer til AeroFTP"
+            "importToAeroFTP": "Importer til AeroFTP",
+            "permissionsEllipsis": "Tillatelser..."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Kun kontoeieren har tilgang til dette elementet.",
             "privacyPublic": "Offentlig",
             "privacyPublicDesc": "Alle med lenken har tilgang til dette elementet.",
-            "visibility": "Synlighet"
+            "visibility": "Synlighet",
+            "applyPrivacy": "Bruk",
+            "applyPrivacyAll": "Bruk på {count} elementer"
         },
         "duplicates": {
             "title": "Finn duplikater",

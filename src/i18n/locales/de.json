@@ -280,7 +280,9 @@
             "unstableTitle": "Experimenteller Anbieter",
             "unstableBody": "{provider} ist noch nicht stabil und der Dienst ist möglicherweise nicht verfügbar. Die Verbindung kann ohne Ihr Verschulden fehlschlagen.",
             "persistModeCredentials": "Anmeldedaten für jedes Protokoll dieses Kontos merken",
-            "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus."
+            "persistModeCredentialsHint": "Ein Profil pro Konto: Bewahrt die Anmeldedaten jedes Protokolls (API, WebDAV, S3, ...) auf, sodass der Moduswechsel nicht erneut nachfragt, auch nach einem Neustart. Verschlüsselt im Vault gespeichert. Standardmäßig aus.",
+            "opendriveDefaultPrivacy": "Standard-Datenschutz für neue Elemente",
+            "opendriveDefaultPrivacyHelp": "Wird auf Ordner und Dateien angewendet, die du erstellst oder hochlädst. WebDAV-Verbindungen nutzen die Standardeinstellungen von OpenDrive."
         },
         "browser": {
             "remote": "Remote",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Als AeroVault Overlay öffnen",
             "privacyEllipsis": "Datenschutz...",
             "openWithAeroVaultZip": "Mit AeroVault Zip öffnen",
-            "importToAeroFTP": "In AeroFTP importieren"
+            "importToAeroFTP": "In AeroFTP importieren",
+            "permissionsEllipsis": "Berechtigungen..."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Nur der Kontoinhaber kann auf dieses Element zugreifen.",
             "privacyPublic": "Öffentlich",
             "privacyPublicDesc": "Jeder mit dem Link kann auf dieses Element zugreifen.",
-            "visibility": "Sichtbarkeit"
+            "visibility": "Sichtbarkeit",
+            "applyPrivacy": "Anwenden",
+            "applyPrivacyAll": "Auf {count} Elemente anwenden"
         },
         "duplicates": {
             "title": "Duplikate finden",

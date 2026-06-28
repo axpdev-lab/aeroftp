@@ -280,7 +280,9 @@
             "unstableTitle": "Eksperimentel udbyder",
             "unstableBody": "{provider} er endnu ikke stabil, og tjenesten er muligvis utilgængelig. Forbindelsen kan mislykkes, uden at det er din skyld.",
             "persistModeCredentials": "Husk legitimationsoplysninger for hver protokol på denne konto",
-            "persistModeCredentialsHint": "Én profil pr. konto: gemmer hver protokols legitimationsoplysninger (API, WebDAV, S3, ...), så skift af tilstand ikke spørger igen, selv efter en genstart. Gemmes krypteret i vaulten. Slået fra som standard."
+            "persistModeCredentialsHint": "Én profil pr. konto: gemmer hver protokols legitimationsoplysninger (API, WebDAV, S3, ...), så skift af tilstand ikke spørger igen, selv efter en genstart. Gemmes krypteret i vaulten. Slået fra som standard.",
+            "opendriveDefaultPrivacy": "Standardprivatliv for nye elementer",
+            "opendriveDefaultPrivacyHelp": "Anvendes på mapper og filer, du opretter eller uploader. WebDAV-forbindelser bruger OpenDrives egne standardindstillinger."
         },
         "browser": {
             "remote": "Ekstern",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay",
             "privacyEllipsis": "Privatliv...",
             "openWithAeroVaultZip": "Åbn med AeroVault Zip",
-            "importToAeroFTP": "Importer til AeroFTP"
+            "importToAeroFTP": "Importer til AeroFTP",
+            "permissionsEllipsis": "Tilladelser..."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Kun kontoejeren kan tilgå dette element.",
             "privacyPublic": "Offentlig",
             "privacyPublicDesc": "Alle med linket kan tilgå dette element.",
-            "visibility": "Synlighed"
+            "visibility": "Synlighed",
+            "applyPrivacy": "Anvend",
+            "applyPrivacyAll": "Anvend på {count} elementer"
         },
         "duplicates": {
             "title": "Find dubletter",

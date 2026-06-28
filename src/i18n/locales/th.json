@@ -280,7 +280,9 @@
             "unstableTitle": "ผู้ให้บริการแบบทดลอง",
             "unstableBody": "{provider} ยังไม่เสถียรและบริการอาจไม่พร้อมใช้งาน การเชื่อมต่ออาจล้มเหลวโดยไม่ใช่ความผิดของคุณ",
             "persistModeCredentials": "จดจำข้อมูลรับรองสำหรับทุกโปรโตคอลของบัญชีนี้",
-            "persistModeCredentialsHint": "หนึ่งโปรไฟล์ต่อหนึ่งบัญชี: เก็บข้อมูลรับรองของแต่ละโปรโตคอล (API, WebDAV, S3, ...) ไว้ เพื่อให้การสลับโหมดไม่ถามอีก แม้หลังจากรีสตาร์ท จัดเก็บแบบเข้ารหัสในวอลต์ ปิดไว้ตามค่าเริ่มต้น"
+            "persistModeCredentialsHint": "หนึ่งโปรไฟล์ต่อหนึ่งบัญชี: เก็บข้อมูลรับรองของแต่ละโปรโตคอล (API, WebDAV, S3, ...) ไว้ เพื่อให้การสลับโหมดไม่ถามอีก แม้หลังจากรีสตาร์ท จัดเก็บแบบเข้ารหัสในวอลต์ ปิดไว้ตามค่าเริ่มต้น",
+            "opendriveDefaultPrivacy": "ความเป็นส่วนตัวเริ่มต้นสำหรับรายการใหม่",
+            "opendriveDefaultPrivacyHelp": "ใช้กับโฟลเดอร์และไฟล์ที่คุณสร้างหรืออัปโหลด การเชื่อมต่อ WebDAV จะใช้ค่าเริ่มต้นของ OpenDrive เอง"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "เปิดเป็น AeroVault Overlay",
             "privacyEllipsis": "ความเป็นส่วนตัว...",
             "openWithAeroVaultZip": "เปิดด้วย AeroVault Zip",
-            "importToAeroFTP": "นำเข้าไปยัง AeroFTP"
+            "importToAeroFTP": "นำเข้าไปยัง AeroFTP",
+            "permissionsEllipsis": "สิทธิ์..."
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "เฉพาะเจ้าของบัญชีเท่านั้นที่สามารถเข้าถึงรายการนี้ได้",
             "privacyPublic": "สาธารณะ",
             "privacyPublicDesc": "ทุกคนที่มีลิงก์สามารถเข้าถึงรายการนี้ได้",
-            "visibility": "การมองเห็น"
+            "visibility": "การมองเห็น",
+            "applyPrivacy": "ใช้",
+            "applyPrivacyAll": "ใช้กับ {count} รายการ"
         },
         "duplicates": {
             "title": "ค้นหาไฟล์ซ้ำ",

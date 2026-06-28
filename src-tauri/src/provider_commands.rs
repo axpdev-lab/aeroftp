@@ -480,6 +480,11 @@ pub struct ProviderConnectionParams {
     /// connect via `cancel_connection`. Absent for callers that opt out.
     #[serde(default, alias = "connectToken")]
     pub connect_token: Option<String>,
+    /// OpenDrive (#252): per-account default privacy (`private`/`public`/
+    /// `hidden`) applied to newly created folders and uploaded files. Stored
+    /// in `ProviderConfig.extra["default_privacy"]`.
+    #[serde(default, alias = "opendriveDefaultPrivacy")]
+    pub opendrive_default_privacy: Option<String>,
 }
 
 impl ProviderConnectionParams {
@@ -533,6 +538,23 @@ impl ProviderConnectionParams {
                     crate::providers::mega_df::PROVIDER_ID_META_KEY.to_string(),
                     provider_id.trim().to_string(),
                 );
+            }
+        }
+
+        // OpenDrive (#252): persist the per-account default privacy, ignoring
+        // anything that isn't a valid private/public/hidden token.
+        if provider_type == ProviderType::OpenDrive {
+            if let Some(token) = self
+                .opendrive_default_privacy
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_ascii_lowercase)
+                .filter(|s| {
+                    crate::providers::opendrive::OpenDriveAccessLevel::from_token(s).is_some()
+                })
+            {
+                extra.insert("default_privacy".to_string(), token);
             }
         }
 
@@ -6563,17 +6585,13 @@ pub async fn opendrive_set_path_access(
     access_level: String,
     is_dir: bool,
 ) -> Result<(), String> {
-    let level = match access_level.to_ascii_lowercase().as_str() {
-        "private" => crate::providers::opendrive::OpenDriveAccessLevel::Private,
-        "public" => crate::providers::opendrive::OpenDriveAccessLevel::Public,
-        "hidden" => crate::providers::opendrive::OpenDriveAccessLevel::Hidden,
-        other => {
-            return Err(format!(
+    let level = crate::providers::opendrive::OpenDriveAccessLevel::from_token(&access_level)
+        .ok_or_else(|| {
+            format!(
                 "Unknown OpenDrive access level: '{}' (expected private, public, or hidden)",
-                other
-            ));
-        }
-    };
+                access_level
+            )
+        })?;
 
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
@@ -10616,6 +10634,7 @@ mod tests {
             peer_local_folder: None,
             peer_role: None,
             connect_token: None,
+            opendrive_default_privacy: None,
         }
     }
 

@@ -280,7 +280,9 @@
             "unstableTitle": "Experimentální poskytovatel",
             "unstableBody": "{provider} zatím není stabilní a služba může být nedostupná. Připojení může selhat bez vašeho zavinění.",
             "persistModeCredentials": "Zapamatovat přihlašovací údaje pro každý protokol tohoto účtu",
-            "persistModeCredentialsHint": "Jeden profil na účet: uchová přihlašovací údaje každého protokolu (API, WebDAV, S3, ...), takže přepnutí režimu se už nezeptá, ani po restartu. Uloženo šifrovaně v trezoru. Ve výchozím nastavení vypnuto."
+            "persistModeCredentialsHint": "Jeden profil na účet: uchová přihlašovací údaje každého protokolu (API, WebDAV, S3, ...), takže přepnutí režimu se už nezeptá, ani po restartu. Uloženo šifrovaně v trezoru. Ve výchozím nastavení vypnuto.",
+            "opendriveDefaultPrivacy": "Výchozí soukromí pro nové položky",
+            "opendriveDefaultPrivacyHelp": "Použije se na složky a soubory, které vytvoříte nebo nahrajete. Připojení WebDAV používají výchozí nastavení OpenDrive."
         },
         "browser": {
             "remote": "Vzdálený",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Otevřít jako AeroVault Overlay",
             "privacyEllipsis": "Soukromí...",
             "openWithAeroVaultZip": "Otevřít pomocí AeroVault Zip",
-            "importToAeroFTP": "Importovat do AeroFTP"
+            "importToAeroFTP": "Importovat do AeroFTP",
+            "permissionsEllipsis": "Oprávnění..."
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "K této položce má přístup pouze vlastník účtu.",
             "privacyPublic": "Veřejný",
             "privacyPublicDesc": "K této položce má přístup kdokoli s odkazem.",
-            "visibility": "Viditelnost"
+            "visibility": "Viditelnost",
+            "applyPrivacy": "Použít",
+            "applyPrivacyAll": "Použít na {count} položek"
         },
         "duplicates": {
             "title": "Najit duplikaty",

@@ -395,7 +395,9 @@
             "convertUndone": "Profilo ripristinato",
             "undo": "Annulla",
             "unstableTitle": "Provider sperimentale",
-            "unstableBody": "{provider} non è ancora stabile e il servizio potrebbe non essere disponibile. La connessione può fallire senza alcuna colpa da parte tua."
+            "unstableBody": "{provider} non è ancora stabile e il servizio potrebbe non essere disponibile. La connessione può fallire senza alcuna colpa da parte tua.",
+            "opendriveDefaultPrivacy": "Privacy predefinita per i nuovi elementi",
+            "opendriveDefaultPrivacyHelp": "Applicata a cartelle e file che crei o carichi. Le connessioni WebDAV usano le impostazioni predefinite di OpenDrive."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -833,7 +835,8 @@
             "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…",
             "openAsAeroVaultOverlay": "Apri come AeroVault Overlay",
             "openWithAeroVaultZip": "Apri con AeroVault Zip",
-            "importToAeroFTP": "Importa in AeroFTP"
+            "importToAeroFTP": "Importa in AeroFTP",
+            "permissionsEllipsis": "Permessi..."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -3449,7 +3452,9 @@
             "oldestModified": "Modifica meno recente",
             "selectedItems": "Elementi selezionati",
             "sizesPartial": "(alcune dimensioni sconosciute)",
-            "totalSize": "Dimensione totale"
+            "totalSize": "Dimensione totale",
+            "applyPrivacy": "Applica",
+            "applyPrivacyAll": "Applica a {count} elementi"
         },
         "duplicates": {
             "title": "Trova Duplicati",

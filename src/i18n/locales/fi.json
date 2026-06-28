@@ -280,7 +280,9 @@
             "unstableTitle": "Kokeellinen palveluntarjoaja",
             "unstableBody": "{provider} ei ole vielä vakaa, ja palvelu voi olla poissa käytöstä. Yhteys voi epäonnistua ilman sinun syytäsi.",
             "persistModeCredentials": "Muista jokaisen tämän tilin protokollan tunnistetiedot",
-            "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä."
+            "persistModeCredentialsHint": "Yksi profiili tiliä kohden: säilyttää jokaisen protokollan tunnistetiedot (API, WebDAV, S3, ...) tallennettuina, joten tilan vaihtaminen ei kysy uudelleen, edes uudelleenkäynnistyksen jälkeen. Tallennetaan salattuna holviin. Oletuksena pois päältä.",
+            "opendriveDefaultPrivacy": "Uusien kohteiden oletustietosuoja",
+            "opendriveDefaultPrivacyHelp": "Koskee luomiasi tai lataamiasi kansioita ja tiedostoja. WebDAV-yhteydet käyttävät OpenDriven omia oletusasetuksia."
         },
         "browser": {
             "remote": "Etä",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Avaa AeroVault Overlayna",
             "privacyEllipsis": "Yksityisyys...",
             "openWithAeroVaultZip": "Avaa sovelluksella AeroVault Zip",
-            "importToAeroFTP": "Tuo AeroFTP:hen"
+            "importToAeroFTP": "Tuo AeroFTP:hen",
+            "permissionsEllipsis": "Käyttöoikeudet..."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Vain tilin omistaja voi käyttää tätä kohdetta.",
             "privacyPublic": "Julkinen",
             "privacyPublicDesc": "Kuka tahansa linkin saanut voi käyttää tätä kohdetta.",
-            "visibility": "Näkyvyys"
+            "visibility": "Näkyvyys",
+            "applyPrivacy": "Käytä",
+            "applyPrivacyAll": "Käytä {count} kohteeseen"
         },
         "duplicates": {
             "title": "Etsi kaksoiskappaleet",

@@ -445,7 +445,7 @@ import DebugPanel, {
   deactivateNetworkCapture,
 } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, FourSharedLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, FourSharedLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -1172,9 +1172,45 @@ const App: React.FC = () => {
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
-  const [openDrivePrivacyDialog, setOpenDrivePrivacyDialog] = useState<{
-    path: string; name: string; isDir: boolean; current: 'public' | 'private' | 'hidden'; selected: 'public' | 'private' | 'hidden';
-  } | null>(null);
+  // #252: which Properties tab opens first. Set to 'permissions' when the user
+  // picks the OpenDrive "Permissions..." entry; reset to 'general' otherwise.
+  const [propertiesInitialTab, setPropertiesInitialTab] = useState<'general' | 'permissions' | 'checksum'>('general');
+  // #252: apply an OpenDrive privacy level to one or more paths via the
+  // three-level command, then refresh the listing. Shared by the single- and
+  // multi-file Properties > Permissions editors (replaces the old standalone
+  // privacy dialog and the per-item context-menu actions).
+  const applyOpenDrivePrivacyToPaths = async (
+    level: 'public' | 'private' | 'hidden',
+    targets: { path: string; isDir: boolean }[],
+  ) => {
+    if (targets.length === 0) return;
+    const label = targets.length === 1
+      ? (targets[0].path.split('/').pop() || targets[0].path)
+      : `${targets.length} items`;
+    const logId = humanLog.logRaw('activity.opendrive_set_access', 'INFO', { provider: 'OpenDrive', filename: label }, 'running');
+    try {
+      const results = await Promise.allSettled(
+        targets.map(tg => invoke('opendrive_set_path_access', { path: tg.path, accessLevel: level, isDir: tg.isDir }))
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - ok;
+      if (failed === 0) {
+        notify.success(t('opendrive.privacyUpdated') || 'OpenDrive privacy updated');
+        humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Access set to ${level} (${ok})` });
+        // Reflect the new level in any open Properties dialog without closing it.
+        const targetPaths = new Set(targets.map(tg => tg.path));
+        setPropertiesDialog(prev => prev && targetPaths.has(prev.path) ? { ...prev, permissions: level } : prev);
+        setMultiPropertiesDialog(prev => prev ? { ...prev, files: prev.files.map(f => targetPaths.has(f.path) ? { ...f, permissions: level } : f) } : prev);
+      } else {
+        notify.warning(`${t('opendrive.privacyUpdated') || 'OpenDrive privacy updated'}: ${ok}/${results.length}`);
+        humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set access ${level}: ${ok}/${results.length}` });
+      }
+      await loadRemoteFiles(undefined, true);
+    } catch (err) {
+      notify.error(String(err));
+      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set access ${level} failed` });
+    }
+  };
   const [fileLuRemoteUploadDialog, setFileLuRemoteUploadDialog] = useState<{
     destPath: string;
   } | null>(null);
@@ -5339,6 +5375,9 @@ interface UpdateVerificationInfo {
       peer_ticket: effectiveParams.options?.peerTicket || null,
       peer_local_folder: effectiveParams.options?.peerLocalFolder || null,
       peer_role: effectiveParams.options?.peerRole || null,
+      // OpenDrive (#252): per-account default privacy applied to new folders
+      // and uploaded files.
+      opendrive_default_privacy: effectiveParams.options?.opendriveDefaultPrivacy || null,
     };
 
     return { effectiveParams, providerParams };
@@ -6997,6 +7036,7 @@ interface UpdateVerificationInfo {
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,
             filen_api_key: cloudFilenApiKey,
+            opendrive_default_privacy: cloudServer.options?.opendriveDefaultPrivacy || null,
           };
           await runConnect('provider_connect', providerParams);
         } else {
@@ -10911,9 +10951,23 @@ interface UpdateVerificationInfo {
     const isFourSharedContext = currentProtocol === 'fourshared' && count === 1;
     const isFourSharedPrivate = isFourSharedContext && filePrivacy === 'private';
     const isFourSharedPublic = isFourSharedContext && filePrivacy === 'public';
-    const isOpenDriveContext = currentProtocol === 'opendrive' && count === 1;
-    const isOpenDrivePrivate = isOpenDriveContext && filePrivacy === 'private';
-    const isOpenDrivePublic = isOpenDriveContext && filePrivacy === 'public';
+    // #252: open Properties (single or multi) on a specific tab. Shared by the
+    // Properties entry (General) and the OpenDrive Permissions entry.
+    const openRemoteProperties = (tab: 'general' | 'permissions' | 'checksum') => {
+      setPropertiesInitialTab(tab);
+      if (count > 1) {
+        const selectedRemote = remoteFiles.filter(f => selection.has(f.name)).map(f => ({
+          name: f.name, path: f.path, size: f.size, is_dir: f.is_dir, modified: f.modified,
+          permissions: f.permissions, isRemote: true, protocol: currentProtocol,
+        } as FileProperties));
+        setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: currentProtocol });
+      } else {
+        setPropertiesDialog({
+          name: file.name, path: file.path, size: file.size, is_dir: file.is_dir,
+          modified: file.modified, permissions: file.permissions, isRemote: true, protocol: currentProtocol,
+        });
+      }
+    };
 
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
@@ -10934,32 +10988,7 @@ interface UpdateVerificationInfo {
       }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
       {
-        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => {
-          if (count > 1) {
-            const selectedRemote = remoteFiles.filter(f => selection.has(f.name)).map(f => ({
-              name: f.name,
-              path: f.path,
-              size: f.size,
-              is_dir: f.is_dir,
-              modified: f.modified,
-              permissions: f.permissions,
-              isRemote: true,
-              protocol: currentProtocol,
-            } as FileProperties));
-            setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: currentProtocol });
-            return;
-          }
-          setPropertiesDialog({
-            name: file.name,
-            path: file.path,
-            size: file.size,
-            is_dir: file.is_dir,
-            modified: file.modified,
-            permissions: file.permissions,
-            isRemote: true,
-            protocol: currentProtocol,
-          });
-        }
+        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => openRemoteProperties('general')
       },
       { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
       // Jottacloud: Move to Trash (soft delete: recoverable, separate from hard delete above)
@@ -11151,102 +11180,16 @@ interface UpdateVerificationInfo {
           divider: true,
         }] : []),
       ] : []),
+      // #252: OpenDrive privacy is now centralized in Properties > Permissions
+      // (single + multi-select, editable). One entry replaces the old Set as
+      // Private / Set as Public / Privacy... / Make all private cluster and
+      // removes the "hidden item shows both" bug by construction.
       ...(currentProtocol === 'opendrive' ? [
-        ...(isOpenDriveContext && !isOpenDrivePrivate ? [
-          {
-            label: t('contextMenu.setAsPrivate') || 'Set as Private',
-            icon: <OpenDriveLogo size={14} />,
-            action: async () => {
-              const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
-              const logId = humanLog.logRaw('activity.opendrive_set_private', 'INFO', { provider: 'OpenDrive', filename: file.name }, 'running');
-              try {
-                await invoke('opendrive_set_path_privacy', {
-                  path: targetPath,
-                  isPublic: false,
-                  isDir: !!file.is_dir,
-                });
-                notify.success(t('contextMenu.setAsPrivate') || 'Set as Private');
-                humanLog.updateEntry(logId, { status: 'success', message: '[OpenDrive] Set private' });
-                await loadRemoteFiles(undefined, true);
-              } catch (err) {
-                notify.error(String(err));
-                humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Set private failed' });
-              }
-            },
-          },
-        ] : []),
-        ...(isOpenDriveContext && !isOpenDrivePublic ? [
-          {
-            label: t('contextMenu.setAsPublic') || 'Set as Public',
-            icon: <OpenDriveLogo size={14} />,
-            action: async () => {
-              const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
-              const logId = humanLog.logRaw('activity.opendrive_set_public', 'INFO', { provider: 'OpenDrive', filename: file.name }, 'running');
-              try {
-                await invoke('opendrive_set_path_privacy', {
-                  path: targetPath,
-                  isPublic: true,
-                  isDir: !!file.is_dir,
-                });
-                notify.success(t('contextMenu.setAsPublic') || 'Set as Public');
-                humanLog.updateEntry(logId, { status: 'success', message: '[OpenDrive] Set public' });
-                await loadRemoteFiles(undefined, true);
-              } catch (err) {
-                notify.error(String(err));
-                humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Set public failed' });
-              }
-            },
-          },
-        ] : []),
-        ...(isOpenDriveContext ? [
-          {
-            label: t('contextMenu.privacyEllipsis') || 'Privacy...',
-            icon: <Shield size={14} />,
-            action: () => {
-              const current: 'public' | 'private' | 'hidden' =
-                filePrivacy === 'public' ? 'public' :
-                filePrivacy === 'hidden' ? 'hidden' :
-                'private';
-              setOpenDrivePrivacyDialog({
-                path: file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`,
-                name: file.name,
-                isDir: !!file.is_dir,
-                current,
-                selected: current,
-              });
-            },
-          },
-        ] : []),
-        ...(count > 1 ? [{
-          label: t('contextMenu.makeAllPrivate') || 'Make all private',
-          icon: <OpenDriveLogo size={14} />,
-          action: async () => {
-            const selectedEntries = remoteFiles.filter(f => selection.has(f.name));
-            const logId = humanLog.logRaw('activity.opendrive_set_private_bulk', 'INFO', { provider: 'OpenDrive', filename: `${selectedEntries.length} items` }, 'running');
-            try {
-              const results = await Promise.allSettled(
-                selectedEntries.map(entry => invoke('opendrive_set_path_privacy', {
-                  path: entry.path,
-                  isPublic: false,
-                  isDir: !!entry.is_dir,
-                }))
-              );
-              const ok = results.filter(r => r.status === 'fulfilled').length;
-              const failed = results.length - ok;
-              if (failed === 0) {
-                notify.success(t('contextMenu.makeAllPrivate') || 'Make all private');
-                humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Set ${ok} entries private` });
-              } else {
-                notify.warning(`${t('contextMenu.makeAllPrivate') || 'Make all private'}: ${ok}/${results.length}`);
-                humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set ${ok}/${results.length} entries private` });
-              }
-              await loadRemoteFiles(undefined, true);
-            } catch (err) {
-              notify.error(String(err));
-              humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Bulk private failed' });
-            }
-          }
-        }] : []),
+        {
+          label: t('contextMenu.permissionsEllipsis') || 'Permissions...',
+          icon: <Shield size={14} />,
+          action: () => openRemoteProperties('permissions'),
+        },
       ] : []),
       ...(currentProtocol === 'fourshared' ? [
         ...(isFourSharedContext && !isFourSharedPrivate ? [
@@ -13557,12 +13500,19 @@ interface UpdateVerificationInfo {
             } : undefined}
             folderSize={propertiesDialog.is_dir ? folderSizeCache.get(propertiesDialog.path) ?? null : null}
             folderSizeCalculating={propertiesDialog.is_dir ? folderSizeCalculating.has(propertiesDialog.path) : false}
+            initialTab={propertiesInitialTab}
+            onPrivacyChange={propertiesDialog.isRemote && propertiesDialog.protocol === 'opendrive'
+              ? (level) => applyOpenDrivePrivacyToPaths(level, [{ path: propertiesDialog.path, isDir: !!propertiesDialog.is_dir }])
+              : undefined}
           />
         )}
         {multiPropertiesDialog && (
           <MultiFilePropertiesDialog
             selection={multiPropertiesDialog}
             onClose={() => setMultiPropertiesDialog(null)}
+            onPrivacyChange={multiPropertiesDialog.protocol === 'opendrive'
+              ? (level) => applyOpenDrivePrivacyToPaths(level, multiPropertiesDialog.files.map(f => ({ path: f.path, isDir: !!f.is_dir })))
+              : undefined}
           />
         )}
         {quickLookOpen && sortedLocalFiles[quickLookIndex] && (
@@ -14122,95 +14072,6 @@ interface UpdateVerificationInfo {
                     setFileLuFolderSettingsDialog(null);
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                >
-                  {t('common.save')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* OpenDrive: Privacy three-level chooser */}
-        {openDrivePrivacyDialog && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-md mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in p-6">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
-                <OpenDriveLogo size={18} />
-                {t('opendrive.privacyTitle') || 'OpenDrive Privacy'}
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 truncate">
-                <span className="font-medium text-gray-700 dark:text-gray-300">{openDrivePrivacyDialog.name}</span>
-              </p>
-              <div className="space-y-2 mb-5">
-                {(['private', 'public', 'hidden'] as const).map((level) => {
-                  const isSelected = openDrivePrivacyDialog.selected === level;
-                  const labelKey = level === 'private' ? 'properties.privacyPrivate'
-                    : level === 'public' ? 'properties.privacyPublic'
-                    : 'properties.privacyHidden';
-                  const descKey = level === 'private' ? 'properties.privacyPrivateDesc'
-                    : level === 'public' ? 'properties.privacyPublicDesc'
-                    : 'properties.privacyHiddenDesc';
-                  return (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => setOpenDrivePrivacyDialog(d => d ? { ...d, selected: level } : null)}
-                      className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
-                          : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <span className={`mt-0.5 inline-block w-3 h-3 rounded-full border ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-500'
-                            : 'border-gray-400 dark:border-gray-500'
-                        }`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                            {t(labelKey)}
-                            {level === openDrivePrivacyDialog.current && (
-                              <span className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('common.current') || 'current'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t(descKey)}</div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setOpenDrivePrivacyDialog(null)}
-                  className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  disabled={openDrivePrivacyDialog.selected === openDrivePrivacyDialog.current}
-                  onClick={async () => {
-                    const d = openDrivePrivacyDialog;
-                    if (!d || d.selected === d.current) return;
-                    const logId = humanLog.logRaw('activity.opendrive_set_access', 'INFO', { provider: 'OpenDrive', filename: d.name }, 'running');
-                    try {
-                      await invoke('opendrive_set_path_access', {
-                        path: d.path,
-                        accessLevel: d.selected,
-                        isDir: d.isDir,
-                      });
-                      notify.success(t('opendrive.privacyUpdated') || 'OpenDrive privacy updated');
-                      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Access set to ${d.selected}` });
-                      await loadRemoteFiles(undefined, true);
-                    } catch (err) {
-                      notify.error(String(err));
-                      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set access ${d.selected} failed` });
-                    }
-                    setOpenDrivePrivacyDialog(null);
-                  }}
-                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('common.save')}
                 </button>

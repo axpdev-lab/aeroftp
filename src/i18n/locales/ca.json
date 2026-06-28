@@ -280,7 +280,9 @@
             "unstableTitle": "Proveïdor experimental",
             "unstableBody": "{provider} encara no és estable i és possible que el servei no estigui disponible. La connexió pot fallar sense que sigui culpa teva.",
             "persistModeCredentials": "Recorda les credencials per a cada protocol d'aquest compte",
-            "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte."
+            "persistModeCredentialsHint": "Un perfil per compte: manté desades les credencials de cada protocol (API, WebDAV, S3, ...) perquè canviar de mode no les torni a demanar, fins i tot després de reiniciar. Desat xifrat al vault. Desactivat per defecte.",
+            "opendriveDefaultPrivacy": "Privadesa predeterminada per a elements nous",
+            "opendriveDefaultPrivacyHelp": "S'aplica a les carpetes i fitxers que creïs o pugis. Les connexions WebDAV fan servir els valors predeterminats d'OpenDrive."
         },
         "browser": {
             "remote": "Remot",
@@ -431,7 +433,8 @@
             "openAsAeroVaultOverlay": "Obre com a AeroVault Overlay",
             "privacyEllipsis": "Privacitat...",
             "openWithAeroVaultZip": "Obre amb AeroVault Zip",
-            "importToAeroFTP": "Importa a AeroFTP"
+            "importToAeroFTP": "Importa a AeroFTP",
+            "permissionsEllipsis": "Permisos..."
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -3155,7 +3158,9 @@
             "privacyPrivateDesc": "Només el propietari del compte pot accedir a aquest element.",
             "privacyPublic": "Públic",
             "privacyPublicDesc": "Qualsevol persona amb l'enllaç pot accedir a aquest element.",
-            "visibility": "Visibilitat"
+            "visibility": "Visibilitat",
+            "applyPrivacy": "Aplica",
+            "applyPrivacyAll": "Aplica a {count} elements"
         },
         "duplicates": {
             "title": "Trobar duplicats",

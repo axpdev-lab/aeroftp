@@ -378,6 +378,11 @@ export interface ProviderOptions {
   // kDrive-specific
   drive_id?: string; // Infomaniak kDrive numeric ID
 
+  // OpenDrive-specific (#252): per-account default privacy applied to newly
+  // created folders and uploaded files. Unset preserves the legacy behaviour
+  // (folders created Private, files left as OpenDrive assigns).
+  opendriveDefaultPrivacy?: 'private' | 'public' | 'hidden';
+
   // GitHub-specific
   githubAuthMode?: "authorize" | "pat" | "app";
   githubAppId?: string; // GitHub App ID (for bot mode)
