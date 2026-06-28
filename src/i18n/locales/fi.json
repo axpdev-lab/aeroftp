@@ -5179,6 +5179,12 @@
                 "edit": "Muokkaa",
                 "remove": "Poista",
                 "removeConfirm": "Poistetaanko?"
+            },
+            "activate": {
+                "title": "AeroShare on käytössä",
+                "body": "Lisäsit kaverin, joten AeroShare on nyt käytössä. Haluatko vastaanottaa tiedostoja, joita kaverisi lähettävät sinulle? Voit muuttaa tätä milloin tahansa Asetuksissa.",
+                "enable": "Ota vastaanotto käyttöön",
+                "notNow": "Ei nyt"
             }
         },
         "extractWindow": {

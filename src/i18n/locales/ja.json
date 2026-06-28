@@ -5179,6 +5179,12 @@
                 "edit": "編集",
                 "remove": "削除",
                 "removeConfirm": "削除しますか?"
+            },
+            "activate": {
+                "title": "AeroShare がオンになりました",
+                "body": "友だちを追加したので、AeroShare が有効になりました。友だちが送ってくるファイルを受信しますか？これは設定でいつでも変更できます。",
+                "enable": "受信をオンにする",
+                "notNow": "今はしない"
             }
         },
         "extractWindow": {

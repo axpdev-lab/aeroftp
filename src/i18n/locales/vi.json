@@ -5179,6 +5179,12 @@
                 "edit": "Sửa",
                 "remove": "Xóa",
                 "removeConfirm": "Xóa?"
+            },
+            "activate": {
+                "title": "AeroShare đang bật",
+                "body": "Bạn đã thêm một người bạn, nên AeroShare hiện đang hoạt động. Bạn có muốn nhận các tệp mà bạn bè gửi cho bạn không? Bạn có thể thay đổi điều này bất cứ lúc nào trong Cài đặt.",
+                "enable": "Bật nhận tệp",
+                "notNow": "Để sau"
             }
         },
         "extractWindow": {

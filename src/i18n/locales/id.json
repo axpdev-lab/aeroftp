@@ -5179,6 +5179,12 @@
                 "edit": "Edit",
                 "remove": "Hapus",
                 "removeConfirm": "Hapus?"
+            },
+            "activate": {
+                "title": "AeroShare aktif",
+                "body": "Anda menambahkan teman, jadi AeroShare kini aktif. Apakah Anda ingin menerima file yang dikirim teman Anda? Anda dapat mengubahnya kapan saja di Pengaturan.",
+                "enable": "Aktifkan penerimaan",
+                "notNow": "Jangan sekarang"
             }
         },
         "extractWindow": {

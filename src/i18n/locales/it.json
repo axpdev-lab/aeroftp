@@ -5036,6 +5036,12 @@
         "aeroShare": {
             "feature": "AeroShare",
             "addFriend": "Aggiungi amico",
+            "activate": {
+                "title": "AeroShare è attivo",
+                "body": "Hai aggiunto un amico, quindi AeroShare ora è attivo. Vuoi ricevere i file che i tuoi amici ti inviano? Puoi cambiarlo quando vuoi nelle Impostazioni.",
+                "enable": "Attiva ricezione",
+                "notNow": "Non ora"
+            },
             "experimentalLabel": "AeroShare (beta)",
             "experimentalDesc": "Condividi cartelle direttamente con gli amici su un canale peer-to-peer cifrato, senza alcun server di mezzo.",
             "experimentalNote": "Beta: il trasferimento peer-to-peer è in fase di sviluppo attivo e può cambiare. Le connessioni usano attualmente un relay pubblico per attraversare i firewall.",

@@ -22,6 +22,7 @@ import {
   peerContactRemove,
   peerSendKnock,
   shortAfid,
+  ensureAeroShareActivated,
   type PeerFriend,
 } from '../../utils/aeroShare';
 import { SENDABLE_KNOCK_CODES, knockLabelKey } from '../../utils/aeroShareKnock';
@@ -96,6 +97,8 @@ export function AeroShareContacts({ compact = false }: AeroShareContactsProps) {
     setBusy(true);
     try {
       await peerContactAdd(afid, newAlias.trim());
+      // Auto-activate AeroShare on the first real action (idempotent).
+      await ensureAeroShareActivated();
       setNewAfid('');
       setNewAlias('');
       await refresh();

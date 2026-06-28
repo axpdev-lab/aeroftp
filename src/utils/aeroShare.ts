@@ -20,6 +20,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ProviderOptions, ServerProfile } from '../types';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from './serverProfileStore';
+import { secureGetWithFallback, secureStoreAndClean } from './secureStorage';
 
 // ---------------------------------------------------------------------------
 // Backend command result shapes (snake_case keys, repo convention)
@@ -357,9 +358,63 @@ export interface AeroShareOpenDetail {
 }
 
 /** Ask the (always-mounted) MyServersPanel to open the AeroShare dialog.
- *  No-op surface for callers: if AeroShare is off the listener ignores it. */
+ *  The listener is always registered (AeroShare is always-on at launch). */
 export const openAeroShareDialog = (detail: AeroShareOpenDetail = { mode: 'receive' }): void => {
   window.dispatchEvent(new CustomEvent<AeroShareOpenDetail>(AERO_SHARE_OPEN_EVENT, { detail }));
+};
+
+// ---------------------------------------------------------------------------
+// Auto-activation (always-on at launch). The Discover tile and the titlebar
+// +friend icon are visible before the user opts in; performing a real action
+// (adding a friend or sharing a folder) flips `aeroShareEnabled` on so every
+// richer surface (peer filter, friend cards, notification bell) lights up. The
+// manual Settings toggle stays as an override. The receiver (the standing P2P
+// listener) is NEVER auto-started: on the first activation we fire
+// AERO_SHARE_ACTIVATED_EVENT so a one-time prompt can offer opt-in / opt-out.
+// ---------------------------------------------------------------------------
+
+const SETTINGS_VAULT_KEY = 'app_settings';
+const SETTINGS_LOCAL_KEY = 'aeroftp_settings';
+
+/** Fired ONCE, on the false->true transition of `aeroShareEnabled`. */
+export const AERO_SHARE_ACTIVATED_EVENT = 'aeroftp-aeroshare-activated';
+
+/** Merge a patch into `aeroftp_settings` (vault + localStorage write-through)
+ *  and broadcast it on `aeroftp-settings-changed` so the read-only settings
+ *  hooks (useAeroShareEnabled, useAeroShareReceiveSettings) update instantly. */
+export const patchAeroShareSettings = async (
+  patch: Record<string, unknown>,
+): Promise<void> => {
+  let current: Record<string, unknown> = {};
+  try {
+    const parsed = await secureGetWithFallback<Record<string, unknown>>(
+      SETTINGS_VAULT_KEY,
+      SETTINGS_LOCAL_KEY,
+    );
+    if (parsed) current = parsed;
+  } catch {
+    /* fall back to empty; we still persist the patch */
+  }
+  await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_LOCAL_KEY, { ...current, ...patch });
+  window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: patch }));
+};
+
+/** Ensure AeroShare is enabled. Idempotent: a no-op when already on. On the
+ *  first activation it persists the flag and fires AERO_SHARE_ACTIVATED_EVENT
+ *  (the receiver opt-in/opt-out prompt). Call after a friend is added or a
+ *  folder is shared. */
+export const ensureAeroShareActivated = async (): Promise<void> => {
+  try {
+    const parsed = await secureGetWithFallback<Record<string, unknown>>(
+      SETTINGS_VAULT_KEY,
+      SETTINGS_LOCAL_KEY,
+    );
+    if (parsed?.aeroShareEnabled === true) return; // already active
+  } catch {
+    /* treat as not-active and enable below */
+  }
+  await patchAeroShareSettings({ aeroShareEnabled: true });
+  window.dispatchEvent(new CustomEvent(AERO_SHARE_ACTIVATED_EVENT));
 };
 
 // ---------------------------------------------------------------------------
@@ -426,5 +481,7 @@ export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfi
 
   const others = profiles.filter((p) => p.id !== id);
   await storeSavedServerProfiles([...others, next]);
+  // Saving a friend (received-folder or share flow) auto-activates AeroShare.
+  await ensureAeroShareActivated();
   return next;
 };

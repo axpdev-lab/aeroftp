@@ -5198,6 +5198,12 @@
                 "edit": "Editar",
                 "remove": "Quitar",
                 "removeConfirm": "Quitar?"
+            },
+            "activate": {
+                "title": "AeroShare está activado",
+                "body": "Engadiches un amigo, así que AeroShare xa está activo. Queres recibir os ficheiros que che envían os teus amigos? Podes cambialo en calquera momento na Configuración.",
+                "enable": "Activar a recepción",
+                "notNow": "Agora non"
             }
         },
         "extractWindow": {

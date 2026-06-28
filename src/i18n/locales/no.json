@@ -5198,6 +5198,12 @@
                 "edit": "Rediger",
                 "remove": "Fjern",
                 "removeConfirm": "Fjerne?"
+            },
+            "activate": {
+                "title": "AeroShare er på",
+                "body": "Du la til en venn, så AeroShare er nå aktiv. Vil du motta filene vennene dine sender deg? Du kan endre dette når som helst i Innstillinger.",
+                "enable": "Slå på mottak",
+                "notNow": "Ikke nå"
             }
         },
         "extractWindow": {

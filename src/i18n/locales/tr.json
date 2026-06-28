@@ -5179,6 +5179,12 @@
                 "edit": "Düzenle",
                 "remove": "Kaldır",
                 "removeConfirm": "Kaldırılsın mı?"
+            },
+            "activate": {
+                "title": "AeroShare açık",
+                "body": "Bir arkadaş eklediniz, böylece AeroShare artık etkin. Arkadaşlarınızın size gönderdiği dosyaları almak ister misiniz? Bunu istediğiniz zaman Ayarlar'dan değiştirebilirsiniz.",
+                "enable": "Almayı aç",
+                "notNow": "Şimdi değil"
             }
         },
         "extractWindow": {

@@ -5198,6 +5198,12 @@
                 "edit": "I-edit",
                 "remove": "Alisin",
                 "removeConfirm": "Alisin?"
+            },
+            "activate": {
+                "title": "Naka-on ang AeroShare",
+                "body": "Nagdagdag ka ng kaibigan, kaya aktibo na ngayon ang AeroShare. Gusto mo bang tanggapin ang mga file na ipinapadala sa iyo ng iyong mga kaibigan? Mababago mo ito anumang oras sa Mga Setting.",
+                "enable": "I-on ang pagtanggap",
+                "notNow": "Hindi muna ngayon"
             }
         },
         "extractWindow": {

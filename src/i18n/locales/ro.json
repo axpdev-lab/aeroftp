@@ -5179,6 +5179,12 @@
                 "edit": "Editează",
                 "remove": "Elimină",
                 "removeConfirm": "Elimini?"
+            },
+            "activate": {
+                "title": "AeroShare este activat",
+                "body": "Ai adăugat un prieten, așa că AeroShare este acum activ. Vrei să primești fișierele pe care ți le trimit prietenii? Poți modifica oricând acest lucru în Setări.",
+                "enable": "Activează primirea",
+                "notNow": "Nu acum"
             }
         },
         "extractWindow": {

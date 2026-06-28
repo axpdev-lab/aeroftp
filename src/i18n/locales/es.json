@@ -5179,6 +5179,12 @@
                 "edit": "Editar",
                 "remove": "Quitar",
                 "removeConfirm": "¿Quitar?"
+            },
+            "activate": {
+                "title": "AeroShare está activado",
+                "body": "Has añadido un amigo, así que AeroShare ya está activo. ¿Quieres recibir los archivos que te envían tus amigos? Puedes cambiarlo en cualquier momento en Ajustes.",
+                "enable": "Activar recepción",
+                "notNow": "Ahora no"
             }
         },
         "extractWindow": {

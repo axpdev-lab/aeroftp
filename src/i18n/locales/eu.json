@@ -5198,6 +5198,12 @@
                 "edit": "Editatu",
                 "remove": "Kendu",
                 "removeConfirm": "Kendu?"
+            },
+            "activate": {
+                "title": "AeroShare aktibatuta dago",
+                "body": "Lagun bat gehitu duzu, beraz AeroShare orain aktibo dago. Lagunek bidaltzen dizkizuten fitxategiak jaso nahi dituzu? Edozein unetan alda dezakezu Ezarpenetan.",
+                "enable": "Aktibatu jasotzea",
+                "notNow": "Orain ez"
             }
         },
         "extractWindow": {

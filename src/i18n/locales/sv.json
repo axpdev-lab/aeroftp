@@ -5179,6 +5179,12 @@
                 "edit": "Redigera",
                 "remove": "Ta bort",
                 "removeConfirm": "Ta bort?"
+            },
+            "activate": {
+                "title": "AeroShare är på",
+                "body": "Du lade till en vän, så AeroShare är nu aktivt. Vill du ta emot filer som dina vänner skickar till dig? Du kan ändra detta när som helst i Inställningar.",
+                "enable": "Slå på mottagning",
+                "notNow": "Inte nu"
             }
         },
         "extractWindow": {

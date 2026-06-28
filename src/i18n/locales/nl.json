@@ -5179,6 +5179,12 @@
                 "edit": "Bewerken",
                 "remove": "Verwijderen",
                 "removeConfirm": "Verwijderen?"
+            },
+            "activate": {
+                "title": "AeroShare staat aan",
+                "body": "Je hebt een vriend toegevoegd, dus AeroShare is nu actief. Wil je bestanden ontvangen die je vrienden je sturen? Je kunt dit altijd wijzigen in Instellingen.",
+                "enable": "Ontvangen inschakelen",
+                "notNow": "Niet nu"
             }
         },
         "extractWindow": {
