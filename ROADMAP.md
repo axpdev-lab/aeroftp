@@ -38,15 +38,13 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | 🟢 Shipped | AeroVault v3 (Archive tier) + AeroFile Dual Panel Slice A | v3.7.9 |
 | 🟢 Shipped | AeroCrypt overlay first-class + ImageKit / Uploadcare + CLI audit | v3.7.2 |
 | 🟢 Shipped | Persistent Mount Manager (GUI + CLI) | v3.7.1 |
-| 🟢 Shipped (Beta) | P2P peer transfer (AeroShare) | v4.1.0 |
-| 🟡 In Flight | Bitbucket / Gitea / Forgejo native integrations | next release |
-| 🟡 In Flight | Selectable XChaCha20 vault cipher | next release |
+| 🔵 Up Next | Bitbucket / Gitea / Forgejo native integrations | planned |
+| 🔵 Up Next | Compression wrapper profile | planned |
+| 🔵 Up Next | Selectable XChaCha20 vault cipher | planned |
 | 🔵 Up Next | Share Link UX redesign (QR, analytics, team sharing) | planned |
 | 🔵 Up Next | VS Code Remote Explorer extension | planned |
 | 🔵 Up Next | Deploy Engine (one-click self-hosted server) | planned |
 | 🔵 Up Next | Photo & media services expansion | planned |
-| 🔵 Up Next | Agent Orchestration v2 (mutative remote ops) | planned |
-| 🔵 Up Next | AeroVault v2 enhancements (migration, key rotation) | planned |
 | 🔵 Up Next | Mobile-friendly window dimensions | planned |
 | ⚪ Horizon | AeroIndex (content-aware file intelligence) | exploring |
 | ⚪ Horizon | Mobile companion app (Android) | exploring |
@@ -93,9 +91,9 @@ Every roadmap item at a glance; the lanes below carry the full detail.
   Unified panel controller with an endpoint selector and a transfer planner routing local/local, local/remote and remote/local through the correct engine; FreeFileSync-style compare panel (6-bucket classifier), sync presets, conflict policy with versioned backup, inline cross-profile transfer, terminal cwd follows the focused panel.
 - **AeroFile Dual Panel - Slice A** (v3.7.9)
   Two local panels side by side in AeroFile mode, with full keyboard parity on the second panel (F2 / Delete / Enter / Backspace / clipboard / Quick Look / properties / arrows / Shift+arrow / Home / End all dispatch to the focused pane, Tab cycles between local and local2). Total-Commander shortcuts: F5 copy to other panel, F6 move to other panel, F7 new folder in the focused panel. Drag-and-drop between panes uses `rename_local_file` / `copy_local_file`; Ctrl+drag switches from move to copy. The separator is resizable from mouse and from keyboard (Arrow Left/Right ±10%, Home/End to extremes, Enter/Space to reset, `aria-valuenow` + `tabIndex=0`). Unified tab bar in the top strip with L/R markers and per-panel persistence. Slice B (each pane configurable as a local path or a saved remote profile) and Slice C (FreeFileSync-style mirror/backup/bisync workflows on top) follow in their own release windows.
-- **AeroVault v4 ECC (T-AEROVAULT-ECC)** (shipped on feat/aerovault-v4-ecc, v4 track): Reed-Solomon 10+2 error-correction wrapper as 4th first-class layer (compression→chunk→crypt→ECC last, per Ehud Kirsh #272/#276). v2 fixed-grid payload (~20% real overhead proven live on incompressible data), per-shard BLAKE3 cksums for localized damage (incl. parity), all-or-nothing repair gate (re-verify cipher_hash or leave vault untouched). scrub/repair (GUI draggable modals + full CLI via --profile safety), P3-03 receipt telemetry (shards/bytes/overhead/repairs), i18n, help polish. "v3 + ECC = v4" forward-compat (non-critical ext). 22 tests + live CLI/GUI. Phase 4 docs + CHANGELOG close. See docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/.
-- **AeroVault v3 (Experimental tier)** (v3.7.9)
-  Draft container format that ships alongside v2. Pipeline: gear-CDC chunking → per-chunk zstd (fast `-3` / balanced `-9` / archive `-19`) → AES-256-GCM-SIV (RFC 8452, 96-bit random nonce + per-chunk AAD) → encrypted manifest. Chunks are content-addressed by BLAKE3-keyed-128 (chunk id, also the dedup key) and integrity-checked by BLAKE3-256 (cipher hash, pre-decryption check for the future ECC layer). Argon2id (128 MiB, t=4, p=4) derives two distinct KEKs via HKDF; both unwrap independent random 256-bit working keys through AES-KW. HMAC-SHA512 header tag verified before any unwrap. The 1024-byte header reserves an extension directory and an extension payload region so a future v4 reader can append Reed-Solomon / Parchive blocks without changing the header or manifest layout (`v3 + ECC = v4` forward-compat). v2 vaults remain the default; v3 is opt-in via the Experimental tier in the create dialog. No v2 → v3 migration in this release. Specification: [docs/AEROVAULT-V3-SPEC.md](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC.
+- **AeroVault v4 ECC (T-AEROVAULT-ECC)** (shipped on feat/aerovault-v4-ecc, v4 track): Reed-Solomon 10+2 error-correction wrapper as 4th first-class layer (compression→chunk→crypt→ECC last, per Ehud Kirsh #272/#276). v2 fixed-grid payload (~20% real overhead proven live on incompressible data), per-shard BLAKE3 cksums for localized damage (incl. parity), all-or-nothing repair gate (re-verify cipher_hash or leave vault untouched). scrub/repair (GUI draggable modals + full CLI via --profile safety), P3-03 receipt telemetry (shards/bytes/overhead/repairs), i18n, help polish. "v3 + ECC = v4" forward-compat (non-critical ext). 22 tests + live CLI/GUI. Phase 4 docs + CHANGELOG close. See docs/dev/roadmap/APPENDIX-AEROVAULT-STACK/AEROVAULT-V4-ECC/.
+- **AeroVault v3 (Archive tier)** (v3.7.9)
+  Draft container format that ships alongside v2. Pipeline: gear-CDC chunking → per-chunk zstd (fast `-3` / balanced `-9` / archive `-19`) → AES-256-GCM-SIV (RFC 8452, 96-bit random nonce + per-chunk AAD) → encrypted manifest. Chunks are content-addressed by BLAKE3-keyed-128 (chunk id, also the dedup key) and integrity-checked by BLAKE3-256 (cipher hash, pre-decryption check for the future ECC layer). Argon2id (128 MiB, t=4, p=4) derives two distinct KEKs via HKDF; both unwrap independent random 256-bit working keys through AES-KW. HMAC-SHA512 header tag verified before any unwrap. The 1024-byte header reserves an extension directory and an extension payload region so a future v4 reader can append Reed-Solomon / Parchive blocks without changing the header or manifest layout (`v3 + ECC = v4` forward-compat). At v3.7.9 it shipped opt-in alongside v2 as the default, originally labelled the Experimental tier; that label was dropped in v3.8.0 and v3 is now the production Archive tier (the v4 = v3 + ECC format built on top shipped in v4.0.5). There is still no automatic v2 → v3 migration. Specification: [docs/AEROVAULT-V3-SPEC.md](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC.
 - **TOTP secret passthrough for Filen and MEGA** (v3.7.9)
   Persisted base32 2FA secret per profile; the backend derives the 6-digit code on every reconnect via `totp_helper::generate_totp_code`. Closes the TOTP passthrough point in [issue #128](https://github.com/axpdev-lab/aeroftp/issues/128).
 - **AeroCrypt overlay first-class** (v3.7.2)
@@ -153,15 +151,16 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟡 In Flight
 
+_Nothing actively in flight right now; the next items are queued under Up Next below._
+
+### 🔵 Up Next
+
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
 - **Compression wrapper profile**
   Symmetric to the Crypt overlay. A per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only), implemented as a provider wrapper that compresses on upload and decompresses on download. The UI warns when a user tries to compress an already-encrypted overlay, which would defeat compression.
 - **Selectable XChaCha20 vault cipher**
   Promote ChaCha20 / XChaCha20-Poly1305 to a user-selectable primary content cipher for AeroVault v3 (battery-efficient on mobile and AES-NI-less ARM), as a new header-flagged mode that defaults to AES-256-GCM-SIV so existing vaults stay byte-compatible. Requires an `aerovault` crate format flag and release.
-
-### 🔵 Up Next
-
 - **Share Link UX Redesign**
   The unified share dialog already ships across 21-22 provider backends with expiry, password and permission controls plus a link-management tab. The remaining work is the presentation layer: QR codes for the generated links, link analytics, and team sharing.
 - **VS Code Remote Explorer extension**
@@ -172,19 +171,15 @@ Every roadmap item at a glance; the lanes below carry the full detail.
   More photo and media-CDN services on top of the four already shipped (Immich, Cloudinary, ImageKit, Uploadcare).
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
-- **Agent Orchestration v2**
-  Mutative remote operations with grant model on top of the existing 35+ tool MCP server.
-- **AeroVault v2 Enhancements**
-  Cross-platform migration, multi-device sync integration, key rotation.
 
 ### ⚪ On the Horizon
 
 - **AeroIndex**
   Content-aware file intelligence: cross-server deduplication, semantic tags, transactional preview, offline browsing, workspaces. A new way to think about files scattered across 40+ cloud services.
 - **Mobile companion app**
-  Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault v2 import/export.
+  Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault import/export.
 - **Flathub publish**
-  Flatpak manifest done, `flathub-fork/` ready, awaiting acceptance into the Flathub remote.
+  Flatpak manifest (`com.aeroftp.AeroFTP.yml`) done and maintained in-repo, awaiting acceptance into the Flathub remote.
 - **IPFS / Web3 Storage**
   Decentralized storage integration (NLnet grant submitted).
 - **Tor Support**
@@ -204,15 +199,15 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 |----------|----------|--------|
 | **InfiniCLOUD** (REST v2 + WebDAV) | Muramasa REST + WebDAV | 🟢 Just Shipped: dual-connector with auto-discovery and quota |
 | **Immich** | REST API (self-hosted) | 🟢 Just Shipped |
-| **Bitbucket** | REST 2.0 | 🟡 In Flight: Git forge Tier 1 |
-| **Gitea / Forgejo** | REST v1 | 🟡 In Flight: Git forge Tier 1 (~90% GitHub reuse) |
+| **Bitbucket** | REST 2.0 | 🔵 Up Next: Git forge Tier 1 |
+| **Gitea / Forgejo** | REST v1 | 🔵 Up Next: Git forge Tier 1 (~90% GitHub reuse) |
 | **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout on top of the 4 shipped (Immich, Cloudinary, ImageKit, Uploadcare) |
 | **ImageKit** | REST API | 🟢 Just Shipped (v3.7.2): media CDN + storage |
 | **Uploadcare** | REST + Upload API | 🟢 Just Shipped (v3.7.2): media CDN, EU/GDPR |
 | **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |
 | **Blomp** | OpenStack Swift | ⏸ Awaiting Blomp proxy fix (auth works, storage 403) |
 
-**Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect), **Tab.digital** (Nextcloud-as-a-Service, EU / GDPR, v3.7.4), **Felicloud** (Nextcloud-as-a-Service, OCS API), **Seafile** (`seafdav` endpoint), **CloudMe** (Digest auth auto-detected), **Jianguoyun** (China-based WebDAV), **Filen Desktop S3 / WebDAV bridges** (local ports 1700 / 1900), **MEGA S4 Object Storage** (S3-compatible, 4 EU/CA regions), **Filen S5** (S3-compatible), **MinIO** (dedicated S3-compatible), **MEGAcmd** (anonymous WebDAV), **S3Drive** (path-style S3).
+**Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect), **Tab.digital** (Nextcloud-as-a-Service, EU / GDPR, v3.7.4), **Felicloud** (Nextcloud-as-a-Service, OCS API), **Seafile** (`seafdav` endpoint), **CloudMe** (Digest auth auto-detected), **Jianguoyun** (China-based WebDAV), **Filen Desktop S3 / WebDAV bridges** (local ports 1700 / 1900), **MEGA S4 Object Storage** (S3-compatible, 4 EU/CA regions), **FileLu S5** (S3-compatible), **MinIO** (dedicated S3-compatible), **MEGAcmd** (anonymous WebDAV), **S3Drive** (path-style S3).
 
 ---
 
@@ -227,7 +222,7 @@ Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whos
 
 Carry-over community items still open after the v3.8.0 cut:
 
-- `T-PROTOCOL-COMPARISON-DOCS`: per-protocol comparison page in the docs site (API vs WebDAV qualitative trade-offs). Requires real test runs against each backend before the matrix can be written; carries over to v3.7.3.
+- `T-PROTOCOL-COMPARISON-DOCS`: per-protocol comparison page in the docs site (API vs WebDAV qualitative trade-offs). Requires real test runs against each backend before the matrix can be written; now tracked in the On the Horizon lane above.
 - ~~`T-MANUAL-QUOTA`: optional manual total-storage cap per saved server for providers that do not expose `storage_info`.~~ Shipped in v3.8.0 as a TRUE override (`options.manualTotalBytes`, `--manual-total`) plus an explicit recursive used-storage scan.
 
 `T-EDITOR-DRAG-RUN` and `T-TOPBAR-3-CLUSTER` shipped in v3.7.2 (closed). Big-feature community items live in the COMMUNITY ROADMAP thread (`T-MULTI-USER`, `T-DUAL-PANEL-UNIFICATION`, `T-MOBILE-WINDOW`).
@@ -423,7 +418,7 @@ The lane view above is what most users want. The tables below are kept for users
 | Feature | Description |
 |---------|-------------|
 | **AeroFile Dual Panel - Slice A** | Two side-by-side local panes with full keyboard parity (F2 / Delete / Enter / Backspace / Ctrl+A/C/X/V/R/F / Space / Alt+Enter / arrows / Home / End route to the focused panel, Tab cycles the two panes), Total-Commander F5 copy / F6 move / F7 new-folder shortcuts, a unified tab bar with L/R markers, drag-to-copy/move between panes (Ctrl+drag switches move to copy), a keyboard-operable resize separator, and a persisted split ratio. Toggle via the Columns icon or `Ctrl+Shift+D`. (issue [#162](https://github.com/axpdev-lab/aeroftp/issues/162) section 2) |
-| **AeroVault v3 (Experimental)** | A draft container format alongside v2 using gear-CDC chunking, per-chunk zstd at fast/balanced/archive profiles (-3 / -9 / -19), AES-256-GCM-SIV per chunk with per-chunk AAD, BLAKE3-128 chunk id + BLAKE3-256 cipher hash, Argon2id (m=128 MiB, t=4, p=4) deriving distinct encryption and MAC KEKs via HKDF + AES-KW, an HMAC-SHA512 header tag, and a reserved extension directory implementing the `v3 + ECC = v4` forward-compat contract. v2 remains the default; v3 is opt-in. Full spec in `docs/AEROVAULT-V3-SPEC.md`. |
+| **AeroVault v3 (Archive tier)** | A draft container format alongside v2 using gear-CDC chunking, per-chunk zstd at fast/balanced/archive profiles (-3 / -9 / -19), AES-256-GCM-SIV per chunk with per-chunk AAD, BLAKE3-128 chunk id + BLAKE3-256 cipher hash, Argon2id (m=128 MiB, t=4, p=4) deriving distinct encryption and MAC KEKs via HKDF + AES-KW, an HMAC-SHA512 header tag, and a reserved extension directory implementing the `v3 + ECC = v4` forward-compat contract. v2 remains the default; v3 is opt-in. Full spec in `docs/AEROVAULT-V3-SPEC.md`. |
 | **TOTP secret passthrough (Filen + MEGA)** | A base32 2FA secret can be persisted once per profile; the backend derives the current 6-digit code on every connect via `totp_helper::generate_totp_code` (single-use codes still accepted as fallback), removing the manual prompt. Closes the TOTP passthrough point in [#128](https://github.com/axpdev-lab/aeroftp/issues/128). |
 | **MEGA HTTP 402 response-body surface** | The MEGA native client now reads the response body before classifying HTTP failures and embeds a 200-byte preview in the tracing log and the surfaced error, making the chronic "session expired or invalid" path actionable. Diagnostic-only. |
 | **DebugPanel diagnostic surface** | The DebugPanel is elevated to a real diagnostic surface with backend log streaming via `log://log`, console serializer hardening, redaction of API keys / Bearer tokens / JWT / inline passwords / emails / non-loopback IPv4 / home paths / high-entropy hex, a Tests tab driving 6 backend probes and 2 frontend benchmarks, multi-format export, and a ZIP diagnostic bundle. Three new MCP tools (`aeroftp_debug_snapshot`, `aeroftp_debug_run_test`, `aeroftp_benchmark`) expose the same surface to agents. |
