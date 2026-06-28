@@ -2741,4 +2741,58 @@ mod tests {
                 if msg == "Internxt token refresh failed: 401: expired"
         ));
     }
+
+    #[test]
+    fn extract_size_reads_number_string_and_defaults_to_zero() {
+        use serde_json::json;
+        assert_eq!(InternxtProvider::extract_size(&Some(json!(4096))), 4096);
+        assert_eq!(InternxtProvider::extract_size(&Some(json!("8192"))), 8192);
+        // Non-numeric string, wrong type, and absence all fall back to 0.
+        assert_eq!(
+            InternxtProvider::extract_size(&Some(json!("not a number"))),
+            0
+        );
+        assert_eq!(InternxtProvider::extract_size(&Some(json!(true))), 0);
+        assert_eq!(InternxtProvider::extract_size(&None), 0);
+    }
+
+    #[test]
+    fn get_filename_prefers_plain_name_then_name_then_unnamed_and_appends_type() {
+        let mk = |v: serde_json::Value| serde_json::from_value::<InternxtFile>(v).unwrap();
+
+        // plainName + type -> "plainName.type"
+        let f = mk(serde_json::json!({"uuid":"u","plainName":"report","type":"pdf"}));
+        assert_eq!(InternxtProvider::get_filename(&f), "report.pdf");
+        // plainName missing -> falls back to name
+        let f = mk(serde_json::json!({"uuid":"u","name":"legacy","type":"txt"}));
+        assert_eq!(InternxtProvider::get_filename(&f), "legacy.txt");
+        // both missing -> "unnamed"
+        let f = mk(serde_json::json!({"uuid":"u"}));
+        assert_eq!(InternxtProvider::get_filename(&f), "unnamed");
+        // empty type -> no trailing dot
+        let f = mk(serde_json::json!({"uuid":"u","plainName":"folderlike","type":""}));
+        assert_eq!(InternxtProvider::get_filename(&f), "folderlike");
+    }
+
+    #[test]
+    fn split_name_ext_splits_on_last_dot_only() {
+        assert_eq!(
+            InternxtProvider::split_name_ext("a.txt"),
+            ("a".to_string(), "txt".to_string())
+        );
+        assert_eq!(
+            InternxtProvider::split_name_ext("archive.tar.gz"),
+            ("archive.tar".to_string(), "gz".to_string())
+        );
+        // No extension.
+        assert_eq!(
+            InternxtProvider::split_name_ext("noext"),
+            ("noext".to_string(), String::new())
+        );
+        // Leading dot (pos 0) is treated as a dotfile, not an extension.
+        assert_eq!(
+            InternxtProvider::split_name_ext(".hidden"),
+            (".hidden".to_string(), String::new())
+        );
+    }
 }
