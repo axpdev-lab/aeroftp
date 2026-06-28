@@ -598,8 +598,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [persistModeCredentials, setPersistModeCredentials] = useState(false);
     // P3: AeroCrypt Profile binding (transparent encrypted overlay on the dual-panel).
     // Ehud #276 (17324431): a collapsible "Wrappers / Overlays" parent keeps the Quick
-    // Connect page uncluttered. Collapsed by default, auto-opens when a binding exists.
-    const [overlaysExpanded, setOverlaysExpanded] = useState(false);
+    // Connect page tidy while staying collapsible. Expanded by default (Ehud 2026-06-28):
+    // the Crypt enable checkbox is the only thing it reveals when closed, and you have to
+    // tick it to configure anything, so opening the section by default removes a click and
+    // surfaces the option instead of burying it one level down.
+    const [overlaysExpanded, setOverlaysExpanded] = useState(true);
     const [aeroCryptEnabled, setAeroCryptEnabled] = useState(false);
     // No default crypt kind: the user must actively pick aerocrypt vs rclone-crypt
     // (Ehud #276, 2026-06-13: both opt-in, no tap-Enter default). null until chosen.
@@ -1767,8 +1770,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // is never prefilled (it lives in the vault under aerocrypt_overlay_pw_<id>).
         const overlayBinding = profile.aeroCryptOverlay;
         setAeroCryptEnabled(!!overlayBinding?.enabled);
-        // Auto-open the overlays section when this profile already carries a binding.
-        setOverlaysExpanded(!!overlayBinding?.enabled);
+        // Keep the overlays section expanded on edit too (default-open, Ehud 2026-06-28).
+        setOverlaysExpanded(true);
         // C-EDIT-GUARD: lock kind + credential edits when a binding already exists.
         setOverlayBindingLocked(!!overlayBinding?.enabled);
         // Only seed a kind when a binding already exists; a binding-less profile
