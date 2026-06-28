@@ -261,8 +261,21 @@ impl FourSharedProvider {
     /// that the frontend can use to prompt re-authorization.
     /// OAuth 1.0a tokens cannot be refreshed: user must re-authorize manually.
     fn check_auth_status(&self, resp: &reqwest::Response) -> Result<(), ProviderError> {
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Err(e) = Self::classify_fourshared_auth(resp.status().as_u16()) {
             tracing::warn!("[4shared] OAuth token rejected (401): user must re-authorize");
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// Pure status -> auth-gate decision for 4shared. A 401 means the OAuth 1.0a access
+    /// token has been revoked or is invalid; it cannot be refreshed, so the user must
+    /// re-authorize manually. Every other status passes here (per-callsite error mapping
+    /// handles the rest). Extracted from `check_auth_status` so the decision is unit-testable
+    /// without a live `reqwest::Response`; the tracing side-effect stays in the caller.
+    /// Behaviour is identical to the inline check it replaced.
+    fn classify_fourshared_auth(status: u16) -> Result<(), ProviderError> {
+        if status == 401 {
             return Err(ProviderError::AuthenticationFailed(
                 "4shared_token_revoked: OAuth access token has been revoked or is invalid. Please re-authorize.".into(),
             ));
@@ -1777,5 +1790,31 @@ mod tests {
         assert_eq!(files[0].size, Some(100));
         // size "250" gets parsed via the string_or_i64 deserializer
         assert_eq!(files[1].size, Some(250));
+    }
+
+    #[test]
+    fn classify_fourshared_auth_only_401_is_authentication_failed() {
+        // 401 = revoked/invalid OAuth token -> AuthenticationFailed with the re-auth message.
+        match FourSharedProvider::classify_fourshared_auth(401) {
+            Err(ProviderError::AuthenticationFailed(msg)) => {
+                assert!(
+                    msg.contains("4shared_token_revoked"),
+                    "message must carry the re-auth marker, got: {msg}"
+                );
+                assert!(msg.contains("re-authorize"), "got: {msg}");
+            }
+            other => panic!("401 must map to AuthenticationFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_fourshared_auth_passes_non_401_statuses() {
+        // Every other status passes the auth gate (per-callsite mapping handles them).
+        for status in [200u16, 204, 400, 403, 404, 409, 429, 500, 502, 503] {
+            assert!(
+                FourSharedProvider::classify_fourshared_auth(status).is_ok(),
+                "status {status} must pass the auth gate"
+            );
+        }
     }
 }
