@@ -3476,4 +3476,65 @@ mod tests {
         assert!(zoho_native_export_info("jpg").is_none());
         assert!(zoho_native_export_info("").is_none());
     }
+
+    #[test]
+    fn parse_byte_amount_handles_units_separators_and_rejects_garbage() {
+        // Binary units (1024 base), both spaced and glued, with thousands commas.
+        assert_eq!(parse_byte_amount("0").unwrap(), 0);
+        assert_eq!(parse_byte_amount("").unwrap(), 0);
+        assert_eq!(parse_byte_amount("512").unwrap(), 512); // bare number = bytes
+        assert_eq!(parse_byte_amount("1 KB").unwrap(), 1024);
+        assert_eq!(parse_byte_amount("1kb").unwrap(), 1024);
+        assert_eq!(parse_byte_amount("1 MiB").unwrap(), 1024 * 1024);
+        assert_eq!(parse_byte_amount("5 GB").unwrap(), 5 * 1024 * 1024 * 1024);
+        assert_eq!(parse_byte_amount("2,048 KB").unwrap(), 2048 * 1024);
+        assert_eq!(parse_byte_amount("1.5 KB").unwrap(), 1536);
+        // Unknown unit and negative/non-finite numbers are errors.
+        assert!(parse_byte_amount("10 ZB").is_err());
+        assert!(parse_byte_amount("-1 KB").is_err());
+        assert!(parse_byte_amount("abc").is_err());
+    }
+
+    #[test]
+    fn parse_byte_amount_value_reads_number_string_and_object_shapes() {
+        use serde_json::json;
+        assert_eq!(parse_byte_amount_value(&json!(4096)), Some(4096));
+        assert_eq!(parse_byte_amount_value(&json!(1.0)), Some(1));
+        assert_eq!(parse_byte_amount_value(&json!("2 KB")), Some(2048));
+        assert_eq!(
+            parse_byte_amount_value(&json!({"bytes": "1 MB"})),
+            Some(1024 * 1024)
+        );
+        assert_eq!(parse_byte_amount_value(&json!({"value": 100})), Some(100));
+        assert_eq!(parse_byte_amount_value(&json!(true)), None);
+        assert_eq!(parse_byte_amount_value(&json!("garbage")), None);
+    }
+
+    #[test]
+    fn find_byte_amount_by_keys_walks_nested_objects_and_arrays() {
+        use serde_json::json;
+        let body = json!({
+            "data": {
+                "attributes": { "storage_quota": "5 GB", "storage_used": 1048576 }
+            }
+        });
+        assert_eq!(
+            find_byte_amount_by_keys(&body, ZOHO_TOTAL_QUOTA_KEYS),
+            Some(5 * 1024 * 1024 * 1024)
+        );
+        assert_eq!(
+            find_byte_amount_by_keys(&body, ZOHO_USED_QUOTA_KEYS),
+            Some(1048576)
+        );
+        // Array recursion + absent keys -> None.
+        let arr = json!([{"noise": 1}, {"quota": "10 MB"}]);
+        assert_eq!(
+            find_byte_amount_by_keys(&arr, ZOHO_TOTAL_QUOTA_KEYS),
+            Some(10 * 1024 * 1024)
+        );
+        assert_eq!(
+            find_byte_amount_by_keys(&json!({"x": 1}), ZOHO_TOTAL_QUOTA_KEYS),
+            None
+        );
+    }
 }
