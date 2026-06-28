@@ -2197,4 +2197,88 @@ mod tests {
         let fallback = JottacloudProvider::parse_jotta_time("not-a-time");
         assert_eq!(fallback, "not-a-time");
     }
+
+    #[test]
+    fn parse_folder_xml_lists_folders_and_completed_files_skipping_deleted() {
+        // Realistic JFS folder listing: a live subfolder, a deleted subfolder, a COMPLETED
+        // file, an INCOMPLETE file (upload in progress), and a trashed file.
+        let xml = r#"<folder name="Backup">
+            <path>/Backup</path>
+            <folders>
+                <folder name="Photos"/>
+                <folder name="Old" deleted="2020-01-01-T00:00:00Z"/>
+            </folders>
+            <files>
+                <file name="report.pdf">
+                    <currentRevision>
+                        <number>1</number>
+                        <state>COMPLETED</state>
+                        <size>2048</size>
+                        <md5>deadbeef</md5>
+                        <mime>application/pdf</mime>
+                        <modified>2024-03-04-T08:09:10Z</modified>
+                    </currentRevision>
+                </file>
+                <file name="uploading.bin">
+                    <currentRevision>
+                        <state>INCOMPLETE</state>
+                        <size>999</size>
+                    </currentRevision>
+                </file>
+                <file name="trashed.txt">
+                    <deleted>2020-01-01-T00:00:00Z</deleted>
+                    <currentRevision>
+                        <state>COMPLETED</state>
+                        <size>5</size>
+                    </currentRevision>
+                </file>
+            </files>
+        </folder>"#;
+
+        let entries = JottacloudProvider::parse_folder_xml(xml, "/Backup");
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+
+        // Live folder present, deleted folder skipped.
+        assert!(names.contains(&"Photos"), "live folder missing: {names:?}");
+        assert!(!names.contains(&"Old"), "deleted folder must be skipped");
+        // COMPLETED file present; INCOMPLETE and trashed files skipped.
+        assert!(names.contains(&"report.pdf"), "completed file missing");
+        assert!(
+            !names.contains(&"uploading.bin"),
+            "INCOMPLETE must be skipped"
+        );
+        assert!(
+            !names.contains(&"trashed.txt"),
+            "trashed file must be skipped"
+        );
+
+        let folder = entries.iter().find(|e| e.name == "Photos").unwrap();
+        assert!(folder.is_dir);
+        assert_eq!(folder.path, "/Backup/Photos");
+        assert_eq!(folder.size, 0);
+
+        let file = entries.iter().find(|e| e.name == "report.pdf").unwrap();
+        assert!(!file.is_dir);
+        assert_eq!(file.path, "/Backup/report.pdf");
+        assert_eq!(file.size, 2048);
+        assert_eq!(file.mime_type.as_deref(), Some("application/pdf"));
+        assert_eq!(
+            file.metadata.get("md5").map(|s| s.as_str()),
+            Some("deadbeef")
+        );
+        assert!(file.modified.is_some());
+    }
+
+    #[test]
+    fn parse_folder_xml_joins_root_base_path_and_tolerates_garbage() {
+        // base_path "/" must not double the leading slash.
+        let xml = r#"<folder name="root"><folders><folder name="Docs"/></folders></folder>"#;
+        let entries = JottacloudProvider::parse_folder_xml(xml, "/");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "/Docs");
+
+        // Garbage / empty bodies yield an empty list, never a panic.
+        assert!(JottacloudProvider::parse_folder_xml("not xml at all", "/").is_empty());
+        assert!(JottacloudProvider::parse_folder_xml("", "/").is_empty());
+    }
 }
