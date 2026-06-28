@@ -35,6 +35,10 @@ interface OAuthConnectProps {
   /** Names of other saved profiles, used to compute a collision-aware default
    *  placeholder (e.g. "Google Drive", "Google Drive 2"). */
   existingNames?: string[];
+  /** The shared Quick Connect right column (profile name + icon, Remote/Local
+   *  Path, Wrappers/Overlays, quota) rendered by the parent, so OAuth uses the
+   *  exact same column as every other connector. #215 harmonization. */
+  rightColumn?: React.ReactNode;
 }
 
 // Map our ProviderType to OAuthProvider
@@ -189,6 +193,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   onConnectionNameChange,
   isEditing = false,
   existingNames = [],
+  rightColumn,
 }) => {
   const { t } = useI18n();
   const { isAuthenticating, error, startAuth, connect, hasTokens, logout } = useOAuth2();
@@ -197,22 +202,12 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [isChecking, setIsChecking] = useState(true);
-  const [localPath, setLocalPath] = useState(initialLocalPath);
-
-  // Sync local path when parent updates (e.g. switching between saved servers to edit)
-  useEffect(() => {
-    setLocalPath(initialLocalPath);
-  }, [initialLocalPath]);
 
   const [wantToSave, setWantToSave] = useState(saveConnection);
-  const [saveName, setSaveName] = useState(connectionName);
   // Sync save state when parent updates (e.g. entering edit mode from My Servers)
   useEffect(() => {
     setWantToSave(saveConnection);
   }, [saveConnection]);
-  useEffect(() => {
-    setSaveName(connectionName);
-  }, [connectionName]);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [wantsNewAccount, setWantsNewAccount] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
@@ -232,37 +227,11 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing]);
 
-  // Compute a collision-aware default name like "Google Drive" → "Google Drive 2".
-  // Used as input placeholder so the user sees what would be saved if left empty.
-  const defaultName = (() => {
-    const base = providerNames[provider] || provider;
-    const taken = new Set((existingNames || []).map(n => n.trim().toLowerCase()));
-    if (!taken.has(base.toLowerCase())) return base;
-    for (let i = 2; i < 100; i += 1) {
-      const candidate = `${base} ${i}`;
-      if (!taken.has(candidate.toLowerCase())) return candidate;
-    }
-    return base;
-  })();
-
   const isZoho = provider === 'zohoworkdrive';
   const oauthProvider = providerMap[provider];
   // Google Photos shares OAuth app credentials with Google Drive
   const oauthAppKey = (credentialAlias[provider] ? providerMap[credentialAlias[provider]] : oauthProvider) as keyof typeof OAUTH_APPS;
   const oauthApp = OAUTH_APPS[oauthAppKey];
-
-  // Browse for local folder
-  const browseLocalFolder = async () => {
-    try {
-      const selected = await open({ directory: true, multiple: false, title: t('connection.oauth.selectLocalFolder') });
-      if (selected && typeof selected === 'string') {
-        setLocalPath(selected);
-        onLocalPathChange?.(selected);
-      }
-    } catch (e) {
-      console.error('Folder picker error:', e);
-    }
-  };
 
   // Check for existing tokens on mount
   useEffect(() => {
@@ -394,6 +363,28 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     setWantsNewAccount(true);
   };
 
+  // #215 harmonization: OAuth's "Save this connection" toggle stays in the left
+  // (OAuth-specific); the profile name, icon, Remote/Local Path and the
+  // Wrappers/Overlays section all come from the shared right column the parent
+  // passes in via the `rightColumn` prop (the exact same column every other
+  // connector uses). No custom duplicate.
+  const saveToggle = (
+    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+      <Checkbox
+        checked={wantToSave}
+        onChange={(v) => {
+          setWantToSave(v);
+          onSaveConnectionChange?.(v);
+        }}
+        label={<div className="flex-1">
+          <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
+          <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
+        </div>}
+      />
+      <Save size={16} className="text-gray-400" />
+    </div>
+  );
+
   if (isChecking) {
     return (
       <div className="flex items-center justify-center p-4">
@@ -406,23 +397,9 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   // Show "Active" state when already authenticated (like AeroCloud)
   if (hasExistingTokens && !wantsNewAccount) {
     return (
-      <div className="space-y-4">
-        {/* Connection name at top-left (parity with API / E2E / WebDAV edit forms) */}
-        {(wantToSave || isEditing) && (
-          <div>
-            <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
-            <input
-              type="text"
-              value={saveName}
-              onChange={(e) => {
-                setSaveName(e.target.value);
-                onConnectionNameChange?.(e.target.value);
-              }}
-              placeholder={defaultName}
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-            />
-          </div>
-        )}
+      <div className="grid md:grid-cols-2 gap-6 items-start">
+      {/* LEFT: connected status and account actions */}
+      <div className="space-y-4 min-w-0">
 
         {/* Active Status Card */}
         <div className={`p-4 rounded-lg border-2 ${provider === 'googledrive' ? 'border-red-500/30 bg-red-500/5' :
@@ -449,53 +426,10 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           </div>
         </div>
 
-        {/* Local Path (optional: editable even in quick-connect mode) */}
-        <div>
-          <label className="block text-sm font-medium mb-1.5">{t('connection.oauth.localFolderOptional')}</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={localPath}
-              onChange={(e) => {
-                setLocalPath(e.target.value);
-                onLocalPathChange?.(e.target.value);
-              }}
-              placeholder="~/Downloads"
-              className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-            />
-            <button
-              type="button"
-              onClick={browseLocalFolder}
-              className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
-              title={t('common.browse')}
-            >
-              <FolderOpen size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Save Connection toggle: visible in active state too so users can rename or save an existing OAuth session */}
-        <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <Checkbox
-            checked={wantToSave}
-            onChange={(v) => {
-              setWantToSave(v);
-              onSaveConnectionChange?.(v);
-            }}
-            label={<div className="flex-1">
-              <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
-              <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
-            </div>}
-          />
-          <Save size={16} className="text-gray-400" />
-        </div>
-
-        {/* Connection name moved above the active status card (top-left) */}
-
         {/* Quick Connect Button */}
         <button
           onClick={handleQuickConnect}
-          disabled={disabled || isAuthenticating}
+          disabled
           className={`
             w-full py-3 px-4 rounded-lg text-white font-medium
             flex items-center justify-center gap-2 transition-colors
@@ -654,71 +588,17 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             </div>
           </div>
         )}
+        {saveToggle}
+      </div>
+      {rightColumn}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Connection Name at the top when saving (parity with API/E2E/WebDAV) */}
-      {wantToSave && (
-        <div>
-          <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
-          <input
-            type="text"
-            value={saveName}
-            onChange={(e) => {
-              setSaveName(e.target.value);
-              onConnectionNameChange?.(e.target.value);
-            }}
-            placeholder={defaultName}
-            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-          />
-        </div>
-      )}
-
-      {/* Local Path (optional) */}
-      <div>
-        <label className="block text-sm font-medium mb-1.5">{t('connection.oauth.localFolderOptional')}</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={localPath}
-            onChange={(e) => {
-              setLocalPath(e.target.value);
-              onLocalPathChange?.(e.target.value);
-            }}
-            placeholder="~/Downloads"
-            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-          />
-          <button
-            type="button"
-            onClick={browseLocalFolder}
-            className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
-            title={t('common.browse')}
-          >
-            <FolderOpen size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* Save Connection Option */}
-      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-        <Checkbox
-          checked={wantToSave}
-          onChange={(v) => {
-            setWantToSave(v);
-            onSaveConnectionChange?.(v);
-          }}
-          label={<div className="flex-1">
-            <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
-            <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
-          </div>}
-        />
-        <Save size={16} className="text-gray-400" />
-      </div>
-
-      {/* Connection name moved above (top-left) */}
+    <div className="grid md:grid-cols-2 gap-6 items-start">
+      {/* LEFT: OAuth2 credentials and sign-in (the protocol-specific column) */}
+      <div className="space-y-4 min-w-0">
 
       {/* Error Display */}
       {error && (
@@ -865,6 +745,9 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           ← {t('connection.oauth.backToExistingAccount')}
         </button>
       )}
+      {saveToggle}
+      </div>
+      {rightColumn}
     </div>
   );
 };

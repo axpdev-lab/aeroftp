@@ -2363,6 +2363,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         showE2ENote?: string;
         showIconPicker?: boolean;
         showCancelSaveAsNew?: boolean;
+        hideSaveButton?: boolean;
     }) => {
         const {
             disabled: btnDisabled,
@@ -2373,6 +2374,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             showE2ENote,
             showIconPicker: showIcon = true,
             showCancelSaveAsNew = false,
+            hideSaveButton = false,
         } = opts;
         const isSourceForge = selectedProviderId === 'sourceforge';
         const sfPrefix = '/home/frs/project/';
@@ -2407,7 +2409,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                     </div>
                 </div>
-                {/* Remote Path: hidden for an AeroShare friend (a read-only replica
+                {/* Local Path first: a local folder is set in almost every case, so
+                    it is the more important field. Remote Path follows (#215). */}
+                <div>
+                    <label className="block text-sm font-medium mb-1.5">{t('browser.local')} {t('browser.path')}</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={quickConnectDirs.localDir}
+                            onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                            placeholder={t('connection.initialLocalPath')}
+                        />
+                        <button
+                            type="button"
+                            onClick={handleBrowseLocalDir}
+                            className="px-3 py-2.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                            title={t('common.browse')}
+                        >
+                            <FolderOpen size={16} />
+                        </button>
+                    </div>
+                </div>
+                {/* Remote Path: optional for most providers (writable root), so it sits
+                    below Local Path. Hidden for an AeroShare friend (a read-only replica
                     has no remote-path concept). SourceForge: prefix + project name. */}
                 {!isPeer && (
                 <div>
@@ -2445,27 +2470,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     )}
                 </div>
                 )}
-                {/* Local Path */}
-                <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('browser.local')} {t('browser.path')}</label>
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={quickConnectDirs.localDir}
-                            onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                            placeholder={t('connection.initialLocalPath')}
-                        />
-                        <button
-                            type="button"
-                            onClick={handleBrowseLocalDir}
-                            className="px-3 py-2.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                            title={t('common.browse')}
-                        >
-                            <FolderOpen size={16} />
-                        </button>
-                    </div>
-                </div>
                 {/* Profile name + icon block relocated to the top of this column
                     (see the #215 redesign block above). */}
                 {/* P3: AeroCrypt Profile. Bind an encrypted overlay to this
@@ -2739,7 +2743,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 {/* Action Buttons. Issue #215: mode switch in edit takes
                     over the footer with Save-as-new + Convert when the
                     operator picked a different surface of the same group. */}
-                {modeChanged && editingProfileId ? (
+                {hideSaveButton ? null : modeChanged && editingProfileId ? (
                     renderModeChangedFooter()
                 ) : (
                     <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
@@ -2808,7 +2812,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
+        // #215 harmonization: OAuth clouds are now two-column too, so they get the
+        // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
+        'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -3145,6 +3152,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 provider={protocol as 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
+                                rightColumn={renderRightColumn({ disabled: false, buttonColorClass: '', hideSaveButton: true })}
                                 saveConnection={saveConnection}
                                 onSaveConnectionChange={setSaveConnection}
                                 connectionName={connectionName}
@@ -3160,26 +3168,34 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         const editTarget = editingProfileId ? existingServers.find(s => s.id === editingProfileId) : undefined;
                                         const duplicate = editTarget || existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
+                                            const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                                            const overlayFields = await aeroCryptOverlayFields(newId);
                                             const newServer: ServerProfile = {
-                                                id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                                                id: newId,
                                                 name: saveName,
                                                 host: displayName,
                                                 port: 443,
                                                 username: '',
                                                 password: '',
                                                 protocol: protocol as ProviderType,
-                                                initialPath: '/',
+                                                initialPath: quickConnectDirs.remoteDir || '/',
                                                 localInitialPath: quickConnectDirs.localDir,
+                                                customIconUrl: customIconForSave,
+                                                ...overlayFields,
                                                 ...(extraOptions?.region && { options: { region: extraOptions.region } }),
                                             };
                                             const newServers = [...existingServers, newServer];
                                             await storeSavedServerProfiles(newServers).catch(() => { });
                                         } else {
+                                            const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt);
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? {
                                                     ...s,
                                                     name: saveName || s.name,
+                                                    initialPath: quickConnectDirs.remoteDir || s.initialPath,
                                                     localInitialPath: quickConnectDirs.localDir,
+                                                    customIconUrl: customIconForSave ?? s.customIconUrl,
+                                                    ...overlayFields,
                                                     lastConnected: new Date().toISOString(),
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
                                                 } : s
