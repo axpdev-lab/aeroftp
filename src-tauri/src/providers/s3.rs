@@ -3118,6 +3118,20 @@ impl StorageProvider for S3Provider {
             // source has no underlying object, fail with a clear message
             // rather than letting the wrapper return 412. Issue #128.
             let from_key = from.trim_start_matches('/');
+            // Shared message for the phantom-folder case: an empty folder is a
+            // virtual prefix with no marker key, so it cannot be renamed
+            // server-side (issue #128).
+            let virtual_folder_err = || {
+                ProviderError::NotSupported(format!(
+                    "Cannot rename '{}': the path does not exist as an \
+                     S3 object. Some S3-compatible backends (e.g. Filen's \
+                     local S3 bridge) represent empty folders as virtual \
+                     prefixes without a marker key, which precludes \
+                     server-side rename. Add a file inside the folder \
+                     first, or use the native API / WebDAV bridge.",
+                    from
+                ))
+            };
             match self.s3_request(Method::HEAD, from_key, None, None).await {
                 Ok(resp) if resp.status() == StatusCode::OK => {
                     // Real file: proceed with single-file rename.
@@ -3127,15 +3141,20 @@ impl StorageProvider for S3Provider {
                     info!("Renamed file (copy+delete) {} to {}", from, to);
                 }
                 Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
-                    return Err(ProviderError::NotSupported(format!(
-                        "Cannot rename '{}': the path does not exist as an \
-                         S3 object. Some S3-compatible backends (e.g. Filen's \
-                         local S3 bridge) represent empty folders as virtual \
-                         prefixes without a marker key, which precludes \
-                         server-side rename. Add a file inside the folder \
-                         first, or use the native API / WebDAV bridge.",
-                        from
-                    )));
+                    return Err(virtual_folder_err());
+                }
+                // Filen's local S3 bridge (the Windows build in particular,
+                // issue #368) answers HEAD on a virtual-folder key with 401/403
+                // instead of 404. Reaching this arm means the prefix listing
+                // already succeeded, so credentials are valid and this is the
+                // same phantom-folder case, not a real auth failure. Map it to
+                // the actionable message instead of leaking the raw status.
+                Ok(resp)
+                    if self.is_filen_s3_endpoint()
+                        && (resp.status() == StatusCode::UNAUTHORIZED
+                            || resp.status() == StatusCode::FORBIDDEN) =>
+                {
+                    return Err(virtual_folder_err());
                 }
                 Ok(resp) => {
                     return Err(ProviderError::ServerError(format!(
