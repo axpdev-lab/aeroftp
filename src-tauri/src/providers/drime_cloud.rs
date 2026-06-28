@@ -171,6 +171,15 @@ fn drime_total_parts(total: u64, part: u64) -> u32 {
     raw.min(u32::MAX as u64) as u32
 }
 
+/// Transient-error classifier for the Drime list/find retry loop. Any 5xx is
+/// retryable, plus the transient 4xx set (404 = eventual-consistency gap, 408
+/// timeout, 425 too-early, 429 rate-limit). Extracted from the inline match so the
+/// decision is unit-testable; behaviour is identical to `status.is_server_error()
+/// || matches!(status, 404 | 408 | 425 | 429)`.
+fn drime_status_is_retryable(status: u16) -> bool {
+    (500..=599).contains(&status) || matches!(status, 404 | 408 | 425 | 429)
+}
+
 // ─── Share Link Response ─────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -529,8 +538,7 @@ impl DrimeCloudProvider {
                 }
 
                 let body = resp.text().await.unwrap_or_default();
-                let retryable =
-                    status.is_server_error() || matches!(status.as_u16(), 404 | 408 | 425 | 429);
+                let retryable = drime_status_is_retryable(status.as_u16());
                 attempt += 1;
                 if retryable && attempt < MAX_ATTEMPTS {
                     let delay = RETRY_DELAYS_MS[(attempt - 1) as usize];
@@ -2581,6 +2589,25 @@ mod tests {
         assert_eq!(drime_total_parts(p + 1, p), 2);
         // part=0 guard treats it as 1 to avoid divide-by-zero
         assert_eq!(drime_total_parts(7, 0), 7);
+    }
+
+    #[test]
+    fn drime_status_is_retryable_covers_5xx_and_transient_4xx_only() {
+        // Whole 5xx range is retryable.
+        for code in [500u16, 502, 503, 504, 599] {
+            assert!(drime_status_is_retryable(code), "5xx {code} must retry");
+        }
+        // Transient 4xx allow-list.
+        for code in [404u16, 408, 425, 429] {
+            assert!(
+                drime_status_is_retryable(code),
+                "transient {code} must retry"
+            );
+        }
+        // Hard failures and success never retry.
+        for code in [200u16, 204, 400, 401, 403, 409, 410, 422, 451] {
+            assert!(!drime_status_is_retryable(code), "{code} must not retry");
+        }
     }
 
     #[test]
