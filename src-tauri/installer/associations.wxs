@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AeroFTP WiX fragment: bring the MSI installer to parity with the NSIS installer
+  (src-tauri/installer/hooks.nsh) for Windows OS shell integration.
+
+  WHY THIS EXISTS
+  ===============
+  Tauri generates the MSI's file associations from `bundle.fileAssociations` in
+  tauri.conf.json, but that auto-generation is limited: for each of the five aero*
+  extensions it emits an *advertised* ProgID named `AeroFTP.<ext>` (lowercase) with a
+  single "open" verb and NOTHING else - no DefaultIcon, no Content Type, and no extract
+  verbs. The "Extract Here / Extract to Folder with AeroFTP" context-menu verbs and the
+  mimetype icons are written only by hooks.nsh, which the MSI never runs. The MSI is a
+  first-class distribution channel (every GitHub Release, the README, winget), so it must
+  match the NSIS shell integration. This fragment adds the missing pieces WITHOUT
+  redefining Tauri's auto-generated extensions/ProgIDs (doing so would collide and trip
+  WiX ICE validation), by layering registry data alongside them.
+
+  SCOPE DECISIONS
+  ===============
+  * Registry root = HKMU. The Tauri MSI is InstallScope="perMachine", so HKMU resolves
+    to HKLM (machine-wide), matching the scope of the advertised associations. (For a
+    perUser package it would resolve to HKCU.)
+  * Extract verbs are ADDITIVE (owner decision c): we never write a default shell\open
+    for the general archive formats, so their double-click handler is untouched.
+      - General formats (.zip/.7z/.rar/.tar/.tgz/.gz/.xz/.bz2): the verbs attach under
+        SystemFileAssociations\.<ext>, which layers on top of whatever app owns the type
+        (exactly like NSIS).
+      - Our own aero archive ProgIDs (AeroFTP.aerovault / AeroFTP.aerozip): the verbs sit
+        next to the auto-generated "open" verb on the same advertised ProgID Tauri emits
+        (lowercase name), mirroring how NSIS puts them on the ProgID it owns.
+  * Mimetype icon parity: a DefaultIcon is written on each of the five auto-generated
+    aero ProgIDs (which otherwise have none). The .ico files already ship as Tauri
+    `resources` to [INSTALLDIR]\icons\mimetypes\.
+  * Generic fallback icon (Applications\aeroftp.exe\DefaultIcon): a tidy no-badge document
+    icon for any otherwise-iconless file opened with AeroFTP (mirrors the hooks.nsh entry
+    for the NSIS binary AeroFTP.exe; registry keys are case-insensitive).
+
+  The main binary is referenced as [INSTALLDIR]aeroftp.exe (a literal path built from the
+  install-dir property, which carries a trailing backslash; the Tauri main executable is
+  installed as aeroftp.exe). We deliberately do NOT use the WiX file reference [#Path]:
+  that creates an implicit cross-component reference and trips ICE69 ("Mismatched
+  component reference") because these registry components live in a different feature than
+  the main-binary File component.
+-->
+<?if $(sys.BUILDARCH)="x64" or $(sys.BUILDARCH)="arm64"?>
+    <?define Win64 = "yes" ?>
+<?else?>
+    <?define Win64 = "no" ?>
+<?endif?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <!--
+          INSTALLDIR is defined in the Tauri-generated main.wxs; the linker resolves it
+          across fragments. All registry-only components live under it for component
+          bookkeeping (they install no files there).
+        -->
+        <ComponentGroup Id="AeroFTPShellIntegration" Directory="INSTALLDIR">
+
+            <!-- ============================================================= -->
+            <!-- Extract verbs - general archive formats (additive, no default) -->
+            <!-- ============================================================= -->
+
+            <Component Id="AeroFTPVerbsZip" Guid="62E0660B-F2E4-439B-9B8B-C1C0300848E8" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.zip\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbs7z" Guid="F722F87D-E100-4E72-B5B1-250E30FB30F5" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.7z\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbsRar" Guid="93C8F473-242A-42B7-A2FA-FA7583526E40" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.rar\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbsTar" Guid="342A8BCF-731F-4F7D-A4BA-8C23EA142545" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.tar\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbsTgz" Guid="CAE1AE2C-15FC-48EA-8D24-4710B9AE6D17" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.tgz\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbsGz" Guid="88664773-CBB0-4D40-9FC8-AC54B2C7A5A7" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.gz\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbsXz" Guid="0AFC784B-C237-4B4B-8735-20A9E7077155" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.xz\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPVerbsBz2" Guid="FDB0789C-5E8F-45E2-B2A5-B0F5327ACAFE" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\SystemFileAssociations\.bz2\shell">
+                    <RegistryKey Key="AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" KeyPath="yes" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <!-- ============================================================= -->
+            <!-- aero archive ProgIDs: DefaultIcon + extract verbs              -->
+            <!-- (alongside Tauri's auto-generated advertised "open" verb)      -->
+            <!-- ============================================================= -->
+
+            <Component Id="AeroFTPProgIdAeroVault" Guid="445C0FF4-246E-446D-A17D-02AD5EBD3041" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\AeroFTP.aerovault">
+                    <RegistryKey Key="DefaultIcon">
+                        <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aerovault.ico,0" KeyPath="yes" />
+                    </RegistryKey>
+                    <RegistryKey Key="shell\AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="shell\AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPProgIdAeroZip" Guid="D0297D5C-2624-43FD-8105-4D43227E860D" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\AeroFTP.aerozip">
+                    <RegistryKey Key="DefaultIcon">
+                        <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aerozip.ico,0" KeyPath="yes" />
+                    </RegistryKey>
+                    <RegistryKey Key="shell\AeroFTPExtractHere" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract Here with AeroFTP" />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                    <RegistryKey Key="shell\AeroFTPExtractToFolder" ForceDeleteOnUninstall="yes">
+                        <RegistryValue Type="string" Value="Extract to Folder with AeroFTP..." />
+                        <RegistryValue Name="Icon" Type="string" Value="[INSTALLDIR]aeroftp.exe,0" />
+                        <RegistryKey Key="command">
+                            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+                        </RegistryKey>
+                    </RegistryKey>
+                </RegistryKey>
+            </Component>
+
+            <!-- ============================================================= -->
+            <!-- aero non-archive ProgIDs: DefaultIcon parity only             -->
+            <!-- ============================================================= -->
+
+            <Component Id="AeroFTPProgIdProfile" Guid="43A24787-63F0-4B7C-A9F5-4ED80D15A7F6" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\AeroFTP.aeroftp\DefaultIcon">
+                    <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp.ico,0" KeyPath="yes" />
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPProgIdKeystore" Guid="0E51635D-5003-44A9-B7D3-207C4B175AD7" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\AeroFTP.aeroftp-keystore\DefaultIcon">
+                    <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-keystore.ico,0" KeyPath="yes" />
+                </RegistryKey>
+            </Component>
+
+            <Component Id="AeroFTPProgIdScript" Guid="B5C1F1F2-6E42-456C-B369-60C497430D46" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\AeroFTP.aeroftp-script\DefaultIcon">
+                    <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-script.ico,0" KeyPath="yes" />
+                </RegistryKey>
+            </Component>
+
+            <!-- ============================================================= -->
+            <!-- Generic fallback icon for any file opened with AeroFTP         -->
+            <!-- (Applications\aeroftp.exe\DefaultIcon = no-badge document)     -->
+            <!-- ============================================================= -->
+
+            <Component Id="AeroFTPAppDefaultIcon" Guid="291E13E0-DAC0-430B-8FB2-1FB633A3D513" Win64="$(var.Win64)">
+                <RegistryKey Root="HKMU" Key="Software\Classes\Applications\aeroftp.exe\DefaultIcon" ForceDeleteOnUninstall="yes">
+                    <RegistryValue Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-document.ico,0" KeyPath="yes" />
+                </RegistryKey>
+            </Component>
+
+        </ComponentGroup>
+    </Fragment>
+</Wix>

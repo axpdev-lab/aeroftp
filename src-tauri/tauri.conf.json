@@ -167,7 +167,9 @@
         "windows": {
             "wix": {
                 "bannerPath": "installer/banner.bmp",
-                "dialogImagePath": "installer/dialog.bmp"
+                "dialogImagePath": "installer/dialog.bmp",
+                "fragmentPaths": ["installer/associations.wxs"],
+                "componentGroupRefs": ["AeroFTPShellIntegration"]
             },
             "nsis": {
                 "installerIcon": "icons/icon.ico",

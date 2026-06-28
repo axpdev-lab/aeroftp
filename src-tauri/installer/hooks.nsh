@@ -255,6 +255,14 @@ Var AeroFTPAppDataPresentPre
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerozip" "Extension" ".aerozip"
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script" "Extension" ".aeroftp-script"
 
+    ; --- Generic fallback icon for any file opened with AeroFTP ---
+    ; Applications\<exe>\DefaultIcon is the icon Explorer uses for a file that is
+    ; opened-with AeroFTP but whose type has no specific ProgID icon (e.g. a .txt the
+    ; user pointed at AeroFTP via "Open with"). Show the tidy no-badge document icon
+    ; instead of the heavy full app icon. Mirrored in the WiX fragment
+    ; (installer/associations.wxs) so the MSI and NSIS installers stay in lockstep.
+    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-document.ico,0"
+
     ; --- "Extract here / Extract to folder" context-menu verbs (Deliverable G) ---
     ; Additive verbs only (owner decision c): never a default shell\open for the
     ; general archive formats, so their double-click Open handler is untouched.
@@ -346,6 +354,8 @@ Var AeroFTPAppDataPresentPre
     DeleteRegKey HKCU "Software\Classes\.aeroftp-script"
     DeleteRegKey HKCU "Software\Classes\AeroFTP.Script"
     DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script"
+    ; Generic fallback icon (mirror of the POSTINSTALL Applications\AeroFTP.exe write).
+    DeleteRegKey HKCU "Software\Classes\Applications\AeroFTP.exe"
     ; Legacy HKLM cleanup (pre-HKCU migration installs).
     DeleteRegKey HKLM "Software\Classes\.aerovault"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"
