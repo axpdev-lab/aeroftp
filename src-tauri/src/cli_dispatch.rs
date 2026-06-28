@@ -69,6 +69,8 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "profile-copy-user",
     "profile-move-user",
     "profile-set-password",
+    "profile-export",
+    "profile-import",
     "ai-models",
     "agent-bootstrap",
     "agent-info",
