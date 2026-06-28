@@ -52,7 +52,7 @@ for stray in aeroftp-dispatch aerorsync_serve seed_test_profiles seed_axpbuntu_l
 done
 
 HICOLOR="$(root_path /usr/share/icons/hicolor)"
-ICON_NAMES="application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore application-x-aerozip"
+ICON_NAMES="application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore application-x-aerozip application-x-aeroftp-script"
 SIZES="16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512"
 
 # Detect active icon themes from all user accounts
@@ -100,9 +100,9 @@ do
         echo 'Exec=/usr/bin/aeroftp %U' >> "$DESKTOP_FILE"
     fi
 
-    # Add MimeType if missing (covers all 4 AeroFTP file formats + URL schemes)
+    # Add MimeType if missing (covers all 5 AeroFTP file formats + URL schemes)
     if ! grep -q '^MimeType=' "$DESKTOP_FILE"; then
-        echo 'MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
+        echo 'MimeType=application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;application/x-aerozip;application/x-aeroftp-script;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
     fi
 done
 
@@ -112,11 +112,12 @@ if [ -z "$ROOT" ]; then
     update-mime-database /usr/share/mime 2>/dev/null || true
     update-desktop-database /usr/share/applications 2>/dev/null || true
 
-    # Register AeroFTP as default handler for all 4 MIME types
+    # Register AeroFTP as default handler for all 5 MIME types
     xdg-mime default AeroFTP.desktop application/x-aerovault 2>/dev/null || true
     xdg-mime default AeroFTP.desktop application/x-aeroftp 2>/dev/null || true
     xdg-mime default AeroFTP.desktop application/x-aeroftp-keystore 2>/dev/null || true
     xdg-mime default AeroFTP.desktop application/x-aerozip 2>/dev/null || true
+    xdg-mime default AeroFTP.desktop application/x-aeroftp-script 2>/dev/null || true
 fi
 
 exit 0

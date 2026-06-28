@@ -237,12 +237,23 @@ Var AeroFTPAppDataPresentPre
     WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\shell\open" "" "Open with AeroFTP"
     WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
 
+    ; .aeroftp-script (portable batch script for `aeroftp-cli batch`)
+    WriteRegStr HKCU "Software\Classes\.aeroftp-script" "" "AeroFTP.Script"
+    WriteRegStr HKCU "Software\Classes\.aeroftp-script" "Content Type" "application/x-aeroftp-script"
+    WriteRegStr HKCU "Software\Classes\.aeroftp-script" "PerceivedType" "document"
+
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Script" "" "AeroFTP Batch Script"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Script\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-script.ico,0"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Script\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Script\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+
     ; MIME database entries (HKCU\Software\Classes\MIME mirrors HKLM in
     ; the merged HKCR view, so Explorer picks them up the same way).
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerovault" "Extension" ".aerovault"
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp" "Extension" ".aeroftp"
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore" "Extension" ".aeroftp-keystore"
     WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerozip" "Extension" ".aerozip"
+    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script" "Extension" ".aeroftp-script"
 
     ; --- "Extract here / Extract to folder" context-menu verbs (Deliverable G) ---
     ; Additive verbs only (owner decision c): never a default shell\open for the
@@ -316,7 +327,7 @@ Var AeroFTPAppDataPresentPre
     DetailPrint "EnVar::DeleteValue Path $LOCALAPPDATA\AeroFTP\bin -> code $0"
     System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
 
-    ; Remove file associations and class registrations for all 4 AeroFTP
+    ; Remove file associations and class registrations for all 5 AeroFTP
     ; MIME types. Mirror of the install-side HKCU writes (per-user
     ; install scope). HKLM keys are also dropped on the off chance an
     ; older AeroFTP build registered there before the HKCU migration.
@@ -332,6 +343,9 @@ Var AeroFTPAppDataPresentPre
     DeleteRegKey HKCU "Software\Classes\.aerozip"
     DeleteRegKey HKCU "Software\Classes\AeroFTP.AeroZip"
     DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerozip"
+    DeleteRegKey HKCU "Software\Classes\.aeroftp-script"
+    DeleteRegKey HKCU "Software\Classes\AeroFTP.Script"
+    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script"
     ; Legacy HKLM cleanup (pre-HKCU migration installs).
     DeleteRegKey HKLM "Software\Classes\.aerovault"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"
@@ -345,6 +359,9 @@ Var AeroFTPAppDataPresentPre
     DeleteRegKey HKLM "Software\Classes\.aerozip"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroZip"
     DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerozip"
+    DeleteRegKey HKLM "Software\Classes\.aeroftp-script"
+    DeleteRegKey HKLM "Software\Classes\AeroFTP.Script"
+    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script"
 
     ; Remove the "Extract here / Extract to folder" verbs (Deliverable G).
     ; Mirror of the POSTINSTALL block: drop only our two verb subkeys, never the
