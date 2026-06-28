@@ -58,6 +58,14 @@ Platform-specific native build tools:
     (e.g. `C:\Program Files\LLVM\bin`).
   - Visual Studio Build Tools 2022 (MSVC, "Desktop development with C++").
   - WebView2 Runtime (preinstalled on Windows 11 and recent Windows 10).
+  - The build links the static MSVC runtime (`+crt-static`), and
+    `src-tauri/.cargo/config.toml` forces whisper.cpp to the static runtime too
+    so the speech feature links cleanly (GitHub #344). A fresh checkout needs
+    nothing extra. If you have a tree that ALREADY built whisper before this fix
+    landed, run `cargo clean -p whisper-rs-sys` once after pulling, then rebuild,
+    otherwise the cached dynamic-runtime objects re-trigger the `LNK2038` /
+    `LNK1120` link error. As a fallback you can always build without the speech
+    stack: `cargo build --no-default-features --features aerorsync`.
 - **Linux** (Debian/Ubuntu):
   ```bash
   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \

@@ -7,3 +7,20 @@
 
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# whisper-rs-sys builds whisper.cpp/ggml via CMake, which defaults to the DYNAMIC
+# MSVC runtime (/MD). The +crt-static rustflag above links the rest of the image
+# with the STATIC runtime (/MT), so the ggml objects fail to link (LNK2038
+# RuntimeLibrary mismatch + LNK1120 __imp_* unresolved, GitHub #344). Force
+# whisper.cpp to the static runtime to match. whisper-rs-sys's build.rs forwards
+# CMAKE_* env vars to its cmake::Config; whisper.cpp pins
+# cmake_minimum_required(VERSION 3.5) so policy CMP0091 defaults OLD and would
+# ignore CMAKE_MSVC_RUNTIME_LIBRARY - CMP0091=NEW enables it. MultiThreaded
+# (release static) UNCONDITIONALLY, not the CONFIG-aware generator expression:
+# Rust's crt-static always links the release static CRT (libcmt), even in debug
+# profiles, so whisper must be release static too or the mismatch returns.
+# These vars are MSVC-only; on Linux/macOS they are inert (at most a harmless
+# CMake "unused variable" note, and on macOS the speech stack is cfg'd out).
+[env]
+CMAKE_MSVC_RUNTIME_LIBRARY = "MultiThreaded"
+CMAKE_POLICY_DEFAULT_CMP0091 = "NEW"
