@@ -494,8 +494,10 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 {/* Cluster 2: Utility (Notifications bell, Cyber Toolkit if cyber theme, AeroVault, Users, Lock, Settings) */}
                 <div className="flex items-center gap-0.5">
                     {/* AeroShare notification center: durable surface for received/
-                        sent/failed transfers (Finding 8). Flag-gated like the
-                        +friend icon - notifications only originate from AeroShare. */}
+                        sent/failed transfers (Finding 8). Flag-gated on activation
+                        (unlike the always-visible +friend icon) - the bell only
+                        lights up once AeroShare is active, since notifications only
+                        originate from AeroShare. */}
                     {aeroShareEnabled && <NotificationBell />}
                     {appTheme === 'cyber' && (
                         <button

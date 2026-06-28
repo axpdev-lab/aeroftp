@@ -230,7 +230,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     );
 
     // Grid data for the active category ('all' flattens every category). The
-    // AeroShare tile (when enabled) leads the Protocols + All grids.
+    // AeroShare tile (always shown, AeroShare is always-on) leads the Protocols + All grids.
     const activeItems = useMemo(() => {
         const base = activeCategory === 'all'
             ? categories.flatMap(c => c.items)
