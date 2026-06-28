@@ -15605,7 +15605,10 @@ pub async fn import_server_profiles_core_filtered(
                 // Audit v4.1.0: when the caller deduped the profile list, only
                 // restore credentials for the ids it actually added, so a
                 // "skipped" profile never has its existing credential clobbered.
-                if restore_only.as_ref().is_some_and(|allow| !allow.contains(&server.id)) {
+                if restore_only
+                    .as_ref()
+                    .is_some_and(|allow| !allow.contains(&server.id))
+                {
                     continue;
                 }
                 if let Some(ref cred) = server.credential {
@@ -15636,7 +15639,10 @@ pub async fn import_server_profiles_core_filtered(
                 .collect();
             for (profile_id, secrets) in &provider_secrets {
                 // Same dedup-consistency gate as the server_<id> loop above.
-                if restore_only.as_ref().is_some_and(|allow| !allow.contains(profile_id)) {
+                if restore_only
+                    .as_ref()
+                    .is_some_and(|allow| !allow.contains(profile_id))
+                {
                     continue;
                 }
                 let protocol = match protocol_by_id.get(profile_id.as_str()) {

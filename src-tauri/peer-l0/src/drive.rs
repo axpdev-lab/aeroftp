@@ -969,7 +969,10 @@ pub async fn run_docs_replicate(
             let target = match safe_replica_path(out_path, &rel_key) {
                 Some(p) => p,
                 None => {
-                    println!("FAIL {} (unsafe key rejected: escapes replica root)", rel_key);
+                    println!(
+                        "FAIL {} (unsafe key rejected: escapes replica root)",
+                        rel_key
+                    );
                     continue;
                 }
             };
@@ -1366,7 +1369,10 @@ mod replica_path_tests {
             safe_replica_path(root, "a/b/c.txt"),
             Some(root.join("a/b/c.txt"))
         );
-        assert_eq!(safe_replica_path(root, "file.bin"), Some(root.join("file.bin")));
+        assert_eq!(
+            safe_replica_path(root, "file.bin"),
+            Some(root.join("file.bin"))
+        );
         // A leading `./` is harmless and stays inside the root.
         assert_eq!(safe_replica_path(root, "./x.txt"), Some(root.join("x.txt")));
     }

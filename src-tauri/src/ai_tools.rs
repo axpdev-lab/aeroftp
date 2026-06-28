@@ -2084,6 +2084,8 @@ mod approval_tests {
             "coding_verify",
             &json!({ "workspace_root": "/tmp/x", "checks": ["cargo-check", "vitest"] }),
         );
-        assert!(verify.iter().any(|d| d.contains("cargo-check") && d.contains("vitest")));
+        assert!(verify
+            .iter()
+            .any(|d| d.contains("cargo-check") && d.contains("vitest")));
     }
 }
