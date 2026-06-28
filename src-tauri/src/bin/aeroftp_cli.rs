@@ -2675,6 +2675,63 @@ enum Commands {
         #[arg(long, value_name = "PATH")]
         credential_json_file: Option<String>,
     },
+    /// Export saved server profiles to an encrypted `.aeroftp` file
+    ///
+    /// AeroFTP's native profile backup, byte-compatible with the GUI's
+    /// My Servers > Export: a password-encrypted envelope carrying the profile
+    /// list and, with `--include-credentials`, every saved secret (per-profile
+    /// passwords, OAuth/Jottacloud tokens, crypt-overlay passwords and the
+    /// #215 per-protocol credential snapshots). Re-import with `profile-import`
+    /// here or through the GUI. Operates on the active user's vault.
+    ///
+    /// Password resolution (first match wins): AEROFTP_PROFILE_PASSWORD env
+    /// var -> `--password-stdin` -> `--password` -> interactive prompt.
+    ProfileExport {
+        /// Output `.aeroftp` path
+        #[arg(long, short = 'o', value_name = "PATH")]
+        output: String,
+        /// Encryption password (visible in `ps`; prefer --password-stdin or env)
+        #[arg(long)]
+        password: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Bundle saved secrets into the encrypted file (per-profile passwords,
+        /// OAuth/Jottacloud tokens, crypt-overlay passwords and #215 per-protocol
+        /// snapshots). OFF by default: without it the file carries only the
+        /// profile configuration, never secrets.
+        #[arg(long = "include-credentials")]
+        include_credentials: bool,
+        /// Export only these profiles (comma-separated; each token is a profile
+        /// id or a case-insensitive name). Defaults to every profile of the
+        /// active user. A token that matches nothing is an error.
+        #[arg(long, value_name = "IDS")]
+        ids: Option<String>,
+        /// Output a JSON summary on stdout (errors go to stderr in any mode)
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import server profiles from an encrypted `.aeroftp` file
+    ///
+    /// Restores profiles and, when the file was exported with credentials,
+    /// every saved secret back into the active user's vault, including the
+    /// #215 per-protocol snapshots so a one-account-many-protocols profile
+    /// keeps each mode's credentials. Profiles already present (same id or
+    /// host:port:username) are skipped. Byte-compatible with My Servers > Import.
+    ProfileImport {
+        /// Input `.aeroftp` path
+        #[arg(long, short = 'i', value_name = "PATH")]
+        input: String,
+        /// Decryption password (same resolution order as `profile-export`)
+        #[arg(long)]
+        password: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Output a JSON import-result summary on stdout
+        #[arg(long)]
+        json: bool,
+    },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
     /// Show the canonical task-oriented quick-start for AI agents
@@ -30716,7 +30773,43 @@ fn resolve_keystore_password(
     cli_password: &Option<String>,
     password_stdin: bool,
 ) -> Result<String, String> {
-    if let Ok(env_pw) = std::env::var("AEROFTP_KEYSTORE_PASSWORD") {
+    resolve_password_with_source(
+        "AEROFTP_KEYSTORE_PASSWORD",
+        "Keystore password: ",
+        cli_password,
+        password_stdin,
+    )
+}
+
+/// Same resolution order as the keystore password, but for the native
+/// `.aeroftp` profile export/import (`profile-export` / `profile-import`):
+/// AEROFTP_PROFILE_PASSWORD env var -> `--password-stdin` -> `--password`
+/// flag -> interactive prompt on a TTY.
+fn resolve_profile_password(
+    cli_password: &Option<String>,
+    password_stdin: bool,
+) -> Result<String, String> {
+    resolve_password_with_source(
+        "AEROFTP_PROFILE_PASSWORD",
+        "Profile password: ",
+        cli_password,
+        password_stdin,
+    )
+}
+
+/// Generic password resolver shared by the keystore and the native profile
+/// export/import. Resolution order (first match wins): the named env var ->
+/// `--password-stdin` (one line) -> `--password` flag (with a ps-visibility
+/// warning) -> interactive rpassword prompt on stderr. Returns an error when
+/// none apply rather than silently using an empty password. The caller
+/// zeroizes the returned buffer once the underlying crypto call has returned.
+fn resolve_password_with_source(
+    env_var: &str,
+    prompt: &str,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+) -> Result<String, String> {
+    if let Ok(env_pw) = std::env::var(env_var) {
         if !env_pw.is_empty() {
             return Ok(env_pw);
         }
@@ -30725,7 +30818,7 @@ fn resolve_keystore_password(
         let mut buf = String::new();
         std::io::stdin()
             .read_line(&mut buf)
-            .map_err(|e| format!("read stdin for keystore password: {e}"))?;
+            .map_err(|e| format!("read stdin for password: {e}"))?;
         // Trim only the trailing newline, not internal whitespace
         // (a password may legitimately end with spaces).
         let trimmed = buf.trim_end_matches(['\n', '\r']).to_string();
@@ -30738,13 +30831,13 @@ fn resolve_keystore_password(
         if !p.is_empty() {
             eprintln!(
                 "Warning: --password is visible in process list (ps). \
-                 Prefer AEROFTP_KEYSTORE_PASSWORD env var or --password-stdin."
+                 Prefer the {env_var} env var or --password-stdin."
             );
             return Ok(p.clone());
         }
     }
     if std::io::stdin().is_terminal() {
-        eprint!("Keystore password: ");
+        eprint!("{prompt}");
         std::io::stderr().flush().ok();
         let pw =
             rpassword::read_password().map_err(|e| format!("read interactive password: {e}"))?;
@@ -30753,11 +30846,9 @@ fn resolve_keystore_password(
         }
         return Ok(pw);
     }
-    Err(
-        "No keystore password available. Set AEROFTP_KEYSTORE_PASSWORD, \
-         pipe via --password-stdin, or run interactively."
-            .to_string(),
-    )
+    Err(format!(
+        "No password available. Set {env_var}, pipe via --password-stdin, or run interactively."
+    ))
 }
 
 /// Resolve the config directory the export/import should target.
@@ -30773,6 +30864,266 @@ fn resolve_keystore_config_dir(override_dir: &Option<String>) -> Option<PathBuf>
         return Some(PathBuf::from(p));
     }
     ftp_client_gui_lib::portable::cli_app_config_dir()
+}
+
+/// `profile-export`: write the active user's server profiles to an encrypted
+/// native `.aeroftp` file. Reuses the exact GUI command (`export_server_profiles`)
+/// so the file is byte-compatible with My Servers > Export and carries, with
+/// `--include-credentials`, every saved secret including the #215 per-protocol
+/// snapshots.
+#[allow(clippy::too_many_arguments)]
+async fn cmd_profile_export(
+    cli: &Cli,
+    output: &str,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+    include_credentials: bool,
+    ids: &Option<String>,
+    json: bool,
+    format: OutputFormat,
+) -> i32 {
+    use zeroize::Zeroize;
+
+    // 1. Unlock the vault so the reused command can read secrets via
+    //    CredentialStore::from_cache() and resolve the active user partition.
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("vault unavailable: {e}"), 6);
+            return 6;
+        }
+    };
+
+    // 2. Load the active user's profiles (the GUI-shared config_server_profiles
+    //    shape, camelCase, already carrying persistModeCredentials).
+    let mut profiles = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
+            return 1;
+        }
+    };
+
+    // 3. Optional selector filter (exact id or case-insensitive name). A token
+    //    that matches nothing is an error, never a silent full export.
+    if let Some(spec) = ids {
+        let wanted: Vec<String> = spec
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let mut filtered: Vec<serde_json::Value> = Vec::new();
+        let mut unmatched: Vec<String> = Vec::new();
+        for token in &wanted {
+            let tl = token.to_lowercase();
+            match profiles.iter().find(|p| {
+                p.get("id").and_then(|v| v.as_str()) == Some(token.as_str())
+                    || p.get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|n| n.to_lowercase() == tl)
+                        .unwrap_or(false)
+            }) {
+                Some(p) => filtered.push(p.clone()),
+                None => unmatched.push(token.clone()),
+            }
+        }
+        if !unmatched.is_empty() {
+            print_error(
+                format,
+                &format!("no profile matched: {}", unmatched.join(", ")),
+                1,
+            );
+            return 1;
+        }
+        profiles = filtered;
+    }
+
+    if profiles.is_empty() {
+        print_error(format, "no profiles to export", 1);
+        return 1;
+    }
+    let count = profiles.len();
+
+    let servers_json = match serde_json::to_string(&profiles) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("serialize profiles: {e}"), 1);
+            return 1;
+        }
+    };
+
+    // 4. Resolve the encryption password.
+    let mut password = match resolve_profile_password(cli_password, password_stdin) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+
+    // 5. Reuse the GUI export path verbatim. It collects the credentials from
+    //    the vault (under the include_credentials flag) and writes the strong-
+    //    KDF encrypted envelope.
+    let result = ftp_client_gui_lib::export_server_profiles_core(
+        servers_json,
+        password.clone(),
+        include_credentials,
+        output.to_string(),
+    )
+    .await;
+    password.zeroize();
+
+    let metadata = match result {
+        Ok(m) => m,
+        Err(e) => {
+            print_error(format, &format!("export failed: {e}"), 1);
+            return 1;
+        }
+    };
+
+    let file_size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "ok",
+                "path": output,
+                "profiles": count,
+                "include_credentials": include_credentials,
+                "has_credentials": metadata.has_credentials,
+                "size_bytes": file_size,
+                "metadata": metadata,
+            })
+        );
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!(
+            "Exported {} profile(s){} -> {} ({} bytes)",
+            count,
+            if include_credentials {
+                " with credentials"
+            } else {
+                ""
+            },
+            output,
+            file_size,
+        );
+    }
+    0
+}
+
+/// `profile-import`: restore profiles (and, when present, every saved secret)
+/// from a native `.aeroftp` file into the active user's vault. Reuses the exact
+/// GUI command (`import_server_profiles`) for the credential restore, then
+/// merges the redacted profile list into the active user's profile store,
+/// skipping duplicates by id or host:port:username (mirrors the GUI dialog).
+async fn cmd_profile_import(
+    cli: &Cli,
+    input: &str,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+    json: bool,
+    format: OutputFormat,
+) -> i32 {
+    use zeroize::Zeroize;
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("vault unavailable: {e}"), 6);
+            return 6;
+        }
+    };
+
+    let mut password = match resolve_profile_password(cli_password, password_stdin) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+
+    // Reuse the GUI import path: decrypt, restore every secret (including the
+    // #215 per-protocol snapshots) into the vault, and return the redacted
+    // profile list (no secret material).
+    let result =
+        ftp_client_gui_lib::import_server_profiles_core(input.to_string(), password.clone()).await;
+    password.zeroize();
+
+    let value = match result {
+        Ok(v) => v,
+        Err(e) => {
+            let exit = if e.contains("Invalid password") { 6 } else { 1 };
+            print_error(format, &format!("import failed: {e}"), exit);
+            return exit;
+        }
+    };
+
+    let imported: Vec<serde_json::Value> = value
+        .get("servers")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // Merge into the active user's profiles, skipping duplicates by id OR
+    // host:port:username (same rule as ExportImportDialog).
+    let mut current = load_active_user_profiles(cli, &store).unwrap_or_default();
+    let existing_ids: std::collections::HashSet<String> = current
+        .iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    let dup_key = |p: &serde_json::Value| -> String {
+        format!(
+            "{}:{}:{}",
+            p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+            p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+            p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+        )
+    };
+    let existing_keys: std::collections::HashSet<String> = current.iter().map(dup_key).collect();
+
+    let mut added = 0usize;
+    let mut skipped = 0usize;
+    for p in &imported {
+        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if (!id.is_empty() && existing_ids.contains(id)) || existing_keys.contains(&dup_key(p)) {
+            skipped += 1;
+            continue;
+        }
+        current.push(p.clone());
+        added += 1;
+    }
+
+    if added > 0 {
+        if let Err(e) = save_active_user_profiles(cli, &store, &current) {
+            print_error(format, &format!("save profiles: {e}"), 1);
+            return 1;
+        }
+    }
+
+    let metadata = value
+        .get("metadata")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "ok",
+                "imported": added,
+                "skipped": skipped,
+                "total_in_file": imported.len(),
+                "metadata": metadata,
+            })
+        );
+    } else if matches!(format, OutputFormat::Text) {
+        let tail = if skipped > 0 {
+            format!(", {skipped} skipped (already present)")
+        } else {
+            String::new()
+        };
+        eprintln!("Imported {added} profile(s){tail} from {input}");
+    }
+    0
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -55072,6 +55423,32 @@ async fn main() {
             to_user,
             yes,
         } => cmd_profile_relocate_user(&cli, format, selector, to_user, true, *yes),
+        Commands::ProfileExport {
+            output,
+            password,
+            password_stdin,
+            include_credentials,
+            ids,
+            json,
+        } => {
+            cmd_profile_export(
+                &cli,
+                output,
+                password,
+                *password_stdin,
+                *include_credentials,
+                ids,
+                *json,
+                format,
+            )
+            .await
+        }
+        Commands::ProfileImport {
+            input,
+            password,
+            password_stdin,
+            json,
+        } => cmd_profile_import(&cli, input, password, *password_stdin, *json, format).await,
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,

@@ -15488,6 +15488,20 @@ async fn export_server_profiles(
     include_credentials: bool,
     file_path: String,
 ) -> Result<profile_export::ExportMetadata, String> {
+    export_server_profiles_core(servers_json, password, include_credentials, file_path).await
+}
+
+/// Core of [`export_server_profiles`], callable outside the Tauri command
+/// surface. The `aeroftp-cli profile-export` path reuses it verbatim so the CLI
+/// and GUI share ONE credential-collection + encryption implementation (a
+/// `#[tauri::command]` cannot be `pub` without a macro-name clash, hence the
+/// split).
+pub async fn export_server_profiles_core(
+    servers_json: String,
+    password: String,
+    include_credentials: bool,
+    file_path: String,
+) -> Result<profile_export::ExportMetadata, String> {
     let mut servers: Vec<profile_export::ServerProfileExport> =
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
 
@@ -15538,6 +15552,17 @@ async fn export_server_profiles(
 
 #[tauri::command]
 async fn import_server_profiles(
+    file_path: String,
+    password: String,
+) -> Result<serde_json::Value, String> {
+    import_server_profiles_core(file_path, password).await
+}
+
+/// Core of [`import_server_profiles`], callable outside the Tauri command
+/// surface. Reused verbatim by `aeroftp-cli profile-import` so the
+/// decrypt + per-secret vault restore (including the #215 per-protocol
+/// snapshots) lives in one place.
+pub async fn import_server_profiles_core(
     file_path: String,
     password: String,
 ) -> Result<serde_json::Value, String> {
