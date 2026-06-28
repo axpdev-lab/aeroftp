@@ -5179,6 +5179,12 @@
                 "edit": "Rediģēt",
                 "remove": "Noņemt",
                 "removeConfirm": "Noņemt?"
+            },
+            "activate": {
+                "title": "AeroShare ir ieslēgts",
+                "body": "Jūs pievienojāt draugu, tāpēc AeroShare tagad ir aktīvs. Vai vēlaties saņemt failus, ko sūta jūsu draugi? To jebkurā laikā varat mainīt iestatījumos.",
+                "enable": "Ieslēgt saņemšanu",
+                "notNow": "Ne tagad"
             }
         },
         "extractWindow": {

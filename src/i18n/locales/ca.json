@@ -5198,6 +5198,12 @@
                 "edit": "Edita",
                 "remove": "Elimina",
                 "removeConfirm": "Eliminar?"
+            },
+            "activate": {
+                "title": "AeroShare està actiu",
+                "body": "Has afegit un amic, així que AeroShare ara està actiu. Vols rebre els fitxers que els teus amics t'envien? Pots canviar-ho en qualsevol moment a la Configuració.",
+                "enable": "Activa la recepció",
+                "notNow": "Ara no"
             }
         },
         "extractWindow": {

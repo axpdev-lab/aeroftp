@@ -5179,6 +5179,12 @@
                 "edit": "Edit",
                 "remove": "Buang",
                 "removeConfirm": "Buang?"
+            },
+            "activate": {
+                "title": "AeroShare dihidupkan",
+                "body": "Anda menambah rakan, jadi AeroShare kini aktif. Adakah anda mahu menerima fail yang dihantar oleh rakan anda? Anda boleh menukar ini bila-bila masa dalam Tetapan.",
+                "enable": "Hidupkan penerimaan",
+                "notNow": "Bukan sekarang"
             }
         },
         "extractWindow": {

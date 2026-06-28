@@ -5179,6 +5179,12 @@
                 "edit": "编辑",
                 "remove": "移除",
                 "removeConfirm": "移除？"
+            },
+            "activate": {
+                "title": "AeroShare 已开启",
+                "body": "您已添加好友，因此 AeroShare 现已启用。要接收好友发送给您的文件吗？您可以随时在“设置”中更改此项。",
+                "enable": "开启接收",
+                "notNow": "暂不"
             }
         },
         "extractWindow": {

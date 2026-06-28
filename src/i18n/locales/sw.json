@@ -5179,6 +5179,12 @@
                 "edit": "Hariri",
                 "remove": "Ondoa",
                 "removeConfirm": "Ondoa?"
+            },
+            "activate": {
+                "title": "AeroShare imewashwa",
+                "body": "Umeongeza rafiki, kwa hivyo AeroShare sasa inafanya kazi. Je, ungependa kupokea faili ambazo marafiki zako wanakutumia? Unaweza kubadilisha hili wakati wowote katika Mipangilio.",
+                "enable": "Washa upokeaji",
+                "notNow": "Si sasa"
             }
         },
         "extractWindow": {

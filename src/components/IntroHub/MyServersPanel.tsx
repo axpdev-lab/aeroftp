@@ -44,6 +44,7 @@ import { InputDialog } from '../Dialogs';
 import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
 import { usePeerDriveStates, type PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialog';
+import { AeroShareActivationPrompt } from '../AeroShare/AeroShareActivationPrompt';
 import { SharedByMePanel } from '../AeroShare/SharedByMePanel';
 import { friendCanConnect, AERO_SHARE_OPEN_EVENT, type AeroShareOpenDetail } from '../../utils/aeroShare';
 
@@ -633,9 +634,11 @@ export function MyServersPanel({
     // Global entry-point bridge: the Discover tile, the titlebar +friend icon
     // and File-menu item all dispatch AERO_SHARE_OPEN_EVENT instead of reaching
     // into this panel. We hold the only dialog instance (always mounted), so we
-    // listen here. Ignored when the flag is off (the dialog also gates on it).
+    // listen here. ALWAYS registered (not flag-gated): AeroShare is always-on at
+    // launch, the entry points are visible before activation, and opening the
+    // dialog is exactly what auto-activates the feature (ensureAeroShareActivated
+    // fires once a friend is added or a folder is shared).
     useEffect(() => {
-        if (!aeroShareEnabled) return;
         const onOpen = (e: Event) => {
             const d = (e as CustomEvent<AeroShareOpenDetail>).detail;
             setAeroShareDialog({
@@ -648,7 +651,7 @@ export function MyServersPanel({
         };
         window.addEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
         return () => window.removeEventListener(AERO_SHARE_OPEN_EVENT, onOpen);
-    }, [aeroShareEnabled]);
+    }, []);
 
     const toggleFavorite = useCallback((serverId: string) => {
         setFavorites(prev => {
@@ -1532,7 +1535,7 @@ export function MyServersPanel({
                 crossProfileSelectionCount={crossProfileSelection.length}
                 listDensity={density}
                 onToggleListDensity={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
-                onAddFriend={aeroShareEnabled ? () => setAeroShareDialog({ mode: 'receive' }) : undefined}
+                onAddFriend={() => setAeroShareDialog({ mode: 'receive' })}
                 aeroShareEnabled={aeroShareEnabled}
             />
 
@@ -1564,15 +1567,13 @@ export function MyServersPanel({
                                     <Plus size={18} />
                                     {t('introHub.addFirstServer')}
                                 </button>
-                                {aeroShareEnabled && (
-                                    <button
-                                        onClick={() => setAeroShareDialog({ mode: 'receive' })}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
-                                    >
-                                        <UserPlus size={18} />
-                                        {t('aeroShare.addFriend')}
-                                    </button>
-                                )}
+                                <button
+                                    onClick={() => setAeroShareDialog({ mode: 'receive' })}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors"
+                                >
+                                    <UserPlus size={18} />
+                                    {t('aeroShare.addFriend')}
+                                </button>
                             </div>
 
                             {onJumpToCategory && (
@@ -1854,7 +1855,7 @@ export function MyServersPanel({
                 hides even a position:fixed child. Entry points (Discover tile,
                 titlebar icon, File menu) fire from other tabs, so the dialog
                 must escape this subtree to actually show. */}
-            {aeroShareEnabled && aeroShareDialog && createPortal(
+            {aeroShareDialog && createPortal(
                 <AeroShareDialog
                     initialMode={aeroShareDialog.mode}
                     prefillAfid={aeroShareDialog.prefillAfid}
@@ -1866,6 +1867,9 @@ export function MyServersPanel({
                 />,
                 document.body,
             )}
+            {/* One-time receiver opt-in/opt-out prompt, shown the first time
+                AeroShare auto-activates. Self-gated (listens for the event). */}
+            <AeroShareActivationPrompt />
         </div>
     );
 }

@@ -5198,6 +5198,12 @@
                 "edit": "Breyta",
                 "remove": "Fjarlægja",
                 "removeConfirm": "Fjarlægja?"
+            },
+            "activate": {
+                "title": "AeroShare er virkt",
+                "body": "Þú bættir við vini, svo AeroShare er nú virkt. Viltu taka á móti skrám sem vinir þínir senda þér? Þú getur breytt þessu hvenær sem er í Stillingum.",
+                "enable": "Kveikja á móttöku",
+                "notNow": "Ekki núna"
             }
         },
         "extractWindow": {

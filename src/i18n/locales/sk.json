@@ -5179,6 +5179,12 @@
                 "edit": "Upraviť",
                 "remove": "Odstrániť",
                 "removeConfirm": "Odstrániť?"
+            },
+            "activate": {
+                "title": "AeroShare je zapnutý",
+                "body": "Pridali ste priateľa, takže AeroShare je teraz aktívny. Chcete prijímať súbory, ktoré vám posielajú priatelia? Kedykoľvek to môžete zmeniť v Nastaveniach.",
+                "enable": "Zapnúť prijímanie",
+                "notNow": "Teraz nie"
             }
         },
         "extractWindow": {

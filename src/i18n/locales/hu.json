@@ -5179,6 +5179,12 @@
                 "edit": "Szerkesztés",
                 "remove": "Eltávolítás",
                 "removeConfirm": "Eltávolítja?"
+            },
+            "activate": {
+                "title": "Az AeroShare be van kapcsolva",
+                "body": "Hozzáadott egy ismerőst, így az AeroShare most aktív. Szeretné fogadni az ismerősei által küldött fájlokat? Ezt bármikor módosíthatja a Beállításokban.",
+                "enable": "Fogadás bekapcsolása",
+                "notNow": "Most nem"
             }
         },
         "extractWindow": {

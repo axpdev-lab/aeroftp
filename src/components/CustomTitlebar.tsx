@@ -421,18 +421,6 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 <Heart size={14} className="text-blue-500 fill-current" />
             </button>
 
-            {/* AeroShare (Beta): +friend. Flag-gated; opens the handshake dialog
-                via the global event (dialog lives in MyServersPanel). */}
-            {aeroShareEnabled && (
-                <button
-                    onClick={() => openAeroShareDialog({ mode: 'receive' })}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={t('aeroShare.addFriend')}
-                >
-                    <UserPlus size={14} className="text-violet-500" />
-                </button>
-            )}
-
             {/* Write a Review (SourceForge) */}
             <button
                 onClick={() => openUrl('https://sourceforge.net/software/product/AeroFTP/reviews/new')}
@@ -447,6 +435,18 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
 
             {/* Theme Toggle */}
             <ThemeToggle theme={theme} setTheme={setTheme} />
+
+            {/* AeroShare (Beta): +friend. Always visible (Discovery is always-on
+                and this is the primary entry point; adding a friend or sharing a
+                folder auto-activates AeroShare). Opens the handshake dialog via the
+                global event (dialog lives in MyServersPanel). */}
+            <button
+                onClick={() => openAeroShareDialog({ mode: 'receive' })}
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                title={t('aeroShare.addFriend')}
+            >
+                <UserPlus size={14} className="text-violet-500" />
+            </button>
 
             {/* Center: drag region spacer */}
             <div data-tauri-drag-region className="flex-1 h-full" />

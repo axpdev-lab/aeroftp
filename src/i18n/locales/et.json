@@ -5179,6 +5179,12 @@
                 "edit": "Muuda",
                 "remove": "Eemalda",
                 "removeConfirm": "Eemaldada?"
+            },
+            "activate": {
+                "title": "AeroShare on sees",
+                "body": "Lisasid sõbra, seega on AeroShare nüüd aktiivne. Kas soovid vastu võtta faile, mida sõbrad sulle saadavad? Saad seda igal ajal Seadetes muuta.",
+                "enable": "Lülita vastuvõtt sisse",
+                "notNow": "Mitte praegu"
             }
         },
         "extractWindow": {

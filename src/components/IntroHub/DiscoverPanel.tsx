@@ -8,7 +8,6 @@ import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
-import { useAeroShareEnabled } from '../../hooks/useAeroShareEnabled';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS } from './discoverData';
 import { getProviderById } from '../../providers';
 import { CatalogCategoryId } from '../../types/catalog';
@@ -188,9 +187,11 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     // surfaced in Protocols + All. It is NOT a wire protocol, so it does not live
     // in the provider catalog; clicking it opens the handshake dialog instead of
     // the connection form (handleSelect intercepts protocol === 'peer').
-    const aeroShareEnabled = useAeroShareEnabled();
-    const peerTile = useMemo<DiscoverItem | null>(() => {
-        if (!aeroShareEnabled) return null;
+    // Always shown (AeroShare is always-on at launch): the tile is the primary
+    // discovery entry point, and selecting it opens the handshake dialog which
+    // auto-activates the feature on the first friend/share. The "Beta" tag stays
+    // on the dialog + Settings.
+    const peerTile = useMemo<DiscoverItem>(() => {
         return {
             id: 'aeroshare-peer',
             name: t('aeroShare.feature'),
@@ -199,11 +200,11 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             // Uniform with the app's other end-to-end tiles (Filen/Internxt): the
             // AeroShare channel seals content under a 256-bit key, so it carries
             // the same "E2E 256-bit" secure badge (green + lock via
-            // isCipherStrengthBadge). "Beta" stays on the dialog tag + Settings.
+            // isCipherStrengthBadge).
             badge: 'E2E 256-bit',
             source: 'protocol',
         };
-    }, [aeroShareEnabled, t]);
+    }, [t]);
     const [activeCategory, setActiveCategory] = useState<DiscoverCategoryId>(() => {
         const saved = localStorage.getItem(CATEGORY_KEY);
         return (saved as DiscoverCategoryId) || 'protocols';

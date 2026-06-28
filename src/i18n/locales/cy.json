@@ -5198,6 +5198,12 @@
                 "edit": "Golygu",
                 "remove": "Tynnu",
                 "removeConfirm": "Tynnu?"
+            },
+            "activate": {
+                "title": "Mae AeroShare ymlaen",
+                "body": "Rydych wedi ychwanegu ffrind, felly mae AeroShare bellach yn weithredol. Ydych chi am dderbyn y ffeiliau mae eich ffrindiau yn eu hanfon atoch? Gallwch newid hyn unrhyw bryd yn y Gosodiadau.",
+                "enable": "Troi derbyn ymlaen",
+                "notNow": "Nid nawr"
             }
         },
         "extractWindow": {
