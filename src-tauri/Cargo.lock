@@ -35,7 +35,7 @@ dependencies = [
  "aeroftp-peer-l0",
  "aerovault",
  "aes 0.8.4",
- "aes-gcm 0.10.3",
+ "aes-gcm 0.11.0",
  "aes-gcm-siv",
  "aes-kw",
  "aes-siv",
@@ -252,9 +252,9 @@ dependencies = [
 
 [[package]]
 name = "aes-gcm"
-version = "0.11.0-rc.3"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e22c0c90bbe8d4f77c3ca9ddabe41a1f8382d6fc1f7cea89459d0f320371f972"
+checksum = "fdf011db2e21ce0d575593d749db5554b47fed37aff429e4dc50bc91ac93a028"
 dependencies = [
  "aead 0.6.1",
  "aes 0.9.1",
@@ -10029,7 +10029,7 @@ checksum = "10db6f219196a8528f9ec904d9d45cdad692d65b0e57e72be4dedd1c5fddce36"
 dependencies = [
  "aead 0.6.1",
  "aes 0.9.1",
- "aes-gcm 0.11.0-rc.3",
+ "aes-gcm 0.11.0",
  "cbc 0.2.1",
  "chacha20 0.10.1",
  "cipher 0.5.2",
