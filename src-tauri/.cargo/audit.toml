@@ -34,6 +34,9 @@
 #           so verify_sigstore_bundle finally returns SigstoreVerified on real releases;
 #           only the `verify` feature is enabled, dropping the broken `sign` path. RSA
 #           Path A kept: openidconnect 4.0.1 still reaches rsa 0.9.10, dormant/non-blocking.)
+# Reviewed: 2026-06-29 (added RUSTSEC-2026-0190, n0-error downcast_mut unsoundness freshly
+#           published to the advisory DB, transitive via iroh 1.0; unsoundness not a vuln,
+#           pinned by iroh with no in-tree upgrade, AeroFTP never calls downcast_mut.)
 
 [advisories]
 ignore = [
@@ -250,6 +253,26 @@ ignore = [
     #     stun-rs path is gone in 1.0). No runtime surface (proc-macro, build-time
     #     only); superseded by `pastey`. Not a vulnerability.
     "RUSTSEC-2024-0436",  # paste unmaintained (compile-time proc-macro, netwatch path)
+
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0190 - Unsoundness in n0-error `Error::downcast_mut()`
+    # ----------------------------------------------------------------
+    # Freshly published to the advisory DB (loaded 2026-06-29), so it lights up
+    # on the first audit after that date independent of any AeroFTP change. It is
+    # an UNSOUNDNESS report (not an exploitable vulnerability): n0-error's
+    # `Error::downcast_mut()` can hand out a `&mut T` of the wrong type under a
+    # specific generic misuse, which is a soundness hole in that helper, not a
+    # remote/attacker-reachable issue.
+    #
+    #   n0-error 1.0.0 <- iroh-relay 1.0.0 <- iroh 1.0.0 <- iroh-blobs / iroh-docs
+    #     / iroh-mainline-address-lookup <- aeroftp-peer-l0 <- aeroftp
+    #
+    # iroh 1.0.0 pins n0-error 1.0.0 across its whole graph, so there is no
+    # in-tree upgrade until upstream iroh bumps it; AeroFTP never calls
+    # `downcast_mut` on an n0-error and only consumes iroh errors as opaque
+    # `Display` strings on the P2P path. Same accepted-advisory posture as the two
+    # iroh unmaintained ignores above; revisit when iroh ships a fixed n0-error.
+    "RUSTSEC-2026-0190",  # n0-error downcast_mut unsoundness (iroh 1.0 transitive, not reachable)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
