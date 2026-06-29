@@ -246,3 +246,11 @@ export const YiIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
     </svg>
 );
 
+// Kilo (Kilo Gateway) - "K" monogram on a dark tile (amber #F5C518)
+export const KiloIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className}>
+        <rect x="2" y="2" width="20" height="20" rx="5" fill="#0B0B0B" />
+        <path d="M7.5 6h2.6v4.9L14.6 6h3.2l-5.2 6.1L18.1 18h-3.3l-3.5-5.3-1.2 1.4V18H7.5z" fill="#F5C518" />
+    </svg>
+);
+

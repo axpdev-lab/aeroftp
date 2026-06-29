@@ -15,7 +15,7 @@ import {
     OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon,
     GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon,
     AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon,
-    NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon
+    NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon, KiloIcon
 } from '../DevTools/AIIcons';
 
 interface ProviderMarketplaceProps {
@@ -49,6 +49,7 @@ const PROVIDER_ICON_MAP: Record<AIProviderType, React.FC<{ size?: number; classN
     hyperbolic: HyperbolicIcon,
     novita: NovitaIcon,
     yi: YiIcon,
+    kilo: KiloIcon,
     custom: OpenAIIcon,
 };
 

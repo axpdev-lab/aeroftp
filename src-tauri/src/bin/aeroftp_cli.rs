@@ -49508,6 +49508,7 @@ fn default_model(provider: &str) -> &'static str {
         "fireworks" => "accounts/fireworks/models/llama-v3p1-70b-instruct",
         "cerebras" => "llama-3.3-70b",
         "sambanova" => "Meta-Llama-3.1-70B-Instruct",
+        "kilo" => "kilo-auto/free",
         _ => "gpt-4o",
     }
 }
@@ -49534,6 +49535,7 @@ fn provider_type_from_name(name: &str) -> ftp_client_gui_lib::ai::AIProviderType
         "qwen" => AIProviderType::Qwen,
         "ai21" => AIProviderType::Ai21,
         "openrouter" => AIProviderType::OpenRouter,
+        "kilo" => AIProviderType::Kilo,
         _ => AIProviderType::Custom,
     }
 }
@@ -51889,6 +51891,7 @@ async fn cmd_agent(
             "deepseek" => "https://api.deepseek.com",
             "xai" => "https://api.x.ai/v1",
             "openrouter" => "https://openrouter.ai/api/v1",
+            "kilo" => "https://api.kilo.ai/api/gateway",
             "together" => "https://api.together.xyz/v1",
             "fireworks" => "https://api.fireworks.ai/inference/v1",
             "cerebras" => "https://api.cerebras.ai/v1",
