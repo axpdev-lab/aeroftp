@@ -4699,12 +4699,17 @@ interface UpdateVerificationInfo {
     if (overlayReloadedVaultRef.current === activeVault) return;
     overlayReloadedVaultRef.current = activeVault;
     let cancelled = false;
+    // Anchor the decrypted reload to the bound overlay scope so it opens at the
+    // configured Remote Path. rclone-crypt needs this explicitly (its unlock
+    // does not move the provider cwd); for aerocrypt the scope matches the dir
+    // its read_config already cd'd into, so the result is unchanged.
+    const reloadScope = sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope || null;
     void (async () => {
       try {
-        let reloaded = await loadRemoteFiles();
+        let reloaded = await loadRemoteFiles(undefined, undefined, undefined, reloadScope);
         if (!reloaded && !cancelled) {
           await new Promise((res) => setTimeout(res, 1500));
-          reloaded = await loadRemoteFiles();
+          reloaded = await loadRemoteFiles(undefined, undefined, undefined, reloadScope);
         }
         // Rewrite the connect-time listing line to the overlay-anchored display
         // path (what the path-bar shows), now that the decrypted reload landed.
@@ -4741,7 +4746,7 @@ interface UpdateVerificationInfo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingOverlayUnlock, aeroCryptVaultId, rcloneCryptVaultId]);
 
-  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean): Promise<FileListResponse | null> => {
+  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -4760,9 +4765,21 @@ interface UpdateVerificationInfo {
         });
       } else if (isProvider) {
         if (cryptOverlay) {
+          // Normally the crypt list relies on the provider's current dir (path
+          // null). rclone-crypt's unlock only moves the FTP cwd, not the
+          // provider cwd (aerocrypt's read_config cd's the provider and stays),
+          // so a null path after an rclone unlock lands the post-unlock reload
+          // on the provider root instead of the bound overlay folder. When the
+          // caller passes the bound scope, anchor the listing to it as a
+          // plaintext-absolute path so both overlay kinds open at the configured
+          // Remote Path. An empty/root scope keeps the historical null path.
+          const anchorPath = overrideScopePath && overrideScopePath.trim() && overrideScopePath !== '/'
+            ? overrideScopePath
+            : null;
           const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
             vaultId: cryptOverlay.vaultId,
-            path: null,
+            path: anchorPath,
+            ...(anchorPath != null ? { plainPath: true, cryptScope: activeBoundRemoteScope || null } : {}),
           });
           response = mapRcloneCryptListResponse(cryptResponse);
         } else {
