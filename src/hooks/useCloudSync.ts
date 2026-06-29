@@ -179,8 +179,12 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         }
       } else if (action === 'cloud_open_folder') {
         try {
-          const config = await invoke<{ local_folder: string }>('get_cloud_config');
-          if (config.local_folder) {
+          const config = await invoke<{ enabled: boolean; local_folder: string }>('get_cloud_config');
+          // Only meaningful when AeroCloud is configured: otherwise local_folder
+          // is the unrealised default (~/AeroCloud) and opening a non-existent
+          // path is pointless. The tray item starts disabled in this state; this
+          // guards the stale-enabled case (config changed since the menu built).
+          if (config.enabled && config.local_folder) {
             await invoke('open_in_file_manager', { path: config.local_folder });
           }
         } catch (e) {

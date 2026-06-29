@@ -16946,7 +16946,14 @@ pub fn run() {
                 });
             });
             // ============ System Tray Icon ============
-            // Create tray menu
+            // Create tray menu.
+            // "Open Cloud Folder" is only meaningful when AeroCloud is configured:
+            // when it is not, the local folder is just the unrealised default
+            // (~/AeroCloud) and opening a non-existent path is pointless, so the
+            // entry starts disabled and reflects the saved AeroCloud state. Read
+            // here in setup() on the GTK main thread (a later off-thread mutation
+            // would risk the GLib-heap class of crash).
+            let cloud_enabled = cloud_config::load_cloud_config().enabled;
             let tray_sync_now =
                 MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
             let tray_pause =
@@ -16955,7 +16962,7 @@ pub fn run() {
                 app,
                 "tray_open_folder",
                 "Open Cloud Folder",
-                true,
+                cloud_enabled,
                 None::<&str>,
             )?;
             let tray_check_update = MenuItem::with_id(
