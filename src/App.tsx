@@ -6146,9 +6146,31 @@ interface UpdateVerificationInfo {
           metadata: f.metadata,
         }));
         logger.debug('[connectToFtp] Converted files:', files.length);
-        setRemoteFiles(files);
         setCurrentRemotePath(response.current_path);
-        connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
+        // When the connect came from a saved profile carrying an encrypted
+        // overlay, activate it exactly like onSavedServerConnect does. A 2FA
+        // retry (handleTwoFactorSubmit) and the saved-secret auto-retry both
+        // re-enter the connect HERE rather than in onSavedServerConnect, so
+        // without this block the retry landed on the encrypted provider root
+        // with the overlay never unlocked: no decrypted names, no badge.
+        // Suppress the raw encrypted listing during the Argon2id unlock window
+        // and let the deferred phase-2 reload paint the decrypted names anchored
+        // at the bound scope.
+        const overlaySavedId = effectiveParams.savedServerId;
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
+        if (overlayHint && overlaySavedId) {
+          overlaySuppressedRef.current = true;
+          setRemoteFiles([]);
+          setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
+          setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+          setOverlayDecrypting(true);
+          connectListingLogIdRef.current = null;
+        } else {
+          overlaySuppressedRef.current = false;
+          setRemoteFiles(files);
+          connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
+        }
 
         // Navigate to initial local directory if specified
         if (quickConnectDirs.localDir) {
@@ -6171,8 +6193,11 @@ interface UpdateVerificationInfo {
           sessionParams,
           response.current_path,
           quickConnectDirs.localDir || currentLocalPath,
-          files
+          overlayHint ? [] : files
         );
+        // Defer the overlay auto-unlock to the post-connect effect (same reason
+        // as onSavedServerConnect: inline unlock sees stale session state).
+        if (overlayHint && overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
         fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
         // W3.1: a user-initiated cancel is not a failure. runConnect already
