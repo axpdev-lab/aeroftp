@@ -5166,7 +5166,9 @@
                     "one_moment": "Einen Moment, bitte",
                     "resend": "Bitte erneut senden, sie kam nicht an",
                     "thanks": "Erhalten, danke"
-                }
+                },
+                "mute": "Absender stummschalten",
+                "muted": "Absender stummgeschaltet"
             },
             "receiveLabel": "Dateien empfangen",
             "receiveDesc": "Lass Freunde dir Dateien direkt senden (einmalig, Ende-zu-Ende-verschlüsselt). Hält im aktivierten Zustand einen Listener bereit.",
@@ -5192,6 +5194,35 @@
                 "body": "Du hast einen Freund hinzugefügt, daher ist AeroShare jetzt aktiv. Möchtest du Dateien empfangen, die deine Freunde dir senden? Du kannst dies jederzeit in den Einstellungen ändern.",
                 "enable": "Empfang aktivieren",
                 "notNow": "Nicht jetzt"
+            },
+            "privacy": {
+                "title": "Datenschutz und Flutschutz",
+                "intro": "Legen Sie fest, wer Sie über AeroShare erreichen kann und wie auffindbar Sie beim Empfangen sind.",
+                "friendsOnlyLabel": "Nur von gespeicherten Kontakten annehmen",
+                "friendsOnlyDesc": "Anklopfen, Aktionen und Dateiangebote von allen verwerfen, die nicht in Ihrem Adressbuch stehen.",
+                "rateLimitLabel": "Ratenbegrenzung pro Absender",
+                "rateLimitDesc": "Signale von einem Absender oberhalb dieser Anzahl pro Minute werden verworfen.",
+                "rateLimitUnit": "pro Minute",
+                "rateLimitOff": "Keine Ratenbegrenzung (0): jedes Signal ist erlaubt.",
+                "discoveryLabel": "Auffindbarkeit",
+                "discovery_both": "n0 DNS + Mainline DHT (Standard)",
+                "discovery_dht": "Nur Mainline DHT",
+                "discovery_n0": "Nur n0 DNS",
+                "discovery_none": "Keine (nicht auffindbar)",
+                "discovery_both_desc": "Am besten erreichbar: beim Empfangen wird Ihre Adresse sowohl im n0-Verzeichnis als auch im öffentlichen DHT veröffentlicht.",
+                "discovery_dht_desc": "Nur im öffentlichen Mainline DHT veröffentlicht, ohne das n0-Verzeichnis.",
+                "discovery_n0_desc": "Nur im n0-Verzeichnis veröffentlicht, ohne das öffentliche DHT.",
+                "discovery_none_desc": "Ihre AeroFTP-ID wird beim Empfangen nirgendwo veröffentlicht, sodass sie im öffentlichen DHT nicht aufgelistet werden kann. Sie können nur von jemandem erreicht werden, der bereits Ihre vollständige Adresse besitzt (zum Beispiel über ein Laufwerk-Ticket).",
+                "mutedTitle": "Stummgeschaltete Absender",
+                "mutedEmpty": "Keine stummgeschalteten Absender.",
+                "unmute": "Stummschaltung aufheben",
+                "rotateTitle": "AeroFTP-ID erneuern",
+                "rotateDesc": "Eine brandneue AeroFTP-ID für dieses Profil erzeugen.",
+                "rotateButton": "Identität erneuern",
+                "rotateConfirm": "Dies ersetzt Ihre AeroFTP-ID. Ihre aktuelle ID, jeder Freigabelink und jedes von Ihnen bereitgestellte Laufwerk funktionieren nicht mehr, und Sie müssen die neue ID erneut mit Ihren Freunden teilen. Dies kann nicht rückgängig gemacht werden.",
+                "rotateConfirmYes": "Jetzt erneuern",
+                "rotateCancel": "Abbrechen",
+                "rotateDone": "Neue AeroFTP-ID:"
             }
         },
         "extractWindow": {

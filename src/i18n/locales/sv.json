@@ -5166,7 +5166,9 @@
                     "one_moment": "Ett ögonblick",
                     "resend": "Skicka igen, den kom inte fram",
                     "thanks": "Mottagen, tack"
-                }
+                },
+                "mute": "Tysta avsändare",
+                "muted": "Avsändare tystad"
             },
             "receiveLabel": "Ta emot filer",
             "receiveDesc": "Låt vänner skicka filer direkt till dig (engångs, totalsträckskrypterat). Kör en lyssnare medan den är på.",
@@ -5192,6 +5194,35 @@
                 "body": "Du lade till en vän, så AeroShare är nu aktivt. Vill du ta emot filer som dina vänner skickar till dig? Du kan ändra detta när som helst i Inställningar.",
                 "enable": "Slå på mottagning",
                 "notNow": "Inte nu"
+            },
+            "privacy": {
+                "title": "Integritet och översvämningsskydd",
+                "intro": "Styr vem som kan nå dig via AeroShare och hur upptäckbar du är medan du tar emot.",
+                "friendsOnlyLabel": "Acceptera endast från sparade kontakter",
+                "friendsOnlyDesc": "Avvisa knackningar, åtgärder och filerbjudanden från alla som inte finns i din adressbok.",
+                "rateLimitLabel": "Hastighetsgräns per avsändare",
+                "rateLimitDesc": "Signaler från en avsändare över detta antal per minut avvisas.",
+                "rateLimitUnit": "per minut",
+                "rateLimitOff": "Ingen hastighetsgräns (0): varje signal tillåts.",
+                "discoveryLabel": "Upptäckbarhet",
+                "discovery_both": "n0 DNS + Mainline DHT (standard)",
+                "discovery_dht": "Endast Mainline DHT",
+                "discovery_n0": "Endast n0 DNS",
+                "discovery_none": "Ingen (inte upptäckbar)",
+                "discovery_both_desc": "Mest nåbar: medan du tar emot publiceras din adress både i n0-katalogen och i den publika DHT:n.",
+                "discovery_dht_desc": "Publiceras endast i den publika Mainline DHT, utan n0-katalogen.",
+                "discovery_n0_desc": "Publiceras endast i n0-katalogen, utan den publika DHT:n.",
+                "discovery_none_desc": "Ditt AeroFTP-ID publiceras ingenstans medan du tar emot, så det kan inte räknas upp i den publika DHT:n. Du kan endast nås av någon som redan har din fullständiga adress (till exempel via en enhetsbiljett).",
+                "mutedTitle": "Tystade avsändare",
+                "mutedEmpty": "Inga tystade avsändare.",
+                "unmute": "Sluta tysta",
+                "rotateTitle": "Rotera AeroFTP-ID",
+                "rotateDesc": "Generera ett helt nytt AeroFTP-ID för den här profilen.",
+                "rotateButton": "Rotera identitet",
+                "rotateConfirm": "Detta ersätter ditt AeroFTP-ID. Ditt nuvarande ID, alla delningslänkar och alla enheter du betjänar slutar fungera, och du måste dela det nya ID:t med dina vänner igen. Detta kan inte ångras.",
+                "rotateConfirmYes": "Rotera nu",
+                "rotateCancel": "Avbryt",
+                "rotateDone": "Nytt AeroFTP-ID:"
             }
         },
         "extractWindow": {

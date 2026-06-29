@@ -5166,7 +5166,9 @@
                     "one_moment": "O clipă, te rog",
                     "resend": "Te rog retrimite, nu a ajuns",
                     "thanks": "Primit, mulțumesc"
-                }
+                },
+                "mute": "Dezactivează sunetul expeditorului",
+                "muted": "Expeditor dezactivat"
             },
             "receiveLabel": "Primește fișiere",
             "receiveDesc": "Permite prietenilor să îți trimită fișiere direct (o singură dată, criptat de la cap la cap). Rulează un receptor cât timp este pornit.",
@@ -5192,6 +5194,35 @@
                 "body": "Ai adăugat un prieten, așa că AeroShare este acum activ. Vrei să primești fișierele pe care ți le trimit prietenii? Poți modifica oricând acest lucru în Setări.",
                 "enable": "Activează primirea",
                 "notNow": "Nu acum"
+            },
+            "privacy": {
+                "title": "Confidențialitate și anti-inundare",
+                "intro": "Controlează cine te poate contacta prin AeroShare și cât de descoperibil ești în timp ce primești.",
+                "friendsOnlyLabel": "Acceptă doar de la contactele salvate",
+                "friendsOnlyDesc": "Respinge bătăile, acțiunile și ofertele de fișiere de la oricine nu este în agenda ta.",
+                "rateLimitLabel": "Limită de rată per expeditor",
+                "rateLimitDesc": "Semnalele de la un expeditor care depășesc acest număr pe minut sunt respinse.",
+                "rateLimitUnit": "pe minut",
+                "rateLimitOff": "Fără limită de rată (0): fiecare semnal este permis.",
+                "discoveryLabel": "Descoperibilitate",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Doar Mainline DHT",
+                "discovery_n0": "Doar n0 DNS",
+                "discovery_none": "Niciuna (not discoverable)",
+                "discovery_both_desc": "Cel mai ușor de contactat: în timp ce primești, adresa ta este publicată atât în directorul n0, cât și în DHT-ul public.",
+                "discovery_dht_desc": "Publicat doar în Mainline DHT public, fără directorul n0.",
+                "discovery_n0_desc": "Publicat doar în directorul n0, fără DHT-ul public.",
+                "discovery_none_desc": "AeroFTP-ID-ul tău nu este publicat nicăieri în timp ce primești, așa că nu poate fi enumerat în DHT-ul public. Poți fi contactat doar de cineva care deține deja adresa ta completă (de exemplu, printr-un drive ticket).",
+                "mutedTitle": "Expeditori dezactivați",
+                "mutedEmpty": "Niciun expeditor dezactivat.",
+                "unmute": "Reactivează sunetul",
+                "rotateTitle": "Rotește AeroFTP-ID",
+                "rotateDesc": "Generează un AeroFTP-ID complet nou pentru acest profil.",
+                "rotateButton": "Rotește identitatea",
+                "rotateConfirm": "Aceasta înlocuiește AeroFTP-ID-ul tău. ID-ul tău actual, fiecare link de partajare și fiecare drive pe care îl furnizezi vor înceta să funcționeze, iar va trebui să partajezi din nou noul ID cu prietenii tăi. Această acțiune nu poate fi anulată.",
+                "rotateConfirmYes": "Rotește acum",
+                "rotateCancel": "Anulează",
+                "rotateDone": "Nou AeroFTP-ID:"
             }
         },
         "extractWindow": {

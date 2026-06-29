@@ -5166,7 +5166,9 @@
                     "one_moment": "Mirklīti, lūdzu",
                     "resend": "Lūdzu, sūti vēlreiz, tas nepienāca",
                     "thanks": "Saņemts, paldies"
-                }
+                },
+                "mute": "Apklusināt sūtītāju",
+                "muted": "Sūtītājs apklusināts"
             },
             "receiveLabel": "Saņemt failus",
             "receiveDesc": "Ļaujiet draugiem sūtīt failus tieši jums (vienreizējs, pilnībā šifrēts). Ieslēgtā stāvoklī darbina klausītāju.",
@@ -5192,6 +5194,35 @@
                 "body": "Jūs pievienojāt draugu, tāpēc AeroShare tagad ir aktīvs. Vai vēlaties saņemt failus, ko sūta jūsu draugi? To jebkurā laikā varat mainīt iestatījumos.",
                 "enable": "Ieslēgt saņemšanu",
                 "notNow": "Ne tagad"
+            },
+            "privacy": {
+                "title": "Privātums un aizsardzība pret pārpludināšanu",
+                "intro": "Kontrolējiet, kas var ar jums sazināties, izmantojot AeroShare, un cik atrodami esat saņemšanas laikā.",
+                "friendsOnlyLabel": "Pieņemt tikai no saglabātajiem kontaktiem",
+                "friendsOnlyDesc": "Noraidīt klauvējienus, darbības un failu piedāvājumus no jebkura, kas nav jūsu adrešu grāmatā.",
+                "rateLimitLabel": "Ātruma ierobežojums uz sūtītāju",
+                "rateLimitDesc": "Viena sūtītāja signāli, kas pārsniedz šo skaitu minūtē, tiek noraidīti.",
+                "rateLimitUnit": "minūtē",
+                "rateLimitOff": "Bez ātruma ierobežojuma (0): atļauts katrs signāls.",
+                "discoveryLabel": "Atrodamība",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Tikai Mainline DHT",
+                "discovery_n0": "Tikai n0 DNS",
+                "discovery_none": "Nav (not discoverable)",
+                "discovery_both_desc": "Vislabāk sasniedzams: saņemšanas laikā jūsu adrese tiek publicēta gan n0 direktorijā, gan publiskajā DHT.",
+                "discovery_dht_desc": "Publicēts tikai publiskajā Mainline DHT, bez n0 direktorija.",
+                "discovery_n0_desc": "Publicēts tikai n0 direktorijā, bez publiskā DHT.",
+                "discovery_none_desc": "Jūsu AeroFTP-ID saņemšanas laikā nekur netiek publicēts, tāpēc to nevar uzskaitīt publiskajā DHT. Ar jums var sazināties tikai tas, kuram jau ir jūsu pilnā adrese (piemēram, izmantojot drive ticket).",
+                "mutedTitle": "Apklusinātie sūtītāji",
+                "mutedEmpty": "Nav apklusinātu sūtītāju.",
+                "unmute": "Atjaunot skaņu",
+                "rotateTitle": "Nomainīt AeroFTP-ID",
+                "rotateDesc": "Izveidot pilnīgi jaunu AeroFTP-ID šim profilam.",
+                "rotateButton": "Nomainīt identitāti",
+                "rotateConfirm": "Tas aizstāj jūsu AeroFTP-ID. Jūsu pašreizējais ID, visas koplietošanas saites un visi jūsu apkalpotie drive pārstās darboties, un jaunais ID būs atkārtoti jākoplieto ar draugiem. Šo darbību nevar atsaukt.",
+                "rotateConfirmYes": "Nomainīt tagad",
+                "rotateCancel": "Atcelt",
+                "rotateDone": "Jauns AeroFTP-ID:"
             }
         },
         "extractWindow": {

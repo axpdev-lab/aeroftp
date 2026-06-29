@@ -5166,7 +5166,9 @@
                     "one_moment": "少々お待ちください",
                     "resend": "届かなかったので、もう一度送ってください",
                     "thanks": "受け取りました、ありがとう"
-                }
+                },
+                "mute": "送信者をミュート",
+                "muted": "送信者をミュートしました"
             },
             "receiveLabel": "ファイルを受信",
             "receiveDesc": "友達があなたに直接ファイルを送信できるようにします（一回限り、エンドツーエンド暗号化）。オンの間はリスナーが動作します。",
@@ -5192,6 +5194,35 @@
                 "body": "友だちを追加したので、AeroShare が有効になりました。友だちが送ってくるファイルを受信しますか？これは設定でいつでも変更できます。",
                 "enable": "受信をオンにする",
                 "notNow": "今はしない"
+            },
+            "privacy": {
+                "title": "プライバシーとフラッド対策",
+                "intro": "AeroShare 経由で誰があなたに連絡できるか、また受信中にどの程度発見されやすいかを制御します。",
+                "friendsOnlyLabel": "保存済みの連絡先のみ受け入れる",
+                "friendsOnlyDesc": "アドレス帳にない相手からのノック、操作、ファイル提供を拒否します。",
+                "rateLimitLabel": "送信者ごとのレート制限",
+                "rateLimitDesc": "1人の送信者からの1分あたりこの数を超えるシグナルは拒否されます。",
+                "rateLimitUnit": "1分あたり",
+                "rateLimitOff": "レート制限なし (0): すべてのシグナルが許可されます。",
+                "discoveryLabel": "発見可能性",
+                "discovery_both": "n0 DNS + Mainline DHT (デフォルト)",
+                "discovery_dht": "Mainline DHT のみ",
+                "discovery_n0": "n0 DNS のみ",
+                "discovery_none": "なし (発見不可)",
+                "discovery_both_desc": "最も到達しやすい設定: 受信中、あなたのアドレスは n0 ディレクトリと公開 DHT の両方に公開されます。",
+                "discovery_dht_desc": "n0 ディレクトリを使わず、公開 Mainline DHT にのみ公開されます。",
+                "discovery_n0_desc": "公開 DHT を使わず、n0 ディレクトリにのみ公開されます。",
+                "discovery_none_desc": "受信中、あなたの AeroFTP-ID はどこにも公開されないため、公開 DHT 上で列挙されることはありません。すでにあなたの完全なアドレスを持っている人 (たとえばドライブチケット経由) だけがあなたに連絡できます。",
+                "mutedTitle": "ミュート中の送信者",
+                "mutedEmpty": "ミュート中の送信者はいません。",
+                "unmute": "ミュート解除",
+                "rotateTitle": "AeroFTP-ID をローテーション",
+                "rotateDesc": "このプロファイル用にまったく新しい AeroFTP-ID を生成します。",
+                "rotateButton": "ID をローテーション",
+                "rotateConfirm": "これにより AeroFTP-ID が置き換えられます。現在の ID、すべての共有リンク、提供中のすべてのドライブが機能しなくなり、新しい ID を友達に再度共有する必要があります。この操作は元に戻せません。",
+                "rotateConfirmYes": "今すぐローテーション",
+                "rotateCancel": "キャンセル",
+                "rotateDone": "新しい AeroFTP-ID:"
             }
         },
         "extractWindow": {

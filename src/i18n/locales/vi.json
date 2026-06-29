@@ -5166,7 +5166,9 @@
                     "one_moment": "Chờ một chút nhé",
                     "resend": "Vui lòng gửi lại, tệp chưa đến",
                     "thanks": "Đã nhận, cảm ơn"
-                }
+                },
+                "mute": "Tắt tiếng người gửi",
+                "muted": "Đã tắt tiếng người gửi"
             },
             "receiveLabel": "Nhận tệp",
             "receiveDesc": "Cho phép bạn bè gửi tệp trực tiếp cho bạn (một lần, mã hóa đầu cuối). Chạy một trình lắng nghe khi bật.",
@@ -5192,6 +5194,35 @@
                 "body": "Bạn đã thêm một người bạn, nên AeroShare hiện đang hoạt động. Bạn có muốn nhận các tệp mà bạn bè gửi cho bạn không? Bạn có thể thay đổi điều này bất cứ lúc nào trong Cài đặt.",
                 "enable": "Bật nhận tệp",
                 "notNow": "Để sau"
+            },
+            "privacy": {
+                "title": "Quyền riêng tư và chống tràn",
+                "intro": "Kiểm soát ai có thể liên hệ với bạn qua AeroShare và mức độ bạn có thể bị phát hiện khi đang nhận.",
+                "friendsOnlyLabel": "Chỉ chấp nhận từ liên hệ đã lưu",
+                "friendsOnlyDesc": "Loại bỏ các lượt gõ cửa, hành động và lời mời tệp từ bất kỳ ai không có trong sổ địa chỉ của bạn.",
+                "rateLimitLabel": "Giới hạn tốc độ trên mỗi người gửi",
+                "rateLimitDesc": "Các tín hiệu từ một người gửi vượt quá số này mỗi phút sẽ bị loại bỏ.",
+                "rateLimitUnit": "mỗi phút",
+                "rateLimitOff": "Không giới hạn tốc độ (0): mọi tín hiệu đều được phép.",
+                "discoveryLabel": "Khả năng được phát hiện",
+                "discovery_both": "n0 DNS + Mainline DHT (mặc định)",
+                "discovery_dht": "Chỉ Mainline DHT",
+                "discovery_n0": "Chỉ n0 DNS",
+                "discovery_none": "Không (không thể phát hiện)",
+                "discovery_both_desc": "Dễ tiếp cận nhất: khi đang nhận, địa chỉ của bạn được công bố cả trong thư mục n0 lẫn DHT công khai.",
+                "discovery_dht_desc": "Chỉ được công bố trong Mainline DHT công khai, không có thư mục n0.",
+                "discovery_n0_desc": "Chỉ được công bố trong thư mục n0, không có DHT công khai.",
+                "discovery_none_desc": "AeroFTP-ID của bạn không được công bố ở bất kỳ đâu khi đang nhận, vì vậy không thể liệt kê nó trên DHT công khai. Chỉ những người đã có địa chỉ đầy đủ của bạn mới có thể liên hệ với bạn (ví dụ qua vé ổ đĩa).",
+                "mutedTitle": "Người gửi đã tắt tiếng",
+                "mutedEmpty": "Không có người gửi nào bị tắt tiếng.",
+                "unmute": "Bật tiếng lại",
+                "rotateTitle": "Xoay AeroFTP-ID",
+                "rotateDesc": "Tạo một AeroFTP-ID hoàn toàn mới cho hồ sơ này.",
+                "rotateButton": "Xoay danh tính",
+                "rotateConfirm": "Thao tác này sẽ thay thế AeroFTP-ID của bạn. ID hiện tại, mọi liên kết chia sẻ và mọi ổ đĩa bạn đang phục vụ sẽ ngừng hoạt động, và bạn phải chia sẻ lại ID mới với bạn bè. Thao tác này không thể hoàn tác.",
+                "rotateConfirmYes": "Xoay ngay",
+                "rotateCancel": "Hủy",
+                "rotateDone": "AeroFTP-ID mới:"
             }
         },
         "extractWindow": {

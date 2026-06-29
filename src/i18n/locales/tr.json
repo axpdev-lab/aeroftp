@@ -5166,7 +5166,9 @@
                     "one_moment": "Bir dakika, lütfen",
                     "resend": "Lütfen tekrar gönder, ulaşmadı",
                     "thanks": "Alındı, teşekkürler"
-                }
+                },
+                "mute": "Göndereni sustur",
+                "muted": "Gönderen susturuldu"
             },
             "receiveLabel": "Dosya al",
             "receiveDesc": "Arkadaşların doğrudan size dosya göndermesine izin verin (tek seferlik, uçtan uca şifreli). Açıkken bir dinleyici çalıştırır.",
@@ -5192,6 +5194,35 @@
                 "body": "Bir arkadaş eklediniz, böylece AeroShare artık etkin. Arkadaşlarınızın size gönderdiği dosyaları almak ister misiniz? Bunu istediğiniz zaman Ayarlar'dan değiştirebilirsiniz.",
                 "enable": "Almayı aç",
                 "notNow": "Şimdi değil"
+            },
+            "privacy": {
+                "title": "Gizlilik ve taşma koruması",
+                "intro": "AeroShare üzerinden size kimin ulaşabileceğini ve alırken ne kadar keşfedilebilir olduğunuzu denetleyin.",
+                "friendsOnlyLabel": "Yalnızca kayıtlı kişilerden kabul et",
+                "friendsOnlyDesc": "Adres defterinizde olmayan herkesten gelen kapı çalmalarını, eylemleri ve dosya tekliflerini reddet.",
+                "rateLimitLabel": "Gönderen başına hız sınırı",
+                "rateLimitDesc": "Tek bir göndericiden dakikada bu sayının üzerindeki sinyaller reddedilir.",
+                "rateLimitUnit": "dakika başına",
+                "rateLimitOff": "Hız sınırı yok (0): her sinyale izin verilir.",
+                "discoveryLabel": "Keşfedilebilirlik",
+                "discovery_both": "n0 DNS + Mainline DHT (varsayılan)",
+                "discovery_dht": "Yalnızca Mainline DHT",
+                "discovery_n0": "Yalnızca n0 DNS",
+                "discovery_none": "Hiçbiri (keşfedilemez)",
+                "discovery_both_desc": "En erişilebilir: alırken adresiniz hem n0 dizininde hem de genel DHT'de yayımlanır.",
+                "discovery_dht_desc": "Yalnızca genel Mainline DHT'de yayımlanır, n0 dizini olmadan.",
+                "discovery_n0_desc": "Yalnızca n0 dizininde yayımlanır, genel DHT olmadan.",
+                "discovery_none_desc": "AeroFTP-ID'niz alırken hiçbir yerde yayımlanmaz, bu nedenle genel DHT'de listelenemez. Size yalnızca tam adresinize zaten sahip olan biri ulaşabilir (örneğin bir sürücü bileti aracılığıyla).",
+                "mutedTitle": "Susturulan göndericiler",
+                "mutedEmpty": "Susturulan gönderici yok.",
+                "unmute": "Susturmayı kaldır",
+                "rotateTitle": "AeroFTP-ID'yi döndür",
+                "rotateDesc": "Bu profil için yepyeni bir AeroFTP-ID oluştur.",
+                "rotateButton": "Kimliği döndür",
+                "rotateConfirm": "Bu, AeroFTP-ID'nizi değiştirir. Geçerli kimliğiniz, her paylaşım bağlantısı ve sunduğunuz her sürücü çalışmayı durdurur ve yeni kimliği arkadaşlarınızla yeniden paylaşmanız gerekir. Bu işlem geri alınamaz.",
+                "rotateConfirmYes": "Şimdi döndür",
+                "rotateCancel": "İptal",
+                "rotateDone": "Yeni AeroFTP-ID:"
             }
         },
         "extractWindow": {

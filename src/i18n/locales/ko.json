@@ -5166,7 +5166,9 @@
                     "one_moment": "잠시만 기다려 주세요",
                     "resend": "도착하지 않았어요, 다시 보내 주세요",
                     "thanks": "받았어요, 고마워요"
-                }
+                },
+                "mute": "보낸 사람 음소거",
+                "muted": "보낸 사람 음소거됨"
             },
             "receiveLabel": "파일 받기",
             "receiveDesc": "친구가 회원님에게 직접 파일을 보낼 수 있도록 합니다 (일회성, 종단 간 암호화). 켜져 있는 동안 수신기가 실행됩니다.",
@@ -5192,6 +5194,35 @@
                 "body": "친구를 추가하여 AeroShare가 이제 활성화되었습니다. 친구가 보내는 파일을 받으시겠습니까? 설정에서 언제든지 변경할 수 있습니다.",
                 "enable": "수신 켜기",
                 "notNow": "나중에"
+            },
+            "privacy": {
+                "title": "개인정보 보호 및 플러드 방지",
+                "intro": "AeroShare를 통해 누가 연락할 수 있는지, 수신 중에 얼마나 검색 가능한지 제어합니다.",
+                "friendsOnlyLabel": "저장된 연락처에서만 수락",
+                "friendsOnlyDesc": "주소록에 없는 사람의 노크, 작업 및 파일 제안을 거부합니다.",
+                "rateLimitLabel": "보낸 사람당 속도 제한",
+                "rateLimitDesc": "한 보낸 사람의 신호가 분당 이 수를 초과하면 거부됩니다.",
+                "rateLimitUnit": "분당",
+                "rateLimitOff": "속도 제한 없음 (0): 모든 신호가 허용됩니다.",
+                "discoveryLabel": "검색 가능성",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Mainline DHT만",
+                "discovery_n0": "n0 DNS만",
+                "discovery_none": "없음 (not discoverable)",
+                "discovery_both_desc": "가장 도달하기 쉬움: 수신 중에 주소가 n0 디렉터리와 공개 DHT 모두에 게시됩니다.",
+                "discovery_dht_desc": "n0 디렉터리 없이 공개 Mainline DHT에만 게시됩니다.",
+                "discovery_n0_desc": "공개 DHT 없이 n0 디렉터리에만 게시됩니다.",
+                "discovery_none_desc": "수신 중에 AeroFTP-ID가 어디에도 게시되지 않으므로 공개 DHT에서 열거할 수 없습니다. 이미 전체 주소를 가진 사람만 연락할 수 있습니다 (예: drive ticket을 통해).",
+                "mutedTitle": "음소거된 보낸 사람",
+                "mutedEmpty": "음소거된 보낸 사람이 없습니다.",
+                "unmute": "음소거 해제",
+                "rotateTitle": "AeroFTP-ID 교체",
+                "rotateDesc": "이 프로필에 대해 완전히 새로운 AeroFTP-ID를 생성합니다.",
+                "rotateButton": "ID 교체",
+                "rotateConfirm": "이 작업은 AeroFTP-ID를 교체합니다. 현재 ID, 모든 공유 링크 및 제공하는 모든 drive가 작동을 멈추며, 친구들에게 새 ID를 다시 공유해야 합니다. 이 작업은 취소할 수 없습니다.",
+                "rotateConfirmYes": "지금 교체",
+                "rotateCancel": "취소",
+                "rotateDone": "새 AeroFTP-ID:"
             }
         },
         "extractWindow": {

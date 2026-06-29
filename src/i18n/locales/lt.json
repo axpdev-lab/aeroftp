@@ -5166,7 +5166,9 @@
                     "one_moment": "Akimirką, prašau",
                     "resend": "Atsiųsk dar kartą, neatėjo",
                     "thanks": "Gavau, ačiū"
-                }
+                },
+                "mute": "Nutildyti siuntėją",
+                "muted": "Siuntėjas nutildytas"
             },
             "receiveLabel": "Gauti failus",
             "receiveDesc": "Leiskite draugams siųsti failus tiesiai jums (vienkartinis, ištisai šifruotas). Įjungtas paleidžia klausytoją.",
@@ -5192,6 +5194,35 @@
                 "body": "Pridėjote draugą, todėl AeroShare dabar aktyvus. Ar norite gauti failus, kuriuos jums siunčia draugai? Tai galite bet kada pakeisti Nustatymuose.",
                 "enable": "Įjungti gavimą",
                 "notNow": "Ne dabar"
+            },
+            "privacy": {
+                "title": "Privatumas ir apsauga nuo užtvindymo",
+                "intro": "Valdykite, kas gali su jumis susisiekti per AeroShare ir kiek esate aptinkami priimdami.",
+                "friendsOnlyLabel": "Priimti tik iš išsaugotų kontaktų",
+                "friendsOnlyDesc": "Atmesti pasibeldimus, veiksmus ir failų pasiūlymus iš visų, kurių nėra jūsų adresų knygelėje.",
+                "rateLimitLabel": "Dažnio riba vienam siuntėjui",
+                "rateLimitDesc": "Vieno siuntėjo signalai, viršijantys šį skaičių per minutę, atmetami.",
+                "rateLimitUnit": "per minutę",
+                "rateLimitOff": "Be dažnio ribos (0): leidžiamas kiekvienas signalas.",
+                "discoveryLabel": "Aptinkamumas",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Tik Mainline DHT",
+                "discovery_n0": "Tik n0 DNS",
+                "discovery_none": "Nėra (not discoverable)",
+                "discovery_both_desc": "Lengviausiai pasiekiama: priimdami, jūsų adresas skelbiamas tiek n0 kataloge, tiek viešame DHT.",
+                "discovery_dht_desc": "Skelbiama tik viešame Mainline DHT, be n0 katalogo.",
+                "discovery_n0_desc": "Skelbiama tik n0 kataloge, be viešo DHT.",
+                "discovery_none_desc": "Jūsų AeroFTP-ID niekur neskelbiamas priimant, todėl jo negalima išvardyti viešame DHT. Su jumis gali susisiekti tik tas, kas jau turi visą jūsų adresą (pavyzdžiui, per drive ticket).",
+                "mutedTitle": "Nutildyti siuntėjai",
+                "mutedEmpty": "Nutildytų siuntėjų nėra.",
+                "unmute": "Įjungti garsą",
+                "rotateTitle": "Pakeisti AeroFTP-ID",
+                "rotateDesc": "Sukurti visiškai naują AeroFTP-ID šiam profiliui.",
+                "rotateButton": "Pakeisti tapatybę",
+                "rotateConfirm": "Tai pakeičia jūsų AeroFTP-ID. Jūsų dabartinis ID, visos bendrinimo nuorodos ir visi jūsų teikiami drive nustos veikti, todėl turėsite vėl pasidalyti nauju ID su draugais. Šio veiksmo negalima atšaukti.",
+                "rotateConfirmYes": "Pakeisti dabar",
+                "rotateCancel": "Atšaukti",
+                "rotateDone": "Naujas AeroFTP-ID:"
             }
         },
         "extractWindow": {

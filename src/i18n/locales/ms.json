@@ -5166,7 +5166,9 @@
                     "one_moment": "Sekejap, ya",
                     "resend": "Sila hantar semula, ia tidak sampai",
                     "thanks": "Diterima, terima kasih"
-                }
+                },
+                "mute": "Bisukan penghantar",
+                "muted": "Penghantar dibisukan"
             },
             "receiveLabel": "Terima fail",
             "receiveDesc": "Benarkan rakan menghantar fail terus kepada anda (sekali hantar, disulitkan hujung ke hujung). Menjalankan pendengar semasa hidup.",
@@ -5192,6 +5194,35 @@
                 "body": "Anda menambah rakan, jadi AeroShare kini aktif. Adakah anda mahu menerima fail yang dihantar oleh rakan anda? Anda boleh menukar ini bila-bila masa dalam Tetapan.",
                 "enable": "Hidupkan penerimaan",
                 "notNow": "Bukan sekarang"
+            },
+            "privacy": {
+                "title": "Privasi dan anti-banjir",
+                "intro": "Kawal siapa yang boleh menghubungi anda melalui AeroShare dan sejauh mana anda boleh ditemui semasa menerima.",
+                "friendsOnlyLabel": "Hanya terima daripada kenalan yang disimpan",
+                "friendsOnlyDesc": "Tolak ketukan, tindakan dan tawaran fail daripada sesiapa yang tiada dalam buku alamat anda.",
+                "rateLimitLabel": "Had kadar setiap penghantar",
+                "rateLimitDesc": "Isyarat daripada seorang penghantar melebihi jumlah ini seminit akan ditolak.",
+                "rateLimitUnit": "seminit",
+                "rateLimitOff": "Tiada had kadar (0): setiap isyarat dibenarkan.",
+                "discoveryLabel": "Keboleh temuan",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Mainline DHT sahaja",
+                "discovery_n0": "n0 DNS sahaja",
+                "discovery_none": "Tiada (not discoverable)",
+                "discovery_both_desc": "Paling mudah dihubungi: semasa menerima, alamat anda diterbitkan ke kedua-dua direktori n0 dan DHT awam.",
+                "discovery_dht_desc": "Diterbitkan ke Mainline DHT awam sahaja, tanpa direktori n0.",
+                "discovery_n0_desc": "Diterbitkan ke direktori n0 sahaja, tanpa DHT awam.",
+                "discovery_none_desc": "AeroFTP-ID anda tidak diterbitkan di mana-mana semasa menerima, jadi ia tidak boleh disenaraikan pada DHT awam. Anda hanya boleh dihubungi oleh seseorang yang sudah memiliki alamat penuh anda (contohnya melalui drive ticket).",
+                "mutedTitle": "Penghantar dibisukan",
+                "mutedEmpty": "Tiada penghantar dibisukan.",
+                "unmute": "Nyahbisu",
+                "rotateTitle": "Putar AeroFTP-ID",
+                "rotateDesc": "Jana AeroFTP-ID yang benar-benar baharu untuk profil ini.",
+                "rotateButton": "Putar identiti",
+                "rotateConfirm": "Ini menggantikan AeroFTP-ID anda. ID semasa anda, setiap pautan kongsi dan setiap drive yang anda sajikan akan berhenti berfungsi, dan anda mesti berkongsi ID baharu dengan rakan anda semula. Ini tidak boleh dibatalkan.",
+                "rotateConfirmYes": "Putar sekarang",
+                "rotateCancel": "Batal",
+                "rotateDone": "AeroFTP-ID baharu:"
             }
         },
         "extractWindow": {

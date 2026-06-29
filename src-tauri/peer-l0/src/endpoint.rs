@@ -22,12 +22,20 @@ use tracing::{debug, info};
 ///   IND-1. Bootstrap = 20-year-old BitTorrent infra, neither the owner nor a single
 ///   operator.
 /// - `N0`: legacy n0-only (the pre-WI-5a behaviour).
+/// - `None`: NO discovery service at all (privacy opt-out). The endpoint neither
+///   publishes its NodeId to n0 DNS / pkarr / the Mainline DHT nor resolves peers
+///   from them, so the long-term AFID is no longer enumerable on the public DHT
+///   while receiving (the v4.1.0 audit Info finding). The tradeoff: dial-by-AFID
+///   stops working in both directions, so a peer can only be reached when the
+///   dialer already holds a full `NodeAddr` (relay URL + direct addrs) shared
+///   out of band, e.g. via a ticket.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DiscoveryMode {
     N0,
     Dht,
     #[default]
     Both,
+    None,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -81,6 +89,9 @@ fn apply_discovery(
             .address_lookup(PkarrPublisher::n0_dns())
             .address_lookup(DnsAddressLookup::n0_dns())
             .address_lookup(DhtAddressLookup::builder()),
+        // Privacy opt-out: add no address-lookup service, so the NodeId is never
+        // published to n0/DHT and no peer is resolved from them.
+        DiscoveryMode::None => builder,
     }
 }
 

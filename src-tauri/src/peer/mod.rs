@@ -142,7 +142,7 @@ fn endpoint_config(custom_relay_urls: Option<Vec<String>>) -> PeerEndpointConfig
         bind_addr: None,
         secret_key_path: None,
         custom_relay_urls,
-        discovery: discovery_from_env(),
+        discovery: resolve_discovery_mode(),
         // The docs publish/replicate paths keep an ephemeral node identity (the
         // ticket carries addresses). The identity-seeded endpoint is the
         // "Send file" one-shot path's own seam, built separately.
@@ -150,11 +150,35 @@ fn endpoint_config(custom_relay_urls: Option<Vec<String>>) -> PeerEndpointConfig
     }
 }
 
-/// WI-5a independence seam: select the discovery backend from `AEROFTP_PEER_DISCOVERY`
-/// (`dht` | `n0` | `both`). Default `both` = n0 DNS + Mainline DHT concurrently (additive).
-/// `dht` = the zero-n0 path exercised by GATE IND-1. An unknown value falls back to the
-/// default rather than failing, so a stray env var never breaks a transfer.
-fn discovery_from_env() -> DiscoveryMode {
+/// Process-global discovery preference set by the runtime from the active user's
+/// persisted AeroShare setting (the v4.1.0 Info audit hardening: let a user opt
+/// the long-term AFID out of the public DHT). Encoded: `0` = unset (fall back to
+/// env / default), `1` = both, `2` = dht, `3` = n0, `4` = none. An atomic so a
+/// settings change applies to the next endpoint with no lock or restart of the
+/// process.
+static DISCOVERY_PREF: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Map a persisted `discovery_mode` string (`both|dht|n0|none`) onto the process
+/// preference. Unknown values clear the preference (fall back to env / default).
+/// The runtime calls this at receiver start and whenever the setting changes.
+pub fn set_discovery_pref(mode: &str) {
+    let code = match mode.trim().to_ascii_lowercase().as_str() {
+        "both" => 1,
+        "dht" => 2,
+        "n0" => 3,
+        "none" => 4,
+        _ => 0,
+    };
+    DISCOVERY_PREF.store(code, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// WI-5a independence seam, extended for the v4.1.0 discovery opt-out. Selection
+/// precedence: the `AEROFTP_PEER_DISCOVERY` env var wins when set (`dht` | `n0` |
+/// `both` | `none`, the GATE IND-1 / dev lever); else the persisted per-user
+/// preference set via [`set_discovery_pref`]; else the default `both` (n0 DNS +
+/// Mainline DHT, additive). An unknown value at any level falls through rather
+/// than failing, so a stray value never breaks a transfer.
+fn resolve_discovery_mode() -> DiscoveryMode {
     match std::env::var("AEROFTP_PEER_DISCOVERY")
         .ok()
         .as_deref()
@@ -162,8 +186,17 @@ fn discovery_from_env() -> DiscoveryMode {
         .map(str::to_ascii_lowercase)
         .as_deref()
     {
-        Some("dht") => DiscoveryMode::Dht,
-        Some("n0") => DiscoveryMode::N0,
+        Some("dht") => return DiscoveryMode::Dht,
+        Some("n0") => return DiscoveryMode::N0,
+        Some("both") => return DiscoveryMode::Both,
+        Some("none") => return DiscoveryMode::None,
+        _ => {}
+    }
+    match DISCOVERY_PREF.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => DiscoveryMode::Both,
+        2 => DiscoveryMode::Dht,
+        3 => DiscoveryMode::N0,
+        4 => DiscoveryMode::None,
         _ => DiscoveryMode::Both,
     }
 }

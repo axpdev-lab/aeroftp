@@ -5166,7 +5166,9 @@
                     "one_moment": "Trenutek, prosim",
                     "resend": "Prosim, pošlji znova, ni prispelo",
                     "thanks": "Prejeto, hvala"
-                }
+                },
+                "mute": "Utišaj pošiljatelja",
+                "muted": "Pošiljatelj utišan"
             },
             "receiveLabel": "Prejemaj datoteke",
             "receiveDesc": "Dovolite prijateljem, da vam datoteke pošljejo neposredno (enkratno, šifrirano od konca do konca). Ko je vklopljeno, teče poslušalec.",
@@ -5192,6 +5194,35 @@
                 "body": "Dodali ste prijatelja, zato je AeroShare zdaj aktiven. Želite prejemati datoteke, ki vam jih pošiljajo prijatelji? To lahko kadar koli spremenite v Nastavitvah.",
                 "enable": "Vklopi prejemanje",
                 "notNow": "Ne zdaj"
+            },
+            "privacy": {
+                "title": "Zasebnost in zaščita pred preplavljanjem",
+                "intro": "Nadzorujte, kdo vas lahko doseže prek AeroShare in kako vidni ste med prejemanjem.",
+                "friendsOnlyLabel": "Sprejemaj samo od shranjenih stikov",
+                "friendsOnlyDesc": "Zavrni potrkavanja, dejanja in ponudbe datotek od vseh, ki niso v vašem imeniku.",
+                "rateLimitLabel": "Omejitev pogostosti na pošiljatelja",
+                "rateLimitDesc": "Signali enega pošiljatelja nad tem številom na minuto se zavržejo.",
+                "rateLimitUnit": "na minuto",
+                "rateLimitOff": "Brez omejitve (0): dovoljen je vsak signal.",
+                "discoveryLabel": "Vidnost",
+                "discovery_both": "n0 DNS + Mainline DHT (privzeto)",
+                "discovery_dht": "Samo Mainline DHT",
+                "discovery_n0": "Samo n0 DNS",
+                "discovery_none": "Brez (ni vidno)",
+                "discovery_both_desc": "Najbolj dosegljivo: med prejemanjem je vaš naslov objavljen tako v imeniku n0 kot v javnem DHT.",
+                "discovery_dht_desc": "Objavljeno samo v javnem Mainline DHT, brez imenika n0.",
+                "discovery_n0_desc": "Objavljeno samo v imeniku n0, brez javnega DHT.",
+                "discovery_none_desc": "Vaš AeroFTP-ID med prejemanjem ni nikjer objavljen, zato ga ni mogoče našteti v javnem DHT. Doseže vas lahko le nekdo, ki že ima vaš celotni naslov (na primer prek vstopnice za pogon).",
+                "mutedTitle": "Utišani pošiljatelji",
+                "mutedEmpty": "Ni utišanih pošiljateljev.",
+                "unmute": "Prekliči utišanje",
+                "rotateTitle": "Zamenjaj AeroFTP-ID",
+                "rotateDesc": "Ustvari povsem nov AeroFTP-ID za ta profil.",
+                "rotateButton": "Zamenjaj identiteto",
+                "rotateConfirm": "To zamenja vaš AeroFTP-ID. Vaš trenutni ID, vse povezave za skupno rabo in vsi pogoni, ki jih strežete, prenehajo delovati, novi ID pa boste morali znova deliti s prijatelji. Tega ni mogoče razveljaviti.",
+                "rotateConfirmYes": "Zamenjaj zdaj",
+                "rotateCancel": "Prekliči",
+                "rotateDone": "Nov AeroFTP-ID:"
             }
         },
         "extractWindow": {

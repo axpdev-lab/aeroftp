@@ -5185,7 +5185,9 @@
                     "one_moment": "Un eiliad, os gweli'n dda",
                     "resend": "Anfona eto, ni chyrhaeddodd",
                     "thanks": "Wedi'i dderbyn, diolch"
-                }
+                },
+                "mute": "Tewi'r anfonwr",
+                "muted": "Anfonwr wedi'i dewi"
             },
             "receiveLabel": "Derbyn ffeiliau",
             "receiveDesc": "Caniatewch i ffrindiau anfon ffeiliau'n syth atoch (un-tro, wedi'u hamgryptio o ben i ben). Mae'n rhedeg gwrandawr tra'i fod ymlaen.",
@@ -5211,6 +5213,35 @@
                 "body": "Rydych wedi ychwanegu ffrind, felly mae AeroShare bellach yn weithredol. Ydych chi am dderbyn y ffeiliau mae eich ffrindiau yn eu hanfon atoch? Gallwch newid hyn unrhyw bryd yn y Gosodiadau.",
                 "enable": "Troi derbyn ymlaen",
                 "notNow": "Nid nawr"
+            },
+            "privacy": {
+                "title": "Preifatrwydd a gwrth-lifogi",
+                "intro": "Rheolwch pwy all gysylltu â chi trwy AeroShare a pha mor ddarganfyddadwy ydych wrth dderbyn.",
+                "friendsOnlyLabel": "Derbyn dim ond gan gysylltiadau wedi'u cadw",
+                "friendsOnlyDesc": "Gwrthod cnociau, gweithredoedd a chynigion ffeiliau gan unrhyw un nad yw yn eich llyfr cyfeiriadau.",
+                "rateLimitLabel": "Cyfyngiad cyfradd fesul anfonwr",
+                "rateLimitDesc": "Mae signalau gan un anfonwr sy'n uwch na'r nifer hwn y funud yn cael eu gwrthod.",
+                "rateLimitUnit": "y funud",
+                "rateLimitOff": "Dim cyfyngiad cyfradd (0): caniateir pob signal.",
+                "discoveryLabel": "Darganfyddadwyedd",
+                "discovery_both": "n0 DNS + Mainline DHT (rhagosodedig)",
+                "discovery_dht": "Mainline DHT yn unig",
+                "discovery_n0": "n0 DNS yn unig",
+                "discovery_none": "Dim (ddim yn ddarganfyddadwy)",
+                "discovery_both_desc": "Mwyaf cyraeddadwy: wrth dderbyn, mae eich cyfeiriad yn cael ei gyhoeddi i'r cyfeiriadur n0 a'r DHT cyhoeddus.",
+                "discovery_dht_desc": "Cyhoeddwyd i'r Mainline DHT cyhoeddus yn unig, heb y cyfeiriadur n0.",
+                "discovery_n0_desc": "Cyhoeddwyd i'r cyfeiriadur n0 yn unig, heb y DHT cyhoeddus.",
+                "discovery_none_desc": "Nid yw eich AeroFTP-ID yn cael ei gyhoeddi yn unman wrth dderbyn, felly ni ellir ei restru ar y DHT cyhoeddus. Dim ond rhywun sydd eisoes â'ch cyfeiriad llawn all gysylltu â chi (er enghraifft trwy docyn gyrru).",
+                "mutedTitle": "Anfonwyr wedi'u tewi",
+                "mutedEmpty": "Dim anfonwyr wedi'u tewi.",
+                "unmute": "Dad-dewi",
+                "rotateTitle": "Cylchdroi AeroFTP-ID",
+                "rotateDesc": "Cynhyrchu AeroFTP-ID newydd sbon ar gyfer y proffil hwn.",
+                "rotateButton": "Cylchdroi hunaniaeth",
+                "rotateConfirm": "Mae hyn yn disodli eich AeroFTP-ID. Bydd eich ID cyfredol, pob dolen rannu a phob gyriant rydych yn ei wasanaethu yn rhoi'r gorau i weithio, a rhaid i chi rannu'r ID newydd gyda'ch ffrindiau eto. Ni ellir dadwneud hyn.",
+                "rotateConfirmYes": "Cylchdroi nawr",
+                "rotateCancel": "Canslo",
+                "rotateDone": "AeroFTP-ID newydd:"
             }
         },
         "extractWindow": {

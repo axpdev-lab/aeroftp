@@ -5166,7 +5166,9 @@
                     "one_moment": "Chwileczkę",
                     "resend": "Wyślij ponownie, nie dotarł",
                     "thanks": "Odebrano, dzięki"
-                }
+                },
+                "mute": "Wycisz nadawcę",
+                "muted": "Nadawca wyciszony"
             },
             "receiveLabel": "Odbieraj pliki",
             "receiveDesc": "Pozwól znajomym wysyłać pliki bezpośrednio do ciebie (jednorazowo, szyfrowane od końca do końca). Gdy włączone, działa nasłuch.",
@@ -5192,6 +5194,35 @@
                 "body": "Dodałeś znajomego, więc AeroShare jest teraz aktywny. Czy chcesz odbierać pliki wysyłane przez znajomych? Możesz to zmienić w dowolnym momencie w Ustawieniach.",
                 "enable": "Włącz odbieranie",
                 "notNow": "Nie teraz"
+            },
+            "privacy": {
+                "title": "Prywatność i ochrona przed zalewaniem",
+                "intro": "Kontroluj, kto może się z Tobą skontaktować przez AeroShare i jak bardzo jesteś wykrywalny podczas odbierania.",
+                "friendsOnlyLabel": "Akceptuj tylko od zapisanych kontaktów",
+                "friendsOnlyDesc": "Odrzucaj pukania, działania i oferty plików od każdego, kogo nie ma w Twojej książce adresowej.",
+                "rateLimitLabel": "Limit częstotliwości na nadawcę",
+                "rateLimitDesc": "Sygnały od jednego nadawcy przekraczające tę liczbę na minutę są odrzucane.",
+                "rateLimitUnit": "na minutę",
+                "rateLimitOff": "Brak limitu częstotliwości (0): każdy sygnał jest dozwolony.",
+                "discoveryLabel": "Wykrywalność",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Tylko Mainline DHT",
+                "discovery_n0": "Tylko n0 DNS",
+                "discovery_none": "Brak (not discoverable)",
+                "discovery_both_desc": "Najlepiej osiągalny: podczas odbierania Twój adres jest publikowany zarówno w katalogu n0, jak i w publicznym DHT.",
+                "discovery_dht_desc": "Publikowany tylko w publicznym Mainline DHT, bez katalogu n0.",
+                "discovery_n0_desc": "Publikowany tylko w katalogu n0, bez publicznego DHT.",
+                "discovery_none_desc": "Twój AeroFTP-ID nie jest nigdzie publikowany podczas odbierania, więc nie można go wyliczyć w publicznym DHT. Może się z Tobą skontaktować tylko ktoś, kto już posiada Twój pełny adres (na przykład przez drive ticket).",
+                "mutedTitle": "Wyciszeni nadawcy",
+                "mutedEmpty": "Brak wyciszonych nadawców.",
+                "unmute": "Wyłącz wyciszenie",
+                "rotateTitle": "Zmień AeroFTP-ID",
+                "rotateDesc": "Wygeneruj zupełnie nowy AeroFTP-ID dla tego profilu.",
+                "rotateButton": "Zmień tożsamość",
+                "rotateConfirm": "To zastępuje Twój AeroFTP-ID. Twój obecny ID, każdy link udostępniania i każdy drive, który udostępniasz, przestaną działać, i musisz ponownie udostępnić nowy ID swoim znajomym. Tej operacji nie można cofnąć.",
+                "rotateConfirmYes": "Zmień teraz",
+                "rotateCancel": "Anuluj",
+                "rotateDone": "Nowy AeroFTP-ID:"
             }
         },
         "extractWindow": {

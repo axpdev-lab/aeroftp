@@ -5166,7 +5166,9 @@
                     "one_moment": "Üks hetk, palun",
                     "resend": "Palun saada uuesti, see ei jõudnud kohale",
                     "thanks": "Sain kätte, aitäh"
-                }
+                },
+                "mute": "Vaigista saatja",
+                "muted": "Saatja vaigistatud"
             },
             "receiveLabel": "Failide vastuvõtmine",
             "receiveDesc": "Luba sõpradel saata faile otse sulle (ühekordne, läbivalt krüpteeritud). Sisselülitatuna töötab kuulaja.",
@@ -5192,6 +5194,35 @@
                 "body": "Lisasid sõbra, seega on AeroShare nüüd aktiivne. Kas soovid vastu võtta faile, mida sõbrad sulle saadavad? Saad seda igal ajal Seadetes muuta.",
                 "enable": "Lülita vastuvõtt sisse",
                 "notNow": "Mitte praegu"
+            },
+            "privacy": {
+                "title": "Privaatsus ja üleujutusvastane kaitse",
+                "intro": "Määrake, kes saab teiega AeroShare'i kaudu ühendust võtta ja kui leitav te vastuvõtmise ajal olete.",
+                "friendsOnlyLabel": "Võta vastu ainult salvestatud kontaktidelt",
+                "friendsOnlyDesc": "Hülga koputused, toimingud ja failipakkumised kõigilt, keda pole teie aadressiraamatus.",
+                "rateLimitLabel": "Sageduspiirang saatja kohta",
+                "rateLimitDesc": "Ühelt saatjalt selle arvu ületavad signaalid minutis hüljatakse.",
+                "rateLimitUnit": "minutis",
+                "rateLimitOff": "Sageduspiirang puudub (0): iga signaal on lubatud.",
+                "discoveryLabel": "Leitavus",
+                "discovery_both": "n0 DNS + Mainline DHT (vaikimisi)",
+                "discovery_dht": "Ainult Mainline DHT",
+                "discovery_n0": "Ainult n0 DNS",
+                "discovery_none": "Puudub (pole leitav)",
+                "discovery_both_desc": "Kõige paremini ligipääsetav: vastuvõtmise ajal avaldatakse teie aadress nii n0 kataloogis kui ka avalikus DHT-s.",
+                "discovery_dht_desc": "Avaldatakse ainult avalikus Mainline DHT-s, ilma n0 kataloogita.",
+                "discovery_n0_desc": "Avaldatakse ainult n0 kataloogis, ilma avaliku DHT-ta.",
+                "discovery_none_desc": "Teie AeroFTP-ID-d ei avaldata vastuvõtmise ajal kusagil, mistõttu seda ei saa avalikus DHT-s loendada. Teiega saab ühendust võtta ainult keegi, kellel on juba teie täielik aadress (näiteks ketta pileti kaudu).",
+                "mutedTitle": "Vaigistatud saatjad",
+                "mutedEmpty": "Vaigistatud saatjaid pole.",
+                "unmute": "Eemalda vaigistus",
+                "rotateTitle": "Vaheta AeroFTP-ID",
+                "rotateDesc": "Loo selle profiili jaoks täiesti uus AeroFTP-ID.",
+                "rotateButton": "Vaheta identiteet",
+                "rotateConfirm": "See asendab teie AeroFTP-ID. Teie praegune ID, iga jagamislink ja iga ketas, mida te teenindate, lakkavad töötamast, ning peate uue ID uuesti oma sõpradega jagama. Seda ei saa tagasi võtta.",
+                "rotateConfirmYes": "Vaheta kohe",
+                "rotateCancel": "Tühista",
+                "rotateDone": "Uus AeroFTP-ID:"
             }
         },
         "extractWindow": {

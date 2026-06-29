@@ -5185,7 +5185,9 @@
                     "one_moment": "Un moment, si us plau",
                     "resend": "Torna'l a enviar, no ha arribat",
                     "thanks": "Rebut, gràcies"
-                }
+                },
+                "mute": "Silencia el remitent",
+                "muted": "Remitent silenciat"
             },
             "receiveLabel": "Rep fitxers",
             "receiveDesc": "Permet que els amics t'enviïn fitxers directament (d'un sol cop, xifrat d'extrem a extrem). Manté un receptor actiu mentre està activat.",
@@ -5211,6 +5213,35 @@
                 "body": "Has afegit un amic, així que AeroShare ara està actiu. Vols rebre els fitxers que els teus amics t'envien? Pots canviar-ho en qualsevol moment a la Configuració.",
                 "enable": "Activa la recepció",
                 "notNow": "Ara no"
+            },
+            "privacy": {
+                "title": "Privadesa i antiinundació",
+                "intro": "Controleu qui us pot contactar mitjançant AeroShare i com de visible sou mentre rebeu.",
+                "friendsOnlyLabel": "Accepta només dels contactes desats",
+                "friendsOnlyDesc": "Descarta trucs, accions i ofertes de fitxers de qualsevol persona que no sigui a la vostra llibreta d'adreces.",
+                "rateLimitLabel": "Límit de freqüència per remitent",
+                "rateLimitDesc": "Es descarten els senyals d'un remitent que superin aquest nombre per minut.",
+                "rateLimitUnit": "per minut",
+                "rateLimitOff": "Sense límit de freqüència (0): es permet qualsevol senyal.",
+                "discoveryLabel": "Visibilitat",
+                "discovery_both": "n0 DNS + Mainline DHT (per defecte)",
+                "discovery_dht": "Només Mainline DHT",
+                "discovery_n0": "Només n0 DNS",
+                "discovery_none": "Cap (no visible)",
+                "discovery_both_desc": "Més accessible: mentre rebeu, la vostra adreça es publica tant al directori n0 com al DHT públic.",
+                "discovery_dht_desc": "Es publica només al Mainline DHT públic, sense el directori n0.",
+                "discovery_n0_desc": "Es publica només al directori n0, sense el DHT públic.",
+                "discovery_none_desc": "El vostre AeroFTP-ID no es publica enlloc mentre rebeu, de manera que no es pot enumerar al DHT públic. Només us pot contactar algú que ja tingui la vostra adreça completa (per exemple, mitjançant un tiquet d'unitat).",
+                "mutedTitle": "Remitents silenciats",
+                "mutedEmpty": "Cap remitent silenciat.",
+                "unmute": "Deixa de silenciar",
+                "rotateTitle": "Renova l'AeroFTP-ID",
+                "rotateDesc": "Genera un AeroFTP-ID totalment nou per a aquest perfil.",
+                "rotateButton": "Renova la identitat",
+                "rotateConfirm": "Això substitueix el vostre AeroFTP-ID. L'ID actual, cada enllaç de compartició i cada unitat que serviu deixaran de funcionar, i haureu de tornar a compartir el nou ID amb els vostres amics. Aquesta acció no es pot desfer.",
+                "rotateConfirmYes": "Renova ara",
+                "rotateCancel": "Cancel·la",
+                "rotateDone": "Nou AeroFTP-ID:"
             }
         },
         "extractWindow": {

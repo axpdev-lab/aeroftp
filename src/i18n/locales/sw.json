@@ -5166,7 +5166,9 @@
                     "one_moment": "Subiri kidogo",
                     "resend": "Tafadhali tuma tena, haikufika",
                     "thanks": "Imepokelewa, asante"
-                }
+                },
+                "mute": "Nyamazisha mtumaji",
+                "muted": "Mtumaji amenyamazishwa"
             },
             "receiveLabel": "Pokea faili",
             "receiveDesc": "Ruhusu marafiki kukutumia faili moja kwa moja (mara moja, zilizosimbwa mwanzo hadi mwisho). Inaendesha kisikilizaji ikiwa imewashwa.",
@@ -5192,6 +5194,35 @@
                 "body": "Umeongeza rafiki, kwa hivyo AeroShare sasa inafanya kazi. Je, ungependa kupokea faili ambazo marafiki zako wanakutumia? Unaweza kubadilisha hili wakati wowote katika Mipangilio.",
                 "enable": "Washa upokeaji",
                 "notNow": "Si sasa"
+            },
+            "privacy": {
+                "title": "Faragha na kinga dhidi ya mafuriko",
+                "intro": "Dhibiti nani anaweza kukufikia kupitia AeroShare na jinsi unavyoweza kupatikana wakati wa kupokea.",
+                "friendsOnlyLabel": "Kubali tu kutoka kwa anwani zilizohifadhiwa",
+                "friendsOnlyDesc": "Tupa migongo, vitendo na ofa za faili kutoka kwa yeyote ambaye hayupo katika kitabu chako cha anwani.",
+                "rateLimitLabel": "Kikomo cha kasi kwa kila mtumaji",
+                "rateLimitDesc": "Ishara kutoka kwa mtumaji mmoja zaidi ya kiwango hiki kwa dakika zinatupwa.",
+                "rateLimitUnit": "kwa dakika",
+                "rateLimitOff": "Hakuna kikomo cha kasi (0): kila ishara inaruhusiwa.",
+                "discoveryLabel": "Uwezekano wa kupatikana",
+                "discovery_both": "n0 DNS + Mainline DHT (chaguo-msingi)",
+                "discovery_dht": "Mainline DHT pekee",
+                "discovery_n0": "n0 DNS pekee",
+                "discovery_none": "Hakuna (haipatikani)",
+                "discovery_both_desc": "Inafikika zaidi: wakati wa kupokea, anwani yako huchapishwa katika saraka ya n0 na pia DHT ya umma.",
+                "discovery_dht_desc": "Inachapishwa katika Mainline DHT ya umma pekee, bila saraka ya n0.",
+                "discovery_n0_desc": "Inachapishwa katika saraka ya n0 pekee, bila DHT ya umma.",
+                "discovery_none_desc": "AeroFTP-ID yako haichapishwi popote wakati wa kupokea, kwa hivyo haiwezi kuorodheshwa katika DHT ya umma. Unaweza kufikiwa tu na mtu ambaye tayari ana anwani yako kamili (kwa mfano kupitia tiketi ya diski).",
+                "mutedTitle": "Watumaji walionyamazishwa",
+                "mutedEmpty": "Hakuna watumaji walionyamazishwa.",
+                "unmute": "Ondoa unyamazishaji",
+                "rotateTitle": "Zungusha AeroFTP-ID",
+                "rotateDesc": "Tengeneza AeroFTP-ID mpya kabisa kwa wasifu huu.",
+                "rotateButton": "Zungusha utambulisho",
+                "rotateConfirm": "Hii inabadilisha AeroFTP-ID yako. Kitambulisho chako cha sasa, kila kiungo cha kushiriki na kila diski unayohudumia zitaacha kufanya kazi, na lazima ushiriki kitambulisho kipya na marafiki zako tena. Hili haliwezi kutenduliwa.",
+                "rotateConfirmYes": "Zungusha sasa",
+                "rotateCancel": "Ghairi",
+                "rotateDone": "AeroFTP-ID mpya:"
             }
         },
         "extractWindow": {

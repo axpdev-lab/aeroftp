@@ -238,6 +238,57 @@ export const peerIncomingRespond = (params: PeerIncomingRespondParams): Promise<
 export const peerFriendsPresence = (afids: string[]): Promise<boolean[]> =>
   invoke<boolean[]>('peer_friends_presence', { params: { afids } });
 
+// ---------------------------------------------------------------------------
+// v4.1.0 security follow-ups (#370): anti-flood gate + discovery opt-out
+// ---------------------------------------------------------------------------
+
+/** Mute a sender AFID: its inbound knocks/actions/offers are dropped by the
+ *  backend before they ever surface a modal or notification. Idempotent. The
+ *  AFID need not be a saved contact. */
+export const peerContactMute = (contactId: string): Promise<void> =>
+  invoke('peer_contact_mute', { contactId });
+
+/** Unmute a sender AFID (no-op if it was not muted). */
+export const peerContactUnmute = (contactId: string): Promise<void> =>
+  invoke('peer_contact_unmute', { contactId });
+
+/** The active partition's muted AFIDs. */
+export const peerMutesList = (): Promise<string[]> => invoke<string[]>('peer_mutes_list');
+
+/** Discovery backend for the receive endpoint:
+ *  - `both`: n0 DNS + Mainline DHT (default, most reachable);
+ *  - `dht`: Mainline DHT only;
+ *  - `n0`: n0 DNS only;
+ *  - `none`: publish to neither, so the long-term AFID is NOT enumerable on the
+ *    public DHT while receiving (privacy opt-out). Tradeoff: you are reachable
+ *    only by a peer who already holds your full address (e.g. via a ticket). */
+export type PeerDiscoveryMode = 'both' | 'dht' | 'n0' | 'none';
+
+/** The active partition's AeroShare preferences (anti-flood gate + discovery). */
+export interface PeerSettings {
+  /** Accept inbound knock/action/offer only from saved contacts. */
+  friendsOnly: boolean;
+  discoveryMode: PeerDiscoveryMode;
+  /** Max inbound signals per sender per minute (0 = no limit). */
+  rateLimitPerMin: number;
+}
+
+/** Read the active partition's AeroShare settings (defaults when unset). */
+export const peerSettingsGet = (): Promise<PeerSettings> =>
+  invoke<PeerSettings>('peer_settings_get');
+
+/** Persist the active partition's AeroShare settings. A discovery-mode change
+ *  while receiving rebinds the receive endpoint so it takes effect at once. */
+export const peerSettingsSet = (settings: PeerSettings): Promise<void> =>
+  invoke('peer_settings_set', { settings });
+
+/** Rotate the active partition's P2P identity, minting a fresh AFID. DESTRUCTIVE:
+ *  the old AFID and every share link / served drive that encoded it become
+ *  unreachable, so the new AFID must be re-shared with friends. Returns the new
+ *  AeroFTP-ID. Confirm with the user before calling. */
+export const peerIdentityRotate = (): Promise<string> =>
+  invoke<string>('peer_identity_rotate');
+
 /** Payload of the `peer://incoming-offer` event (an incoming send awaiting
  *  the user's Accept/Decline). */
 export interface PeerIncomingOfferEvent {

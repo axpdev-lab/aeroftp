@@ -830,6 +830,138 @@ pub async fn peer_friends_presence(
     .map_err(|e| format!("presence probe failed: {e}"))
 }
 
+// ---------------------------------------------------------------------------
+// v4.1.0 security follow-ups (#370): anti-flood gate + discovery opt-out
+// ---------------------------------------------------------------------------
+
+/// Mute a sender AFID: every inbound knock/action/offer it sends is dropped by
+/// the receive loop before reaching the UI (the per-sender half of the
+/// attention-DoS mitigation). The AFID need not be a saved contact. Idempotent.
+#[tauri::command]
+pub async fn peer_contact_mute(app: AppHandle, contact_id: String) -> Result<(), String> {
+    let afid = contact_id.trim();
+    if afid.is_empty() {
+        return Err("an AeroFTP-ID is required".to_string());
+    }
+    aeroftp_peer_l0::IdentityPublic::from_aeroftp_id(afid)
+        .map_err(|_| "that is not a valid AeroFTP-ID".to_string())?;
+    crate::user_partitions::gui_peer_mute_add(&app, afid)
+}
+
+/// Unmute a sender AFID (no-op if it was not muted).
+#[tauri::command]
+pub async fn peer_contact_unmute(app: AppHandle, contact_id: String) -> Result<(), String> {
+    crate::user_partitions::gui_peer_mute_remove(&app, contact_id.trim())
+}
+
+/// The active user's muted AFIDs.
+#[tauri::command]
+pub async fn peer_mutes_list(app: AppHandle) -> Result<Vec<String>, String> {
+    crate::user_partitions::gui_peer_mute_list(&app)
+}
+
+/// The active user's AeroShare preferences, surfaced to the Settings UI.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerSettingsDto {
+    /// Accept inbound knock/action/offer only from saved contacts.
+    pub friends_only: bool,
+    /// Discovery backend: `both` | `dht` | `n0` | `none`.
+    pub discovery_mode: String,
+    /// Max inbound signals per sender per minute (`0` = no limit).
+    pub rate_limit_per_min: u32,
+}
+
+impl From<crate::peer_identity::PeerSettings> for PeerSettingsDto {
+    fn from(s: crate::peer_identity::PeerSettings) -> Self {
+        PeerSettingsDto {
+            friends_only: s.friends_only,
+            discovery_mode: s.discovery_mode,
+            rate_limit_per_min: s.rate_limit_per_min,
+        }
+    }
+}
+
+/// Read the active user's AeroShare settings (defaults when unset).
+#[tauri::command]
+pub async fn peer_settings_get(app: AppHandle) -> Result<PeerSettingsDto, String> {
+    Ok(crate::user_partitions::gui_peer_settings_get(&app)?.into())
+}
+
+/// Persist the active user's AeroShare settings. Validates `discovery_mode`,
+/// applies the discovery preference immediately, and (only when the discovery
+/// mode actually changed while receiving) restarts the receive endpoint so the
+/// new mode takes effect. The friends-only gate and the rate limit are read live
+/// per signal, so they need no restart.
+#[tauri::command]
+pub async fn peer_settings_set(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+    settings: PeerSettingsDto,
+) -> Result<(), String> {
+    let mode = settings.discovery_mode.trim().to_ascii_lowercase();
+    if !matches!(mode.as_str(), "both" | "dht" | "n0" | "none") {
+        return Err("discovery mode must be one of both|dht|n0|none".to_string());
+    }
+    let previous = crate::user_partitions::gui_peer_settings_get(&app)?;
+    let next = crate::peer_identity::PeerSettings {
+        friends_only: settings.friends_only,
+        discovery_mode: mode.clone(),
+        rate_limit_per_min: settings.rate_limit_per_min,
+    };
+    crate::user_partitions::gui_peer_settings_set(&app, &next)?;
+    crate::peer::set_discovery_pref(&mode);
+    if previous.discovery_mode != mode {
+        restart_receiver_if_live(&app, &peer_runtime).await?;
+    }
+    Ok(())
+}
+
+/// Stop the receiver, mint a FRESH P2P identity (new AFID), then restart the
+/// receiver under the new identity when it was running. DESTRUCTIVE: the old
+/// AFID and every share link / served drive ticket that encoded the old NodeId
+/// become unreachable, so the user must re-share the new AFID with friends.
+/// Returns the new AeroFTP-ID. The FE must confirm with the user first.
+#[tauri::command]
+pub async fn peer_identity_rotate(
+    app: AppHandle,
+    peer_runtime: State<'_, PeerRuntime>,
+) -> Result<String, String> {
+    let was_receiving = peer_runtime.is_receiving().await;
+    if was_receiving {
+        peer_runtime.stop_receiver(&app).await;
+    }
+    let new_afid = crate::user_partitions::gui_peer_identity_rotate(&app)?;
+    if was_receiving {
+        let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
+            .ok_or_else(|| "P2P identity missing right after rotation".to_string())?;
+        let inbox_root = default_inbox_root()?;
+        peer_runtime
+            .start_receiver(&app, &identity_secret, inbox_root)
+            .await?;
+    }
+    Ok(new_afid)
+}
+
+/// Restart the standing receiver when it is live, so a discovery-mode change
+/// rebinds the identity endpoint under the new preference. No-op when not
+/// receiving.
+async fn restart_receiver_if_live(
+    app: &AppHandle,
+    peer_runtime: &PeerRuntime,
+) -> Result<(), String> {
+    if !peer_runtime.is_receiving().await {
+        return Ok(());
+    }
+    peer_runtime.stop_receiver(app).await;
+    let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(app)?
+        .ok_or_else(|| "P2P identity missing on receiver restart".to_string())?;
+    let inbox_root = default_inbox_root()?;
+    peer_runtime
+        .start_receiver(app, &identity_secret, inbox_root)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

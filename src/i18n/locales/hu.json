@@ -5166,7 +5166,9 @@
                     "one_moment": "Egy pillanat, kérlek",
                     "resend": "Küldd újra, nem érkezett meg",
                     "thanks": "Megkaptam, köszönöm"
-                }
+                },
+                "mute": "Feladó némítása",
+                "muted": "Feladó némítva"
             },
             "receiveLabel": "Fájlok fogadása",
             "receiveDesc": "Engedje, hogy barátai közvetlenül küldjenek Önnek fájlokat (egyszeri, végpontok közötti titkosítással). Bekapcsolt állapotban figyelőt futtat.",
@@ -5192,6 +5194,35 @@
                 "body": "Hozzáadott egy ismerőst, így az AeroShare most aktív. Szeretné fogadni az ismerősei által küldött fájlokat? Ezt bármikor módosíthatja a Beállításokban.",
                 "enable": "Fogadás bekapcsolása",
                 "notNow": "Most nem"
+            },
+            "privacy": {
+                "title": "Adatvédelem és túlterhelés elleni védelem",
+                "intro": "Szabályozza, ki érheti el Önt az AeroShare-en keresztül, és mennyire felfedezhető fogadás közben.",
+                "friendsOnlyLabel": "Csak mentett névjegyektől fogadjon",
+                "friendsOnlyDesc": "Elveti a kopogtatásokat, műveleteket és fájlajánlatokat mindenkitől, aki nincs a címjegyzékében.",
+                "rateLimitLabel": "Sebességkorlát feladónként",
+                "rateLimitDesc": "Az egy feladótól érkező, percenként ezt a számot meghaladó jelzéseket elveti a rendszer.",
+                "rateLimitUnit": "percenként",
+                "rateLimitOff": "Nincs sebességkorlát (0): minden jelzés engedélyezett.",
+                "discoveryLabel": "Felfedezhetőség",
+                "discovery_both": "n0 DNS + Mainline DHT (alapértelmezett)",
+                "discovery_dht": "Csak Mainline DHT",
+                "discovery_n0": "Csak n0 DNS",
+                "discovery_none": "Nincs (nem felfedezhető)",
+                "discovery_both_desc": "A legjobban elérhető: fogadás közben a címe közzétételre kerül mind az n0 könyvtárban, mind a nyilvános DHT-ban.",
+                "discovery_dht_desc": "Csak a nyilvános Mainline DHT-ban kerül közzétételre, az n0 könyvtár nélkül.",
+                "discovery_n0_desc": "Csak az n0 könyvtárban kerül közzétételre, a nyilvános DHT nélkül.",
+                "discovery_none_desc": "Az AeroFTP-ID-ja fogadás közben sehol sem kerül közzétételre, így nem sorolható fel a nyilvános DHT-ban. Csak olyasvalaki érheti el Önt, akinek már megvan a teljes címe (például egy meghajtójegyen keresztül).",
+                "mutedTitle": "Némított feladók",
+                "mutedEmpty": "Nincsenek némított feladók.",
+                "unmute": "Némítás feloldása",
+                "rotateTitle": "AeroFTP-ID cseréje",
+                "rotateDesc": "Vadonatúj AeroFTP-ID létrehozása ehhez a profilhoz.",
+                "rotateButton": "Identitás cseréje",
+                "rotateConfirm": "Ez lecseréli az AeroFTP-ID-ját. A jelenlegi azonosítója, minden megosztási hivatkozása és minden kiszolgált meghajtója leáll, és újra meg kell osztania az új azonosítót a barátaival. Ez nem vonható vissza.",
+                "rotateConfirmYes": "Csere most",
+                "rotateCancel": "Mégse",
+                "rotateDone": "Új AeroFTP-ID:"
             }
         },
         "extractWindow": {

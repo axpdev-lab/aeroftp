@@ -5180,7 +5180,9 @@
                     "one_moment": "One moment, please",
                     "resend": "Please resend, it did not arrive",
                     "thanks": "Received, thanks"
-                }
+                },
+                "mute": "Mute sender",
+                "muted": "Sender muted"
             },
             "receiveLabel": "Receive files",
             "receiveDesc": "Let friends send files straight to you (one-shot, end-to-end encrypted). Runs a listener while on.",
@@ -5200,6 +5202,35 @@
                 "edit": "Edit",
                 "remove": "Remove",
                 "removeConfirm": "Remove?"
+            },
+            "privacy": {
+                "title": "Privacy & anti-flood",
+                "intro": "Control who can reach you over AeroShare and how discoverable you are while receiving.",
+                "friendsOnlyLabel": "Only accept from saved contacts",
+                "friendsOnlyDesc": "Drop knocks, actions and file offers from anyone who is not in your address book.",
+                "rateLimitLabel": "Rate limit per sender",
+                "rateLimitDesc": "Signals from one sender above this many per minute are dropped.",
+                "rateLimitUnit": "per minute",
+                "rateLimitOff": "No rate limit (0): every signal is allowed.",
+                "discoveryLabel": "Discoverability",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Mainline DHT only",
+                "discovery_n0": "n0 DNS only",
+                "discovery_none": "None (not discoverable)",
+                "discovery_both_desc": "Most reachable: while receiving, your address is published to both the n0 directory and the public DHT.",
+                "discovery_dht_desc": "Published to the public Mainline DHT only, without the n0 directory.",
+                "discovery_n0_desc": "Published to the n0 directory only, without the public DHT.",
+                "discovery_none_desc": "Your AeroFTP-ID is not published anywhere while receiving, so it cannot be enumerated on the public DHT. You can be reached only by someone who already holds your full address (for example via a drive ticket).",
+                "mutedTitle": "Muted senders",
+                "mutedEmpty": "No muted senders.",
+                "unmute": "Unmute",
+                "rotateTitle": "Rotate AeroFTP-ID",
+                "rotateDesc": "Generate a brand-new AeroFTP-ID for this profile.",
+                "rotateButton": "Rotate identity",
+                "rotateConfirm": "This replaces your AeroFTP-ID. Your current ID, every share link and every drive you serve stop working, and you must share the new ID with your friends again. This cannot be undone.",
+                "rotateConfirmYes": "Rotate now",
+                "rotateCancel": "Cancel",
+                "rotateDone": "New AeroFTP-ID:"
             }
         }
     }

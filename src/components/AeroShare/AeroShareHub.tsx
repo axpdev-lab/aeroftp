@@ -33,6 +33,7 @@ import {
   peerFriendsPresence,
   peerIncomingRespond,
   peerSendKnock,
+  peerContactMute,
   aeroShareNotify,
   aeroShareInboxRoot,
   openInFileManager,
@@ -394,6 +395,18 @@ export function AeroShareHub() {
     [incomingKnock],
   );
 
+  // Mute the sender of the current knock: its future knocks/actions/offers are
+  // dropped by the backend gate. Fire-and-forget + dismiss the prompt.
+  const muteKnockSender = useCallback(() => {
+    if (!incomingKnock) return;
+    const { senderAfid, senderLabel } = incomingKnock;
+    peerContactMute(senderAfid).catch(() => {
+      /* fire-and-forget */
+    });
+    notify({ kind: 'knock', title: senderLabel, body: t('aeroShare.knock.muted') });
+    setIncomingKnock(null);
+  }, [incomingKnock, notify, t]);
+
   return (
     <>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
@@ -412,6 +425,7 @@ export function AeroShareHub() {
           code={incomingKnock.code}
           replies={incomingKnock.replies}
           onReply={replyToKnock}
+          onMute={muteKnockSender}
           onClose={() => setIncomingKnock(null)}
         />
       )}
@@ -526,12 +540,14 @@ function KnockPrompt({
   code,
   replies,
   onReply,
+  onMute,
   onClose,
 }: {
   senderLabel: string;
   code: string;
   replies: string[];
   onReply: (replyCode: string) => void;
+  onMute: () => void;
   onClose: () => void;
 }) {
   const t = useTranslation();
@@ -559,6 +575,15 @@ function KnockPrompt({
           {t(knockLabelKey(code))}
         </div>
         <div className="flex flex-wrap justify-end gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+          {/* Mute this sender: drops all its future knocks/actions/offers before
+              they ever surface a modal (the per-sender anti-flood lever, #370). */}
+          <button
+            onClick={onMute}
+            className="mr-auto px-3 py-1.5 text-sm rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+            title={t('aeroShare.knock.mute')}
+          >
+            {t('aeroShare.knock.mute')}
+          </button>
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"

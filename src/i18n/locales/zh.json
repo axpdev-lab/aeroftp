@@ -5166,7 +5166,9 @@
                     "one_moment": "稍等一下",
                     "resend": "没收到，请重发一下",
                     "thanks": "已收到，谢谢"
-                }
+                },
+                "mute": "静音发送者",
+                "muted": "发送者已静音"
             },
             "receiveLabel": "接收文件",
             "receiveDesc": "允许好友直接向您发送文件（一次性，端到端加密）。开启时会运行一个监听器。",
@@ -5192,6 +5194,35 @@
                 "body": "您已添加好友，因此 AeroShare 现已启用。要接收好友发送给您的文件吗？您可以随时在“设置”中更改此项。",
                 "enable": "开启接收",
                 "notNow": "暂不"
+            },
+            "privacy": {
+                "title": "隐私与防泛滥",
+                "intro": "控制谁可以通过 AeroShare 联系你，以及你在接收时的可发现程度。",
+                "friendsOnlyLabel": "仅接受来自已保存联系人的请求",
+                "friendsOnlyDesc": "丢弃来自不在你通讯录中的任何人的敲门、操作和文件邀请。",
+                "rateLimitLabel": "每个发送者的速率限制",
+                "rateLimitDesc": "来自单个发送者每分钟超过此数量的信号将被丢弃。",
+                "rateLimitUnit": "每分钟",
+                "rateLimitOff": "无速率限制 (0)：允许每一个信号。",
+                "discoveryLabel": "可发现性",
+                "discovery_both": "n0 DNS + Mainline DHT (默认)",
+                "discovery_dht": "仅 Mainline DHT",
+                "discovery_n0": "仅 n0 DNS",
+                "discovery_none": "无 (不可发现)",
+                "discovery_both_desc": "最易访问：接收时，你的地址会同时发布到 n0 目录和公共 DHT。",
+                "discovery_dht_desc": "仅发布到公共 Mainline DHT，不使用 n0 目录。",
+                "discovery_n0_desc": "仅发布到 n0 目录，不使用公共 DHT。",
+                "discovery_none_desc": "接收时，你的 AeroFTP-ID 不会在任何地方发布，因此无法在公共 DHT 上被枚举。只有已经持有你完整地址的人才能联系到你（例如通过驱动器票据）。",
+                "mutedTitle": "已静音的发送者",
+                "mutedEmpty": "没有已静音的发送者。",
+                "unmute": "取消静音",
+                "rotateTitle": "轮换 AeroFTP-ID",
+                "rotateDesc": "为此配置文件生成一个全新的 AeroFTP-ID。",
+                "rotateButton": "轮换身份",
+                "rotateConfirm": "此操作将替换你的 AeroFTP-ID。你当前的 ID、每个共享链接以及你提供的每个驱动器都将停止工作，你必须再次与好友共享新的 ID。此操作无法撤销。",
+                "rotateConfirmYes": "立即轮换",
+                "rotateCancel": "取消",
+                "rotateDone": "新的 AeroFTP-ID："
             }
         },
         "extractWindow": {

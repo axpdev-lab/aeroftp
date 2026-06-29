@@ -5166,7 +5166,9 @@
                     "one_moment": "Een moment, alsjeblieft",
                     "resend": "Stuur het opnieuw, het is niet aangekomen",
                     "thanks": "Ontvangen, bedankt"
-                }
+                },
+                "mute": "Afzender dempen",
+                "muted": "Afzender gedempt"
             },
             "receiveLabel": "Bestanden ontvangen",
             "receiveDesc": "Laat vrienden bestanden rechtstreeks naar je sturen (eenmalig, end-to-end versleuteld). Houdt een luisteraar actief zolang dit aanstaat.",
@@ -5192,6 +5194,35 @@
                 "body": "Je hebt een vriend toegevoegd, dus AeroShare is nu actief. Wil je bestanden ontvangen die je vrienden je sturen? Je kunt dit altijd wijzigen in Instellingen.",
                 "enable": "Ontvangen inschakelen",
                 "notNow": "Niet nu"
+            },
+            "privacy": {
+                "title": "Privacy en anti-flood",
+                "intro": "Bepaal wie u via AeroShare kan bereiken en hoe vindbaar u bent tijdens het ontvangen.",
+                "friendsOnlyLabel": "Alleen accepteren van opgeslagen contacten",
+                "friendsOnlyDesc": "Weiger kloppen, acties en bestandsaanbiedingen van iedereen die niet in uw adresboek staat.",
+                "rateLimitLabel": "Snelheidslimiet per afzender",
+                "rateLimitDesc": "Signalen van één afzender boven dit aantal per minuut worden geweigerd.",
+                "rateLimitUnit": "per minuut",
+                "rateLimitOff": "Geen snelheidslimiet (0): elk signaal is toegestaan.",
+                "discoveryLabel": "Vindbaarheid",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Alleen Mainline DHT",
+                "discovery_n0": "Alleen n0 DNS",
+                "discovery_none": "Geen (not discoverable)",
+                "discovery_both_desc": "Best bereikbaar: tijdens het ontvangen wordt uw adres gepubliceerd in zowel de n0-directory als de openbare DHT.",
+                "discovery_dht_desc": "Alleen gepubliceerd in de openbare Mainline DHT, zonder de n0-directory.",
+                "discovery_n0_desc": "Alleen gepubliceerd in de n0-directory, zonder de openbare DHT.",
+                "discovery_none_desc": "Uw AeroFTP-ID wordt tijdens het ontvangen nergens gepubliceerd, zodat het niet op de openbare DHT kan worden opgesomd. U kunt alleen worden bereikt door iemand die al uw volledige adres heeft (bijvoorbeeld via een drive ticket).",
+                "mutedTitle": "Gedempte afzenders",
+                "mutedEmpty": "Geen gedempte afzenders.",
+                "unmute": "Dempen opheffen",
+                "rotateTitle": "AeroFTP-ID roteren",
+                "rotateDesc": "Genereer een geheel nieuwe AeroFTP-ID voor dit profiel.",
+                "rotateButton": "Identiteit roteren",
+                "rotateConfirm": "Dit vervangt uw AeroFTP-ID. Uw huidige ID, elke deellink en elke drive die u aanbiedt stoppen met werken, en u moet de nieuwe ID opnieuw met uw vrienden delen. Dit kan niet ongedaan worden gemaakt.",
+                "rotateConfirmYes": "Nu roteren",
+                "rotateCancel": "Annuleren",
+                "rotateDone": "Nieuwe AeroFTP-ID:"
             }
         },
         "extractWindow": {

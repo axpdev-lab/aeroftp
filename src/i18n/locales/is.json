@@ -5185,7 +5185,9 @@
                     "one_moment": "Augnablik, takk",
                     "resend": "Sendu aftur, hún barst ekki",
                     "thanks": "Móttekið, takk"
-                }
+                },
+                "mute": "Þagga niður í sendanda",
+                "muted": "Þaggað í sendanda"
             },
             "receiveLabel": "Taka á móti skrám",
             "receiveDesc": "Leyfðu vinum að senda þér skrár beint (einnota, dulkóðað enda í enda). Keyrir hlustanda á meðan kveikt er á.",
@@ -5211,6 +5213,35 @@
                 "body": "Þú bættir við vini, svo AeroShare er nú virkt. Viltu taka á móti skrám sem vinir þínir senda þér? Þú getur breytt þessu hvenær sem er í Stillingum.",
                 "enable": "Kveikja á móttöku",
                 "notNow": "Ekki núna"
+            },
+            "privacy": {
+                "title": "Persónuvernd og flóðvörn",
+                "intro": "Stjórnaðu því hverjir geta náð í þig í gegnum AeroShare og hversu sýnilegur þú ert á meðan þú tekur á móti.",
+                "friendsOnlyLabel": "Samþykkja aðeins frá vistuðum tengiliðum",
+                "friendsOnlyDesc": "Hafna bankum, aðgerðum og skráatilboðum frá öllum sem eru ekki í veffanginu þínu.",
+                "rateLimitLabel": "Hraðatakmörk á hvern sendanda",
+                "rateLimitDesc": "Merkjum frá einum sendanda umfram þennan fjölda á mínútu er hafnað.",
+                "rateLimitUnit": "á mínútu",
+                "rateLimitOff": "Engin hraðatakmörk (0): hvert merki er leyft.",
+                "discoveryLabel": "Uppgötvanleiki",
+                "discovery_both": "n0 DNS + Mainline DHT (sjálfgefið)",
+                "discovery_dht": "Aðeins Mainline DHT",
+                "discovery_n0": "Aðeins n0 DNS",
+                "discovery_none": "Ekkert (ekki uppgötvanlegt)",
+                "discovery_both_desc": "Best aðgengilegt: á meðan þú tekur á móti er veffangið þitt birt bæði í n0 skránni og í opinbera DHT-inu.",
+                "discovery_dht_desc": "Birt aðeins í opinbera Mainline DHT-inu, án n0 skrárinnar.",
+                "discovery_n0_desc": "Birt aðeins í n0 skránni, án opinbera DHT-sins.",
+                "discovery_none_desc": "AeroFTP-ID-ið þitt er ekki birt neins staðar á meðan þú tekur á móti, svo ekki er hægt að telja það upp í opinbera DHT-inu. Aðeins einhver sem hefur þegar fullt veffang þitt getur náð í þig (til dæmis í gegnum drifmiða).",
+                "mutedTitle": "Þaggaðir sendendur",
+                "mutedEmpty": "Engir þaggaðir sendendur.",
+                "unmute": "Afþagga",
+                "rotateTitle": "Skipta um AeroFTP-ID",
+                "rotateDesc": "Búa til glænýtt AeroFTP-ID fyrir þetta snið.",
+                "rotateButton": "Skipta um auðkenni",
+                "rotateConfirm": "Þetta kemur í stað AeroFTP-ID-sins þíns. Núverandi auðkenni þitt, hver deilihlekkur og hvert drif sem þú þjónar hætta að virka, og þú verður að deila nýja auðkenninu með vinum þínum aftur. Þetta er ekki hægt að afturkalla.",
+                "rotateConfirmYes": "Skipta núna",
+                "rotateCancel": "Hætta við",
+                "rotateDone": "Nýtt AeroFTP-ID:"
             }
         },
         "extractWindow": {

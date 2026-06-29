@@ -357,6 +357,21 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              created_at     INTEGER NOT NULL,
              updated_at     INTEGER NOT NULL,
              PRIMARY KEY(user_id, namespace_id)
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_mutes (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             contact_id     TEXT NOT NULL,
+             muted_at       INTEGER NOT NULL,
+             PRIMARY KEY(user_id, contact_id)
+         );
+
+         CREATE TABLE IF NOT EXISTS peer_settings (
+             user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+             friends_only       INTEGER NOT NULL DEFAULT 0,
+             discovery_mode     TEXT NOT NULL DEFAULT 'both',
+             rate_limit_per_min INTEGER NOT NULL DEFAULT 20,
+             updated_at         INTEGER NOT NULL
          );",
     )
     .map_err(|e| format!("User partitions schema init: {e}"))
@@ -4055,6 +4070,120 @@ pub fn gui_peer_contact_remove(app: &AppHandle, contact_id: &str) -> Result<(), 
     let conn = open_or_init(app)?;
     let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
     crate::peer_identity::remove_contact(&conn, user.id, contact_id)
+}
+
+/// GUI: mute a sender AFID in the active user's partition. Public: no DEK.
+pub fn gui_peer_mute_add(app: &AppHandle, contact_id: &str) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::add_mute(&conn, user.id, contact_id)
+}
+
+/// GUI: the active user's muted AFIDs. Public: no DEK.
+pub fn gui_peer_mute_list(app: &AppHandle) -> Result<Vec<String>, String> {
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::list_mutes(&conn, user.id)
+}
+
+/// GUI: unmute a sender AFID. Public: no DEK. No-op if not muted.
+pub fn gui_peer_mute_remove(app: &AppHandle, contact_id: &str) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::remove_mute(&conn, user.id, contact_id)
+}
+
+/// GUI: the active user's AeroShare settings (friends-only gate + discovery
+/// mode), falling back to defaults when unset. Public: no DEK.
+pub fn gui_peer_settings_get(
+    app: &AppHandle,
+) -> Result<crate::peer_identity::PeerSettings, String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::get_settings(&conn, user.id)
+}
+
+/// GUI: store the active user's AeroShare settings. Public: no DEK.
+pub fn gui_peer_settings_set(
+    app: &AppHandle,
+    settings: &crate::peer_identity::PeerSettings,
+) -> Result<(), String> {
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    crate::peer_identity::set_settings(&conn, user.id, settings)
+}
+
+/// The verdict of the inbound gate for a single incoming signal.
+pub enum InboundDecision {
+    /// Surface the signal to the UI.
+    Allow,
+    /// Suppress the signal. The string is a stable reason for the run log
+    /// (`muted` | `not-a-friend`).
+    Drop(&'static str),
+}
+
+/// GUI: decide whether an inbound knock/action/offer from `sender_afid` should
+/// reach the UI, applying the active user's per-sender mute and the friends-only
+/// gate (a saved-contacts allowlist) in a single DB open. The in-memory
+/// rate-limit is applied separately by the runtime. Public material: no DEK.
+///
+/// Fails OPEN on a missing partition or read error (returns `Allow`): the gate
+/// is an attention-DoS mitigation, not an authorization boundary (every sender
+/// is already cryptographically authenticated by iroh), so it must never drop a
+/// legitimate signal because the vault was momentarily unreadable.
+pub fn gui_peer_inbound_decision(app: &AppHandle, sender_afid: &str) -> InboundDecision {
+    let conn = match open_or_init(app) {
+        Ok(c) => c,
+        Err(_) => return InboundDecision::Allow,
+    };
+    let Ok(Some(user)) = get_active_user(&conn) else {
+        return InboundDecision::Allow;
+    };
+    if crate::peer_identity::is_muted(&conn, user.id, sender_afid).unwrap_or(false) {
+        return InboundDecision::Drop("muted");
+    }
+    let friends_only = crate::peer_identity::get_settings(&conn, user.id)
+        .map(|s| s.friends_only)
+        .unwrap_or(false);
+    if friends_only
+        && !crate::peer_identity::is_contact(&conn, user.id, sender_afid).unwrap_or(true)
+    {
+        return InboundDecision::Drop("not-a-friend");
+    }
+    InboundDecision::Allow
+}
+
+/// GUI: the active user's persisted discovery mode (`both|dht|n0|none`),
+/// defaulting to `both`. Read by the endpoint builder. Public: no DEK.
+pub fn gui_peer_discovery_mode(app: &AppHandle) -> Result<String, String> {
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    Ok(crate::peer_identity::get_settings(&conn, user.id)?.discovery_mode)
+}
+
+/// GUI: rotate the active user's P2P identity, minting a fresh AFID and
+/// overwriting the stored secret (the old AFID and every share link / served
+/// drive ticket that encoded the old NodeId become unreachable). Returns the
+/// new AeroFTP-ID. The caller is responsible for stopping/restarting the
+/// receiver so the new identity seeds the endpoint.
+pub fn gui_peer_identity_rotate(app: &AppHandle) -> Result<String, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
+    let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let (secret, afid) = crate::peer::generate_identity();
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
+        crate::peer_identity::store_identity(&conn, user.id, dek, &secret, &afid)
+    });
+    root_key.zeroize();
+    result?;
+    Ok(afid)
 }
 
 /// GUI: store (or replace) the per-drive content key for `namespace_id` under

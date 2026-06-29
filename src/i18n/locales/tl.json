@@ -5185,7 +5185,9 @@
                     "one_moment": "Sandali lang",
                     "resend": "Paki-resend, hindi dumating",
                     "thanks": "Natanggap, salamat"
-                }
+                },
+                "mute": "I-mute ang nagpadala",
+                "muted": "Na-mute ang nagpadala"
             },
             "receiveLabel": "Tumanggap ng mga file",
             "receiveDesc": "Hayaang magpadala ang mga kaibigan ng file nang direkta sa iyo (isang beses, naka-encrypt nang end-to-end). Nagpapatakbo ng listener habang naka-on.",
@@ -5211,6 +5213,35 @@
                 "body": "Nagdagdag ka ng kaibigan, kaya aktibo na ngayon ang AeroShare. Gusto mo bang tanggapin ang mga file na ipinapadala sa iyo ng iyong mga kaibigan? Mababago mo ito anumang oras sa Mga Setting.",
                 "enable": "I-on ang pagtanggap",
                 "notNow": "Hindi muna ngayon"
+            },
+            "privacy": {
+                "title": "Privacy at proteksyon laban sa flood",
+                "intro": "Kontrolin kung sino ang maaaring umabot sa iyo sa pamamagitan ng AeroShare at kung gaano ka natutuklasan habang tumatanggap.",
+                "friendsOnlyLabel": "Tumanggap lamang mula sa mga naka-save na kontak",
+                "friendsOnlyDesc": "Itapon ang mga katok, aksyon at alok ng file mula sa sinumang wala sa iyong address book.",
+                "rateLimitLabel": "Limitasyon ng rate bawat nagpadala",
+                "rateLimitDesc": "Ang mga signal mula sa isang nagpadala na lampas sa bilang na ito kada minuto ay itinatapon.",
+                "rateLimitUnit": "kada minuto",
+                "rateLimitOff": "Walang limitasyon sa rate (0): pinapayagan ang bawat signal.",
+                "discoveryLabel": "Pagkatuklas",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Mainline DHT lamang",
+                "discovery_n0": "n0 DNS lamang",
+                "discovery_none": "Wala (hindi natutuklasan)",
+                "discovery_both_desc": "Pinaka-naaabot: habang tumatanggap, ang iyong address ay nai-publish sa parehong direktoryo ng n0 at sa pampublikong DHT.",
+                "discovery_dht_desc": "Nai-publish lamang sa pampublikong Mainline DHT, nang walang direktoryo ng n0.",
+                "discovery_n0_desc": "Nai-publish lamang sa direktoryo ng n0, nang walang pampublikong DHT.",
+                "discovery_none_desc": "Ang iyong AeroFTP-ID ay hindi nai-publish kahit saan habang tumatanggap, kaya hindi ito maaaring ilista sa pampublikong DHT. Maaabot ka lamang ng isang taong may hawak na ng iyong buong address (halimbawa sa pamamagitan ng drive ticket).",
+                "mutedTitle": "Mga naka-mute na nagpadala",
+                "mutedEmpty": "Walang naka-mute na nagpadala.",
+                "unmute": "I-unmute",
+                "rotateTitle": "I-rotate ang AeroFTP-ID",
+                "rotateDesc": "Bumuo ng ganap na bagong AeroFTP-ID para sa profile na ito.",
+                "rotateButton": "I-rotate ang pagkakakilanlan",
+                "rotateConfirm": "Pinapalitan nito ang iyong AeroFTP-ID. Ang iyong kasalukuyang ID, bawat share link at bawat drive na iyong sineserbisyuhan ay titigil sa paggana, at kailangan mong ibahagi muli ang bagong ID sa iyong mga kaibigan. Hindi ito maibabalik.",
+                "rotateConfirmYes": "I-rotate ngayon",
+                "rotateCancel": "Kanselahin",
+                "rotateDone": "Bagong AeroFTP-ID:"
             }
         },
         "extractWindow": {

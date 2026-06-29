@@ -5166,7 +5166,9 @@
                     "one_moment": "Et øjeblik, tak",
                     "resend": "Send venligst igen, den kom ikke frem",
                     "thanks": "Modtaget, tak"
-                }
+                },
+                "mute": "Sluk for afsender",
+                "muted": "Afsender slået fra"
             },
             "receiveLabel": "Modtag filer",
             "receiveDesc": "Lad venner sende filer direkte til dig (engangs, end-til-end-krypteret). Kører en lytter, mens den er slået til.",
@@ -5192,6 +5194,35 @@
                 "body": "Du har tilføjet en ven, så AeroShare er nu aktiv. Vil du modtage de filer, dine venner sender dig? Du kan altid ændre dette i Indstillinger.",
                 "enable": "Slå modtagelse til",
                 "notNow": "Ikke nu"
+            },
+            "privacy": {
+                "title": "Privatliv og anti-oversvømmelse",
+                "intro": "Styr, hvem der kan nå dig via AeroShare, og hvor synlig du er, mens du modtager.",
+                "friendsOnlyLabel": "Accepter kun fra gemte kontakter",
+                "friendsOnlyDesc": "Afvis bank, handlinger og filtilbud fra alle, der ikke er i din adressebog.",
+                "rateLimitLabel": "Hastighedsgrænse pr. afsender",
+                "rateLimitDesc": "Signaler fra én afsender over dette antal pr. minut afvises.",
+                "rateLimitUnit": "pr. minut",
+                "rateLimitOff": "Ingen hastighedsgrænse (0): alle signaler tillades.",
+                "discoveryLabel": "Synlighed",
+                "discovery_both": "n0 DNS + Mainline DHT (standard)",
+                "discovery_dht": "Kun Mainline DHT",
+                "discovery_n0": "Kun n0 DNS",
+                "discovery_none": "Ingen (ikke synlig)",
+                "discovery_both_desc": "Mest tilgængelig: mens du modtager, offentliggøres din adresse både i n0-mappen og i det offentlige DHT.",
+                "discovery_dht_desc": "Offentliggøres kun i det offentlige Mainline DHT, uden n0-mappen.",
+                "discovery_n0_desc": "Offentliggøres kun i n0-mappen, uden det offentlige DHT.",
+                "discovery_none_desc": "Dit AeroFTP-ID offentliggøres ingen steder, mens du modtager, så det kan ikke opregnes i det offentlige DHT. Du kan kun nås af nogen, der allerede har din fulde adresse (for eksempel via en drevbillet).",
+                "mutedTitle": "Slukkede afsendere",
+                "mutedEmpty": "Ingen slukkede afsendere.",
+                "unmute": "Tænd for afsender",
+                "rotateTitle": "Udskift AeroFTP-ID",
+                "rotateDesc": "Generer et helt nyt AeroFTP-ID til denne profil.",
+                "rotateButton": "Udskift identitet",
+                "rotateConfirm": "Dette erstatter dit AeroFTP-ID. Dit nuværende ID, hvert delelink og hvert drev, du betjener, holder op med at virke, og du skal dele det nye ID med dine venner igen. Dette kan ikke fortrydes.",
+                "rotateConfirmYes": "Udskift nu",
+                "rotateCancel": "Annuller",
+                "rotateDone": "Nyt AeroFTP-ID:"
             }
         },
         "extractWindow": {

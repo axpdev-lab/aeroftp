@@ -342,6 +342,11 @@ pub struct PeerRuntime {
     pending_offers: std::sync::Arc<std::sync::Mutex<HashMap<String, PendingOffer>>>,
     /// Monotonic source of transfer ids (paired with `now_ms` for readability).
     next_transfer_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// Per-sender inbound timestamps (ms) for the sliding-window rate limit (the
+    /// v4.1.0 attention-DoS mitigation). Keyed by sender AFID; each entry holds
+    /// the accept times within the last minute. A std Mutex, never held across an
+    /// await. Shared with the receive task.
+    inbound_rate: std::sync::Arc<std::sync::Mutex<HashMap<String, Vec<u64>>>>,
 }
 
 impl PeerRuntime {
@@ -714,6 +719,13 @@ impl PeerRuntime {
                 return Ok(());
             }
         }
+        // Apply the active user's persisted discovery preference (v4.1.0 Info
+        // audit opt-out) BEFORE building the endpoint, so a user who chose `none`
+        // is not published to the public DHT / n0 DNS while receiving. A read
+        // failure leaves the prior preference (or the `both` default) in place.
+        if let Ok(mode) = crate::user_partitions::gui_peer_discovery_mode(app) {
+            crate::peer::set_discovery_pref(&mode);
+        }
         // Build the single identity endpoint once and store it so outbound sends
         // reuse it (Finding 6b) instead of binding a second same-identity one.
         let endpoint = std::sync::Arc::new(
@@ -730,6 +742,7 @@ impl PeerRuntime {
             endpoint,
             self.pending_offers.clone(),
             self.next_transfer_id.clone(),
+            self.inbound_rate.clone(),
         ));
         *guard = Some(ReceiverHandle {
             cancel,
@@ -991,11 +1004,67 @@ fn emit_action(
     );
 }
 
+/// Sliding-window rate check (the v4.1.0 attention-DoS mitigation). `limit` is
+/// the max accepted inbound signals from one sender in the trailing 60s; `0`
+/// disables the limit. Returns true to allow (and records the timestamp), false
+/// to drop. Stale timestamps are pruned on every call so the map self-trims.
+fn rate_allow(
+    state: &std::sync::Mutex<HashMap<String, Vec<u64>>>,
+    sender_afid: &str,
+    limit: u32,
+    now: u64,
+) -> bool {
+    if limit == 0 {
+        return true;
+    }
+    let mut map = state.lock().unwrap_or_else(|e| e.into_inner());
+    let bucket = map.entry(sender_afid.to_string()).or_default();
+    let window_start = now.saturating_sub(60_000);
+    bucket.retain(|&t| t >= window_start);
+    if bucket.len() as u32 >= limit {
+        return false;
+    }
+    bucket.push(now);
+    true
+}
+
+/// The full inbound gate for one incoming signal: the active partition's
+/// per-sender mute and friends-only allowlist (both fail OPEN on a vault read
+/// error, since the gate is an attention-DoS mitigation, not an auth boundary),
+/// followed by the in-memory sliding-window rate limit. Returns true to surface
+/// the signal. Every drop is logged under the stable `AeroShare receive:` prefix
+/// so it stays greppable. `kind` is one of `offer|knock|action`.
+fn inbound_allowed(
+    app: &AppHandle,
+    rate: &std::sync::Mutex<HashMap<String, Vec<u64>>>,
+    sender_afid: &str,
+    kind: &str,
+) -> bool {
+    use crate::user_partitions::InboundDecision;
+    if let InboundDecision::Drop(reason) =
+        crate::user_partitions::gui_peer_inbound_decision(app, sender_afid)
+    {
+        tracing::info!("AeroShare receive: dropped {kind} from afid={sender_afid} ({reason})");
+        return false;
+    }
+    let limit = crate::user_partitions::gui_peer_settings_get(app)
+        .map(|s| s.rate_limit_per_min)
+        .unwrap_or(20);
+    if !rate_allow(rate, sender_afid, limit, now_ms()) {
+        tracing::info!(
+            "AeroShare receive: rate-limited {kind} from afid={sender_afid} (over {limit}/min)"
+        );
+        return false;
+    }
+    true
+}
+
 /// The standing receive loop. Runs `peer::receive_on_endpoint` on the shared
 /// identity endpoint (so outbound sends reuse it - Finding 6b) with two callbacks:
 /// `decide` surfaces each offer to the FE and parks until the user answers;
 /// `notify` emits the per-transfer outcome. Wrapped in `select!` so a toggle-OFF
 /// cancel tears the loop down promptly (and `stop_receiver` drops the endpoint).
+#[allow(clippy::too_many_arguments)]
 async fn receive_loop(
     app: AppHandle,
     cancel: CancellationToken,
@@ -1003,6 +1072,7 @@ async fn receive_loop(
     endpoint: std::sync::Arc<aeroftp_peer_l0::PeerEndpoint>,
     pending_offers: std::sync::Arc<std::sync::Mutex<HashMap<String, PendingOffer>>>,
     next_transfer_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    inbound_rate: std::sync::Arc<std::sync::Mutex<HashMap<String, Vec<u64>>>>,
 ) {
     emit_receiver_status(&app, "listening", None);
 
@@ -1010,11 +1080,19 @@ async fn receive_loop(
         let app = app.clone();
         let pending_offers = pending_offers.clone();
         let next_transfer_id = next_transfer_id.clone();
+        let inbound_rate = inbound_rate.clone();
         move |offer: aeroftp_peer_l0::IncomingOffer| {
             let app = app.clone();
             let pending_offers = pending_offers.clone();
             let next_transfer_id = next_transfer_id.clone();
+            let inbound_rate = inbound_rate.clone();
             async move {
+                // Anti-flood gate: a muted / non-friend (when friends-only is on)
+                // / rate-limited sender is silently declined (return None) so no
+                // accept modal ever reaches the user.
+                if !inbound_allowed(&app, &inbound_rate, &offer.sender_afid, "offer") {
+                    return None;
+                }
                 let seq = next_transfer_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let transfer_id = format!("{}-{}", now_ms(), seq);
                 let (tx, rx) = tokio::sync::oneshot::channel();
@@ -1064,6 +1142,7 @@ async fn receive_loop(
 
     let notify = {
         let app = app.clone();
+        let inbound_rate = inbound_rate.clone();
         move |ev: aeroftp_peer_l0::ReceiveEvent| match ev {
             // Every receive event is logged at INFO/WARN under one stable
             // `AeroShare receive:` prefix so a headless agent can be woken by a
@@ -1110,6 +1189,9 @@ async fn receive_loop(
                 code,
                 in_reply_to,
             } => {
+                if !inbound_allowed(&app, &inbound_rate, &sender_afid, "knock") {
+                    return;
+                }
                 tracing::info!(
                     "AeroShare receive: knock code={code} from afid={sender_afid} in_reply_to={in_reply_to:?}"
                 );
@@ -1123,6 +1205,9 @@ async fn receive_loop(
                 payload,
                 correlation_id,
             } => {
+                if !inbound_allowed(&app, &inbound_rate, &sender_afid, "action") {
+                    return;
+                }
                 tracing::info!(
                     "AeroShare receive: action verb={verb} from afid={sender_afid} correlation_id={correlation_id:?}"
                 );

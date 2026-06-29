@@ -5166,7 +5166,9 @@
                     "one_moment": "Moment, prosím",
                     "resend": "Pošli to prosím znova, neprišlo to",
                     "thanks": "Prijaté, vďaka"
-                }
+                },
+                "mute": "Stlmiť odosielateľa",
+                "muted": "Odosielateľ stlmený"
             },
             "receiveLabel": "Prijímať súbory",
             "receiveDesc": "Umožnite priateľom posielať súbory priamo vám (jednorazovo, šifrované od konca ku koncu). Počas zapnutia beží poslucháč.",
@@ -5192,6 +5194,35 @@
                 "body": "Pridali ste priateľa, takže AeroShare je teraz aktívny. Chcete prijímať súbory, ktoré vám posielajú priatelia? Kedykoľvek to môžete zmeniť v Nastaveniach.",
                 "enable": "Zapnúť prijímanie",
                 "notNow": "Teraz nie"
+            },
+            "privacy": {
+                "title": "Súkromie a ochrana pred zahltením",
+                "intro": "Ovládajte, kto vás môže kontaktovať cez AeroShare a ako ste počas prijímania vyhľadateľní.",
+                "friendsOnlyLabel": "Prijímať len od uložených kontaktov",
+                "friendsOnlyDesc": "Zahodiť výzvy, akcie a ponuky súborov od každého, kto nie je vo vašom adresári.",
+                "rateLimitLabel": "Obmedzenie počtu na odosielateľa",
+                "rateLimitDesc": "Signály od jedného odosielateľa nad tento počet za minútu sa zahodia.",
+                "rateLimitUnit": "za minútu",
+                "rateLimitOff": "Žiadne obmedzenie (0): povolený je každý signál.",
+                "discoveryLabel": "Vyhľadateľnosť",
+                "discovery_both": "n0 DNS + Mainline DHT (predvolené)",
+                "discovery_dht": "Iba Mainline DHT",
+                "discovery_n0": "Iba n0 DNS",
+                "discovery_none": "Žiadna (nevyhľadateľný)",
+                "discovery_both_desc": "Najdostupnejšie: počas prijímania sa vaša adresa zverejní v adresári n0 aj vo verejnom DHT.",
+                "discovery_dht_desc": "Zverejnené iba vo verejnom Mainline DHT, bez adresára n0.",
+                "discovery_n0_desc": "Zverejnené iba v adresári n0, bez verejného DHT.",
+                "discovery_none_desc": "Vaše AeroFTP-ID sa počas prijímania nikde nezverejní, takže ho nemožno vymenovať vo verejnom DHT. Kontaktovať vás môže len niekto, kto už má vašu úplnú adresu (napríklad cez tiket disku).",
+                "mutedTitle": "Stlmení odosielatelia",
+                "mutedEmpty": "Žiadni stlmení odosielatelia.",
+                "unmute": "Zrušiť stlmenie",
+                "rotateTitle": "Vymeniť AeroFTP-ID",
+                "rotateDesc": "Vygenerovať úplne nové AeroFTP-ID pre tento profil.",
+                "rotateButton": "Vymeniť identitu",
+                "rotateConfirm": "Toto nahradí vaše AeroFTP-ID. Vaše súčasné ID, všetky odkazy na zdieľanie a všetky disky, ktoré poskytujete, prestanú fungovať a nové ID budete musieť priateľom zdieľať znova. Túto akciu nemožno vrátiť späť.",
+                "rotateConfirmYes": "Vymeniť teraz",
+                "rotateCancel": "Zrušiť",
+                "rotateDone": "Nové AeroFTP-ID:"
             }
         },
         "extractWindow": {

@@ -5166,7 +5166,9 @@
                     "one_moment": "Hetki, kiitos",
                     "resend": "Lähetä uudelleen, se ei tullut perille",
                     "thanks": "Vastaanotettu, kiitos"
-                }
+                },
+                "mute": "Mykistä lähettäjä",
+                "muted": "Lähettäjä mykistetty"
             },
             "receiveLabel": "Vastaanota tiedostoja",
             "receiveDesc": "Anna kaverien lähettää tiedostoja suoraan sinulle (kertaluonteinen, päästä päähän salattu). Pitää kuuntelijan käynnissä, kun käytössä.",
@@ -5192,6 +5194,35 @@
                 "body": "Lisäsit kaverin, joten AeroShare on nyt käytössä. Haluatko vastaanottaa tiedostoja, joita kaverisi lähettävät sinulle? Voit muuttaa tätä milloin tahansa Asetuksissa.",
                 "enable": "Ota vastaanotto käyttöön",
                 "notNow": "Ei nyt"
+            },
+            "privacy": {
+                "title": "Yksityisyys ja tulvasuojaus",
+                "intro": "Hallitse, kuka voi tavoittaa sinut AeroShare-yhteyden kautta ja kuinka löydettävissä olet vastaanottaessasi.",
+                "friendsOnlyLabel": "Hyväksy vain tallennetuilta yhteyshenkilöiltä",
+                "friendsOnlyDesc": "Hylkää koputukset, toiminnot ja tiedostotarjoukset keneltä tahansa, joka ei ole osoitekirjassasi.",
+                "rateLimitLabel": "Nopeusraja lähettäjää kohden",
+                "rateLimitDesc": "Yhden lähettäjän signaalit, jotka ylittävät tämän määrän minuutissa, hylätään.",
+                "rateLimitUnit": "minuutissa",
+                "rateLimitOff": "Ei nopeusrajaa (0): jokainen signaali sallitaan.",
+                "discoveryLabel": "Löydettävyys",
+                "discovery_both": "n0 DNS + Mainline DHT (oletus)",
+                "discovery_dht": "Vain Mainline DHT",
+                "discovery_n0": "Vain n0 DNS",
+                "discovery_none": "Ei mitään (ei löydettävissä)",
+                "discovery_both_desc": "Parhaiten tavoitettavissa: vastaanottaessasi osoitteesi julkaistaan sekä n0-hakemistoon että julkiseen DHT:hen.",
+                "discovery_dht_desc": "Julkaistaan vain julkiseen Mainline DHT:hen ilman n0-hakemistoa.",
+                "discovery_n0_desc": "Julkaistaan vain n0-hakemistoon ilman julkista DHT:tä.",
+                "discovery_none_desc": "AeroFTP-ID-tunnustasi ei julkaista missään vastaanottaessasi, joten sitä ei voi luetella julkisesta DHT:stä. Sinut voi tavoittaa vain henkilö, jolla on jo täydellinen osoitteesi (esimerkiksi aseman lipun kautta).",
+                "mutedTitle": "Mykistetyt lähettäjät",
+                "mutedEmpty": "Ei mykistettyjä lähettäjiä.",
+                "unmute": "Poista mykistys",
+                "rotateTitle": "Vaihda AeroFTP-ID",
+                "rotateDesc": "Luo täysin uusi AeroFTP-ID tälle profiilille.",
+                "rotateButton": "Vaihda identiteetti",
+                "rotateConfirm": "Tämä korvaa AeroFTP-ID-tunnuksesi. Nykyinen tunnuksesi, jokainen jakolinkki ja jokainen jakamasi asema lakkaavat toimimasta, ja sinun on jaettava uusi tunnus ystävillesi uudelleen. Tätä ei voi peruuttaa.",
+                "rotateConfirmYes": "Vaihda nyt",
+                "rotateCancel": "Peruuta",
+                "rotateDone": "Uusi AeroFTP-ID:"
             }
         },
         "extractWindow": {

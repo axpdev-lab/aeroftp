@@ -17494,6 +17494,13 @@ pub fn run() {
             peer_commands::peer_friends_presence,
             peer_commands::peer_send_knock,
             peer_commands::peer_send_action,
+            // AeroShare v4.1.0 security follow-ups (#370): anti-flood + discovery
+            peer_commands::peer_contact_mute,
+            peer_commands::peer_contact_unmute,
+            peer_commands::peer_mutes_list,
+            peer_commands::peer_settings_get,
+            peer_commands::peer_settings_set,
+            peer_commands::peer_identity_rotate,
             peer_commands::aeroshare_notify,
             peer_commands::aeroshare_inbox_root,
             settings::native_rsync_feature_compiled,

@@ -155,6 +155,151 @@ pub fn remove_contact(conn: &Connection, user_id: i64, contact_id: &str) -> Resu
 }
 
 // ----------------------------------------------------------------------------
+// Mutes (public, partitioned) - per-sender suppression of inbound signals
+// ----------------------------------------------------------------------------
+
+/// Mute a sender AFID in the user's partition: every inbound knock/action/offer
+/// it sends is dropped before it ever reaches the UI. Idempotent UPSERT keyed by
+/// `(user_id, contact_id)`. Public material: no DEK required.
+pub fn add_mute(conn: &Connection, user_id: i64, contact_id: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO peer_mutes(user_id, contact_id, muted_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(user_id, contact_id) DO UPDATE SET
+             muted_at = excluded.muted_at",
+        params![user_id, contact_id, now_ms()],
+    )
+    .map_err(|e| format!("Add peer mute: {e}"))?;
+    Ok(())
+}
+
+/// List the user's muted AFIDs, ordered by AFID. Public material: no DEK.
+pub fn list_mutes(conn: &Connection, user_id: i64) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT contact_id FROM peer_mutes
+             WHERE user_id = ?1 ORDER BY contact_id",
+        )
+        .map_err(|e| format!("Prepare list peer mutes: {e}"))?;
+    let rows = stmt
+        .query_map(params![user_id], |r| r.get::<_, String>(0))
+        .map_err(|e| format!("Query peer mutes: {e}"))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| format!("Read peer mute row: {e}"))?);
+    }
+    Ok(out)
+}
+
+/// Unmute a sender AFID. A no-op if it was not muted.
+pub fn remove_mute(conn: &Connection, user_id: i64, contact_id: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM peer_mutes WHERE user_id = ?1 AND contact_id = ?2",
+        params![user_id, contact_id],
+    )
+    .map_err(|e| format!("Remove peer mute: {e}"))?;
+    Ok(())
+}
+
+/// `true` if the sender AFID is muted in the user's partition.
+pub fn is_muted(conn: &Connection, user_id: i64, contact_id: &str) -> Result<bool, String> {
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM peer_mutes WHERE user_id = ?1 AND contact_id = ?2",
+            params![user_id, contact_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("Check peer mute: {e}"))?;
+    Ok(n > 0)
+}
+
+// ----------------------------------------------------------------------------
+// Settings (public, partitioned) - inbound policy + discovery mode
+// ----------------------------------------------------------------------------
+
+/// The per-partition AeroShare preferences. `friends_only` gates inbound
+/// signals to saved contacts; `discovery_mode` is one of `both|dht|n0|none`;
+/// `rate_limit_per_min` caps inbound signals per sender per minute (`0` = off).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PeerSettings {
+    pub friends_only: bool,
+    pub discovery_mode: String,
+    pub rate_limit_per_min: u32,
+}
+
+impl Default for PeerSettings {
+    fn default() -> Self {
+        PeerSettings {
+            friends_only: false,
+            discovery_mode: "both".to_string(),
+            rate_limit_per_min: 20,
+        }
+    }
+}
+
+/// Load the user's AeroShare settings, falling back to defaults when no row
+/// exists yet. Public material: no DEK required.
+pub fn get_settings(conn: &Connection, user_id: i64) -> Result<PeerSettings, String> {
+    let row: Option<(i64, String, i64)> = conn
+        .query_row(
+            "SELECT friends_only, discovery_mode, rate_limit_per_min
+             FROM peer_settings WHERE user_id = ?1",
+            params![user_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read peer settings: {e}"))?;
+    Ok(match row {
+        Some((friends_only, discovery_mode, rate_limit_per_min)) => PeerSettings {
+            friends_only: friends_only != 0,
+            discovery_mode,
+            rate_limit_per_min: rate_limit_per_min.max(0) as u32,
+        },
+        None => PeerSettings::default(),
+    })
+}
+
+/// Store (or replace) the user's AeroShare settings. Idempotent UPSERT keyed by
+/// `user_id`. `discovery_mode` is validated by the caller (command layer).
+pub fn set_settings(
+    conn: &Connection,
+    user_id: i64,
+    settings: &PeerSettings,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO peer_settings(user_id, friends_only, discovery_mode, rate_limit_per_min, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(user_id) DO UPDATE SET
+             friends_only       = excluded.friends_only,
+             discovery_mode     = excluded.discovery_mode,
+             rate_limit_per_min = excluded.rate_limit_per_min,
+             updated_at         = excluded.updated_at",
+        params![
+            user_id,
+            settings.friends_only as i64,
+            settings.discovery_mode,
+            settings.rate_limit_per_min as i64,
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Store peer settings: {e}"))?;
+    Ok(())
+}
+
+/// `true` if the sender AFID is a saved contact in the user's partition (used by
+/// the friends-only inbound gate).
+pub fn is_contact(conn: &Connection, user_id: i64, contact_id: &str) -> Result<bool, String> {
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM peer_contacts WHERE user_id = ?1 AND contact_id = ?2",
+            params![user_id, contact_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("Check peer contact: {e}"))?;
+    Ok(n > 0)
+}
+
+// ----------------------------------------------------------------------------
 // Drives (private blob DEK-wrapped; namespace + role plaintext for listing)
 // ----------------------------------------------------------------------------
 
@@ -394,6 +539,66 @@ mod tests {
             contacts,
             vec![("AERO-BBBB".to_string(), "Dave".to_string())]
         );
+    }
+
+    #[test]
+    fn p5_mutes_add_list_remove_and_is_muted() {
+        let (conn, user_a, user_b) = two_user_db();
+        assert!(!is_muted(&conn, user_a, "AERO-X").expect("check"));
+        add_mute(&conn, user_a, "AERO-X").expect("mute");
+        add_mute(&conn, user_a, "AERO-Y").expect("mute");
+        // re-mute is idempotent (UPSERT, still one row)
+        add_mute(&conn, user_a, "AERO-X").expect("re-mute");
+        assert!(is_muted(&conn, user_a, "AERO-X").expect("check"));
+        assert_eq!(
+            list_mutes(&conn, user_a).expect("list"),
+            vec!["AERO-X".to_string(), "AERO-Y".to_string()]
+        );
+        // mutes are partitioned: user B sees none of A's
+        assert!(!is_muted(&conn, user_b, "AERO-X").expect("check B"));
+        assert!(list_mutes(&conn, user_b).expect("list B").is_empty());
+
+        remove_mute(&conn, user_a, "AERO-X").expect("unmute");
+        assert!(!is_muted(&conn, user_a, "AERO-X").expect("check"));
+        assert_eq!(
+            list_mutes(&conn, user_a).expect("list"),
+            vec!["AERO-Y".to_string()]
+        );
+    }
+
+    #[test]
+    fn p6_settings_default_get_set_round_trip() {
+        let (conn, user_a, _user_b) = two_user_db();
+        // Defaults when no row exists yet.
+        assert_eq!(
+            get_settings(&conn, user_a).expect("default"),
+            PeerSettings::default()
+        );
+        let want = PeerSettings {
+            friends_only: true,
+            discovery_mode: "none".to_string(),
+            rate_limit_per_min: 5,
+        };
+        set_settings(&conn, user_a, &want).expect("set");
+        assert_eq!(get_settings(&conn, user_a).expect("get"), want);
+        // UPSERT updates in place.
+        let want2 = PeerSettings {
+            friends_only: false,
+            discovery_mode: "dht".to_string(),
+            rate_limit_per_min: 0,
+        };
+        set_settings(&conn, user_a, &want2).expect("set2");
+        assert_eq!(get_settings(&conn, user_a).expect("get2"), want2);
+    }
+
+    #[test]
+    fn p7_is_contact_reflects_the_allowlist() {
+        let (conn, user_a, _user_b) = two_user_db();
+        assert!(!is_contact(&conn, user_a, "AERO-Z").expect("check"));
+        add_contact(&conn, user_a, "AERO-Z", "Zoe").expect("add");
+        assert!(is_contact(&conn, user_a, "AERO-Z").expect("check"));
+        remove_contact(&conn, user_a, "AERO-Z").expect("remove");
+        assert!(!is_contact(&conn, user_a, "AERO-Z").expect("check"));
     }
 
     #[test]

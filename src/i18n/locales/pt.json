@@ -5166,7 +5166,9 @@
                     "one_moment": "Um momento, por favor",
                     "resend": "Reenvia, por favor, não chegou",
                     "thanks": "Recebido, obrigado"
-                }
+                },
+                "mute": "Silenciar remetente",
+                "muted": "Remetente silenciado"
             },
             "receiveLabel": "Receber ficheiros",
             "receiveDesc": "Permita que os amigos lhe enviem ficheiros diretamente (de uma só vez, encriptado de ponta a ponta). Mantém um recetor ativo enquanto estiver ligado.",
@@ -5192,6 +5194,35 @@
                 "body": "Adicionou um amigo, por isso o AeroShare está agora ativo. Quer receber os ficheiros que os seus amigos lhe enviam? Pode alterar isto a qualquer momento nas Definições.",
                 "enable": "Ativar receção",
                 "notNow": "Agora não"
+            },
+            "privacy": {
+                "title": "Privacidade e anti-inundação",
+                "intro": "Controle quem pode contactá-lo pelo AeroShare e quão detetável é enquanto recebe.",
+                "friendsOnlyLabel": "Aceitar apenas de contactos guardados",
+                "friendsOnlyDesc": "Rejeitar toques, ações e ofertas de ficheiros de qualquer pessoa que não esteja no seu livro de endereços.",
+                "rateLimitLabel": "Limite de taxa por remetente",
+                "rateLimitDesc": "Sinais de um remetente acima deste número por minuto são rejeitados.",
+                "rateLimitUnit": "por minuto",
+                "rateLimitOff": "Sem limite de taxa (0): cada sinal é permitido.",
+                "discoveryLabel": "Detetabilidade",
+                "discovery_both": "n0 DNS + Mainline DHT (default)",
+                "discovery_dht": "Apenas Mainline DHT",
+                "discovery_n0": "Apenas n0 DNS",
+                "discovery_none": "Nenhum (not discoverable)",
+                "discovery_both_desc": "Mais acessível: enquanto recebe, o seu endereço é publicado tanto no diretório n0 como no DHT público.",
+                "discovery_dht_desc": "Publicado apenas no Mainline DHT público, sem o diretório n0.",
+                "discovery_n0_desc": "Publicado apenas no diretório n0, sem o DHT público.",
+                "discovery_none_desc": "O seu AeroFTP-ID não é publicado em lado nenhum enquanto recebe, pelo que não pode ser enumerado no DHT público. Só pode ser contactado por alguém que já tenha o seu endereço completo (por exemplo, através de um drive ticket).",
+                "mutedTitle": "Remetentes silenciados",
+                "mutedEmpty": "Nenhum remetente silenciado.",
+                "unmute": "Reativar som",
+                "rotateTitle": "Rodar AeroFTP-ID",
+                "rotateDesc": "Gerar um AeroFTP-ID totalmente novo para este perfil.",
+                "rotateButton": "Rodar identidade",
+                "rotateConfirm": "Isto substitui o seu AeroFTP-ID. O seu ID atual, cada ligação de partilha e cada drive que disponibiliza deixarão de funcionar, e terá de partilhar o novo ID com os seus amigos novamente. Isto não pode ser anulado.",
+                "rotateConfirmYes": "Rodar agora",
+                "rotateCancel": "Cancelar",
+                "rotateDone": "Novo AeroFTP-ID:"
             }
         },
         "extractWindow": {

@@ -5185,7 +5185,9 @@
                     "one_moment": "Une bat, mesedez",
                     "resend": "Bidali berriro, ez da iritsi",
                     "thanks": "Jasota, eskerrik asko"
-                }
+                },
+                "mute": "Mututu bidaltzailea",
+                "muted": "Bidaltzailea mututua"
             },
             "receiveLabel": "Jaso fitxategiak",
             "receiveDesc": "Utzi lagunei fitxategiak zuzenean bidaltzen (behin batekoa, muturretik muturrera enkriptatua). Piztuta dagoenean entzule bat exekutatzen du.",
@@ -5211,6 +5213,35 @@
                 "body": "Lagun bat gehitu duzu, beraz AeroShare orain aktibo dago. Lagunek bidaltzen dizkizuten fitxategiak jaso nahi dituzu? Edozein unetan alda dezakezu Ezarpenetan.",
                 "enable": "Aktibatu jasotzea",
                 "notNow": "Orain ez"
+            },
+            "privacy": {
+                "title": "Pribatutasuna eta uholdeen aurkakoa",
+                "intro": "Kontrolatu nork kontaktatu zaitzakeen AeroShare bidez eta zenbateraino zaren aurkigarria jasotzen ari zarela.",
+                "friendsOnlyLabel": "Gordetako kontaktuetatik soilik onartu",
+                "friendsOnlyDesc": "Baztertu zure helbide-liburuan ez dagoen edonoren kolpeak, ekintzak eta fitxategi-eskaintzak.",
+                "rateLimitLabel": "Maiztasun-muga bidaltzaileko",
+                "rateLimitDesc": "Bidaltzaile baten minutuko kopuru hau gainditzen duten seinaleak baztertu egiten dira.",
+                "rateLimitUnit": "minutuko",
+                "rateLimitOff": "Maiztasun-mugarik ez (0): seinale guztiak onartzen dira.",
+                "discoveryLabel": "Aurkigarritasuna",
+                "discovery_both": "n0 DNS + Mainline DHT (lehenetsia)",
+                "discovery_dht": "Mainline DHT soilik",
+                "discovery_n0": "n0 DNS soilik",
+                "discovery_none": "Bat ere ez (ez aurkigarria)",
+                "discovery_both_desc": "Eskuragarriena: jasotzen ari zarela, zure helbidea n0 direktorioan eta DHT publikoan argitaratzen da.",
+                "discovery_dht_desc": "Mainline DHT publikoan soilik argitaratzen da, n0 direktoriorik gabe.",
+                "discovery_n0_desc": "n0 direktorioan soilik argitaratzen da, DHT publikorik gabe.",
+                "discovery_none_desc": "Zure AeroFTP-ID ez da inon argitaratzen jasotzen ari zarela, beraz, ezin da DHT publikoan zerrendatu. Zure helbide osoa jada duen norbaitek soilik kontaktatu zaitzake (adibidez, unitate-txartel baten bidez).",
+                "mutedTitle": "Mututako bidaltzaileak",
+                "mutedEmpty": "Ez dago mututako bidaltzailerik.",
+                "unmute": "Kendu mututzea",
+                "rotateTitle": "Birziklatu AeroFTP-ID",
+                "rotateDesc": "Sortu erabat berria den AeroFTP-ID bat profil honetarako.",
+                "rotateButton": "Birziklatu nortasuna",
+                "rotateConfirm": "Honek zure AeroFTP-ID ordezkatzen du. Zure uneko IDa, partekatze-esteka bakoitza eta zerbitzatzen duzun unitate bakoitza funtzionatzeari uzten diote, eta ID berria zure lagunekin berriro partekatu behar duzu. Hau ezin da desegin.",
+                "rotateConfirmYes": "Birziklatu orain",
+                "rotateCancel": "Utzi",
+                "rotateDone": "AeroFTP-ID berria:"
             }
         },
         "extractWindow": {

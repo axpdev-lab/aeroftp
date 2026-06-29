@@ -5166,7 +5166,9 @@
                     "one_moment": "Sebentar, ya",
                     "resend": "Tolong kirim ulang, belum sampai",
                     "thanks": "Diterima, terima kasih"
-                }
+                },
+                "mute": "Bisukan pengirim",
+                "muted": "Pengirim dibisukan"
             },
             "receiveLabel": "Terima file",
             "receiveDesc": "Biarkan teman mengirim file langsung kepada Anda (sekali kirim, terenkripsi ujung ke ujung). Menjalankan pendengar saat aktif.",
@@ -5192,6 +5194,35 @@
                 "body": "Anda menambahkan teman, jadi AeroShare kini aktif. Apakah Anda ingin menerima file yang dikirim teman Anda? Anda dapat mengubahnya kapan saja di Pengaturan.",
                 "enable": "Aktifkan penerimaan",
                 "notNow": "Jangan sekarang"
+            },
+            "privacy": {
+                "title": "Privasi & anti-banjir",
+                "intro": "Kontrol siapa yang dapat menghubungi Anda melalui AeroShare dan seberapa mudah Anda ditemukan saat menerima.",
+                "friendsOnlyLabel": "Hanya terima dari kontak tersimpan",
+                "friendsOnlyDesc": "Tolak ketukan, tindakan, dan tawaran file dari siapa pun yang tidak ada di buku alamat Anda.",
+                "rateLimitLabel": "Batas laju per pengirim",
+                "rateLimitDesc": "Sinyal dari satu pengirim yang melebihi jumlah ini per menit akan ditolak.",
+                "rateLimitUnit": "per menit",
+                "rateLimitOff": "Tanpa batas laju (0): setiap sinyal diizinkan.",
+                "discoveryLabel": "Keterdeteksian",
+                "discovery_both": "n0 DNS + Mainline DHT (bawaan)",
+                "discovery_dht": "Hanya Mainline DHT",
+                "discovery_n0": "Hanya n0 DNS",
+                "discovery_none": "Tidak ada (tidak dapat ditemukan)",
+                "discovery_both_desc": "Paling mudah dijangkau: saat menerima, alamat Anda dipublikasikan ke direktori n0 dan DHT publik.",
+                "discovery_dht_desc": "Dipublikasikan hanya ke Mainline DHT publik, tanpa direktori n0.",
+                "discovery_n0_desc": "Dipublikasikan hanya ke direktori n0, tanpa DHT publik.",
+                "discovery_none_desc": "AeroFTP-ID Anda tidak dipublikasikan di mana pun saat menerima, sehingga tidak dapat dienumerasi di DHT publik. Anda hanya dapat dihubungi oleh seseorang yang sudah memiliki alamat lengkap Anda (misalnya melalui tiket drive).",
+                "mutedTitle": "Pengirim yang dibisukan",
+                "mutedEmpty": "Tidak ada pengirim yang dibisukan.",
+                "unmute": "Aktifkan suara",
+                "rotateTitle": "Putar AeroFTP-ID",
+                "rotateDesc": "Buat AeroFTP-ID yang benar-benar baru untuk profil ini.",
+                "rotateButton": "Putar identitas",
+                "rotateConfirm": "Ini menggantikan AeroFTP-ID Anda. ID Anda saat ini, setiap tautan berbagi, dan setiap drive yang Anda layani akan berhenti berfungsi, dan Anda harus membagikan ID baru kepada teman-teman Anda lagi. Ini tidak dapat dibatalkan.",
+                "rotateConfirmYes": "Putar sekarang",
+                "rotateCancel": "Batal",
+                "rotateDone": "AeroFTP-ID baru:"
             }
         },
         "extractWindow": {

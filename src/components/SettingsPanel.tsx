@@ -7,8 +7,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell, ShieldOff } from 'lucide-react';
 import { AeroShareContacts } from './AeroShare/AeroShareContacts';
+import { AeroSharePrivacySettings } from './AeroShare/AeroSharePrivacySettings';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -1324,6 +1325,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         />
                                                     </div>
                                                 )}
+                                            </div>
+                                        )}
+
+                                        {/* Privacy & anti-flood (v4.1.0 security follow-ups #370):
+                                            friends-only gate, per-sender rate limit, discovery opt-out,
+                                            muted senders, and AFID rotation. Source of truth is the
+                                            backend peer_settings store (read live by the receive loop),
+                                            so this self-contained panel loads/saves via its own commands.
+                                            Shown only when AeroShare is on (it governs the P2P inbound). */}
+                                        {settings.aeroShareEnabled && (
+                                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+                                                <p className="font-medium flex items-center gap-2 mb-1">
+                                                    <ShieldOff size={15} className="text-violet-500" />
+                                                    {t('aeroShare.privacy.title')}
+                                                </p>
+                                                <p className="text-xs text-gray-500 mb-3">{t('aeroShare.privacy.intro')}</p>
+                                                <AeroSharePrivacySettings />
                                             </div>
                                         )}
 
