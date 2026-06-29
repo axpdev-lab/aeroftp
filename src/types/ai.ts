@@ -3,7 +3,7 @@
 
 // AI Provider and Model Types for AeroFTP AI Agent
 
-export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom' | 'kimi' | 'qwen' | 'deepseek' | 'mistral' | 'groq' | 'perplexity' | 'cohere' | 'together' | 'ai21' | 'cerebras' | 'sambanova' | 'fireworks' | 'nvidia' | 'zai' | 'hyperbolic' | 'novita' | 'yi';
+export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom' | 'kimi' | 'qwen' | 'deepseek' | 'mistral' | 'groq' | 'perplexity' | 'cohere' | 'together' | 'ai21' | 'cerebras' | 'sambanova' | 'fireworks' | 'nvidia' | 'zai' | 'hyperbolic' | 'novita' | 'yi' | 'kilo';
 
 export interface AIProvider {
     id: string;
@@ -240,6 +240,13 @@ export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 
         isDefault: false,
     },
     {
+        name: 'Kilo (Gateway)',
+        type: 'kilo',
+        baseUrl: 'https://api.kilo.ai/api/gateway',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
         name: 'Custom',
         type: 'custom',
         baseUrl: '',
@@ -273,6 +280,7 @@ export const DEFAULT_MODELS: Record<AIProviderType, Omit<AIModel, 'id' | 'provid
     hyperbolic: [],
     novita: [],
     yi: [],
+    kilo: [],
     custom: [],
 };
 

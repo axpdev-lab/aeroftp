@@ -248,6 +248,15 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         highlight: '200+ models',
     },
     {
+        type: 'kilo',
+        name: 'Kilo (Gateway)',
+        description: 'OpenAI-compatible gateway. Free rotating models (Auto Free), plus Anthropic, OpenAI, Mistral and more.',
+        category: 'gateway',
+        features: ['streaming', 'tools', 'vision'],
+        pricingTier: 'freemium',
+        highlight: 'Free models, no credits',
+    },
+    {
         type: 'custom',
         name: 'Custom',
         description: 'Connect any OpenAI-compatible API endpoint.',

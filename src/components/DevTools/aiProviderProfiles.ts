@@ -334,6 +334,12 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
         toolFormat: 'native',
         behaviorRules: OPENAI_BEHAVIOR_RULES,
     },
+    kilo: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by the Kilo Gateway. You support ' + STORAGE_PROTOCOL_COUNT + ' storage protocols with access to many open and free models behind a single endpoint.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
     custom: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support ' + STORAGE_PROTOCOL_COUNT + ' storage protocols and prioritize getting things done.',
         style: 'Be direct and action-oriented. Use function calls for all file operations: never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
@@ -406,6 +412,7 @@ const PARAMETER_PRESETS: Record<AIProviderType, Record<TaskType | 'default', Par
     hyperbolic: OPENAI_PRESETS,
     novita: OPENAI_PRESETS,
     yi: OPENAI_PRESETS,
+    kilo: OPENAI_PRESETS,
     custom: OPENAI_PRESETS,
 };
 

@@ -97,6 +97,7 @@ pub enum AIProviderType {
     Hyperbolic,
     Novita,
     Yi,
+    Kilo,
 }
 
 // Image attachment for vision models
