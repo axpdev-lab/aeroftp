@@ -126,7 +126,7 @@ sigstore = { version = "0.14", default-features = false, features = ["verify", "
 argon2 = "0.5"
 aes-gcm = "0.10"
 aes = "0.8"                                                            # AES block cipher (Internxt)
-cbc = "0.1"                                                            # AES-CBC mode (Internxt mnemonic decryption)
+cbc = "0.2"                                                            # AES-CBC mode (Internxt mnemonic decryption)
 ctr = "0.9"                                                            # AES-CTR mode (Internxt file encryption)
 crypto_secretbox = "0.1"                                               # XSalsa20-Poly1305 NaCl secretbox (rclone crypt)
 

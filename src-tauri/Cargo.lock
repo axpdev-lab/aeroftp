@@ -47,7 +47,7 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "bzip2",
- "cbc 0.1.2",
+ "cbc 0.2.1",
  "chacha20poly1305",
  "chrono",
  "clap",
@@ -2231,7 +2231,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.118",
+ "syn 1.0.109",
 ]
 
 [[package]]
