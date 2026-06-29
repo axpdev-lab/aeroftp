@@ -149,7 +149,7 @@ russh-sftp = "2.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 
 # Archive Support with Encryption (v1.3.0+)
-sevenz-rust = { version = "0.6", features = ["aes256", "compress"] }  # 7z with AES-256
+sevenz-rust2 = { version = "0.21", features = ["aes256", "compress", "util"] }  # 7z with AES-256 + encrypted header (-mhe)
 unrar = "0.5"                                                          # RAR extraction
 trash = "5"                                                            # Cross-platform trash/recycle bin
 tar = "0.4.46"                                                        # TAR archives (CVE symlink chmod + PAX size fix)

@@ -2959,7 +2959,9 @@
             "estimating": "Tahmin ediliyor…",
             "spaceSaved": "%{pct} daha küçük",
             "estimateExact": "kesin",
-            "estimateApprox": "tahmin"
+            "estimateApprox": "tahmin",
+            "encryptFileNames": "Dosya adlarını şifrele",
+            "encryptFileNamesHint": "Yalnızca içeriği değil, dosya adlarını da gizler. O zaman arşivi listelemek için bile parola gerekir."
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",

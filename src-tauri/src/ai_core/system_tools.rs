@@ -103,7 +103,16 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
                 .await
         }
         "7z" => {
-            crate::compress_7z_core(paths, output_path.clone(), password, compression_level).await
+            // The AI tool does not expose header (filename) encryption yet; keep
+            // the classic content-only encryption (None == off).
+            crate::compress_7z_core(
+                paths,
+                output_path.clone(),
+                password,
+                compression_level,
+                None,
+            )
+            .await
         }
         "tar" | "tar.gz" | "tar.bz2" | "tar.xz" => {
             crate::compress_tar_core(

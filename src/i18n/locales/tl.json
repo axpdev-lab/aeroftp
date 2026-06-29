@@ -2959,7 +2959,9 @@
             "estimating": "Tinatantya…",
             "spaceSaved": "{pct}% mas maliit",
             "estimateExact": "eksakto",
-            "estimateApprox": "tantya"
+            "estimateApprox": "tantya",
+            "encryptFileNames": "I-encrypt ang mga pangalan ng file",
+            "encryptFileNamesHint": "Itago rin ang mga pangalan ng file, hindi lang ang nilalaman ng mga ito. Kakailanganin ang password kahit para lang ilista ang archive."
         },
         "batchRename": {
             "title": "Batch Rename",

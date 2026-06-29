@@ -2959,7 +2959,9 @@
             "estimating": "Arvioidaan…",
             "spaceSaved": "{pct}% pienempi",
             "estimateExact": "tarkka",
-            "estimateApprox": "arvio"
+            "estimateApprox": "arvio",
+            "encryptFileNames": "Salaa tiedostonimet",
+            "encryptFileNamesHint": "Piilottaa myös tiedostonimet, ei vain niiden sisällön. Tällöin salasana vaaditaan jopa arkiston sisällön luettelointiin."
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",

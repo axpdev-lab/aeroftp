@@ -2959,7 +2959,9 @@
             "estimating": "Inakadiria…",
             "spaceSaved": "{pct}% ndogo",
             "estimateExact": "kamili",
-            "estimateApprox": "makadirio"
+            "estimateApprox": "makadirio",
+            "encryptFileNames": "Simba majina ya faili",
+            "encryptFileNamesHint": "Huficha pia majina ya faili, si maudhui yake tu. Kisha nenosiri litahitajika hata kuorodhesha yaliyomo kwenye kumbukumbu."
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",

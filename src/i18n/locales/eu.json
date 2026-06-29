@@ -2959,7 +2959,9 @@
             "estimating": "Kalkulatzen…",
             "spaceSaved": "% {pct} txikiagoa",
             "estimateExact": "zehatza",
-            "estimateApprox": "zenbatespena"
+            "estimateApprox": "zenbatespena",
+            "encryptFileNames": "Zifratu fitxategi-izenak",
+            "encryptFileNamesHint": "Fitxategien izenak ere ezkutatzen ditu, ez edukia soilik. Orduan pasahitza beharko da artxiboa zerrendatzeko ere."
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

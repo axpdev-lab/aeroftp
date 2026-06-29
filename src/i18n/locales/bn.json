@@ -2959,7 +2959,9 @@
             "estimating": "অনুমান করা হচ্ছে…",
             "spaceSaved": "{pct}% ছোট",
             "estimateExact": "সঠিক",
-            "estimateApprox": "আনুমানিক"
+            "estimateApprox": "আনুমানিক",
+            "encryptFileNames": "ফাইলের নাম এনক্রিপ্ট করুন",
+            "encryptFileNamesHint": "শুধু বিষয়বস্তু নয়, ফাইলের নামও লুকান। তখন আর্কাইভের তালিকা দেখতেও পাসওয়ার্ড প্রয়োজন হবে।"
         },
         "batchRename": {
             "title": "ব্যাচ রিনেম",

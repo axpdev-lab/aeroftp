@@ -2959,7 +2959,9 @@
             "estimating": "Ocenjevanje…",
             "spaceSaved": "{pct}% manjše",
             "estimateExact": "natančno",
-            "estimateApprox": "ocena"
+            "estimateApprox": "ocena",
+            "encryptFileNames": "Šifriraj imena datotek",
+            "encryptFileNamesHint": "Skrije tudi imena datotek, ne le njihove vsebine. Geslo je nato potrebno celo za prikaz vsebine arhiva."
         },
         "batchRename": {
             "title": "Skupinsko preimenovanje",

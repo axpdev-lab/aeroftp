@@ -2959,7 +2959,9 @@
             "estimating": "Estimation…",
             "spaceSaved": "{pct}% plus petit",
             "estimateExact": "exact",
-            "estimateApprox": "estimation"
+            "estimateApprox": "estimation",
+            "encryptFileNames": "Chiffrer les noms de fichiers",
+            "encryptFileNamesHint": "Masque aussi les noms des fichiers, pas seulement leur contenu. Le mot de passe est alors requis même pour lister l'archive."
         },
         "batchRename": {
             "title": "Renommage par lot",

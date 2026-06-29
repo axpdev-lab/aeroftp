@@ -3313,6 +3313,8 @@
             "level": "Livello Compressione",
             "password": "Password (opzionale, AES-256)",
             "passwordHint": "Lascia vuoto per nessuna crittografia",
+            "encryptFileNames": "Cifra i nomi dei file",
+            "encryptFileNamesHint": "Nasconde anche i nomi dei file, non solo il loro contenuto. La password sarà quindi necessaria perfino per elencare l'archivio.",
             "files": "file",
             "folders": "cartelle",
             "store": "Archivia (senza compressione)",

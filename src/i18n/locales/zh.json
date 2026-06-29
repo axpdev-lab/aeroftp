@@ -2959,7 +2959,9 @@
             "estimating": "正在估算…",
             "spaceSaved": "缩小 {pct}%",
             "estimateExact": "精确",
-            "estimateApprox": "估算"
+            "estimateApprox": "估算",
+            "encryptFileNames": "加密文件名",
+            "encryptFileNamesHint": "不仅加密文件内容，还会隐藏文件名。届时即便列出压缩包内容也需要密码。"
         },
         "batchRename": {
             "title": "批量重命名",

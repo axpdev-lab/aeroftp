@@ -2959,7 +2959,9 @@
             "estimating": "추정 중…",
             "spaceSaved": "{pct}% 더 작음",
             "estimateExact": "정확",
-            "estimateApprox": "추정치"
+            "estimateApprox": "추정치",
+            "encryptFileNames": "파일 이름 암호화",
+            "encryptFileNamesHint": "내용뿐만 아니라 파일 이름도 숨깁니다. 그러면 보관 파일의 목록을 보는 데에도 비밀번호가 필요합니다."
         },
         "batchRename": {
             "title": "일괄 이름 변경",

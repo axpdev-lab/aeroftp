@@ -213,17 +213,13 @@ pub async fn list_7z(
     archive_path: String,
     password: Option<String>,
 ) -> Result<Vec<ArchiveEntry>, String> {
-    use sevenz_rust::*;
+    use sevenz_rust2::{ArchiveReader, Password};
     use std::fs::File;
     use std::io::BufReader;
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let len = file
-        .metadata()
-        .map_err(|e| format!("Failed to get metadata: {}", e))?
-        .len();
     let reader = BufReader::new(file);
 
     let pwd = secret_password
@@ -232,7 +228,7 @@ pub async fn list_7z(
         .unwrap_or_else(Password::empty);
 
     // First try opening: if metadata itself is encrypted, we need the password
-    let mut archive = match SevenZReader::new(reader, len, pwd) {
+    let mut archive = match ArchiveReader::new(reader, pwd) {
         Ok(a) => a,
         Err(e) => {
             let err_str = format!("{:?}", e);
@@ -274,13 +270,12 @@ pub async fn list_7z(
     // Re-open to get clean state for listing (for_each_entries consumed the reader)
     let file2 =
         std::fs::File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let len2 = file2.metadata().map_err(|e| format!("{}", e))?.len();
     let reader2 = std::io::BufReader::new(file2);
     let pwd2 = secret_password
         .as_ref()
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
-    let archive2 = SevenZReader::new(reader2, len2, pwd2)
+    let archive2 = ArchiveReader::new(reader2, pwd2)
         .map_err(|e| format!("Failed to read 7z archive: {}", e))?;
 
     let entries: Vec<ArchiveEntry> = archive2
@@ -312,7 +307,7 @@ pub async fn extract_7z_entry(
     password: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    use sevenz_rust::*;
+    use sevenz_rust2::{ArchiveReader, Password};
     use std::fs::{self, File};
     use std::io::BufReader;
 
@@ -327,10 +322,6 @@ pub async fn extract_7z_entry(
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let len = file
-        .metadata()
-        .map_err(|e| format!("Failed to get metadata: {}", e))?
-        .len();
     let reader = BufReader::new(file);
 
     let pwd = secret_password
@@ -338,8 +329,8 @@ pub async fn extract_7z_entry(
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    let mut archive = SevenZReader::new(reader, len, pwd)
-        .map_err(|e| format!("Failed to read 7z archive: {}", e))?;
+    let mut archive =
+        ArchiveReader::new(reader, pwd).map_err(|e| format!("Failed to read 7z archive: {}", e))?;
 
     let out_path = std::path::Path::new(&output_path);
     if let Some(parent) = out_path.parent() {

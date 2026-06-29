@@ -2959,7 +2959,9 @@
             "estimating": "Aprēķina…",
             "spaceSaved": "par {pct}% mazāks",
             "estimateExact": "precīzs",
-            "estimateApprox": "aplēse"
+            "estimateApprox": "aplēse",
+            "encryptFileNames": "Šifrēt failu nosaukumus",
+            "encryptFileNamesHint": "Paslēpj arī failu nosaukumus, ne tikai to saturu. Tad parole būs nepieciešama pat arhīva satura uzskaitīšanai."
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",

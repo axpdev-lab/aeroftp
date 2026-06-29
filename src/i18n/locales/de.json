@@ -2959,7 +2959,9 @@
             "estimating": "Schätze…",
             "spaceSaved": "{pct}% kleiner",
             "estimateExact": "exakt",
-            "estimateApprox": "Schätzung"
+            "estimateApprox": "Schätzung",
+            "encryptFileNames": "Dateinamen verschlüsseln",
+            "encryptFileNamesHint": "Verbirgt auch die Dateinamen, nicht nur deren Inhalt. Das Passwort wird dann sogar zum Auflisten des Archivs benötigt."
         },
         "batchRename": {
             "title": "Stapelumbenennung",

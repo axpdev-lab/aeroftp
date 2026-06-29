@@ -6518,8 +6518,8 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         },
         // Archives
         DependencyInfo {
-            name: "sevenz-rust".into(),
-            version: env!("DEP_VERSION_SEVENZ_RUST").into(),
+            name: "sevenz-rust2".into(),
+            version: env!("DEP_VERSION_SEVENZ_RUST2").into(),
             category: "Archives".into(),
         },
         DependencyInfo {
@@ -6867,7 +6867,10 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("aes-gcm".into(), env!("DEP_VERSION_AES_GCM").into());
     dep_versions.insert("argon2".into(), env!("DEP_VERSION_ARGON2").into());
     dep_versions.insert("zip".into(), env!("DEP_VERSION_ZIP").into());
-    dep_versions.insert("sevenz-rust".into(), env!("DEP_VERSION_SEVENZ_RUST").into());
+    dep_versions.insert(
+        "sevenz-rust2".into(),
+        env!("DEP_VERSION_SEVENZ_RUST2").into(),
+    );
     dep_versions.insert("quick-xml".into(), env!("DEP_VERSION_QUICK_XML").into());
     dep_versions.insert("oauth2".into(), env!("DEP_VERSION_OAUTH2").into());
     dep_versions.insert("aes-gcm-siv".into(), env!("DEP_VERSION_AES_GCM_SIV").into());
@@ -8714,9 +8717,18 @@ async fn compress_7z(
     output_path: String,
     password: Option<String>,
     compression_level: Option<i64>,
+    encrypt_header: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    compress_7z_impl(paths, output_path, password, compression_level, Some(app)).await
+    compress_7z_impl(
+        paths,
+        output_path,
+        password,
+        compression_level,
+        encrypt_header,
+        Some(app),
+    )
+    .await
 }
 
 async fn compress_7z_impl(
@@ -8724,9 +8736,10 @@ async fn compress_7z_impl(
     output_path: String,
     password: Option<String>,
     _compression_level: Option<i64>,
+    encrypt_header: Option<bool>,
     app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
-    use sevenz_rust::*;
+    use sevenz_rust2::*;
     use std::fs::File;
     use std::path::Path;
     use walkdir::WalkDir;
@@ -8788,24 +8801,36 @@ async fn compress_7z_impl(
     let output_file =
         File::create(temp.path()).map_err(|e| format!("Failed to create 7z file: {}", e))?;
 
-    let mut sz =
-        SevenZWriter::new(output_file).map_err(|e| format!("Failed to create 7z writer: {}", e))?;
+    let mut sz = ArchiveWriter::new(output_file)
+        .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
-    // Set compression and optional AES-256 encryption
+    // Set compression and optional AES-256 encryption.
     if let Some(ref pwd) = secret_password {
-        let aes_options = AesEncoderOptions::new(Password::from(pwd.expose_secret()));
+        let aes_options =
+            encoder_options::AesEncoderOptions::new(Password::from(pwd.expose_secret()));
         sz.set_content_methods(vec![
             aes_options.into(),
-            SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
+            EncoderConfiguration::new(EncoderMethod::LZMA2),
         ]);
+        // -mhe: header (filename) encryption is opt-in, exactly like 7-Zip's
+        // "Encrypt file names" checkbox that sits under the password. Off keeps
+        // the classic behaviour (content encrypted, names readable); on hides
+        // the names too, at the cost of needing the password even to list the
+        // archive. sevenz-rust2 defaults this to true once a password is set, so
+        // we set it explicitly from the caller's choice in both directions.
+        sz.set_encrypt_header(encrypt_header.unwrap_or(false));
     } else {
-        sz.set_content_methods(vec![SevenZMethodConfiguration::new(SevenZMethod::LZMA2)]);
+        sz.set_content_methods(vec![EncoderConfiguration::new(EncoderMethod::LZMA2)]);
+        // No password: nothing to encrypt, so leave the header in the clear (an
+        // encrypted header without a key is meaningless and would only break
+        // plain listing).
+        sz.set_encrypt_header(false);
     }
 
     // Add files to archive
     for (archive_name, full_path) in &entries {
         let source_path = Path::new(full_path);
-        let entry = SevenZArchiveEntry::from_path(source_path, archive_name.clone());
+        let entry = ArchiveEntry::from_path(source_path, archive_name.clone());
 
         // Open the source and count bytes as the 7z writer pulls them through.
         let file = File::open(source_path)
@@ -8865,7 +8890,7 @@ async fn extract_7z(
     password: Option<String>,
     create_subfolder: bool,
 ) -> Result<String, String> {
-    use sevenz_rust::*;
+    use sevenz_rust2::*;
     use std::fs::{self, File};
     use std::io::BufReader;
     use std::path::Path;
@@ -8893,10 +8918,6 @@ async fn extract_7z(
 
     let file =
         File::open(&archive_path).map_err(|e| format!("Failed to open 7z archive: {}", e))?;
-    let len = file
-        .metadata()
-        .map_err(|e| format!("Failed to get archive metadata: {}", e))?
-        .len();
     let reader = BufReader::new(file);
 
     let pwd = secret_password
@@ -8904,8 +8925,8 @@ async fn extract_7z(
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    let mut archive = SevenZReader::new(reader, len, pwd)
-        .map_err(|e| format!("Failed to read 7z archive: {}", e))?;
+    let mut archive =
+        ArchiveReader::new(reader, pwd).map_err(|e| format!("Failed to read 7z archive: {}", e))?;
 
     let dest = Path::new(&final_output_dir);
 
@@ -8943,21 +8964,19 @@ async fn extract_7z(
 /// Check if a 7z archive is password protected
 #[tauri::command]
 async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
-    use sevenz_rust::*;
+    use sevenz_rust2::*;
     use std::fs::File;
     use std::io::BufReader;
 
     let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
-    let len = file
-        .metadata()
-        .map_err(|e| format!("Failed to get file metadata: {}", e))?
-        .len();
-
     let reader = BufReader::new(file);
 
-    // Try to open without password: 7z metadata is often unencrypted even when content is
-    let mut archive = match SevenZReader::new(reader, len, Password::empty()) {
+    // Try to open without password: with content-only encryption the 7z header
+    // lists names in the clear, so this succeeds and we probe the content below.
+    // With -mhe (encrypted header) the open itself fails without the password,
+    // which the error branch maps to "encrypted".
+    let mut archive = match ArchiveReader::new(reader, Password::empty()) {
         Ok(a) => a,
         Err(e) => {
             let err_str = format!("{:?}", e);
@@ -15988,8 +16007,17 @@ pub async fn compress_7z_core(
     output_path: String,
     password: Option<String>,
     compression_level: Option<i64>,
+    encrypt_header: Option<bool>,
 ) -> Result<String, String> {
-    compress_7z_impl(paths, output_path, password, compression_level, None).await
+    compress_7z_impl(
+        paths,
+        output_path,
+        password,
+        compression_level,
+        encrypt_header,
+        None,
+    )
+    .await
 }
 
 pub async fn extract_7z_core(
@@ -18801,5 +18829,63 @@ mod overlay_helpers_tests {
         let evicted = drain_expired_overlay_sessions(&mut sessions, now);
         assert_eq!(evicted.len(), 1);
         assert!(sessions.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod sevenz_mhe_tests {
+    use super::{compress_7z_core, extract_7z_core, is_7z_encrypted_core};
+
+    // -mhe=on: a password-protected 7z must hide the filenames (encrypted
+    // header), not just the file contents. This is the gap that the migration to
+    // sevenz-rust2 closes (the old sevenz-rust 0.6 encrypted only the content
+    // stream and left the names in the clear).
+    #[tokio::test]
+    async fn password_7z_encrypts_header_and_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        // A distinctive filename we can search for in the raw archive bytes.
+        let marker = "topsecret_filename_marker.txt";
+        let src = dir.path().join(marker);
+        let content = b"hello encrypted-header roundtrip";
+        std::fs::write(&src, content).unwrap();
+        let out = dir.path().join("bundle.7z");
+
+        compress_7z_core(
+            vec![src.to_string_lossy().to_string()],
+            out.to_string_lossy().to_string(),
+            Some("pw-correct-horse".to_string()),
+            None,
+            Some(true), // opt in to header (filename) encryption
+        )
+        .await
+        .expect("compress 7z with password");
+
+        // The filename must NOT appear anywhere in the archive bytes: that is the
+        // whole point of header encryption (-mhe). With content-only encryption
+        // the name would be present in the cleartext header.
+        let bytes = std::fs::read(&out).unwrap();
+        let marker_bytes = marker.as_bytes();
+        assert!(
+            !bytes.windows(marker_bytes.len()).any(|w| w == marker_bytes),
+            "filename leaked into the archive header: header was not encrypted"
+        );
+
+        // The encryption probe used by the CLI fast path must report it locked.
+        assert!(is_7z_encrypted_core(out.to_string_lossy().to_string())
+            .await
+            .expect("probe encrypted"));
+
+        // Extracting with the correct password reconstructs the original file.
+        let dest = dir.path().join("out");
+        extract_7z_core(
+            out.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+            Some("pw-correct-horse".to_string()),
+            false,
+        )
+        .await
+        .expect("extract 7z with password");
+        let restored = std::fs::read(dest.join(marker)).unwrap();
+        assert_eq!(restored, content);
     }
 }

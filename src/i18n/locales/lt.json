@@ -2959,7 +2959,9 @@
             "estimating": "Skaičiuojama…",
             "spaceSaved": "{pct}% mažesnis",
             "estimateExact": "tikslus",
-            "estimateApprox": "įvertis"
+            "estimateApprox": "įvertis",
+            "encryptFileNames": "Šifruoti failų pavadinimus",
+            "encryptFileNamesHint": "Paslepia ir failų pavadinimus, ne tik jų turinį. Tuomet slaptažodžio prireiks net archyvo turiniui peržiūrėti."
         },
         "batchRename": {
             "title": "Masinis pervadinimas",

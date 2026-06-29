@@ -2959,7 +2959,9 @@
             "estimating": "A estimar…",
             "spaceSaved": "{pct}% menor",
             "estimateExact": "exato",
-            "estimateApprox": "estimativa"
+            "estimateApprox": "estimativa",
+            "encryptFileNames": "Cifrar os nomes dos ficheiros",
+            "encryptFileNamesHint": "Oculta também os nomes dos ficheiros, não apenas o seu conteúdo. A palavra-passe passa a ser necessária mesmo para listar o arquivo."
         },
         "batchRename": {
             "title": "Renomeação em Lote",

@@ -2925,6 +2925,11 @@ enum Commands {
         /// default applied only to encryptable formats, set AEROFTP_ARCHIVE_PASSWORD.
         #[arg(long, short = 'p')]
         password: Option<String>,
+        /// 7z only: also encrypt the archive header so the filenames are hidden,
+        /// not just the file contents (7-Zip's "Encrypt file names", -mhe=on).
+        /// Requires --password and is ignored for other formats. Off by default.
+        #[arg(long = "encrypt-names")]
+        encrypt_names: bool,
     },
     /// Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, rar).
     ///
@@ -5968,12 +5973,14 @@ fn warn_archive_password_visibility(password: &Option<String>, quiet: bool) {
 
 /// `aeroftp compress`: build a zip / 7z / tar(.gz/.xz/.bz2) archive from local
 /// inputs. Local-only (no connection). Reuses the same encoders as the GUI.
+#[allow(clippy::too_many_arguments)]
 async fn cmd_compress(
     output: &str,
     paths: &[String],
     archive_format: Option<ArchiveFormat>,
     level: Option<i64>,
     password: &Option<String>,
+    encrypt_names: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -6035,8 +6042,14 @@ async fn cmd_compress(
                 .await
         }
         ArchiveFormat::SevenZ => {
-            ftp_client_gui_lib::compress_7z_core(paths_vec, out_string, password.clone(), level)
-                .await
+            ftp_client_gui_lib::compress_7z_core(
+                paths_vec,
+                out_string,
+                password.clone(),
+                level,
+                Some(encrypt_names),
+            )
+            .await
         }
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
@@ -54008,6 +54021,7 @@ async fn main() {
             archive_format,
             level,
             password,
+            encrypt_names,
         } => {
             cmd_compress(
                 output,
@@ -54015,6 +54029,7 @@ async fn main() {
                 *archive_format,
                 *level,
                 password,
+                *encrypt_names,
                 &cli,
                 format,
             )

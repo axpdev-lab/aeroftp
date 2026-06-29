@@ -2924,7 +2924,9 @@
             "estimating": "推定中…",
             "spaceSaved": "{pct}% 小さい",
             "estimateExact": "正確",
-            "estimateApprox": "推定"
+            "estimateApprox": "推定",
+            "encryptFileNames": "ファイル名を暗号化",
+            "encryptFileNamesHint": "内容だけでなくファイル名も隠します。その場合、アーカイブの一覧表示にもパスワードが必要になります。"
         },
         "batchRename": {
             "title": "一括リネーム",

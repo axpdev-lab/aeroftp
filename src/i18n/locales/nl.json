@@ -2959,7 +2959,9 @@
             "estimating": "Schatten…",
             "spaceSaved": "{pct}% kleiner",
             "estimateExact": "exact",
-            "estimateApprox": "schatting"
+            "estimateApprox": "schatting",
+            "encryptFileNames": "Bestandsnamen versleutelen",
+            "encryptFileNamesHint": "Verbergt ook de bestandsnamen, niet alleen de inhoud. Het wachtwoord is dan zelfs nodig om het archief weer te geven."
         },
         "batchRename": {
             "title": "Batch hernoemen",

@@ -76,7 +76,7 @@ const TRACKED_DEPS: &[&str] = &[
     "totp-rs",
     "sigstore",
     // Archives
-    "sevenz-rust",
+    "sevenz-rust2",
     "zip",
     "tar",
     "flate2",

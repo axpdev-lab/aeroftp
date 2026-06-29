@@ -2959,7 +2959,9 @@
             "estimating": "Odhadujem…",
             "spaceSaved": "o {pct}% menšie",
             "estimateExact": "presné",
-            "estimateApprox": "odhad"
+            "estimateApprox": "odhad",
+            "encryptFileNames": "Šifrovať názvy súborov",
+            "encryptFileNamesHint": "Skryje aj názvy súborov, nielen ich obsah. Heslo potom bude potrebné aj na zobrazenie obsahu archívu."
         },
         "batchRename": {
             "title": "Hromadne premenovanie",

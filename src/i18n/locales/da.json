@@ -2959,7 +2959,9 @@
             "estimating": "Beregner…",
             "spaceSaved": "{pct}% mindre",
             "estimateExact": "nøjagtig",
-            "estimateApprox": "skøn"
+            "estimateApprox": "skøn",
+            "encryptFileNames": "Krypter filnavne",
+            "encryptFileNamesHint": "Skjuler også filnavnene, ikke kun deres indhold. Adgangskoden kræves så selv for at vise arkivets indhold."
         },
         "batchRename": {
             "title": "Masseomdøbning",

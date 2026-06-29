@@ -2959,7 +2959,9 @@
             "estimating": "Amcangyfrif…",
             "spaceSaved": "{pct}% llai",
             "estimateExact": "union",
-            "estimateApprox": "amcangyfrif"
+            "estimateApprox": "amcangyfrif",
+            "encryptFileNames": "Amgryptio enwau ffeiliau",
+            "encryptFileNamesHint": "Cuddio enwau'r ffeiliau hefyd, nid dim ond eu cynnwys. Yna bydd angen y cyfrinair hyd yn oed i restru'r archif."
         },
         "batchRename": {
             "title": "Ailenwi Swp",

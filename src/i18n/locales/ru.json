@@ -2959,7 +2959,9 @@
             "estimating": "Оценка…",
             "spaceSaved": "на {pct}% меньше",
             "estimateExact": "точно",
-            "estimateApprox": "оценка"
+            "estimateApprox": "оценка",
+            "encryptFileNames": "Шифровать имена файлов",
+            "encryptFileNamesHint": "Скрывает и имена файлов, а не только их содержимое. Тогда пароль потребуется даже для просмотра содержимого архива."
         },
         "batchRename": {
             "title": "Групповое переименование",

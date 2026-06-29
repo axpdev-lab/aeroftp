@@ -2959,7 +2959,9 @@
             "estimating": "Beräknar…",
             "spaceSaved": "{pct}% mindre",
             "estimateExact": "exakt",
-            "estimateApprox": "uppskattning"
+            "estimateApprox": "uppskattning",
+            "encryptFileNames": "Kryptera filnamn",
+            "encryptFileNamesHint": "Döljer även filnamnen, inte bara deras innehåll. Lösenordet krävs då även för att visa arkivets innehåll."
         },
         "batchRename": {
             "title": "Massnamnsändring",

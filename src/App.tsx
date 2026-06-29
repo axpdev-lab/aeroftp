@@ -14179,7 +14179,7 @@ interface UpdateVerificationInfo {
                 if (opts.format === 'zip') {
                   await invoke<string>('compress_files', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
                 } else if (opts.format === '7z') {
-                  await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
+                  await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel, encryptHeader: opts.encryptFileNames });
                 } else {
                   await invoke<string>('compress_tar', { paths, outputPath, format: opts.format, compressionLevel: opts.compressionLevel });
                 }

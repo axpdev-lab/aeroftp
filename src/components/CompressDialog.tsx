@@ -25,6 +25,9 @@ export interface CompressOptions {
     format: CompressFormat;
     compressionLevel: number;
     password: string | null;
+    /** 7z only: also encrypt the archive header so filenames are hidden (-mhe).
+     *  Meaningful only with a password; null/false keeps names readable. */
+    encryptFileNames: boolean;
 }
 
 /** Real byte totals reported back by the parent after a successful compression,
@@ -222,6 +225,10 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    // 7z "Encrypt file names" (-mhe), opt-in like 7-Zip. Only applied for 7z with
+    // a password; reset whenever those preconditions drop so it can't silently
+    // ride along on a zip or an unencrypted archive.
+    const [encryptFileNames, setEncryptFileNames] = useState(false);
     const [compressing, setCompressing] = useState(false);
     const [showFileList, setShowFileList] = useState(false);
     // Measured result of a finished compression; drives the completion stats panel.
@@ -291,6 +298,10 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
             setPassword('');
             setConfirmPassword('');
         }
+        // Filename encryption is a 7z-only feature; clear it on any other format.
+        if (newFormat !== '7z') {
+            setEncryptFileNames(false);
+        }
     };
 
     const handleConfirm = async () => {
@@ -302,6 +313,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                 format,
                 compressionLevel,
                 password: formatInfo.supportsPassword && password ? password : null,
+                // Only a 7z with an actual password can hide filenames.
+                encryptFileNames: format === '7z' && !!password && encryptFileNames,
             });
             // On success the parent returns the real byte totals: switch to the
             // completion stats view. A 0 output means the size could not be read,
@@ -516,6 +529,28 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     </button>
                                     <PasswordMatchHint password={password} confirm={confirmPassword} />
                                 </div>
+                            )}
+                            {/* 7z "Encrypt file names" (-mhe), opt-in like 7-Zip: only
+                                offered for 7z once a password is set. */}
+                            {format === '7z' && password && (
+                                <label className="mt-2.5 flex items-start gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={encryptFileNames}
+                                        disabled={compressing}
+                                        onChange={e => setEncryptFileNames(e.target.checked)}
+                                        className="mt-0.5 accent-current"
+                                        style={{ accentColor: 'var(--compress-accent)' }}
+                                    />
+                                    <span>
+                                        <span className="text-xs font-medium block" style={{ color: 'var(--compress-text-secondary)' }}>
+                                            {t('compress.encryptFileNames')}
+                                        </span>
+                                        <span className="text-[10px] block" style={{ color: 'var(--compress-text-muted)' }}>
+                                            {t('compress.encryptFileNamesHint')}
+                                        </span>
+                                    </span>
+                                </label>
                             )}
                         </div>
                     )}

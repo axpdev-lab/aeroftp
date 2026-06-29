@@ -2959,7 +2959,9 @@
             "estimating": "შეფასება…",
             "spaceSaved": "{pct}%-ით ნაკლები",
             "estimateExact": "ზუსტი",
-            "estimateApprox": "შეფასება"
+            "estimateApprox": "შეფასება",
+            "encryptFileNames": "ფაილების სახელების დაშიფვრა",
+            "encryptFileNamesHint": "მალავს ფაილების სახელებსაც, არა მხოლოდ მათ შიგთავსს. მაშინ პაროლი საჭირო იქნება არქივის ჩამონათვალის სანახავადაც."
         },
         "batchRename": {
             "title": "ჯგუფური სახელების შეცვლა",

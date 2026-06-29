@@ -2959,7 +2959,9 @@
             "estimating": "Memperkirakan…",
             "spaceSaved": "{pct}% lebih kecil",
             "estimateExact": "tepat",
-            "estimateApprox": "perkiraan"
+            "estimateApprox": "perkiraan",
+            "encryptFileNames": "Enkripsi nama berkas",
+            "encryptFileNamesHint": "Sembunyikan juga nama berkas, bukan hanya isinya. Kata sandi kemudian diperlukan bahkan untuk menampilkan daftar isi arsip."
         },
         "batchRename": {
             "title": "Ganti Nama Batch",

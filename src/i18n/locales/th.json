@@ -2959,7 +2959,9 @@
             "estimating": "กำลังประมาณ…",
             "spaceSaved": "เล็กลง {pct}%",
             "estimateExact": "แม่นยำ",
-            "estimateApprox": "ประมาณ"
+            "estimateApprox": "ประมาณ",
+            "encryptFileNames": "เข้ารหัสชื่อไฟล์",
+            "encryptFileNamesHint": "ซ่อนชื่อไฟล์ด้วย ไม่ใช่แค่เนื้อหา จากนั้นจะต้องใช้รหัสผ่านแม้แต่จะแสดงรายการในไฟล์เก็บถาวร"
         },
         "batchRename": {
             "title": "เปลี่ยนชื่อแบบกลุ่ม",

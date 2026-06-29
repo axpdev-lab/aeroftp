@@ -2959,7 +2959,9 @@
             "estimating": "Becslés…",
             "spaceSaved": "{pct}%-kal kisebb",
             "estimateExact": "pontos",
-            "estimateApprox": "becslés"
+            "estimateApprox": "becslés",
+            "encryptFileNames": "Fájlnevek titkosítása",
+            "encryptFileNamesHint": "Elrejti a fájlneveket is, nem csak a tartalmukat. Ekkor a jelszó az archívum tartalmának listázásához is szükséges."
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

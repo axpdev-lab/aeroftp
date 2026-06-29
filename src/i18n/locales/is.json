@@ -2959,7 +2959,9 @@
             "estimating": "Áætla…",
             "spaceSaved": "{pct}% minni",
             "estimateExact": "nákvæmt",
-            "estimateApprox": "áætlun"
+            "estimateApprox": "áætlun",
+            "encryptFileNames": "Dulkóða skráarnöfn",
+            "encryptFileNamesHint": "Felur einnig skráarnöfnin, ekki bara innihald þeirra. Þá þarf lykilorðið jafnvel til að sýna innihald safnsins."
         },
         "batchRename": {
             "title": "Hópendurnefning",

@@ -2959,7 +2959,9 @@
             "estimating": "अनुमान लगाया जा रहा है…",
             "spaceSaved": "{pct}% छोटा",
             "estimateExact": "सटीक",
-            "estimateApprox": "अनुमान"
+            "estimateApprox": "अनुमान",
+            "encryptFileNames": "फ़ाइल नाम एन्क्रिप्ट करें",
+            "encryptFileNamesHint": "केवल सामग्री ही नहीं, फ़ाइलों के नाम भी छिपाएँ। तब संग्रह की सूची देखने के लिए भी पासवर्ड आवश्यक होगा।"
         },
         "batchRename": {
             "title": "बैच नाम बदलना",
