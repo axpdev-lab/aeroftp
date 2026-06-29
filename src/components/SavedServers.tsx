@@ -319,24 +319,49 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             id: newId,
             name: `${server.name} (${t('common.copy')})`,
             lastConnected: undefined,
-            hasStoredCredential: false, // until proven copied below
+            // The hasStored* flags are recomputed below from what actually
+            // copied: the `...server` spread would otherwise carry them as
+            // `true` while the matching vault keys never exist under newId,
+            // leaving the edit form hydration to read missing keys and the copy
+            // half-broken (issue: duplicate dropped every per-profile secret but
+            // the main password).
+            hasStoredCredential: false,
+            hasStoredFilenApiKey: false,
+            hasStoredAeroCryptPassword: false,
+            hasStoredAeroCryptSalt: false,
         };
-        // Always probe the vault for the stored credential, never gate on the
-        // `hasStoredCredential` flag: the vault is the source of truth and the
-        // flag can be stale or absent on a profile synced from another machine
-        // (per-machine keyring). The S3 secret access key, like every other
-        // password, lives under `server_<id>`.
-        let credentialCopied = false;
-        try {
-            const password = await getCredentialWithRetry(`server_${server.id}`);
-            if (password) {
-                await invoke('store_credential', { account: `server_${newId}`, password });
-                cloned.hasStoredCredential = true;
-                credentialCopied = true;
+        // Copy a single per-profile vault entry from the source id to newId.
+        // Always probe the vault, never gate on the `hasStored*` flag: the vault
+        // is the source of truth and the flag can be stale or absent on a
+        // profile synced from another machine (per-machine keyring). Returns
+        // whether a value was actually copied. A missing key throws NotFound,
+        // which is a normal "nothing to copy" outcome, not an error.
+        const copyVaultKey = async (suffix: string): Promise<boolean> => {
+            try {
+                const value = await getCredentialWithRetry(`${suffix}_${server.id}`);
+                if (value) {
+                    await invoke('store_credential', { account: `${suffix}_${newId}`, password: value });
+                    return true;
+                }
+            } catch (e) {
+                console.error(`Duplicate: failed to copy ${suffix} credential from vault`, e);
             }
-        } catch (e) {
-            console.error('Duplicate: failed to copy stored credential from vault', e);
-        }
+            return false;
+        };
+        // The S3 secret access key, like every other password, lives under
+        // `server_<id>`. A multi-mode account (Filen API / WebDAV / S3) keeps
+        // its real secret in the `server_modes_<id>` snapshot; the Filen CLI key
+        // and the AeroCrypt overlay password/salt each live under their own
+        // per-profile key. The duplicate must carry them all or the copy opens
+        // blank and cannot connect.
+        const credentialCopied = await copyVaultKey('server');
+        cloned.hasStoredCredential = credentialCopied;
+        // server_modes_<id>: per-mode credential snapshots (#215). The flag here
+        // is the profile-level `persistModeCredentials` opt-in, kept via spread.
+        await copyVaultKey('server_modes');
+        cloned.hasStoredFilenApiKey = await copyVaultKey('filen_api_key');
+        cloned.hasStoredAeroCryptPassword = await copyVaultKey('aerocrypt_overlay_pw');
+        cloned.hasStoredAeroCryptSalt = await copyVaultKey('aerocrypt_overlay_salt');
         const updated = [...servers, cloned];
         setServers(updated);
         saveServers(updated);
