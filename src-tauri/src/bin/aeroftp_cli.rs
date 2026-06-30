@@ -31354,33 +31354,59 @@ async fn cmd_profile_import(
     // restored in phase 2.
     let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     for &idx in &decision.add_indices {
-        let p = &imported[idx];
-        if let Some(id) = p
+        if let Some(id) = imported[idx]
             .get("id")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
         {
             restore_ids.insert(id.to_string());
         }
-        current.push(p.clone());
     }
 
-    // Phase 2: restore credentials for the added profiles only.
+    // Phase 2: restore credentials for the added profiles only. Its returned
+    // servers carry the corrected `hasStoredAeroCrypt*` flags: the phase-1
+    // preview ran with an empty restore set, so ITS flags are always false even
+    // when the secret travels with the file. Persist the phase-2 redaction for
+    // the added profiles, not the preview, so an imported crypt-overlay profile
+    // reports its stored overlay password and the GUI auto-unlock fires
+    // (`maybeAutoUnlockProfileOverlay` gates on `hasStoredAeroCryptPassword`);
+    // otherwise the binding round-trips but the session never decrypts.
+    let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
+        std::collections::HashMap::new();
     if !restore_ids.is_empty() {
-        if let Err(e) = ftp_client_gui_lib::import_server_profiles_core_filtered(
+        match ftp_client_gui_lib::import_server_profiles_core_filtered(
             input.to_string(),
             password.clone(),
             Some(restore_ids),
         )
         .await
         {
-            password.zeroize();
-            let exit = if e.contains("Invalid password") { 6 } else { 1 };
-            print_error(format, &format!("import failed: {e}"), exit);
-            return exit;
+            Ok(v) => {
+                if let Some(arr) = v.get("servers").and_then(|s| s.as_array()) {
+                    for s in arr {
+                        if let Some(id) = s.get("id").and_then(|x| x.as_str()) {
+                            restored_by_id.insert(id.to_string(), s.clone());
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                password.zeroize();
+                let exit = if e.contains("Invalid password") { 6 } else { 1 };
+                print_error(format, &format!("import failed: {e}"), exit);
+                return exit;
+            }
         }
     }
     password.zeroize();
+
+    // Append the added profiles, preferring the phase-2 redaction (true
+    // credential-presence flags) over the phase-1 preview (flags all false).
+    current.extend(merged_added_profiles(
+        &decision.add_indices,
+        &imported,
+        &restored_by_id,
+    ));
 
     if added > 0 {
         if let Err(e) = save_active_user_profiles(cli, &store, &current) {
@@ -31419,6 +31445,32 @@ async fn cmd_profile_import(
         eprintln!("Imported {added} profile(s){tail} from {input}");
     }
     0
+}
+
+/// Pick the JSON to persist for each newly-added profile, preferring the
+/// phase-2 redaction (which restored credentials and so carries the true
+/// `hasStoredAeroCrypt*` flags) over the phase-1 preview (whose flags are all
+/// false because the preview restores nothing). Falls back to the preview when
+/// a profile had no phase-2 entry (no credential to restore). Keeping the two
+/// in sync is what makes an imported crypt-overlay profile auto-unlock instead
+/// of round-tripping the binding while reporting no stored overlay password.
+fn merged_added_profiles(
+    add_indices: &[usize],
+    imported: &[serde_json::Value],
+    restored_by_id: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    add_indices
+        .iter()
+        .map(|&idx| {
+            let preview = &imported[idx];
+            preview
+                .get("id")
+                .and_then(|v| v.as_str())
+                .and_then(|id| restored_by_id.get(id))
+                .cloned()
+                .unwrap_or_else(|| preview.clone())
+        })
+        .collect()
 }
 
 /// Coarse "same account/endpoint" key (host:port:username). NOT a skip key any
@@ -56635,6 +56687,34 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn import_appends_phase2_credential_flags_not_preview() {
+        // Phase-1 preview always reports the crypt-overlay secret as absent
+        // (it restores nothing). Phase-2 restores it and reports it present.
+        // The persisted profile must take the phase-2 flag, otherwise an
+        // imported crypt-overlay profile never auto-unlocks (regression: the
+        // CLI used to push the preview and discard the phase-2 result).
+        let imported = vec![
+            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": false}),
+            json!({"id": "b", "name": "B", "hasStoredAeroCryptPassword": false}),
+        ];
+        let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
+            std::collections::HashMap::new();
+        restored_by_id.insert(
+            "a".to_string(),
+            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": true}),
+        );
+        // "b" had no secret in the file, so phase 2 returns nothing for it.
+        let out = merged_added_profiles(&[0, 1], &imported, &restored_by_id);
+        assert_eq!(out.len(), 2);
+        // Restored profile carries the corrected (true) flag from phase 2.
+        assert_eq!(out[0]["id"], json!("a"));
+        assert_eq!(out[0]["hasStoredAeroCryptPassword"], json!(true));
+        // No phase-2 entry -> falls back to the preview verbatim (flag false).
+        assert_eq!(out[1]["id"], json!("b"));
+        assert_eq!(out[1]["hasStoredAeroCryptPassword"], json!(false));
     }
 
     #[test]
