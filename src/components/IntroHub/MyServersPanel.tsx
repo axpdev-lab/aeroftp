@@ -47,6 +47,10 @@ import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialo
 import { AeroShareActivationPrompt } from '../AeroShare/AeroShareActivationPrompt';
 import { SharedByMePanel } from '../AeroShare/SharedByMePanel';
 import { friendCanConnect, AERO_SHARE_OPEN_EVENT, type AeroShareOpenDetail } from '../../utils/aeroShare';
+import {
+    copyProfileVaultSecrets,
+    deleteProfileVaultSecrets,
+} from '../../utils/profileVaultSecrets';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
@@ -1250,13 +1254,23 @@ export function MyServersPanel({
         }
     }, [servers, connectingId, onConnect, cancellableConnect, t]);
 
-    const handleDuplicate = useCallback((server: ServerProfile) => {
+    const handleDuplicate = useCallback(async (server: ServerProfile) => {
+        const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const dup: ServerProfile = {
             ...server,
-            id: `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+            id: newId,
             name: `${server.name} (copy)`,
             lastConnected: undefined,
+            hasStoredCredential: false,
+            hasStoredFilenApiKey: false,
+            hasStoredAeroCryptPassword: false,
+            hasStoredAeroCryptSalt: false,
         };
+        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId);
+        dup.hasStoredCredential = copiedSecrets.server;
+        dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
+        dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
+        dup.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
         const updated = [dup, ...servers];
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
@@ -1340,8 +1354,7 @@ export function MyServersPanel({
         const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
-        // Clean up orphaned vault credential
-        invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
+        deleteProfileVaultSecrets(deleteTarget.id).catch(() => {});
         // Drop the deleted profile from any group it belonged to (#320).
         pruneServerFromGroups(deleteTarget.id).catch(() => {});
         setGroups(prev => prev.map(g => (

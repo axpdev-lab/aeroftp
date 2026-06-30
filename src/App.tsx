@@ -5955,7 +5955,7 @@ interface UpdateVerificationInfo {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
       // Create session with provider name: pass fresh files to avoid stale closure
-      createSession(
+      await createSession(
         providerName,
         effectiveParams,
         oauthResponse?.current_path || '/',
@@ -6221,7 +6221,7 @@ interface UpdateVerificationInfo {
           providerId: effectiveParams.providerId,
           savedServerId: effectiveParams.savedServerId,
         };
-        createSession(
+        await createSession(
           providerName,
           sessionParams,
           response.current_path,
@@ -14365,7 +14365,7 @@ interface UpdateVerificationInfo {
                     resolvedLocalPath = await safeChangeLocalDirectory(localInitialPath);
                   }
                   // Create session with provider name: pass fresh files to avoid stale closure
-                  createSession(
+                  await createSession(
                     providerName,
                     normalizedParams,
                     savedOauthResp?.current_path || initialPath || '/',
@@ -14524,7 +14524,7 @@ interface UpdateVerificationInfo {
                       resolvedLocalPath2 = await safeChangeLocalDirectory(localInitialPath);
                     }
 
-                    createSession(
+                    await createSession(
                       providerName,
                       connectedParams,
                       response.current_path,
