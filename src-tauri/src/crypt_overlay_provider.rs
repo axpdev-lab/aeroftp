@@ -932,7 +932,9 @@ pub async fn wrap_provider_with_overlay_if_bound(
     let Some(params) = binding else {
         return Ok(inner);
     };
-    let keys = unlock_overlay_keys_encrypting(&mut *inner, params, password, salt).await?;
+    // Non-interactive factory (CLI / cross-profile / MCP): fail-closed, never
+    // bootstrap an overlay on a folder that has no config.
+    let keys = unlock_overlay_keys_encrypting(&mut *inner, params, password, salt, false).await?;
     let provider = CryptOverlayProvider::new(inner, keys, &params.remote_scope);
     Ok(Box::new(provider))
 }
@@ -1043,6 +1045,7 @@ async fn unlock_overlay_keys_encrypting(
     params: &OverlayUnlockParams,
     password: &str,
     salt: &str,
+    allow_init: bool,
 ) -> Result<OverlayKeys, String> {
     match params.kind.as_str() {
         "rclone-crypt" => {
@@ -1066,17 +1069,64 @@ async fn unlock_overlay_keys_encrypting(
         "aerocrypt" => {
             let scope = params.remote_scope.trim_end_matches('/');
             let config_path = format!("{}/{}", scope, AEROCRYPT_CONFIG_NAME);
-            let config_bytes = provider
-                .download_to_bytes(&config_path)
+            // Clobber-safe existence probe. A fresh empty target must bootstrap a v3
+            // overlay (mirrors the legacy `aerocrypt_provider::aerocrypt_unlock` None
+            // branch the Phase-3 migration replaced), but a read/network error must
+            // NEVER be taken for "absent": re-init rotates the salt and would orphan
+            // every file already encrypted under the existing overlay. So only an
+            // explicit `exists == false` triggers the bootstrap.
+            let present = provider
+                .exists(&config_path)
                 .await
-                .map_err(|e| format!("Cannot read AeroCrypt overlay config: {e}"))?;
-            let config_str = String::from_utf8_lossy(&config_bytes);
-            let config = overlay::parse_config(&config_str)
-                .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
-            let master_key = overlay::derive_master_key(&config, password)
-                .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
-            overlay::verify_config_mac(&config, &master_key)
-                .map_err(|e| format!("AeroCrypt unlock failed: {e}"))?;
+                .map_err(|e| format!("Cannot probe AeroCrypt overlay config: {e}"))?;
+            let (config, master_key) = if present {
+                let config_bytes = provider
+                    .download_to_bytes(&config_path)
+                    .await
+                    .map_err(|e| format!("Cannot read AeroCrypt overlay config: {e}"))?;
+                let config_str = String::from_utf8_lossy(&config_bytes);
+                let config = overlay::parse_config(&config_str)
+                    .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
+                let master_key = overlay::derive_master_key(&config, password)
+                    .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
+                overlay::verify_config_mac(&config, &master_key)
+                    .map_err(|e| format!("AeroCrypt unlock failed: {e}"))?;
+                (config, master_key)
+            } else if allow_init {
+                // Bootstrap a fresh AECR v3 overlay and persist its config so the
+                // empty folder becomes a self-describing crypt store on first
+                // activation (length-bound content + key-bound config MAC). Only the
+                // interactive GUI activation path opts in; the non-interactive
+                // factory (CLI / cross-profile / MCP) passes allow_init=false and
+                // stays fail-closed below.
+                let salt = overlay::random_salt_v3();
+                let tmp = OverlayConfig::V3 {
+                    salt,
+                    mac: [0u8; 32],
+                };
+                let master_key = overlay::derive_master_key(&tmp, password)
+                    .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
+                let json = overlay::init_config_v3(&salt, &master_key)
+                    .map_err(|e| format!("Cannot build AeroCrypt overlay config: {e}"))?;
+                let staged = tempfile::NamedTempFile::new()
+                    .map_err(|e| format!("Cannot stage AeroCrypt overlay config: {e}"))?;
+                std::fs::write(staged.path(), json.as_bytes())
+                    .map_err(|e| format!("Cannot stage AeroCrypt overlay config: {e}"))?;
+                provider
+                    .upload(&staged.path().to_string_lossy(), &config_path, None)
+                    .await
+                    .map_err(|e| format!("Cannot write AeroCrypt overlay config: {e}"))?;
+                let config = overlay::parse_config(&json)
+                    .map_err(|e| format!("Invalid AeroCrypt overlay config: {e}"))?;
+                (config, master_key)
+            } else {
+                // Non-interactive contexts never create an overlay implicitly: a
+                // crypt-bound profile pointed at a folder with no config is refused
+                // (fail-closed), never handed back the raw provider.
+                return Err(format!(
+                    "Cannot read AeroCrypt overlay config: no overlay at {config_path}"
+                ));
+            };
             Ok(OverlayKeys::AeroCrypt { master_key, config })
         }
         other => Err(format!("Unsupported crypt overlay kind: {other}")),
@@ -1114,7 +1164,11 @@ pub async fn apply_overlay_in_place(
     // Derive keys against the live raw connection. On error the slot still holds
     // the raw provider (we borrowed via `&mut`, never took), so the session is
     // preserved and the caller surfaces the unlock error.
-    let keys = unlock_overlay_keys_encrypting(&mut **provider, binding, password, salt).await?;
+    // Interactive GUI activation: bootstrap a fresh v3 overlay when the target
+    // folder has no config yet (clobber-safe), so "activate overlay here" works on
+    // an empty folder instead of failing "could not be unlocked".
+    let keys =
+        unlock_overlay_keys_encrypting(&mut **provider, binding, password, salt, true).await?;
     let raw = slot
         .take()
         .expect("provider present after a successful unlock");
@@ -1790,6 +1844,69 @@ mod tests {
         // back.
         let res = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "").await;
         assert!(res.is_err(), "missing config must fail closed");
+    }
+
+    #[tokio::test]
+    async fn aerocrypt_activation_bootstraps_v3_on_empty_folder() {
+        // Interactive GUI activation (allow_init=true): pointing an aerocrypt
+        // overlay at an empty folder must INIT a v3 config (write it to the remote)
+        // instead of failing "could not be unlocked". A reconnect then READS that
+        // config. The non-interactive factory stays fail-closed (allow_init=false).
+        let mut mem = MemProvider::new();
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        };
+
+        let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", true)
+            .await
+            .expect("empty folder must bootstrap a v3 overlay");
+        assert!(matches!(keys, OverlayKeys::AeroCrypt { .. }));
+
+        // The config was persisted to the remote and is v3.
+        let cfg = mem
+            .raw_bytes("/Vault/.aeroftp-crypt.json")
+            .expect("a config must be written on bootstrap");
+        let v: serde_json::Value = serde_json::from_slice(&cfg).unwrap();
+        assert_eq!(v["version"], serde_json::json!(3));
+
+        // Re-activation reads the existing config (no second bootstrap, no clobber).
+        let keys2 = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", true)
+            .await
+            .expect("re-activation must read the existing config");
+        assert!(matches!(keys2, OverlayKeys::AeroCrypt { .. }));
+        let still: Vec<String> = mem
+            .raw_paths()
+            .into_iter()
+            .filter(|p| p == "/Vault/.aeroftp-crypt.json")
+            .collect();
+        assert_eq!(
+            still.len(),
+            1,
+            "re-activation must not write a second config"
+        );
+
+        // Non-interactive (allow_init=false) on a still-empty folder stays
+        // fail-closed: it never creates an overlay implicitly.
+        let other = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Empty".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        };
+        let res = unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", false).await;
+        assert!(
+            res.is_err(),
+            "non-interactive empty folder must fail closed"
+        );
+        assert!(
+            mem.raw_bytes("/Empty/.aeroftp-crypt.json").is_none(),
+            "fail-closed path must not write a config"
+        );
     }
 
     #[tokio::test]
