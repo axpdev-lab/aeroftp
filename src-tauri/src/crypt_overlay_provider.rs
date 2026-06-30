@@ -374,6 +374,114 @@ impl CryptOverlayProvider {
     fn crypt_err(context: &str, e: String) -> ProviderError {
         ProviderError::TransferFailed(format!("{context}: {e}"))
     }
+
+    /// The plaintext anchor this overlay is bound to (`""` = whole remote).
+    pub fn scope(&self) -> &str {
+        &self.scope
+    }
+
+    /// Detach and return the wrapped raw provider, leaving this decorator husk
+    /// inert (a [`DetachedProvider`] placeholder whose methods are never called:
+    /// the husk is dropped immediately after the caller swaps the detached inner
+    /// back into its slot). The overlay keys are dropped with the husk (zeroized
+    /// via `OverlayKeys`'s `Drop`). Used by the GUI on-demand
+    /// `provider_clear_crypt_overlay` / scope-cross-out path to revert
+    /// `ProviderState` to the live raw connection without reconnecting, so the
+    /// browser can show plaintext outside the encrypted scope exactly as the
+    /// pre-decorator command layer did.
+    pub fn take_inner(&mut self) -> Box<dyn StorageProvider> {
+        std::mem::replace(&mut self.inner, Box::new(DetachedProvider))
+    }
+}
+
+/// Inert placeholder swapped into a [`CryptOverlayProvider`] husk by
+/// [`CryptOverlayProvider::take_inner`]. It is NEVER used for I/O: the husk is
+/// dropped the instant after its real inner is detached. Every method fails
+/// closed so that, even in the impossible event the husk outlives the swap, it
+/// can never touch a backend.
+struct DetachedProvider;
+
+#[async_trait]
+impl StorageProvider for DetachedProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    fn provider_type(&self) -> ProviderType {
+        ProviderType::Ftp
+    }
+    fn display_name(&self) -> String {
+        "detached".to_string()
+    }
+    async fn connect(&mut self) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+    fn is_connected(&self) -> bool {
+        false
+    }
+    async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn pwd(&mut self) -> Result<String, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn cd_up(&mut self) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn download(
+        &mut self,
+        _remote_path: &str,
+        _local_path: &str,
+        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn download_to_bytes(&mut self, _remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn upload(
+        &mut self,
+        _local_path: &str,
+        _remote_path: &str,
+        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
+    async fn server_info(&mut self) -> Result<String, ProviderError> {
+        Err(ProviderError::NotConnected)
+    }
 }
 
 /// Write decrypted plaintext atomically: stage to a sibling `.aerotmp` file then
@@ -975,6 +1083,61 @@ async fn unlock_overlay_keys_encrypting(
     }
 }
 
+// ── GUI on-demand wrap/unwrap of a live provider slot ─────────────────────────
+//
+// The GUI keeps a single live connection in `ProviderState::provider` and toggles
+// the crypt overlay on it at runtime (auto-unlock on connect, ad-hoc activation,
+// badge lock/unlock, and cross-scope-boundary navigation), instead of choosing a
+// crypt-vs-plain command per operation as the retired `*_provider_*` layer did.
+// `apply_overlay_in_place` wraps the live raw provider; `clear_overlay_in_place`
+// reverts it to raw (showing plaintext outside the encrypted scope, exactly like
+// the old command layer). Both operate on the same `Option<Box<dyn ...>>` slot.
+
+/// Apply a crypt overlay to a live provider slot in place. Any existing overlay
+/// is reverted first (re-anchor / refresh / refresh-after-scope-change), so the
+/// slot is never double-wrapped. The keys are derived against the live
+/// connection; FAIL-CLOSED: on any unlock error the slot keeps the untouched raw
+/// provider (the borrow is released without taking), so a failed unlock never
+/// drops the session. Returns the normalized plaintext scope on success.
+pub async fn apply_overlay_in_place(
+    slot: &mut Option<Box<dyn StorageProvider>>,
+    binding: &OverlayUnlockParams,
+    password: &str,
+    salt: &str,
+) -> Result<String, String> {
+    // Revert any prior overlay so a re-apply (re-anchor / scope change) can never
+    // stack a second decorator on top of the first.
+    clear_overlay_in_place(slot);
+    let provider = slot
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    // Derive keys against the live raw connection. On error the slot still holds
+    // the raw provider (we borrowed via `&mut`, never took), so the session is
+    // preserved and the caller surfaces the unlock error.
+    let keys = unlock_overlay_keys_encrypting(&mut **provider, binding, password, salt).await?;
+    let raw = slot
+        .take()
+        .expect("provider present after a successful unlock");
+    let wrapped = CryptOverlayProvider::new(raw, keys, &binding.remote_scope);
+    *slot = Some(Box::new(wrapped));
+    Ok(norm_anchor(&binding.remote_scope))
+}
+
+/// Revert a live provider slot to its raw inner when it currently holds a
+/// [`CryptOverlayProvider`]. The overlay keys are dropped (zeroized) with the
+/// husk. Returns true when an overlay was removed, false when the slot was
+/// already raw / empty. Idempotent.
+pub fn clear_overlay_in_place(slot: &mut Option<Box<dyn StorageProvider>>) -> bool {
+    if let Some(boxed) = slot.as_mut() {
+        if let Some(dec) = boxed.as_any_mut().downcast_mut::<CryptOverlayProvider>() {
+            let raw = dec.take_inner();
+            *slot = Some(raw);
+            return true;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1496,6 +1659,82 @@ mod tests {
     #[tokio::test]
     async fn end_to_end_aerocrypt_scoped() {
         roundtrip_through_decorator(aerocrypt_keys(), "/Vault").await;
+    }
+
+    /// Phase 3 on-demand model: applying an overlay to a live slot wraps the raw
+    /// provider (writes become encrypted), clearing reverts it to the SAME raw
+    /// provider (showing the encrypted store verbatim), and a re-apply never
+    /// stacks a second decorator (one clear fully reverts to raw).
+    #[tokio::test]
+    async fn apply_clear_overlay_in_place_wraps_reverts_and_reanchors() {
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
+        let binding = OverlayUnlockParams {
+            kind: "rclone-crypt".to_string(),
+            remote_scope: String::new(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        };
+
+        // No-op on a raw slot.
+        assert!(
+            !clear_overlay_in_place(&mut slot),
+            "raw slot has no overlay"
+        );
+
+        // Apply: the slot now holds a decorator.
+        let scope = apply_overlay_in_place(&mut slot, &binding, "pw", "salt")
+            .await
+            .unwrap();
+        assert_eq!(scope, "");
+        assert!(
+            slot.as_mut()
+                .unwrap()
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .is_some(),
+            "slot is wrapped after apply"
+        );
+
+        // Re-apply (re-anchor): must revert the prior overlay first, never stack.
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt")
+            .await
+            .unwrap();
+
+        // Write a plaintext file through the wrapped slot.
+        let dir = std::env::temp_dir().join(format!("crypt_ovl_apply_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("secret.txt");
+        tokio::fs::write(&local, b"plaintext payload")
+            .await
+            .unwrap();
+        slot.as_mut()
+            .unwrap()
+            .upload(local.to_str().unwrap(), "/secret.txt", None)
+            .await
+            .unwrap();
+
+        // A SINGLE clear reverts straight to the raw MemProvider (no nested
+        // decorator survives the re-apply).
+        assert!(clear_overlay_in_place(&mut slot), "overlay removed");
+        let mem = slot
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .expect("slot reverted to the raw MemProvider");
+
+        // The raw store kept the object under an ENCRYPTED name (the wrapped
+        // upload encrypted it; clearing does not delete or decrypt it).
+        let raw_paths = mem.raw_paths();
+        assert_eq!(raw_paths.len(), 1, "one stored object");
+        assert!(
+            !raw_paths[0].contains("secret.txt"),
+            "raw name stays encrypted after clear: {}",
+            raw_paths[0]
+        );
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
     #[tokio::test]

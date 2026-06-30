@@ -22,23 +22,29 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
 /// `sync_preview`, `remote_edit`) are NOT yet crypt-aware: the GUI keeps the raw
 /// provider in `ProviderState` and applies crypt at the command layer, so a raw
 /// agent write to a crypt-bound session injects plaintext into the encrypted
-/// store (silent corruption) and a raw read returns ciphertext. Until Phase 3
-/// wraps the provider at connect, fail closed when an overlay is active on the
-/// current session. The CLI, cross-profile/agent transfer, and MCP backends are
-/// already crypt-aware (Phases 1-2), so steer the agent there.
+/// store (silent corruption) and a raw read returns ciphertext.
+///
+/// Phase 3 (on-demand model): the GUI now wraps the live `ProviderState` provider
+/// with the crypt decorator whenever an overlay is active in the encrypted scope,
+/// so the agent paths below go through it transparently and are safe. The hazard
+/// only remains while the session is crypt-CAPABLE but the live provider is
+/// currently UNWRAPPED (the user locked the badge, or navigated outside the
+/// encrypted scope): a raw write could land plaintext in the crypt store. Fail
+/// closed in exactly that window. The CLI, cross-profile/agent transfer, and MCP
+/// backends are crypt-aware (Phases 1-2), so steer the agent there.
 fn guard_no_raw_crypt_write(
     state: &tauri::State<'_, crate::provider_commands::ProviderState>,
     op: &str,
 ) -> Result<(), String> {
-    if state
-        .active_crypt_overlay
-        .load(std::sync::atomic::Ordering::SeqCst)
-    {
+    use std::sync::atomic::Ordering::SeqCst;
+    let crypt_capable = state.active_crypt_overlay.load(SeqCst);
+    let wrapped = state.overlay_wrapped.load(SeqCst);
+    if crypt_capable && !wrapped {
         return Err(format!(
-            "{op} is blocked: this session has an active crypt overlay and the agent's \
-             direct provider path is not yet crypt-aware (it would corrupt the encrypted \
-             store with plaintext). Use the CLI ('aeroftp-cli' on the crypt profile) or a \
-             cross-profile transfer instead."
+            "{op} is blocked: this session has a crypt overlay that is currently locked or \
+             out of its encrypted scope, so the agent's direct provider path would read \
+             ciphertext or write plaintext into the encrypted store. Re-enter the encrypted \
+             scope (or unlock the overlay), or use the CLI / a cross-profile transfer."
         ));
     }
     Ok(())

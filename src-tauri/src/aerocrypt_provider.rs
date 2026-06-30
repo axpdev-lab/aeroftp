@@ -415,9 +415,12 @@ pub async fn aerocrypt_provider_list(
 ) -> Result<AeroCryptBrowserListResponse, String> {
     let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
 
-    // Interim agent guard (Phase 2 T2.3): a crypt overlay is now in play on this
-    // session, so refuse the AeroAgent raw-provider gui_tools paths until Phase 3
-    // wraps the provider at connect.
+    // Crypt-capability flag: a crypt overlay is in play on this session via the
+    // legacy `*_provider_*` command layer (kept until Phase 4). The Phase 3 agent
+    // guard (`guard_no_raw_crypt_write`) refuses the raw `gui_tools` paths while
+    // the session is crypt-capable but the live provider is NOT wrapped; the
+    // on-demand `provider_apply_crypt_overlay` path sets this too. Cleared on
+    // connect/disconnect.
     provider_state
         .active_crypt_overlay
         .store(true, std::sync::atomic::Ordering::SeqCst);

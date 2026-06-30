@@ -77,17 +77,22 @@ pub struct ProviderState {
     pub in_flight_transfers: Arc<AtomicUsize>,
     /// Wakes drain waiters when an in-flight transfer guard drops.
     in_flight_notify: Arc<Notify>,
-    /// Interim crypt-overlay guard (Phase 2 T2.3, retired by Phase 3 T3.1).
-    ///
-    /// Set true once a crypt overlay is browsed on the currently-held provider
-    /// (the `*_provider_*_list` commands flip it), cleared on connect/disconnect.
-    /// While set, the AeroAgent `gui_tools` paths that write/read the RAW
-    /// `provider` directly (`upload_files`, `download_files`, `sync_preview`,
-    /// `remote_edit`) hard-fail instead of corrupting the crypt store with
-    /// plaintext: the GUI session keeps the RAW provider here and applies crypt
-    /// at the command layer, so those agent paths are NOT yet crypt-aware. Phase
-    /// 3 wraps the provider at connect time and removes this guard.
+    /// Crypt-overlay CAPABILITY flag (sticky for the session): true once a crypt
+    /// overlay has been applied to this connection (`provider_apply_crypt_overlay`),
+    /// cleared on connect/disconnect and on a full overlay removal. Combined with
+    /// [`Self::overlay_wrapped`] it gates the AeroAgent `gui_tools` raw-provider
+    /// paths: a raw write is refused while the session is crypt-capable but the
+    /// live provider is currently UNWRAPPED (badge locked / outside the encrypted
+    /// scope), which would otherwise corrupt the crypt store with plaintext.
     pub active_crypt_overlay: Arc<AtomicBool>,
+    /// True while the live `provider` box is currently a `CryptOverlayProvider`
+    /// (Phase 3 on-demand model): set by `provider_apply_crypt_overlay`, cleared
+    /// by `provider_clear_crypt_overlay` and on connect/disconnect. When wrapped,
+    /// every surface that touches `provider` (browser, agent `gui_tools`, speed
+    /// test, preview) is transparently crypt-aware; when unwrapped the raw
+    /// connection is exposed (plaintext outside the scope, ciphertext while
+    /// locked).
+    pub overlay_wrapped: Arc<AtomicBool>,
 }
 
 impl ProviderState {
@@ -101,6 +106,7 @@ impl ProviderState {
             in_flight_transfers: Arc::new(AtomicUsize::new(0)),
             in_flight_notify: Arc::new(Notify::new()),
             active_crypt_overlay: Arc::new(AtomicBool::new(false)),
+            overlay_wrapped: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -1102,10 +1108,12 @@ pub async fn provider_connect(
         }
         *prov_lock = Some(provider);
     }
-    // A fresh connection has no crypt overlay browsed on it yet: reset the
-    // interim agent guard (Phase 2 T2.3). A `*_provider_*_list` flips it back on
-    // when the user opens this session's overlay.
+    // A fresh connection carries no crypt overlay: reset both the sticky
+    // capability flag and the wrapped flag. The GUI re-applies the overlay via
+    // `provider_apply_crypt_overlay` once it has connected and resolved the
+    // profile binding (auto-unlock) or the user activates one ad-hoc.
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
     {
         let mut config_lock = state.config.lock().await;
         *config_lock = Some(config);
@@ -1176,11 +1184,100 @@ pub async fn provider_disconnect(
     let mut config_lock = state.config.lock().await;
     *config_lock = None;
 
-    // Clear the interim agent crypt guard (Phase 2 T2.3): the provider it
-    // referred to is gone.
+    // The provider (raw or wrapped) is gone: clear both crypt-overlay flags.
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
 
     Ok(())
+}
+
+/// Parameters for [`provider_apply_crypt_overlay`]: the overlay binding plus the
+/// already-resolved unlock secrets. `password`/`salt` come from the per-profile
+/// vault (`aerocrypt_overlay_pw_<id>` / `_salt_<id>`) for an auto-unlock, or from
+/// the ad-hoc unlock modal.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyCryptOverlayParams {
+    /// "rclone-crypt" or "aerocrypt".
+    pub kind: String,
+    /// Plaintext anchor where the overlay is rooted (`""`/`"/"` = whole remote).
+    #[serde(default)]
+    pub remote_scope: String,
+    /// rclone-crypt filename encryption mode ("standard"/"obfuscate"/"off").
+    pub filename_encryption: Option<String>,
+    /// rclone-crypt directory-name encryption (default true).
+    pub directory_name_encryption: Option<bool>,
+    /// Unlock password.
+    pub password: String,
+    /// rclone-crypt salt (ignored by aerocrypt, which reads its remote config).
+    pub salt: Option<String>,
+}
+
+/// Apply a crypt overlay (rclone-crypt or AeroCrypt) to the live connection in
+/// place (Phase 3 on-demand model). Wraps the raw `ProviderState` provider with
+/// the [`crate::crypt_overlay_provider::CryptOverlayProvider`] decorator so the
+/// browser, agent `gui_tools`, speed test, and preview all become transparently
+/// crypt-aware (plaintext paths in, ciphertext on the wire). FAIL-CLOSED: an
+/// unlock failure leaves the raw connection untouched and returns the error.
+/// Idempotent: re-applying re-anchors (the prior overlay is reverted first).
+/// Returns the normalized plaintext scope.
+#[tauri::command]
+pub async fn provider_apply_crypt_overlay(
+    state: State<'_, ProviderState>,
+    params: ApplyCryptOverlayParams,
+) -> Result<String, String> {
+    let binding = crate::crypt_compare::OverlayUnlockParams {
+        kind: params.kind,
+        remote_scope: params.remote_scope,
+        filename_encryption: params
+            .filename_encryption
+            .unwrap_or_else(|| "standard".to_string()),
+        directory_name_encryption: params.directory_name_encryption.unwrap_or(true),
+        off_suffix: None,
+    };
+    let salt = params.salt.unwrap_or_default();
+    let scope = {
+        let mut guard = state.provider.lock().await;
+        crate::crypt_overlay_provider::apply_overlay_in_place(
+            &mut guard,
+            &binding,
+            &params.password,
+            &salt,
+        )
+        .await?
+    };
+    // Sticky capability + currently-wrapped: the agent raw-write guard is now
+    // satisfied (writes route through the decorator).
+    state.active_crypt_overlay.store(true, Ordering::SeqCst);
+    state.overlay_wrapped.store(true, Ordering::SeqCst);
+    info!(
+        "Crypt overlay applied to live provider (scope: {:?})",
+        scope
+    );
+    Ok(scope)
+}
+
+/// Revert the live connection to its raw provider, removing any crypt overlay
+/// (Phase 3 on-demand model). Used when the badge is locked or the user steps
+/// outside the encrypted scope, so the browser shows the raw remote (ciphertext
+/// names while locked, plaintext names outside the scope) exactly like the
+/// retired command layer did. `full = true` also drops the sticky capability
+/// flag (a complete overlay removal, not a transient lock / scope-out), which
+/// re-opens the agent `gui_tools` raw paths. Idempotent.
+#[tauri::command]
+pub async fn provider_clear_crypt_overlay(
+    state: State<'_, ProviderState>,
+    full: Option<bool>,
+) -> Result<bool, String> {
+    let removed = {
+        let mut guard = state.provider.lock().await;
+        crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
+    };
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    if full.unwrap_or(false) {
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    }
+    Ok(removed)
 }
 
 /// Check if connected to a provider
@@ -4117,8 +4214,9 @@ pub async fn oauth2_connect(
     // Store provider
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(provider);
-    // Fresh connection: reset the interim agent crypt guard (Phase 2 T2.3).
+    // Fresh connection carries no crypt overlay: reset both flags.
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
 
     info!(
         "Connected to {} ({})",
@@ -5834,8 +5932,9 @@ pub async fn fourshared_connect(
 
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(Box::new(provider));
-    // Fresh connection: reset the interim agent crypt guard (Phase 2 T2.3).
+    // Fresh connection carries no crypt overlay: reset both flags.
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
 
     info!(
         "Connected to 4shared ({})",
