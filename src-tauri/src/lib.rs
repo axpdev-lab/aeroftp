@@ -57,6 +57,7 @@ pub mod credential_store;
 mod cross_profile_commands;
 pub mod cross_profile_transfer;
 pub mod crypt_compare;
+pub mod crypt_overlay_provider;
 mod crypto;
 pub mod cryptomator;
 mod cyber_tools;
