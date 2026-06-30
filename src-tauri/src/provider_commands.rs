@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -4946,23 +4947,171 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
     }
 }
 
+async fn decrypt_remote_file_map_for_compare(
+    kind: Option<&str>,
+    vault_id: &str,
+    rclone_state: &crate::rclone_crypt::RcloneCryptState,
+    aerocrypt_state: &crate::aerocrypt_provider::AeroCryptState,
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> Result<HashMap<String, crate::sync::FileInfo>, String> {
+    match kind {
+        Some("rclone-crypt") => {
+            let vaults = rclone_state.vaults.lock().await;
+            let keys = vaults
+                .get(vault_id)
+                .ok_or_else(|| "Crypt vault is not unlocked".to_string())?;
+            Ok(normalize_rclone_remote_files_for_compare(keys, entries))
+        }
+        Some("aerocrypt") => {
+            let vaults = aerocrypt_state.vaults.lock().await;
+            let keys = vaults
+                .get(vault_id)
+                .ok_or_else(|| "Crypt vault is not unlocked".to_string())?;
+            Ok(normalize_aerocrypt_remote_files_for_compare(
+                &keys.master_key,
+                entries,
+            ))
+        }
+        Some(_) => Err("Unsupported crypt overlay kind for compare".to_string()),
+        None => Err("Missing crypt overlay kind for compare".to_string()),
+    }
+}
+
+fn normalize_rclone_remote_files_for_compare(
+    keys: &crate::rclone_crypt::RcloneCryptKeys,
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> HashMap<String, crate::sync::FileInfo> {
+    let mut out = HashMap::with_capacity(entries.len());
+    for (rel_path, mut info) in entries {
+        let Some(plain_rel_path) = decrypt_rel_rclone(keys, &rel_path) else {
+            continue;
+        };
+        info.name = basename_from_rel_path(&plain_rel_path);
+        if !info.is_dir {
+            info.size = rclone_decrypted_size(info.size);
+        }
+        info.checksum = None;
+        info.checksum_alg = None;
+        out.insert(plain_rel_path, info);
+    }
+    out
+}
+
+fn normalize_aerocrypt_remote_files_for_compare(
+    master_key: &[u8; 32],
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> HashMap<String, crate::sync::FileInfo> {
+    let mut out = HashMap::with_capacity(entries.len());
+    for (rel_path, mut info) in entries {
+        let Some(plain_rel_path) = decrypt_rel_aerocrypt(master_key, &rel_path) else {
+            continue;
+        };
+        info.name = basename_from_rel_path(&plain_rel_path);
+        // AeroCrypt content-size mapping is deliberately deferred: the native
+        // overlay has a versioned container format, so Compare is name-aware
+        // here but size-policy matches may still need the follow-up decoder.
+        info.checksum = None;
+        info.checksum_alg = None;
+        out.insert(plain_rel_path, info);
+    }
+    out
+}
+
+fn rclone_decrypted_size(enc: u64) -> u64 {
+    const HEADER: u64 = 32;
+    const CHUNK_DATA: u64 = 65_536;
+    const CHUNK_TAG: u64 = 16;
+    const CHUNK_CIPHER: u64 = CHUNK_DATA + CHUNK_TAG;
+
+    if enc <= HEADER {
+        return 0;
+    }
+    let data = enc - HEADER;
+    let full_chunks = data / CHUNK_CIPHER;
+    let remainder = data % CHUNK_CIPHER;
+    let remainder_plain = if remainder == 0 {
+        0
+    } else {
+        remainder.saturating_sub(CHUNK_TAG)
+    };
+    full_chunks * CHUNK_DATA + remainder_plain
+}
+
+fn decrypt_rel_rclone(
+    keys: &crate::rclone_crypt::RcloneCryptKeys,
+    rel_path: &str,
+) -> Option<String> {
+    let segments: Vec<&str> = rel_path.split('/').collect();
+    let last = segments.len().saturating_sub(1);
+    let mut out = Vec::with_capacity(segments.len());
+    for (index, segment) in segments.iter().enumerate() {
+        if segment.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        if keys.directory_name_encryption || index == last {
+            out.push(crate::rclone_crypt::decrypt_one_name(keys, segment)?);
+        } else {
+            out.push((*segment).to_string());
+        }
+    }
+    Some(out.join("/"))
+}
+
+fn decrypt_rel_aerocrypt(master_key: &[u8; 32], rel_path: &str) -> Option<String> {
+    let mut out = Vec::new();
+    for segment in rel_path.split('/') {
+        if segment.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        out.push(crate::aerocrypt::names::decrypt_filename(
+            master_key, segment,
+        )?);
+    }
+    Some(out.join("/"))
+}
+
+fn basename_from_rel_path(rel_path: &str) -> String {
+    rel_path
+        .rsplit('/')
+        .find(|segment| !segment.is_empty())
+        .unwrap_or(rel_path)
+        .to_string()
+}
+
 /// Compare local and remote directories using the StorageProvider trait.
 /// Works with all protocols (SFTP, WebDAV, S3, Google Drive, etc.)
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_compare_directories(
     app: AppHandle,
     state: State<'_, ProviderState>,
+    rclone_state: State<'_, crate::rclone_crypt::RcloneCryptState>,
+    aerocrypt_state: State<'_, crate::aerocrypt_provider::AeroCryptState>,
     local_path: String,
     remote_path: String,
+    crypt_vault_id: Option<String>,
+    crypt_kind: Option<String>,
     options: Option<crate::sync::CompareOptions>,
 ) -> Result<Vec<crate::sync::FileComparison>, String> {
     use crate::sync::{
         build_comparison_results_with_index, load_sync_index, should_exclude, FileInfo,
     };
-    use std::collections::HashMap;
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
+    let crypt_vault_id = crypt_vault_id
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty());
+    let crypt_kind = crypt_kind
+        .map(|kind| kind.trim().to_string())
+        .filter(|kind| !kind.is_empty());
+    let crypt_compare_active = crypt_vault_id.is_some();
+    if crypt_compare_active {
+        options.compare_checksum = false;
+        options.strict_checksum = false;
+    }
 
     info!(
         "Provider compare: local={}, remote={}",
@@ -5025,7 +5174,8 @@ pub async fn provider_compare_directories(
 
         let scan_options = ScanOptions {
             exclude_patterns: options.exclude_patterns.clone(),
-            compute_remote_checksum: options.compare_checksum,
+            compute_remote_checksum: options.compare_checksum && !crypt_compare_active,
+            disable_recursive_fastpath: crypt_compare_active,
             ..Default::default()
         };
         let scan_observer = ScanProgressEmitter { app: app.clone() };
@@ -5196,6 +5346,17 @@ pub async fn provider_compare_directories(
                 }),
             );
         }
+    }
+
+    if let Some(vault_id) = crypt_vault_id.as_deref() {
+        remote_files = decrypt_remote_file_map_for_compare(
+            crypt_kind.as_deref(),
+            vault_id,
+            &rclone_state,
+            &aerocrypt_state,
+            remote_files,
+        )
+        .await?;
     }
 
     let _ = app.emit(
@@ -10579,10 +10740,18 @@ pub async fn b2_permanent_delete(
 #[cfg(test)]
 mod tests {
     use super::{
-        drain_in_flight_transfers, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
+        decrypt_rel_aerocrypt, decrypt_rel_rclone, drain_in_flight_transfers,
+        normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
+        rclone_decrypted_size, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
         ConnectionCancelRegistry, ProviderConnectionParams, ProviderState, TransferOperationGuard,
         CONNECT_CANCELLED,
     };
+    use crate::rclone_crypt::{
+        derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
+        FilenameEncryption, RcloneCryptKeys,
+    };
+    use crate::sync::FileInfo;
+    use std::collections::HashMap;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -10636,6 +10805,123 @@ mod tests {
             connect_token: None,
             opendrive_default_privacy: None,
         }
+    }
+
+    fn rclone_compare_keys(directory_name_encryption: bool) -> RcloneCryptKeys {
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("compare-pass", "compare-salt").unwrap();
+        RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: FilenameEncryption::Standard,
+            off_suffix: ".bin".to_string(),
+            directory_name_encryption,
+        }
+    }
+
+    fn compare_file_info(size: u64) -> FileInfo {
+        FileInfo {
+            name: "encrypted".to_string(),
+            path: "/remote/encrypted".to_string(),
+            size,
+            modified: None,
+            is_dir: false,
+            checksum: Some("ciphertext-checksum".to_string()),
+            checksum_alg: Some("sha256".to_string()),
+        }
+    }
+
+    #[test]
+    fn rclone_decrypted_size_matches_encrypted_content_lengths() {
+        let (_, data_key) = derive_keys("compare-size", "salt").unwrap();
+        for size in [0usize, 1, 65_535, 65_536, 65_537, 200_000] {
+            let plaintext: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+            let encrypted = encrypt_file_content(&plaintext, &data_key).unwrap();
+            assert_eq!(
+                rclone_decrypted_size(encrypted.len() as u64),
+                plaintext.len() as u64,
+                "encrypted length {} should map back to plaintext length {}",
+                encrypted.len(),
+                plaintext.len()
+            );
+        }
+    }
+
+    #[test]
+    fn decrypt_rel_rclone_decrypts_all_segments_when_directory_names_are_encrypted() {
+        let keys = rclone_compare_keys(true);
+        let encrypted_rel = ["alpha", "beta", "report.txt"]
+            .into_iter()
+            .map(|segment| encrypt_name(&keys.name_key, &keys.name_tweak, segment).unwrap())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        assert_eq!(
+            decrypt_rel_rclone(&keys, &encrypted_rel).as_deref(),
+            Some("alpha/beta/report.txt")
+        );
+    }
+
+    #[test]
+    fn decrypt_rel_rclone_decrypts_only_leaf_when_directory_names_are_plain() {
+        let keys = rclone_compare_keys(false);
+        let encrypted_leaf = encrypt_name(&keys.name_key, &keys.name_tweak, "report.txt").unwrap();
+        let mixed_rel = format!("alpha/beta/{}", encrypted_leaf);
+
+        assert_eq!(
+            decrypt_rel_rclone(&keys, &mixed_rel).as_deref(),
+            Some("alpha/beta/report.txt")
+        );
+    }
+
+    #[test]
+    fn rclone_compare_normalization_drops_foreign_names_and_maps_size() {
+        let keys = rclone_compare_keys(true);
+        let encrypted_leaf = encrypt_name(&keys.name_key, &keys.name_tweak, "report.txt").unwrap();
+        let encrypted_blob = encrypt_file_content(b"report body", &keys.data_key).unwrap();
+        let mut entries = HashMap::new();
+        entries.insert(
+            encrypted_leaf,
+            compare_file_info(encrypted_blob.len() as u64),
+        );
+        entries.insert("not-base32-!!!".to_string(), compare_file_info(999));
+
+        let normalized = normalize_rclone_remote_files_for_compare(&keys, entries);
+
+        assert_eq!(normalized.len(), 1);
+        let info = normalized.get("report.txt").unwrap();
+        assert_eq!(info.name, "report.txt");
+        assert_eq!(info.size, 11);
+        assert_eq!(info.checksum, None);
+        assert_eq!(info.checksum_alg, None);
+    }
+
+    #[test]
+    fn aerocrypt_compare_normalization_decrypts_names_and_defers_size() {
+        let master_key = [7u8; 32];
+        let encrypted_rel = ["alpha", "beta", "report.txt"]
+            .into_iter()
+            .map(|segment| crate::aerocrypt::names::encrypt_filename(&master_key, segment).unwrap())
+            .collect::<Vec<_>>()
+            .join("/");
+        assert_eq!(
+            decrypt_rel_aerocrypt(&master_key, &encrypted_rel).as_deref(),
+            Some("alpha/beta/report.txt")
+        );
+
+        let mut entries = HashMap::new();
+        entries.insert(encrypted_rel, compare_file_info(123));
+        entries.insert("not-base64-$$$".to_string(), compare_file_info(999));
+
+        let normalized = normalize_aerocrypt_remote_files_for_compare(&master_key, entries);
+
+        assert_eq!(normalized.len(), 1);
+        let info = normalized.get("alpha/beta/report.txt").unwrap();
+        assert_eq!(info.name, "report.txt");
+        assert_eq!(info.size, 123);
+        assert_eq!(info.checksum, None);
+        assert_eq!(info.checksum_alg, None);
     }
 
     #[test]

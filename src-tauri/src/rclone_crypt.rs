@@ -665,6 +665,25 @@ pub fn deobfuscate_name(dir_iv: &[u8; 16], obf_name: &str) -> Result<String, Str
     Ok(out)
 }
 
+/// Decrypt one already-split filename segment from unlocked keys.
+pub fn decrypt_one_name(keys: &RcloneCryptKeys, encrypted_name: &str) -> Option<String> {
+    match keys.filename_encryption {
+        FilenameEncryption::Off => {
+            if keys.off_suffix.is_empty() {
+                Some(encrypted_name.to_string())
+            } else {
+                encrypted_name
+                    .strip_suffix(keys.off_suffix.as_str())
+                    .map(|name| name.to_string())
+            }
+        }
+        FilenameEncryption::Obfuscate => deobfuscate_name(&keys.name_tweak, encrypted_name).ok(),
+        FilenameEncryption::Standard => {
+            decrypt_name(&keys.name_key, &keys.name_tweak, encrypted_name).ok()
+        }
+    }
+}
+
 // ── Tauri state and commands (Phase 3) ─────────────────────────────────────
 
 use std::collections::HashMap;

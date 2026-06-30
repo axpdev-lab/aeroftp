@@ -8595,6 +8595,10 @@ interface UpdateVerificationInfo {
       const leftLocal = swapPanels;
       const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
       const remoteLabel = activeUnifiedRemoteProfile?.name || 'Remote';
+      const cryptVaultId = rcloneCryptVaultId || aeroCryptVaultId || null;
+      const cryptKind = rcloneCryptVaultId
+        ? 'rclone-crypt'
+        : (aeroCryptVaultId ? 'aerocrypt' : null);
 
       // Open immediately with a scanning placeholder so the modal is
       // responsive while the recursive scan runs.
@@ -8618,25 +8622,30 @@ interface UpdateVerificationInfo {
       void (async () => {
         let resolved: CompareResult;
         try {
+          const compareArgs: Record<string, unknown> = {
+            localPath: currentLocalPath,
+            remotePath: currentRemotePath,
+            options: {
+              compare_timestamp: true,
+              compare_size: true,
+              compare_checksum: false,
+              exclude_patterns: [
+                'node_modules', '.git', '.DS_Store', 'Thumbs.db',
+                '__pycache__', '*.pyc', '.env', 'target',
+                // Never surface EC parity sidecars as orphan/data in AeroSync compare,
+                // even when EC is off but sidecars from a prior EC-on run still exist.
+                '*.aerocorrect',
+              ],
+              direction: 'bidirectional',
+            },
+          };
+          if (isProviderConn) {
+            compareArgs.cryptVaultId = cryptVaultId;
+            compareArgs.cryptKind = cryptKind;
+          }
           const comparisons = await invoke<FileComparison[]>(
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
-            {
-              localPath: currentLocalPath,
-              remotePath: currentRemotePath,
-              options: {
-                compare_timestamp: true,
-                compare_size: true,
-                compare_checksum: false,
-                exclude_patterns: [
-                  'node_modules', '.git', '.DS_Store', 'Thumbs.db',
-                  '__pycache__', '*.pyc', '.env', 'target',
-                  // Never surface EC parity sidecars as orphan/data in AeroSync compare,
-                  // even when EC is off but sidecars from a prior EC-on run still exist.
-                  '*.aerocorrect',
-                ],
-                direction: 'bidirectional',
-              },
-            },
+            compareArgs,
           );
           resolved = adaptFileComparisons(comparisons, leftLocal);
         } catch (err) {
@@ -8702,6 +8711,8 @@ interface UpdateVerificationInfo {
     currentLocalPath2,
     currentRemotePath,
     activeUnifiedRemoteProfile,
+    rcloneCryptVaultId,
+    aeroCryptVaultId,
     notify,
     t,
   ]);
