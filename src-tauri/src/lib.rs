@@ -56,6 +56,7 @@ mod context_intelligence;
 pub mod credential_store;
 mod cross_profile_commands;
 pub mod cross_profile_transfer;
+pub mod crypt_compare;
 mod crypto;
 pub mod cryptomator;
 mod cyber_tools;

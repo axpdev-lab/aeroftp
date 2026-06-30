@@ -5017,60 +5017,11 @@ fn normalize_aerocrypt_remote_files_for_compare(
     out
 }
 
-fn rclone_decrypted_size(enc: u64) -> u64 {
-    const HEADER: u64 = 32;
-    const CHUNK_DATA: u64 = 65_536;
-    const CHUNK_TAG: u64 = 16;
-    const CHUNK_CIPHER: u64 = CHUNK_DATA + CHUNK_TAG;
-
-    if enc <= HEADER {
-        return 0;
-    }
-    let data = enc - HEADER;
-    let full_chunks = data / CHUNK_CIPHER;
-    let remainder = data % CHUNK_CIPHER;
-    let remainder_plain = if remainder == 0 {
-        0
-    } else {
-        remainder.saturating_sub(CHUNK_TAG)
-    };
-    full_chunks * CHUNK_DATA + remainder_plain
-}
-
-fn decrypt_rel_rclone(
-    keys: &crate::rclone_crypt::RcloneCryptKeys,
-    rel_path: &str,
-) -> Option<String> {
-    let segments: Vec<&str> = rel_path.split('/').collect();
-    let last = segments.len().saturating_sub(1);
-    let mut out = Vec::with_capacity(segments.len());
-    for (index, segment) in segments.iter().enumerate() {
-        if segment.is_empty() {
-            out.push(String::new());
-            continue;
-        }
-        if keys.directory_name_encryption || index == last {
-            out.push(crate::rclone_crypt::decrypt_one_name(keys, segment)?);
-        } else {
-            out.push((*segment).to_string());
-        }
-    }
-    Some(out.join("/"))
-}
-
-fn decrypt_rel_aerocrypt(master_key: &[u8; 32], rel_path: &str) -> Option<String> {
-    let mut out = Vec::new();
-    for segment in rel_path.split('/') {
-        if segment.is_empty() {
-            out.push(String::new());
-            continue;
-        }
-        out.push(crate::aerocrypt::names::decrypt_filename(
-            master_key, segment,
-        )?);
-    }
-    Some(out.join("/"))
-}
+// Single source of truth for the crypt-compare crypto lives in
+// `crate::crypt_compare`; the GUI's FileInfo-map normalizers above reuse the
+// pure rel-path decrypt and size mapping so the CLI / MCP `RemoteEntry` path and
+// this GUI path can never drift.
+use crate::crypt_compare::{decrypt_rel_aerocrypt, decrypt_rel_rclone, rclone_decrypted_size};
 
 fn basename_from_rel_path(rel_path: &str) -> String {
     rel_path
@@ -5349,6 +5300,7 @@ pub async fn provider_compare_directories(
     }
 
     if let Some(vault_id) = crypt_vault_id.as_deref() {
+        let raw_len = remote_files.len();
         remote_files = decrypt_remote_file_map_for_compare(
             crypt_kind.as_deref(),
             vault_id,
@@ -5357,6 +5309,16 @@ pub async fn provider_compare_directories(
             remote_files,
         )
         .await?;
+        // rclone-crypt has no config MAC: a wrong overlay password derives
+        // valid-shaped keys that decrypt nothing, so a non-empty remote that
+        // normalizes to zero rows is a wrong-key signal. Fail closed rather
+        // than re-flag the whole tree as missing (the #364 symptom).
+        if crypt_kind.as_deref() == Some("rclone-crypt") && raw_len > 0 && remote_files.is_empty() {
+            return Err(
+                "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote."
+                    .to_string(),
+            );
+        }
     }
 
     let _ = app.emit(

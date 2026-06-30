@@ -345,6 +345,91 @@ fn find_unique_profile<'a>(
     }
 }
 
+/// Resolve a server query to its crypt-overlay binding and unlock secrets, when
+/// the saved profile has an enabled overlay. Returns `Ok(None)` for a profile
+/// without one. The caller feeds the result into
+/// `crate::crypt_compare::unlock_overlay_keys` so MCP `check_tree` decrypts the
+/// remote tree the same way the GUI and CLI Compare do (Ehud, discussion #364).
+///
+/// A profile WITH an overlay but no stored password is an error (fail closed):
+/// silently comparing ciphertext is the bug this closes.
+pub fn resolve_overlay_secrets(
+    server_query: &str,
+    remote_dir: &str,
+) -> Result<Option<(crate::crypt_compare::OverlayUnlockParams, String, String)>, String> {
+    let store = CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not open. Cannot resolve crypt overlay.".to_string())?;
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
+    let profile = find_unique_profile(&profiles, server_query)?;
+
+    let enabled = profile
+        .get("aeroCryptOverlay")
+        .and_then(|ov| ov.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !enabled {
+        return Ok(None);
+    }
+
+    let overlay = profile
+        .get("aeroCryptOverlay")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let kind = overlay
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("aerocrypt")
+        .to_string();
+    let remote_scope = overlay
+        .get("remoteScope")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| remote_dir.to_string());
+    let filename_encryption = overlay
+        .get("filenameEncryption")
+        .and_then(|v| v.as_str())
+        .unwrap_or("standard")
+        .to_string();
+    let directory_name_encryption = overlay
+        .get("directoryNameEncryption")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    let password = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_pw_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty())
+    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+    .ok_or_else(|| {
+        "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD."
+            .to_string()
+    })?;
+    let salt = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("aerocrypt_overlay_salt_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+    .unwrap_or_default();
+
+    let params = crate::crypt_compare::OverlayUnlockParams {
+        kind,
+        remote_scope,
+        filename_encryption,
+        directory_name_encryption,
+        off_suffix: None,
+    };
+    Ok(Some((params, password, salt)))
+}
+
 /// Resolve a server query (name, ID, or unique substring) to a profile ID.
 fn resolve_profile_id(server_query: &str) -> Result<String, String> {
     let store = CredentialStore::from_cache()
