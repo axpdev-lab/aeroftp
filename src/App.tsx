@@ -5918,8 +5918,38 @@ interface UpdateVerificationInfo {
       const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
       const providerName = providerNames[protocol] || protocol;
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
-      // Load remote files for OAuth provider - pass protocol explicitly
-      const oauthResponse = await loadRemoteFiles(protocol);
+      // Load remote files for OAuth provider - pass protocol explicitly. When the
+      // OAuth profile carries a confirmed crypt overlay, suppress the raw
+      // encrypted listing during the Argon2id unlock window and defer to the
+      // phase-2 decrypted reload, exactly like the credential-provider path. This
+      // OAuth early return previously skipped that block, so a crypt password
+      // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
+      // no decrypted names, and the path-bar overlay badge/button never appeared.
+      const overlaySavedId = effectiveParams.savedServerId;
+      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
+      let oauthResponse: FileListResponse | null = null;
+      if (overlayHint && overlaySavedId) {
+        // Probe the provider cwd for the session, but never let a transient
+        // listing error break the connect: loadRemoteFiles (the non-overlay path)
+        // swallows such errors, so this direct probe must too. On failure we still
+        // arm the overlay and let the deferred decrypted reload anchor the path.
+        try {
+          oauthResponse = await invoke<FileListResponse>('provider_list_files', { path: null });
+        } catch {
+          oauthResponse = null;
+        }
+        const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
+        overlaySuppressedRef.current = true;
+        setRemoteFiles([]);
+        setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
+        setCurrentRemoteDisplayPath(overlayAnchor);
+        setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+        markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+        setOverlayDecrypting(true);
+        connectListingLogIdRef.current = null;
+      } else {
+        oauthResponse = await loadRemoteFiles(protocol);
+      }
       // Navigate to initial local directory if specified
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
@@ -5930,8 +5960,11 @@ interface UpdateVerificationInfo {
         effectiveParams,
         oauthResponse?.current_path || '/',
         quickConnectDirs.localDir || currentLocalPath,
-        oauthResponse?.files
+        overlayHint ? [] : oauthResponse?.files
       );
+      // Defer the overlay auto-unlock to the post-connect effect (inline unlock
+      // sees stale session state), same as the credential-provider path.
+      if (overlayHint && overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
       // Pass effectiveParams so persistQuotaToProfile receives the saved server id
       // (connectionParams state is async, may still be stale when this runs).
       fetchStorageQuota(protocol, effectiveParams);
@@ -14294,8 +14327,38 @@ interface UpdateVerificationInfo {
                   const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
                   const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || 'Unknown';
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
-                  // Load remote files for OAuth provider - pass protocol explicitly
-                  const savedOauthResp = await loadRemoteFiles(normalizedParams.protocol);
+                  // Load remote files for OAuth provider - pass protocol explicitly.
+                  // When the saved OAuth profile carries a confirmed crypt overlay,
+                  // suppress the raw encrypted listing during the unlock window and
+                  // defer to the phase-2 decrypted reload, exactly like the
+                  // credential-provider branch below. This OAuth early return
+                  // previously skipped that block, so an OAuth crypt overlay never
+                  // unlocked (no decrypted names, no path-bar overlay badge/button).
+                  const savedOverlaySavedId = normalizedParams.savedServerId;
+                  const savedOverlayHint = savedOverlaySavedId ? await getProfileOverlayHint(savedOverlaySavedId) : null;
+                  let savedOauthResp: FileListResponse | null = null;
+                  if (savedOverlayHint && savedOverlaySavedId) {
+                    // Probe the provider cwd, but never let a transient listing
+                    // error break the connect (loadRemoteFiles swallows such
+                    // errors); still arm the overlay and let the deferred reload
+                    // anchor the path on failure.
+                    try {
+                      savedOauthResp = await invoke<FileListResponse>('provider_list_files', { path: null });
+                    } catch {
+                      savedOauthResp = null;
+                    }
+                    const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
+                    overlaySuppressedRef.current = true;
+                    setRemoteFiles([]);
+                    setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
+                    setCurrentRemoteDisplayPath(savedOverlayAnchor);
+                    setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
+                    markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind);
+                    setOverlayDecrypting(true);
+                    connectListingLogIdRef.current = null;
+                  } else {
+                    savedOauthResp = await loadRemoteFiles(normalizedParams.protocol);
+                  }
                   // Navigate to initial local directory if specified (with fallback for invalid paths)
                   let resolvedLocalPath = currentLocalPath;
                   if (localInitialPath) {
@@ -14307,8 +14370,11 @@ interface UpdateVerificationInfo {
                     normalizedParams,
                     savedOauthResp?.current_path || initialPath || '/',
                     resolvedLocalPath,
-                    savedOauthResp?.files
+                    savedOverlayHint ? [] : savedOauthResp?.files
                   );
+                  // Defer the overlay auto-unlock to the post-connect effect (inline
+                  // unlock sees stale session state), same as the provider branch.
+                  if (savedOverlayHint && savedOverlaySavedId) setPendingOverlayUnlock(savedOverlaySavedId);
                   // Pass normalizedParams so persistQuotaToProfile picks up
                   // savedServerId from the saved profile (connectionParams state
                   // is intentionally not mutated during onSavedServerConnect).
