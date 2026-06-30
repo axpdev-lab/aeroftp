@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tamno",
             "imagePreviewBgLight": "Svijetlo",
             "imagePreviewBgCustom": "Prilagođeno",
-            "showTransferProgress": "Prikaži traku napretka prijenosa"
+            "showTransferProgress": "Prikaži traku napretka prijenosa",
+            "similarToExisting": "nalikuju postojećem profilu"
         },
         "devtools": {
             "title": "AeroTools",

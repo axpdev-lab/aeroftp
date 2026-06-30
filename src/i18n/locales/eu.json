@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Iluna",
             "imagePreviewBgLight": "Argia",
             "imagePreviewBgCustom": "Pertsonalizatua",
-            "showTransferProgress": "Erakutsi transferentziaren aurrerapen-barra"
+            "showTransferProgress": "Erakutsi transferentziaren aurrerapen-barra",
+            "similarToExisting": "lehendik dagoen profil baten antza dute"
         },
         "devtools": {
             "title": "AeroTools",

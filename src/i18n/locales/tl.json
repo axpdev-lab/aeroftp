@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Madilim",
             "imagePreviewBgLight": "Maliwanag",
             "imagePreviewBgCustom": "Pasadya",
-            "showTransferProgress": "Ipakita ang progress bar ng paglilipat"
+            "showTransferProgress": "Ipakita ang progress bar ng paglilipat",
+            "similarToExisting": "katulad ng umiiral nang profile"
         },
         "devtools": {
             "title": "AeroTools",

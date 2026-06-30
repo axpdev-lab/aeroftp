@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "深色",
             "imagePreviewBgLight": "浅色",
             "imagePreviewBgCustom": "自定义",
-            "showTransferProgress": "显示传输进度条"
+            "showTransferProgress": "显示传输进度条",
+            "similarToExisting": "与现有配置文件相似"
         },
         "devtools": {
             "title": "AeroTools",

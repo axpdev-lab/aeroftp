@@ -208,14 +208,18 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             let currentServers = await loadSavedServerProfiles();
             if (currentServers.length === 0) currentServers = servers;
 
-            // Merge: skip duplicates by host+port+username OR by ID
-            const existingKeys = new Set(
+            // Merge: skip ONLY a true re-import (same stable id). Profiles that
+            // merely share an account (host:port:username) are legitimately
+            // distinct (different protocol, crypt overlay, bound folder, or auth
+            // mode) and must NOT be dropped: keep them and flag them as
+            // resembling an existing profile. Same rule as the CLI profile-import.
+            const existingAccounts = new Set(
                 currentServers.map(s => `${s.host}:${s.port}:${s.username}`)
             );
             const existingIds = new Set(currentServers.map(s => s.id));
 
             const newServers: ServerProfile[] = importedServers
-                .filter(s => !existingKeys.has(`${s.host}:${s.port}:${s.username}`) && !existingIds.has(s.id))
+                .filter(s => !existingIds.has(s.id))
                 .map(s => ({
                     id: s.id,
                     name: s.name,
@@ -240,11 +244,18 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     persistModeCredentials: s.persistModeCredentials,
                 }));
 
-            const skipped = importedServers.length - newServers.length;
+            const skipped = importedServers.length - newServers.length; // same-id re-imports
+            // Added profiles that share an account (host:port:username) with one
+            // already present: kept (distinct by protocol/overlay/folder/auth),
+            // just flagged so the user can prune if they were unintended.
+            const similar = newServers.filter(
+                s => existingAccounts.has(`${s.host}:${s.port}:${s.username}`)
+            ).length;
             onImport(newServers);
             setSuccess(
                 t('settings.importSuccess').replace('{count}', String(newServers.length)) +
-                (skipped > 0 ? ` (${skipped} ${t('settings.duplicatesSkipped')})` : '')
+                (skipped > 0 ? ` (${skipped} ${t('settings.duplicatesSkipped')})` : '') +
+                (similar > 0 ? ` (${similar} ${t('settings.similarToExisting')})` : '')
             );
             setTimeout(() => onClose(), 2500);
         } catch (err) {

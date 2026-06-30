@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "ダーク",
             "imagePreviewBgLight": "ライト",
             "imagePreviewBgCustom": "カスタム",
-            "showTransferProgress": "転送の進行状況バーを表示"
+            "showTransferProgress": "転送の進行状況バーを表示",
+            "similarToExisting": "既存のプロファイルに類似"
         },
         "devtools": {
             "title": "AeroTools",

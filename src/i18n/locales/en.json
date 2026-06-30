@@ -2914,6 +2914,7 @@
             "dropboxClientIdPlaceholder": "xxxxxxxxxxxxxxx",
             "dropboxClientSecretPlaceholder": "xxxxxxxxxxxxxxx",
             "duplicatesSkipped": "duplicates skipped",
+            "similarToExisting": "resemble an existing profile",
             "alreadyExists": "Already exists",
             "editServerTitle": "Edit Server",
             "encrypting": "Encrypting...",

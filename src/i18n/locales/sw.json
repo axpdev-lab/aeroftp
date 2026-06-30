@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Giza",
             "imagePreviewBgLight": "Angavu",
             "imagePreviewBgCustom": "Maalum",
-            "showTransferProgress": "Onyesha upau wa maendeleo ya uhamishaji"
+            "showTransferProgress": "Onyesha upau wa maendeleo ya uhamishaji",
+            "similarToExisting": "zinafanana na wasifu uliopo"
         },
         "devtools": {
             "title": "AeroTools",

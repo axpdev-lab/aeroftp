@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Întunecat",
             "imagePreviewBgLight": "Luminos",
             "imagePreviewBgCustom": "Personalizat",
-            "showTransferProgress": "Afișează bara de progres a transferului"
+            "showTransferProgress": "Afișează bara de progres a transferului",
+            "similarToExisting": "seamănă cu un profil existent"
         },
         "devtools": {
             "title": "AeroTools",

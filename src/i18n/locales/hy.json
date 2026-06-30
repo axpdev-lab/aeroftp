@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Մուգ",
             "imagePreviewBgLight": "Բաց",
             "imagePreviewBgCustom": "Հատուկ",
-            "showTransferProgress": "Ցույց տալ փոխանցման առաջընթացի գոտին"
+            "showTransferProgress": "Ցույց տալ փոխանցման առաջընթացի գոտին",
+            "similarToExisting": "նման են առկա պրոֆիլին"
         },
         "devtools": {
             "title": "AeroTools",

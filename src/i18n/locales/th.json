@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "มืด",
             "imagePreviewBgLight": "สว่าง",
             "imagePreviewBgCustom": "กำหนดเอง",
-            "showTransferProgress": "แสดงแถบความคืบหน้าการถ่ายโอน"
+            "showTransferProgress": "แสดงแถบความคืบหน้าการถ่ายโอน",
+            "similarToExisting": "คล้ายกับโปรไฟล์ที่มีอยู่"
         },
         "devtools": {
             "title": "AeroTools",

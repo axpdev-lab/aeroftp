@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tối",
             "imagePreviewBgLight": "Sáng",
             "imagePreviewBgCustom": "Tùy chỉnh",
-            "showTransferProgress": "Hiển thị thanh tiến trình truyền"
+            "showTransferProgress": "Hiển thị thanh tiến trình truyền",
+            "similarToExisting": "tương tự hồ sơ hiện có"
         },
         "devtools": {
             "title": "AeroTools",

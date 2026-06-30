@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tumma",
             "imagePreviewBgLight": "Vaalea",
             "imagePreviewBgCustom": "Mukautettu",
-            "showTransferProgress": "Näytä siirron edistymispalkki"
+            "showTransferProgress": "Näytä siirron edistymispalkki",
+            "similarToExisting": "muistuttavat olemassa olevaa profiilia"
         },
         "devtools": {
             "title": "AeroTools",

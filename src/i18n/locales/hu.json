@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Sötét",
             "imagePreviewBgLight": "Világos",
             "imagePreviewBgCustom": "Egyéni",
-            "showTransferProgress": "Átviteli folyamatjelző megjelenítése"
+            "showTransferProgress": "Átviteli folyamatjelző megjelenítése",
+            "similarToExisting": "hasonlítanak egy meglévő profilra"
         },
         "devtools": {
             "title": "AeroTools",

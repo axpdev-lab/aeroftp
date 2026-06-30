@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "어둡게",
             "imagePreviewBgLight": "밝게",
             "imagePreviewBgCustom": "사용자 지정",
-            "showTransferProgress": "전송 진행률 표시줄 표시"
+            "showTransferProgress": "전송 진행률 표시줄 표시",
+            "similarToExisting": "기존 프로필과 유사함"
         },
         "devtools": {
             "title": "AeroTools",

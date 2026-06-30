@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Тъмен",
             "imagePreviewBgLight": "Светъл",
             "imagePreviewBgCustom": "По избор",
-            "showTransferProgress": "Показвай лентата за напредък на трансфера"
+            "showTransferProgress": "Показвай лентата за напредък на трансфера",
+            "similarToExisting": "приличат на съществуващ профил"
         },
         "devtools": {
             "title": "AeroTools",

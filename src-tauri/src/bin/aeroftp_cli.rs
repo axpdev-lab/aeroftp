@@ -31210,39 +31210,27 @@ async fn cmd_profile_import(
         .cloned()
         .unwrap_or_default();
 
-    // Merge into the active user's profiles, skipping duplicates by id OR
-    // host:port:username (same rule as ExportImportDialog).
+    // Merge into the active user's profiles. Skip ONLY a true re-import (same
+    // stable id); profiles that merely share host:port:username are kept (see
+    // decide_import_merge). Same rule as ExportImportDialog.
     let mut current = load_active_user_profiles(cli, &store).unwrap_or_default();
-    let existing_ids: std::collections::HashSet<String> = current
-        .iter()
-        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
-        .collect();
-    let dup_key = |p: &serde_json::Value| -> String {
-        format!(
-            "{}:{}:{}",
-            p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-            p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-            p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-        )
-    };
-    let existing_keys: std::collections::HashSet<String> = current.iter().map(dup_key).collect();
-
-    let mut added = 0usize;
-    let mut skipped = 0usize;
+    let decision = decide_import_merge(&imported, &current);
+    let added = decision.add_indices.len();
+    let skipped = decision.skipped;
+    let similar = decision.similar;
     // Ids of the profiles we actually add: only these get their credentials
     // restored in phase 2.
     let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for p in &imported {
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        if (!id.is_empty() && existing_ids.contains(id)) || existing_keys.contains(&dup_key(p)) {
-            skipped += 1;
-            continue;
-        }
-        if !id.is_empty() {
+    for &idx in &decision.add_indices {
+        let p = &imported[idx];
+        if let Some(id) = p
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             restore_ids.insert(id.to_string());
         }
         current.push(p.clone());
-        added += 1;
     }
 
     // Phase 2: restore credentials for the added profiles only.
@@ -31280,19 +31268,86 @@ async fn cmd_profile_import(
                 "status": "ok",
                 "imported": added,
                 "skipped": skipped,
+                // Added profiles that share an account (host:port:username) with
+                // one already present: legitimately distinct (different protocol,
+                // crypt overlay, folder, or auth mode), kept, just flagged.
+                "similar": similar,
                 "total_in_file": imported.len(),
                 "metadata": metadata,
             })
         );
     } else if matches!(format, OutputFormat::Text) {
-        let tail = if skipped > 0 {
-            format!(", {skipped} skipped (already present)")
-        } else {
-            String::new()
-        };
+        let mut tail = String::new();
+        if skipped > 0 {
+            tail.push_str(&format!(", {skipped} skipped (already present)"));
+        }
+        if similar > 0 {
+            tail.push_str(&format!(", {similar} resemble an existing profile"));
+        }
         eprintln!("Imported {added} profile(s){tail} from {input}");
     }
     0
+}
+
+/// Coarse "same account/endpoint" key (host:port:username). NOT a skip key any
+/// more: it used to silently drop legitimately-distinct profiles that share an
+/// account but differ by protocol, crypt overlay, folder, or auth mode. Kept
+/// only to FLAG near-duplicates in the import summary.
+fn profile_account_key(p: &serde_json::Value) -> String {
+    format!(
+        "{}:{}:{}",
+        p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+        p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+        p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+    )
+}
+
+/// Decision for merging imported profiles into the current set.
+struct ImportMergeDecision {
+    /// Indices into `imported` of the profiles to add.
+    add_indices: Vec<usize>,
+    /// True re-imports skipped because their stable `id` already exists.
+    skipped: usize,
+    /// Added profiles that share an account with an existing profile.
+    similar: usize,
+}
+
+/// Decide which imported profiles to add. Skips ONLY a true re-import (same
+/// stable `id`): profiles that merely share host:port:username with an existing
+/// one are legitimately distinct (different protocol, crypt overlay, bound
+/// folder, or auth mode) and are added, counted as `similar` so the UI can flag
+/// them without ever silently dropping a wanted profile.
+fn decide_import_merge(
+    imported: &[serde_json::Value],
+    current: &[serde_json::Value],
+) -> ImportMergeDecision {
+    let existing_ids: std::collections::HashSet<&str> = current
+        .iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let existing_accounts: std::collections::HashSet<String> =
+        current.iter().map(profile_account_key).collect();
+
+    let mut add_indices = Vec::new();
+    let mut skipped = 0usize;
+    let mut similar = 0usize;
+    for (idx, p) in imported.iter().enumerate() {
+        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if !id.is_empty() && existing_ids.contains(id) {
+            skipped += 1;
+            continue;
+        }
+        if existing_accounts.contains(&profile_account_key(p)) {
+            similar += 1;
+        }
+        add_indices.push(idx);
+    }
+    ImportMergeDecision {
+        add_indices,
+        skipped,
+        similar,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -60030,6 +60085,34 @@ mod tests {
             }
             _ => panic!("expected ambiguous match for shared substring"),
         }
+    }
+
+    #[test]
+    fn decide_import_merge_keeps_distinct_profiles_sharing_an_account() {
+        let current = vec![json!({"id": "a", "host": "h", "port": 22, "username": "u"})];
+        let imported = vec![
+            // same id: a true re-import, skipped
+            json!({"id": "a", "host": "h", "port": 22, "username": "u"}),
+            // same account (host:port:username) but a new id + crypt overlay:
+            // legitimately distinct, must be kept and flagged similar
+            json!({"id": "b", "host": "h", "port": 22, "username": "u",
+                   "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"}}),
+            // same account, new id, different protocol (FTP vs FTPS style): kept, similar
+            json!({"id": "c", "host": "h", "port": 22, "username": "u", "protocol": "ftps"}),
+            // unrelated account: kept, not similar
+            json!({"id": "d", "host": "other", "port": 21, "username": "x"}),
+        ];
+        let decision = decide_import_merge(&imported, &current);
+        assert_eq!(
+            decision.add_indices,
+            vec![1, 2, 3],
+            "only the same-id re-import is skipped"
+        );
+        assert_eq!(decision.skipped, 1);
+        assert_eq!(
+            decision.similar, 2,
+            "b and c share the account with existing 'a'"
+        );
     }
 
     #[test]

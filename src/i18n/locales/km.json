@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "ងងឹត",
             "imagePreviewBgLight": "ភ្លឺ",
             "imagePreviewBgCustom": "ផ្ទាល់ខ្លួន",
-            "showTransferProgress": "បង្ហាញរបារវឌ្ឍនភាពនៃការផ្ទេរ"
+            "showTransferProgress": "បង្ហាញរបារវឌ្ឍនភាពនៃការផ្ទេរ",
+            "similarToExisting": "ស្រដៀងនឹងប្រវត្តិរូបដែលមានស្រាប់"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tywyll",
             "imagePreviewBgLight": "Golau",
             "imagePreviewBgCustom": "Addasedig",
-            "showTransferProgress": "Dangos bar cynnydd trosglwyddo"
+            "showTransferProgress": "Dangos bar cynnydd trosglwyddo",
+            "similarToExisting": "yn debyg i broffil sy'n bodoli"
         },
         "devtools": {
             "title": "AeroTools",

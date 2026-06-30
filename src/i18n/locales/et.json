@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tume",
             "imagePreviewBgLight": "Hele",
             "imagePreviewBgCustom": "Kohandatud",
-            "showTransferProgress": "Kuva ülekande edenemisriba"
+            "showTransferProgress": "Kuva ülekande edenemisriba",
+            "similarToExisting": "sarnanevad olemasoleva profiiliga"
         },
         "devtools": {
             "title": "AeroTools",

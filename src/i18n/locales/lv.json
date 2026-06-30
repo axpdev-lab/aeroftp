@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tumšs",
             "imagePreviewBgLight": "Gaišs",
             "imagePreviewBgCustom": "Pielāgots",
-            "showTransferProgress": "Rādīt pārsūtīšanas norises joslu"
+            "showTransferProgress": "Rādīt pārsūtīšanas norises joslu",
+            "similarToExisting": "līdzīgi esošam profilam"
         },
         "devtools": {
             "title": "AeroTools",

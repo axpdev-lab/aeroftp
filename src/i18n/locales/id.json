@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Gelap",
             "imagePreviewBgLight": "Terang",
             "imagePreviewBgCustom": "Kustom",
-            "showTransferProgress": "Tampilkan bilah kemajuan transfer"
+            "showTransferProgress": "Tampilkan bilah kemajuan transfer",
+            "similarToExisting": "menyerupai profil yang sudah ada"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "गहरा",
             "imagePreviewBgLight": "हल्का",
             "imagePreviewBgCustom": "कस्टम",
-            "showTransferProgress": "स्थानांतरण प्रगति बार दिखाएं"
+            "showTransferProgress": "स्थानांतरण प्रगति बार दिखाएं",
+            "similarToExisting": "मौजूदा प्रोफ़ाइल से मिलते-जुलते हैं"
         },
         "devtools": {
             "title": "AeroTools",

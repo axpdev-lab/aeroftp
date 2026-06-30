@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Тёмный",
             "imagePreviewBgLight": "Светлый",
             "imagePreviewBgCustom": "Свой",
-            "showTransferProgress": "Показывать индикатор прогресса передачи"
+            "showTransferProgress": "Показывать индикатор прогресса передачи",
+            "similarToExisting": "похожи на существующий профиль"
         },
         "devtools": {
             "title": "AeroTools",

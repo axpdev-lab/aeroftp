@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Dökkt",
             "imagePreviewBgLight": "Ljóst",
             "imagePreviewBgCustom": "Sérsniðið",
-            "showTransferProgress": "Sýna framvindustiku fyrir flutning"
+            "showTransferProgress": "Sýna framvindustiku fyrir flutning",
+            "similarToExisting": "líkjast fyrirliggjandi sniði"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Σκούρο",
             "imagePreviewBgLight": "Ανοιχτό",
             "imagePreviewBgCustom": "Προσαρμοσμένο",
-            "showTransferProgress": "Εμφάνιση γραμμής προόδου μεταφοράς"
+            "showTransferProgress": "Εμφάνιση γραμμής προόδου μεταφοράς",
+            "similarToExisting": "μοιάζουν με υπάρχον προφίλ"
         },
         "devtools": {
             "title": "AeroTools",

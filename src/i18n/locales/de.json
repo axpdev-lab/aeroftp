@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Dunkel",
             "imagePreviewBgLight": "Hell",
             "imagePreviewBgCustom": "Benutzerdefiniert",
-            "showTransferProgress": "Fortschrittsbalken für Übertragungen anzeigen"
+            "showTransferProgress": "Fortschrittsbalken für Übertragungen anzeigen",
+            "similarToExisting": "ähneln einem vorhandenen Profil"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1142,6 +1142,7 @@
             "migrationFinish": "Completa",
             "migrationStep": "Passo {current} di {total}",
             "duplicatesSkipped": "duplicati saltati",
+            "similarToExisting": "simili a un profilo esistente",
             "invalidPassword": "Password non valida",
             "visibleColumns": "Colonne Visibili",
             "visibleColumnsDesc": "Scegli quali colonne mostrare nella lista file",

@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Donker",
             "imagePreviewBgLight": "Licht",
             "imagePreviewBgCustom": "Aangepast",
-            "showTransferProgress": "Voortgangsbalk voor overdracht weergeven"
+            "showTransferProgress": "Voortgangsbalk voor overdracht weergeven",
+            "similarToExisting": "lijken op een bestaand profiel"
         },
         "devtools": {
             "title": "AeroTools",

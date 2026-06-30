@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Mörk",
             "imagePreviewBgLight": "Ljus",
             "imagePreviewBgCustom": "Anpassad",
-            "showTransferProgress": "Visa förloppsindikator för överföring"
+            "showTransferProgress": "Visa förloppsindikator för överföring",
+            "similarToExisting": "liknar en befintlig profil"
         },
         "devtools": {
             "title": "AeroTools",

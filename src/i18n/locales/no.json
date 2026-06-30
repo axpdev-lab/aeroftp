@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Mørk",
             "imagePreviewBgLight": "Lys",
             "imagePreviewBgCustom": "Egendefinert",
-            "showTransferProgress": "Vis fremdriftslinje for overføring"
+            "showTransferProgress": "Vis fremdriftslinje for overføring",
+            "similarToExisting": "ligner en eksisterende profil"
         },
         "devtools": {
             "title": "AeroTools",

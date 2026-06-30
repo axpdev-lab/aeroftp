@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Koyu",
             "imagePreviewBgLight": "Açık",
             "imagePreviewBgCustom": "Özel",
-            "showTransferProgress": "Aktarım ilerleme çubuğunu göster"
+            "showTransferProgress": "Aktarım ilerleme çubuğunu göster",
+            "similarToExisting": "mevcut bir profile benziyor"
         },
         "devtools": {
             "title": "AeroTools",

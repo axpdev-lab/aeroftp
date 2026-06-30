@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "მუქი",
             "imagePreviewBgLight": "ღია",
             "imagePreviewBgCustom": "მორგებული",
-            "showTransferProgress": "ტრანსფერის მიმდინარეობის ზოლის ჩვენება"
+            "showTransferProgress": "ტრანსფერის მიმდინარეობის ზოლის ჩვენება",
+            "similarToExisting": "ჰგავს არსებულ პროფილს"
         },
         "devtools": {
             "title": "AeroTools",

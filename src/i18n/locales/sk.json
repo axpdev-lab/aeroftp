@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tmavé",
             "imagePreviewBgLight": "Svetlé",
             "imagePreviewBgCustom": "Vlastné",
-            "showTransferProgress": "Zobraziť ukazovateľ priebehu prenosu"
+            "showTransferProgress": "Zobraziť ukazovateľ priebehu prenosu",
+            "similarToExisting": "podobajú sa existujúcemu profilu"
         },
         "devtools": {
             "title": "AeroTools",

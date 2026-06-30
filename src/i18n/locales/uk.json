@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Темний",
             "imagePreviewBgLight": "Світлий",
             "imagePreviewBgCustom": "Власний",
-            "showTransferProgress": "Показувати індикатор прогресу передавання"
+            "showTransferProgress": "Показувати індикатор прогресу передавання",
+            "similarToExisting": "схожі на наявний профіль"
         },
         "devtools": {
             "title": "AeroTools",

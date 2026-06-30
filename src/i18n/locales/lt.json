@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tamsus",
             "imagePreviewBgLight": "Šviesus",
             "imagePreviewBgCustom": "Pasirinktinis",
-            "showTransferProgress": "Rodyti perdavimo eigos juostą"
+            "showTransferProgress": "Rodyti perdavimo eigos juostą",
+            "similarToExisting": "panašūs į esamą profilį"
         },
         "devtools": {
             "title": "AeroTools",

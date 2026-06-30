@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Escuro",
             "imagePreviewBgLight": "Claro",
             "imagePreviewBgCustom": "Personalizado",
-            "showTransferProgress": "Mostrar a barra de progreso de transferencia"
+            "showTransferProgress": "Mostrar a barra de progreso de transferencia",
+            "similarToExisting": "parécense a un perfil existente"
         },
         "devtools": {
             "title": "AeroTools",
