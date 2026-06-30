@@ -52647,6 +52647,13 @@ async fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
+    // Install the process-wide rustls CryptoProvider explicitly. Both
+    // `aws-lc-rs` and `ring` are pulled into the dependency tree (via
+    // different crates), so rustls cannot auto-select a provider and panics
+    // on the first TLS handshake (FTPS, WebDAV over https, ...). Pin our
+    // chosen backend once, before any TLS connector is built.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // Show the banner only when it's actually useful: bare invocation or
     // top-level --help. Subcommand help (e.g. `aeroftp-cli get --help`)
     // skips it so the banner doesn't dominate every screen during
