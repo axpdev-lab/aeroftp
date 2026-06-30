@@ -16,6 +16,7 @@
 
 use crate::providers::StorageProvider;
 use crate::rclone_crypt::RcloneCryptKeys;
+use zeroize::Zeroize;
 
 /// rclone-crypt content overhead, inverted.
 ///
@@ -93,6 +94,18 @@ pub enum CryptCompareKeys {
     /// AeroCrypt master key. Content-size mapping is deferred (see
     /// [`CryptCompareKeys::decrypted_size`]), so Compare is name-aware only.
     AeroCrypt([u8; 32]),
+}
+
+impl Drop for CryptCompareKeys {
+    fn drop(&mut self) {
+        // Zeroize the raw AeroCrypt master key on drop, matching the zeroize-on-
+        // drop guarantee of AeroCryptKeys / RcloneCryptKeys. The Rclone variant
+        // holds a RcloneCryptKeys, which zeroizes its own key material via its
+        // own Drop, so only the bare master-key array needs wiping here.
+        if let Self::AeroCrypt(master_key) = self {
+            master_key.zeroize();
+        }
+    }
 }
 
 impl CryptCompareKeys {

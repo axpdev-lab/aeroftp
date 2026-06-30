@@ -46418,7 +46418,10 @@ async fn cli_unlock_crypt_compare_keys(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
-    let uid = active_credential_user_id(&store);
+    // Scope the overlay-secret read to the SAME user the profile was loaded for
+    // (honor --user), not the persistent active user: otherwise `--user other`
+    // reads the wrong partition's overlay password.
+    let uid = scoped_credential_user_id(cli, &store);
     let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
         .unwrap_or_default();

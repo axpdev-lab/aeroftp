@@ -8649,14 +8649,25 @@ interface UpdateVerificationInfo {
           );
           resolved = adaptFileComparisons(comparisons, leftLocal);
         } catch (err) {
-          // Recursive scan failed: fall back to the flat top-level
-          // classify so the Compare tab still shows something actionable.
-          const localEntries = localFiles.map(toCompareEntry);
-          const remoteEntries = remoteFiles.map(toCompareEntry);
-          resolved = leftLocal
-            ? compareEntries(localEntries, remoteEntries)
-            : compareEntries(remoteEntries, localEntries);
-          notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+          if (isProviderConn && cryptVaultId) {
+            // Crypt overlay active: the backend failed closed (vault missing,
+            // wrong overlay key, or zero rows decrypted). Do NOT fall back to a
+            // flat compare over the still-encrypted remote listing: that would
+            // turn a crypt error into an actionable but wrong plan that
+            // re-uploads everything. Fail closed end-to-end: surface a blocking
+            // error and leave Compare with no executable result.
+            resolved = compareEntries([], []);
+            notify.error(t('aerosync.title') || 'AeroSync', String(err));
+          } else {
+            // Recursive scan failed: fall back to the flat top-level
+            // classify so the Compare tab still shows something actionable.
+            const localEntries = localFiles.map(toCompareEntry);
+            const remoteEntries = remoteFiles.map(toCompareEntry);
+            resolved = leftLocal
+              ? compareEntries(localEntries, remoteEntries)
+              : compareEntries(remoteEntries, localEntries);
+            notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+          }
         }
         // Discard if the dialog was closed or reopened meanwhile.
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
