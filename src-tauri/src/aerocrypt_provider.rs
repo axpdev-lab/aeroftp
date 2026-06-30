@@ -537,8 +537,21 @@ pub async fn aerocrypt_provider_download_file(
     vault_id: String,
     remote_encrypted_path: String,
     output_path: String,
+    // AeroSync / cross-profile transfer address a crypt file by its DECRYPTED
+    // path; map it to the real encrypted remote path (anchor cleartext, tail
+    // encrypted) so the overlay download serves both the browser and the sync
+    // engines. Crypt-aware transfer.
+    remote_plain_path: Option<String>,
+    crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let (master_key, _config) = load_keys(&aerocrypt_state, &vault_id).await?;
+
+    let remote_encrypted_path = match remote_plain_path.as_deref() {
+        Some(p) if !p.trim().is_empty() => {
+            encode_plain_target(&master_key, crypt_scope.as_deref(), p)?
+        }
+        _ => remote_encrypted_path,
+    };
 
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
@@ -580,6 +593,7 @@ async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(
 /// Encrypt a local file and upload it under an obfuscated name in the current
 /// overlay directory.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn aerocrypt_provider_upload_file(
     app: AppHandle,
     provider_state: State<'_, ProviderState>,
@@ -588,6 +602,13 @@ pub async fn aerocrypt_provider_upload_file(
     local_plaintext_path: String,
     remote_plain_name: Option<String>,
     overwrite: Option<bool>,
+    // AeroSync / cross-profile transfer to a crypt remote: `remote_plain_path` is
+    // the DECRYPTED destination path (possibly nested), within the bound
+    // `crypt_scope`. When set, the full path is encrypted and the encrypted
+    // parent dirs created, so a selective sync lands nested files in the right
+    // encrypted subtree. Crypt-aware transfer.
+    remote_plain_path: Option<String>,
+    crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let overwrite = overwrite.unwrap_or(false);
     validate_path(&local_plaintext_path)?;
@@ -608,22 +629,34 @@ pub async fn aerocrypt_provider_upload_file(
     let encrypted_payload = overlay::encrypt_data(&config, &master_key, &plaintext)
         .map_err(|e| format!("Encryption failed: {}", e))?;
 
-    let plain_name = remote_plain_name
-        .and_then(|s| {
-            let trimmed = s.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-        .or_else(|| {
-            std::path::Path::new(&local_plaintext_path)
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-        })
-        .ok_or_else(|| "Cannot determine destination filename".to_string())?;
-    let encrypted_name = encode_name(&master_key, &plain_name)?;
+    let encoded_target = match remote_plain_path.as_deref() {
+        Some(p) if !p.trim().is_empty() => {
+            Some(encode_plain_target(&master_key, crypt_scope.as_deref(), p)?)
+        }
+        _ => None,
+    };
+
+    let plain_name = match remote_plain_path.as_deref() {
+        Some(p) if !p.trim().is_empty() => std::path::Path::new(p.trim_end_matches('/'))
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .ok_or_else(|| "Cannot determine destination filename".to_string())?,
+        _ => remote_plain_name
+            .and_then(|s| {
+                let trimmed = s.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+            .or_else(|| {
+                std::path::Path::new(&local_plaintext_path)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+            })
+            .ok_or_else(|| "Cannot determine destination filename".to_string())?,
+    };
 
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
@@ -631,7 +664,38 @@ pub async fn aerocrypt_provider_upload_file(
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-    let remote_encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    let remote_encrypted_path = match encoded_target {
+        Some(target) => {
+            // Create the encrypted parent directories below the cleartext anchor
+            // before placing a nested file (best-effort: mkdir on an existing dir
+            // is ignored).
+            let anchor = norm_anchor(crypt_scope.as_deref());
+            let anchor_depth = if anchor.is_empty() {
+                0
+            } else {
+                anchor.trim_matches('/').split('/').count()
+            };
+            let segs: Vec<&str> = target
+                .trim_start_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
+            if segs.len() > 1 {
+                let mut cur = String::new();
+                for (i, seg) in segs[..segs.len() - 1].iter().enumerate() {
+                    cur = format!("{}/{}", cur, seg);
+                    if i >= anchor_depth {
+                        let _ = provider.mkdir(&cur).await;
+                    }
+                }
+            }
+            target
+        }
+        None => {
+            let encrypted_name = encode_name(&master_key, &plain_name)?;
+            join_remote_path(&current_path, &encrypted_name)
+        }
+    };
     if !overwrite && provider.stat(&remote_encrypted_path).await.is_ok() {
         return Err(format!(
             "Encrypted target already exists: {}",

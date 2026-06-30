@@ -1629,13 +1629,28 @@ async fn rclone_crypt_provider_download_file(
     vault_id: String,
     remote_encrypted_path: String,
     output_path: String,
+    // AeroSync / cross-profile transfer address files by their DECRYPTED
+    // (human-readable) path, not the encrypted on-disk name the browser holds.
+    // When `remote_plain_path` is set we map it to the real encrypted remote
+    // path here (anchor stays cleartext, the tail below it is encrypted), so the
+    // one overlay download serves both the browser and the sync engines and a
+    // crypt remote is never addressed with a plaintext name. CWP / crypt-aware
+    // transfer.
+    remote_plain_path: Option<String>,
+    crypt_scope: Option<String>,
 ) -> Result<String, String> {
-    let data_key = {
+    let (data_key, remote_encrypted_path) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
             .ok_or_else(|| "Vault not unlocked".to_string())?;
-        keys.data_key
+        let resolved = match remote_plain_path.as_deref() {
+            Some(p) if !p.trim().is_empty() => {
+                rclone_encode_plain_target(keys, crypt_scope.as_deref(), p)?
+            }
+            _ => remote_encrypted_path,
+        };
+        (keys.data_key, resolved)
     };
 
     let mut provider_lock = provider_state.provider.lock().await;
@@ -1663,6 +1678,7 @@ async fn rclone_crypt_provider_download_file(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn rclone_crypt_provider_upload_file(
     app: AppHandle,
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -1671,6 +1687,15 @@ async fn rclone_crypt_provider_upload_file(
     local_plaintext_path: String,
     remote_plain_name: Option<String>,
     overwrite: Option<bool>,
+    // AeroSync / cross-profile transfer to a crypt remote: `remote_plain_path` is
+    // the DECRYPTED destination path (possibly nested, e.g. "sub/dir/file.txt"),
+    // relative to or absolute within the bound `crypt_scope`. When set, the full
+    // path (not just the leaf) is encrypted and the encrypted parent dirs are
+    // created, so a selective sync lands nested files in the right encrypted
+    // subtree instead of injecting a plaintext name at the anchor. Crypt-aware
+    // transfer.
+    remote_plain_path: Option<String>,
+    crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let overwrite = overwrite.unwrap_or(false);
     validate_path(&local_plaintext_path)?;
@@ -1683,17 +1708,24 @@ async fn rclone_crypt_provider_upload_file(
         return Err("Local plaintext path must be a regular file".to_string());
     }
 
-    let (name_key, data_key, name_tweak, mode, off_suffix) = {
+    let (name_key, data_key, name_tweak, mode, off_suffix, encoded_target) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
             .ok_or_else(|| "Vault not unlocked".to_string())?;
+        let encoded_target = match remote_plain_path.as_deref() {
+            Some(p) if !p.trim().is_empty() => {
+                Some(rclone_encode_plain_target(keys, crypt_scope.as_deref(), p)?)
+            }
+            _ => None,
+        };
         (
             keys.name_key,
             keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
             keys.off_suffix.clone(),
+            encoded_target,
         )
     };
 
@@ -1709,41 +1741,80 @@ async fn rclone_crypt_provider_upload_file(
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-    let plain_name = remote_plain_name
-        .and_then(|s| {
-            let trimmed = s.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-        .or_else(|| {
-            std::path::Path::new(&local_plaintext_path)
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-        })
-        .ok_or_else(|| "Cannot determine destination filename".to_string())?;
-
-    let encrypted_name = match mode {
-        rclone_crypt::FilenameEncryption::Off => {
-            if off_suffix.is_empty() {
-                plain_name.clone()
-            } else {
-                format!("{}{}", plain_name, off_suffix)
-            }
-        }
-        rclone_crypt::FilenameEncryption::Standard => {
-            rclone_crypt::encrypt_name(&name_key, &name_tweak, &plain_name)
-                .map_err(|e| format!("Filename encryption failed: {}", e))?
-        }
-        rclone_crypt::FilenameEncryption::Obfuscate => {
-            rclone_crypt::obfuscate_name(&name_tweak, &plain_name)
-                .map_err(|e| format!("Filename obfuscation failed: {}", e))?
-        }
+    // Display/leaf name for the progress events: basename of the decrypted
+    // destination path when sync supplied one, else the explicit plain name or
+    // the local basename (browser path).
+    let plain_name = match remote_plain_path.as_deref() {
+        Some(p) if !p.trim().is_empty() => std::path::Path::new(p.trim_end_matches('/'))
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .ok_or_else(|| "Cannot determine destination filename".to_string())?,
+        _ => remote_plain_name
+            .and_then(|s| {
+                let trimmed = s.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+            .or_else(|| {
+                std::path::Path::new(&local_plaintext_path)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+            })
+            .ok_or_else(|| "Cannot determine destination filename".to_string())?,
     };
 
-    let remote_encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    let remote_encrypted_path = match encoded_target {
+        // Sync / cross-profile: the full nested path is already encrypted. Create
+        // the encrypted parent directories below the cleartext anchor so a nested
+        // file lands in the right encrypted subtree (best-effort: mkdir on an
+        // existing dir is ignored).
+        Some(target) => {
+            let anchor = rclone_norm_anchor(crypt_scope.as_deref());
+            let anchor_depth = if anchor.is_empty() {
+                0
+            } else {
+                anchor.trim_matches('/').split('/').count()
+            };
+            let segs: Vec<&str> = target
+                .trim_start_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
+            if segs.len() > 1 {
+                let mut cur = String::new();
+                for (i, seg) in segs[..segs.len() - 1].iter().enumerate() {
+                    cur = format!("{}/{}", cur, seg);
+                    if i >= anchor_depth {
+                        let _ = provider.mkdir(&cur).await;
+                    }
+                }
+            }
+            target
+        }
+        None => {
+            let encrypted_name = match mode {
+                rclone_crypt::FilenameEncryption::Off => {
+                    if off_suffix.is_empty() {
+                        plain_name.clone()
+                    } else {
+                        format!("{}{}", plain_name, off_suffix)
+                    }
+                }
+                rclone_crypt::FilenameEncryption::Standard => {
+                    rclone_crypt::encrypt_name(&name_key, &name_tweak, &plain_name)
+                        .map_err(|e| format!("Filename encryption failed: {}", e))?
+                }
+                rclone_crypt::FilenameEncryption::Obfuscate => {
+                    rclone_crypt::obfuscate_name(&name_tweak, &plain_name)
+                        .map_err(|e| format!("Filename obfuscation failed: {}", e))?
+                }
+            };
+            join_remote_path(&current_path, &encrypted_name)
+        }
+    };
     if !overwrite && provider.stat(&remote_encrypted_path).await.is_ok() {
         return Err(format!(
             "Encrypted target already exists: {}",
@@ -18618,6 +18689,42 @@ mod overlay_helpers_tests {
             rclone_overlay_decode_path(&keys, &encrypted),
             "/docs/sub folder"
         );
+    }
+
+    #[test]
+    fn rclone_sync_transfer_path_mapping_keeps_anchor_and_roundtrips() {
+        // The AeroSync / cross-profile crypt transfer maps a DECRYPTED absolute
+        // remote path under the bound anchor to its encrypted on-disk path: the
+        // cleartext anchor (the crypt root) is preserved and only the tail below
+        // it is encrypted. The browser already addresses encrypted paths; this
+        // mapping is what lets the sync engines reuse the overlay transfer
+        // commands (rclone_crypt_provider_{download,upload}_file) instead of the
+        // raw provider commands that injected plaintext into the crypt store.
+        let (name_key, data_key, name_tweak) =
+            rclone_crypt::derive_keys_with_tweak("sync-pw", "sync-salt").unwrap();
+        let keys = rclone_crypt::RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: rclone_crypt::FilenameEncryption::Standard,
+            off_suffix: rclone_crypt::resolve_off_suffix(None),
+            directory_name_encryption: true,
+        };
+        let anchor = "/home/user/CryptRoot";
+        let plain = "/home/user/CryptRoot/sub/report.txt";
+        let enc = rclone_encode_plain_target(&keys, Some(anchor), plain).unwrap();
+        // The cleartext anchor is preserved verbatim.
+        assert!(enc.starts_with("/home/user/CryptRoot/"));
+        // The tail below the anchor is encrypted, not the plaintext names.
+        assert!(!enc.contains("/sub/"));
+        assert!(!enc.ends_with("report.txt"));
+        // And it round-trips back to the decrypted relative tail.
+        let dec_tail =
+            rclone_overlay_decode_path(&keys, enc.strip_prefix("/home/user/CryptRoot/").unwrap());
+        assert_eq!(dec_tail, "sub/report.txt");
+        // A target outside the anchor is refused (fail-closed), never silently
+        // encrypted into the wrong place.
+        assert!(rclone_encode_plain_target(&keys, Some(anchor), "/etc/passwd").is_err());
     }
 
     #[test]

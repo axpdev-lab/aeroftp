@@ -158,6 +158,22 @@ export interface RemoteSyncConfig {
     isLocalLocal?: boolean;
     /** AeroSync recovery sidecars. P2 wiring only; profile/UI defaults land later. */
     errorCorrection?: ErrorCorrectionRuntime | null;
+    /**
+     * Crypt-overlay binding for the remote side. When set, the remote is a
+     * crypt-overlay profile (rclone-crypt or aerocrypt): every transfer routes
+     * through the overlay command (encrypt name+content on upload, decrypt on
+     * download), the file paths carry the DECRYPTED name and the backend maps
+     * them to the encrypted remote path within `scope`. Without this the runner
+     * would address a crypt remote with plaintext names: downloads fail and
+     * uploads inject plaintext into the crypt store. `scope` is the bound
+     * plaintext anchor ('' = whole-remote crypt). The mkdir pre-pass and EC
+     * sidecars (which are not crypt-aware) are skipped while this is set.
+     */
+    cryptOverlay?: {
+        vaultId: string;
+        prefix: 'rclone_crypt_provider' | 'aerocrypt_provider';
+        scope: string;
+    } | null;
 }
 
 /** The rich connected-remote report — superset of the local-local report. */
@@ -371,7 +387,12 @@ export const runRemoteSync = async (
     const archivingActive =
         !!config.versioningStrategy && config.versioningStrategy !== 'disabled';
     const errorCorrectionEnabled =
-        config.errorCorrection?.enabled === true && config.isLocalLocal !== true;
+        config.errorCorrection?.enabled === true
+        && config.isLocalLocal !== true
+        // EC sidecars are written with the plaintext path and are not yet
+        // crypt-aware; skip them on a crypt overlay so we never inject a
+        // plaintext sidecar into the encrypted store.
+        && !config.cryptOverlay;
 
     const setStatus = (path: string, status: SyncRunFileStatus): void => {
         callbacks.onFileStatus?.(path, status);
@@ -587,8 +608,14 @@ export const runRemoteSync = async (
         : config.isProvider
             ? 'provider_mkdir'
             : 'create_remote_folder';
-    for (const dir of [...remoteParentDirs].sort(byDepth)) {
-        await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` }).catch(() => undefined);
+    // Crypt overlay: the encrypted parent directories are created by the
+    // per-file overlay upload (it encrypts each path segment); a plaintext
+    // mkdir here would inject a cleartext directory name into the crypt store,
+    // so the remote-side mkdir pre-pass is skipped under a crypt overlay.
+    if (!config.cryptOverlay) {
+        for (const dir of [...remoteParentDirs].sort(byDepth)) {
+            await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` }).catch(() => undefined);
+        }
     }
     for (const dir of [...localParentDirs].sort(byDepth)) {
         await invoke('create_local_folder', { path: `${localBase}/${dir}` }).catch(
@@ -597,7 +624,9 @@ export const runRemoteSync = async (
     }
 
     // ── Create standalone empty directories (counted in dirsCreated) ───────
-    for (const dir of [...dirs.remote].sort(byDepth)) {
+    // Skipped on a crypt overlay (a plaintext mkdir would pollute the encrypted
+    // store; an encrypted empty dir would need name encoding, a minor follow-up).
+    for (const dir of config.cryptOverlay ? [] : [...dirs.remote].sort(byDepth)) {
         try {
             await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
             dirsCreated++;
@@ -678,7 +707,20 @@ export const runRemoteSync = async (
             // GAP-10: a local-local upload is a filesystem copy left → right.
             let cmd: string;
             let args: Record<string, unknown>;
-            if (config.isLocalLocal) {
+            if (config.cryptOverlay) {
+                // Crypt-aware upload: encrypt name+content and map the decrypted
+                // destination path to its encrypted remote path (creating the
+                // encrypted parent dirs). `remoteFilePath` carries the decrypted
+                // name; the backend encrypts within `scope`.
+                cmd = `${config.cryptOverlay.prefix}_upload_file`;
+                args = {
+                    vaultId: config.cryptOverlay.vaultId,
+                    localPlaintextPath: localFilePath,
+                    remotePlainPath: remoteFilePath,
+                    cryptScope: config.cryptOverlay.scope,
+                    overwrite: true,
+                };
+            } else if (config.isLocalLocal) {
                 cmd = 'copy_local_file';
                 args = { from: localFilePath, to: remoteFilePath };
             } else if (config.isProvider) {
@@ -759,7 +801,20 @@ export const runRemoteSync = async (
             // GAP-10: a local-local download is a filesystem copy right → left.
             let cmd: string;
             let args: Record<string, unknown>;
-            if (config.isLocalLocal) {
+            if (config.cryptOverlay) {
+                // Crypt-aware download: map the decrypted remote path to its
+                // encrypted on-disk path and decrypt the content to the local
+                // plaintext destination. `remoteEncryptedPath` is unused here
+                // (the backend derives it from `remotePlainPath` within `scope`).
+                cmd = `${config.cryptOverlay.prefix}_download_file`;
+                args = {
+                    vaultId: config.cryptOverlay.vaultId,
+                    remoteEncryptedPath: '',
+                    outputPath: localFilePath,
+                    remotePlainPath: remoteFilePath,
+                    cryptScope: config.cryptOverlay.scope,
+                };
+            } else if (config.isLocalLocal) {
                 cmd = 'copy_local_file';
                 args = { from: remoteFilePath, to: localFilePath };
             } else if (config.isProvider) {
@@ -792,7 +847,15 @@ export const runRemoteSync = async (
                         recordEcStatus('verify_failed', journalEntry);
                     }
                 }
-                const vResult = await verifyDownload(localFilePath, item.size, item.mtime);
+                // Crypt overlay: the remote stores ENCRYPTED bytes, so a size
+                // check against the decrypted local file is meaningless (and the
+                // aerocrypt compare defers size mapping, so item.size is the
+                // encrypted length). The overlay decrypt already authenticates
+                // the content via its AEAD tag, a stronger integrity guarantee
+                // than size, so the post-download size/mtime verify is skipped.
+                const vResult = config.cryptOverlay
+                    ? null
+                    : await verifyDownload(localFilePath, item.size, item.mtime);
                 if (vResult && !vResult.passed) {
                     verifyFailed++;
                     const errInfo: SyncErrorInfo = {

@@ -8797,6 +8797,25 @@ interface UpdateVerificationInfo {
     // "Not connected to server" while S3 (provider path) worked.
     const isProvider = usesProviderApi(protocol);
 
+    // Crypt-overlay binding for the remote side: when the active remote session
+    // carries an unlocked overlay, the runner must route transfers through the
+    // overlay commands (encrypt/decrypt + decrypted->encrypted path mapping)
+    // instead of the raw provider commands, which would address the crypt store
+    // with plaintext names (failed downloads, plaintext injected on upload). We
+    // read the RAW session binding (not the display-path scope gate) because a
+    // transfer loop operates regardless of where the panel is currently parked.
+    const activeRemoteSession = sessions.find((s) => s.id === activeSessionId);
+    const remoteOverlay = activeRemoteSession?.cryptOverlay ?? null;
+    const cryptOverlay = (isProvider && remoteOverlay)
+      ? {
+          vaultId: remoteOverlay.vaultId,
+          prefix: (remoteOverlay.kind === 'rclone-crypt'
+            ? 'rclone_crypt_provider'
+            : 'aerocrypt_provider') as 'rclone_crypt_provider' | 'aerocrypt_provider',
+          scope: remoteOverlay.remoteScope ?? '',
+        }
+      : null;
+
     // Bandwidth caps come from the CO-3 Sync-tab inputs (localStorage).
     // GAP-9a: Maniac mode ignores them outright (MANIAC_OVERRIDES sets the
     // bandwidth limit to 0).
@@ -8833,6 +8852,9 @@ interface UpdateVerificationInfo {
       compressionMode: opts.compressionMode,
       // P3: EC control from Plan tab (Backup default) reaches runner unchanged.
       errorCorrection: opts.errorCorrection,
+      // Crypt-aware transfer: route every transfer through the overlay when the
+      // remote is an unlocked crypt-overlay profile.
+      cryptOverlay,
     };
 
     const launchRun = (): void => {
