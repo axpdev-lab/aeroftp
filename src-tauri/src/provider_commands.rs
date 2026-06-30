@@ -77,6 +77,17 @@ pub struct ProviderState {
     pub in_flight_transfers: Arc<AtomicUsize>,
     /// Wakes drain waiters when an in-flight transfer guard drops.
     in_flight_notify: Arc<Notify>,
+    /// Interim crypt-overlay guard (Phase 2 T2.3, retired by Phase 3 T3.1).
+    ///
+    /// Set true once a crypt overlay is browsed on the currently-held provider
+    /// (the `*_provider_*_list` commands flip it), cleared on connect/disconnect.
+    /// While set, the AeroAgent `gui_tools` paths that write/read the RAW
+    /// `provider` directly (`upload_files`, `download_files`, `sync_preview`,
+    /// `remote_edit`) hard-fail instead of corrupting the crypt store with
+    /// plaintext: the GUI session keeps the RAW provider here and applies crypt
+    /// at the command layer, so those agent paths are NOT yet crypt-aware. Phase
+    /// 3 wraps the provider at connect time and removes this guard.
+    pub active_crypt_overlay: Arc<AtomicBool>,
 }
 
 impl ProviderState {
@@ -89,6 +100,7 @@ impl ProviderState {
             held_github_app_token: Mutex::new(None),
             in_flight_transfers: Arc::new(AtomicUsize::new(0)),
             in_flight_notify: Arc::new(Notify::new()),
+            active_crypt_overlay: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -1090,6 +1102,10 @@ pub async fn provider_connect(
         }
         *prov_lock = Some(provider);
     }
+    // A fresh connection has no crypt overlay browsed on it yet: reset the
+    // interim agent guard (Phase 2 T2.3). A `*_provider_*_list` flips it back on
+    // when the user opens this session's overlay.
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
     {
         let mut config_lock = state.config.lock().await;
         *config_lock = Some(config);
@@ -1159,6 +1175,10 @@ pub async fn provider_disconnect(
 
     let mut config_lock = state.config.lock().await;
     *config_lock = None;
+
+    // Clear the interim agent crypt guard (Phase 2 T2.3): the provider it
+    // referred to is gone.
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
 
     Ok(())
 }
@@ -4097,6 +4117,8 @@ pub async fn oauth2_connect(
     // Store provider
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(provider);
+    // Fresh connection: reset the interim agent crypt guard (Phase 2 T2.3).
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
 
     info!(
         "Connected to {} ({})",
@@ -5812,6 +5834,8 @@ pub async fn fourshared_connect(
 
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(Box::new(provider));
+    // Fresh connection: reset the interim agent crypt guard (Phase 2 T2.3).
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
 
     info!(
         "Connected to 4shared ({})",

@@ -101,6 +101,32 @@ impl ConnectionPool {
             format!("Connection to '{}' failed: {}", server_query, safe_msg)
         })?;
 
+        // Crypt-overlay chokepoint (Phase 2 T2.2): wrap the connected provider
+        // fail-closed when the saved profile carries an enabled binding, so the
+        // entire MCP/agent remote backend (upload/download/transfer/transfer_tree/
+        // mkdir/rename/touch + read/search/hashsum/dedupe/sync_doctor/reconcile,
+        // all routed through `McpRemoteBackend::with_provider` -> this pool)
+        // presents plaintext paths and encrypts content. The whole session is
+        // wrapped, so the binding's own `remoteScope` is the anchor: pass an
+        // empty `remote_dir` ('' = whole-remote). Reuses the same
+        // `OverlayUnlockParams` that MCP Compare builds via
+        // `resolve_overlay_secrets`. Fail-closed: a bound profile with no usable
+        // secret returns Err and the raw provider is never pooled.
+        let connected = match resolve_overlay_secrets(server_query, "") {
+            Ok(Some((params, password, salt))) => {
+                crate::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
+                    connected,
+                    Some(&params),
+                    &password,
+                    &salt,
+                )
+                .await
+                .map_err(|e| format!("Crypt overlay unlock failed for '{}': {}", server_query, e))?
+            }
+            Ok(None) => connected,
+            Err(e) => return Err(e),
+        };
+
         let arc = Arc::new(Mutex::new(connected));
 
         let entry = PooledConnection {

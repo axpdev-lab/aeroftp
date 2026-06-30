@@ -829,6 +829,102 @@ pub async fn wrap_provider_with_overlay_if_bound(
     Ok(Box::new(provider))
 }
 
+/// Resolve a saved profile's `aeroCryptOverlay` binding (+ its per-profile vault
+/// secrets) and wrap a freshly-connected provider via
+/// [`wrap_provider_with_overlay_if_bound`]. Shared by the cross-profile / agent
+/// resolver (`ai_tools::create_temp_provider`) and the MCP connection pool so
+/// every non-CLI provider resolution closes the same crypt gap the CLI
+/// chokepoint (`cli_apply_crypt_overlay`) does, with identical fail-closed
+/// semantics.
+///
+/// FAIL-CLOSED: a profile WITH an enabled binding but no usable stored password
+/// returns `Err` (the operation is refused); the raw provider is never handed
+/// back. A profile without a binding returns `inner` byte-identical.
+///
+/// The binding (kind / scope / name-encryption modes) reuses the profile's
+/// `aeroCryptOverlay` JSON; the secrets reuse the generic per-profile vault keys
+/// `aerocrypt_overlay_pw_<id>` / `aerocrypt_overlay_salt_<id>` shared by both
+/// overlay kinds (lib.rs ~15610). Mirrors `mcp::pool::resolve_overlay_secrets`
+/// and the CLI `cli_apply_crypt_overlay`. The whole session is wrapped, so the
+/// binding's own `remoteScope` is the authoritative plaintext anchor
+/// ('' / unset = whole-remote crypt).
+pub async fn wrap_connected_provider_for_profile(
+    inner: Box<dyn StorageProvider>,
+    profile: &serde_json::Value,
+    store: &crate::credential_store::CredentialStore,
+) -> Result<Box<dyn StorageProvider>, String> {
+    let Some(params) = overlay_binding_from_profile(profile) else {
+        return Ok(inner);
+    };
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+    let password = crate::user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_pw_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty())
+    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+    .ok_or_else(|| {
+        "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD."
+            .to_string()
+    })?;
+    let salt = crate::user_partitions::resolve_active_credential(
+        store,
+        &format!("aerocrypt_overlay_salt_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+    .unwrap_or_default();
+
+    wrap_provider_with_overlay_if_bound(inner, Some(&params), &password, &salt).await
+}
+
+/// Extract the [`OverlayUnlockParams`] binding from a saved profile's
+/// `aeroCryptOverlay` JSON, or `None` when the profile carries no enabled
+/// overlay. Pure (no vault access): the secret lookup is the caller's job. The
+/// whole session is wrapped at the resolver, so the binding's own `remoteScope`
+/// is the authoritative plaintext anchor ('' / unset = whole-remote crypt),
+/// matching the CLI chokepoint and `mcp::pool::resolve_overlay_secrets`.
+pub(crate) fn overlay_binding_from_profile(
+    profile: &serde_json::Value,
+) -> Option<OverlayUnlockParams> {
+    let overlay = profile.get("aeroCryptOverlay")?;
+    if !overlay
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(OverlayUnlockParams {
+        kind: overlay
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("aerocrypt")
+            .to_string(),
+        remote_scope: overlay
+            .get("remoteScope")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        filename_encryption: overlay
+            .get("filenameEncryption")
+            .and_then(|v| v.as_str())
+            .unwrap_or("standard")
+            .to_string(),
+        directory_name_encryption: overlay
+            .get("directoryNameEncryption")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        off_suffix: None,
+    })
+}
+
 /// Unlock encryption-capable [`OverlayKeys`] from an overlay binding plus the
 /// secret(s). The AeroCrypt arm retains the parsed [`OverlayConfig`] (needed for
 /// content encryption), which [`crate::crypt_compare::unlock_overlay_keys`]
@@ -1480,5 +1576,59 @@ mod tests {
                 "{label}: ranged read must be NotSupported, got {ranged:?}"
             );
         }
+    }
+
+    // ── Phase 2: profile -> binding extraction (cross-profile / agent / MCP) ──
+
+    #[test]
+    fn binding_none_when_no_overlay_or_disabled() {
+        // A plain profile and a profile with an explicitly-disabled overlay both
+        // yield no binding, so the resolver returns the raw provider untouched.
+        assert!(overlay_binding_from_profile(&serde_json::json!({ "id": "p1" })).is_none());
+        assert!(overlay_binding_from_profile(&serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": { "enabled": false, "kind": "rclone-crypt" }
+        }))
+        .is_none());
+        // `enabled` absent defaults to false (fail-safe: do not wrap by accident).
+        assert!(overlay_binding_from_profile(&serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": { "kind": "rclone-crypt" }
+        }))
+        .is_none());
+    }
+
+    #[test]
+    fn binding_rclone_reads_fields_and_anchor() {
+        let params = overlay_binding_from_profile(&serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": {
+                "enabled": true,
+                "kind": "rclone-crypt",
+                "remoteScope": "/enc",
+                "filenameEncryption": "off",
+                "directoryNameEncryption": false
+            }
+        }))
+        .expect("enabled overlay must yield a binding");
+        assert_eq!(params.kind, "rclone-crypt");
+        assert_eq!(params.remote_scope, "/enc");
+        assert_eq!(params.filename_encryption, "off");
+        assert!(!params.directory_name_encryption);
+    }
+
+    #[test]
+    fn binding_defaults_whole_remote_and_standard() {
+        // Minimal enabled overlay: kind defaults to aerocrypt, scope to whole-
+        // remote (""), filename encryption to standard, dir-name encryption on.
+        let params = overlay_binding_from_profile(&serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": { "enabled": true }
+        }))
+        .expect("enabled overlay must yield a binding");
+        assert_eq!(params.kind, "aerocrypt");
+        assert_eq!(params.remote_scope, "");
+        assert_eq!(params.filename_encryption, "standard");
+        assert!(params.directory_name_encryption);
     }
 }

@@ -15,6 +15,35 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
     crate::ai_core::local_tools::value_as_string_array(args, key).map_err(|e| e.to_string())
 }
 
+/// Interim crypt-overlay guard (Phase 2 T2.3, retired by Phase 3 T3.1).
+///
+/// The AeroAgent `gui_tools` paths that read/write the GUI session's RAW
+/// `ProviderState::provider` directly (`upload_files`, `download_files`,
+/// `sync_preview`, `remote_edit`) are NOT yet crypt-aware: the GUI keeps the raw
+/// provider in `ProviderState` and applies crypt at the command layer, so a raw
+/// agent write to a crypt-bound session injects plaintext into the encrypted
+/// store (silent corruption) and a raw read returns ciphertext. Until Phase 3
+/// wraps the provider at connect, fail closed when an overlay is active on the
+/// current session. The CLI, cross-profile/agent transfer, and MCP backends are
+/// already crypt-aware (Phases 1-2), so steer the agent there.
+fn guard_no_raw_crypt_write(
+    state: &tauri::State<'_, crate::provider_commands::ProviderState>,
+    op: &str,
+) -> Result<(), String> {
+    if state
+        .active_crypt_overlay
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err(format!(
+            "{op} is blocked: this session has an active crypt overlay and the agent's \
+             direct provider path is not yet crypt-aware (it would corrupt the encrypted \
+             store with plaintext). Use the CLI ('aeroftp-cli' on the crypt profile) or a \
+             cross-profile transfer instead."
+        ));
+    }
+    Ok(())
+}
+
 pub async fn dispatch_gui_tool(
     ctx: &dyn crate::ai_core::tools::ToolCtx,
     tool_name: &str,
@@ -282,6 +311,7 @@ pub async fn dispatch_gui_tool(
             const MAX_PREVIEW_BYTES: usize = 100 * 1024; // 100KB
 
             let mut content = if remote {
+                guard_no_raw_crypt_write(&state, "preview_edit (remote)")?;
                 let bytes = download_from_provider(&state, &app_state, &path).await?;
                 if bytes.len() > MAX_PREVIEW_BYTES {
                     return Ok(json!({
@@ -493,6 +523,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "upload_files" => {
+            guard_no_raw_crypt_write(&state, "upload_files")?;
 
             let local_paths: Vec<String> = args
                 .get("paths")
@@ -633,6 +664,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "download_files" => {
+            guard_no_raw_crypt_write(&state, "download_files")?;
 
             let remote_paths: Vec<String> = args
                 .get("paths")
@@ -706,6 +738,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "sync_preview" => {
+            guard_no_raw_crypt_write(&state, "sync_preview")?;
 
             let local_path = get_str_s(args, "local_path")?;
             let remote_path = get_str_s(args, "remote_path")?;
@@ -803,6 +836,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "remote_edit" => {
+            guard_no_raw_crypt_write(&state, "remote_edit")?;
 
             let path = get_str_s(args, "path")?;
             let find = get_str_s(args, "find")?;

@@ -1438,6 +1438,13 @@ async fn rclone_crypt_provider_list(
         directory_name_encryption,
     };
 
+    // Interim agent guard (Phase 2 T2.3): a crypt overlay is now in play on this
+    // session, so refuse the AeroAgent raw-provider gui_tools paths until Phase 3
+    // wraps the provider at connect.
+    provider_state
+        .active_crypt_overlay
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
         .as_mut()
