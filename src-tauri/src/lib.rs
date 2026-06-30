@@ -8735,7 +8735,7 @@ async fn compress_7z_impl(
     paths: Vec<String>,
     output_path: String,
     password: Option<String>,
-    _compression_level: Option<i64>,
+    compression_level: Option<i64>,
     encrypt_header: Option<bool>,
     app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
@@ -8804,14 +8804,19 @@ async fn compress_7z_impl(
     let mut sz = ArchiveWriter::new(output_file)
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
+    // Map the caller's preset onto the LZMA2 content method. The dialog's
+    // Fast/Normal/Maximum buttons send 1/6/9 and the CLI passes 0-9 directly;
+    // unset defaults to 6 (7-Zip's "Normal"). Lzma2Options::from_level clamps to
+    // its valid 0-9 range internally. Without this the level was silently
+    // dropped and every 7z used the library default preset.
+    let level = compression_level.unwrap_or(6).clamp(0, 9) as u32;
+    let lzma2 = encoder_options::Lzma2Options::from_level(level);
+
     // Set compression and optional AES-256 encryption.
     if let Some(ref pwd) = secret_password {
         let aes_options =
             encoder_options::AesEncoderOptions::new(Password::from(pwd.expose_secret()));
-        sz.set_content_methods(vec![
-            aes_options.into(),
-            EncoderConfiguration::new(EncoderMethod::LZMA2),
-        ]);
+        sz.set_content_methods(vec![aes_options.into(), lzma2.into()]);
         // -mhe: header (filename) encryption is opt-in, exactly like 7-Zip's
         // "Encrypt file names" checkbox that sits under the password. Off keeps
         // the classic behaviour (content encrypted, names readable); on hides
@@ -8820,7 +8825,7 @@ async fn compress_7z_impl(
         // we set it explicitly from the caller's choice in both directions.
         sz.set_encrypt_header(encrypt_header.unwrap_or(false));
     } else {
-        sz.set_content_methods(vec![EncoderConfiguration::new(EncoderMethod::LZMA2)]);
+        sz.set_content_methods(vec![lzma2.into()]);
         // No password: nothing to encrypt, so leave the header in the clear (an
         // encrypted header without a key is meaningless and would only break
         // plain listing).
@@ -18894,5 +18899,60 @@ mod sevenz_mhe_tests {
         .expect("extract 7z with password");
         let restored = std::fs::read(dest.join(marker)).unwrap();
         assert_eq!(restored, content);
+    }
+
+    // The dialog's Fast/Normal/Maximum buttons (and the CLI's --level) must
+    // actually reach the LZMA2 encoder. Before the fix compress_7z_impl ignored
+    // the level and always used the library default preset, so every level
+    // produced a byte-identical archive. We prove the level is honoured with a
+    // payload that has a long-range repeat only a large dictionary can
+    // deduplicate: level 1 has a 1 MiB window and cannot see across the 1.5 MiB
+    // gap, level 9 has a 64 MiB window and can, so its archive is markedly
+    // smaller. Run without a password so the size reflects compression, not the
+    // AES layer (which makes any output look random regardless of the level).
+    #[tokio::test]
+    async fn compression_level_changes_archive_size() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // 1.5 MiB of deterministic pseudo-random (incompressible) bytes,
+        // repeated once. The repeat sits 1.5 MiB after the original, beyond
+        // level 1's 1 MiB window but well inside level 9's 64 MiB window.
+        let block_len = 3 * 512 * 1024usize; // 1.5 MiB
+        let mut block = vec![0u8; block_len];
+        let mut state: u64 = 0x2545F4914F6CDD1D; // arbitrary non-zero seed
+        for b in block.iter_mut() {
+            // xorshift64*: cheap, dependency-free, defeats LZMA on its own.
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            *b = (state.wrapping_mul(0x2545F4914F6CDD1D) >> 56) as u8;
+        }
+        let mut data = block.clone();
+        data.extend_from_slice(&block);
+        let src = dir.path().join("payload.bin");
+        std::fs::write(&src, &data).unwrap();
+
+        let compress_at = |level: i64, name: &str| {
+            let src = src.to_string_lossy().to_string();
+            let out = dir.path().join(name).to_string_lossy().to_string();
+            async move {
+                compress_7z_core(vec![src], out.clone(), None, Some(level), None)
+                    .await
+                    .expect("compress 7z");
+                std::fs::metadata(&out).unwrap().len()
+            }
+        };
+
+        let size_fast = compress_at(1, "lvl1.7z").await;
+        let size_max = compress_at(9, "lvl9.7z").await;
+
+        // Level 9 must beat level 1 by a clear margin (the long-range dedup
+        // roughly halves the output). The margin makes the test fail loudly if
+        // the level ever stops reaching the encoder again.
+        assert!(
+            size_max + size_max / 5 < size_fast,
+            "compression level was not honoured: level 1 = {size_fast} B, \
+             level 9 = {size_max} B (expected level 9 clearly smaller)"
+        );
     }
 }
