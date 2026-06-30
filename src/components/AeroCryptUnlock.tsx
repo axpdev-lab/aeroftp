@@ -24,7 +24,11 @@ import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 
 interface AeroCryptUnlockProps {
     onClose: () => void;
-    onUnlocked?: (vaultId: string) => void;
+    onUnlocked?: (details: {
+        vaultId: string;
+        password: string;
+        remoteScope?: string;
+    }) => void;
     onLocked?: () => void;
     activeVaultId?: string | null;
 }
@@ -105,7 +109,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                 configJson,
             });
             setVaultInfo(info);
-            onUnlocked?.(info.vault_id);
+            onUnlocked?.({
+                vaultId: info.vault_id,
+                password,
+                remoteScope: '',
+            });
             setPassword('');
             setSuccess(t('aerocryptNative.unlocked'));
             setBrowserPath('.');
@@ -127,7 +135,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
             });
             setVaultInfo(info);
-            onUnlocked?.(info.vault_id);
+            onUnlocked?.({
+                vaultId: info.vault_id,
+                password,
+                remoteScope: '',
+            });
             setPassword('');
             setConfirmPassword('');
             setCreateSubpath('');

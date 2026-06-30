@@ -13,7 +13,14 @@ import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 
 interface RcloneCryptUnlockProps {
     onClose: () => void;
-    onUnlocked?: (vaultId: string) => void;
+    onUnlocked?: (details: {
+        vaultId: string;
+        password: string;
+        salt?: string | null;
+        filenameEncryption: string;
+        directoryNameEncryption: boolean;
+        remoteScope?: string;
+    }) => void;
     onLocked?: () => void;
     activeVaultId?: string | null;
 }
@@ -103,7 +110,14 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 directoryNameEncryption: dirNameEncryption,
             });
             setVaultInfo(info);
-            onUnlocked?.(info.vault_id);
+            onUnlocked?.({
+                vaultId: info.vault_id,
+                password,
+                salt: salt || null,
+                filenameEncryption,
+                directoryNameEncryption: dirNameEncryption,
+                remoteScope: '',
+            });
             setPassword('');
             setSalt('');
             setSuccess(t('aerocrypt.unlocked'));
@@ -130,7 +144,14 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
             });
             setVaultInfo(info);
-            onUnlocked?.(info.vault_id);
+            onUnlocked?.({
+                vaultId: info.vault_id,
+                password,
+                salt: salt || null,
+                filenameEncryption,
+                directoryNameEncryption: dirNameEncryption,
+                remoteScope: '',
+            });
             setPassword('');
             setConfirmPassword('');
             setSalt('');
