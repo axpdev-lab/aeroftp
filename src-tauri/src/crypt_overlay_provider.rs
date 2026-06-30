@@ -1456,4 +1456,29 @@ mod tests {
         let res = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "").await;
         assert!(res.is_err(), "missing config must fail closed");
     }
+
+    #[tokio::test]
+    async fn range_reads_and_delta_disabled_so_dedupe_hashes_plaintext() {
+        // dedupe hashes large files via `read_range`; a crypt overlay cannot map
+        // a plaintext offset to a ciphertext offset, so the decorator must refuse
+        // ranged reads (NotSupported) and report no delta-sync. That forces the
+        // dedupe hasher to fall back to a full `download_to_bytes`, which yields
+        // DECRYPTED bytes, so identical plaintext dedupes even though rclone
+        // gives each file a random per-file nonce (identical plaintext -> DIFFERENT
+        // ciphertext). Without this guard dedupe would hash ciphertext ranges and
+        // never find a duplicate. Pin the invariant for both overlay kinds.
+        for (label, keys) in both_kinds() {
+            let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
+            let mut provider = CryptOverlayProvider::new(inner, keys, "");
+            assert!(
+                !provider.supports_delta_sync(),
+                "{label}: delta sync must be off"
+            );
+            let ranged = provider.read_range("/whatever.bin", 0, 16).await;
+            assert!(
+                matches!(ranged, Err(ProviderError::NotSupported(_))),
+                "{label}: ranged read must be NotSupported, got {ranged:?}"
+            );
+        }
+    }
 }

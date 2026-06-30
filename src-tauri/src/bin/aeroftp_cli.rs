@@ -23479,6 +23479,126 @@ fn load_oauth_client_config(store: &CredentialStore, provider: &str) -> (String,
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
 
+/// Wrap a freshly connected provider with the crypt overlay decorator when the
+/// resolved profile carries an enabled crypt binding (rclone-crypt or native
+/// AeroCrypt). This is the Phase 1 CLI chokepoint: a single wrap here makes the
+/// whole CLI (get/put/recursive/glob, sync, dedupe, edit, hashsum, mount, ...)
+/// speak plaintext while the wire stays fully encrypted, so no command path
+/// injects plaintext into a crypt store or reads back ciphertext.
+///
+/// FAIL-CLOSED: a profile with an enabled binding whose secrets are missing or
+/// whose keys cannot be unlocked returns a hard error (exit 5 / 6); it never
+/// falls back to the raw provider. A plain profile, a raw URL, or a vault hiccup
+/// before the binding is confirmed leaves the provider byte-identical.
+///
+/// The binding (kind / scope / name-encryption modes) reuses the profile's
+/// `aeroCryptOverlay` JSON; the secrets reuse the generic per-profile vault keys
+/// `aerocrypt_overlay_pw_<id>` / `aerocrypt_overlay_salt_<id>` shared by both
+/// overlay kinds (lib.rs ~15610). Mirrors `cli_unlock_crypt_compare_keys`, which
+/// resolves the SAME binding for the compare path.
+async fn cli_apply_crypt_overlay(
+    provider: Box<dyn StorageProvider>,
+    cli: &Cli,
+    profile_query: Option<&str>,
+    format: OutputFormat,
+) -> Result<Box<dyn StorageProvider>, i32> {
+    // No profile (raw URL) -> nothing to bind. A vault/profile-load hiccup must
+    // not mask a plain connection, so fall through to the raw provider until the
+    // binding itself is confirmed; from that point on we are fail-closed.
+    let Some(profile_name) = profile_query else {
+        return Ok(provider);
+    };
+    let Ok(store) = open_vault(cli) else {
+        return Ok(provider);
+    };
+    let Ok(profiles) = load_active_user_profiles(cli, &store) else {
+        return Ok(provider);
+    };
+    let profile = match match_profile_by_query(&profiles, profile_name) {
+        ProfileMatch::One(p) => p,
+        _ => return Ok(provider),
+    };
+    if !profile_has_crypt_overlay(profile) {
+        return Ok(provider);
+    }
+
+    let overlay = profile
+        .get("aeroCryptOverlay")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let kind = overlay
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("aerocrypt")
+        .to_string();
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    // The bound plaintext anchor: "" / unset = whole-remote crypt. Unlike the
+    // compare path (which targets a specific remote path) the chokepoint wraps
+    // the whole session, so the binding's own scope is authoritative.
+    let remote_scope = overlay
+        .get("remoteScope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let filename_encryption = overlay
+        .get("filenameEncryption")
+        .and_then(|v| v.as_str())
+        .unwrap_or("standard")
+        .to_string();
+    let directory_name_encryption = overlay
+        .get("directoryNameEncryption")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    // Scope the overlay-secret read to the SAME user the profile was loaded for
+    // (honor --user), matching cli_unlock_crypt_compare_keys.
+    let uid = scoped_credential_user_id(cli, &store);
+    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+        .unwrap_or_default();
+    if password.is_empty() {
+        print_error(
+            format,
+            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD.",
+            5,
+        );
+        return Err(5);
+    }
+    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+        .unwrap_or_default();
+
+    let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
+        kind,
+        remote_scope,
+        filename_encryption,
+        directory_name_encryption,
+        off_suffix: None,
+    };
+    match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
+        provider,
+        Some(&params),
+        &password,
+        &salt,
+    )
+    .await
+    {
+        Ok(wrapped) => {
+            if cli.verbose > 0 {
+                eprintln!(
+                    "Crypt overlay active ({}): paths and content are transparently encrypted",
+                    params.kind
+                );
+            }
+            Ok(wrapped)
+        }
+        Err(e) => {
+            print_error(format, &format!("Crypt overlay unlock failed: {}", e), 6);
+            Err(6)
+        }
+    }
+}
+
 async fn create_and_connect(
     url: &str,
     cli: &Cli,
@@ -23580,6 +23700,11 @@ async fn create_and_connect_with(
                             if let Ok((mut p, path)) = result {
                                 apply_onedrive_runtime_knobs(&mut p, cli);
                                 apply_google_drive_runtime_knobs(&mut p, cli);
+                                // Crypt-overlay chokepoint: an OAuth backend can
+                                // carry a crypt binding too (overlay is
+                                // protocol-agnostic). Wrap before returning.
+                                let p = cli_apply_crypt_overlay(p, cli, profile_override, format)
+                                    .await?;
                                 return Ok((p, path));
                             } else {
                                 return result;
@@ -23723,6 +23848,13 @@ async fn create_and_connect_with(
             );
         }
     }
+
+    // Crypt-overlay chokepoint (Phase 1): wrap the connected provider when the
+    // profile carries an enabled crypt binding. All runtime knobs above are
+    // applied to the inner provider before wrapping; the decorator advertises
+    // the byte-inexact surfaces (resume/multipart/range/checksum) as disabled so
+    // callers fall back to whole-file paths. Fail-closed on a bound profile.
+    let provider = cli_apply_crypt_overlay(provider, cli, profile_override, format).await?;
 
     Ok((provider, path))
 }
