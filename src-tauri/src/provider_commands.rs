@@ -125,6 +125,33 @@ impl ProviderState {
         self.cancel_flag.store(true, Ordering::Relaxed);
         self.cancel_token.lock().await.cancel();
     }
+
+    /// Fail-closed guard against a raw write into a crypt-bound session.
+    ///
+    /// When the session is crypt-CAPABLE ([`Self::active_crypt_overlay`]) but the
+    /// live `provider` box is currently UNWRAPPED ([`Self::overlay_wrapped`] false:
+    /// the badge is locked or the browser stepped outside the encrypted scope),
+    /// any write that reaches `provider` directly hits the RAW backend and would
+    /// inject plaintext content or a cleartext name into the encrypted store,
+    /// silently corrupting it. Every command that mutates the remote through the
+    /// raw `ProviderState::provider` (uploads, mkdir, delete, rename, server-copy,
+    /// and the AeroAgent `gui_tools` paths) calls this first and refuses in exactly
+    /// that window. When the overlay is wrapped the write goes through the crypt
+    /// decorator transparently, and when the session is not crypt-capable at all
+    /// this is a no-op.
+    pub fn guard_no_raw_crypt_write(&self, op: &str) -> Result<(), String> {
+        let crypt_capable = self.active_crypt_overlay.load(Ordering::SeqCst);
+        let wrapped = self.overlay_wrapped.load(Ordering::SeqCst);
+        if crypt_capable && !wrapped {
+            return Err(format!(
+                "{op} is blocked: this session has a crypt overlay that is currently locked or \
+                 out of its encrypted scope, so a direct provider write would inject plaintext \
+                 into the encrypted store. Re-enter the encrypted scope (or unlock the overlay) \
+                 before writing."
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl Default for ProviderState {
@@ -2337,6 +2364,10 @@ pub async fn provider_upload_folder(
     timeout_seconds: Option<u64>,
     commit_message: Option<String>,
 ) -> Result<String, String> {
+    // Fail-closed: never write plaintext into a crypt store whose overlay is
+    // currently unwrapped (badge locked / outside the encrypted scope).
+    state.guard_no_raw_crypt_write("Upload")?;
+
     let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
         max_concurrent,
         retry_count,
@@ -3319,6 +3350,10 @@ pub async fn provider_upload_file(
     commit_message: Option<String>,
     use_delta: Option<bool>,
 ) -> Result<String, String> {
+    // Fail-closed: never write plaintext into a crypt store whose overlay is
+    // currently unwrapped (badge locked / outside the encrypted scope).
+    state.guard_no_raw_crypt_write("Upload")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3620,6 +3655,9 @@ pub async fn provider_mkdir(
     path: String,
     commit_message: Option<String>,
 ) -> Result<(), String> {
+    // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store.
+    state.guard_no_raw_crypt_write("Create directory")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3658,6 +3696,10 @@ pub async fn provider_delete_file(
     path: String,
     commit_message: Option<String>,
 ) -> Result<(), String> {
+    // Fail-closed: a plaintext path against an unwrapped crypt store targets the
+    // wrong (or no) object; refuse instead of acting on the raw backend.
+    state.guard_no_raw_crypt_write("Delete file")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3694,6 +3736,10 @@ pub async fn provider_delete_dir(
     recursive: bool,
     commit_message: Option<String>,
 ) -> Result<(), String> {
+    // Fail-closed: a plaintext path against an unwrapped crypt store targets the
+    // wrong (or no) object; refuse instead of acting on the raw backend.
+    state.guard_no_raw_crypt_write("Delete directory")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3778,6 +3824,10 @@ pub async fn provider_rename(
     from: String,
     to: String,
 ) -> Result<(), String> {
+    // Fail-closed: renaming through the raw backend while the overlay is
+    // unwrapped would create a cleartext name in the encrypted store.
+    state.guard_no_raw_crypt_write("Rename")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3814,6 +3864,12 @@ pub async fn provider_server_copy(
     from: String,
     to: String,
 ) -> Result<(), String> {
+    // Fail-closed: a raw server-side copy while the overlay is unwrapped would
+    // land a cleartext-named object in the encrypted store (the content stays
+    // ciphertext but the name never gets encrypted), orphaning it from the
+    // overlay's decrypted listing.
+    state.guard_no_raw_crypt_write("Server copy")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -10931,6 +10987,36 @@ mod tests {
                 plaintext.len()
             );
         }
+    }
+
+    #[test]
+    fn guard_no_raw_crypt_write_refuses_only_when_crypt_capable_and_unwrapped() {
+        let state = ProviderState::new();
+
+        // Not crypt-capable at all: a raw write is fine (no overlay to corrupt).
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+
+        // Crypt-capable AND wrapped: the live provider IS the crypt decorator, so
+        // the write is mapped/encrypted transparently. Allowed.
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+
+        // Crypt-capable but UNWRAPPED (badge locked / stepped outside the
+        // encrypted scope): a direct write hits the raw backend and would inject
+        // plaintext into the encrypted store. Must fail closed.
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+        let err = state
+            .guard_no_raw_crypt_write("Upload")
+            .expect_err("unwrapped crypt-capable session must refuse a raw write");
+        assert!(
+            err.contains("crypt overlay"),
+            "guard error should explain the crypt overlay block, got: {err}"
+        );
+
+        // Clearing capability re-opens the raw path (e.g. after disconnect).
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
     }
 
     #[test]
