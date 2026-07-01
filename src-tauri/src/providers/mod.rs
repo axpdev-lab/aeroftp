@@ -782,6 +782,18 @@ pub trait StorageProvider: Send + Sync {
         false
     }
 
+    /// Whether this provider can resume an interrupted upload by appending
+    /// bytes from a given offset (the GUI "Resume" action on the overwrite
+    /// dialog). Kept deliberately separate from the DAG `transfer_capabilities`
+    /// hints so enabling append-resume never reshapes DAG upload planning.
+    /// Default false; only providers with a real append path (currently SFTP)
+    /// override it. Crypt overlay providers MUST leave it false: a partial
+    /// ciphertext is not byte-resumable (per-file nonce / AEAD framing), so a
+    /// crypt-bound resume falls back to a full re-encrypt instead.
+    fn supports_resume_upload_append(&self) -> bool {
+        false
+    }
+
     /// Resume a download from a given byte offset
     async fn resume_download(
         &mut self,
@@ -888,6 +900,18 @@ pub trait StorageProvider: Send + Sync {
     /// Whether this provider supports file checksums
     fn supports_checksum(&self) -> bool {
         false
+    }
+
+    /// Whether `size`/`stat` report the EXACT logical (plaintext) size. True for
+    /// every normal provider. A crypt overlay whose size mapping is deferred
+    /// (legacy AeroCrypt v1/v2) returns false so size-based sync comparison is
+    /// skipped for it: the local plaintext size never equals the on-wire
+    /// ciphertext size, so comparing them would flag every unchanged file as
+    /// different and churn every cycle. Such a provider is compared on timestamp
+    /// + the AEAD tag instead. rclone-crypt and AeroCrypt v3 report exact sizes
+    /// (deterministic overhead map) and keep this true.
+    fn reports_exact_size(&self) -> bool {
+        true
     }
 
     /// Get checksum(s) for a file. Returns HashMap with algorithm → hex digest.

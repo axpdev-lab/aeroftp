@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -76,6 +77,22 @@ pub struct ProviderState {
     pub in_flight_transfers: Arc<AtomicUsize>,
     /// Wakes drain waiters when an in-flight transfer guard drops.
     in_flight_notify: Arc<Notify>,
+    /// Crypt-overlay CAPABILITY flag (sticky for the session): true once a crypt
+    /// overlay has been applied to this connection (`provider_apply_crypt_overlay`),
+    /// cleared on connect/disconnect and on a full overlay removal. Combined with
+    /// [`Self::overlay_wrapped`] it gates the AeroAgent `gui_tools` raw-provider
+    /// paths: a raw write is refused while the session is crypt-capable but the
+    /// live provider is currently UNWRAPPED (badge locked / outside the encrypted
+    /// scope), which would otherwise corrupt the crypt store with plaintext.
+    pub active_crypt_overlay: Arc<AtomicBool>,
+    /// True while the live `provider` box is currently a `CryptOverlayProvider`
+    /// (Phase 3 on-demand model): set by `provider_apply_crypt_overlay`, cleared
+    /// by `provider_clear_crypt_overlay` and on connect/disconnect. When wrapped,
+    /// every surface that touches `provider` (browser, agent `gui_tools`, speed
+    /// test, preview) is transparently crypt-aware; when unwrapped the raw
+    /// connection is exposed (plaintext outside the scope, ciphertext while
+    /// locked).
+    pub overlay_wrapped: Arc<AtomicBool>,
 }
 
 impl ProviderState {
@@ -88,6 +105,8 @@ impl ProviderState {
             held_github_app_token: Mutex::new(None),
             in_flight_transfers: Arc::new(AtomicUsize::new(0)),
             in_flight_notify: Arc::new(Notify::new()),
+            active_crypt_overlay: Arc::new(AtomicBool::new(false)),
+            overlay_wrapped: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -105,6 +124,33 @@ impl ProviderState {
     pub async fn request_cancel(&self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
         self.cancel_token.lock().await.cancel();
+    }
+
+    /// Fail-closed guard against a raw write into a crypt-bound session.
+    ///
+    /// When the session is crypt-CAPABLE ([`Self::active_crypt_overlay`]) but the
+    /// live `provider` box is currently UNWRAPPED ([`Self::overlay_wrapped`] false:
+    /// the badge is locked or the browser stepped outside the encrypted scope),
+    /// any write that reaches `provider` directly hits the RAW backend and would
+    /// inject plaintext content or a cleartext name into the encrypted store,
+    /// silently corrupting it. Every command that mutates the remote through the
+    /// raw `ProviderState::provider` (uploads, mkdir, delete, rename, server-copy,
+    /// and the AeroAgent `gui_tools` paths) calls this first and refuses in exactly
+    /// that window. When the overlay is wrapped the write goes through the crypt
+    /// decorator transparently, and when the session is not crypt-capable at all
+    /// this is a no-op.
+    pub fn guard_no_raw_crypt_write(&self, op: &str) -> Result<(), String> {
+        let crypt_capable = self.active_crypt_overlay.load(Ordering::SeqCst);
+        let wrapped = self.overlay_wrapped.load(Ordering::SeqCst);
+        if crypt_capable && !wrapped {
+            return Err(format!(
+                "{op} is blocked: this session has a crypt overlay that is currently locked or \
+                 out of its encrypted scope, so a direct provider write would inject plaintext \
+                 into the encrypted store. Re-enter the encrypted scope (or unlock the overlay) \
+                 before writing."
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -1089,6 +1135,12 @@ pub async fn provider_connect(
         }
         *prov_lock = Some(provider);
     }
+    // A fresh connection carries no crypt overlay: reset both the sticky
+    // capability flag and the wrapped flag. The GUI re-applies the overlay via
+    // `provider_apply_crypt_overlay` once it has connected and resolved the
+    // profile binding (auto-unlock) or the user activates one ad-hoc.
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
     {
         let mut config_lock = state.config.lock().await;
         *config_lock = Some(config);
@@ -1159,7 +1211,100 @@ pub async fn provider_disconnect(
     let mut config_lock = state.config.lock().await;
     *config_lock = None;
 
+    // The provider (raw or wrapped) is gone: clear both crypt-overlay flags.
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+
     Ok(())
+}
+
+/// Parameters for [`provider_apply_crypt_overlay`]: the overlay binding plus the
+/// already-resolved unlock secrets. `password`/`salt` come from the per-profile
+/// vault (`aerocrypt_overlay_pw_<id>` / `_salt_<id>`) for an auto-unlock, or from
+/// the ad-hoc unlock modal.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyCryptOverlayParams {
+    /// "rclone-crypt" or "aerocrypt".
+    pub kind: String,
+    /// Plaintext anchor where the overlay is rooted (`""`/`"/"` = whole remote).
+    #[serde(default)]
+    pub remote_scope: String,
+    /// rclone-crypt filename encryption mode ("standard"/"obfuscate"/"off").
+    pub filename_encryption: Option<String>,
+    /// rclone-crypt directory-name encryption (default true).
+    pub directory_name_encryption: Option<bool>,
+    /// Unlock password.
+    pub password: String,
+    /// rclone-crypt salt (ignored by aerocrypt, which reads its remote config).
+    pub salt: Option<String>,
+}
+
+/// Apply a crypt overlay (rclone-crypt or AeroCrypt) to the live connection in
+/// place (Phase 3 on-demand model). Wraps the raw `ProviderState` provider with
+/// the [`crate::crypt_overlay_provider::CryptOverlayProvider`] decorator so the
+/// browser, agent `gui_tools`, speed test, and preview all become transparently
+/// crypt-aware (plaintext paths in, ciphertext on the wire). FAIL-CLOSED: an
+/// unlock failure leaves the raw connection untouched and returns the error.
+/// Idempotent: re-applying re-anchors (the prior overlay is reverted first).
+/// Returns the normalized plaintext scope.
+#[tauri::command]
+pub async fn provider_apply_crypt_overlay(
+    state: State<'_, ProviderState>,
+    params: ApplyCryptOverlayParams,
+) -> Result<String, String> {
+    let binding = crate::crypt_compare::OverlayUnlockParams {
+        kind: params.kind,
+        remote_scope: params.remote_scope,
+        filename_encryption: params
+            .filename_encryption
+            .unwrap_or_else(|| "standard".to_string()),
+        directory_name_encryption: params.directory_name_encryption.unwrap_or(true),
+        off_suffix: None,
+    };
+    let salt = params.salt.unwrap_or_default();
+    let scope = {
+        let mut guard = state.provider.lock().await;
+        crate::crypt_overlay_provider::apply_overlay_in_place(
+            &mut guard,
+            &binding,
+            &params.password,
+            &salt,
+        )
+        .await?
+    };
+    // Sticky capability + currently-wrapped: the agent raw-write guard is now
+    // satisfied (writes route through the decorator).
+    state.active_crypt_overlay.store(true, Ordering::SeqCst);
+    state.overlay_wrapped.store(true, Ordering::SeqCst);
+    info!(
+        "Crypt overlay applied to live provider (scope: {:?})",
+        scope
+    );
+    Ok(scope)
+}
+
+/// Revert the live connection to its raw provider, removing any crypt overlay
+/// (Phase 3 on-demand model). Used when the badge is locked or the user steps
+/// outside the encrypted scope, so the browser shows the raw remote (ciphertext
+/// names while locked, plaintext names outside the scope) exactly like the
+/// retired command layer did. `full = true` also drops the sticky capability
+/// flag (a complete overlay removal, not a transient lock / scope-out), which
+/// re-opens the agent `gui_tools` raw paths. Idempotent.
+#[tauri::command]
+pub async fn provider_clear_crypt_overlay(
+    state: State<'_, ProviderState>,
+    full: Option<bool>,
+) -> Result<bool, String> {
+    let removed = {
+        let mut guard = state.provider.lock().await;
+        crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
+    };
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    if full.unwrap_or(false) {
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    }
+    Ok(removed)
 }
 
 /// Check if connected to a provider
@@ -1429,6 +1574,9 @@ async fn run_dag_download_leaf(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
     file_size: u64,
     delta_fallback_reason: Option<String>,
+    // FINDING-4 Part B: the live session cancel token so an in-flight Stop
+    // aborts the current file (see `execute_single_file_dag`).
+    cancel_token: Option<CancellationToken>,
 ) -> Result<String, String> {
     // Capability snapshot drives the shaped-graph shape (single transfer
     // core vs multipart fan-out). For downloads the shape collapses to one
@@ -1466,7 +1614,19 @@ async fn run_dag_download_leaf(
         let result = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {
-                Some(p) => p.download(&remote_path, &local_path, progress_cb).await,
+                Some(p) => {
+                    let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
+                    match &cancel_token {
+                        Some(tok) => tokio::select! {
+                            biased;
+                            _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                                "Transfer cancelled by user".to_string(),
+                            )),
+                            r = dl => r,
+                        },
+                        None => dl.await,
+                    }
+                }
                 None => Err(ProviderError::NotConnected),
             }
         };
@@ -1556,6 +1716,7 @@ async fn run_dag_download_leaf(
         observer,
         report_size,
         file_size,
+        cancel_token,
     )
     .await
     {
@@ -1600,6 +1761,9 @@ async fn run_dag_upload_leaf(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
     file_size: u64,
     delta_fallback_reason: Option<String>,
+    // FINDING-4 Part B: the live session cancel token so an in-flight Stop
+    // aborts the current file (see `execute_single_file_dag`).
+    cancel_token: Option<CancellationToken>,
 ) -> Result<String, String> {
     // Capability snapshot drives the shaped-graph shape. On an upload, this
     // is the gate between the legacy single-`UploadFile` core and a native
@@ -1635,7 +1799,19 @@ async fn run_dag_upload_leaf(
         );
         let mut guard = provider.lock().await;
         let result = match guard.as_mut() {
-            Some(p) => p.upload(&local_path, &remote_path, progress_cb).await,
+            Some(p) => {
+                let ul = async { p.upload(&local_path, &remote_path, progress_cb).await };
+                match &cancel_token {
+                    Some(tok) => tokio::select! {
+                        biased;
+                        _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        )),
+                        r = ul => r,
+                    },
+                    None => ul.await,
+                }
+            }
             None => Err(ProviderError::NotConnected),
         };
         return match result {
@@ -1689,6 +1865,7 @@ async fn run_dag_upload_leaf(
         observer,
         report_size,
         file_size,
+        cancel_token,
     )
     .await
     {
@@ -1832,7 +2009,15 @@ pub async fn provider_download_file(
     {
         if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
-            if let Some(result) = crate::delta_sync_rsync::try_delta_transfer_with_progress(
+            // FINDING-4 Part B: the delta (native rsync) transport runs on its
+            // OWN separate SSH connection and never reached the classic cancel
+            // path, so a Stop during a delta transfer ran to completion. Race it
+            // against the live session cancel token; on cancel we drop the delta
+            // future (tearing down its SSH connection, leaving the main session
+            // intact) and return a cancellation error WITHOUT falling through to
+            // the classic path (which would restart the transfer).
+            let cancel_token = state.current_cancel_token().await;
+            let delta_fut = crate::delta_sync_rsync::try_delta_transfer_with_progress(
                 provider.as_mut(),
                 crate::delta_sync_rsync::SyncDirection::Download,
                 &local_path_buf,
@@ -1843,9 +2028,38 @@ pub async fn provider_download_file(
                     filename.clone(),
                     "download",
                 )),
-            )
-            .await
-            {
+            );
+            let delta_cancelled;
+            let delta_outcome = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => {
+                    delta_cancelled = true;
+                    None
+                }
+                r = delta_fut => {
+                    delta_cancelled = false;
+                    r
+                }
+            };
+            if delta_cancelled {
+                let err_msg = format!("Download cancelled by user: {}", filename);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some("Download cancelled by user".to_string()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            if let Some(result) = delta_outcome {
                 if result.used_delta {
                     let delta_stats = result
                         .stats
@@ -2024,6 +2238,10 @@ pub async fn provider_download_file(
         // the provider box between our drop and the DAG node's re-lock
         // (issue #233). The guard lives for the entire DAG leaf call.
         let op_guard = TransferOperationGuard::acquire(&state);
+        // FINDING-4 Part B: grab the LIVE session cancel token (never reset here,
+        // so a queue-wide cancel that fired mid-batch still targets this leaf)
+        // so an in-flight Stop drops the current transfer.
+        let cancel_token = state.current_cancel_token().await;
         // Release the command-level guard so the DAG transfer node can lock
         // the same provider mutex from its spawned task.
         drop(provider_lock);
@@ -2039,6 +2257,7 @@ pub async fn provider_download_file(
             progress_cb,
             file_size,
             delta_fallback_reason,
+            Some(cancel_token),
         )
         .await;
     }
@@ -2219,6 +2438,10 @@ pub async fn provider_upload_folder(
     timeout_seconds: Option<u64>,
     commit_message: Option<String>,
 ) -> Result<String, String> {
+    // Fail-closed: never write plaintext into a crypt store whose overlay is
+    // currently unwrapped (badge locked / outside the encrypted scope).
+    state.guard_no_raw_crypt_write("Upload")?;
+
     let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
         max_concurrent,
         retry_count,
@@ -3200,7 +3423,12 @@ pub async fn provider_upload_file(
     remote_path: String,
     commit_message: Option<String>,
     use_delta: Option<bool>,
+    resume: Option<bool>,
 ) -> Result<String, String> {
+    // Fail-closed: never write plaintext into a crypt store whose overlay is
+    // currently unwrapped (badge locked / outside the encrypted scope).
+    state.guard_no_raw_crypt_write("Upload")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3302,7 +3530,13 @@ pub async fn provider_upload_file(
     {
         if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
-            if let Some(delta_result) = crate::delta_sync_rsync::try_delta_transfer_with_progress(
+            // FINDING-4 Part B: race the delta (native rsync) upload against the
+            // live cancel token. The delta transport runs on its own SSH
+            // connection and bypasses the classic cancel path, so without this a
+            // Stop during a delta upload ran to completion. On cancel we drop the
+            // future and return, without falling through to the classic path.
+            let cancel_token = state.current_cancel_token().await;
+            let delta_fut = crate::delta_sync_rsync::try_delta_transfer_with_progress(
                 provider.as_mut(),
                 crate::delta_sync_rsync::SyncDirection::Upload,
                 &local_path_buf,
@@ -3313,9 +3547,38 @@ pub async fn provider_upload_file(
                     filename.clone(),
                     "upload",
                 )),
-            )
-            .await
-            {
+            );
+            let delta_cancelled;
+            let delta_outcome = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => {
+                    delta_cancelled = true;
+                    None
+                }
+                r = delta_fut => {
+                    delta_cancelled = false;
+                    r
+                }
+            };
+            if delta_cancelled {
+                let err_msg = format!("Upload cancelled by user: {}", filename);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some("Upload cancelled by user".to_string()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            if let Some(delta_result) = delta_outcome {
                 if delta_result.used_delta {
                     let delta_stats = delta_result
                         .stats
@@ -3369,6 +3632,106 @@ pub async fn provider_upload_file(
         }
     }
 
+    // Resume-aware classic upload. When the caller asked to resume an
+    // interrupted transfer and the provider can append from a byte offset
+    // (currently SFTP), continue from the remote's current size instead of
+    // re-sending from zero. Reached only when the delta path did not already
+    // handle the transfer (delta itself resumes efficiently for key-auth SFTP).
+    // Crypt overlay providers report supports_resume_upload_append()=false, so a
+    // crypt-bound upload always falls through to a full re-encrypt (fail-safe),
+    // and guard_no_raw_crypt_write above already blocks an unwrapped crypt store.
+    if resume.unwrap_or(false)
+        && provider.provider_type() != ProviderType::GitHub
+        && provider.supports_resume_upload_append()
+    {
+        let remote_size = provider.size(&remote_path).await.unwrap_or(0);
+        // Only resume a genuine partial: a smaller-but-nonzero remote file.
+        if remote_size > 0 && remote_size < file_size {
+            info!(
+                "Resuming upload from offset {} bytes: {}",
+                remote_size, filename
+            );
+            // FINDING-4 Part B parity: race the append against the live cancel
+            // token so an in-flight Stop drops the resume future (the russh
+            // write stream tears down on drop) instead of running to completion.
+            let cancel_token = state.current_cancel_token().await;
+            let up_fut =
+                provider.resume_upload(&local_path, &remote_path, remote_size, progress_cb);
+            tokio::pin!(up_fut);
+            let mut resume_outcome: Option<Result<(), ProviderError>> = None;
+            let cancelled = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => true,
+                r = &mut up_fut => { resume_outcome = Some(r); false }
+            };
+            if cancelled {
+                let err_msg = format!("Upload cancelled by user: {}", filename);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some("Upload cancelled by user".to_string()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            return match resume_outcome.expect("resume outcome set when not cancelled") {
+                Ok(()) => {
+                    let _ = app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "complete".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(format!(
+                                "({} via resume)",
+                                if file_size > 1_048_576 {
+                                    format!("{:.1} MB", file_size as f64 / 1_048_576.0)
+                                } else {
+                                    format!("{:.1} KB", file_size as f64 / 1024.0)
+                                }
+                            )),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: delta_fallback_reason,
+                        },
+                    );
+                    info!("Upload resumed to completion: {}", filename);
+                    Ok(format!("Uploaded: {}", filename))
+                }
+                Err(e) => {
+                    let err_msg = format!("Upload failed: {}", e);
+                    let _ = app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "error".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(err_msg.clone()),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: None,
+                        },
+                    );
+                    Err(err_msg)
+                }
+            };
+        }
+        // remote_size == 0 or >= file_size: nothing to resume; fall through to
+        // the normal DAG upload below (progress_cb is untouched here).
+    }
+
     // DAG-ENGINE: route the plain classic single-file upload through the
     // graph engine. GitHub keeps its dedicated commit-based upload (a
     // different API shape, not the plain leaf). The shaped runner handles
@@ -3379,6 +3742,9 @@ pub async fn provider_upload_file(
         // mutex, so the swap or disconnect path waits for the DAG leaf
         // to return instead of yanking the provider box from under it.
         let op_guard = TransferOperationGuard::acquire(&state);
+        // FINDING-4 Part B: grab the LIVE session cancel token (never reset here)
+        // so an in-flight Stop drops the current upload.
+        let cancel_token = state.current_cancel_token().await;
         drop(provider_lock);
         return run_dag_upload_leaf(
             app,
@@ -3391,6 +3757,7 @@ pub async fn provider_upload_file(
             progress_cb,
             file_size,
             delta_fallback_reason,
+            Some(cancel_token),
         )
         .await;
     }
@@ -3502,6 +3869,9 @@ pub async fn provider_mkdir(
     path: String,
     commit_message: Option<String>,
 ) -> Result<(), String> {
+    // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store.
+    state.guard_no_raw_crypt_write("Create directory")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3540,6 +3910,10 @@ pub async fn provider_delete_file(
     path: String,
     commit_message: Option<String>,
 ) -> Result<(), String> {
+    // Fail-closed: a plaintext path against an unwrapped crypt store targets the
+    // wrong (or no) object; refuse instead of acting on the raw backend.
+    state.guard_no_raw_crypt_write("Delete file")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3576,6 +3950,10 @@ pub async fn provider_delete_dir(
     recursive: bool,
     commit_message: Option<String>,
 ) -> Result<(), String> {
+    // Fail-closed: a plaintext path against an unwrapped crypt store targets the
+    // wrong (or no) object; refuse instead of acting on the raw backend.
+    state.guard_no_raw_crypt_write("Delete directory")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3660,6 +4038,10 @@ pub async fn provider_rename(
     from: String,
     to: String,
 ) -> Result<(), String> {
+    // Fail-closed: renaming through the raw backend while the overlay is
+    // unwrapped would create a cleartext name in the encrypted store.
+    state.guard_no_raw_crypt_write("Rename")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -3696,6 +4078,12 @@ pub async fn provider_server_copy(
     from: String,
     to: String,
 ) -> Result<(), String> {
+    // Fail-closed: a raw server-side copy while the overlay is unwrapped would
+    // land a cleartext-named object in the encrypted store (the content stays
+    // ciphertext but the name never gets encrypted), orphaning it from the
+    // overlay's decrypted listing.
+    state.guard_no_raw_crypt_write("Server copy")?;
+
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock
@@ -4096,6 +4484,9 @@ pub async fn oauth2_connect(
     // Store provider
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(provider);
+    // Fresh connection carries no crypt overlay: reset both flags.
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
 
     info!(
         "Connected to {} ({})",
@@ -4946,23 +5337,122 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
     }
 }
 
+async fn decrypt_remote_file_map_for_compare(
+    kind: Option<&str>,
+    vault_id: &str,
+    rclone_state: &crate::rclone_crypt::RcloneCryptState,
+    aerocrypt_state: &crate::aerocrypt_provider::AeroCryptState,
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> Result<HashMap<String, crate::sync::FileInfo>, String> {
+    match kind {
+        Some("rclone-crypt") => {
+            let vaults = rclone_state.vaults.lock().await;
+            let keys = vaults
+                .get(vault_id)
+                .ok_or_else(|| "Crypt vault is not unlocked".to_string())?;
+            Ok(normalize_rclone_remote_files_for_compare(keys, entries))
+        }
+        Some("aerocrypt") => {
+            let vaults = aerocrypt_state.vaults.lock().await;
+            let keys = vaults
+                .get(vault_id)
+                .ok_or_else(|| "Crypt vault is not unlocked".to_string())?;
+            Ok(normalize_aerocrypt_remote_files_for_compare(
+                &keys.master_key,
+                entries,
+            ))
+        }
+        Some(_) => Err("Unsupported crypt overlay kind for compare".to_string()),
+        None => Err("Missing crypt overlay kind for compare".to_string()),
+    }
+}
+
+fn normalize_rclone_remote_files_for_compare(
+    keys: &crate::rclone_crypt::RcloneCryptKeys,
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> HashMap<String, crate::sync::FileInfo> {
+    let mut out = HashMap::with_capacity(entries.len());
+    for (rel_path, mut info) in entries {
+        let Some(plain_rel_path) = decrypt_rel_rclone(keys, &rel_path) else {
+            continue;
+        };
+        info.name = basename_from_rel_path(&plain_rel_path);
+        if !info.is_dir {
+            info.size = rclone_decrypted_size(info.size);
+        }
+        info.checksum = None;
+        info.checksum_alg = None;
+        out.insert(plain_rel_path, info);
+    }
+    out
+}
+
+fn normalize_aerocrypt_remote_files_for_compare(
+    master_key: &[u8; 32],
+    entries: HashMap<String, crate::sync::FileInfo>,
+) -> HashMap<String, crate::sync::FileInfo> {
+    let mut out = HashMap::with_capacity(entries.len());
+    for (rel_path, mut info) in entries {
+        let Some(plain_rel_path) = decrypt_rel_aerocrypt(master_key, &rel_path) else {
+            continue;
+        };
+        info.name = basename_from_rel_path(&plain_rel_path);
+        // AeroCrypt content-size mapping is deliberately deferred: the native
+        // overlay has a versioned container format, so Compare is name-aware
+        // here but size-policy matches may still need the follow-up decoder.
+        info.checksum = None;
+        info.checksum_alg = None;
+        out.insert(plain_rel_path, info);
+    }
+    out
+}
+
+// Single source of truth for the crypt-compare crypto lives in
+// `crate::crypt_compare`; the GUI's FileInfo-map normalizers above reuse the
+// pure rel-path decrypt and size mapping so the CLI / MCP `RemoteEntry` path and
+// this GUI path can never drift.
+use crate::crypt_compare::{decrypt_rel_aerocrypt, decrypt_rel_rclone, rclone_decrypted_size};
+
+fn basename_from_rel_path(rel_path: &str) -> String {
+    rel_path
+        .rsplit('/')
+        .find(|segment| !segment.is_empty())
+        .unwrap_or(rel_path)
+        .to_string()
+}
+
 /// Compare local and remote directories using the StorageProvider trait.
 /// Works with all protocols (SFTP, WebDAV, S3, Google Drive, etc.)
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_compare_directories(
     app: AppHandle,
     state: State<'_, ProviderState>,
+    rclone_state: State<'_, crate::rclone_crypt::RcloneCryptState>,
+    aerocrypt_state: State<'_, crate::aerocrypt_provider::AeroCryptState>,
     local_path: String,
     remote_path: String,
+    crypt_vault_id: Option<String>,
+    crypt_kind: Option<String>,
     options: Option<crate::sync::CompareOptions>,
 ) -> Result<Vec<crate::sync::FileComparison>, String> {
     use crate::sync::{
         build_comparison_results_with_index, load_sync_index, should_exclude, FileInfo,
     };
-    use std::collections::HashMap;
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
+    let crypt_vault_id = crypt_vault_id
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty());
+    let crypt_kind = crypt_kind
+        .map(|kind| kind.trim().to_string())
+        .filter(|kind| !kind.is_empty());
+    let crypt_compare_active = crypt_vault_id.is_some();
+    if crypt_compare_active {
+        options.compare_checksum = false;
+        options.strict_checksum = false;
+    }
 
     info!(
         "Provider compare: local={}, remote={}",
@@ -5025,7 +5515,8 @@ pub async fn provider_compare_directories(
 
         let scan_options = ScanOptions {
             exclude_patterns: options.exclude_patterns.clone(),
-            compute_remote_checksum: options.compare_checksum,
+            compute_remote_checksum: options.compare_checksum && !crypt_compare_active,
+            disable_recursive_fastpath: crypt_compare_active,
             ..Default::default()
         };
         let scan_observer = ScanProgressEmitter { app: app.clone() };
@@ -5194,6 +5685,28 @@ pub async fn provider_compare_directories(
                     "phase": "remote",
                     "files_found": local_files.len() + remote_files.len(),
                 }),
+            );
+        }
+    }
+
+    if let Some(vault_id) = crypt_vault_id.as_deref() {
+        let raw_len = remote_files.len();
+        remote_files = decrypt_remote_file_map_for_compare(
+            crypt_kind.as_deref(),
+            vault_id,
+            &rclone_state,
+            &aerocrypt_state,
+            remote_files,
+        )
+        .await?;
+        // rclone-crypt has no config MAC: a wrong overlay password derives
+        // valid-shaped keys that decrypt nothing, so a non-empty remote that
+        // normalizes to zero rows is a wrong-key signal. Fail closed rather
+        // than re-flag the whole tree as missing (the #364 symptom).
+        if crypt_kind.as_deref() == Some("rclone-crypt") && raw_len > 0 && remote_files.is_empty() {
+            return Err(
+                "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote."
+                    .to_string(),
             );
         }
     }
@@ -5689,6 +6202,9 @@ pub async fn fourshared_connect(
 
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(Box::new(provider));
+    // Fresh connection carries no crypt overlay: reset both flags.
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
 
     info!(
         "Connected to 4shared ({})",
@@ -10579,10 +11095,18 @@ pub async fn b2_permanent_delete(
 #[cfg(test)]
 mod tests {
     use super::{
-        drain_in_flight_transfers, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
+        decrypt_rel_aerocrypt, decrypt_rel_rclone, drain_in_flight_transfers,
+        normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
+        rclone_decrypted_size, remote_matches_repo, run_cancellable_connect, ConnectTokenGuard,
         ConnectionCancelRegistry, ProviderConnectionParams, ProviderState, TransferOperationGuard,
         CONNECT_CANCELLED,
     };
+    use crate::rclone_crypt::{
+        derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
+        FilenameEncryption, RcloneCryptKeys,
+    };
+    use crate::sync::FileInfo;
+    use std::collections::HashMap;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -10636,6 +11160,153 @@ mod tests {
             connect_token: None,
             opendrive_default_privacy: None,
         }
+    }
+
+    fn rclone_compare_keys(directory_name_encryption: bool) -> RcloneCryptKeys {
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("compare-pass", "compare-salt").unwrap();
+        RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: FilenameEncryption::Standard,
+            off_suffix: ".bin".to_string(),
+            directory_name_encryption,
+        }
+    }
+
+    fn compare_file_info(size: u64) -> FileInfo {
+        FileInfo {
+            name: "encrypted".to_string(),
+            path: "/remote/encrypted".to_string(),
+            size,
+            modified: None,
+            is_dir: false,
+            checksum: Some("ciphertext-checksum".to_string()),
+            checksum_alg: Some("sha256".to_string()),
+        }
+    }
+
+    #[test]
+    fn rclone_decrypted_size_matches_encrypted_content_lengths() {
+        let (_, data_key) = derive_keys("compare-size", "salt").unwrap();
+        for size in [0usize, 1, 65_535, 65_536, 65_537, 200_000] {
+            let plaintext: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+            let encrypted = encrypt_file_content(&plaintext, &data_key).unwrap();
+            assert_eq!(
+                rclone_decrypted_size(encrypted.len() as u64),
+                plaintext.len() as u64,
+                "encrypted length {} should map back to plaintext length {}",
+                encrypted.len(),
+                plaintext.len()
+            );
+        }
+    }
+
+    #[test]
+    fn guard_no_raw_crypt_write_refuses_only_when_crypt_capable_and_unwrapped() {
+        let state = ProviderState::new();
+
+        // Not crypt-capable at all: a raw write is fine (no overlay to corrupt).
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+
+        // Crypt-capable AND wrapped: the live provider IS the crypt decorator, so
+        // the write is mapped/encrypted transparently. Allowed.
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+
+        // Crypt-capable but UNWRAPPED (badge locked / stepped outside the
+        // encrypted scope): a direct write hits the raw backend and would inject
+        // plaintext into the encrypted store. Must fail closed.
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+        let err = state
+            .guard_no_raw_crypt_write("Upload")
+            .expect_err("unwrapped crypt-capable session must refuse a raw write");
+        assert!(
+            err.contains("crypt overlay"),
+            "guard error should explain the crypt overlay block, got: {err}"
+        );
+
+        // Clearing capability re-opens the raw path (e.g. after disconnect).
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        assert!(state.guard_no_raw_crypt_write("Upload").is_ok());
+    }
+
+    #[test]
+    fn decrypt_rel_rclone_decrypts_all_segments_when_directory_names_are_encrypted() {
+        let keys = rclone_compare_keys(true);
+        let encrypted_rel = ["alpha", "beta", "report.txt"]
+            .into_iter()
+            .map(|segment| encrypt_name(&keys.name_key, &keys.name_tweak, segment).unwrap())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        assert_eq!(
+            decrypt_rel_rclone(&keys, &encrypted_rel).as_deref(),
+            Some("alpha/beta/report.txt")
+        );
+    }
+
+    #[test]
+    fn decrypt_rel_rclone_decrypts_only_leaf_when_directory_names_are_plain() {
+        let keys = rclone_compare_keys(false);
+        let encrypted_leaf = encrypt_name(&keys.name_key, &keys.name_tweak, "report.txt").unwrap();
+        let mixed_rel = format!("alpha/beta/{}", encrypted_leaf);
+
+        assert_eq!(
+            decrypt_rel_rclone(&keys, &mixed_rel).as_deref(),
+            Some("alpha/beta/report.txt")
+        );
+    }
+
+    #[test]
+    fn rclone_compare_normalization_drops_foreign_names_and_maps_size() {
+        let keys = rclone_compare_keys(true);
+        let encrypted_leaf = encrypt_name(&keys.name_key, &keys.name_tweak, "report.txt").unwrap();
+        let encrypted_blob = encrypt_file_content(b"report body", &keys.data_key).unwrap();
+        let mut entries = HashMap::new();
+        entries.insert(
+            encrypted_leaf,
+            compare_file_info(encrypted_blob.len() as u64),
+        );
+        entries.insert("not-base32-!!!".to_string(), compare_file_info(999));
+
+        let normalized = normalize_rclone_remote_files_for_compare(&keys, entries);
+
+        assert_eq!(normalized.len(), 1);
+        let info = normalized.get("report.txt").unwrap();
+        assert_eq!(info.name, "report.txt");
+        assert_eq!(info.size, 11);
+        assert_eq!(info.checksum, None);
+        assert_eq!(info.checksum_alg, None);
+    }
+
+    #[test]
+    fn aerocrypt_compare_normalization_decrypts_names_and_defers_size() {
+        let master_key = [7u8; 32];
+        let encrypted_rel = ["alpha", "beta", "report.txt"]
+            .into_iter()
+            .map(|segment| crate::aerocrypt::names::encrypt_filename(&master_key, segment).unwrap())
+            .collect::<Vec<_>>()
+            .join("/");
+        assert_eq!(
+            decrypt_rel_aerocrypt(&master_key, &encrypted_rel).as_deref(),
+            Some("alpha/beta/report.txt")
+        );
+
+        let mut entries = HashMap::new();
+        entries.insert(encrypted_rel, compare_file_info(123));
+        entries.insert("not-base64-$$$".to_string(), compare_file_info(999));
+
+        let normalized = normalize_aerocrypt_remote_files_for_compare(&master_key, entries);
+
+        assert_eq!(normalized.len(), 1);
+        let info = normalized.get("alpha/beta/report.txt").unwrap();
+        assert_eq!(info.name, "report.txt");
+        assert_eq!(info.size, 123);
+        assert_eq!(info.checksum, None);
+        assert_eq!(info.checksum_alg, None);
     }
 
     #[test]

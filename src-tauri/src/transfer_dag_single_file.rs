@@ -77,6 +77,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
@@ -147,6 +148,13 @@ pub async fn execute_single_file_dag(
     observer: Arc<dyn DagObserver>,
     report_size: Arc<AtomicU64>,
     file_size: u64,
+    // FINDING-4 Part B: when present, the plain single-file transfer node races
+    // its `download` / `upload` against this token so a user Stop
+    // (`cancel_transfer` -> `ProviderState::request_cancel`) drops the in-flight
+    // future promptly (russh is async, so dropping tears the SFTP stream down)
+    // instead of running the current file to completion. `None` = no cancel
+    // wrapping (the CLI path keeps its own Ctrl+C handling).
+    cancel_token: Option<CancellationToken>,
 ) -> Result<(), ProviderError> {
     let direction = built.direction;
     let remote: Arc<str> = Arc::from(remote_path.as_str());
@@ -212,6 +220,7 @@ pub async fn execute_single_file_dag(
         let first_error = Arc::clone(&first_error);
         let report_size = Arc::clone(&report_size);
         let multipart_ctx = multipart_ctx.clone();
+        let cancel_token = cancel_token.clone();
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let provider = Arc::clone(&provider);
             let remote = Arc::clone(&remote);
@@ -221,6 +230,7 @@ pub async fn execute_single_file_dag(
             let first_error = Arc::clone(&first_error);
             let report_size = Arc::clone(&report_size);
             let multipart_ctx = multipart_ctx.clone();
+            let cancel_token = cancel_token.clone();
             Box::pin(async move {
                 match node.kind {
                     TransferNodeKind::DownloadFile => {
@@ -229,7 +239,18 @@ pub async fn execute_single_file_dag(
                         let Some(p) = guard.as_mut() else {
                             return record_failure(&first_error, ProviderError::NotConnected);
                         };
-                        match p.download(&remote, &local, cb).await {
+                        let dl = async { p.download(&remote, &local, cb).await };
+                        let res = match &cancel_token {
+                            Some(tok) => tokio::select! {
+                                biased;
+                                _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                                    "Transfer cancelled by user".to_string(),
+                                )),
+                                r = dl => r,
+                            },
+                            None => dl.await,
+                        };
+                        match res {
                             Ok(()) => {
                                 // Report the real on-disk size; fall back to the
                                 // caller-seeded value if the stat fails.
@@ -247,7 +268,18 @@ pub async fn execute_single_file_dag(
                         let Some(p) = guard.as_mut() else {
                             return record_failure(&first_error, ProviderError::NotConnected);
                         };
-                        match p.upload(&local, &remote, cb).await {
+                        let ul = async { p.upload(&local, &remote, cb).await };
+                        let res = match &cancel_token {
+                            Some(tok) => tokio::select! {
+                                biased;
+                                _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                                    "Transfer cancelled by user".to_string(),
+                                )),
+                                r = ul => r,
+                            },
+                            None => ul.await,
+                        };
+                        match res {
                             Ok(()) => NodeOutcome::Completed,
                             Err(e) => record_failure(&first_error, e),
                         }
@@ -671,6 +703,213 @@ mod tests {
             TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 16 * 1024 * 1024);
         assert_eq!(built.transfer.len(), 1);
         assert_eq!(built.profile.upload_parts, 1);
+    }
+
+    /// FINDING-4 Part B: a provider whose `download` / `upload` runs as a slow
+    /// chunked loop, so a mid-flight `CancellationToken` can win the
+    /// `execute_single_file_dag` race. `*_completed` flips only if the transfer
+    /// runs to the end, letting the tests assert the cancel actually aborted it.
+    struct SlowMockProvider {
+        download_completed: Arc<StdMutex<bool>>,
+        upload_completed: Arc<StdMutex<bool>>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for SlowMockProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "slow-mock".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _p: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote: &str,
+            local: &str,
+            cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            for i in 0..30u64 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                if let Some(cb) = &cb {
+                    cb(i, 30);
+                }
+            }
+            std::fs::write(local, b"complete").map_err(ProviderError::IoError)?;
+            *self.download_completed.lock().unwrap() = true;
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn upload(
+            &mut self,
+            _local: &str,
+            _remote: &str,
+            cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            for i in 0..30u64 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                if let Some(cb) = &cb {
+                    cb(i, 30);
+                }
+            }
+            *self.upload_completed.lock().unwrap() = true;
+            Ok(())
+        }
+        async fn mkdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _f: &str, _t: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, _p: &str) -> Result<crate::providers::RemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".into()))
+        }
+        async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
+            Ok(30)
+        }
+        async fn exists(&mut self, _p: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("slow-mock".into())
+        }
+    }
+
+    /// A pressed Stop mid-download drops the in-flight future and surfaces a
+    /// cancellation error, and the transfer does NOT run to completion.
+    #[tokio::test]
+    async fn cancel_token_aborts_in_flight_download() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("out.bin");
+        let completed = Arc::new(StdMutex::new(false));
+        let mock = SlowMockProvider {
+            download_completed: Arc::clone(&completed),
+            upload_completed: Arc::new(StdMutex::new(false)),
+        };
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 30);
+        let report = Arc::new(AtomicU64::new(30));
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let token = CancellationToken::new();
+        let canceller = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            canceller.cancel();
+        });
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            report,
+            30,
+            Some(token),
+        )
+        .await;
+
+        assert!(res.is_err(), "a cancelled transfer must return an error");
+        let msg = res.unwrap_err().to_string().to_lowercase();
+        assert!(
+            msg.contains("cancel"),
+            "error should mention cancellation, got: {msg}"
+        );
+        assert!(
+            !*completed.lock().unwrap(),
+            "the download must not run to completion after a mid-flight cancel"
+        );
+        assert!(
+            !local.exists(),
+            "no finalized output file should exist after a cancelled download"
+        );
+    }
+
+    /// The cancel wrapper is transparent on the happy path: an uncancelled
+    /// token lets the transfer complete exactly as before.
+    #[tokio::test]
+    async fn uncancelled_token_completes_download() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("out.bin");
+        let completed = Arc::new(StdMutex::new(false));
+        let mock = SlowMockProvider {
+            download_completed: Arc::clone(&completed),
+            upload_completed: Arc::new(StdMutex::new(false)),
+        };
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities::default();
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 30);
+        let report = Arc::new(AtomicU64::new(30));
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            report,
+            30,
+            Some(CancellationToken::new()),
+        )
+        .await;
+
+        assert!(res.is_ok(), "an uncancelled transfer must succeed: {res:?}");
+        assert!(
+            *completed.lock().unwrap(),
+            "the download should run to completion"
+        );
+        assert!(local.exists(), "the output file should be finalized");
     }
 
     #[tokio::test]

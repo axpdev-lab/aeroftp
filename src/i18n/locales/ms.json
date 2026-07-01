@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Gelap",
             "imagePreviewBgLight": "Cerah",
             "imagePreviewBgCustom": "Tersuai",
-            "showTransferProgress": "Tunjukkan bar kemajuan pemindahan"
+            "showTransferProgress": "Tunjukkan bar kemajuan pemindahan",
+            "similarToExisting": "menyerupai profil sedia ada"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Tulis ganti",
             "skip": "Langkau",
             "rename": "Namakan semula",
+            "resume": "Sambung",
+            "resumeHint": "Sambung pemindahan yang terhenti dan bukannya memulakannya semula",
             "cancel": "Batal"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Nyahsulit nama",
             "decryptFileFromDisk": "Nyahsulit fail daripada cakera",
             "fileDecryptedTo": "Fail dinyahsulitkan ke {path}",
-            "encryptedUploadCompleted": "Muat naik tersulit selesai: {path}",
-            "remoteBrowser": "Pelayar jauh (telus)",
-            "upload": "Muat naik",
-            "up": "Atas",
-            "path": "Laluan: {path}",
-            "dirIvNotFound": "dirIV tidak dijumpai dalam folder semasa: nama mungkin kekal tersulit.",
-            "loading": "Memuatkan...",
-            "emptyFolder": "Folder kosong",
-            "nameNotDecrypted": "nama tidak dinyahsulitkan",
-            "download": "Muat turun",
             "serverHashGated": "Checksum sebelah pelayan tidak tersedia semasa tindanan tersulit aktif (ia akan hash teks sifir, bukan fail anda).",
             "outsideScope": "Di luar kawasan tersulit (fail di sini tidak disulitkan)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Tiada tindanan AeroCrypt ditemui dalam folder jauh semasa. Tukar ke \"Cipta baharu\" untuk menciptanya.",
             "remoteUnlocked": "Jauh dibuka kunci (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Pelayar jauh tersulit",
-            "upload": "Muat naik",
-            "up": "Naik",
-            "path": "Laluan: {path}",
-            "loading": "Memuatkan...",
-            "emptyFolder": "Folder kosong",
-            "download": "Muat turun",
-            "nameNotDecrypted": "nama tidak dapat dinyahsulit",
-            "fileDecryptedTo": "Fail dinyahsulit ke {path}",
-            "encryptedUploadCompleted": "Muat naik tersulit selesai: {path}",
             "lock": "Kunci tindanan"
         },
         "aerocryptProfile": {

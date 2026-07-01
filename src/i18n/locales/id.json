@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Gelap",
             "imagePreviewBgLight": "Terang",
             "imagePreviewBgCustom": "Kustom",
-            "showTransferProgress": "Tampilkan bilah kemajuan transfer"
+            "showTransferProgress": "Tampilkan bilah kemajuan transfer",
+            "similarToExisting": "menyerupai profil yang sudah ada"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Timpa",
             "skip": "Lewati",
             "rename": "Ganti nama",
+            "resume": "Lanjutkan",
+            "resumeHint": "Lanjutkan transfer yang terputus alih-alih memulainya lagi",
             "cancel": "Batal"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Dekripsi nama",
             "decryptFileFromDisk": "Dekripsi file dari disk",
             "fileDecryptedTo": "File didekripsi ke {path}",
-            "encryptedUploadCompleted": "Unggahan terenkripsi selesai: {path}",
-            "remoteBrowser": "Peramban remote (transparan)",
-            "upload": "Unggah",
-            "up": "Naik",
-            "path": "Path: {path}",
-            "dirIvNotFound": "dirIV tidak ditemukan di folder saat ini: nama mungkin tetap terenkripsi.",
-            "loading": "Memuat...",
-            "emptyFolder": "Folder kosong",
-            "nameNotDecrypted": "nama tidak didekripsi",
-            "download": "Unduh",
             "serverHashGated": "Checksum sisi server tidak tersedia saat overlay terenkripsi aktif (akan menghash ciphertext, bukan berkas Anda).",
             "outsideScope": "Di luar area terenkripsi (berkas di sini tidak dienkripsi)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Tidak ada overlay AeroCrypt yang ditemukan di folder jarak jauh saat ini. Beralih ke \"Buat baru\" untuk membuatnya.",
             "remoteUnlocked": "Jarak jauh terbuka kuncinya (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Peramban jarak jauh terenkripsi",
-            "upload": "Unggah",
-            "up": "Naik",
-            "path": "Jalur: {path}",
-            "loading": "Memuat...",
-            "emptyFolder": "Folder kosong",
-            "download": "Unduh",
-            "nameNotDecrypted": "nama tidak dapat didekripsi",
-            "fileDecryptedTo": "File didekripsi ke {path}",
-            "encryptedUploadCompleted": "Unggahan terenkripsi selesai: {path}",
             "lock": "Kunci overlay"
         },
         "aerocryptProfile": {

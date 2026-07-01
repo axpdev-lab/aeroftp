@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Dunkel",
             "imagePreviewBgLight": "Hell",
             "imagePreviewBgCustom": "Benutzerdefiniert",
-            "showTransferProgress": "Fortschrittsbalken für Übertragungen anzeigen"
+            "showTransferProgress": "Fortschrittsbalken für Übertragungen anzeigen",
+            "similarToExisting": "ähneln einem vorhandenen Profil"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Überschreiben",
             "skip": "Überspringen",
             "rename": "Umbenennen",
+            "resume": "Fortsetzen",
+            "resumeHint": "Den unterbrochenen Transfer fortsetzen, statt ihn neu zu starten",
             "cancel": "Abbrechen"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Namen entschlüsseln",
             "decryptFileFromDisk": "Datei von der Festplatte entschlüsseln",
             "fileDecryptedTo": "Datei entschlüsselt nach {path}",
-            "encryptedUploadCompleted": "Verschlüsselter Upload abgeschlossen: {path}",
-            "remoteBrowser": "Remote-Browser (transparent)",
-            "upload": "Hochladen",
-            "up": "Nach oben",
-            "path": "Pfad: {path}",
-            "dirIvNotFound": "dirIV im aktuellen Ordner nicht gefunden: Namen bleiben möglicherweise verschlüsselt.",
-            "loading": "Wird geladen...",
-            "emptyFolder": "Leerer Ordner",
-            "nameNotDecrypted": "Name nicht entschlüsselt",
-            "download": "Herunterladen",
             "serverHashGated": "Serverseitige Prüfsumme nicht verfügbar, während ein verschlüsseltes Overlay aktiv ist (sie würde den Chiffretext hashen, nicht Ihre Datei).",
             "outsideScope": "Außerhalb des verschlüsselten Bereichs (Dateien hier sind nicht verschlüsselt)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Kein AeroCrypt-Overlay im aktuellen Remote-Ordner gefunden. Wechseln Sie zu „Neu erstellen“, um eines anzulegen.",
             "remoteUnlocked": "Remote entsperrt (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Verschlüsselter Remote-Browser",
-            "upload": "Hochladen",
-            "up": "Nach oben",
-            "path": "Pfad: {path}",
-            "loading": "Wird geladen …",
-            "emptyFolder": "Leerer Ordner",
-            "download": "Herunterladen",
-            "nameNotDecrypted": "Name konnte nicht entschlüsselt werden",
-            "fileDecryptedTo": "Datei entschlüsselt nach {path}",
-            "encryptedUploadCompleted": "Verschlüsselter Upload abgeschlossen: {path}",
             "lock": "Overlay sperren"
         },
         "aerocryptProfile": {

@@ -74,6 +74,11 @@ pub struct ScanOptions {
     /// Paths that should always be skipped regardless of excludes.
     /// Used to skip the bisync snapshot file when syncing a tree.
     pub skip_filenames: Vec<String>,
+    /// Force the portable BFS scanner even when a provider advertises a flat
+    /// recursive list. AeroSync Compare uses this under an active crypt
+    /// overlay so encrypted path segments are gathered in the same shape as
+    /// the regular provider browser.
+    pub disable_recursive_fastpath: bool,
 }
 
 fn compile_matchers(patterns: &[String]) -> Vec<globset::GlobMatcher> {
@@ -262,7 +267,7 @@ pub async fn scan_remote_tree(
     // collapses the per-directory BFS round-trips into one flat listing.
     // Skipped when checksums are requested (the flat listing carries no
     // per-file hash, so the BFS per-file `checksum()` is still required).
-    if !opts.compute_remote_checksum {
+    if !opts.compute_remote_checksum && !opts.disable_recursive_fastpath {
         if let Some(results) = try_recursive_fastpath(provider, remote_root, opts).await {
             return results;
         }
@@ -365,7 +370,8 @@ pub async fn scan_remote_tree_with_provider_lock(
     // tried once before either BFS branch (clone-pool or locked). S3's flat
     // ListObjectsV2 returns the whole subtree in one paginated call.
     // Skipped when checksums are requested or the scan is already cancelled.
-    if !opts.compute_remote_checksum && !scan_cancelled(&cancel) {
+    if !opts.compute_remote_checksum && !opts.disable_recursive_fastpath && !scan_cancelled(&cancel)
+    {
         let fast = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {

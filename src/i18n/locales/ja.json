@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "ダーク",
             "imagePreviewBgLight": "ライト",
             "imagePreviewBgCustom": "カスタム",
-            "showTransferProgress": "転送の進行状況バーを表示"
+            "showTransferProgress": "転送の進行状況バーを表示",
+            "similarToExisting": "既存のプロファイルに類似"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "上書き",
             "skip": "スキップ",
             "rename": "名前変更",
+            "resume": "再開",
+            "resumeHint": "中断した転送を最初からではなく途中から再開します",
             "cancel": "キャンセル"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "名前を復号",
             "decryptFileFromDisk": "ディスクからファイルを復号",
             "fileDecryptedTo": "ファイルを {path} に復号しました",
-            "encryptedUploadCompleted": "暗号化アップロードが完了しました: {path}",
-            "remoteBrowser": "リモートブラウザ（透過）",
-            "upload": "アップロード",
-            "up": "上へ",
-            "path": "パス: {path}",
-            "dirIvNotFound": "現在のフォルダに dirIV が見つかりません: 名前が暗号化されたままになる可能性があります。",
-            "loading": "読み込み中...",
-            "emptyFolder": "空のフォルダ",
-            "nameNotDecrypted": "名前は復号されていません",
-            "download": "ダウンロード",
             "serverHashGated": "暗号化オーバーレイが有効な間はサーバー側チェックサムを利用できません（実ファイルではなく暗号文のハッシュになります）。",
             "outsideScope": "暗号化エリアの外（ここのファイルは暗号化されていません）"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "現在のリモートフォルダーに AeroCrypt オーバーレイが見つかりません。「新規作成」に切り替えて作成してください。",
             "remoteUnlocked": "リモートのロックを解除しました（ID {id}）",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "暗号化リモートブラウザー",
-            "upload": "アップロード",
-            "up": "上へ",
-            "path": "パス: {path}",
-            "loading": "読み込み中...",
-            "emptyFolder": "空のフォルダー",
-            "download": "ダウンロード",
-            "nameNotDecrypted": "名前を復号できませんでした",
-            "fileDecryptedTo": "ファイルを {path} に復号しました",
-            "encryptedUploadCompleted": "暗号化アップロードが完了しました: {path}",
             "lock": "オーバーレイをロック"
         },
         "aerocryptProfile": {

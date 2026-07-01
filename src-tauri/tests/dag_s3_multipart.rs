@@ -198,6 +198,7 @@ async fn gtc_dag_s3_multipart_byte_identical() {
         observer,
         report_size,
         file_size,
+        None,
     )
     .await
     .expect("shaped multipart upload must succeed");

@@ -226,6 +226,41 @@ fn v2_block_aad(block_index: u64) -> Vec<u8> {
 /// Ciphertext length of a full GCM-SIV block: per-block nonce + plaintext + tag.
 const FULL_BLOCK_CIPHER: usize = NONCE_SIZE + BLOCK_SIZE + GCM_TAG;
 
+/// Recover the plaintext length of a v3 AeroCrypt container from its on-wire
+/// (ciphertext) length, WITHOUT reading the object.
+///
+/// The v3 layout is a fixed [`V3_HEADER_LEN`] header followed by GCM-SIV blocks;
+/// each block adds a per-block nonce + tag ([`FULL_BLOCK_CIPHER`] for a full
+/// [`BLOCK_SIZE`] block), so the mapping is deterministic and reversible from the
+/// length alone (mirrors rclone's deterministic overhead map). This lets `stat`
+/// and `size` report the DECRYPTED size for a v3 overlay, so the browser size
+/// column and AeroSync size compares converge instead of re-flagging on every run.
+///
+/// Legacy v1/v2 containers use a different header and are NOT handled here (they
+/// are read-only and their size stays deferred). A length that cannot correspond
+/// to a well-formed v3 container (too short, or a final block below the per-block
+/// overhead) is clamped rather than erroring: this feeds size-only UI/compare and
+/// must never panic on a foreign or truncated object.
+pub fn v3_decrypted_size(ciphertext_len: u64) -> u64 {
+    let header = V3_HEADER_LEN as u64;
+    let full_block = FULL_BLOCK_CIPHER as u64;
+    let block = BLOCK_SIZE as u64;
+    let per_block_overhead = (NONCE_SIZE + GCM_TAG) as u64;
+    let Some(data) = ciphertext_len.checked_sub(header) else {
+        // Too short to be a v3 container: leave the length unchanged.
+        return ciphertext_len;
+    };
+    let full_blocks = data / full_block;
+    let rem = data % full_block;
+    let mut plain = full_blocks.saturating_mul(block);
+    if rem > 0 {
+        // Final partial block = nonce + partial_plaintext + tag; clamp a
+        // malformed sub-overhead remainder to zero rather than underflowing.
+        plain += rem.saturating_sub(per_block_overhead);
+    }
+    plain
+}
+
 fn decrypt_data_v2(master_key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     let header = 4 + 1 + WRAPPED_KEY_SIZE;
     if ciphertext.len() < header {
@@ -521,6 +556,25 @@ mod tests {
                 "v3 round trip {n}"
             );
         }
+    }
+
+    #[test]
+    fn v3_decrypted_size_inverts_ciphertext_length() {
+        let (cfg, master) = v3_cfg();
+        for n in sizes_to_test() {
+            let pt: Vec<u8> = (0..n).map(|i| (i * 37 + 11) as u8).collect();
+            let blob = encrypt_data(&cfg, &master, &pt).unwrap();
+            assert_eq!(
+                v3_decrypted_size(blob.len() as u64),
+                n as u64,
+                "v3 size map for {n} plaintext bytes (ciphertext {})",
+                blob.len()
+            );
+        }
+        // Header-only (empty file, zero blocks) maps to 0.
+        assert_eq!(v3_decrypted_size(V3_HEADER_LEN as u64), 0);
+        // A length shorter than the header is left unchanged (foreign object).
+        assert_eq!(v3_decrypted_size(10), 10);
     }
 
     #[test]

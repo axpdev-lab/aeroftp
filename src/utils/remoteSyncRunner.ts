@@ -158,6 +158,12 @@ export interface RemoteSyncConfig {
     isLocalLocal?: boolean;
     /** AeroSync recovery sidecars. P2 wiring only; profile/UI defaults land later. */
     errorCorrection?: ErrorCorrectionRuntime | null;
+    /**
+     * The remote provider authenticates downloaded content before returning
+     * plaintext, so size/mtime verification can be skipped when provider-reported
+     * sizes are not plaintext sizes.
+     */
+    authenticatedRemoteContent?: boolean;
 }
 
 /** The rich connected-remote report — superset of the local-local report. */
@@ -371,7 +377,8 @@ export const runRemoteSync = async (
     const archivingActive =
         !!config.versioningStrategy && config.versioningStrategy !== 'disabled';
     const errorCorrectionEnabled =
-        config.errorCorrection?.enabled === true && config.isLocalLocal !== true;
+        config.errorCorrection?.enabled === true
+        && config.isLocalLocal !== true;
 
     const setStatus = (path: string, status: SyncRunFileStatus): void => {
         callbacks.onFileStatus?.(path, status);
@@ -587,13 +594,28 @@ export const runRemoteSync = async (
         : config.isProvider
             ? 'provider_mkdir'
             : 'create_remote_folder';
+    // Count the parent directories we actually create (mkdir succeeds) into
+    // `dirsCreated`, mirroring the standalone-dir loop below. Without this the
+    // receipt only counted standalone empty dirs, so a mirror of `docs/a.txt`
+    // reported "1 file" while the compare reported 2 differences (the file + the
+    // `docs` folder). An mkdir that throws (the dir already exists, or a real
+    // error) is not a new folder, so it is not counted -- the receipt now
+    // reconciles with the compare's directory-inclusive difference count.
     for (const dir of [...remoteParentDirs].sort(byDepth)) {
-        await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` }).catch(() => undefined);
+        try {
+            await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
+            dirsCreated++;
+        } catch {
+            // Already exists or failed: not a newly-created folder.
+        }
     }
     for (const dir of [...localParentDirs].sort(byDepth)) {
-        await invoke('create_local_folder', { path: `${localBase}/${dir}` }).catch(
-            () => undefined,
-        );
+        try {
+            await invoke('create_local_folder', { path: `${localBase}/${dir}` });
+            dirsCreated++;
+        } catch {
+            // Already exists or failed: not a newly-created folder.
+        }
     }
 
     // ── Create standalone empty directories (counted in dirsCreated) ───────
@@ -792,7 +814,9 @@ export const runRemoteSync = async (
                         recordEcStatus('verify_failed', journalEntry);
                     }
                 }
-                const vResult = await verifyDownload(localFilePath, item.size, item.mtime);
+                const vResult = config.authenticatedRemoteContent
+                    ? null
+                    : await verifyDownload(localFilePath, item.size, item.mtime);
                 if (vResult && !vResult.passed) {
                     verifyFailed++;
                     const errInfo: SyncErrorInfo = {
@@ -928,7 +952,7 @@ export const runRemoteSync = async (
     let postSyncVerification:
         | { ok: number; mismatches: number; failed: number }
         | undefined;
-    if (config.postSyncVerification && !runCancelled) {
+    if (config.postSyncVerification && !runCancelled && !config.authenticatedRemoteContent) {
         let pv_ok = 0;
         let pv_mismatches = 0;
         let pv_failed = 0;

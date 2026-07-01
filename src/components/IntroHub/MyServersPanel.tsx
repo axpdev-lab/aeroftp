@@ -14,6 +14,8 @@ import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { getStorageDedupKey } from '../../utils/storageDedup';
+import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { isConnectCancelledError } from '../../utils/connectCancel';
@@ -47,6 +49,10 @@ import { AeroShareDialog, type AeroShareMode } from '../AeroShare/AeroShareDialo
 import { AeroShareActivationPrompt } from '../AeroShare/AeroShareActivationPrompt';
 import { SharedByMePanel } from '../AeroShare/SharedByMePanel';
 import { friendCanConnect, AERO_SHARE_OPEN_EVENT, type AeroShareOpenDetail } from '../../utils/aeroShare';
+import {
+    copyProfileVaultSecrets,
+    deleteProfileVaultSecrets,
+} from '../../utils/profileVaultSecrets';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
@@ -334,6 +340,7 @@ export function MyServersPanel({
     onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
+    const { log: logActivity } = useActivityLog();
     // Start with an empty list: the partition-aware reconcile effect below
     // populates `servers` from the active user's vault on mount and on every
     // `lastUpdate` bump. We no longer seed from the shared localStorage
@@ -1250,17 +1257,43 @@ export function MyServersPanel({
         }
     }, [servers, connectingId, onConnect, cancellableConnect, t]);
 
-    const handleDuplicate = useCallback((server: ServerProfile) => {
+    const handleDuplicate = useCallback(async (server: ServerProfile) => {
+        const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const dup: ServerProfile = {
             ...server,
-            id: `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+            id: newId,
             name: `${server.name} (copy)`,
             lastConnected: undefined,
+            hasStoredCredential: false,
+            hasStoredFilenApiKey: false,
+            hasStoredAeroCryptPassword: false,
+            hasStoredAeroCryptSalt: false,
         };
+        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId);
+        dup.hasStoredCredential = copiedSecrets.server;
+        dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
+        dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
+        dup.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
         const updated = [dup, ...servers];
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
-    }, [servers]);
+        // Log the same two entries as an edit that overlaps an existing profile,
+        // so the duplicate action is traceable: a "potential duplicate" warning
+        // (the copy shares the source's endpoint+username) then a confirmation.
+        const dedupKey = getStorageDedupKey(dup);
+        logActivity(
+            'PROFILE_DUPLICATE',
+            `Duplicate profile detected: "${dup.name}" overlaps with "${server.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
+        logActivity(
+            'PROFILE_SAVE',
+            `Profile duplicated: "${server.name}" → "${dup.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
+    }, [servers, logActivity]);
 
     const handleDelete = useCallback((server: ServerProfile) => {
         setDeleteTarget(server);
@@ -1340,8 +1373,7 @@ export function MyServersPanel({
         const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
-        // Clean up orphaned vault credential
-        invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
+        deleteProfileVaultSecrets(deleteTarget.id).catch(() => {});
         // Drop the deleted profile from any group it belonged to (#320).
         pruneServerFromGroups(deleteTarget.id).catch(() => {});
         setGroups(prev => prev.map(g => (

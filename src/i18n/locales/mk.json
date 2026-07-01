@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Темно",
             "imagePreviewBgLight": "Светло",
             "imagePreviewBgCustom": "Прилагодено",
-            "showTransferProgress": "Прикажи лента за напредок на преносот"
+            "showTransferProgress": "Прикажи лента за напредок на преносот",
+            "similarToExisting": "слични на постоечки профил"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Препиши",
             "skip": "Прескокни",
             "rename": "Преименувај",
+            "resume": "Продолжи",
+            "resumeHint": "Продолжи го прекинатиот пренос наместо да го рестартираш",
             "cancel": "Откажи"
         },
         "statusbar": {
@@ -4647,16 +4650,6 @@
             "decryptName": "Дешифрирај име",
             "decryptFileFromDisk": "Дешифрирај датотека од диск",
             "fileDecryptedTo": "Датотеката е дешифрирана во {path}",
-            "encryptedUploadCompleted": "Шифрираното прикачување е завршено: {path}",
-            "remoteBrowser": "Далечински прелистувач (транспарентен)",
-            "upload": "Прикачи",
-            "up": "Горе",
-            "path": "Патека: {path}",
-            "dirIvNotFound": "dirIV не е пронајден во тековната папка: имињата може да останат шифрирани.",
-            "loading": "Се вчитува...",
-            "emptyFolder": "Празна папка",
-            "nameNotDecrypted": "името не е дешифрирано",
-            "download": "Преземи",
             "serverHashGated": "Контролната сума на серверската страна не е достапна додека е активен шифриран слој (ќе го хешира шифрираниот текст, а не вашата датотека).",
             "outsideScope": "Надвор од шифрираната зона (датотеките тука не се шифрирани)"
         },
@@ -4965,16 +4958,6 @@
             "noOverlayFound": "Не е најдена AeroCrypt прекривка во тековната оддалечена папка. Префрлете се на „Создади нова“ за да направите една.",
             "remoteUnlocked": "Оддалеченото е отклучено (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Шифриран оддалечен прелистувач",
-            "upload": "Постави",
-            "up": "Нагоре",
-            "path": "Патека: {path}",
-            "loading": "Се вчитува...",
-            "emptyFolder": "Празна папка",
-            "download": "Преземи",
-            "nameNotDecrypted": "името не можеше да се дешифрира",
-            "fileDecryptedTo": "Датотеката е дешифрирана во {path}",
-            "encryptedUploadCompleted": "Шифрираното поставување е завршено: {path}",
             "lock": "Заклучи ја прекривката"
         },
         "aerocryptProfile": {

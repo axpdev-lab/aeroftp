@@ -1875,9 +1875,18 @@ pub(crate) async fn create_temp_provider(
 
     let connect_result = provider.connect().await;
     provider_config.zeroize_password();
-    connect_result
+    let provider = connect_result
         .map(|()| provider)
-        .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))
+        .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))?;
+
+    // Crypt-overlay chokepoint (Phase 2 T2.1): wrap the connected provider
+    // fail-closed when the saved profile carries an enabled `aeroCryptOverlay`
+    // binding, so cross-profile transfers (non-crypt <-> crypt, the marquee
+    // corruption case) and agent transfer_one/transfer_tree present plaintext
+    // paths and encrypt content transparently. Each side is wrapped
+    // independently because the source and destination call this separately.
+    crate::crypt_overlay_provider::wrap_connected_provider_for_profile(provider, profile, &store)
+        .await
 }
 
 #[tauri::command]

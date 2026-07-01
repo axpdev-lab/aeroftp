@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Dökkt",
             "imagePreviewBgLight": "Ljóst",
             "imagePreviewBgCustom": "Sérsniðið",
-            "showTransferProgress": "Sýna framvindustiku fyrir flutning"
+            "showTransferProgress": "Sýna framvindustiku fyrir flutning",
+            "similarToExisting": "líkjast fyrirliggjandi sniði"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Yfirskrifa",
             "skip": "Sleppa",
             "rename": "Endurnefna",
+            "resume": "Halda áfram",
+            "resumeHint": "Halda áfram með rofna flutninginn í stað þess að byrja upp á nýtt",
             "cancel": "Hætta við"
         },
         "statusbar": {
@@ -4647,16 +4650,6 @@
             "decryptName": "Afkóða nafn",
             "decryptFileFromDisk": "Afkóða skrá af diski",
             "fileDecryptedTo": "Skrá afkóðuð í {path}",
-            "encryptedUploadCompleted": "Dulkóðaðri upphlóðslu lokið: {path}",
-            "remoteBrowser": "Fjarvafri (gegnsær)",
-            "upload": "Hlaða upp",
-            "up": "Upp",
-            "path": "Slóð: {path}",
-            "dirIvNotFound": "dirIV fannst ekki í núverandi möppu: nöfn gætu verið áfram dulkóðuð.",
-            "loading": "Hleður...",
-            "emptyFolder": "Tóm mappa",
-            "nameNotDecrypted": "nafn ekki afkóðað",
-            "download": "Sækja",
             "serverHashGated": "Eftirlitssumma á netþjónshlið er ekki tiltæk meðan dulkóðað yfirlag er virkt (hún myndi tæta dulmálstextann, ekki skrána þína).",
             "outsideScope": "Utan dulkóðaða svæðisins (skrár hér eru ekki dulkóðaðar)"
         },
@@ -4965,16 +4958,6 @@
             "noOverlayFound": "Ekkert AeroCrypt-yfirlag fannst í núverandi fjarmöppu. Skiptu yfir í „Búa til nýtt“ til að búa eitt til.",
             "remoteUnlocked": "Fjartenging aflæst (auðkenni {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Dulkóðaður fjarvafri",
-            "upload": "Hlaða upp",
-            "up": "Upp",
-            "path": "Slóð: {path}",
-            "loading": "Hleð…",
-            "emptyFolder": "Tóm mappa",
-            "download": "Sækja",
-            "nameNotDecrypted": "ekki tókst að afkóða nafnið",
-            "fileDecryptedTo": "Skrá afkóðuð í {path}",
-            "encryptedUploadCompleted": "Dulkóðaðri upphleðslu lokið: {path}",
             "lock": "Læsa yfirlagi"
         },
         "aerocryptProfile": {

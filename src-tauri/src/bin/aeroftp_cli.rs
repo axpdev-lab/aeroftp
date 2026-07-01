@@ -8009,6 +8009,8 @@ async fn cli_run_single_file_dag(
         observer,
         report,
         file_size,
+        // The CLI relies on process-level Ctrl+C, not the GUI session token.
+        None,
     )
     .await;
     let provider = arc
@@ -11409,6 +11411,33 @@ fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
         .and_then(|ov| ov.get("enabled"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
+}
+
+/// Resolve the leading URL and encrypted-directory positionals of a `crypt`
+/// subcommand when it runs against a saved `--profile`.
+///
+/// clap always binds the FIRST positional to `url`, but with `--profile` the
+/// connection comes from the profile, so a path-looking value in the url slot is
+/// really the encrypted directory the user meant: `crypt init --profile X /enc`
+/// instead of the placeholder form `crypt init --profile X _ /enc`. When a
+/// profile is selected and the url slot holds a non-URL, non-placeholder value,
+/// treat it as the directory: shift it into the path slot when that slot is
+/// still at its default, otherwise keep the explicitly-given path and drop the
+/// bogus url. A raw URL (no profile, or a value containing "://") is returned
+/// unchanged, so URL-mode invocations are byte-identical.
+fn resolve_profile_crypt_positionals(
+    has_profile: bool,
+    url: &str,
+    path: &str,
+    path_default: &str,
+) -> (String, String) {
+    if has_profile && url != "_" && !url.contains("://") {
+        if path == path_default {
+            return ("_".to_string(), url.to_string());
+        }
+        return ("_".to_string(), path.to_string());
+    }
+    (url.to_string(), path.to_string())
 }
 
 /// Profile-aware protocol class. A profile with an enabled crypt overlay (either
@@ -21639,6 +21668,17 @@ async fn create_and_connect_for_agent(
         .await
         .map_err(|e| format!("Connection to '{}' failed: {}", profile_name, e))?;
 
+    // Crypt-overlay chokepoint (fail-closed). The agent connect path builds the
+    // provider directly, bypassing `create_and_connect` / `cli_apply_crypt_overlay`,
+    // so it must wrap here too. Without this a CLI agent (`server_exec`) acting on
+    // a crypt-bound profile would read ciphertext and inject plaintext into the
+    // encrypted store. A non-crypt profile is returned byte-identical; a
+    // bound-but-locked vault refuses rather than running raw.
+    let provider = ftp_client_gui_lib::crypt_overlay_provider::wrap_connected_provider_for_profile(
+        provider, matched, &store,
+    )
+    .await?;
+
     Ok((provider, initial_path.to_string()))
 }
 
@@ -22498,6 +22538,67 @@ fn push_s3_doctor_checks(
     }
 }
 
+/// Outcome of matching a `--profile` query against the saved profiles, using
+/// the same precedence everywhere: 1-based index, exact name (case-insensitive),
+/// exact ID, then unique case-insensitive substring.
+enum ProfileMatch<'a> {
+    One(&'a serde_json::Value),
+    None,
+    /// Two or more substring matches; carries their names for the error.
+    Ambiguous(Vec<String>),
+}
+
+/// Single source of truth for `--profile` resolution. Callers that connect
+/// (`profile_to_provider_config`) and the crypt-overlay lookup share this so a
+/// profile resolves to the same row everywhere.
+fn match_profile_by_query<'a>(
+    profiles: &'a [serde_json::Value],
+    profile_name: &str,
+) -> ProfileMatch<'a> {
+    if let Ok(idx) = profile_name.parse::<usize>() {
+        return match profiles.get(idx.saturating_sub(1)) {
+            Some(p) => ProfileMatch::One(p),
+            None => ProfileMatch::None,
+        };
+    }
+    let profile_lower = profile_name.to_lowercase();
+    if let Some(p) = profiles.iter().find(|p| {
+        p.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase()
+            == profile_lower
+    }) {
+        return ProfileMatch::One(p);
+    }
+    if let Some(p) = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name)
+    {
+        return ProfileMatch::One(p);
+    }
+    let matches: Vec<&serde_json::Value> = profiles
+        .iter()
+        .filter(|p| {
+            p.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase()
+                .contains(&profile_lower)
+        })
+        .collect();
+    match matches.len() {
+        0 => ProfileMatch::None,
+        1 => ProfileMatch::One(matches[0]),
+        _ => ProfileMatch::Ambiguous(
+            matches
+                .iter()
+                .filter_map(|p| p.get("name").and_then(|v| v.as_str()).map(String::from))
+                .collect(),
+        ),
+    }
+}
+
 fn profile_to_provider_config(
     profile_name: &str,
     cli: &Cli,
@@ -22527,59 +22628,22 @@ fn profile_to_provider_config(
         }
     };
 
-    // Match by index, exact name, ID, or substring (with disambiguation)
-    let profile_lower = profile_name.to_lowercase();
-    let matched = if let Ok(idx) = profile_name.parse::<usize>() {
-        profiles.get(idx.saturating_sub(1))
-    } else {
-        // 1. Exact name match (case-insensitive)
-        let exact = profiles.iter().find(|p| {
-            p.get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_lowercase()
-                == profile_lower
-        });
-        if exact.is_some() {
-            exact
-        } else {
-            // 2. Exact ID match
-            let by_id = profiles
-                .iter()
-                .find(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name);
-            if by_id.is_some() {
-                by_id
-            } else {
-                // 3. Substring match with disambiguation
-                let matches: Vec<_> = profiles
-                    .iter()
-                    .filter(|p| {
-                        p.get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_lowercase()
-                            .contains(&profile_lower)
-                    })
-                    .collect();
-                match matches.len() {
-                    0 => None,
-                    1 => Some(matches[0]),
-                    _ => {
-                        print_error(format, &format!(
-                            "Ambiguous profile '{}'. Matches: {}. Use exact name or index number.",
-                            profile_name,
-                            matches.iter().filter_map(|p| p.get("name").and_then(|v| v.as_str())).collect::<Vec<_>>().join(", ")
-                        ), 5);
-                        return Err(5);
-                    }
-                }
-            }
+    // Match by index, exact name, ID, or substring (with disambiguation).
+    let profile = match match_profile_by_query(&profiles, profile_name) {
+        ProfileMatch::One(p) => p,
+        ProfileMatch::Ambiguous(names) => {
+            print_error(
+                format,
+                &format!(
+                    "Ambiguous profile '{}'. Matches: {}. Use exact name or index number.",
+                    profile_name,
+                    names.join(", ")
+                ),
+                5,
+            );
+            return Err(5);
         }
-    };
-
-    let profile = match matched {
-        Some(p) => p,
-        None => {
+        ProfileMatch::None => {
             print_error(
                 format,
                 &format!(
@@ -23455,6 +23519,126 @@ fn load_oauth_client_config(store: &CredentialStore, provider: &str) -> (String,
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
 
+/// Wrap a freshly connected provider with the crypt overlay decorator when the
+/// resolved profile carries an enabled crypt binding (rclone-crypt or native
+/// AeroCrypt). This is the Phase 1 CLI chokepoint: a single wrap here makes the
+/// whole CLI (get/put/recursive/glob, sync, dedupe, edit, hashsum, mount, ...)
+/// speak plaintext while the wire stays fully encrypted, so no command path
+/// injects plaintext into a crypt store or reads back ciphertext.
+///
+/// FAIL-CLOSED: a profile with an enabled binding whose secrets are missing or
+/// whose keys cannot be unlocked returns a hard error (exit 5 / 6); it never
+/// falls back to the raw provider. A plain profile, a raw URL, or a vault hiccup
+/// before the binding is confirmed leaves the provider byte-identical.
+///
+/// The binding (kind / scope / name-encryption modes) reuses the profile's
+/// `aeroCryptOverlay` JSON; the secrets reuse the generic per-profile vault keys
+/// `aerocrypt_overlay_pw_<id>` / `aerocrypt_overlay_salt_<id>` shared by both
+/// overlay kinds (lib.rs ~15610). Mirrors `cli_unlock_crypt_compare_keys`, which
+/// resolves the SAME binding for the compare path.
+async fn cli_apply_crypt_overlay(
+    provider: Box<dyn StorageProvider>,
+    cli: &Cli,
+    profile_query: Option<&str>,
+    format: OutputFormat,
+) -> Result<Box<dyn StorageProvider>, i32> {
+    // No profile (raw URL) -> nothing to bind. A vault/profile-load hiccup must
+    // not mask a plain connection, so fall through to the raw provider until the
+    // binding itself is confirmed; from that point on we are fail-closed.
+    let Some(profile_name) = profile_query else {
+        return Ok(provider);
+    };
+    let Ok(store) = open_vault(cli) else {
+        return Ok(provider);
+    };
+    let Ok(profiles) = load_active_user_profiles(cli, &store) else {
+        return Ok(provider);
+    };
+    let profile = match match_profile_by_query(&profiles, profile_name) {
+        ProfileMatch::One(p) => p,
+        _ => return Ok(provider),
+    };
+    if !profile_has_crypt_overlay(profile) {
+        return Ok(provider);
+    }
+
+    let overlay = profile
+        .get("aeroCryptOverlay")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let kind = overlay
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("aerocrypt")
+        .to_string();
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    // The bound plaintext anchor: "" / unset = whole-remote crypt. Unlike the
+    // compare path (which targets a specific remote path) the chokepoint wraps
+    // the whole session, so the binding's own scope is authoritative.
+    let remote_scope = overlay
+        .get("remoteScope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let filename_encryption = overlay
+        .get("filenameEncryption")
+        .and_then(|v| v.as_str())
+        .unwrap_or("standard")
+        .to_string();
+    let directory_name_encryption = overlay
+        .get("directoryNameEncryption")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    // Scope the overlay-secret read to the SAME user the profile was loaded for
+    // (honor --user), matching cli_unlock_crypt_compare_keys.
+    let uid = scoped_credential_user_id(cli, &store);
+    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+        .unwrap_or_default();
+    if password.is_empty() {
+        print_error(
+            format,
+            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD.",
+            5,
+        );
+        return Err(5);
+    }
+    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+        .unwrap_or_default();
+
+    let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
+        kind,
+        remote_scope,
+        filename_encryption,
+        directory_name_encryption,
+        off_suffix: None,
+    };
+    match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
+        provider,
+        Some(&params),
+        &password,
+        &salt,
+    )
+    .await
+    {
+        Ok(wrapped) => {
+            if cli.verbose > 0 {
+                eprintln!(
+                    "Crypt overlay active ({}): paths and content are transparently encrypted",
+                    params.kind
+                );
+            }
+            Ok(wrapped)
+        }
+        Err(e) => {
+            print_error(format, &format!("Crypt overlay unlock failed: {}", e), 6);
+            Err(6)
+        }
+    }
+}
+
 async fn create_and_connect(
     url: &str,
     cli: &Cli,
@@ -23556,6 +23740,11 @@ async fn create_and_connect_with(
                             if let Ok((mut p, path)) = result {
                                 apply_onedrive_runtime_knobs(&mut p, cli);
                                 apply_google_drive_runtime_knobs(&mut p, cli);
+                                // Crypt-overlay chokepoint: an OAuth backend can
+                                // carry a crypt binding too (overlay is
+                                // protocol-agnostic). Wrap before returning.
+                                let p = cli_apply_crypt_overlay(p, cli, profile_override, format)
+                                    .await?;
                                 return Ok((p, path));
                             } else {
                                 return result;
@@ -23699,6 +23888,13 @@ async fn create_and_connect_with(
             );
         }
     }
+
+    // Crypt-overlay chokepoint (Phase 1): wrap the connected provider when the
+    // profile carries an enabled crypt binding. All runtime knobs above are
+    // applied to the inner provider before wrapping; the decorator advertises
+    // the byte-inexact surfaces (resume/multipart/range/checksum) as disabled so
+    // callers fall back to whole-file paths. Fail-closed on a bound profile.
+    let provider = cli_apply_crypt_overlay(provider, cli, profile_override, format).await?;
 
     Ok((provider, path))
 }
@@ -31186,57 +31382,71 @@ async fn cmd_profile_import(
         .cloned()
         .unwrap_or_default();
 
-    // Merge into the active user's profiles, skipping duplicates by id OR
-    // host:port:username (same rule as ExportImportDialog).
+    // Merge into the active user's profiles. Skip ONLY a true re-import (same
+    // stable id); profiles that merely share host:port:username are kept (see
+    // decide_import_merge). Same rule as ExportImportDialog.
     let mut current = load_active_user_profiles(cli, &store).unwrap_or_default();
-    let existing_ids: std::collections::HashSet<String> = current
-        .iter()
-        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
-        .collect();
-    let dup_key = |p: &serde_json::Value| -> String {
-        format!(
-            "{}:{}:{}",
-            p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-            p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-            p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-        )
-    };
-    let existing_keys: std::collections::HashSet<String> = current.iter().map(dup_key).collect();
-
-    let mut added = 0usize;
-    let mut skipped = 0usize;
+    let decision = decide_import_merge(&imported, &current);
+    let added = decision.add_indices.len();
+    let skipped = decision.skipped;
+    let similar = decision.similar;
     // Ids of the profiles we actually add: only these get their credentials
     // restored in phase 2.
     let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for p in &imported {
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        if (!id.is_empty() && existing_ids.contains(id)) || existing_keys.contains(&dup_key(p)) {
-            skipped += 1;
-            continue;
-        }
-        if !id.is_empty() {
+    for &idx in &decision.add_indices {
+        if let Some(id) = imported[idx]
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             restore_ids.insert(id.to_string());
         }
-        current.push(p.clone());
-        added += 1;
     }
 
-    // Phase 2: restore credentials for the added profiles only.
+    // Phase 2: restore credentials for the added profiles only. Its returned
+    // servers carry the corrected `hasStoredAeroCrypt*` flags: the phase-1
+    // preview ran with an empty restore set, so ITS flags are always false even
+    // when the secret travels with the file. Persist the phase-2 redaction for
+    // the added profiles, not the preview, so an imported crypt-overlay profile
+    // reports its stored overlay password and the GUI auto-unlock fires
+    // (`maybeAutoUnlockProfileOverlay` gates on `hasStoredAeroCryptPassword`);
+    // otherwise the binding round-trips but the session never decrypts.
+    let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
+        std::collections::HashMap::new();
     if !restore_ids.is_empty() {
-        if let Err(e) = ftp_client_gui_lib::import_server_profiles_core_filtered(
+        match ftp_client_gui_lib::import_server_profiles_core_filtered(
             input.to_string(),
             password.clone(),
             Some(restore_ids),
         )
         .await
         {
-            password.zeroize();
-            let exit = if e.contains("Invalid password") { 6 } else { 1 };
-            print_error(format, &format!("import failed: {e}"), exit);
-            return exit;
+            Ok(v) => {
+                if let Some(arr) = v.get("servers").and_then(|s| s.as_array()) {
+                    for s in arr {
+                        if let Some(id) = s.get("id").and_then(|x| x.as_str()) {
+                            restored_by_id.insert(id.to_string(), s.clone());
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                password.zeroize();
+                let exit = if e.contains("Invalid password") { 6 } else { 1 };
+                print_error(format, &format!("import failed: {e}"), exit);
+                return exit;
+            }
         }
     }
     password.zeroize();
+
+    // Append the added profiles, preferring the phase-2 redaction (true
+    // credential-presence flags) over the phase-1 preview (flags all false).
+    current.extend(merged_added_profiles(
+        &decision.add_indices,
+        &imported,
+        &restored_by_id,
+    ));
 
     if added > 0 {
         if let Err(e) = save_active_user_profiles(cli, &store, &current) {
@@ -31256,19 +31466,112 @@ async fn cmd_profile_import(
                 "status": "ok",
                 "imported": added,
                 "skipped": skipped,
+                // Added profiles that share an account (host:port:username) with
+                // one already present: legitimately distinct (different protocol,
+                // crypt overlay, folder, or auth mode), kept, just flagged.
+                "similar": similar,
                 "total_in_file": imported.len(),
                 "metadata": metadata,
             })
         );
     } else if matches!(format, OutputFormat::Text) {
-        let tail = if skipped > 0 {
-            format!(", {skipped} skipped (already present)")
-        } else {
-            String::new()
-        };
+        let mut tail = String::new();
+        if skipped > 0 {
+            tail.push_str(&format!(", {skipped} skipped (already present)"));
+        }
+        if similar > 0 {
+            tail.push_str(&format!(", {similar} resemble an existing profile"));
+        }
         eprintln!("Imported {added} profile(s){tail} from {input}");
     }
     0
+}
+
+/// Pick the JSON to persist for each newly-added profile, preferring the
+/// phase-2 redaction (which restored credentials and so carries the true
+/// `hasStoredAeroCrypt*` flags) over the phase-1 preview (whose flags are all
+/// false because the preview restores nothing). Falls back to the preview when
+/// a profile had no phase-2 entry (no credential to restore). Keeping the two
+/// in sync is what makes an imported crypt-overlay profile auto-unlock instead
+/// of round-tripping the binding while reporting no stored overlay password.
+fn merged_added_profiles(
+    add_indices: &[usize],
+    imported: &[serde_json::Value],
+    restored_by_id: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    add_indices
+        .iter()
+        .map(|&idx| {
+            let preview = &imported[idx];
+            preview
+                .get("id")
+                .and_then(|v| v.as_str())
+                .and_then(|id| restored_by_id.get(id))
+                .cloned()
+                .unwrap_or_else(|| preview.clone())
+        })
+        .collect()
+}
+
+/// Coarse "same account/endpoint" key (host:port:username). NOT a skip key any
+/// more: it used to silently drop legitimately-distinct profiles that share an
+/// account but differ by protocol, crypt overlay, folder, or auth mode. Kept
+/// only to FLAG near-duplicates in the import summary.
+fn profile_account_key(p: &serde_json::Value) -> String {
+    format!(
+        "{}:{}:{}",
+        p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+        p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+        p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+    )
+}
+
+/// Decision for merging imported profiles into the current set.
+struct ImportMergeDecision {
+    /// Indices into `imported` of the profiles to add.
+    add_indices: Vec<usize>,
+    /// True re-imports skipped because their stable `id` already exists.
+    skipped: usize,
+    /// Added profiles that share an account with an existing profile.
+    similar: usize,
+}
+
+/// Decide which imported profiles to add. Skips ONLY a true re-import (same
+/// stable `id`): profiles that merely share host:port:username with an existing
+/// one are legitimately distinct (different protocol, crypt overlay, bound
+/// folder, or auth mode) and are added, counted as `similar` so the UI can flag
+/// them without ever silently dropping a wanted profile.
+fn decide_import_merge(
+    imported: &[serde_json::Value],
+    current: &[serde_json::Value],
+) -> ImportMergeDecision {
+    let existing_ids: std::collections::HashSet<&str> = current
+        .iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let existing_accounts: std::collections::HashSet<String> =
+        current.iter().map(profile_account_key).collect();
+
+    let mut add_indices = Vec::new();
+    let mut skipped = 0usize;
+    let mut similar = 0usize;
+    for (idx, p) in imported.iter().enumerate() {
+        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if !id.is_empty() && existing_ids.contains(id) {
+            skipped += 1;
+            continue;
+        }
+        if existing_accounts.contains(&profile_account_key(p)) {
+            similar += 1;
+        }
+        add_indices.push(idx);
+    }
+    ImportMergeDecision {
+        add_indices,
+        skipped,
+        similar,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -43797,16 +44100,14 @@ async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
 // ── Crypt Overlay - Transparent Encryption Layer ─────────────────
 
 /// Maximum directory recursion depth for native AeroCrypt folder-tree
-/// traversal. Matches the rclone-crypt overlay bound
-/// (`RCLONE_OVERLAY_MAX_DEPTH` in `lib.rs`) so both overlays refuse
-/// pathologically deep trees identically (rclone-crypt BFS-64 parity).
+/// traversal. Kept at the historical crypt-overlay bound (64) so the CLI
+/// refuses pathologically deep trees identically to the GUI browser.
 const CRYPT_OVERLAY_MAX_DEPTH: usize = 64;
 
 /// Reduce a decrypted name to a single safe local path component, so a tampered
 /// or malformed obfuscated name can never escape the destination directory via
 /// embedded separators or `.`/`..` (defense in depth: a name is attacker
-/// influenced only by someone who already holds the overlay password). Mirrors
-/// `sanitize_local_name` in `lib.rs`.
+/// influenced only by someone who already holds the overlay password).
 fn crypt_sanitize_component(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -46333,6 +46634,106 @@ async fn cmd_hashsum(
     }
 }
 
+/// Resolve the active `--profile`'s crypt overlay (if any) and unlock the
+/// compare keys so `check` / `reconcile` see plaintext remote names and sizes,
+/// closing the same gap the GUI Compare fix closes (Ehud, discussion #364).
+///
+/// Returns `Ok(None)` for a URL invocation or a profile without an enabled
+/// overlay, leaving the plain compare path byte-identical. When an overlay IS
+/// present the unlock must succeed: a missing secret or wrong password returns
+/// an error (fail closed) rather than silently comparing ciphertext, which is
+/// the very bug this closes. The `provider` is borrowed only to download the
+/// AeroCrypt overlay config; rclone-crypt needs no remote round trip.
+async fn cli_unlock_crypt_compare_keys(
+    provider: &mut dyn StorageProvider,
+    remote_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<Option<ftp_client_gui_lib::crypt_compare::CryptCompareKeys>, i32> {
+    let Some(profile_name) = cli.profile.as_deref() else {
+        return Ok(None);
+    };
+    // The connect already opened and matched the profile uniquely; a vault
+    // hiccup here must not mask the plain path, so fall through to None.
+    let Ok(store) = open_vault(cli) else {
+        return Ok(None);
+    };
+    let Ok(profiles) = load_active_user_profiles(cli, &store) else {
+        return Ok(None);
+    };
+    let profile = match match_profile_by_query(&profiles, profile_name) {
+        ProfileMatch::One(p) => p,
+        _ => return Ok(None),
+    };
+    if !profile_has_crypt_overlay(profile) {
+        return Ok(None);
+    }
+
+    let overlay = profile
+        .get("aeroCryptOverlay")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let kind = overlay
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("aerocrypt")
+        .to_string();
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let remote_scope = overlay
+        .get("remoteScope")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| remote_path.to_string());
+    let filename_encryption = overlay
+        .get("filenameEncryption")
+        .and_then(|v| v.as_str())
+        .unwrap_or("standard")
+        .to_string();
+    let directory_name_encryption = overlay
+        .get("directoryNameEncryption")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    // Scope the overlay-secret read to the SAME user the profile was loaded for
+    // (honor --user), not the persistent active user: otherwise `--user other`
+    // reads the wrong partition's overlay password.
+    let uid = scoped_credential_user_id(cli, &store);
+    let password = read_server_cred(&store, uid, &format!("aerocrypt_overlay_pw_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_PASSWORD").ok())
+        .unwrap_or_default();
+    if password.is_empty() {
+        print_error(
+            format,
+            "Crypt overlay profile has no stored password. Store it in the AeroFTP GUI, or set AEROFTP_CRYPT_OVERLAY_PASSWORD.",
+            5,
+        );
+        return Err(5);
+    }
+    let salt = read_server_cred(&store, uid, &format!("aerocrypt_overlay_salt_{}", id))
+        .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
+        .unwrap_or_default();
+
+    let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
+        kind,
+        remote_scope,
+        filename_encryption,
+        directory_name_encryption,
+        off_suffix: None,
+    };
+    match ftp_client_gui_lib::crypt_compare::unlock_overlay_keys(
+        provider, &params, &password, &salt,
+    )
+    .await
+    {
+        Ok(keys) => Ok(Some(keys)),
+        Err(e) => {
+            print_error(format, &format!("Crypt overlay unlock failed: {}", e), 6);
+            Err(6)
+        }
+    }
+}
+
 async fn cmd_check(
     url: &str,
     local_path: &str,
@@ -46365,13 +46766,39 @@ async fn cmd_check(
     use ftp_client_gui_lib::sync_core::{
         compare_trees, scan_local_tree, scan_remote_tree, ScanOptions,
     };
+    // When the profile carries a crypt overlay, unlock the compare keys before
+    // the scan so the remote tree is decrypted (names + rclone sizes) to match
+    // the plaintext local tree. Fail closed if the overlay cannot be unlocked.
+    let crypt_keys =
+        match cli_unlock_crypt_compare_keys(provider.as_mut(), remote_path, cli, format).await {
+            Ok(keys) => keys,
+            Err(code) => {
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
+    let crypt_active = crypt_keys.is_some();
     let scan_opts = ScanOptions {
-        compute_checksum: checksum,
+        compute_checksum: checksum && !crypt_active,
+        disable_recursive_fastpath: crypt_active,
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
     let locals = scan_local_tree(local_path, &scan_opts);
-    let remotes = scan_remote_tree(&mut provider, remote_path, &scan_opts).await;
+    let mut remotes = scan_remote_tree(&mut provider, remote_path, &scan_opts).await;
+    if let Some(keys) = &crypt_keys {
+        let raw_len = remotes.len();
+        remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
+        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+            print_error(
+                format,
+                "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.",
+                6,
+            );
+            let _ = provider.disconnect().await;
+            return 6;
+        }
+    }
     let diff = compare_trees(&locals, &remotes, one_way);
 
     let match_count = diff.match_count() as u32;
@@ -46916,11 +47343,25 @@ async fn cmd_reconcile(
         }
     }
 
+    // Unlock the profile's crypt overlay (if any) before scanning so the remote
+    // tree is decrypted to match the plaintext local tree. Fail closed when the
+    // overlay cannot be unlocked, instead of reporting every file as drift.
+    let crypt_keys =
+        match cli_unlock_crypt_compare_keys(provider.as_mut(), remote_path, cli, format).await {
+            Ok(keys) => keys,
+            Err(code) => {
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
+    let crypt_active = crypt_keys.is_some();
+
     use ftp_client_gui_lib::sync_core::{compare_trees, ScanOptions};
     let scan_opts = ScanOptions {
         exclude_patterns: all_exclude,
-        compute_checksum: checksum,
-        compute_remote_checksum: checksum,
+        compute_checksum: checksum && !crypt_active,
+        compute_remote_checksum: checksum && !crypt_active,
+        disable_recursive_fastpath: crypt_active,
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
@@ -46931,11 +47372,24 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (remotes, remote_health) =
+    let (mut remotes, remote_health) =
         scan_remote_tree_with_progress(&mut provider, remote_path, &scan_opts, &remote_spinner)
             .await;
     if let Some(pb) = remote_spinner {
         pb.finish_and_clear();
+    }
+    if let Some(keys) = &crypt_keys {
+        let raw_len = remotes.len();
+        remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
+        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+            print_error(
+                format,
+                "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.",
+                6,
+            );
+            let _ = provider.disconnect().await;
+            return 6;
+        }
     }
     // TX-01: an incomplete remote listing makes "missing_remote" unreliable; if a
     // later `sync --from-reconcile --delete` trusted this file it could delete
@@ -55705,12 +56159,13 @@ async fn main() {
                         print_error(format, "Password required for crypt init", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_init(u, path, &pw, *force, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            path,
+                            "/",
+                        );
+                        cmd_crypt_init(&u, &dir, &pw, *force, &cli, format).await
                     }
                 }
                 CryptCommands::Ls {
@@ -55724,12 +56179,13 @@ async fn main() {
                         print_error(format, "Password required for crypt ls", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_ls(u, path, &pw, *recursive, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            path,
+                            "/",
+                        );
+                        cmd_crypt_ls(&u, &dir, &pw, *recursive, &cli, format).await
                     }
                 }
                 CryptCommands::Put {
@@ -55744,12 +56200,13 @@ async fn main() {
                         print_error(format, "Password required for crypt put", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_put(u, local, remote, &pw, *recursive, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            remote,
+                            "/",
+                        );
+                        cmd_crypt_put(&u, local, &dir, &pw, *recursive, &cli, format).await
                     }
                 }
                 CryptCommands::Get {
@@ -55765,12 +56222,13 @@ async fn main() {
                         print_error(format, "Password required for crypt get", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_get(u, remote, path, local, &pw, *recursive, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            path,
+                            "/",
+                        );
+                        cmd_crypt_get(&u, remote, &dir, local, &pw, *recursive, &cli, format).await
                     }
                 }
             }
@@ -56271,6 +56729,34 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn import_appends_phase2_credential_flags_not_preview() {
+        // Phase-1 preview always reports the crypt-overlay secret as absent
+        // (it restores nothing). Phase-2 restores it and reports it present.
+        // The persisted profile must take the phase-2 flag, otherwise an
+        // imported crypt-overlay profile never auto-unlocks (regression: the
+        // CLI used to push the preview and discard the phase-2 result).
+        let imported = vec![
+            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": false}),
+            json!({"id": "b", "name": "B", "hasStoredAeroCryptPassword": false}),
+        ];
+        let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
+            std::collections::HashMap::new();
+        restored_by_id.insert(
+            "a".to_string(),
+            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": true}),
+        );
+        // "b" had no secret in the file, so phase 2 returns nothing for it.
+        let out = merged_added_profiles(&[0, 1], &imported, &restored_by_id);
+        assert_eq!(out.len(), 2);
+        // Restored profile carries the corrected (true) flag from phase 2.
+        assert_eq!(out[0]["id"], json!("a"));
+        assert_eq!(out[0]["hasStoredAeroCryptPassword"], json!(true));
+        // No phase-2 entry -> falls back to the preview verbatim (flag false).
+        assert_eq!(out[1]["id"], json!("b"));
+        assert_eq!(out[1]["hasStoredAeroCryptPassword"], json!(false));
     }
 
     #[test]
@@ -59786,6 +60272,155 @@ mod tests {
             "protocol": "ftp",
             "host": "example.com",
         })
+    }
+
+    fn name_of<'a>(m: &ProfileMatch<'a>) -> Option<&'a str> {
+        match m {
+            ProfileMatch::One(p) => p.get("name").and_then(|v| v.as_str()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn match_profile_by_query_resolves_one_based_index() {
+        let profiles = vec![make_profile("alpha"), make_profile("beta")];
+        assert_eq!(
+            name_of(&match_profile_by_query(&profiles, "1")),
+            Some("alpha")
+        );
+        assert_eq!(
+            name_of(&match_profile_by_query(&profiles, "2")),
+            Some("beta")
+        );
+        assert!(matches!(
+            match_profile_by_query(&profiles, "3"),
+            ProfileMatch::None
+        ));
+    }
+
+    #[test]
+    fn match_profile_by_query_exact_name_is_case_insensitive() {
+        let profiles = vec![make_profile("Prod-Web"), make_profile("staging")];
+        assert_eq!(
+            name_of(&match_profile_by_query(&profiles, "prod-web")),
+            Some("Prod-Web")
+        );
+    }
+
+    #[test]
+    fn match_profile_by_query_matches_exact_id_before_substring() {
+        let profiles = vec![
+            json!({ "name": "alpha", "id": "srv-123" }),
+            json!({ "name": "alpha-clone", "id": "srv-999" }),
+        ];
+        // The id query must win even though it is also a substring of nothing.
+        assert_eq!(
+            name_of(&match_profile_by_query(&profiles, "srv-999")),
+            Some("alpha-clone")
+        );
+    }
+
+    #[test]
+    fn match_profile_by_query_unique_substring_and_ambiguity() {
+        let profiles = vec![
+            make_profile("prod-web"),
+            make_profile("prod-db"),
+            make_profile("staging"),
+        ];
+        // Unique substring resolves.
+        assert_eq!(
+            name_of(&match_profile_by_query(&profiles, "staging")),
+            Some("staging")
+        );
+        // Shared substring is ambiguous and lists every candidate.
+        match match_profile_by_query(&profiles, "prod") {
+            ProfileMatch::Ambiguous(names) => {
+                assert_eq!(names, vec!["prod-web".to_string(), "prod-db".to_string()]);
+            }
+            _ => panic!("expected ambiguous match for shared substring"),
+        }
+    }
+
+    #[test]
+    fn decide_import_merge_keeps_distinct_profiles_sharing_an_account() {
+        let current = vec![json!({"id": "a", "host": "h", "port": 22, "username": "u"})];
+        let imported = vec![
+            // same id: a true re-import, skipped
+            json!({"id": "a", "host": "h", "port": 22, "username": "u"}),
+            // same account (host:port:username) but a new id + crypt overlay:
+            // legitimately distinct, must be kept and flagged similar
+            json!({"id": "b", "host": "h", "port": 22, "username": "u",
+                   "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"}}),
+            // same account, new id, different protocol (FTP vs FTPS style): kept, similar
+            json!({"id": "c", "host": "h", "port": 22, "username": "u", "protocol": "ftps"}),
+            // unrelated account: kept, not similar
+            json!({"id": "d", "host": "other", "port": 21, "username": "x"}),
+        ];
+        let decision = decide_import_merge(&imported, &current);
+        assert_eq!(
+            decision.add_indices,
+            vec![1, 2, 3],
+            "only the same-id re-import is skipped"
+        );
+        assert_eq!(decision.skipped, 1);
+        assert_eq!(
+            decision.similar, 2,
+            "b and c share the account with existing 'a'"
+        );
+    }
+
+    #[test]
+    fn profile_has_crypt_overlay_detects_enabled_binding() {
+        let plain = make_profile("plain");
+        assert!(!profile_has_crypt_overlay(&plain));
+
+        let disabled = json!({
+            "name": "disabled-overlay",
+            "aeroCryptOverlay": { "enabled": false, "kind": "rclone-crypt" }
+        });
+        assert!(!profile_has_crypt_overlay(&disabled));
+
+        let enabled = json!({
+            "name": "enabled-overlay",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/enc" }
+        });
+        assert!(profile_has_crypt_overlay(&enabled));
+    }
+
+    #[test]
+    fn resolve_profile_crypt_positionals_shifts_path_slot_under_profile() {
+        // With --profile, a path in the url slot is the encrypted directory:
+        // shift it into the (default) path slot so `crypt init X /enc` works.
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "/home/user/enc", "/", "/"),
+            ("_".to_string(), "/home/user/enc".to_string())
+        );
+        // The placeholder stays a placeholder, path untouched.
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "_", "/", "/"),
+            ("_".to_string(), "/".to_string())
+        );
+        // If BOTH positionals were given, keep the explicit path and drop the
+        // bogus url (the profile provides the connection anyway).
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "/wrong", "/sub", "/"),
+            ("_".to_string(), "/sub".to_string())
+        );
+        // A real URL in the url slot under --profile is left alone (edge: the
+        // user explicitly passed a connection string; "://" opts out).
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "sftp://host/enc", "/", "/"),
+            ("sftp://host/enc".to_string(), "/".to_string())
+        );
+        // No profile: URL-mode is byte-identical, nothing is shifted.
+        assert_eq!(
+            resolve_profile_crypt_positionals(false, "sftp://host", "/enc", "/"),
+            ("sftp://host".to_string(), "/enc".to_string())
+        );
+        assert_eq!(
+            resolve_profile_crypt_positionals(false, "_", "/", "/"),
+            ("_".to_string(), "/".to_string())
+        );
     }
 
     #[test]

@@ -47,6 +47,16 @@ export function useFaviconDetection(
     const isProviderProtocol = PROVIDER_PROTOCOLS.has(protocol);
     if (!isServerProtocol && !isProviderProtocol) return;
 
+    // Skip crypt-overlay sessions: an encrypted store never hosts a web project,
+    // so probing it for favicon.ico/manifest/icons is wasted I/O that floods the
+    // remote log with reads for files that cannot exist (Fix H). cryptOverlayKind
+    // is the tab's persistent overlay capability, set on connect and kept across
+    // lock/unlock, so this covers both wrapped and still-locked crypt sessions.
+    if (session.cryptOverlayKind) {
+      checkedRef.current.add(session.id);
+      return;
+    }
+
     // Use session.id (unique per connection) so each new connection gets a fresh check.
     // Previously used serverId which cached negative results across connections.
     const cacheKey = session.id;

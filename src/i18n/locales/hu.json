@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Sötét",
             "imagePreviewBgLight": "Világos",
             "imagePreviewBgCustom": "Egyéni",
-            "showTransferProgress": "Átviteli folyamatjelző megjelenítése"
+            "showTransferProgress": "Átviteli folyamatjelző megjelenítése",
+            "similarToExisting": "hasonlítanak egy meglévő profilra"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Felülírás",
             "skip": "Kihagyás",
             "rename": "Átnevezés",
+            "resume": "Folytatás",
+            "resumeHint": "A megszakadt átvitel folytatása újraindítás helyett",
             "cancel": "Mégse"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Név visszafejtése",
             "decryptFileFromDisk": "Fájl visszafejtése lemezről",
             "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
-            "encryptedUploadCompleted": "Titkosított feltöltés kész: {path}",
-            "remoteBrowser": "Távoli böngésző (átlátszó)",
-            "upload": "Feltöltés",
-            "up": "Fel",
-            "path": "Útvonal: {path}",
-            "dirIvNotFound": "dirIV nem található az aktuális mappában: a nevek titkosítva maradhatnak.",
-            "loading": "Betöltés...",
-            "emptyFolder": "Üres mappa",
-            "nameNotDecrypted": "név nincs visszafejtve",
-            "download": "Letöltés",
             "serverHashGated": "A kiszolgálóoldali ellenőrzőösszeg nem érhető el, amíg titkosított átfedés aktív (a titkosított szöveget hashelné, nem a fájlt).",
             "outsideScope": "A titkosított területen kívül (az itteni fájlok nincsenek titkosítva)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Nem található AeroCrypt réteg az aktuális távoli mappában. Váltson az „Új létrehozása” lehetőségre egy létrehozásához.",
             "remoteUnlocked": "Távoli kiszolgáló feloldva (azonosító: {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Titkosított távoli böngésző",
-            "upload": "Feltöltés",
-            "up": "Fel",
-            "path": "Útvonal: {path}",
-            "loading": "Betöltés...",
-            "emptyFolder": "Üres mappa",
-            "download": "Letöltés",
-            "nameNotDecrypted": "a nevet nem sikerült visszafejteni",
-            "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
-            "encryptedUploadCompleted": "Titkosított feltöltés befejezve: {path}",
             "lock": "Réteg zárolása"
         },
         "aerocryptProfile": {

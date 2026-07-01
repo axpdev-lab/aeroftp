@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "深色",
             "imagePreviewBgLight": "浅色",
             "imagePreviewBgCustom": "自定义",
-            "showTransferProgress": "显示传输进度条"
+            "showTransferProgress": "显示传输进度条",
+            "similarToExisting": "与现有配置文件相似"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "覆盖",
             "skip": "跳过",
             "rename": "重命名",
+            "resume": "继续",
+            "resumeHint": "继续中断的传输，而不是重新开始",
             "cancel": "取消"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "解密名称",
             "decryptFileFromDisk": "从磁盘解密文件",
             "fileDecryptedTo": "文件已解密至 {path}",
-            "encryptedUploadCompleted": "加密上传完成:{path}",
-            "remoteBrowser": "远程浏览器(透明)",
-            "upload": "上传",
-            "up": "向上",
-            "path": "路径:{path}",
-            "dirIvNotFound": "在当前文件夹中未找到 dirIV:名称可能保持加密状态。",
-            "loading": "加载中...",
-            "emptyFolder": "空文件夹",
-            "nameNotDecrypted": "名称未解密",
-            "download": "下载",
             "serverHashGated": "加密叠加层处于活动状态时无法使用服务器端校验和（它会对密文而非您的文件进行哈希）。",
             "outsideScope": "加密区域之外（此处文件未加密）"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "在当前远程文件夹中未找到 AeroCrypt 叠加层。切换到“新建”来创建一个。",
             "remoteUnlocked": "远程已解锁（ID {id}）",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "加密远程浏览器",
-            "upload": "上传",
-            "up": "上一级",
-            "path": "路径：{path}",
-            "loading": "正在加载...",
-            "emptyFolder": "空文件夹",
-            "download": "下载",
-            "nameNotDecrypted": "无法解密名称",
-            "fileDecryptedTo": "文件已解密至 {path}",
-            "encryptedUploadCompleted": "加密上传已完成：{path}",
             "lock": "锁定叠加层"
         },
         "aerocryptProfile": {

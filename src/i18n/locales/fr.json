@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Sombre",
             "imagePreviewBgLight": "Clair",
             "imagePreviewBgCustom": "Personnalisé",
-            "showTransferProgress": "Afficher la barre de progression du transfert"
+            "showTransferProgress": "Afficher la barre de progression du transfert",
+            "similarToExisting": "ressemblent à un profil existant"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Écraser",
             "skip": "Ignorer",
             "rename": "Renommer",
+            "resume": "Reprendre",
+            "resumeHint": "Reprendre le transfert interrompu au lieu de le recommencer",
             "cancel": "Annuler"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Déchiffrer le nom",
             "decryptFileFromDisk": "Déchiffrer un fichier depuis le disque",
             "fileDecryptedTo": "Fichier déchiffré vers {path}",
-            "encryptedUploadCompleted": "Envoi chiffré terminé : {path}",
-            "remoteBrowser": "Navigateur distant (transparent)",
-            "upload": "Envoyer",
-            "up": "Haut",
-            "path": "Chemin : {path}",
-            "dirIvNotFound": "dirIV introuvable dans le dossier actuel : les noms peuvent rester chiffrés.",
-            "loading": "Chargement...",
-            "emptyFolder": "Dossier vide",
-            "nameNotDecrypted": "nom non déchiffré",
-            "download": "Télécharger",
             "serverHashGated": "Somme de contrôle côté serveur indisponible lorsqu'une surcouche chiffrée est active (elle hacherait le texte chiffré, pas votre fichier).",
             "outsideScope": "Hors de la zone chiffrée (les fichiers ici ne sont pas chiffrés)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Aucune superposition AeroCrypt trouvée dans le dossier distant actuel. Passez à « En créer une » pour en créer une.",
             "remoteUnlocked": "Distant déverrouillé (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Explorateur distant chiffré",
-            "upload": "Envoyer",
-            "up": "Remonter",
-            "path": "Chemin : {path}",
-            "loading": "Chargement…",
-            "emptyFolder": "Dossier vide",
-            "download": "Télécharger",
-            "nameNotDecrypted": "le nom n'a pas pu être déchiffré",
-            "fileDecryptedTo": "Fichier déchiffré vers {path}",
-            "encryptedUploadCompleted": "Envoi chiffré terminé : {path}",
             "lock": "Verrouiller la superposition"
         },
         "aerocryptProfile": {

@@ -1099,15 +1099,33 @@ pub async fn execute_tool(
                 );
             }
 
+            // When the profile carries a crypt overlay, the remote tree is
+            // encrypted: decrypt it (names + rclone sizes) to match the
+            // plaintext local tree, the same fix the GUI and CLI Compare carry
+            // (Ehud, discussion #364). Resolve the overlay secrets before the
+            // scan so server-side checksums and the flat fast-path are disabled
+            // under crypt. A missing overlay password fails closed here.
+            let overlay_secrets =
+                match crate::mcp::pool::resolve_overlay_secrets(&server, &remote_dir) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+                    }
+                };
+            let crypt_active = overlay_secrets.is_some();
+
             // When `checksum=true`, request hashes on BOTH sides. The scan
             // silently falls back to size-only if the provider lacks server-
-            // side checksum support: handled inside `scan_remote_tree`.
+            // side checksum support: handled inside `scan_remote_tree`. Under a
+            // crypt overlay the remote hash is over ciphertext, so it is never
+            // requested.
             let opts = ScanOptions {
                 max_depth,
                 exclude_patterns: exclude,
                 files_from,
-                compute_checksum: checksum,
-                compute_remote_checksum: checksum,
+                compute_checksum: checksum && !crypt_active,
+                compute_remote_checksum: checksum && !crypt_active,
+                disable_recursive_fastpath: crypt_active,
                 ..Default::default()
             };
 
@@ -1116,8 +1134,48 @@ pub async fn execute_tool(
                 Ok(arc) => {
                     let mut p = arc.lock().await;
                     let supports_remote_checksum = p.supports_checksum();
+                    // Unlock the overlay keys (rclone-crypt from password+salt,
+                    // aerocrypt by downloading the remote config) while holding
+                    // the provider lock, before the remote scan.
+                    let crypt_keys = match &overlay_secrets {
+                        Some((params, password, salt)) => {
+                            match crate::crypt_compare::unlock_overlay_keys(
+                                p.as_mut(),
+                                params,
+                                password,
+                                salt,
+                            )
+                            .await
+                            {
+                                Ok(keys) => Some(keys),
+                                Err(e) => {
+                                    return finish(
+                                        tool_name,
+                                        Some(&server),
+                                        Some(&remote_dir),
+                                        err(format!("Crypt overlay unlock failed: {}", e)),
+                                        start,
+                                    );
+                                }
+                            }
+                        }
+                        None => None,
+                    };
                     let locals = scan_local_tree(&local_dir, &opts);
-                    let remotes = scan_remote_tree(&mut p, &remote_dir, &opts).await;
+                    let mut remotes = scan_remote_tree(&mut p, &remote_dir, &opts).await;
+                    if let Some(keys) = &crypt_keys {
+                        let raw_len = remotes.len();
+                        remotes = crate::crypt_compare::normalize_remote_entries(remotes, keys);
+                        if keys.wrong_key_suspected(raw_len, remotes.len()) {
+                            return finish(
+                                tool_name,
+                                Some(&server),
+                                Some(&remote_dir),
+                                err("Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote.".to_string()),
+                                start,
+                            );
+                        }
+                    }
                     let diff = compare_trees(&locals, &remotes, one_way);
                     if summary_only {
                         // Skip the per-entry arrays entirely. Agents call

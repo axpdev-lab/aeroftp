@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "गहरा",
             "imagePreviewBgLight": "हल्का",
             "imagePreviewBgCustom": "कस्टम",
-            "showTransferProgress": "स्थानांतरण प्रगति बार दिखाएं"
+            "showTransferProgress": "स्थानांतरण प्रगति बार दिखाएं",
+            "similarToExisting": "मौजूदा प्रोफ़ाइल से मिलते-जुलते हैं"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "अधिलेखित करें",
             "skip": "छोड़ें",
             "rename": "नाम बदलें",
+            "resume": "फिर से शुरू करें",
+            "resumeHint": "बाधित स्थानांतरण को फिर से शुरू करने के बजाय जारी रखें",
             "cancel": "रद्द करें"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "नाम डिक्रिप्ट करें",
             "decryptFileFromDisk": "डिस्क से फ़ाइल डिक्रिप्ट करें",
             "fileDecryptedTo": "फ़ाइल {path} पर डिक्रिप्ट की गई",
-            "encryptedUploadCompleted": "एन्क्रिप्टेड अपलोड पूर्ण: {path}",
-            "remoteBrowser": "रिमोट ब्राउज़र (पारदर्शी)",
-            "upload": "अपलोड",
-            "up": "ऊपर",
-            "path": "पथ: {path}",
-            "dirIvNotFound": "वर्तमान फ़ोल्डर में dirIV नहीं मिला: नाम एन्क्रिप्टेड रह सकते हैं।",
-            "loading": "लोड हो रहा है...",
-            "emptyFolder": "खाली फ़ोल्डर",
-            "nameNotDecrypted": "नाम डिक्रिप्ट नहीं हुआ",
-            "download": "डाउनलोड",
             "serverHashGated": "एन्क्रिप्टेड ओवरले सक्रिय होने पर सर्वर-साइड चेकसम उपलब्ध नहीं है (यह आपकी फ़ाइल नहीं, सिफरटेक्स्ट का हैश करेगा)।",
             "outsideScope": "एन्क्रिप्टेड क्षेत्र के बाहर (यहाँ की फ़ाइलें एन्क्रिप्टेड नहीं हैं)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "वर्तमान रिमोट फ़ोल्डर में कोई AeroCrypt ओवरले नहीं मिला। एक बनाने के लिए \"नया बनाएं\" पर जाएं।",
             "remoteUnlocked": "रिमोट अनलॉक हुआ (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "एन्क्रिप्टेड रिमोट ब्राउज़र",
-            "upload": "अपलोड",
-            "up": "ऊपर",
-            "path": "पथ: {path}",
-            "loading": "लोड हो रहा है...",
-            "emptyFolder": "खाली फ़ोल्डर",
-            "download": "डाउनलोड",
-            "nameNotDecrypted": "नाम डिक्रिप्ट नहीं किया जा सका",
-            "fileDecryptedTo": "फ़ाइल {path} पर डिक्रिप्ट की गई",
-            "encryptedUploadCompleted": "एन्क्रिप्टेड अपलोड पूर्ण: {path}",
             "lock": "ओवरले लॉक करें"
         },
         "aerocryptProfile": {

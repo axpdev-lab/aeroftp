@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Մուգ",
             "imagePreviewBgLight": "Բաց",
             "imagePreviewBgCustom": "Հատուկ",
-            "showTransferProgress": "Ցույց տալ փոխանցման առաջընթացի գոտին"
+            "showTransferProgress": "Ցույց տալ փոխանցման առաջընթացի գոտին",
+            "similarToExisting": "նման են առկա պրոֆիլին"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1794,6 +1795,8 @@
             "overwrite": "Վերագրանցել",
             "skip": "Բաց թողնել",
             "rename": "Անվանափոխել",
+            "resume": "Վերսկսել",
+            "resumeHint": "Շարունակել ընդհատված փոխանցումը՝ նորից չսկսելով",
             "cancel": "Չեղարկել"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Վերծանել անունը",
             "decryptFileFromDisk": "Վերծանել ֆայլը սկավառակից",
             "fileDecryptedTo": "Ֆայլը վերծանված է {path}-ում",
-            "encryptedUploadCompleted": "Կոդավորված վերբեռնումն ավարտված է. {path}",
-            "remoteBrowser": "Հեռակա դիտարկիչ (թափանցիկ)",
-            "upload": "Վերբեռնել",
-            "up": "Վերև",
-            "path": "Ուղի. {path}",
-            "dirIvNotFound": "dirIV-ը չի գտնվել ընթացիկ թղթապանակում. անունները կարող են մնալ կոդավորված:",
-            "loading": "Բեռնվում է...",
-            "emptyFolder": "Դատարկ թղթապանակ",
-            "nameNotDecrypted": "անունը վերծանված չէ",
-            "download": "Ներբեռնել",
             "serverHashGated": "Սերվերի կողմից ստուգիչ գումարը հասանելի չէ, երբ ակտիվ է գաղտնագրված շերտը (այն կհաշվարկի գաղտնագրված տեքստի հեշը, ոչ թե ձեր ֆայլի)։",
             "outsideScope": "Գաղտնագրված տիրույթից դուրս (այստեղի ֆայլերը գաղտնագրված չեն)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Ընթացիկ հեռավոր թղթապանակում AeroCrypt ծածկույթ չի գտնվել։ Անցեք «Ստեղծել նորը»՝ մեկը ստեղծելու համար։",
             "remoteUnlocked": "Հեռավորն ապակողպվեց (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Կոդավորված հեռավոր դիտարկիչ",
-            "upload": "Վերբեռնել",
-            "up": "Վեր",
-            "path": "Ուղի՝ {path}",
-            "loading": "Բեռնվում է...",
-            "emptyFolder": "Դատարկ թղթապանակ",
-            "download": "Ներբեռնել",
-            "nameNotDecrypted": "անունը հնարավոր չեղավ ապակոդավորել",
-            "fileDecryptedTo": "Ֆայլն ապակոդավորվեց {path}",
-            "encryptedUploadCompleted": "Կոդավորված վերբեռնումն ավարտվեց՝ {path}",
             "lock": "Կողպել ծածկույթը"
         },
         "aerocryptProfile": {

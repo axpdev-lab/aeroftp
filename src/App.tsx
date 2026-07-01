@@ -96,30 +96,15 @@ interface LocalLocalRunOptions {
   maniac?: boolean;
 }
 
-interface RcloneCryptBrowserEntry {
-  name: string;
-  path: string;
-  is_dir: boolean;
-  size: number;
-  modified: string | null;
-  permissions: string | null;
-  decrypted_name: string;
-  decrypt_ok: boolean;
-}
+type ProviderCryptOverlayKind = 'rclone-crypt' | 'aerocrypt';
 
-interface RcloneCryptBrowserListResponse {
-  current_path: string;
-  display_current_path: string;
-  dir_iv_found: boolean;
-  files: RcloneCryptBrowserEntry[];
-}
-
-// Native AeroCrypt overlay list response: same entry shape as rclone-crypt, minus
-// the rclone-specific dir_iv_found. Reuses RcloneCryptBrowserEntry structurally.
-interface AeroCryptBrowserListResponse {
-  current_path: string;
-  display_current_path: string;
-  files: RcloneCryptBrowserEntry[];
+interface ProviderCryptOverlayApply {
+  kind: ProviderCryptOverlayKind;
+  remoteScope?: string | null;
+  filenameEncryption?: string | null;
+  directoryNameEncryption?: boolean | null;
+  password: string;
+  salt?: string | null;
 }
 
 interface ImportedServerProfile {
@@ -191,6 +176,7 @@ import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErro
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './utils/connectCancel';
+import { safePickerStartDir } from './utils/safePickerDir';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -450,6 +436,8 @@ import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLo
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
 import { useActivityLog } from './hooks/useActivityLog';
+import { useMarqueeSelection } from './hooks/useMarqueeSelection';
+import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useSettings } from './hooks/useSettings';
@@ -912,6 +900,24 @@ const App: React.FC = () => {
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
   const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rubber-band (marquee) multi-selection + click-blank-to-deselect for the
+  // REMOTE panel, mirroring the local panel (#270). The hook owns the empty
+  // space inside the remote scroll container; file rows/cards keep their own
+  // click handlers. Disabled while a remote inline rename input is focused.
+  const remoteFileScrollRef = useRef<HTMLDivElement>(null);
+  const remoteMarquee = useMarqueeSelection({
+    containerRef: remoteFileScrollRef,
+    itemSelector: 'tr[data-file-row], [data-file-card]',
+    selected: selectedRemoteFiles,
+    setSelected: setSelectedRemoteFiles,
+    setLastIndex: setLastSelectedRemoteIndex,
+    onBlankClick: () => {
+      setSelectedRemoteFiles(prev => (prev.size === 0 ? prev : new Set()));
+      setLastSelectedRemoteIndex(null);
+    },
+    disabled: inlineRename?.isRemote === true,
+  });
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [multiPropertiesDialog, setMultiPropertiesDialog] = useState<MultiFileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
@@ -981,6 +987,11 @@ const App: React.FC = () => {
     localLocal: boolean;
   } | null>(null);
   const remoteSyncRunningRef = useRef(false);
+  // FINDING-4: true from pressing Stop during a connected-remote AeroSync run
+  // until the run actually unwinds. Drives the Stop-button spinner (the run's
+  // files are not in transferQueue, so the batch two-level cancel can't surface
+  // "cancelling" feedback here).
+  const [syncCancelling, setSyncCancelling] = useState(false);
   // GAP-7: canary trial result + the deferred full-run approval callback.
   const [canaryResult, setCanaryResult] = useState<{
     result: CanaryResult;
@@ -1006,10 +1017,9 @@ const App: React.FC = () => {
   const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (isConnected || !rcloneCryptVaultId) return;
-    const vaultId = rcloneCryptVaultId;
     setRcloneCryptVaultId(null);
     setCryptOverlayOwner(null);
-    void invoke('rclone_crypt_lock', { vaultId }).catch(() => {
+    void invoke('provider_clear_crypt_overlay', { full: true }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
   }, [isConnected, rcloneCryptVaultId]);
@@ -1043,9 +1053,10 @@ const App: React.FC = () => {
       setRcloneCryptImportBanner(null);
     }
   }, [isConnected]);
-  // Native AeroCrypt overlay (P2c): parallel to the rclone-crypt overlay above,
-  // on our own aerocrypt_provider_* backend. The two provider overlays are mutually
-  // exclusive (a panel has at most one active); transfer-flow picks via activeCryptOverlay().
+  // Native AeroCrypt overlay (P2c): parallel to the rclone-crypt overlay above.
+  // The two provider overlays are mutually exclusive (a panel has at most one
+  // active); Phase 3 wraps the live provider instead of routing each operation
+  // through per-kind commands.
   const [showAeroCryptUnlock, setShowAeroCryptUnlock] = useState(false);
   const [aeroCryptVaultId, setAeroCryptVaultId] = useState<string | null>(null);
   // P3.3: deferred overlay auto-unlock (runs in a post-connect effect at settled
@@ -1056,8 +1067,8 @@ const App: React.FC = () => {
   // names stay wrapped in DecryptingText long enough to play the reveal ("puff")
   // instead of unmounting to plain text mid-transition.
   const [overlayRevealing, setOverlayRevealing] = useState(false);
-  // The owner of the active (or in-progress) encrypted overlay. Both the crypt
-  // vault routing (activeCryptOverlay) and the decryption animation are gated on
+  // The owner of the active (or in-progress) encrypted overlay. Both the provider
+  // decorator state and the decryption animation are gated on
   // this owner matching the active session, so an overlay can NEVER bleed onto
   // another connected server: a different tab sees no overlay (its uploads stay
   // plaintext) and no animation.
@@ -1109,10 +1120,9 @@ const App: React.FC = () => {
   const overlaySuppressedRef = useRef(false);
   useEffect(() => {
     if (isConnected || !aeroCryptVaultId) return;
-    const vaultId = aeroCryptVaultId;
     setAeroCryptVaultId(null);
     setCryptOverlayOwner(null);
-    void invoke('aerocrypt_lock', { vaultId }).catch(() => {
+    void invoke('provider_clear_crypt_overlay', { full: true }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
   }, [isConnected, aeroCryptVaultId]);
@@ -3485,19 +3495,17 @@ interface UpdateVerificationInfo {
     if (!kind || overlayBadgeDecrypting) return;
     // ACTIVE -> lock (drop the live vault, keep the badge, show raw names).
     if (rcloneCryptVaultId || aeroCryptVaultId) {
-      if (aeroCryptVaultId) {
-        const vaultId = aeroCryptVaultId;
-        setAeroCryptVaultId(null);
-        void invoke('aerocrypt_lock', { vaultId }).catch(() => { });
-      }
-      if (rcloneCryptVaultId) {
-        const vaultId = rcloneCryptVaultId;
-        setRcloneCryptVaultId(null);
-        void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
-      }
+      setAeroCryptVaultId(null);
+      setRcloneCryptVaultId(null);
       setCryptOverlayOwner(null);
       lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
-      void loadRemoteFiles(undefined, true, true);
+      void (async () => {
+        try {
+          await invoke('provider_clear_crypt_overlay', { full: true });
+        } finally {
+          await loadRemoteFiles(undefined, true, true);
+        }
+      })();
       return;
     }
     // LOCKED -> re-unlock. Saved profiles re-run the auto-unlock+decrypt flow
@@ -4358,23 +4366,6 @@ interface UpdateVerificationInfo {
     };
   }, [notify, toast, t]);
 
-  const mapRcloneCryptListResponse = (cryptResponse: { current_path: string; display_current_path: string; files: RcloneCryptBrowserEntry[] }) => ({
-    current_path: cryptResponse.current_path,
-    display_current_path: cryptResponse.display_current_path,
-    files: cryptResponse.files.map((file) => ({
-      name: file.decrypted_name,
-      path: file.path,
-      is_dir: file.is_dir,
-      size: file.size,
-      modified: file.modified,
-      permissions: file.permissions,
-      metadata: {
-        encrypted_name: file.name,
-        decrypt_ok: file.decrypt_ok ? 'true' : 'false',
-      },
-    })),
-  }) as FileListResponse & { display_current_path?: string };
-
   const applyRemoteFileList = (response: FileListResponse & { display_current_path?: string }) => {
     setRemoteFiles(response.files);
     setCurrentRemotePath(response.current_path);
@@ -4391,41 +4382,9 @@ interface UpdateVerificationInfo {
     });
   };
 
-  const loadRcloneCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
-    const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
-      vaultId,
-      path: path ?? null,
-      plainPath: !!plainPath,
-    });
-    const response = mapRcloneCryptListResponse(cryptResponse);
-    applyRemoteFileList(response);
-    return response;
-  };
-
-  const loadAeroCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
-    const cryptResponse = await invoke<AeroCryptBrowserListResponse>('aerocrypt_provider_list', {
-      vaultId,
-      path: path ?? null,
-      plainPath: !!plainPath,
-    });
-    const response = mapRcloneCryptListResponse(cryptResponse);
-    applyRemoteFileList(response);
-    return response;
-  };
-
-  // The active provider-overlay (rclone-crypt OR native AeroCrypt) on the remote
-  // panel, if any. They are mutually exclusive; rclone-first keeps existing behaviour
-  // unchanged. Transfer-flow uses `${prefix}_<op>` so both share one code path.
-  // SESSION-GATED: the overlay only applies to the tab that owns it. On any other
-  // connected server this returns null, so its operations use the plain provider
-  // (uploads stay plaintext, listings show the real names) — an overlay can never
-  // bleed onto a different server, even if a vault id is still held in memory.
-  // The session's overlay binding WITHOUT the B2 fail-closed scope gate: "this tab
-  // owns an unlocked overlay", regardless of where the panel currently sits. B3
-  // routing needs this ungated form to re-anchor the overlay when the user steps
-  // back INTO the anchor from a cleartext (out-of-scope) location, where the gated
-  // activeCryptOverlay() below has already gone null. All path-preserving ops keep
-  // using activeCryptOverlay() so they stay fail-closed on the CURRENT path.
+  // The session's overlay binding WITHOUT the scope gate: "this tab owns an
+  // unlocked overlay", regardless of where the panel currently sits. Cross-boundary
+  // navigation uses this ungated form to clear/re-apply the live provider decorator.
   const rawActiveCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
     if (!cryptOverlayOwnerMatchesActive) return null;
     return rcloneCryptVaultId
@@ -4434,35 +4393,17 @@ interface UpdateVerificationInfo {
         ? { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' as const }
         : null;
   };
+  // Phase 3 frontend migration: operation routing no longer dispatches to
+  // `${prefix}_*` commands. The live ProviderState slot is wrapped by
+  // provider_apply_crypt_overlay, so all browser/transfers use plain provider_*.
+  // Keep the precise return type until Phase 4 removes the legacy command layer.
   const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
-    const overlay = rawActiveCryptOverlay();
-    if (!overlay) return null;
-    // CWP-20B (B2): fail-closed scope gate. The overlay routes an op ONLY while the
-    // active panel's DECRYPTED path is within the session's bound crypt scope.
-    // Outside the scope this returns null, so the op falls through to the plain
-    // provider (real names, normal protocol, plaintext transfers). The predicate
-    // is fail-closed (unknown path or whole-remote scope => inside), so a
-    // normalization mismatch can at worst route an in-scope op through the overlay
-    // (a visible decrypt error), never expose plaintext where encryption was
-    // expected. This is the SAME predicate the path-bar badge uses (overlayInScope)
-    // and, via isCryptOverlayActive() below, the SAME one the CWP-20 action gating
-    // (share-link, server-side checksum) keys on, so badge + routing + gating can
-    // never diverge. In the shipped anchored architecture the path is always within
-    // scope, so this is a no-op until cross-boundary navigation (B3) can leave it.
-    if (!isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath)) return null;
-    return overlay;
+    return null;
   };
-  // P3.4/P3.5 single source of truth: true when the ACTIVE panel is inside an
-  // unlocked crypt overlay scope (either kind, at equal grade). Both the action
-  // gating (share-link, server-side checksum) and the transparent transfer
-  // routing derive from this SAME predicate, so the path-bar "encrypted" badge
-  // and the actual behaviour can never diverge (a badge that lies about scope
-  // is a data-exposure bug). CWP-20B (B2): since activeCryptOverlay() now applies
-  // the fail-closed scope gate, this means "overlay owned AND unlocked AND the
-  // decrypted path is within the bound scope" — outside the scope it is false, so
-  // share-link / server-side checksum re-enable for the plaintext region exactly
-  // as the badge drops to its 'outside' state.
-  const isCryptOverlayActive = (): boolean => activeCryptOverlay() !== null;
+  // Single source of truth for path-bar and action gating. Routing is plain
+  // provider_* now; this only says whether the active session owns an unlocked
+  // overlay and the displayed path is inside its bound plaintext scope.
+  const isCryptOverlayActive = (): boolean => overlayVaultLit && overlayInScope;
 
   // Per-session overlay binding. Each connected tab remembers its own overlay so
   // switching/reconnecting to it restores ITS decrypted view (the single global
@@ -4507,6 +4448,49 @@ interface UpdateVerificationInfo {
     setSessions((prev) => prev.map((s) =>
       sessionMatches(s, match) ? { ...s, cryptOverlay: null, cryptOverlayKind: null } : s,
     ));
+  };
+
+  const cryptOverlaySentinel = (kind: ProviderCryptOverlayKind, owner: string | null | undefined) =>
+    `provider-overlay:${kind}:${owner || 'adhoc'}`;
+
+  const applyProviderCryptOverlay = async (params: ProviderCryptOverlayApply): Promise<string> => {
+    const appliedScope = await invoke<string>('provider_apply_crypt_overlay', {
+      params: {
+        kind: params.kind,
+        remoteScope: params.remoteScope ?? '',
+        filenameEncryption: params.filenameEncryption ?? (params.kind === 'rclone-crypt' ? 'standard' : null),
+        directoryNameEncryption: params.directoryNameEncryption ?? true,
+        password: params.password,
+        salt: params.salt || null,
+      },
+    });
+    return normCryptScope(appliedScope);
+  };
+
+  const positionWrappedProviderAtScope = async (scope: string | null | undefined): Promise<void> => {
+    const normalized = normCryptScope(scope);
+    if (normalized) {
+      await invoke('provider_change_dir', { path: normalized });
+    }
+  };
+
+  const activateProviderCryptOverlay = async (
+    match: { savedServerId?: string; sessionId?: string },
+    params: ProviderCryptOverlayApply,
+    sentinelOwner?: string | null,
+  ): Promise<{ vaultId: string; scope: string }> => {
+    const appliedScope = await applyProviderCryptOverlay(params);
+    await positionWrappedProviderAtScope(appliedScope);
+    const vaultId = cryptOverlaySentinel(params.kind, sentinelOwner);
+    if (params.kind === 'rclone-crypt') {
+      setAeroCryptVaultId(null);
+      setRcloneCryptVaultId(vaultId);
+    } else {
+      setRcloneCryptVaultId(null);
+      setAeroCryptVaultId(vaultId);
+    }
+    bindSessionCryptOverlay(match, vaultId, params.kind, appliedScope);
+    return { vaultId, scope: appliedScope };
   };
 
   // Cheap, side-effect-free probe of a saved profile's overlay binding, used at
@@ -4568,51 +4552,33 @@ interface UpdateVerificationInfo {
       // T3: live activity-log entry, settled to green by the phase-2 reload.
       overlayLogIdRef.current = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
 
-      // Anchor the overlay at the profile's configured remote folder (the
+      // Anchor the decorator at the profile's configured remote folder (the
       // "AeroCrypt bucket"), NOT the live provider pwd. Path-based providers like
       // Filen reset pwd to "/" on connect and never cd when they merely list a
-      // folder, so without an explicit anchor the overlay roots at "/" and the
-      // decrypted reload shows the account root. initialPath is the configured
-      // folder and is always populated; remoteScope is a secondary hint. The
-      // backend cd's into base_path and STAYS, so read_config, the create
-      // fallback, and the listing that follows all operate at the overlay root.
+      // folder, so after applying we explicitly move the wrapped provider to the
+      // plaintext anchor.
       const overlayScope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
-      const overlayBase = overlayScope && overlayScope !== '/' ? overlayScope : null;
 
       try {
-        if (binding.kind === 'rclone-crypt') {
-          if (overlayBase) {
-            await invoke('change_directory', { path: overlayBase }).catch(() => {});
-          }
-          const salt = await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${savedServerId}` }).catch(() => '');
-          const info = await invoke<{ vault_id: string }>('rclone_crypt_unlock', {
-            password,
-            salt: salt || null,
+        const salt = binding.kind === 'rclone-crypt'
+          ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${savedServerId}` }).catch(() => '')
+          : '';
+        const activated = await activateProviderCryptOverlay(
+          { savedServerId },
+          {
+            kind: binding.kind,
+            remoteScope: overlayScope,
             filenameEncryption: binding.filenameEncryption || 'standard',
             directoryNameEncryption: binding.directoryNameEncryption ?? true,
-          });
-          if (info?.vault_id) {
-            setAeroCryptVaultId(null);
-            setRcloneCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'rclone-crypt', overlayScope);
-            return { vaultId: info.vault_id, prefix: 'rclone_crypt_provider' };
-          }
+            password,
+            salt: salt || null,
+          },
+          savedServerId,
+        );
+        if (binding.kind === 'rclone-crypt') {
+          return { vaultId: activated.vaultId, prefix: 'rclone_crypt_provider' };
         } else {
-          const configJson = await invoke<string | null>('aerocrypt_provider_read_config', { basePath: overlayBase }).catch(() => null);
-          const info = configJson
-            ? await invoke<{ vault_id: string }>('aerocrypt_unlock', { password, configJson })
-            : await invoke<{ vault_id: string }>('aerocrypt_provider_create_remote', { password, targetSubpath: overlayBase });
-          if (info?.vault_id) {
-            setRcloneCryptVaultId(null);
-            setAeroCryptVaultId(info.vault_id);
-            bindSessionCryptOverlay({ savedServerId }, info.vault_id, 'aerocrypt', overlayScope);
-            return { vaultId: info.vault_id, prefix: 'aerocrypt_provider' };
-          }
-        }
-        // Unlock returned no vault id: mark the entry failed.
-        if (overlayLogIdRef.current) {
-          humanLog.updateEntry(overlayLogIdRef.current, { status: 'error', message: t('activity.overlay_failed') });
-          overlayLogIdRef.current = null;
+          return { vaultId: activated.vaultId, prefix: 'aerocrypt_provider' };
         }
       } catch (e) {
         if (overlayLogIdRef.current) {
@@ -4686,8 +4652,8 @@ interface UpdateVerificationInfo {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, activeSessionId, pendingOverlayUnlock, aeroCryptVaultId, rcloneCryptVaultId]);
 
-  // P3.3 (phase 2): the overlay vault is now active in state, so activeCryptOverlay()
-  // sees the fresh vaultId. Reload like the manual Refresh (no `silent`, so the
+  // P3.3 (phase 2): the overlay marker is now active in state and the provider is
+  // wrapped. Reload like the manual Refresh (no `silent`, so the
   // reconnect path runs) so the dual-panel renders decrypted names; one retry covers
   // the window where the SFTP link is still coming back after the Argon2id idle.
   useEffect(() => {
@@ -4706,10 +4672,16 @@ interface UpdateVerificationInfo {
     const reloadScope = sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope || null;
     void (async () => {
       try {
-        let reloaded = await loadRemoteFiles(undefined, undefined, undefined, reloadScope);
+        if (reloadScope) {
+          await positionWrappedProviderAtScope(reloadScope);
+        }
+        let reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         if (!reloaded && !cancelled) {
           await new Promise((res) => setTimeout(res, 1500));
-          reloaded = await loadRemoteFiles(undefined, undefined, undefined, reloadScope);
+          if (reloadScope) {
+            await positionWrappedProviderAtScope(reloadScope);
+          }
+          reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         }
         // Rewrite the connect-time listing line to the overlay-anchored display
         // path (what the path-bar shows), now that the decrypted reload landed.
@@ -4754,7 +4726,6 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const cryptOverlay = !ignoreRcloneCrypt && isProvider ? activeCryptOverlay() : null;
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -4764,29 +4735,16 @@ interface UpdateVerificationInfo {
           path: null,
         });
       } else if (isProvider) {
-        if (cryptOverlay) {
-          // Normally the crypt list relies on the provider's current dir (path
-          // null). rclone-crypt's unlock only moves the FTP cwd, not the
-          // provider cwd (aerocrypt's read_config cd's the provider and stays),
-          // so a null path after an rclone unlock lands the post-unlock reload
-          // on the provider root instead of the bound overlay folder. When the
-          // caller passes the bound scope, anchor the listing to it as a
-          // plaintext-absolute path so both overlay kinds open at the configured
-          // Remote Path. An empty/root scope keeps the historical null path.
-          const anchorPath = overrideScopePath && overrideScopePath.trim() && overrideScopePath !== '/'
-            ? overrideScopePath
-            : null;
-          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
-            vaultId: cryptOverlay.vaultId,
-            path: anchorPath,
-            ...(anchorPath != null ? { plainPath: true, cryptScope: activeBoundRemoteScope || null } : {}),
-          });
-          response = mapRcloneCryptListResponse(cryptResponse);
-        } else {
-          // Use provider API
-          logger.debug('[loadRemoteFiles] Calling provider_list_files...');
-          response = await invoke('provider_list_files', { path: null });
+        const anchorPath = overrideScopePath && overrideScopePath.trim() && overrideScopePath !== '/'
+          ? overrideScopePath
+          : null;
+        if (anchorPath) {
+          await invoke('provider_change_dir', { path: anchorPath });
         }
+        // Use provider API. Crypt-aware sessions are handled by the live provider
+        // decorator, so the browser always talks plain provider_* here.
+        logger.debug('[loadRemoteFiles] Calling provider_list_files...');
+        response = await invoke('provider_list_files', { path: null });
         logger.debug('[loadRemoteFiles] Provider response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
@@ -5918,20 +5876,53 @@ interface UpdateVerificationInfo {
       const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
       const providerName = providerNames[protocol] || protocol;
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
-      // Load remote files for OAuth provider - pass protocol explicitly
-      const oauthResponse = await loadRemoteFiles(protocol);
+      // Load remote files for OAuth provider - pass protocol explicitly. When the
+      // OAuth profile carries a confirmed crypt overlay, suppress the raw
+      // encrypted listing during the Argon2id unlock window and defer to the
+      // phase-2 decrypted reload, exactly like the credential-provider path. This
+      // OAuth early return previously skipped that block, so a crypt password
+      // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
+      // no decrypted names, and the path-bar overlay badge/button never appeared.
+      const overlaySavedId = effectiveParams.savedServerId;
+      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
+      let oauthResponse: FileListResponse | null = null;
+      if (overlayHint && overlaySavedId) {
+        // Probe the provider cwd for the session, but never let a transient
+        // listing error break the connect: loadRemoteFiles (the non-overlay path)
+        // swallows such errors, so this direct probe must too. On failure we still
+        // arm the overlay and let the deferred decrypted reload anchor the path.
+        try {
+          oauthResponse = await invoke<FileListResponse>('provider_list_files', { path: null });
+        } catch {
+          oauthResponse = null;
+        }
+        const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
+        overlaySuppressedRef.current = true;
+        setRemoteFiles([]);
+        setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
+        setCurrentRemoteDisplayPath(overlayAnchor);
+        setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+        markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind);
+        setOverlayDecrypting(true);
+        connectListingLogIdRef.current = null;
+      } else {
+        oauthResponse = await loadRemoteFiles(protocol);
+      }
       // Navigate to initial local directory if specified
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
       // Create session with provider name: pass fresh files to avoid stale closure
-      createSession(
+      await createSession(
         providerName,
         effectiveParams,
         oauthResponse?.current_path || '/',
         quickConnectDirs.localDir || currentLocalPath,
-        oauthResponse?.files
+        overlayHint ? [] : oauthResponse?.files
       );
+      // Defer the overlay auto-unlock to the post-connect effect (inline unlock
+      // sees stale session state), same as the credential-provider path.
+      if (overlayHint && overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
       // Pass effectiveParams so persistQuotaToProfile receives the saved server id
       // (connectionParams state is async, may still be stale when this runs).
       fetchStorageQuota(protocol, effectiveParams);
@@ -6188,7 +6179,7 @@ interface UpdateVerificationInfo {
           providerId: effectiveParams.providerId,
           savedServerId: effectiveParams.savedServerId,
         };
-        createSession(
+        await createSession(
           providerName,
           sessionParams,
           response.current_path,
@@ -6502,7 +6493,7 @@ interface UpdateVerificationInfo {
 
       if (stillAlive) {
         logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
-        if (targetSession.remotePath && targetSession.remotePath !== '/') {
+        if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch { /* keep the backend cwd */ }
         }
         response = await invoke('provider_list_files', { path: null });
@@ -6607,8 +6598,11 @@ interface UpdateVerificationInfo {
           }
         }
 
-        // Now navigate to the session's path
-        response = await invoke('provider_change_dir', { path: targetSession.remotePath || '/' });
+        // Now navigate to the session's path, unless a crypt overlay must be
+        // re-applied first because the saved path is plaintext-domain.
+        response = targetSession.cryptOverlay
+          ? await invoke('provider_list_files', { path: null })
+          : await invoke('provider_change_dir', { path: targetSession.remotePath || '/' });
       } else if (usesProviderApiForSession) {
         logger.debug('[switchSession] Provider (S3/WebDAV), reconnecting...');
 
@@ -6645,7 +6639,7 @@ interface UpdateVerificationInfo {
           if (!accepted) throw new Error('Host key rejected by user');
         }
         await runConnect('provider_connect', providerParams);
-        if (targetSession.remotePath && targetSession.remotePath !== '/') {
+        if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
         }
         response = await invoke('provider_list_files', { path: null });
@@ -6679,63 +6673,66 @@ interface UpdateVerificationInfo {
         response = await invoke('list_files');
       }
 
-      // Per-session overlay restore: if this tab holds an AeroCrypt/rclone-crypt
-      // overlay, its vault is still unlocked in the backend (a tab switch does not
-      // lock it), so re-list THROUGH the overlay to render decrypted names and
-      // re-arm the global vault-id mirror + owner so every operation on this tab
-      // routes through the overlay. A tab WITHOUT an overlay clears them, so the
-      // crypt path can never bleed onto a plain server.
+      // Per-session overlay restore. The command layer no longer routes lists
+      // through `${prefix}_list`; instead we re-apply the live provider decorator
+      // when the remembered plaintext path is inside the overlay scope. If the
+      // remembered path is outside the scope, keep the provider raw and restore
+      // the badge in its outside state.
       const targetOverlay = targetSession.cryptOverlay;
       if (targetOverlay) {
-        const prefix = targetOverlay.kind === 'rclone-crypt' ? 'rclone_crypt_provider' : 'aerocrypt_provider';
-        setRcloneCryptVaultId(targetOverlay.kind === 'rclone-crypt' ? targetOverlay.vaultId : null);
-        setAeroCryptVaultId(targetOverlay.kind === 'aerocrypt' ? targetOverlay.vaultId : null);
+        const sentinel = cryptOverlaySentinel(targetOverlay.kind, targetSession.savedServerId ?? sessionId);
+        setRcloneCryptVaultId(targetOverlay.kind === 'rclone-crypt' ? sentinel : null);
+        setAeroCryptVaultId(targetOverlay.kind === 'aerocrypt' ? sentinel : null);
         setCryptOverlayOwner({ savedServerId: null, sessionId });
-        try {
-          const cryptResp = await invoke<RcloneCryptBrowserListResponse>(`${prefix}_list`, {
-            vaultId: targetOverlay.vaultId,
-            path: null,
-          });
-          response = mapRcloneCryptListResponse(cryptResp);
-        } catch (overlayErr) {
-          // The stored vault id is no longer addressable in the backend (it can be
-          // evicted between visits, e.g. native AeroCrypt). Re-unlock from the saved
-          // profile (real key re-derivation, with the decryption animation) and list
-          // through the fresh vault so this tab matches rclone's behaviour. Only fall
-          // back to the plain listing if there is no profile to re-unlock from.
-          logger.warn('[switchSession] overlay vault stale, re-unlocking from profile:', overlayErr);
+        bindSessionCryptOverlay({ sessionId }, sentinel, targetOverlay.kind, targetOverlay.remoteScope);
+        const restorePath = targetSession.remotePath || targetOverlay.remoteScope || '/';
+        const restoreInsideScope = isWithinCryptScope(targetOverlay.remoteScope ?? '', restorePath);
+        if (restoreInsideScope) {
           let recovered = false;
-          if (targetSession.savedServerId) {
-            try {
-              const reunlocked = await maybeAutoUnlockProfileOverlay(targetSession.savedServerId);
-              if (reunlocked) {
-                setCryptOverlayOwner({ savedServerId: null, sessionId });
-                const cryptResp = await invoke<RcloneCryptBrowserListResponse>(`${reunlocked.prefix}_list`, {
-                  vaultId: reunlocked.vaultId,
-                  path: null,
-                });
-                response = mapRcloneCryptListResponse(cryptResp);
-                recovered = true;
-              }
-            } catch (reErr) {
-              logger.warn('[switchSession] overlay re-unlock failed:', reErr);
-            } finally {
-              // maybeAutoUnlockProfileOverlay arms the decryption animation; close it
-              // here since the switch path has no phase-2 effect to settle it.
-              setOverlayDecrypting(false);
+          try {
+            if (!targetSession.savedServerId) {
+              throw new Error('Ad-hoc crypt overlay needs the unlock modal after reconnect.');
             }
+            const reapplied = await maybeAutoUnlockProfileOverlay(targetSession.savedServerId);
+            if (!reapplied) {
+              throw new Error('Stored crypt overlay credentials did not re-apply.');
+            }
+            setCryptOverlayOwner({ savedServerId: null, sessionId });
+            setRcloneCryptVaultId(targetOverlay.kind === 'rclone-crypt' ? sentinel : null);
+            setAeroCryptVaultId(targetOverlay.kind === 'aerocrypt' ? sentinel : null);
+            bindSessionCryptOverlay({ sessionId }, sentinel, targetOverlay.kind, targetOverlay.remoteScope);
+            response = restorePath && restorePath !== '/'
+              ? await invoke('provider_change_dir', { path: restorePath })
+              : await invoke('provider_list_files', { path: null });
+            if (overlayLogIdRef.current) {
+              humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
+              overlayLogIdRef.current = null;
+            }
+            recovered = true;
+          } catch (overlayErr) {
+            logger.warn('[switchSession] overlay re-apply failed:', overlayErr);
+          } finally {
+            setOverlayDecrypting(false);
+            setPendingOverlayUnlock(null);
           }
           if (!recovered) {
             setRcloneCryptVaultId(null);
             setAeroCryptVaultId(null);
             setCryptOverlayOwner(null);
             clearSessionCryptOverlay({ sessionId });
+            await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
           }
+        } else {
+          await invoke('provider_clear_crypt_overlay', { full: false }).catch(() => undefined);
+          response = restorePath && restorePath !== '/'
+            ? await invoke('provider_change_dir', { path: restorePath })
+            : await invoke('provider_list_files', { path: null });
         }
       } else {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
         setCryptOverlayOwner(null);
+        await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
@@ -6751,6 +6748,7 @@ interface UpdateVerificationInfo {
       // Refresh remote files with real data
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
+      setCurrentRemoteDisplayPath((response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path);
       setSelectedRemoteFiles(new Set());
 
       // Update session cache with fresh data
@@ -7292,17 +7290,14 @@ interface UpdateVerificationInfo {
       // we can re-anchor when stepping back INTO the anchor from cleartext.
       const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;
       const targetDisplay = resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath);
+      const currentInScope = isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
       const targetInScope = overlayBinding
         ? isWithinCryptScope(activeBoundRemoteScope, targetDisplay)
         : false;
-      const cryptOverlay = targetInScope ? overlayBinding : null;
-      // Leaving the anchor (in-scope -> out-of-scope, only reachable via '..' or a
-      // typed path): drive the plain provider to the ABSOLUTE parent (outside the
-      // scope display == real path) so it lands deterministically in the cleartext
-      // region, rather than a relative '..' from the encrypted cwd.
-      const crossingOut = !!overlayBinding && !targetInScope
-        && isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
-      const plainNavPath = crossingOut ? targetDisplay : path;
+      const crossingOut = !!overlayBinding && currentInScope && !targetInScope;
+      const crossingIn = !!overlayBinding && !currentInScope && targetInScope;
+      const providerNavPath = (crossingOut || crossingIn) ? targetDisplay : path;
+      let reactivatedOverlayForNav = false;
 
       let response: FileListResponse;
       if (isAeroVaultOverlay) {
@@ -7311,21 +7306,24 @@ interface UpdateVerificationInfo {
           path,
         });
       } else if (isProvider) {
-        if (cryptOverlay) {
-          // In-scope: relative descent / cd_up stay encrypted; an in-scope absolute
-          // path (incl. re-anchor at the cleartext anchor itself) is a clear cd.
-          // cryptScope lets the backend encrypt ONLY the components BELOW the anchor
-          // for a plaintext-absolute target (path bar), keeping the anchor cleartext.
-          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>(`${cryptOverlay.prefix}_list`, {
-            vaultId: cryptOverlay.vaultId,
-            path,
-            plainPath: !!plainPath,
-            cryptScope: activeBoundRemoteScope || null,
-          });
-          response = mapRcloneCryptListResponse(cryptResponse);
-        } else {
-          // Plain provider region (incl. having just crossed out of the anchor).
-          response = await invoke('provider_change_dir', { path: plainNavPath });
+        if (crossingOut) {
+          await invoke('provider_clear_crypt_overlay', { full: false });
+        } else if (crossingIn) {
+          if (!activeSession?.savedServerId) {
+            throw new Error('Re-open the crypt overlay to enter its encrypted scope.');
+          }
+          const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);
+          setOverlayDecrypting(false);
+          setPendingOverlayUnlock(null);
+          if (!reactivated) {
+            throw new Error('Failed to re-apply crypt overlay for this scope.');
+          }
+          reactivatedOverlayForNav = true;
+        }
+        response = await invoke('provider_change_dir', { path: providerNavPath });
+        if (reactivatedOverlayForNav && overlayLogIdRef.current) {
+          humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
+          overlayLogIdRef.current = null;
         }
       } else {
         // Use FTP API
@@ -7447,10 +7445,12 @@ interface UpdateVerificationInfo {
   const chooseEndpointLocalFolder = useCallback(async (panelId: 'local' | 'local2') => {
     try {
       const current = panelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
+      // Sanitize the starting dir: a stale/imported local path that no longer
+      // exists here would crash the native GTK chooser (Fix G).
       const selected = await open({
         directory: true,
         multiple: false,
-        defaultPath: current || undefined,
+        defaultPath: await safePickerStartDir(current),
         title: panelId === 'local2' ? 'Choose right panel folder' : 'Choose left panel folder',
       });
       if (typeof selected !== 'string') return;
@@ -7670,7 +7670,6 @@ interface UpdateVerificationInfo {
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isProvider = usesProviderApi(protocol);
     const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-    const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
     try {
       if (isDir) {
@@ -7678,19 +7677,6 @@ interface UpdateVerificationInfo {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
         }
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
-        if (cryptOverlay && downloadPath) {
-          const folderPath = `${downloadPath}/${fileName}`;
-          const overlayLabel = cryptOverlay.prefix === 'aerocrypt_provider' ? 'AeroCrypt' : 'Rclone Crypt';
-          await invoke<string>(`${cryptOverlay.prefix}_download_folder`, {
-            vaultId: cryptOverlay.vaultId,
-            remoteEncryptedPath: remoteFilePath,
-            localDestRoot: folderPath,
-          });
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          humanLog.log('DOWNLOAD', `[${overlayLabel}] Decrypted folder ${folderPath} in ${elapsed}s`, 'success');
-          humanLog.updateEntry(logId, { status: 'success', message: `Decrypted folder ${folderPath} in ${elapsed}s` });
-          return;
-        }
         if (downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
@@ -7763,12 +7749,6 @@ interface UpdateVerificationInfo {
               entryPath: remoteFilePath,
               outputPath: localFilePath,
             });
-          } else if (cryptOverlay) {
-            await invoke<string>(`${cryptOverlay.prefix}_download_file`, {
-              vaultId: cryptOverlay.vaultId,
-              remoteEncryptedPath: remoteFilePath,
-              outputPath: localFilePath,
-            });
           } else if (isProvider) {
             // Use provider command for file download
             await invoke('provider_download_file', {
@@ -7819,25 +7799,11 @@ interface UpdateVerificationInfo {
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const cryptOverlay = isProvider ? activeCryptOverlay() : null;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
 
       if (isDir) {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder upload not yet supported in main browser');
-        }
-        if (cryptOverlay) {
-          const logId = humanLog.logStart('UPLOAD', { filename: fileName });
-          pendingFileLogIds.current.set(fileName, logId);
-          await invoke<string>(`${cryptOverlay.prefix}_upload_folder`, {
-            vaultId: cryptOverlay.vaultId,
-            localPath: localFilePath,
-            remoteParentPath: currentRemotePath,
-          });
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          const msg = t('activity.upload_success', { filename: fileName, details: `(${elapsed}s)` });
-          humanLog.updateEntry(logId, { status: 'success', message: msg });
-          return;
         }
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
@@ -7901,6 +7867,9 @@ interface UpdateVerificationInfo {
         }
       } else {
         let targetName = fileName;
+        // Continue an interrupted upload from the remote partial instead of
+        // re-sending it from zero (backend fail-safes crypt/unsupported to full).
+        let wantResume = false;
 
         if (!_skipConflictCheck) {
           // Check file conflict before uploading (single file transfers only)
@@ -7917,6 +7886,8 @@ interface UpdateVerificationInfo {
             humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: fileName }, 'success');
             return;
           }
+
+          wantResume = overwriteResult.action === 'resume';
 
           if (overwriteResult.newName) {
             targetName = overwriteResult.newName;
@@ -7949,14 +7920,8 @@ interface UpdateVerificationInfo {
             localPlaintextPath: localFilePath,
             remotePlainName: targetName,
           });
-        } else if (cryptOverlay) {
-          await invoke<string>(`${cryptOverlay.prefix}_upload_file`, {
-            vaultId: cryptOverlay.vaultId,
-            localPlaintextPath: localFilePath,
-            remotePlainName: targetName,
-          });
         } else if (isProvider) {
-          await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null });
+          await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null });
           if (protocol === 'opendrive') {
             await invoke('opendrive_set_path_privacy', {
               path: remotePath,
@@ -8004,6 +7969,23 @@ interface UpdateVerificationInfo {
     // If batch is paused by circuit breaker, resolve the pause promise
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
+    }
+    // FINDING-4: a connected-remote AeroSync run does not populate transferQueue,
+    // so the batch two-level model can never reach the hard-abort (the in-flight
+    // file always finishes first). Here Stop means "stop now": tell the runner to
+    // stop at the next file boundary AND abort the current transfer via the
+    // backend cancel flag (the Issue #332 tokio::select! race in
+    // provider_download_file / provider_upload_file drops the in-flight future).
+    // The spinner stays until the run unwinds and clears remoteSyncRunningRef.
+    if (remoteSyncRunningRef.current) {
+      setSyncCancelling(true);
+      batchCancelledRef.current = true;
+      cancelLevelRef.current = 2;
+      dispatchTransferToast(null);
+      try { await invoke('cancel_transfer'); } catch { }
+      setIsBatchPaused(false);
+      setBatchPauseReason(null);
+      return;
     }
     if (cancelLevelRef.current === 0) {
       // Level 1: Soft cancel: finish current file, stop queue
@@ -8595,6 +8577,7 @@ interface UpdateVerificationInfo {
       const leftLocal = swapPanels;
       const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
       const remoteLabel = activeUnifiedRemoteProfile?.name || 'Remote';
+      const cryptCompareActive = isCryptOverlayActive();
 
       // Open immediately with a scanning placeholder so the modal is
       // responsive while the recursive scan runs.
@@ -8618,36 +8601,48 @@ interface UpdateVerificationInfo {
       void (async () => {
         let resolved: CompareResult;
         try {
+          const compareArgs: Record<string, unknown> = {
+            localPath: currentLocalPath,
+            remotePath: currentRemotePath,
+            options: {
+              compare_timestamp: true,
+              compare_size: true,
+              compare_checksum: false,
+              exclude_patterns: [
+                'node_modules', '.git', '.DS_Store', 'Thumbs.db',
+                '__pycache__', '*.pyc', '.env', 'target',
+                // Never surface EC parity sidecars as orphan/data in AeroSync compare,
+                // even when EC is off but sidecars from a prior EC-on run still exist.
+                '*.aerocorrect',
+              ],
+              direction: 'bidirectional',
+            },
+          };
           const comparisons = await invoke<FileComparison[]>(
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
-            {
-              localPath: currentLocalPath,
-              remotePath: currentRemotePath,
-              options: {
-                compare_timestamp: true,
-                compare_size: true,
-                compare_checksum: false,
-                exclude_patterns: [
-                  'node_modules', '.git', '.DS_Store', 'Thumbs.db',
-                  '__pycache__', '*.pyc', '.env', 'target',
-                  // Never surface EC parity sidecars as orphan/data in AeroSync compare,
-                  // even when EC is off but sidecars from a prior EC-on run still exist.
-                  '*.aerocorrect',
-                ],
-                direction: 'bidirectional',
-              },
-            },
+            compareArgs,
           );
           resolved = adaptFileComparisons(comparisons, leftLocal);
         } catch (err) {
-          // Recursive scan failed: fall back to the flat top-level
-          // classify so the Compare tab still shows something actionable.
-          const localEntries = localFiles.map(toCompareEntry);
-          const remoteEntries = remoteFiles.map(toCompareEntry);
-          resolved = leftLocal
-            ? compareEntries(localEntries, remoteEntries)
-            : compareEntries(remoteEntries, localEntries);
-          notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+          if (isProviderConn && cryptCompareActive) {
+            // Crypt overlay active: the backend failed closed (vault missing,
+            // wrong overlay key, or zero rows decrypted). Do NOT fall back to a
+            // flat compare over the still-encrypted remote listing: that would
+            // turn a crypt error into an actionable but wrong plan that
+            // re-uploads everything. Fail closed end-to-end: surface a blocking
+            // error and leave Compare with no executable result.
+            resolved = compareEntries([], []);
+            notify.error(t('aerosync.title') || 'AeroSync', String(err));
+          } else {
+            // Recursive scan failed: fall back to the flat top-level
+            // classify so the Compare tab still shows something actionable.
+            const localEntries = localFiles.map(toCompareEntry);
+            const remoteEntries = remoteFiles.map(toCompareEntry);
+            resolved = leftLocal
+              ? compareEntries(localEntries, remoteEntries)
+              : compareEntries(remoteEntries, localEntries);
+            notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+          }
         }
         // Discard if the dialog was closed or reopened meanwhile.
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
@@ -8702,6 +8697,8 @@ interface UpdateVerificationInfo {
     currentLocalPath2,
     currentRemotePath,
     activeUnifiedRemoteProfile,
+    overlayInScope,
+    overlayVaultLit,
     notify,
     t,
   ]);
@@ -8778,6 +8775,7 @@ interface UpdateVerificationInfo {
       compressionMode: opts.compressionMode,
       // P3: EC control from Plan tab (Backup default) reaches runner unchanged.
       errorCorrection: opts.errorCorrection,
+      authenticatedRemoteContent: isCryptOverlayActive(),
     };
 
     const launchRun = (): void => {
@@ -8820,6 +8818,7 @@ interface UpdateVerificationInfo {
         } finally {
           window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
           remoteSyncRunningRef.current = false;
+          setSyncCancelling(false);
         }
       })();
     };
@@ -8873,6 +8872,8 @@ interface UpdateVerificationInfo {
     activeUnifiedRemoteProfile,
     currentLocalPath,
     currentRemotePath,
+    overlayInScope,
+    overlayVaultLit,
     notify,
     t,
     debugMode,
@@ -8964,6 +8965,7 @@ interface UpdateVerificationInfo {
         notify.error(t('aerosync.title') || 'AeroSync', String(err));
       } finally {
         remoteSyncRunningRef.current = false;
+        setSyncCancelling(false);
       }
     })();
   }, [
@@ -10645,10 +10647,6 @@ interface UpdateVerificationInfo {
     }
   };
 
-  const getRemoteFileIsDir = (path: string, fallback = false) => (
-    remoteFiles.find(f => f.path === path)?.is_dir ?? fallback
-  );
-
   const renameFile = (path: string, currentName: string, isRemote: boolean, isDir?: boolean) => {
     setInputDialog({
       title: t('common.rename'),
@@ -10675,20 +10673,12 @@ interface UpdateVerificationInfo {
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-            const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
             if (isAeroVaultOverlay) {
               await invoke<string>('aerovault_overlay_rename_entry', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 entryPath: path,
                 newName,
-              });
-            } else if (cryptOverlay) {
-              await invoke<string>(`${cryptOverlay.prefix}_rename`, {
-                vaultId: cryptOverlay.vaultId,
-                fromEncryptedPath: path,
-                newPlainName: newName,
-                isDir: isDir ?? getRemoteFileIsDir(path),
               });
             } else if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
@@ -10760,20 +10750,12 @@ interface UpdateVerificationInfo {
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
         const isProvider = usesProviderApi(protocol);
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-        const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
         if (isAeroVaultOverlay) {
           await invoke<string>('aerovault_overlay_rename_entry', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPath: path,
             newName,
-          });
-        } else if (cryptOverlay) {
-          await invoke<string>(`${cryptOverlay.prefix}_rename`, {
-            vaultId: cryptOverlay.vaultId,
-            fromEncryptedPath: path,
-            newPlainName: newName,
-            isDir: isDir ?? getRemoteFileIsDir(path),
           });
         } else if (isProvider) {
           await invoke('provider_rename', { from: path, to: newPath });
@@ -10852,21 +10834,12 @@ interface UpdateVerificationInfo {
           const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
           const isProvider = usesProviderApi(protocol);
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-          const cryptOverlay = isProvider ? activeCryptOverlay() : null;
-          const batchFile = batchRenameDialog?.files.find(f => f.path === oldPath);
 
           if (isAeroVaultOverlay) {
             await invoke<string>('aerovault_overlay_rename_entry', {
               sessionId: aeroVaultOverlaySession?.sessionId,
               entryPath: oldPath,
               newName,
-            });
-          } else if (cryptOverlay) {
-            await invoke<string>(`${cryptOverlay.prefix}_rename`, {
-              vaultId: cryptOverlay.vaultId,
-              fromEncryptedPath: oldPath,
-              newPlainName: newName,
-              isDir: batchFile?.isDir ?? getRemoteFileIsDir(oldPath),
             });
           } else if (isProvider) {
             await invoke('provider_rename', { from: oldPath, to: newPath });
@@ -10923,7 +10896,6 @@ interface UpdateVerificationInfo {
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-            const cryptOverlay = isProvider ? activeCryptOverlay() : null;
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
@@ -10931,11 +10903,6 @@ interface UpdateVerificationInfo {
               await invoke('aerovault_overlay_create_directory', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 dirName: name,
-              });
-            } else if (cryptOverlay) {
-              await invoke<string>(`${cryptOverlay.prefix}_mkdir`, {
-                vaultId: cryptOverlay.vaultId,
-                plainName: name,
               });
             } else if (isProvider) {
               await invoke('provider_mkdir', { path });
@@ -13764,6 +13731,12 @@ interface UpdateVerificationInfo {
           source={overwriteDialog.source!}
           destination={overwriteDialog.destination!}
           queueCount={overwriteDialog.queueCount}
+          canResume={
+            !!overwriteDialog.source &&
+            !!overwriteDialog.destination &&
+            overwriteDialog.destination.size < overwriteDialog.source.size &&
+            !isCryptOverlayActive()
+          }
           onDecision={(action, applyToAll, newName) => {
             if (overwriteDialog.resolve) {
               overwriteDialog.resolve({ action, applyToAll, newName });
@@ -13839,17 +13812,36 @@ interface UpdateVerificationInfo {
           <RcloneCryptUnlock
             onClose={() => setShowRcloneCryptUnlock(false)}
             activeVaultId={rcloneCryptVaultId}
-            onUnlocked={(vaultId) => {
-              setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
-              setRcloneCryptVaultId(vaultId);
-              bindSessionCryptOverlay({ sessionId: activeSessionId ?? undefined }, vaultId, 'rclone-crypt');
-              void loadRcloneCryptOverlayFiles(vaultId);
+            onUnlocked={(details) => {
+              void (async () => {
+                try {
+                  setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
+                  await activateProviderCryptOverlay(
+                    { sessionId: activeSessionId ?? undefined },
+                    {
+                      kind: 'rclone-crypt',
+                      remoteScope: details.remoteScope ?? '',
+                      filenameEncryption: details.filenameEncryption,
+                      directoryNameEncryption: details.directoryNameEncryption,
+                      password: details.password,
+                      salt: details.salt || null,
+                    },
+                    activeSessionId,
+                  );
+                  await loadRemoteFiles(undefined, true, true);
+                } catch (err) {
+                  notify.error('Rclone Crypt', String(err));
+                }
+              })();
             }}
             onLocked={() => {
               setRcloneCryptVaultId(null);
               setCryptOverlayOwner(null);
               lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
-              void loadRemoteFiles(undefined, true, true);
+              void (async () => {
+                await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
+                await loadRemoteFiles(undefined, true, true);
+              })();
             }}
           />
         )}
@@ -13857,17 +13849,33 @@ interface UpdateVerificationInfo {
           <AeroCryptUnlock
             onClose={() => setShowAeroCryptUnlock(false)}
             activeVaultId={aeroCryptVaultId}
-            onUnlocked={(vaultId) => {
-              setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
-              setAeroCryptVaultId(vaultId);
-              bindSessionCryptOverlay({ sessionId: activeSessionId ?? undefined }, vaultId, 'aerocrypt');
-              void loadAeroCryptOverlayFiles(vaultId);
+            onUnlocked={(details) => {
+              void (async () => {
+                try {
+                  setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
+                  await activateProviderCryptOverlay(
+                    { sessionId: activeSessionId ?? undefined },
+                    {
+                      kind: 'aerocrypt',
+                      remoteScope: details.remoteScope ?? '',
+                      password: details.password,
+                    },
+                    activeSessionId,
+                  );
+                  await loadRemoteFiles(undefined, true, true);
+                } catch (err) {
+                  notify.error('AeroCrypt', String(err));
+                }
+              })();
             }}
             onLocked={() => {
               setAeroCryptVaultId(null);
               setCryptOverlayOwner(null);
               lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
-              void loadRemoteFiles(undefined, true, true);
+              void (async () => {
+                await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
+                await loadRemoteFiles(undefined, true, true);
+              })();
             }}
           />
         )}
@@ -13895,16 +13903,20 @@ interface UpdateVerificationInfo {
                   setRcloneCryptImportBanner(null);
                   if (!banner) return;
                   try {
-                    const info = await invoke<{ vault_id: string }>('rclone_crypt_unlock', {
-                      password: banner.password,
-                      salt: banner.salt || null,
-                      filenameEncryption: banner.filenameEncryption || 'standard',
-                      directoryNameEncryption: banner.directoryNameEncryption !== false,
-                    });
                     setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
-                    setRcloneCryptVaultId(info.vault_id);
-                    bindSessionCryptOverlay({ sessionId: activeSessionId ?? undefined }, info.vault_id, 'rclone-crypt');
-                    void loadRcloneCryptOverlayFiles(info.vault_id);
+                    await activateProviderCryptOverlay(
+                      { sessionId: activeSessionId ?? undefined },
+                      {
+                        kind: 'rclone-crypt',
+                        remoteScope: banner.initialPath ?? '',
+                        filenameEncryption: banner.filenameEncryption || 'standard',
+                        directoryNameEncryption: banner.directoryNameEncryption !== false,
+                        password: banner.password,
+                        salt: banner.salt || null,
+                      },
+                      activeSessionId,
+                    );
+                    await loadRemoteFiles(undefined, true, true);
                     notify.success('Rclone Crypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
                     notify.error('Rclone Crypt', String(err));
@@ -14272,21 +14284,54 @@ interface UpdateVerificationInfo {
                   const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared' };
                   const providerName = normalizedParams.displayName || (normalizedParams.protocol && providerNames[normalizedParams.protocol]) || normalizedParams.protocol || 'Unknown';
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
-                  // Load remote files for OAuth provider - pass protocol explicitly
-                  const savedOauthResp = await loadRemoteFiles(normalizedParams.protocol);
+                  // Load remote files for OAuth provider - pass protocol explicitly.
+                  // When the saved OAuth profile carries a confirmed crypt overlay,
+                  // suppress the raw encrypted listing during the unlock window and
+                  // defer to the phase-2 decrypted reload, exactly like the
+                  // credential-provider branch below. This OAuth early return
+                  // previously skipped that block, so an OAuth crypt overlay never
+                  // unlocked (no decrypted names, no path-bar overlay badge/button).
+                  const savedOverlaySavedId = normalizedParams.savedServerId;
+                  const savedOverlayHint = savedOverlaySavedId ? await getProfileOverlayHint(savedOverlaySavedId) : null;
+                  let savedOauthResp: FileListResponse | null = null;
+                  if (savedOverlayHint && savedOverlaySavedId) {
+                    // Probe the provider cwd, but never let a transient listing
+                    // error break the connect (loadRemoteFiles swallows such
+                    // errors); still arm the overlay and let the deferred reload
+                    // anchor the path on failure.
+                    try {
+                      savedOauthResp = await invoke<FileListResponse>('provider_list_files', { path: null });
+                    } catch {
+                      savedOauthResp = null;
+                    }
+                    const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
+                    overlaySuppressedRef.current = true;
+                    setRemoteFiles([]);
+                    setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
+                    setCurrentRemoteDisplayPath(savedOverlayAnchor);
+                    setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
+                    markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind);
+                    setOverlayDecrypting(true);
+                    connectListingLogIdRef.current = null;
+                  } else {
+                    savedOauthResp = await loadRemoteFiles(normalizedParams.protocol);
+                  }
                   // Navigate to initial local directory if specified (with fallback for invalid paths)
                   let resolvedLocalPath = currentLocalPath;
                   if (localInitialPath) {
                     resolvedLocalPath = await safeChangeLocalDirectory(localInitialPath);
                   }
                   // Create session with provider name: pass fresh files to avoid stale closure
-                  createSession(
+                  await createSession(
                     providerName,
                     normalizedParams,
                     savedOauthResp?.current_path || initialPath || '/',
                     resolvedLocalPath,
-                    savedOauthResp?.files
+                    savedOverlayHint ? [] : savedOauthResp?.files
                   );
+                  // Defer the overlay auto-unlock to the post-connect effect (inline
+                  // unlock sees stale session state), same as the provider branch.
+                  if (savedOverlayHint && savedOverlaySavedId) setPendingOverlayUnlock(savedOverlaySavedId);
                   // Pass normalizedParams so persistQuotaToProfile picks up
                   // savedServerId from the saved profile (connectionParams state
                   // is intentionally not mutated during onSavedServerConnect).
@@ -14436,7 +14481,7 @@ interface UpdateVerificationInfo {
                       resolvedLocalPath2 = await safeChangeLocalDirectory(localInitialPath);
                     }
 
-                    createSession(
+                    await createSession(
                       providerName,
                       connectedParams,
                       response.current_path,
@@ -14755,16 +14800,22 @@ interface UpdateVerificationInfo {
                           icon: the lit badge is the single, type-coloured control. */}
                       <button
                         onClick={cancelTransfer}
-                        disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
-                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${isForceStopMode
-                          ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
-                          : (hasActiveTransfer || hasQueueActivity)
-                            ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
-                            : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        disabled={!syncCancelling && !isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${syncCancelling
+                          ? 'bg-red-500 text-white shadow-sm cursor-wait'
+                          : isForceStopMode
+                            ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                            : (hasActiveTransfer || hasQueueActivity)
+                              ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                              : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                           }`}
-                        title={isForceStopMode ? t('transfer.forceStop') : t('transfer.cancelAll')}
+                        title={syncCancelling || isForceStopMode
+                          ? t('transfer.forceStop')
+                          : t('transfer.cancelAll')}
                       >
-                        {isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
+                        {syncCancelling
+                          ? <StopCancelSpinner size={16} />
+                          : isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
                       </button>
                       <button
                         onClick={toggleSyncNavigation}
@@ -15181,12 +15232,28 @@ interface UpdateVerificationInfo {
                       </button>
                     </div>
                   )}
-                  <div className="flex-1 overflow-auto" onContextMenu={(e) => {
+                  <div
+                    ref={remoteFileScrollRef}
+                    className="relative flex-1 overflow-auto"
+                    onMouseDown={remoteMarquee.onMouseDown}
+                    onContextMenu={(e) => {
                     // Only show empty-area menu if click target is the container itself or table background
                     const target = e.target as HTMLElement;
                     const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
                     if (!isFileRow && isConnected) showRemoteEmptyContextMenu(e);
                   }}>
+                    {remoteMarquee.box && (
+                      <div
+                        className="pointer-events-none absolute z-10 rounded-[2px] border border-blue-400/80 bg-blue-400/20 dark:border-blue-300/70 dark:bg-blue-300/15"
+                        style={{
+                          left: remoteMarquee.box.left,
+                          top: remoteMarquee.box.top,
+                          width: remoteMarquee.box.width,
+                          height: remoteMarquee.box.height,
+                        }}
+                        aria-hidden="true"
+                      />
+                    )}
                     {!isConnected ? (
                       <div className="flex flex-col items-center justify-center h-full text-gray-400">
                         <Cloud size={64} className="mb-4 opacity-30" />
@@ -15269,6 +15336,8 @@ interface UpdateVerificationInfo {
                             <tr
                               key={`${file.name}-${i}`}
                               data-file-row
+                              data-file-name={file.name}
+                              data-file-index={i}
                               role="row"
                               aria-selected={selectedRemoteFiles.has(file.name)}
                               draggable={file.name !== '..' && inlineRename?.path !== file.path}
@@ -15484,6 +15553,8 @@ interface UpdateVerificationInfo {
                           <div
                             key={`${file.name}-${i}`}
                             data-file-card
+                            data-file-name={file.name}
+                            data-file-index={i}
                             draggable={file.name !== '..' && inlineRename?.path !== file.path}
                             onDragStart={(e) => handleDragStart(e, file, 'remote', selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}

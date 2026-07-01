@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Temno",
             "imagePreviewBgLight": "Svetlo",
             "imagePreviewBgCustom": "Po meri",
-            "showTransferProgress": "Pokaži vrstico napredka prenosa"
+            "showTransferProgress": "Pokaži vrstico napredka prenosa",
+            "similarToExisting": "so podobni obstoječemu profilu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Prepiši",
             "skip": "Preskoči",
             "rename": "Preimenuj",
+            "resume": "Nadaljuj",
+            "resumeHint": "Nadaljuj prekinjen prenos, namesto da ga začneš znova",
             "cancel": "Prekliči"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Dešifriraj ime",
             "decryptFileFromDisk": "Dešifriraj datoteko z diska",
             "fileDecryptedTo": "Datoteka dešifrirana v {path}",
-            "encryptedUploadCompleted": "Šifrirano nalaganje dokončano: {path}",
-            "remoteBrowser": "Oddaljeni brskalnik (transparenten)",
-            "upload": "Naloži",
-            "up": "Gor",
-            "path": "Pot: {path}",
-            "dirIvNotFound": "dirIV ni najden v trenutni mapi: imena lahko ostanejo šifrirana.",
-            "loading": "Nalaganje...",
-            "emptyFolder": "Prazna mapa",
-            "nameNotDecrypted": "ime ni dešifrirano",
-            "download": "Prenesi",
             "serverHashGated": "Kontrolna vsota na strani strežnika ni na voljo, ko je aktivna šifrirana plast (zgostila bi šifrirano besedilo, ne vaše datoteke).",
             "outsideScope": "Zunaj šifriranega območja (datoteke tukaj niso šifrirane)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "V trenutni oddaljeni mapi ni bilo najdenega sloja AeroCrypt. Preklopite na „Ustvari novega“, da ga ustvarite.",
             "remoteUnlocked": "Oddaljeni strežnik odklenjen (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Šifrirani oddaljeni brskalnik",
-            "upload": "Naloži",
-            "up": "Gor",
-            "path": "Pot: {path}",
-            "loading": "Nalaganje...",
-            "emptyFolder": "Prazna mapa",
-            "download": "Prenesi",
-            "nameNotDecrypted": "imena ni bilo mogoče dešifrirati",
-            "fileDecryptedTo": "Datoteka dešifrirana v {path}",
-            "encryptedUploadCompleted": "Šifrirano nalaganje končano: {path}",
             "lock": "Zakleni sloj"
         },
         "aerocryptProfile": {

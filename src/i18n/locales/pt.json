@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Escuro",
             "imagePreviewBgLight": "Claro",
             "imagePreviewBgCustom": "Personalizado",
-            "showTransferProgress": "Mostrar a barra de progresso da transferência"
+            "showTransferProgress": "Mostrar a barra de progresso da transferência",
+            "similarToExisting": "semelhantes a um perfil existente"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Substituir",
             "skip": "Ignorar",
             "rename": "Renomear",
+            "resume": "Retomar",
+            "resumeHint": "Retomar a transferência interrompida em vez de reiniciá-la",
             "cancel": "Cancelar"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Descriptografar nome",
             "decryptFileFromDisk": "Descriptografar arquivo do disco",
             "fileDecryptedTo": "Arquivo descriptografado em {path}",
-            "encryptedUploadCompleted": "Upload criptografado concluído: {path}",
-            "remoteBrowser": "Navegador remoto (transparente)",
-            "upload": "Enviar",
-            "up": "Acima",
-            "path": "Caminho: {path}",
-            "dirIvNotFound": "dirIV não encontrado na pasta atual: os nomes podem permanecer criptografados.",
-            "loading": "Carregando...",
-            "emptyFolder": "Pasta vazia",
-            "nameNotDecrypted": "nome não descriptografado",
-            "download": "Baixar",
             "serverHashGated": "Soma de verificação no servidor indisponível enquanto uma sobreposição cifrada está ativa (calcularia o hash do texto cifrado, não do seu ficheiro).",
             "outsideScope": "Fora da área cifrada (os ficheiros aqui não estão cifrados)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Nenhuma sobreposição AeroCrypt encontrada na pasta remota atual. Mude para «Criar nova» para criar uma.",
             "remoteUnlocked": "Remoto desbloqueado (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Explorador remoto cifrado",
-            "upload": "Enviar",
-            "up": "Acima",
-            "path": "Caminho: {path}",
-            "loading": "A carregar…",
-            "emptyFolder": "Pasta vazia",
-            "download": "Transferir",
-            "nameNotDecrypted": "não foi possível decifrar o nome",
-            "fileDecryptedTo": "Ficheiro decifrado para {path}",
-            "encryptedUploadCompleted": "Envio cifrado concluído: {path}",
             "lock": "Bloquear sobreposição"
         },
         "aerocryptProfile": {

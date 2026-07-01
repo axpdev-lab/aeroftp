@@ -758,12 +758,23 @@ impl ProviderDownloadExecutor {
             provider.download(&remote_path, &local_path, progress_cb)
         };
 
-        match tokio::time::timeout(Duration::from_secs(effective_timeout), dl_future).await {
-            Ok(result) => result.map_err(|e| e.to_string()),
-            Err(_) => Err(format!(
-                "Download timed out after {} seconds",
-                effective_timeout
-            )),
+        // FINDING-4 Part B: race the in-flight download against the session
+        // cancel token so a user Stop drops the current file promptly instead of
+        // only taking effect at the next file/retry boundary. Dropping the future
+        // tears the transport stream down (russh SFTP is async).
+        let cancel = self.cancel_token.clone();
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => Err("Transfer cancelled by user".to_string()),
+            res = tokio::time::timeout(Duration::from_secs(effective_timeout), dl_future) => {
+                match res {
+                    Ok(result) => result.map_err(|e| e.to_string()),
+                    Err(_) => Err(format!(
+                        "Download timed out after {} seconds",
+                        effective_timeout
+                    )),
+                }
+            }
         }
     }
 
@@ -1081,9 +1092,12 @@ impl ProviderUploadExecutor {
         let display_name = entry.display_name.clone();
         let remote_path_for_progress = entry.remote_path.clone();
         let cancel_token = self.cancel_token.clone();
+        // FINDING-4 Part B: separate handle to race the in-flight upload against
+        // a user Stop (the one above is moved into the progress closure).
+        let cancel_race = self.cancel_token.clone();
         let ul_start = std::time::Instant::now();
 
-        match tokio::time::timeout(
+        let upload_fut = tokio::time::timeout(
             Duration::from_secs(eff_timeout),
             provider.upload(
                 &local_path,
@@ -1135,11 +1149,14 @@ impl ProviderUploadExecutor {
                     });
                 })),
             ),
-        )
-        .await
-        {
-            Ok(result) => result.map_err(|e| e.to_string()),
-            Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
+        );
+        tokio::select! {
+            biased;
+            _ = cancel_race.cancelled() => Err("Transfer cancelled by user".to_string()),
+            res = upload_fut => match res {
+                Ok(result) => result.map_err(|e| e.to_string()),
+                Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
+            },
         }
     }
 

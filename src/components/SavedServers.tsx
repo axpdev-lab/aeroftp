@@ -21,29 +21,18 @@ import {
     storeSavedServerProfiles,
 } from '../utils/serverProfileStore';
 import { maskCredential } from '../utils/maskCredential';
+import { getStorageDedupKey } from '../utils/storageDedup';
+import { useActivityLog } from '../hooks/useActivityLog';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
 import { AlertDialog } from './Dialogs';
 import { ProfileRelocateDialog } from './ProfileRelocateDialog';
 import { listUsers } from '../utils/userPartitions';
-
-// Helper: get credential with retry if vault not ready yet (race condition on app startup)
-const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            return await invoke<string>('get_credential', { account });
-        } catch (err) {
-            const errorMsg = String(err);
-            if (errorMsg.includes('STORE_NOT_READY') && attempt < maxRetries - 1) {
-                // Vault not initialized yet, wait and retry
-                await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
-                continue;
-            }
-            throw err;
-        }
-    }
-    throw new Error('Failed to get credential after retries');
-};
+import {
+    copyProfileVaultSecrets,
+    deleteProfileVaultSecrets,
+    getCredentialWithRetry,
+} from '../utils/profileVaultSecrets';
 
 // Load OAuth credentials from credential vault
 const loadOAuthCredentials = async (provider: string): Promise<{ clientId: string; clientSecret: string } | null> => {
@@ -128,6 +117,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     onOpenExportImport,
 }) => {
     const t = useTranslation();
+    const { log: logActivity } = useActivityLog();
     const [servers, setServers] = useState<ServerProfile[]>([]);
 
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
@@ -303,8 +293,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         saveServers(updated);
-        // Clean up orphaned vault credential
-        invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
+        deleteProfileVaultSecrets(deleteTarget.id).catch(() => {});
         setDeleteTarget(null);
     };
 
@@ -330,41 +319,38 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             hasStoredAeroCryptPassword: false,
             hasStoredAeroCryptSalt: false,
         };
-        // Copy a single per-profile vault entry from the source id to newId.
         // Always probe the vault, never gate on the `hasStored*` flag: the vault
         // is the source of truth and the flag can be stale or absent on a
-        // profile synced from another machine (per-machine keyring). Returns
-        // whether a value was actually copied. A missing key throws NotFound,
-        // which is a normal "nothing to copy" outcome, not an error.
-        const copyVaultKey = async (suffix: string): Promise<boolean> => {
-            try {
-                const value = await getCredentialWithRetry(`${suffix}_${server.id}`);
-                if (value) {
-                    await invoke('store_credential', { account: `${suffix}_${newId}`, password: value });
-                    return true;
-                }
-            } catch (e) {
-                console.error(`Duplicate: failed to copy ${suffix} credential from vault`, e);
-            }
-            return false;
-        };
-        // The S3 secret access key, like every other password, lives under
-        // `server_<id>`. A multi-mode account (Filen API / WebDAV / S3) keeps
-        // its real secret in the `server_modes_<id>` snapshot; the Filen CLI key
-        // and the AeroCrypt overlay password/salt each live under their own
-        // per-profile key. The duplicate must carry them all or the copy opens
-        // blank and cannot connect.
-        const credentialCopied = await copyVaultKey('server');
-        cloned.hasStoredCredential = credentialCopied;
-        // server_modes_<id>: per-mode credential snapshots (#215). The flag here
-        // is the profile-level `persistModeCredentials` opt-in, kept via spread.
-        await copyVaultKey('server_modes');
-        cloned.hasStoredFilenApiKey = await copyVaultKey('filen_api_key');
-        cloned.hasStoredAeroCryptPassword = await copyVaultKey('aerocrypt_overlay_pw');
-        cloned.hasStoredAeroCryptSalt = await copyVaultKey('aerocrypt_overlay_salt');
+        // profile synced from another machine (per-machine keyring). The helper
+        // copies every profile-scoped secret key and reports which ones actually
+        // existed so the duplicate's flags match the new vault state.
+        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId);
+        const credentialCopied = copiedSecrets.server;
+        cloned.hasStoredCredential = copiedSecrets.server;
+        // server_modes_<id> is copied by the helper; persistModeCredentials is a
+        // profile-level opt-in and stays with the spread clone.
+        cloned.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
+        cloned.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
+        cloned.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
         const updated = [...servers, cloned];
         setServers(updated);
         saveServers(updated);
+        // Trace the duplicate action with the same two entries as an
+        // overlapping edit: a "potential duplicate" warning (the copy shares the
+        // source's endpoint+username) then a confirmation.
+        const dedupKey = getStorageDedupKey(cloned);
+        logActivity(
+            'PROFILE_DUPLICATE',
+            `Duplicate profile detected: "${cloned.name}" overlaps with "${server.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
+        logActivity(
+            'PROFILE_SAVE',
+            `Profile duplicated: "${server.name}" → "${cloned.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
         // Warn (instead of silently producing a half-broken copy) when the
         // original was expected to carry a credential but none could be copied,
         // e.g. the secret is only in another machine's keyring. The edit modal

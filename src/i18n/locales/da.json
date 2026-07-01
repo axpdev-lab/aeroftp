@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Mørk",
             "imagePreviewBgLight": "Lys",
             "imagePreviewBgCustom": "Tilpasset",
-            "showTransferProgress": "Vis statuslinje for overførsel"
+            "showTransferProgress": "Vis statuslinje for overførsel",
+            "similarToExisting": "ligner en eksisterende profil"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Overskriv",
             "skip": "Spring over",
             "rename": "Omdøb",
+            "resume": "Genoptag",
+            "resumeHint": "Fortsæt den afbrudte overførsel i stedet for at genstarte den",
             "cancel": "Annuller"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Dekrypter navn",
             "decryptFileFromDisk": "Dekrypter fil fra disk",
             "fileDecryptedTo": "Fil dekrypteret til {path}",
-            "encryptedUploadCompleted": "Krypteret upload fuldført: {path}",
-            "remoteBrowser": "Fjernbrowser (transparent)",
-            "upload": "Upload",
-            "up": "Op",
-            "path": "Sti: {path}",
-            "dirIvNotFound": "dirIV ikke fundet i den aktuelle mappe: navne kan forblive krypterede.",
-            "loading": "Indlæser...",
-            "emptyFolder": "Tom mappe",
-            "nameNotDecrypted": "navn ikke dekrypteret",
-            "download": "Download",
             "serverHashGated": "Tjeksum på serversiden er ikke tilgængelig, mens et krypteret overlay er aktivt (den ville hashe chifferteksten, ikke din fil).",
             "outsideScope": "Uden for det krypterede område (filer her er ikke krypteret)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Intet AeroCrypt-overlay fundet i den aktuelle fjernmappe. Skift til \"Opret ny\" for at lave et.",
             "remoteUnlocked": "Fjernserver låst op (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Krypteret fjernbrowser",
-            "upload": "Upload",
-            "up": "Op",
-            "path": "Sti: {path}",
-            "loading": "Indlæser...",
-            "emptyFolder": "Tom mappe",
-            "download": "Download",
-            "nameNotDecrypted": "navnet kunne ikke dekrypteres",
-            "fileDecryptedTo": "Fil dekrypteret til {path}",
-            "encryptedUploadCompleted": "Krypteret upload fuldført: {path}",
             "lock": "Lås overlay"
         },
         "aerocryptProfile": {

@@ -110,7 +110,10 @@ describe('remoteSyncRunner — copy legs', () => {
         expect(report.uploaded).toBe(1);
         expect(report.downloaded).toBe(1);
         expect(report.totalBytes).toBe(300);
-        expect(report.dirsCreated).toBe(1);
+        // Two folders are created: the `docs` parent dir for docs/b.txt AND the
+        // standalone `newdir`. Parent dirs of transferred files now count too, so
+        // the receipt reconciles with the compare's directory-inclusive count.
+        expect(report.dirsCreated).toBe(2);
         expect(report.errors).toHaveLength(0);
         expect(report.cancelled).toBe(false);
 

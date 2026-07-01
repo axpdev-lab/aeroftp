@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tmavé",
             "imagePreviewBgLight": "Světlé",
             "imagePreviewBgCustom": "Vlastní",
-            "showTransferProgress": "Zobrazit ukazatel průběhu přenosu"
+            "showTransferProgress": "Zobrazit ukazatel průběhu přenosu",
+            "similarToExisting": "se podobají existujícímu profilu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Přepsat",
             "skip": "Přeskočit",
             "rename": "Přejmenovat",
+            "resume": "Pokračovat",
+            "resumeHint": "Pokračovat v přerušeném přenosu místo jeho restartování",
             "cancel": "Zrušit"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Dešifrovat název",
             "decryptFileFromDisk": "Dešifrovat soubor z disku",
             "fileDecryptedTo": "Soubor dešifrován do {path}",
-            "encryptedUploadCompleted": "Šifrované nahrání dokončeno: {path}",
-            "remoteBrowser": "Vzdálený prohlížeč (transparentní)",
-            "upload": "Nahrát",
-            "up": "Nahoru",
-            "path": "Cesta: {path}",
-            "dirIvNotFound": "dirIV nenalezen v aktuální složce: názvy mohou zůstat šifrované.",
-            "loading": "Načítání...",
-            "emptyFolder": "Prázdná složka",
-            "nameNotDecrypted": "název nedešifrován",
-            "download": "Stáhnout",
             "serverHashGated": "Kontrolní součet na straně serveru není dostupný, když je aktivní šifrovaná vrstva (vypočítal by hash šifrovaného textu, ne vašeho souboru).",
             "outsideScope": "Mimo šifrovanou oblast (soubory zde nejsou šifrované)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "V aktuální vzdálené složce nebyla nalezena žádná vrstva AeroCrypt. Přepněte na „Vytvořit novou“ a vytvořte ji.",
             "remoteUnlocked": "Vzdálený server odemčen (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Šifrovaný vzdálený prohlížeč",
-            "upload": "Nahrát",
-            "up": "Nahoru",
-            "path": "Cesta: {path}",
-            "loading": "Načítání...",
-            "emptyFolder": "Prázdná složka",
-            "download": "Stáhnout",
-            "nameNotDecrypted": "název nebylo možné dešifrovat",
-            "fileDecryptedTo": "Soubor dešifrován do {path}",
-            "encryptedUploadCompleted": "Šifrované nahrání dokončeno: {path}",
             "lock": "Uzamknout vrstvu"
         },
         "aerocryptProfile": {

@@ -15,6 +15,24 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
     crate::ai_core::local_tools::value_as_string_array(args, key).map_err(|e| e.to_string())
 }
 
+/// Interim crypt-overlay guard for the AeroAgent `gui_tools` paths.
+///
+/// Delegates to the shared [`ProviderState::guard_no_raw_crypt_write`], which
+/// refuses a direct write to the RAW `ProviderState::provider` while the session
+/// is crypt-CAPABLE but currently UNWRAPPED (badge locked / outside the encrypted
+/// scope). The same guard now protects the regular GUI command layer
+/// (`provider_upload_file`/`_folder`, mkdir/delete/rename/server-copy); the
+/// `gui_tools` read paths (`download_files`, `sync_preview`, `remote_edit`) call
+/// it too so a raw read never returns ciphertext. The CLI, cross-profile/agent
+/// transfer, and MCP backends are crypt-aware (Phases 1-2), so steer the agent
+/// there.
+fn guard_no_raw_crypt_write(
+    state: &tauri::State<'_, crate::provider_commands::ProviderState>,
+    op: &str,
+) -> Result<(), String> {
+    state.guard_no_raw_crypt_write(op)
+}
+
 pub async fn dispatch_gui_tool(
     ctx: &dyn crate::ai_core::tools::ToolCtx,
     tool_name: &str,
@@ -282,6 +300,7 @@ pub async fn dispatch_gui_tool(
             const MAX_PREVIEW_BYTES: usize = 100 * 1024; // 100KB
 
             let mut content = if remote {
+                guard_no_raw_crypt_write(&state, "preview_edit (remote)")?;
                 let bytes = download_from_provider(&state, &app_state, &path).await?;
                 if bytes.len() > MAX_PREVIEW_BYTES {
                     return Ok(json!({
@@ -493,6 +512,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "upload_files" => {
+            guard_no_raw_crypt_write(&state, "upload_files")?;
 
             let local_paths: Vec<String> = args
                 .get("paths")
@@ -633,6 +653,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "download_files" => {
+            guard_no_raw_crypt_write(&state, "download_files")?;
 
             let remote_paths: Vec<String> = args
                 .get("paths")
@@ -706,6 +727,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "sync_preview" => {
+            guard_no_raw_crypt_write(&state, "sync_preview")?;
 
             let local_path = get_str_s(args, "local_path")?;
             let remote_path = get_str_s(args, "remote_path")?;
@@ -803,6 +825,7 @@ pub async fn dispatch_gui_tool(
 
         }
         "remote_edit" => {
+            guard_no_raw_crypt_write(&state, "remote_edit")?;
 
             let path = get_str_s(args, "path")?;
             let find = get_str_s(args, "find")?;

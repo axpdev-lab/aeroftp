@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tumšs",
             "imagePreviewBgLight": "Gaišs",
             "imagePreviewBgCustom": "Pielāgots",
-            "showTransferProgress": "Rādīt pārsūtīšanas norises joslu"
+            "showTransferProgress": "Rādīt pārsūtīšanas norises joslu",
+            "similarToExisting": "līdzīgi esošam profilam"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Pārrakstīt",
             "skip": "Izlaist",
             "rename": "Pārdēvēt",
+            "resume": "Atsākt",
+            "resumeHint": "Turpināt pārtraukto pārsūtīšanu, nevis sākt to no jauna",
             "cancel": "Atcelt"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Atšifrēt nosaukumu",
             "decryptFileFromDisk": "Atšifrēt failu no diska",
             "fileDecryptedTo": "Fails atšifrēts uz {path}",
-            "encryptedUploadCompleted": "Šifrēta augšupielāde pabeigta: {path}",
-            "remoteBrowser": "Attālais pārlūks (caurspīdīgs)",
-            "upload": "Augšupielādēt",
-            "up": "Augšup",
-            "path": "Ceļš: {path}",
-            "dirIvNotFound": "dirIV nav atrasts pašreizējā mapē: nosaukumi var palikt šifrēti.",
-            "loading": "Ielādē...",
-            "emptyFolder": "Tukša mape",
-            "nameNotDecrypted": "nosaukums nav atšifrēts",
-            "download": "Lejupielādēt",
             "serverHashGated": "Servera puses kontrolsumma nav pieejama, kamēr ir aktīvs šifrēts pārklājums (tā jauktu šifrēto tekstu, nevis jūsu failu).",
             "outsideScope": "Ārpus šifrētās zonas (faili šeit nav šifrēti)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Pašreizējā attālajā mapē netika atrasts AeroCrypt pārklājums. Pārslēdzies uz \"Izveidot jaunu\", lai to izveidotu.",
             "remoteUnlocked": "Attālais serveris atbloķēts (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Šifrēts attālais pārlūks",
-            "upload": "Augšupielādēt",
-            "up": "Uz augšu",
-            "path": "Ceļš: {path}",
-            "loading": "Notiek ielāde...",
-            "emptyFolder": "Tukša mape",
-            "download": "Lejupielādēt",
-            "nameNotDecrypted": "nosaukumu nevarēja atšifrēt",
-            "fileDecryptedTo": "Fails atšifrēts uz {path}",
-            "encryptedUploadCompleted": "Šifrēta augšupielāde pabeigta: {path}",
             "lock": "Bloķēt pārklājumu"
         },
         "aerocryptProfile": {

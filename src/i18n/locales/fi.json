@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Tumma",
             "imagePreviewBgLight": "Vaalea",
             "imagePreviewBgCustom": "Mukautettu",
-            "showTransferProgress": "Näytä siirron edistymispalkki"
+            "showTransferProgress": "Näytä siirron edistymispalkki",
+            "similarToExisting": "muistuttavat olemassa olevaa profiilia"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Korvaa",
             "skip": "Ohita",
             "rename": "Nimeä uudelleen",
+            "resume": "Jatka",
+            "resumeHint": "Jatka keskeytynyttä siirtoa sen sijaan, että aloittaisit alusta",
             "cancel": "Peruuta"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Pura nimen salaus",
             "decryptFileFromDisk": "Pura tiedoston salaus levyltä",
             "fileDecryptedTo": "Tiedosto purettu kohteeseen {path}",
-            "encryptedUploadCompleted": "Salattu lähetys valmis: {path}",
-            "remoteBrowser": "Etäselain (läpinäkyvä)",
-            "upload": "Lähetä",
-            "up": "Ylös",
-            "path": "Polku: {path}",
-            "dirIvNotFound": "dirIV:tä ei löytynyt nykyisestä kansiosta: nimet voivat pysyä salattuina.",
-            "loading": "Ladataan...",
-            "emptyFolder": "Tyhjä kansio",
-            "nameNotDecrypted": "nimeä ei purettu",
-            "download": "Lataa",
             "serverHashGated": "Palvelinpuolen tarkistussumma ei ole käytettävissä, kun salattu peittokerros on aktiivinen (se laskisi salatekstin tiivisteen, ei tiedostoasi).",
             "outsideScope": "Salatun alueen ulkopuolella (tiedostoja täällä ei ole salattu)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Nykyisestä etäkansiosta ei löytynyt AeroCrypt-peittokerrosta. Vaihda kohtaan \"Luo uusi\" luodaksesi sellaisen.",
             "remoteUnlocked": "Etäpalvelimen lukitus avattu (tunnus {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Salattu etäselain",
-            "upload": "Lähetä",
-            "up": "Ylös",
-            "path": "Polku: {path}",
-            "loading": "Ladataan...",
-            "emptyFolder": "Tyhjä kansio",
-            "download": "Lataa",
-            "nameNotDecrypted": "nimen salausta ei voitu purkaa",
-            "fileDecryptedTo": "Tiedoston salaus purettu sijaintiin {path}",
-            "encryptedUploadCompleted": "Salattu lähetys valmis: {path}",
             "lock": "Lukitse peittokerros"
         },
         "aerocryptProfile": {

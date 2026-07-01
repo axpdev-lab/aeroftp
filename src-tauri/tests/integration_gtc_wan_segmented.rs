@@ -1056,6 +1056,7 @@ async fn dag_download_once(
         observer,
         report,
         0,
+        None,
     )
     .await
     .map_err(|e| e.to_string());

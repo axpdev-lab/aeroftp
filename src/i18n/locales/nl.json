@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Donker",
             "imagePreviewBgLight": "Licht",
             "imagePreviewBgCustom": "Aangepast",
-            "showTransferProgress": "Voortgangsbalk voor overdracht weergeven"
+            "showTransferProgress": "Voortgangsbalk voor overdracht weergeven",
+            "similarToExisting": "lijken op een bestaand profiel"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Overschrijven",
             "skip": "Overslaan",
             "rename": "Hernoemen",
+            "resume": "Hervatten",
+            "resumeHint": "Hervat de onderbroken overdracht in plaats van opnieuw te beginnen",
             "cancel": "Annuleren"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Naam ontsleutelen",
             "decryptFileFromDisk": "Bestand van schijf ontsleutelen",
             "fileDecryptedTo": "Bestand ontsleuteld naar {path}",
-            "encryptedUploadCompleted": "Versleutelde upload voltooid: {path}",
-            "remoteBrowser": "Externe browser (transparant)",
-            "upload": "Uploaden",
-            "up": "Omhoog",
-            "path": "Pad: {path}",
-            "dirIvNotFound": "dirIV niet gevonden in huidige map: namen blijven mogelijk versleuteld.",
-            "loading": "Laden...",
-            "emptyFolder": "Lege map",
-            "nameNotDecrypted": "naam niet ontsleuteld",
-            "download": "Downloaden",
             "serverHashGated": "Controlesom aan serverzijde niet beschikbaar terwijl een versleutelde overlay actief is (deze zou de cijfertekst hashen, niet uw bestand).",
             "outsideScope": "Buiten het versleutelde gebied (bestanden hier zijn niet versleuteld)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Geen AeroCrypt-overlay gevonden in de huidige externe map. Schakel over naar 'Nieuwe maken' om er een te maken.",
             "remoteUnlocked": "Extern ontgrendeld (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Versleutelde externe browser",
-            "upload": "Uploaden",
-            "up": "Omhoog",
-            "path": "Pad: {path}",
-            "loading": "Laden…",
-            "emptyFolder": "Lege map",
-            "download": "Downloaden",
-            "nameNotDecrypted": "naam kon niet worden ontsleuteld",
-            "fileDecryptedTo": "Bestand ontsleuteld naar {path}",
-            "encryptedUploadCompleted": "Versleutelde upload voltooid: {path}",
             "lock": "Overlay vergrendelen"
         },
         "aerocryptProfile": {

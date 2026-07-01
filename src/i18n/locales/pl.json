@@ -1012,7 +1012,8 @@
             "imagePreviewBgDark": "Ciemny",
             "imagePreviewBgLight": "Jasny",
             "imagePreviewBgCustom": "Niestandardowy",
-            "showTransferProgress": "Pokaż pasek postępu transferu"
+            "showTransferProgress": "Pokaż pasek postępu transferu",
+            "similarToExisting": "przypominają istniejący profil"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1801,6 +1802,8 @@
             "overwrite": "Nadpisz",
             "skip": "Pomiń",
             "rename": "Zmień nazwę",
+            "resume": "Wznów",
+            "resumeHint": "Wznów przerwany transfer zamiast rozpoczynać go od nowa",
             "cancel": "Anuluj"
         },
         "statusbar": {
@@ -4628,16 +4631,6 @@
             "decryptName": "Odszyfruj nazwę",
             "decryptFileFromDisk": "Odszyfruj plik z dysku",
             "fileDecryptedTo": "Plik odszyfrowany do {path}",
-            "encryptedUploadCompleted": "Zaszyfrowane przesyłanie zakończone: {path}",
-            "remoteBrowser": "Przeglądarka zdalna (przezroczysta)",
-            "upload": "Prześlij",
-            "up": "W górę",
-            "path": "Ścieżka: {path}",
-            "dirIvNotFound": "Nie znaleziono dirIV w bieżącym folderze: nazwy mogą pozostać zaszyfrowane.",
-            "loading": "Ładowanie...",
-            "emptyFolder": "Pusty folder",
-            "nameNotDecrypted": "nazwa nieodszyfrowana",
-            "download": "Pobierz",
             "serverHashGated": "Suma kontrolna po stronie serwera niedostępna, gdy aktywna jest zaszyfrowana nakładka (obliczyłaby skrót szyfrogramu, a nie Twojego pliku).",
             "outsideScope": "Poza obszarem zaszyfrowanym (pliki tutaj nie są zaszyfrowane)"
         },
@@ -4946,16 +4939,6 @@
             "noOverlayFound": "Nie znaleziono nakładki AeroCrypt w bieżącym folderze zdalnym. Przełącz na „Utwórz nową”, aby ją utworzyć.",
             "remoteUnlocked": "Serwer zdalny odblokowany (ID {id})",
             "versionLabel": "AECR v{version}",
-            "remoteBrowser": "Zaszyfrowana przeglądarka zdalna",
-            "upload": "Wyślij",
-            "up": "W górę",
-            "path": "Ścieżka: {path}",
-            "loading": "Ładowanie...",
-            "emptyFolder": "Pusty folder",
-            "download": "Pobierz",
-            "nameNotDecrypted": "nie udało się odszyfrować nazwy",
-            "fileDecryptedTo": "Plik odszyfrowany do {path}",
-            "encryptedUploadCompleted": "Zaszyfrowane wysyłanie zakończone: {path}",
             "lock": "Zablokuj nakładkę"
         },
         "aerocryptProfile": {
