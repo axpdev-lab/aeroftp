@@ -464,7 +464,15 @@ impl KDriveProvider {
             let resp = self.get_with_retry(&url).await?;
 
             if !resp.status().is_success() {
+                let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
+                // A 404 on the folder-items listing is an absence, not a server
+                // fault: map it to NotFound so `exists()` returns Ok(false) instead
+                // of propagating an Err (the class of bug that broke the pCloud
+                // crypt-overlay probe). Any other status stays a ServerError.
+                if status.as_u16() == 404 {
+                    return Err(ProviderError::NotFound(sanitize_api_error(&body)));
+                }
                 return Err(ProviderError::ServerError(format!(
                     "Find file failed: {}",
                     sanitize_api_error(&body)

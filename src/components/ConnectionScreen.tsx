@@ -91,7 +91,7 @@ interface ConnectionScreenProps {
     loading: boolean;
     onConnectionParamsChange: (params: ConnectionParams) => void;
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
-    onConnect: () => void;
+    onConnect: (overrideParams?: ConnectionParams) => void;
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
     onAeroFile?: () => void;
@@ -3195,6 +3195,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 isEditing={!!editingProfileId}
                                 existingNames={servers.map(s => s.name)}
                                 onConnected={async (displayName, extraOptions) => {
+                                    // The saved profile id this live OAuth connection maps to. Seeded
+                                    // from editingProfileId (edit mode) so the connect carries a
+                                    // savedServerId even when several accounts share the provider:
+                                    // connectToFtp's provider-unique linkage fallback bails with 2+
+                                    // same-provider profiles, which left an OAuth crypt-overlay
+                                    // profile's binding unresolved (getProfileOverlayHint = null) so
+                                    // the overlay never auto-unlocked from the form (only the card
+                                    // path, which always has the id, worked).
+                                    let connectedSavedId: string | undefined = editingProfileId || undefined;
                                     // Save OAuth connection if requested
                                     if (saveConnection) {
                                         const existingServers = await loadSavedServerProfiles();
@@ -3221,6 +3230,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             };
                                             const newServers = [...existingServers, newServer];
                                             await storeSavedServerProfiles(newServers).catch(() => { });
+                                            connectedSavedId = newId;
                                         } else {
                                             const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt);
                                             const updated = existingServers.map(s =>
@@ -3236,9 +3246,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 } : s
                                             );
                                             await storeSavedServerProfiles(updated).catch(() => { });
+                                            connectedSavedId = duplicate.id;
                                         }
                                     }
-                                    onConnect();
+                                    // Pass the resolved saved id so the connect links to THIS profile
+                                    // (and unlocks its crypt overlay) regardless of how many accounts
+                                    // share the provider. No id (fresh unsaved connect) keeps the old
+                                    // no-arg behaviour + provider-unique linkage fallback.
+                                    onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
                                 }}
                             />
                         ) : (protocol === 's3' || protocol === 'webdav') && !selectedProviderId && !editingProfileId && !formOnly ? (

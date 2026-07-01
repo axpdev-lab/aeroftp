@@ -319,6 +319,10 @@ mod tests {
                         .to_string(),
                 ),
                 jotta_refresh: None,
+                // BYO OAuth app credentials must survive the round-trip so an
+                // imported OAuth profile reconnects without re-entering them.
+                oauth_client_id: Some("client-id-abc".to_string()),
+                oauth_client_secret: Some("client-secret-xyz".to_string()),
                 ..Default::default()
             },
         );
@@ -355,6 +359,20 @@ mod tests {
                 .get("server-a")
                 .and_then(|s| s.oauth.clone()),
             secrets.get("server-a").and_then(|s| s.oauth.clone())
+        );
+        assert_eq!(
+            restored_secrets
+                .get("server-a")
+                .and_then(|s| s.oauth_client_id.clone()),
+            Some("client-id-abc".to_string()),
+            "BYO OAuth client_id must survive export -> import"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("server-a")
+                .and_then(|s| s.oauth_client_secret.clone()),
+            Some("client-secret-xyz".to_string()),
+            "BYO OAuth client_secret must survive export -> import"
         );
         assert_eq!(
             restored_secrets

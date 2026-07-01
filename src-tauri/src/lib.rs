@@ -14541,6 +14541,28 @@ fn collect_provider_secrets_for_server(
         }
     }
 
+    // Bundle the BYO OAuth app `client_id`/`client_secret` (global vault
+    // singletons `oauth_<slug>_client_id`/`_client_secret`, one per provider) so
+    // an imported OAuth profile can reconnect without re-entering the app
+    // credentials. They are app-level, not per-profile, but an OAuth profile
+    // cannot work without them, so they travel with every OAuth profile in the
+    // export (the struct fields already exist for the #128-D rclone-import
+    // recovery path). The client-cred slug differs from the per-profile token
+    // slug: `rclone_oauth_client_cred_key` maps Google Photos onto Google Drive's
+    // app and gates the providers that have no BYO app (jottacloud/zoho).
+    if let Some(cred_slug) = crate::bridge_commands::rclone_oauth_client_cred_key(&protocol) {
+        if let Ok(id) = store.get(&format!("oauth_{}_client_id", cred_slug)) {
+            if !id.is_empty() {
+                out.oauth_client_id = Some(id);
+            }
+        }
+        if let Ok(secret) = store.get(&format!("oauth_{}_client_secret", cred_slug)) {
+            if !secret.is_empty() {
+                out.oauth_client_secret = Some(secret);
+            }
+        }
+    }
+
     // CWP-20B: bundle the crypt-overlay secrets (BOTH kinds — native AeroCrypt
     // and interop rclone-crypt share these generic vault keys) so an exported
     // Crypt profile reconnects on import without re-entering the overlay password.
@@ -14621,6 +14643,8 @@ pub async fn export_server_profiles_core(
                         || secrets.aerocrypt_overlay_pw.is_some()
                         || secrets.aerocrypt_overlay_salt.is_some()
                         || secrets.mode_credentials.is_some()
+                        || secrets.oauth_client_id.is_some()
+                        || secrets.oauth_client_secret.is_some()
                     {
                         provider_secrets.insert(server.id.clone(), secrets);
                     }
@@ -14761,6 +14785,33 @@ pub async fn import_server_profiles_core_filtered(
                             jotta_json,
                         ) {
                             cred_errors.push(format!("{} jotta: {}", profile_id, e));
+                        }
+                    }
+                }
+                // Restore the BYO OAuth app client_id/client_secret into their
+                // global vault singletons (`oauth_<slug>_client_id/secret`) so an
+                // imported OAuth profile reconnects without re-entering the app
+                // credentials (the export side gathers them in
+                // `collect_provider_secrets_for_server`). Written under the raw
+                // client-cred slug, which aliases Google Photos onto Google Drive
+                // and matches the key the GUI/edit form reads.
+                if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
+                    if let Some(cred_slug) = bridge_commands::rclone_oauth_client_cred_key(protocol)
+                    {
+                        if let Some(ref id) = secrets.oauth_client_id {
+                            if let Err(e) =
+                                store.store(&format!("oauth_{}_client_id", cred_slug), id)
+                            {
+                                cred_errors.push(format!("{} oauth client_id: {}", profile_id, e));
+                            }
+                        }
+                        if let Some(ref secret) = secrets.oauth_client_secret {
+                            if let Err(e) =
+                                store.store(&format!("oauth_{}_client_secret", cred_slug), secret)
+                            {
+                                cred_errors
+                                    .push(format!("{} oauth client_secret: {}", profile_id, e));
+                            }
                         }
                     }
                 }

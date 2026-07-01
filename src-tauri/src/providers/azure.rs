@@ -1564,7 +1564,18 @@ impl StorageProvider for AzureProvider {
             .await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(path.to_string()));
+            let status = resp.status();
+            // Only a genuine absence (404/410) is NotFound. The prior blanket
+            // mapping turned a 403/500/503 on an EXISTING blob into a false
+            // "not found", so `exists()` would wrongly report Ok(false) and a
+            // real auth/server fault would be silently swallowed.
+            if status.as_u16() == 404 || status.as_u16() == 410 {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            return Err(ProviderError::ServerError(format!(
+                "Azure stat failed ({}): {}",
+                status, path
+            )));
         }
 
         let size = resp

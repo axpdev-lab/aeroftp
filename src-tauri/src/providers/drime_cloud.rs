@@ -1559,7 +1559,15 @@ impl StorageProvider for DrimeCloudProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(format!("Stat failed: {}", e)))?;
 
             if !resp.status().is_success() {
+                let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
+                // A 404 on the file-entries listing is an absence, not a server
+                // fault: map it to NotFound so `exists()` returns Ok(false) rather
+                // than propagating an Err (same class as the pCloud crypt-overlay
+                // probe bug). Any other status stays a ServerError.
+                if status.as_u16() == 404 {
+                    return Err(ProviderError::NotFound(sanitize_api_error(&body)));
+                }
                 return Err(ProviderError::ServerError(format!(
                     "Stat failed: {}",
                     sanitize_api_error(&body)

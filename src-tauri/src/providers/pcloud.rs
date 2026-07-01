@@ -407,7 +407,14 @@ impl PCloudProvider {
             return Err(match resp.result {
                 // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
                 1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
-                2009 | 2010 => ProviderError::NotFound(msg),
+                // 2005: "Directory does not exist", 2009: "File not found or invalid
+                // file/folder id", 2010: "Invalid path". All three are absence
+                // conditions: mapping them to NotFound lets `exists()` return
+                // Ok(false) (not a propagated error) so a probe for a missing file
+                // in an existing folder is a clean negative. Without 2005 here, the
+                // AeroCrypt overlay bootstrap probe (`exists(.aeroftp-crypt.json)`)
+                // saw a ServerError and failed "could not be unlocked" on pCloud.
+                2005 | 2009 | 2010 => ProviderError::NotFound(msg),
                 2003 | 2028 => ProviderError::PermissionDenied(msg),
                 2004 => ProviderError::AlreadyExists(msg),
                 _ => ProviderError::ServerError(msg),
@@ -2145,6 +2152,17 @@ mod tests {
         ));
         assert!(matches!(
             PCloudProvider::check_response(&api_response(2009, Some("File not found"))),
+            Err(ProviderError::NotFound(_))
+        ));
+        // 2005 "Directory does not exist" is an absence, not a server fault: it
+        // must map to NotFound so `exists()` returns Ok(false) for a missing file
+        // in an existing folder (the AeroCrypt overlay bootstrap probe on pCloud).
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(2005, Some("Directory does not exist"))),
+            Err(ProviderError::NotFound(_))
+        ));
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(2010, Some("Invalid path"))),
             Err(ProviderError::NotFound(_))
         ));
         assert!(matches!(
