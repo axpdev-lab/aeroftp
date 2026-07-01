@@ -8009,6 +8009,8 @@ async fn cli_run_single_file_dag(
         observer,
         report,
         file_size,
+        // The CLI relies on process-level Ctrl+C, not the GUI session token.
+        None,
     )
     .await;
     let provider = arc

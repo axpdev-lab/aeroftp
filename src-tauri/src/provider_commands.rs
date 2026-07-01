@@ -1574,6 +1574,9 @@ async fn run_dag_download_leaf(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
     file_size: u64,
     delta_fallback_reason: Option<String>,
+    // FINDING-4 Part B: the live session cancel token so an in-flight Stop
+    // aborts the current file (see `execute_single_file_dag`).
+    cancel_token: Option<CancellationToken>,
 ) -> Result<String, String> {
     // Capability snapshot drives the shaped-graph shape (single transfer
     // core vs multipart fan-out). For downloads the shape collapses to one
@@ -1611,7 +1614,19 @@ async fn run_dag_download_leaf(
         let result = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {
-                Some(p) => p.download(&remote_path, &local_path, progress_cb).await,
+                Some(p) => {
+                    let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
+                    match &cancel_token {
+                        Some(tok) => tokio::select! {
+                            biased;
+                            _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                                "Transfer cancelled by user".to_string(),
+                            )),
+                            r = dl => r,
+                        },
+                        None => dl.await,
+                    }
+                }
                 None => Err(ProviderError::NotConnected),
             }
         };
@@ -1701,6 +1716,7 @@ async fn run_dag_download_leaf(
         observer,
         report_size,
         file_size,
+        cancel_token,
     )
     .await
     {
@@ -1745,6 +1761,9 @@ async fn run_dag_upload_leaf(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
     file_size: u64,
     delta_fallback_reason: Option<String>,
+    // FINDING-4 Part B: the live session cancel token so an in-flight Stop
+    // aborts the current file (see `execute_single_file_dag`).
+    cancel_token: Option<CancellationToken>,
 ) -> Result<String, String> {
     // Capability snapshot drives the shaped-graph shape. On an upload, this
     // is the gate between the legacy single-`UploadFile` core and a native
@@ -1780,7 +1799,19 @@ async fn run_dag_upload_leaf(
         );
         let mut guard = provider.lock().await;
         let result = match guard.as_mut() {
-            Some(p) => p.upload(&local_path, &remote_path, progress_cb).await,
+            Some(p) => {
+                let ul = async { p.upload(&local_path, &remote_path, progress_cb).await };
+                match &cancel_token {
+                    Some(tok) => tokio::select! {
+                        biased;
+                        _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        )),
+                        r = ul => r,
+                    },
+                    None => ul.await,
+                }
+            }
             None => Err(ProviderError::NotConnected),
         };
         return match result {
@@ -1834,6 +1865,7 @@ async fn run_dag_upload_leaf(
         observer,
         report_size,
         file_size,
+        cancel_token,
     )
     .await
     {
@@ -1977,7 +2009,15 @@ pub async fn provider_download_file(
     {
         if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
-            if let Some(result) = crate::delta_sync_rsync::try_delta_transfer_with_progress(
+            // FINDING-4 Part B: the delta (native rsync) transport runs on its
+            // OWN separate SSH connection and never reached the classic cancel
+            // path, so a Stop during a delta transfer ran to completion. Race it
+            // against the live session cancel token; on cancel we drop the delta
+            // future (tearing down its SSH connection, leaving the main session
+            // intact) and return a cancellation error WITHOUT falling through to
+            // the classic path (which would restart the transfer).
+            let cancel_token = state.current_cancel_token().await;
+            let delta_fut = crate::delta_sync_rsync::try_delta_transfer_with_progress(
                 provider.as_mut(),
                 crate::delta_sync_rsync::SyncDirection::Download,
                 &local_path_buf,
@@ -1988,9 +2028,38 @@ pub async fn provider_download_file(
                     filename.clone(),
                     "download",
                 )),
-            )
-            .await
-            {
+            );
+            let delta_cancelled;
+            let delta_outcome = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => {
+                    delta_cancelled = true;
+                    None
+                }
+                r = delta_fut => {
+                    delta_cancelled = false;
+                    r
+                }
+            };
+            if delta_cancelled {
+                let err_msg = format!("Download cancelled by user: {}", filename);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some("Download cancelled by user".to_string()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            if let Some(result) = delta_outcome {
                 if result.used_delta {
                     let delta_stats = result
                         .stats
@@ -2169,6 +2238,10 @@ pub async fn provider_download_file(
         // the provider box between our drop and the DAG node's re-lock
         // (issue #233). The guard lives for the entire DAG leaf call.
         let op_guard = TransferOperationGuard::acquire(&state);
+        // FINDING-4 Part B: grab the LIVE session cancel token (never reset here,
+        // so a queue-wide cancel that fired mid-batch still targets this leaf)
+        // so an in-flight Stop drops the current transfer.
+        let cancel_token = state.current_cancel_token().await;
         // Release the command-level guard so the DAG transfer node can lock
         // the same provider mutex from its spawned task.
         drop(provider_lock);
@@ -2184,6 +2257,7 @@ pub async fn provider_download_file(
             progress_cb,
             file_size,
             delta_fallback_reason,
+            Some(cancel_token),
         )
         .await;
     }
@@ -3455,7 +3529,13 @@ pub async fn provider_upload_file(
     {
         if crate::delta_sync_rsync::gui_delta_enabled() && use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
-            if let Some(delta_result) = crate::delta_sync_rsync::try_delta_transfer_with_progress(
+            // FINDING-4 Part B: race the delta (native rsync) upload against the
+            // live cancel token. The delta transport runs on its own SSH
+            // connection and bypasses the classic cancel path, so without this a
+            // Stop during a delta upload ran to completion. On cancel we drop the
+            // future and return, without falling through to the classic path.
+            let cancel_token = state.current_cancel_token().await;
+            let delta_fut = crate::delta_sync_rsync::try_delta_transfer_with_progress(
                 provider.as_mut(),
                 crate::delta_sync_rsync::SyncDirection::Upload,
                 &local_path_buf,
@@ -3466,9 +3546,38 @@ pub async fn provider_upload_file(
                     filename.clone(),
                     "upload",
                 )),
-            )
-            .await
-            {
+            );
+            let delta_cancelled;
+            let delta_outcome = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => {
+                    delta_cancelled = true;
+                    None
+                }
+                r = delta_fut => {
+                    delta_cancelled = false;
+                    r
+                }
+            };
+            if delta_cancelled {
+                let err_msg = format!("Upload cancelled by user: {}", filename);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some("Upload cancelled by user".to_string()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            if let Some(delta_result) = delta_outcome {
                 if delta_result.used_delta {
                     let delta_stats = delta_result
                         .stats
@@ -3532,6 +3641,9 @@ pub async fn provider_upload_file(
         // mutex, so the swap or disconnect path waits for the DAG leaf
         // to return instead of yanking the provider box from under it.
         let op_guard = TransferOperationGuard::acquire(&state);
+        // FINDING-4 Part B: grab the LIVE session cancel token (never reset here)
+        // so an in-flight Stop drops the current upload.
+        let cancel_token = state.current_cancel_token().await;
         drop(provider_lock);
         return run_dag_upload_leaf(
             app,
@@ -3544,6 +3656,7 @@ pub async fn provider_upload_file(
             progress_cb,
             file_size,
             delta_fallback_reason,
+            Some(cancel_token),
         )
         .await;
     }
