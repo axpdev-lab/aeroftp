@@ -44089,16 +44089,14 @@ async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
 // ── Crypt Overlay - Transparent Encryption Layer ─────────────────
 
 /// Maximum directory recursion depth for native AeroCrypt folder-tree
-/// traversal. Matches the rclone-crypt overlay bound
-/// (`RCLONE_OVERLAY_MAX_DEPTH` in `lib.rs`) so both overlays refuse
-/// pathologically deep trees identically (rclone-crypt BFS-64 parity).
+/// traversal. Kept at the historical crypt-overlay bound (64) so the CLI
+/// refuses pathologically deep trees identically to the GUI browser.
 const CRYPT_OVERLAY_MAX_DEPTH: usize = 64;
 
 /// Reduce a decrypted name to a single safe local path component, so a tampered
 /// or malformed obfuscated name can never escape the destination directory via
 /// embedded separators or `.`/`..` (defense in depth: a name is attacker
-/// influenced only by someone who already holds the overlay password). Mirrors
-/// `sanitize_local_name` in `lib.rs`.
+/// influenced only by someone who already holds the overlay password).
 fn crypt_sanitize_component(name: &str) -> String {
     let cleaned: String = name
         .chars()
