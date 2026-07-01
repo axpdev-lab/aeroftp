@@ -1014,7 +1014,9 @@ async fn eject_volume_windows(mount_point: &str) -> Result<String, String> {
         drive = drive
     );
 
-    let result = std::process::Command::new("powershell")
+    // #351: hidden_command suppresses the console window flash powershell would
+    // otherwise pop up when spawned from the GUI process.
+    let result = crate::hidden_command("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",

@@ -36729,19 +36729,20 @@ async fn cmd_benchmark(
     };
     // Create the scratch directory tree before any upload. `bench_base` may
     // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
-    // is unique per run. We track whether WE created the base this run so the
-    // final cleanup only removes a base dir we own (issue #368: the reporter
-    // had to delete `aeroftp-bench` by hand on every drive afterwards).
-    let base_created = match provider.mkdir(&bench_base).await {
-        Ok(()) => true,
-        Err(ProviderError::AlreadyExists(_)) => false,
+    // is unique per run. benchmark_mkdir_p below also creates the base with
+    // parents; doing it here first lets us warn clearly if the profile root is
+    // not writable. The final cleanup no longer needs a "did we create it" flag:
+    // in the no-prefix case `bench_base` is always our own `aeroftp-bench` folder
+    // and is safe to remove when empty (issue #368: the reporter had to delete it
+    // by hand on every drive afterwards).
+    match provider.mkdir(&bench_base).await {
+        Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
         Err(e) => {
             if !cli.quiet && matches!(format, OutputFormat::Text) {
                 eprintln!("warning: could not create benchmark base dir: {}", e);
             }
-            false
         }
-    };
+    }
     // Create `test_root` with parents (mkdir -p). Some WebDAV servers (pCloud,
     // issue #368) refuse a folder whose parent collection does not yet exist
     // and do not auto-create intermediates, so a single mkdir of the nested
@@ -37213,23 +37214,40 @@ async fn cmd_benchmark(
     }
 
     // Remove the shared `aeroftp-bench` base dir too (issue #368: the reporter
-    // had to delete it by hand on every cloud drive). Only when WE created it
-    // this run AND it is now empty: a pre-existing folder of that name, a
-    // concurrent benchmark run, or a user-chosen `--test-root-prefix` (whose
-    // base is the user's own path, never ours) must not be deleted. When a
-    // prefix override is in play `base_created` stays false on the user's
-    // existing prefix, so this is also a no-op there.
-    if base_created && test_root_prefix_override.is_none() {
+    // had to delete it by hand on Google Drive, MEGA and kDrive). ONLY in the
+    // no-prefix case: there `bench_base` is always OUR `aeroftp-bench` folder, so
+    // it is always safe to remove when empty. With `--test-root-prefix`,
+    // `bench_base` IS the user's own chosen directory (see
+    // benchmark_remote_roots_from_prefix), which we must never auto-remove.
+    // We intentionally no longer gate on `base_created`: on a second run the base
+    // already exists (mkdir returns AlreadyExists, base_created=false) but the
+    // folder is still ours to clean, which is exactly why it accumulated empty on
+    // Drive/kDrive/MEGA before. Emptiness-guarded so a folder that unexpectedly
+    // still holds data (soft-delete lag) is left in place and reported, never
+    // force-deleted.
+    if test_root_prefix_override.is_none() {
         let base_empty = match provider.list(&bench_base).await {
             Ok(entries) => entries.is_empty(),
             // If we cannot confirm emptiness, leave the base dir in place
             // rather than risk deleting non-benchmark data.
             Err(_) => false,
         };
-        if base_empty && provider.rmdir_recursive(&bench_base).await.is_ok() {
-            // Hard-purge the soft-deleted base on consumer clouds, mirroring
-            // the test_root trash purge above.
-            let _ = provider.delete_permanent(&bench_base).await;
+        if base_empty {
+            if provider.rmdir_recursive(&bench_base).await.is_ok() {
+                // Hard-purge the soft-deleted base on consumer clouds, mirroring
+                // the test_root trash purge above.
+                let _ = provider.delete_permanent(&bench_base).await;
+            } else {
+                errors.push(format!(
+                    "note: empty scratch folder '{}' could not be removed automatically; delete it manually",
+                    bench_base
+                ));
+            }
+        } else {
+            errors.push(format!(
+                "note: scratch folder '{}' left in place (not empty after cleanup)",
+                bench_base
+            ));
         }
     }
     let _ = provider.disconnect().await;
@@ -37940,6 +37958,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             let _ = crossterm::execute!(
                 err,
                 crossterm::terminal::LeaveAlternateScreen,
+                crossterm::terminal::EnableLineWrap, // pair the DisableLineWrap on enter
                 crossterm::cursor::Show
             );
             let _ = crossterm::terminal::disable_raw_mode();
@@ -37949,7 +37968,15 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
 
     let mut err = std::io::stderr();
     terminal::enable_raw_mode()?;
-    execute!(err, terminal::EnterAlternateScreen, cursor::Hide)?;
+    execute!(
+        err,
+        terminal::EnterAlternateScreen,
+        // #277/B6: disable auto-wrap so the bottom-row footer help line cannot
+        // wrap onto a second line and scroll the whole picker on every keypress
+        // in a narrow / split-screen terminal (it is clipped at the edge instead).
+        terminal::DisableLineWrap,
+        cursor::Hide
+    )?;
     let _guard = Guard;
 
     let result = loop {

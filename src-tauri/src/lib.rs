@@ -24,6 +24,25 @@ use tracing::{debug, error, info, warn};
 use url::Url;
 use zeroize::Zeroize;
 
+/// Build a `std::process::Command` that never pops up a console window on
+/// Windows. On non-Windows platforms this is exactly `Command::new`. Use this
+/// for every subprocess spawned from the GUI process so console-subsystem
+/// programs (powershell, schtasks, rclone, ...) do not flash a terminal window
+/// (issue #351). GUI-subsystem programs (explorer, `open`) never flash, so they
+/// do not need it, but using it anyway is harmless.
+pub fn hidden_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    // `mut` is only used inside the Windows-only block below.
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 pub mod aerocrypt;
 pub mod aerocrypt_provider;
 pub mod aerovault;

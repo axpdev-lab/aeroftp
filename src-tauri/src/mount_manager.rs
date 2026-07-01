@@ -804,7 +804,8 @@ fn install_autostart_platform(cli: &std::path::Path, cfg: &MountConfig) -> Resul
         tr.push_str(" --read-only");
     }
     let task = task_name(&cfg.id);
-    let output = std::process::Command::new("schtasks")
+    // #351: hidden_command avoids a console window flash on Windows.
+    let output = crate::hidden_command("schtasks")
         .args([
             "/Create", "/TN", &task, "/SC", "ONLOGON", "/RL", "LIMITED", "/F", "/TR", &tr,
         ])
@@ -822,7 +823,8 @@ fn install_autostart_platform(cli: &std::path::Path, cfg: &MountConfig) -> Resul
 #[cfg(windows)]
 fn uninstall_autostart_platform(id: &str) -> Result<(), String> {
     let task = task_name(id);
-    let _ = std::process::Command::new("schtasks")
+    // #351: hidden_command avoids a console window flash on Windows.
+    let _ = crate::hidden_command("schtasks")
         .args(["/Delete", "/TN", &task, "/F"])
         .output();
     Ok(())

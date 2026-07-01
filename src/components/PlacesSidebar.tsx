@@ -372,8 +372,14 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     setEjectingMount(mountPoint);
     try {
       await invoke('eject_volume', { mountPoint });
-      // Refresh volumes after eject
-      await fetchVolumes();
+      // #351: optimistically drop the ejected device so a stale OS mount-table
+      // entry cannot be re-ejected before the OS settles (which showed an error
+      // on the second click). fetchVolumes() still runs shortly after to
+      // reconcile, so a failed-but-reported eject reappears.
+      if (mountedRef.current) {
+        setVolumes(prev => prev.filter(v => v.mount_point !== mountPoint));
+      }
+      setTimeout(() => { if (mountedRef.current) fetchVolumes(); }, 1500);
     } catch (err) {
       // Eject failed (busy/locked drive, or platform error): give the user
       // visible feedback instead of dead silence.

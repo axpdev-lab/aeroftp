@@ -921,8 +921,9 @@ pub fn default_rclone_config_path() -> Option<PathBuf> {
         }
     }
 
-    // Try `rclone config file` command output (most reliable)
-    if let Ok(output) = std::process::Command::new("rclone")
+    // Try `rclone config file` command output (most reliable).
+    // #351: hidden_command avoids a console window flash on Windows.
+    if let Ok(output) = crate::hidden_command("rclone")
         .args(["config", "file"])
         .output()
     {

@@ -968,6 +968,22 @@ impl StorageProvider for KDriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            // kDrive returns a non-success when the directory already exists. Map
+            // that to AlreadyExists so re-creation is a no-op for callers that
+            // expect it (the benchmark base dir across repeated runs, #368),
+            // matching every other provider's mkdir contract. Prefer the
+            // structured error code (checked on the `code` field only, so a folder
+            // whose NAME contains "already_exist" cannot false-positive), and keep
+            // a 409 Conflict status as a fallback.
+            let code_says_exists = serde_json::from_str::<ApiResponse<serde_json::Value>>(&body)
+                .ok()
+                .and_then(|r| r.error)
+                .and_then(|e| e.code)
+                .map(|c| c.to_lowercase().contains("already_exist"))
+                .unwrap_or(false);
+            if status.as_u16() == 409 || code_says_exists {
+                return Err(ProviderError::AlreadyExists(resolved));
+            }
             return Err(ProviderError::ServerError(format!(
                 "Create directory failed ({}): {}",
                 status,

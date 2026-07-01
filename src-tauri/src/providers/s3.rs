@@ -60,6 +60,22 @@ fn encode_s3_key_path(key: &str) -> String {
         .join("/")
 }
 
+/// Decode a listed S3 `<Key>` for endpoints that return keys already percent-
+/// encoded. Filen's S3 bridge does this (issue #196); AWS/MinIO/Wasabi return
+/// `<Key>` verbatim, so `filen_decode` is false there and the key is untouched.
+/// Factored out of `list_keys_with_prefix` so the double-encode regression
+/// (#368: an emoji child re-encoded to `%25F0...` broke SigV4 on copy/delete)
+/// has a unit test without HTTP mocking.
+fn filen_decode_listed_key(key: String, filen_decode: bool) -> String {
+    if filen_decode {
+        urlencoding::decode(&key)
+            .map(|c| c.into_owned())
+            .unwrap_or(key)
+    } else {
+        key
+    }
+}
+
 /// Convert a raw S3 `ETag` value to a usable MD5 hex digest, or `None`.
 ///
 /// An S3 ETag equals the object MD5 ONLY for single-part uploads without
@@ -2194,6 +2210,13 @@ impl S3Provider {
     /// Includes pagination via continuation-token (H-05).
     async fn list_keys_with_prefix(&self, prefix: &str) -> Result<Vec<String>, ProviderError> {
         let mut all_keys = Vec::new();
+        // Filen's S3 bridge returns <Key> percent-encoded (issue #196). Decode to
+        // the logical key here so the single downstream encode_s3_key_path() call
+        // (server_side_copy_single / build_url) encodes exactly once. Without this,
+        // a listed emoji key like "folder/%F0%9F%9A%80file.txt" gets re-encoded to
+        // "%25F0...", producing a copy-source / delete key that fails SigV4 with
+        // "401 The signature does not match" (issue #368). Mirrors parse_list_response.
+        let filen_decode = self.is_filen_s3_endpoint();
         let mut continuation_token: Option<String> = None;
 
         loop {
@@ -2244,7 +2267,9 @@ impl S3Provider {
                         let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                         if !text.is_empty() {
                             if inside_key {
-                                all_keys.push(text);
+                                // #368: decode Filen-encoded keys so the single
+                                // downstream encode_s3_key_path() encodes once.
+                                all_keys.push(filen_decode_listed_key(text, filen_decode));
                             } else if inside_next_token {
                                 next_token = Some(text);
                             }
@@ -4779,6 +4804,36 @@ mod tests {
         assert_eq!(encode_s3_key_path("a&b=c"), "a%26b%3Dc");
         // Empty stays empty.
         assert_eq!(encode_s3_key_path(""), "");
+    }
+
+    /// #368: on Filen's S3 bridge a listed <Key> comes back already percent-
+    /// encoded, so it must be decoded once in list_keys_with_prefix. Otherwise
+    /// the single downstream encode_s3_key_path() double-encodes an emoji child
+    /// ("%F0..." -> "%25F0..."), and the x-amz-copy-source no longer matches the
+    /// SigV4 signature ("401 The signature does not match").
+    #[test]
+    fn filen_decode_listed_key_prevents_double_encode() {
+        // Filen returns the child key already encoded.
+        let listed = "folder/%F0%9F%9A%80file.txt".to_string();
+        // On a Filen endpoint we decode to the logical key...
+        let logical = filen_decode_listed_key(listed.clone(), true);
+        assert_eq!(logical, "folder/🚀file.txt");
+        // ...so re-encoding for x-amz-copy-source is single-encoded (no %25).
+        let reencoded = encode_s3_key_path(&logical);
+        assert_eq!(reencoded, "folder/%F0%9F%9A%80file.txt");
+        assert!(!reencoded.contains("%25"), "must not double-encode the key");
+
+        // On AWS/MinIO/Wasabi keys come back verbatim: leave them untouched so a
+        // real object whose name literally contains "%F0" is not corrupted.
+        assert_eq!(
+            filen_decode_listed_key(listed, false),
+            "folder/%F0%9F%9A%80file.txt"
+        );
+        // A plain ASCII key is unaffected either way.
+        assert_eq!(
+            filen_decode_listed_key("a/b.txt".to_string(), true),
+            "a/b.txt"
+        );
     }
 
     #[test]

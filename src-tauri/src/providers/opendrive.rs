@@ -2217,10 +2217,13 @@ impl StorageProvider for OpenDriveProvider {
             supports_multipart: true,
             multipart_threshold: OPENDRIVE_MULTIPART_THRESHOLD,
             multipart_part_size: OPENDRIVE_MULTIPART_PART_SIZE,
-            // OpenDrive doesn't document a hard fan-out cap; 4 matches the
-            // AIMD default budget the runner ships with and stays under
-            // the per-account concurrency throttle observed in practice.
-            multipart_max_parallel: 4,
+            // OpenDrive's upload_file_chunk2 protocol is STRICTLY SEQUENTIAL: the
+            // server tracks an `uploaded` byte counter and rejects any chunk whose
+            // chunk_offset != uploaded (HTTP 400 "Incorrect chunk offset", #368).
+            // See the official sample test_file_upload_chunked.php ($n starts at 0
+            // and is incremented by each chunk length, in order). Parts must be
+            // dispatched one at a time, in offset order, so the fan-out is 1.
+            multipart_max_parallel: 1,
             supports_resume_download: true,
             supports_resume_upload: true,
             supports_server_checksum: true,
@@ -2240,8 +2243,9 @@ impl StorageProvider for OpenDriveProvider {
     //      a fresh `temp_location` overriding step 1's.
     //   3. `upload/upload_file_chunk2.json/{session_id}/{file_id}` accepts
     //      multipart form bodies with `file_data`, `temp_location`,
-    //      `chunk_offset`, `chunk_size`. Chunks can land in any order as
-    //      long as their offsets sum to the declared `file_size`.
+    //      `chunk_offset`, `chunk_size`. Chunks MUST be sent sequentially in
+    //      ascending offset order: the server rejects a chunk whose offset is
+    //      not the running total of bytes received so far (#368).
     //   4. `upload/close_file_upload.json` finalises the upload.
     //
     // The multipart trait path forces `file_compressed=0` (the chunked
@@ -2728,7 +2732,9 @@ mod tests {
         assert!(hints.supports_multipart);
         assert_eq!(hints.multipart_threshold, OPENDRIVE_MULTIPART_THRESHOLD);
         assert_eq!(hints.multipart_part_size, OPENDRIVE_MULTIPART_PART_SIZE);
-        assert_eq!(hints.multipart_max_parallel, 4);
+        // #368: OpenDrive's chunk protocol is strictly sequential, so parts must
+        // be sent one at a time (fan-out 1), not in parallel.
+        assert_eq!(hints.multipart_max_parallel, 1);
         assert!(hints.supports_resume_download);
         assert!(hints.supports_resume_upload);
         assert!(hints.supports_server_checksum);

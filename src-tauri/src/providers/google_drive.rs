@@ -1721,6 +1721,23 @@ impl StorageProvider for GoogleDriveProvider {
             self.resolve_path(parent_path).await?
         };
 
+        // Google Drive permits duplicate-named siblings, so a plain create makes a
+        // second folder of the same name every time. That broke the benchmark base
+        // dir (a new `aeroftp-bench` per run, never cleaned up) and the callers
+        // that rely on the AlreadyExists contract (#368). Make mkdir idempotent:
+        // if the folder already exists under this parent, report AlreadyExists.
+        // Best-effort on purpose: only short-circuit on a CONFIRMED hit. A
+        // transient lookup failure (429 / token refresh; find_by_name does not
+        // check the HTTP status and would surface a deserialize error) must not
+        // fail the create, which historically went straight to the POST, so on
+        // any lookup error we fall through and let the create proceed.
+        if matches!(
+            self.find_by_name(folder_name, &parent_id).await,
+            Ok(Some(_))
+        ) {
+            return Err(ProviderError::AlreadyExists(path.to_string()));
+        }
+
         let metadata = serde_json::json!({
             "name": folder_name,
             "mimeType": "application/vnd.google-apps.folder",
