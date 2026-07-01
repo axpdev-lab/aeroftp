@@ -163,6 +163,61 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     const [pickedColor, setPickedColor] = useState<string | null>(null);
     const [autoRefresh, setAutoRefresh] = useState(false);
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    // Gutter line selection (Ehud #277 #17): click a line number to select the
+    // whole line, drag across the numbers to extend, the way IDE gutters work.
+    const preRef = useRef<HTMLPreElement>(null);
+    const gutterDragAnchor = useRef<number | null>(null);
+    const lineStartOffsets = useMemo(() => {
+        const offs = [0];
+        for (let i = 0; i < content.length; i++) {
+            if (content[i] === '\n') offs.push(i + 1);
+        }
+        return offs;
+    }, [content]);
+    const selectLineRange = useCallback((a: number, b: number) => {
+        const pre = preRef.current;
+        if (!pre) return;
+        const lo = Math.min(a, b);
+        const hi = Math.max(a, b);
+        const startOff = lineStartOffsets[lo] ?? 0;
+        // Extend through the start of the next line (includes the newline) for
+        // all but the final line, so multi-line selections are clean and whole.
+        const endOff = hi + 1 < lineStartOffsets.length ? lineStartOffsets[hi + 1] : content.length;
+        // Map a global character offset to a (text node, offset) inside the <pre>,
+        // walking text nodes so it works through the syntax-highlight spans too.
+        const locate = (target: number): { node: Node; offset: number } | null => {
+            const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+            let acc = 0;
+            let last: { node: Node; offset: number } | null = null;
+            let n = walker.nextNode();
+            while (n) {
+                const len = n.textContent?.length ?? 0;
+                if (target <= acc + len) return { node: n, offset: Math.max(0, target - acc) };
+                last = { node: n, offset: len };
+                acc += len;
+                n = walker.nextNode();
+            }
+            return last;
+        };
+        const startPos = locate(startOff);
+        const endPos = locate(endOff);
+        const sel = window.getSelection();
+        if (!startPos || !endPos || !sel) return;
+        try {
+            const range = document.createRange();
+            range.setStart(startPos.node, startPos.offset);
+            range.setEnd(endPos.node, endPos.offset);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        } catch {
+            /* selection is best-effort; ignore malformed ranges */
+        }
+    }, [content, lineStartOffsets]);
+    useEffect(() => {
+        const clear = () => { gutterDragAnchor.current = null; };
+        window.addEventListener('mouseup', clear);
+        return () => window.removeEventListener('mouseup', clear);
+    }, []);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasEyeDropper = typeof (window as any).EyeDropper === 'function';
 
@@ -532,15 +587,21 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         </div>
                     )}
                     <div className="flex min-h-full">
-                        {/* Line numbers */}
+                        {/* Line numbers (click/drag to select whole lines, #17) */}
                         <div className="flex-shrink-0 select-none text-right pr-4 pl-4 py-4 text-gray-600 bg-gray-800/50 border-r border-gray-700">
                             {content.split('\n').map((_, i) => (
-                                <div key={i} className="leading-6">{i + 1}</div>
+                                <div
+                                    key={i}
+                                    className="leading-6 cursor-pointer hover:text-gray-300 transition-colors"
+                                    onMouseDown={(e) => { e.preventDefault(); gutterDragAnchor.current = i; selectLineRange(i, i); }}
+                                    onMouseEnter={() => { if (gutterDragAnchor.current !== null) selectLineRange(gutterDragAnchor.current, i); }}
+                                >{i + 1}</div>
                             ))}
                         </div>
 
                         {/* Content with syntax highlighting */}
                         <pre
+                            ref={preRef}
                             className={`flex-1 p-4 leading-6 select-text cursor-text ${wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
                         >
                             {highlightedHtml ? (

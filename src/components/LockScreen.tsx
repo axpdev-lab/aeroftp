@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, KeyRound } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { WindowControls } from './WindowControls';
 
 // ============ Lock Screen Background Patterns ============
 // Each pattern is a lightweight inline SVG data URI.
@@ -210,6 +211,18 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master
                     <div className="absolute inset-0" style={{ backgroundImage: pattern.svg }} />
                 </div>
             )}
+
+            {/* Window controls + drag region. This lock screen renders above the
+                main titlebar, so without this the minimize/maximize/close buttons
+                are unreachable and the window cannot be moved. Mirrors the account
+                picker (AccountLockScreen) so both pre-unlock screens behave the
+                same (owner report). */}
+            <div
+                data-tauri-drag-region
+                className="absolute inset-x-0 top-0 z-20 flex h-9 items-center justify-end px-2"
+            >
+                <WindowControls />
+            </div>
 
             {/* Card: AeroVault modal style */}
             <div className="relative w-full max-w-md mx-4">
