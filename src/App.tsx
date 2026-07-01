@@ -436,6 +436,8 @@ import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLo
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
 import { useActivityLog } from './hooks/useActivityLog';
+import { useMarqueeSelection } from './hooks/useMarqueeSelection';
+import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useSettings } from './hooks/useSettings';
@@ -898,6 +900,24 @@ const App: React.FC = () => {
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
   const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rubber-band (marquee) multi-selection + click-blank-to-deselect for the
+  // REMOTE panel, mirroring the local panel (#270). The hook owns the empty
+  // space inside the remote scroll container; file rows/cards keep their own
+  // click handlers. Disabled while a remote inline rename input is focused.
+  const remoteFileScrollRef = useRef<HTMLDivElement>(null);
+  const remoteMarquee = useMarqueeSelection({
+    containerRef: remoteFileScrollRef,
+    itemSelector: 'tr[data-file-row], [data-file-card]',
+    selected: selectedRemoteFiles,
+    setSelected: setSelectedRemoteFiles,
+    setLastIndex: setLastSelectedRemoteIndex,
+    onBlankClick: () => {
+      setSelectedRemoteFiles(prev => (prev.size === 0 ? prev : new Set()));
+      setLastSelectedRemoteIndex(null);
+    },
+    disabled: inlineRename?.isRemote === true,
+  });
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [multiPropertiesDialog, setMultiPropertiesDialog] = useState<MultiFileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
@@ -967,6 +987,11 @@ const App: React.FC = () => {
     localLocal: boolean;
   } | null>(null);
   const remoteSyncRunningRef = useRef(false);
+  // FINDING-4: true from pressing Stop during a connected-remote AeroSync run
+  // until the run actually unwinds. Drives the Stop-button spinner (the run's
+  // files are not in transferQueue, so the batch two-level cancel can't surface
+  // "cancelling" feedback here).
+  const [syncCancelling, setSyncCancelling] = useState(false);
   // GAP-7: canary trial result + the deferred full-run approval callback.
   const [canaryResult, setCanaryResult] = useState<{
     result: CanaryResult;
@@ -7940,6 +7965,23 @@ interface UpdateVerificationInfo {
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
     }
+    // FINDING-4: a connected-remote AeroSync run does not populate transferQueue,
+    // so the batch two-level model can never reach the hard-abort (the in-flight
+    // file always finishes first). Here Stop means "stop now": tell the runner to
+    // stop at the next file boundary AND abort the current transfer via the
+    // backend cancel flag (the Issue #332 tokio::select! race in
+    // provider_download_file / provider_upload_file drops the in-flight future).
+    // The spinner stays until the run unwinds and clears remoteSyncRunningRef.
+    if (remoteSyncRunningRef.current) {
+      setSyncCancelling(true);
+      batchCancelledRef.current = true;
+      cancelLevelRef.current = 2;
+      dispatchTransferToast(null);
+      try { await invoke('cancel_transfer'); } catch { }
+      setIsBatchPaused(false);
+      setBatchPauseReason(null);
+      return;
+    }
     if (cancelLevelRef.current === 0) {
       // Level 1: Soft cancel: finish current file, stop queue
       cancelLevelRef.current = 1;
@@ -8771,6 +8813,7 @@ interface UpdateVerificationInfo {
         } finally {
           window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
           remoteSyncRunningRef.current = false;
+          setSyncCancelling(false);
         }
       })();
     };
@@ -8917,6 +8960,7 @@ interface UpdateVerificationInfo {
         notify.error(t('aerosync.title') || 'AeroSync', String(err));
       } finally {
         remoteSyncRunningRef.current = false;
+        setSyncCancelling(false);
       }
     })();
   }, [
@@ -14745,16 +14789,22 @@ interface UpdateVerificationInfo {
                           icon: the lit badge is the single, type-coloured control. */}
                       <button
                         onClick={cancelTransfer}
-                        disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
-                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${isForceStopMode
-                          ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
-                          : (hasActiveTransfer || hasQueueActivity)
-                            ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
-                            : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        disabled={!syncCancelling && !isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${syncCancelling
+                          ? 'bg-red-500 text-white shadow-sm cursor-wait'
+                          : isForceStopMode
+                            ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                            : (hasActiveTransfer || hasQueueActivity)
+                              ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
+                              : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                           }`}
-                        title={isForceStopMode ? t('transfer.forceStop') : t('transfer.cancelAll')}
+                        title={syncCancelling || isForceStopMode
+                          ? t('transfer.forceStop')
+                          : t('transfer.cancelAll')}
                       >
-                        {isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
+                        {syncCancelling
+                          ? <StopCancelSpinner size={16} />
+                          : isForceStopMode ? <Zap size={16} /> : <XCircle size={16} />}
                       </button>
                       <button
                         onClick={toggleSyncNavigation}
@@ -15171,12 +15221,28 @@ interface UpdateVerificationInfo {
                       </button>
                     </div>
                   )}
-                  <div className="flex-1 overflow-auto" onContextMenu={(e) => {
+                  <div
+                    ref={remoteFileScrollRef}
+                    className="relative flex-1 overflow-auto"
+                    onMouseDown={remoteMarquee.onMouseDown}
+                    onContextMenu={(e) => {
                     // Only show empty-area menu if click target is the container itself or table background
                     const target = e.target as HTMLElement;
                     const isFileRow = target.closest('tr[data-file-row]') || target.closest('[data-file-card]');
                     if (!isFileRow && isConnected) showRemoteEmptyContextMenu(e);
                   }}>
+                    {remoteMarquee.box && (
+                      <div
+                        className="pointer-events-none absolute z-10 rounded-[2px] border border-blue-400/80 bg-blue-400/20 dark:border-blue-300/70 dark:bg-blue-300/15"
+                        style={{
+                          left: remoteMarquee.box.left,
+                          top: remoteMarquee.box.top,
+                          width: remoteMarquee.box.width,
+                          height: remoteMarquee.box.height,
+                        }}
+                        aria-hidden="true"
+                      />
+                    )}
                     {!isConnected ? (
                       <div className="flex flex-col items-center justify-center h-full text-gray-400">
                         <Cloud size={64} className="mb-4 opacity-30" />
@@ -15259,6 +15325,8 @@ interface UpdateVerificationInfo {
                             <tr
                               key={`${file.name}-${i}`}
                               data-file-row
+                              data-file-name={file.name}
+                              data-file-index={i}
                               role="row"
                               aria-selected={selectedRemoteFiles.has(file.name)}
                               draggable={file.name !== '..' && inlineRename?.path !== file.path}
@@ -15474,6 +15542,8 @@ interface UpdateVerificationInfo {
                           <div
                             key={`${file.name}-${i}`}
                             data-file-card
+                            data-file-name={file.name}
+                            data-file-index={i}
                             draggable={file.name !== '..' && inlineRename?.path !== file.path}
                             onDragStart={(e) => handleDragStart(e, file, 'remote', selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}
