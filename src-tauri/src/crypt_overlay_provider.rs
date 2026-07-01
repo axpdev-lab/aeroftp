@@ -876,6 +876,14 @@ impl StorageProvider for CryptOverlayProvider {
         false
     }
 
+    // A partial ciphertext is never byte-resumable (per-file nonce / AEAD
+    // framing), so the "Resume" action must fall back to a full re-encrypt.
+    // Explicit (not just the trait default) so a future refactor cannot make
+    // this silently delegate to the inner provider.
+    fn supports_resume_upload_append(&self) -> bool {
+        false
+    }
+
     fn supports_find(&self) -> bool {
         false
     }
@@ -1958,6 +1966,20 @@ mod tests {
             assert!(
                 matches!(ranged, Err(ProviderError::NotSupported(_))),
                 "{label}: ranged read must be NotSupported, got {ranged:?}"
+            );
+            // Fail-safe: a partial ciphertext is never byte-resumable, so the
+            // decorator must never advertise append-resume nor let a resume
+            // append reach the inner store (it would corrupt the AEAD framing).
+            assert!(
+                !provider.supports_resume_upload_append(),
+                "{label}: crypt overlay must not offer append-resume"
+            );
+            let resumed = provider
+                .resume_upload("/tmp/x", "/whatever.bin", 8, None)
+                .await;
+            assert!(
+                matches!(resumed, Err(ProviderError::NotSupported(_))),
+                "{label}: resume_upload must be NotSupported, got {resumed:?}"
             );
         }
     }

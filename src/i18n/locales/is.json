@@ -1802,6 +1802,8 @@
             "overwrite": "Yfirskrifa",
             "skip": "Sleppa",
             "rename": "Endurnefna",
+            "resume": "Halda áfram",
+            "resumeHint": "Halda áfram með rofna flutninginn í stað þess að byrja upp á nýtt",
             "cancel": "Hætta við"
         },
         "statusbar": {

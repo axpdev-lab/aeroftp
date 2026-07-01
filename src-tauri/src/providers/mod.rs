@@ -782,6 +782,18 @@ pub trait StorageProvider: Send + Sync {
         false
     }
 
+    /// Whether this provider can resume an interrupted upload by appending
+    /// bytes from a given offset (the GUI "Resume" action on the overwrite
+    /// dialog). Kept deliberately separate from the DAG `transfer_capabilities`
+    /// hints so enabling append-resume never reshapes DAG upload planning.
+    /// Default false; only providers with a real append path (currently SFTP)
+    /// override it. Crypt overlay providers MUST leave it false: a partial
+    /// ciphertext is not byte-resumable (per-file nonce / AEAD framing), so a
+    /// crypt-bound resume falls back to a full re-encrypt instead.
+    fn supports_resume_upload_append(&self) -> bool {
+        false
+    }
+
     /// Resume a download from a given byte offset
     async fn resume_download(
         &mut self,

@@ -1802,6 +1802,8 @@
             "overwrite": "Tulis ganti",
             "skip": "Langkau",
             "rename": "Namakan semula",
+            "resume": "Sambung",
+            "resumeHint": "Sambung pemindahan yang terhenti dan bukannya memulakannya semula",
             "cancel": "Batal"
         },
         "statusbar": {

@@ -1802,6 +1802,8 @@
             "overwrite": "Korvaa",
             "skip": "Ohita",
             "rename": "Nimeä uudelleen",
+            "resume": "Jatka",
+            "resumeHint": "Jatka keskeytynyttä siirtoa sen sijaan, että aloittaisit alusta",
             "cancel": "Peruuta"
         },
         "statusbar": {

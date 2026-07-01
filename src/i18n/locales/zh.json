@@ -1802,6 +1802,8 @@
             "overwrite": "覆盖",
             "skip": "跳过",
             "rename": "重命名",
+            "resume": "继续",
+            "resumeHint": "继续中断的传输，而不是重新开始",
             "cancel": "取消"
         },
         "statusbar": {

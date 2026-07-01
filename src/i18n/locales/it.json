@@ -1695,6 +1695,8 @@
             "overwrite": "Sovrascrivi",
             "skip": "Salta",
             "rename": "Rinomina",
+            "resume": "Riprendi",
+            "resumeHint": "Continua il trasferimento interrotto invece di ricominciarlo",
             "cancel": "Annulla"
         },
         "toast": {

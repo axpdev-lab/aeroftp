@@ -75,8 +75,14 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
     }
 
     if (fileExistsAction && fileExistsAction !== 'ask') {
-      if (fileExistsAction === 'overwrite' || fileExistsAction === 'resume') {
+      if (fileExistsAction === 'overwrite') {
         return { action: 'overwrite' };
+      }
+      if (fileExistsAction === 'resume') {
+        // Resume only makes sense against an interrupted partial (destination
+        // smaller than the source). Anything else falls back to overwrite. The
+        // backend fail-safes crypt/unsupported providers to a full re-send.
+        return { action: sourceSize > (destFile.size || 0) ? 'resume' : 'overwrite' };
       }
       if (fileExistsAction === 'skip') {
         return { action: 'skip' };

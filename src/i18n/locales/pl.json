@@ -1802,6 +1802,8 @@
             "overwrite": "Nadpisz",
             "skip": "Pomiń",
             "rename": "Zmień nazwę",
+            "resume": "Wznów",
+            "resumeHint": "Wznów przerwany transfer zamiast rozpoczynać go od nowa",
             "cancel": "Anuluj"
         },
         "statusbar": {

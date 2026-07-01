@@ -1802,6 +1802,8 @@
             "overwrite": "Felülírás",
             "skip": "Kihagyás",
             "rename": "Átnevezés",
+            "resume": "Folytatás",
+            "resumeHint": "A megszakadt átvitel folytatása újraindítás helyett",
             "cancel": "Mégse"
         },
         "statusbar": {

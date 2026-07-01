@@ -1802,6 +1802,8 @@
             "overwrite": "Üzerine yaz",
             "skip": "Atla",
             "rename": "Yeniden Adlandır",
+            "resume": "Sürdür",
+            "resumeHint": "Aktarımı yeniden başlatmak yerine kaldığı yerden sürdür",
             "cancel": "İptal"
         },
         "statusbar": {

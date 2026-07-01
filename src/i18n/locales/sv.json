@@ -1802,6 +1802,8 @@
             "overwrite": "Skriv över",
             "skip": "Hoppa över",
             "rename": "Byt namn",
+            "resume": "Återuppta",
+            "resumeHint": "Återuppta den avbrutna överföringen i stället för att börja om",
             "cancel": "Avbryt"
         },
         "statusbar": {

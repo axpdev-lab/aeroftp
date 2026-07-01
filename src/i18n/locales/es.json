@@ -1802,6 +1802,8 @@
             "overwrite": "Sobrescribir",
             "skip": "Omitir",
             "rename": "Renombrar",
+            "resume": "Reanudar",
+            "resumeHint": "Continúa la transferencia interrumpida en lugar de reiniciarla",
             "cancel": "Cancelar"
         },
         "statusbar": {

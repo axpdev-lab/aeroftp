@@ -1802,6 +1802,8 @@
             "overwrite": "Overskriv",
             "skip": "Hopp over",
             "rename": "Gi nytt navn",
+            "resume": "Gjenoppta",
+            "resumeHint": "Gjenoppta den avbrutte overføringen i stedet for å starte på nytt",
             "cancel": "Avbryt"
         },
         "statusbar": {

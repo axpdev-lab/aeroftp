@@ -1802,6 +1802,8 @@
             "overwrite": "Gainidatzi",
             "skip": "Saltatu",
             "rename": "Berrizendatu",
+            "resume": "Berrekin",
+            "resumeHint": "Jarraitu eten den transferentzia, berriro hasi beharrean",
             "cancel": "Utzi"
         },
         "statusbar": {

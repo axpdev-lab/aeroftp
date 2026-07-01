@@ -1802,6 +1802,8 @@
             "overwrite": "Timpa",
             "skip": "Lewati",
             "rename": "Ganti nama",
+            "resume": "Lanjutkan",
+            "resumeHint": "Lanjutkan transfer yang terputus alih-alih memulainya lagi",
             "cancel": "Batal"
         },
         "statusbar": {

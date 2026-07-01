@@ -1802,6 +1802,8 @@
             "overwrite": "Suprascrie",
             "skip": "Omite",
             "rename": "Redenumește",
+            "resume": "Reia",
+            "resumeHint": "Reia transferul întrerupt în loc să îl repornești",
             "cancel": "Anulează"
         },
         "statusbar": {

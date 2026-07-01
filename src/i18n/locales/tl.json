@@ -1802,6 +1802,8 @@
             "overwrite": "Patungan",
             "skip": "Laktawan",
             "rename": "Palitan ang pangalan",
+            "resume": "Ipagpatuloy",
+            "resumeHint": "Ipagpatuloy ang naantalang paglipat sa halip na simulan itong muli",
             "cancel": "Kanselahin"
         },
         "statusbar": {

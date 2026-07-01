@@ -870,6 +870,76 @@ impl SftpProvider {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         }
     }
+
+    /// Align the remote file's mtime/atime with the local source so repeated
+    /// sync scans don't re-upload unchanged files just because the server
+    /// stamped the upload time. Best-effort: failures are logged, not fatal.
+    /// Shared by `upload` and `resume_upload`.
+    async fn preserve_remote_mtime(&self, sftp: &SftpSession, remote_path: &str, local_path: &str) {
+        match tokio::fs::metadata(local_path).await {
+            Ok(local_meta) => {
+                if let Ok(modified) = local_meta.modified() {
+                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+                        match u32::try_from(duration.as_secs()) {
+                            Ok(epoch_secs) => {
+                                let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+                                // SFTP's ACMODTIME attribute serializes both fields together;
+                                // reuse the source mtime for atime to avoid sending a zero atime.
+                                attrs.atime = Some(epoch_secs);
+                                attrs.mtime = Some(epoch_secs);
+                                if let Err(error) = sftp.set_metadata(remote_path, attrs).await {
+                                    tracing::warn!(
+                                        "SFTP: Failed to preserve remote mtime for {}: {}",
+                                        remote_path,
+                                        error
+                                    );
+                                }
+                            }
+                            Err(_) => tracing::warn!(
+                                "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
+                                remote_path
+                            ),
+                        }
+                    }
+                }
+            }
+            Err(error) => tracing::warn!(
+                "SFTP: Could not read local metadata for mtime preservation ({}): {}",
+                local_path,
+                error
+            ),
+        }
+    }
+}
+
+/// How an interrupted upload should be resumed.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ResumeUploadPlan {
+    /// Nothing usable on the remote (empty / stale offset): full upload from 0.
+    FullUpload,
+    /// The remote already holds at least the whole local file: nothing to send.
+    AlreadyComplete,
+    /// Append the local tail starting at this byte offset.
+    Append(u64),
+}
+
+/// Decide how to resume an upload from the caller's requested offset, the
+/// actual remote size, and the local file size. The offset is clamped to what
+/// really landed (`remote_size`) so a stale caller offset can never make us
+/// append past a short remote file, which would corrupt it.
+pub(crate) fn plan_resume_upload(
+    caller_offset: u64,
+    remote_size: u64,
+    local_size: u64,
+) -> ResumeUploadPlan {
+    let start = caller_offset.min(remote_size);
+    if start == 0 {
+        ResumeUploadPlan::FullUpload
+    } else if start >= local_size {
+        ResumeUploadPlan::AlreadyComplete
+    } else {
+        ResumeUploadPlan::Append(start)
+    }
 }
 
 /// Format Unix permissions as rwx string
@@ -1554,45 +1624,183 @@ impl StorageProvider for SftpProvider {
         // Keep remote mtime aligned with the local source so repeated sync
         // scans don't re-upload unchanged files just because the server stamped
         // the file with upload time.
-        match tokio::fs::metadata(local_path).await {
-            Ok(local_meta) => {
-                if let Ok(modified) = local_meta.modified() {
-                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
-                        match u32::try_from(duration.as_secs()) {
-                            Ok(epoch_secs) => {
-                                let mut attrs = russh_sftp::protocol::FileAttributes::empty();
-                                // SFTP's ACMODTIME attribute serializes both fields together;
-                                // reuse the source mtime for atime to avoid sending a zero atime.
-                                attrs.atime = Some(epoch_secs);
-                                attrs.mtime = Some(epoch_secs);
-                                if let Err(error) = sftp.set_metadata(&full_path, attrs).await {
-                                    tracing::warn!(
-                                        "SFTP: Failed to preserve remote mtime for {}: {}",
-                                        full_path,
-                                        error
-                                    );
-                                }
-                            }
-                            Err(_) => tracing::warn!(
-                                "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
-                                full_path
-                            ),
-                        }
-                    }
-                }
-            }
-            Err(error) => tracing::warn!(
-                "SFTP: Could not read local metadata for mtime preservation ({}): {}",
-                local_path,
-                error
-            ),
-        }
+        self.preserve_remote_mtime(sftp, &full_path, local_path)
+            .await;
 
         tracing::info!(
             "SFTP: Upload complete via russh_sftp: {} bytes",
             transferred
         );
         Ok(())
+    }
+
+    /// SFTP can append the tail of an interrupted upload from a byte offset
+    /// (the GUI "Resume" action), so the remote partial is not re-sent.
+    fn supports_resume_upload_append(&self) -> bool {
+        true
+    }
+
+    /// Resume an interrupted upload: append the local file's tail onto the
+    /// remote partial instead of re-sending from zero. The caller offset is
+    /// clamped to the real remote size (re-stat) so a stale offset can never
+    /// append past a short remote file and corrupt it. Falls back to a full
+    /// `upload` when there is nothing usable to resume from.
+    async fn resume_upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        use russh_sftp::protocol::OpenFlags;
+        use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+
+        self.ensure_connected().await?;
+
+        let total_size = tokio::fs::metadata(local_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to stat local file: {}", e))
+        })?;
+        let total_size = total_size.len();
+
+        // Re-stat the remote so the resume offset reflects what actually landed.
+        let remote_size = {
+            let sftp = self.get_sftp()?;
+            let full_path = self.normalize_path(remote_path);
+            sftp.metadata(&full_path)
+                .await
+                .ok()
+                .and_then(|m| m.size)
+                .unwrap_or(0)
+        };
+
+        match plan_resume_upload(offset, remote_size, total_size) {
+            ResumeUploadPlan::FullUpload => {
+                // No usable partial on the remote: do a normal full upload.
+                return self.upload(local_path, remote_path, on_progress).await;
+            }
+            ResumeUploadPlan::AlreadyComplete => {
+                if let Some(ref progress) = on_progress {
+                    progress(total_size, total_size);
+                }
+                tracing::info!(
+                    "SFTP: Resume upload no-op, remote already has {} bytes",
+                    remote_size
+                );
+                return Ok(());
+            }
+            ResumeUploadPlan::Append(start_offset) => {
+                let sftp = self.get_sftp()?;
+                let full_path = self.normalize_path(remote_path);
+                tracing::info!(
+                    "SFTP: Resuming upload of {} from offset {} (local {} bytes)",
+                    full_path,
+                    start_offset,
+                    total_size
+                );
+
+                // Open WRITE|CREATE (no TRUNCATE) and seek to the partial's end.
+                // We seek explicitly instead of using APPEND: some servers ignore
+                // the seek when APPEND is set and always write at EOF.
+                let mut remote_file = sftp
+                    .open_with_flags(&full_path, OpenFlags::WRITE | OpenFlags::CREATE)
+                    .await
+                    .map_err(|e| {
+                        classify_russh_err(e, |s| {
+                            ProviderError::TransferFailed(format!(
+                                "Failed to open remote for resume: {}",
+                                s
+                            ))
+                        })
+                    })?;
+                remote_file
+                    .seek(std::io::SeekFrom::Start(start_offset))
+                    .await
+                    .map_err(|e| {
+                        ProviderError::TransferFailed(format!(
+                            "Failed to seek remote for resume: {}",
+                            e
+                        ))
+                    })?;
+
+                let mut local_file = tokio::fs::File::open(local_path).await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to open local file: {}", e))
+                })?;
+                local_file
+                    .seek(std::io::SeekFrom::Start(start_offset))
+                    .await
+                    .map_err(|e| {
+                        ProviderError::TransferFailed(format!(
+                            "Failed to seek local for resume: {}",
+                            e
+                        ))
+                    })?;
+
+                let mut buffer = vec![0u8; self.buffer_size];
+                let mut transferred: u64 = start_offset;
+                if let Some(ref progress) = on_progress {
+                    progress(transferred, total_size);
+                }
+                let start = std::time::Instant::now();
+
+                loop {
+                    let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!("Local read error: {}", e))
+                        })?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    remote_file
+                        .write_all(&buffer[..bytes_read])
+                        .await
+                        .map_err(|e| {
+                            classify_russh_err(e, |s| {
+                                ProviderError::TransferFailed(format!("Remote write error: {}", s))
+                            })
+                        })?;
+                    transferred += bytes_read as u64;
+                    if let Some(ref progress) = on_progress {
+                        progress(transferred, total_size);
+                    }
+                    // Throttle only on bytes moved THIS session so a resume does
+                    // not over-sleep for already-uploaded data.
+                    if self.upload_limit_bps > 0 {
+                        let session_bytes = transferred - start_offset;
+                        let expected = std::time::Duration::from_secs_f64(
+                            session_bytes as f64 / self.upload_limit_bps as f64,
+                        );
+                        let elapsed = start.elapsed();
+                        if expected > elapsed {
+                            tokio::time::sleep(expected - elapsed).await;
+                        }
+                    }
+                }
+
+                remote_file.shutdown().await.map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
+                    })
+                })?;
+
+                if let Err(error) = self
+                    .verify_remote_upload_size(sftp, &full_path, total_size)
+                    .await
+                {
+                    tracing::warn!(
+                        "SFTP: Resume upload size verification warning for {}: {}",
+                        full_path,
+                        error
+                    );
+                }
+
+                self.preserve_remote_mtime(sftp, &full_path, local_path)
+                    .await;
+
+                tracing::info!("SFTP: Resume upload complete: {} bytes total", transferred);
+                Ok(())
+            }
+        }
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2773,5 +2981,36 @@ mod tests {
         assert_eq!(format_permissions(0o644, false), "-rw-r--r--");
         assert_eq!(format_permissions(0o777, true), "drwxrwxrwx");
         assert_eq!(format_permissions(0o600, false), "-rw-------");
+    }
+
+    #[test]
+    fn test_plan_resume_upload() {
+        // Happy path: remote holds a valid prefix, append the tail.
+        assert_eq!(
+            plan_resume_upload(15, 15, 100),
+            ResumeUploadPlan::Append(15)
+        );
+        // No partial on the remote: full upload from zero.
+        assert_eq!(plan_resume_upload(0, 0, 100), ResumeUploadPlan::FullUpload);
+        // Caller offset present but remote is empty: clamp to 0 -> full upload
+        // (never trust an offset the remote can't back).
+        assert_eq!(plan_resume_upload(50, 0, 100), ResumeUploadPlan::FullUpload);
+        // Stale caller offset larger than the real remote size: clamp down to
+        // the remote size and append from there, never past it.
+        assert_eq!(
+            plan_resume_upload(90, 40, 100),
+            ResumeUploadPlan::Append(40)
+        );
+        // Remote already has the whole file: nothing to send.
+        assert_eq!(
+            plan_resume_upload(100, 100, 100),
+            ResumeUploadPlan::AlreadyComplete
+        );
+        // Remote somehow larger than local (stale/other file): treat as complete
+        // rather than appending garbage.
+        assert_eq!(
+            plan_resume_upload(120, 120, 100),
+            ResumeUploadPlan::AlreadyComplete
+        );
     }
 }

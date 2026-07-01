@@ -1802,6 +1802,8 @@
             "overwrite": "Sobreescriu",
             "skip": "Omet",
             "rename": "Canvia el nom",
+            "resume": "Reprèn",
+            "resumeHint": "Continua la transferència interrompuda en lloc de reiniciar-la",
             "cancel": "Cancel·la"
         },
         "statusbar": {

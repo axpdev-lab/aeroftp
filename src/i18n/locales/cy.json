@@ -1802,6 +1802,8 @@
             "overwrite": "Trosysgrifo",
             "skip": "Hepgor",
             "rename": "Ailenwi",
+            "resume": "Ailddechrau",
+            "resumeHint": "Parhau'r trosglwyddiad a ataliwyd yn lle ei ailddechrau",
             "cancel": "Canslo"
         },
         "statusbar": {

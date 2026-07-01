@@ -7867,6 +7867,9 @@ interface UpdateVerificationInfo {
         }
       } else {
         let targetName = fileName;
+        // Continue an interrupted upload from the remote partial instead of
+        // re-sending it from zero (backend fail-safes crypt/unsupported to full).
+        let wantResume = false;
 
         if (!_skipConflictCheck) {
           // Check file conflict before uploading (single file transfers only)
@@ -7883,6 +7886,8 @@ interface UpdateVerificationInfo {
             humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: fileName }, 'success');
             return;
           }
+
+          wantResume = overwriteResult.action === 'resume';
 
           if (overwriteResult.newName) {
             targetName = overwriteResult.newName;
@@ -7916,7 +7921,7 @@ interface UpdateVerificationInfo {
             remotePlainName: targetName,
           });
         } else if (isProvider) {
-          await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null });
+          await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null });
           if (protocol === 'opendrive') {
             await invoke('opendrive_set_path_privacy', {
               path: remotePath,
@@ -13726,6 +13731,12 @@ interface UpdateVerificationInfo {
           source={overwriteDialog.source!}
           destination={overwriteDialog.destination!}
           queueCount={overwriteDialog.queueCount}
+          canResume={
+            !!overwriteDialog.source &&
+            !!overwriteDialog.destination &&
+            overwriteDialog.destination.size < overwriteDialog.source.size &&
+            !isCryptOverlayActive()
+          }
           onDecision={(action, applyToAll, newName) => {
             if (overwriteDialog.resolve) {
               overwriteDialog.resolve({ action, applyToAll, newName });

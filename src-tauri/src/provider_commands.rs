@@ -3423,6 +3423,7 @@ pub async fn provider_upload_file(
     remote_path: String,
     commit_message: Option<String>,
     use_delta: Option<bool>,
+    resume: Option<bool>,
 ) -> Result<String, String> {
     // Fail-closed: never write plaintext into a crypt store whose overlay is
     // currently unwrapped (badge locked / outside the encrypted scope).
@@ -3629,6 +3630,106 @@ pub async fn provider_upload_file(
                 delta_fallback_reason = delta_result.fallback_reason;
             }
         }
+    }
+
+    // Resume-aware classic upload. When the caller asked to resume an
+    // interrupted transfer and the provider can append from a byte offset
+    // (currently SFTP), continue from the remote's current size instead of
+    // re-sending from zero. Reached only when the delta path did not already
+    // handle the transfer (delta itself resumes efficiently for key-auth SFTP).
+    // Crypt overlay providers report supports_resume_upload_append()=false, so a
+    // crypt-bound upload always falls through to a full re-encrypt (fail-safe),
+    // and guard_no_raw_crypt_write above already blocks an unwrapped crypt store.
+    if resume.unwrap_or(false)
+        && provider.provider_type() != ProviderType::GitHub
+        && provider.supports_resume_upload_append()
+    {
+        let remote_size = provider.size(&remote_path).await.unwrap_or(0);
+        // Only resume a genuine partial: a smaller-but-nonzero remote file.
+        if remote_size > 0 && remote_size < file_size {
+            info!(
+                "Resuming upload from offset {} bytes: {}",
+                remote_size, filename
+            );
+            // FINDING-4 Part B parity: race the append against the live cancel
+            // token so an in-flight Stop drops the resume future (the russh
+            // write stream tears down on drop) instead of running to completion.
+            let cancel_token = state.current_cancel_token().await;
+            let up_fut =
+                provider.resume_upload(&local_path, &remote_path, remote_size, progress_cb);
+            tokio::pin!(up_fut);
+            let mut resume_outcome: Option<Result<(), ProviderError>> = None;
+            let cancelled = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => true,
+                r = &mut up_fut => { resume_outcome = Some(r); false }
+            };
+            if cancelled {
+                let err_msg = format!("Upload cancelled by user: {}", filename);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some("Upload cancelled by user".to_string()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            return match resume_outcome.expect("resume outcome set when not cancelled") {
+                Ok(()) => {
+                    let _ = app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "complete".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(format!(
+                                "({} via resume)",
+                                if file_size > 1_048_576 {
+                                    format!("{:.1} MB", file_size as f64 / 1_048_576.0)
+                                } else {
+                                    format!("{:.1} KB", file_size as f64 / 1024.0)
+                                }
+                            )),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: delta_fallback_reason,
+                        },
+                    );
+                    info!("Upload resumed to completion: {}", filename);
+                    Ok(format!("Uploaded: {}", filename))
+                }
+                Err(e) => {
+                    let err_msg = format!("Upload failed: {}", e);
+                    let _ = app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "error".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(err_msg.clone()),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: None,
+                        },
+                    );
+                    Err(err_msg)
+                }
+            };
+        }
+        // remote_size == 0 or >= file_size: nothing to resume; fall through to
+        // the normal DAG upload below (progress_cb is untouched here).
     }
 
     // DAG-ENGINE: route the plain classic single-file upload through the

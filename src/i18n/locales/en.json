@@ -2186,6 +2186,8 @@
             "overwrite": "Overwrite",
             "remote": "Remote",
             "rename": "Rename",
+            "resume": "Resume",
+            "resumeHint": "Continue the interrupted transfer instead of restarting it",
             "sameDate": "Same date",
             "skip": "Skip",
             "sourceNewer": "Source is newer",

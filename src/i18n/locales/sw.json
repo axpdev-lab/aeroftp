@@ -1802,6 +1802,8 @@
             "overwrite": "Andika juu",
             "skip": "Ruka",
             "rename": "Badilisha jina",
+            "resume": "Endelea",
+            "resumeHint": "Endelea uhamishaji uliokatizwa badala ya kuuanza upya",
             "cancel": "Ghairi"
         },
         "statusbar": {

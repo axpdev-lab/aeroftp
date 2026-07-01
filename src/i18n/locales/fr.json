@@ -1802,6 +1802,8 @@
             "overwrite": "Écraser",
             "skip": "Ignorer",
             "rename": "Renommer",
+            "resume": "Reprendre",
+            "resumeHint": "Reprendre le transfert interrompu au lieu de le recommencer",
             "cancel": "Annuler"
         },
         "statusbar": {

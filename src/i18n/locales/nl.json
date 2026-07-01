@@ -1802,6 +1802,8 @@
             "overwrite": "Overschrijven",
             "skip": "Overslaan",
             "rename": "Hernoemen",
+            "resume": "Hervatten",
+            "resumeHint": "Hervat de onderbroken overdracht in plaats van opnieuw te beginnen",
             "cancel": "Annuleren"
         },
         "statusbar": {

@@ -9,13 +9,13 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3 } from 'lucide-react';
+import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3, PlayCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
-export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'cancel';
+export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'resume' | 'cancel';
 
 export interface FileCompareInfo {
     name: string;
@@ -29,6 +29,10 @@ export interface OverwriteDialogProps {
     source: FileCompareInfo;
     destination: FileCompareInfo;
     queueCount?: number; // Number of remaining files in queue
+    // When true the destination looks like an interrupted partial (smaller than
+    // the source) and the transfer can be continued instead of restarted. Hidden
+    // for crypt overlays (a partial ciphertext is never byte-resumable).
+    canResume?: boolean;
     onDecision: (action: OverwriteAction, applyToAll: boolean, newName?: string) => void;
     onCancel: () => void;
 }
@@ -60,6 +64,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     source,
     destination,
     queueCount = 0,
+    canResume = false,
     onDecision,
     onCancel,
 }) => {
@@ -104,6 +109,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     const sizeDiff = source.size - destination.size;
 
     const handleOverwrite = () => onDecision('overwrite', applyToAll);
+    const handleResume = () => onDecision('resume', applyToAll);
     const handleSkip = () => onDecision('skip', applyToAll);
     const handleRename = () => {
         if (newFileName && newFileName !== source.name) {
@@ -268,6 +274,16 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                         <Check size={16} />
                         {t('overwrite.overwrite') || 'Overwrite'}
                     </button>
+                    {canResume && (
+                        <button
+                            onClick={handleResume}
+                            title={t('overwrite.resumeHint') || 'Continue the interrupted transfer instead of restarting it'}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+                        >
+                            <PlayCircle size={16} />
+                            {t('overwrite.resume') || 'Resume'}
+                        </button>
+                    )}
                     <button
                         onClick={handleSkip}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors"

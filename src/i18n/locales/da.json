@@ -1802,6 +1802,8 @@
             "overwrite": "Overskriv",
             "skip": "Spring over",
             "rename": "Omdøb",
+            "resume": "Genoptag",
+            "resumeHint": "Fortsæt den afbrudte overførsel i stedet for at genstarte den",
             "cancel": "Annuller"
         },
         "statusbar": {

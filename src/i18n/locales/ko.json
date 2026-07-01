@@ -1802,6 +1802,8 @@
             "overwrite": "덮어쓰기",
             "skip": "건너뛰기",
             "rename": "이름 바꾸기",
+            "resume": "이어받기",
+            "resumeHint": "전송을 처음부터 다시 시작하지 않고 중단된 지점부터 이어받습니다",
             "cancel": "취소"
         },
         "statusbar": {

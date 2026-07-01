@@ -1802,6 +1802,8 @@
             "overwrite": "Ghi đè",
             "skip": "Bỏ qua",
             "rename": "Đổi tên",
+            "resume": "Tiếp tục",
+            "resumeHint": "Tiếp tục truyền tải bị gián đoạn thay vì bắt đầu lại",
             "cancel": "Hủy"
         },
         "statusbar": {

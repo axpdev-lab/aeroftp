@@ -1802,6 +1802,8 @@
             "overwrite": "上書き",
             "skip": "スキップ",
             "rename": "名前変更",
+            "resume": "再開",
+            "resumeHint": "中断した転送を最初からではなく途中から再開します",
             "cancel": "キャンセル"
         },
         "statusbar": {

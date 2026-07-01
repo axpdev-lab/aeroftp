@@ -1802,6 +1802,8 @@
             "overwrite": "Überschreiben",
             "skip": "Überspringen",
             "rename": "Umbenennen",
+            "resume": "Fortsetzen",
+            "resumeHint": "Den unterbrochenen Transfer fortsetzen, statt ihn neu zu starten",
             "cancel": "Abbrechen"
         },
         "statusbar": {
