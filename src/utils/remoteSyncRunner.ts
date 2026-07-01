@@ -594,13 +594,28 @@ export const runRemoteSync = async (
         : config.isProvider
             ? 'provider_mkdir'
             : 'create_remote_folder';
+    // Count the parent directories we actually create (mkdir succeeds) into
+    // `dirsCreated`, mirroring the standalone-dir loop below. Without this the
+    // receipt only counted standalone empty dirs, so a mirror of `docs/a.txt`
+    // reported "1 file" while the compare reported 2 differences (the file + the
+    // `docs` folder). An mkdir that throws (the dir already exists, or a real
+    // error) is not a new folder, so it is not counted -- the receipt now
+    // reconciles with the compare's directory-inclusive difference count.
     for (const dir of [...remoteParentDirs].sort(byDepth)) {
-        await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` }).catch(() => undefined);
+        try {
+            await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
+            dirsCreated++;
+        } catch {
+            // Already exists or failed: not a newly-created folder.
+        }
     }
     for (const dir of [...localParentDirs].sort(byDepth)) {
-        await invoke('create_local_folder', { path: `${localBase}/${dir}` }).catch(
-            () => undefined,
-        );
+        try {
+            await invoke('create_local_folder', { path: `${localBase}/${dir}` });
+            dirsCreated++;
+        } catch {
+            // Already exists or failed: not a newly-created folder.
+        }
     }
 
     // ── Create standalone empty directories (counted in dirsCreated) ───────
