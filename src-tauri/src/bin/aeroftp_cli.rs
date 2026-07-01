@@ -21668,6 +21668,17 @@ async fn create_and_connect_for_agent(
         .await
         .map_err(|e| format!("Connection to '{}' failed: {}", profile_name, e))?;
 
+    // Crypt-overlay chokepoint (fail-closed). The agent connect path builds the
+    // provider directly, bypassing `create_and_connect` / `cli_apply_crypt_overlay`,
+    // so it must wrap here too. Without this a CLI agent (`server_exec`) acting on
+    // a crypt-bound profile would read ciphertext and inject plaintext into the
+    // encrypted store. A non-crypt profile is returned byte-identical; a
+    // bound-but-locked vault refuses rather than running raw.
+    let provider = ftp_client_gui_lib::crypt_overlay_provider::wrap_connected_provider_for_profile(
+        provider, matched, &store,
+    )
+    .await?;
+
     Ok((provider, initial_path.to_string()))
 }
 

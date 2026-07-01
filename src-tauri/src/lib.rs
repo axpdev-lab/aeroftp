@@ -13096,6 +13096,20 @@ async fn list_remote_folders_tree(
         .await
         .map_err(|e| format!("Connect failed: {}", e))?;
 
+    // Crypt-overlay chokepoint (fail-closed). A crypt-bound AeroCloud profile
+    // must show DECRYPTED folder names in the selective-sync tree (and match
+    // `excluded_folders`, stored as plaintext paths, against them); without the
+    // wrap the tree would list ciphertext directory names and exclusions would
+    // never match. Mirrors the background-sync chokepoint.
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        provider = crypt_overlay_provider::wrap_connected_provider_for_profile_named(
+            provider,
+            &config.server_profile,
+            &store,
+        )
+        .await?;
+    }
+
     let base = &config.remote_folder;
     let mut folders = Vec::new();
     let mut stack: Vec<(String, String, u32)> = vec![(base.clone(), String::new(), 0)];
@@ -13880,6 +13894,24 @@ async fn perform_background_sync_inner(
     let mut provider = cloud_provider_factory::create_cloud_provider(config).await?;
 
     info!("Background sync: connected via {}", config.protocol_type);
+
+    // Crypt-overlay chokepoint (fail-closed). If the AeroCloud server profile is
+    // crypt-bound, wrap the freshly-connected provider so background sync speaks
+    // plaintext while the wire stays fully encrypted, exactly like the CLI / MCP /
+    // cross-profile resolvers. Without this a scheduled sync of a crypt-bound
+    // profile would read ciphertext and inject plaintext into the encrypted
+    // remote. Wrapping BEFORE the cd below routes every path (cd/mkdir/list/
+    // upload/download) through the decorator. A non-crypt profile is returned
+    // byte-identical; a bound-but-locked vault refuses the sync rather than
+    // running it raw.
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        provider = crypt_overlay_provider::wrap_connected_provider_for_profile_named(
+            provider,
+            &config.server_profile,
+            &store,
+        )
+        .await?;
+    }
 
     // Navigate to remote folder
     if provider.cd(&config.remote_folder).await.is_err() {

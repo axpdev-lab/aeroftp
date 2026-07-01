@@ -1024,6 +1024,55 @@ pub async fn wrap_connected_provider_for_profile(
     wrap_provider_with_overlay_if_bound(inner, Some(&params), &password, &salt).await
 }
 
+/// Resolve the active user's saved profile NAMED `profile_name` and wrap a
+/// freshly-connected provider via [`wrap_connected_provider_for_profile`]. Used
+/// by AeroCloud background sync, whose [`crate::cloud_config::CloudConfig`]
+/// references the server profile by name (not the profile JSON) and which runs
+/// in a scheduled worker with no `AppHandle`.
+///
+/// The profile set is read with
+/// [`crate::user_partitions::mcp_list_active_server_profiles`]: it is
+/// `AppHandle`-free (opens the SAME shared user-partitions DB that the sync's
+/// own credential lookup, `resolve_active_credential`, already opens via
+/// `open_or_init_cli`) and carries the identical legacy-blob fallback, so any
+/// profile that resolves credentials for the sync also resolves here. Matching
+/// is by exact `name`, mirroring the credential key `server_<name>` the sync
+/// connects with.
+///
+/// FAIL-CLOSED for a crypt-bound profile: an enabled binding whose vault is
+/// locked / has no stored secret returns `Err` (the sync is refused, never run
+/// against the raw provider). A profile that is not crypt-bound - or is absent
+/// from the readable profile set, and therefore cannot carry a binding -
+/// returns `inner` byte-identical. An unreadable profile set propagates its
+/// `Err` (fail-closed), consistent with the credential read that gates the
+/// same sync.
+pub async fn wrap_connected_provider_for_profile_named(
+    inner: Box<dyn StorageProvider>,
+    profile_name: &str,
+    store: &crate::credential_store::CredentialStore,
+) -> Result<Box<dyn StorageProvider>, String> {
+    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    let Some(profile) = select_profile_by_name(&profiles, profile_name) else {
+        return Ok(inner);
+    };
+    wrap_connected_provider_for_profile(inner, profile, store).await
+}
+
+/// Select the profile named `name` from a decrypted profile list by EXACT
+/// `name` match. Pure seam of [`wrap_connected_provider_for_profile_named`],
+/// pinned by tests so the match stays exact: a fuzzy / substring / id match
+/// could resolve the WRONG profile and thereby fail-open a crypt binding (wrap
+/// with the wrong keys, or skip the wrap on a bound profile). Exact `name`
+/// mirrors the credential key `server_<name>` the background sync connects with.
+fn select_profile_by_name<'a>(
+    profiles: &'a [serde_json::Value],
+    name: &str,
+) -> Option<&'a serde_json::Value> {
+    profiles
+        .iter()
+        .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(name))
+}
+
 /// Extract the [`OverlayUnlockParams`] binding from a saved profile's
 /// `aeroCryptOverlay` JSON, or `None` when the profile carries no enabled
 /// overlay. Pure (no vault access): the secret lookup is the caller's job. The
@@ -2036,5 +2085,53 @@ mod tests {
         assert_eq!(params.remote_scope, "");
         assert_eq!(params.filename_encryption, "standard");
         assert!(params.directory_name_encryption);
+    }
+
+    #[test]
+    fn select_profile_by_name_is_exact() {
+        // Background sync resolves its server profile by EXACT name (the same key
+        // its credential lookup `server_<name>` uses). A substring / prefix must
+        // NOT match, or a crypt-bound "prod" could be resolved against a
+        // non-crypt "prod-staging" and fail-open the overlay.
+        let profiles = vec![
+            serde_json::json!({ "id": "a", "name": "prod" }),
+            serde_json::json!({ "id": "b", "name": "prod-staging" }),
+        ];
+        assert_eq!(
+            select_profile_by_name(&profiles, "prod")
+                .and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str()),
+            Some("a")
+        );
+        assert_eq!(
+            select_profile_by_name(&profiles, "prod-staging")
+                .and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str()),
+            Some("b")
+        );
+        // No match -> None -> the named wrapper returns the inner provider
+        // untouched (a profile absent from the readable set cannot carry a
+        // binding, so passthrough is correct and safe).
+        assert!(select_profile_by_name(&profiles, "pro").is_none());
+        assert!(select_profile_by_name(&profiles, "PROD").is_none());
+        assert!(select_profile_by_name(&profiles, "absent").is_none());
+        assert!(select_profile_by_name(&[], "prod").is_none());
+    }
+
+    #[test]
+    fn select_profile_by_name_ignores_id_and_missing_name() {
+        // Matching is on `name` only: an id that equals the query must not
+        // match (the sync connects by name, not id), and a nameless profile is
+        // skipped rather than panicking.
+        let profiles = vec![
+            serde_json::json!({ "id": "prod" }),
+            serde_json::json!({ "name": "prod", "id": "real" }),
+        ];
+        assert_eq!(
+            select_profile_by_name(&profiles, "prod")
+                .and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str()),
+            Some("real")
+        );
     }
 }
