@@ -10469,6 +10469,13 @@ async fn save_remote_file(
     path: String,
     content: String,
 ) -> Result<(), String> {
+    // Fail-closed: the remote editor save is a direct provider write, so it must
+    // refuse when the session has a crypt overlay that is currently unwrapped
+    // (badge locked / stepped outside the encrypted scope). Without this an
+    // edit-in-place saved after the overlay was cleared would inject plaintext
+    // into the encrypted store, mirroring the guard on provider_upload_file.
+    provider_state.guard_no_raw_crypt_write("Save file")?;
+
     // Write content to temp file first
     let temp_path = std::env::temp_dir().join(format!(
         "aeroftp_upload_{}",
