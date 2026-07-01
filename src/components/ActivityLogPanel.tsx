@@ -105,6 +105,16 @@ const FILTER_FALLBACK_LABELS: Record<OperationType, string> = {
     PROFILE_DUPLICATE: 'Profile duplicate',
 };
 
+// Compact labels for the fixed-width (w-20) operation badge. The badge renders
+// the raw operation type, and long ones like PROFILE_DUPLICATE overflowed the
+// column and overlapped the message text. Shorten those to fit; anything not
+// listed falls back to the raw type (already short), and `truncate` + a `title`
+// on the badge guarantee no overlap for any future long type.
+const OPERATION_BADGE_LABELS: Record<string, string> = {
+    PROFILE_DUPLICATE: 'Duplicate',
+    PROFILE_SAVE: 'Save',
+};
+
 /**
  * Render a Lucide icon component from icon name
  */
@@ -490,8 +500,11 @@ const LogEntryRow: React.FC<LogEntryRowProps> = React.memo(({ entry, themeConfig
             </span>
 
             {/* Operation type badge - WITH glow for cyber theme */}
-            <span className={`shrink-0 w-20 text-[10px] font-semibold uppercase tracking-wider ${opClass} ${opGlow}`}>
-                {entry.operation}
+            <span
+                className={`shrink-0 w-20 truncate text-[10px] font-semibold uppercase tracking-wider ${opClass} ${opGlow}`}
+                title={entry.operation}
+            >
+                {OPERATION_BADGE_LABELS[entry.operation] ?? entry.operation}
             </span>
 
             {/* Message with typewriter effect + inline copy button */}
