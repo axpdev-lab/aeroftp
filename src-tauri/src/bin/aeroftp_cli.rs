@@ -11411,6 +11411,33 @@ fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve the leading URL and encrypted-directory positionals of a `crypt`
+/// subcommand when it runs against a saved `--profile`.
+///
+/// clap always binds the FIRST positional to `url`, but with `--profile` the
+/// connection comes from the profile, so a path-looking value in the url slot is
+/// really the encrypted directory the user meant: `crypt init --profile X /enc`
+/// instead of the placeholder form `crypt init --profile X _ /enc`. When a
+/// profile is selected and the url slot holds a non-URL, non-placeholder value,
+/// treat it as the directory: shift it into the path slot when that slot is
+/// still at its default, otherwise keep the explicitly-given path and drop the
+/// bogus url. A raw URL (no profile, or a value containing "://") is returned
+/// unchanged, so URL-mode invocations are byte-identical.
+fn resolve_profile_crypt_positionals(
+    has_profile: bool,
+    url: &str,
+    path: &str,
+    path_default: &str,
+) -> (String, String) {
+    if has_profile && url != "_" && !url.contains("://") {
+        if path == path_default {
+            return ("_".to_string(), url.to_string());
+        }
+        return ("_".to_string(), path.to_string());
+    }
+    (url.to_string(), path.to_string())
+}
+
 /// Profile-aware protocol class. A profile with an enabled crypt overlay (either
 /// kind) classifies as "Crypt", a shared family regardless of transport — the
 /// native/interop distinction is cosmetic, not a class. Mirrors
@@ -56121,12 +56148,13 @@ async fn main() {
                         print_error(format, "Password required for crypt init", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_init(u, path, &pw, *force, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            path,
+                            "/",
+                        );
+                        cmd_crypt_init(&u, &dir, &pw, *force, &cli, format).await
                     }
                 }
                 CryptCommands::Ls {
@@ -56140,12 +56168,13 @@ async fn main() {
                         print_error(format, "Password required for crypt ls", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_ls(u, path, &pw, *recursive, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            path,
+                            "/",
+                        );
+                        cmd_crypt_ls(&u, &dir, &pw, *recursive, &cli, format).await
                     }
                 }
                 CryptCommands::Put {
@@ -56160,12 +56189,13 @@ async fn main() {
                         print_error(format, "Password required for crypt put", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_put(u, local, remote, &pw, *recursive, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            remote,
+                            "/",
+                        );
+                        cmd_crypt_put(&u, local, &dir, &pw, *recursive, &cli, format).await
                     }
                 }
                 CryptCommands::Get {
@@ -56181,12 +56211,13 @@ async fn main() {
                         print_error(format, "Password required for crypt get", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
-                        cmd_crypt_get(u, remote, path, local, &pw, *recursive, &cli, format).await
+                        let (u, dir) = resolve_profile_crypt_positionals(
+                            cli.profile.is_some(),
+                            url,
+                            path,
+                            "/",
+                        );
+                        cmd_crypt_get(&u, remote, &dir, local, &pw, *recursive, &cli, format).await
                     }
                 }
             }
@@ -60343,6 +60374,42 @@ mod tests {
             "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/enc" }
         });
         assert!(profile_has_crypt_overlay(&enabled));
+    }
+
+    #[test]
+    fn resolve_profile_crypt_positionals_shifts_path_slot_under_profile() {
+        // With --profile, a path in the url slot is the encrypted directory:
+        // shift it into the (default) path slot so `crypt init X /enc` works.
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "/home/user/enc", "/", "/"),
+            ("_".to_string(), "/home/user/enc".to_string())
+        );
+        // The placeholder stays a placeholder, path untouched.
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "_", "/", "/"),
+            ("_".to_string(), "/".to_string())
+        );
+        // If BOTH positionals were given, keep the explicit path and drop the
+        // bogus url (the profile provides the connection anyway).
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "/wrong", "/sub", "/"),
+            ("_".to_string(), "/sub".to_string())
+        );
+        // A real URL in the url slot under --profile is left alone (edge: the
+        // user explicitly passed a connection string; "://" opts out).
+        assert_eq!(
+            resolve_profile_crypt_positionals(true, "sftp://host/enc", "/", "/"),
+            ("sftp://host/enc".to_string(), "/".to_string())
+        );
+        // No profile: URL-mode is byte-identical, nothing is shifted.
+        assert_eq!(
+            resolve_profile_crypt_positionals(false, "sftp://host", "/enc", "/"),
+            ("sftp://host".to_string(), "/enc".to_string())
+        );
+        assert_eq!(
+            resolve_profile_crypt_positionals(false, "_", "/", "/"),
+            ("_".to_string(), "/".to_string())
+        );
     }
 
     #[test]
