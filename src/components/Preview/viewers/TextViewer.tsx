@@ -18,6 +18,7 @@ import { MarkdownRenderer } from '../../DevTools/MarkdownRenderer';
 import Prism from 'prismjs';
 import DOMPurify from 'dompurify';
 import { useI18n } from '../../../i18n';
+import './TextViewer.css';
 
 interface TextViewerProps extends ViewerBaseProps {
     className?: string;
@@ -315,14 +316,14 @@ export const TextViewer: React.FC<TextViewerProps> = ({
 
     if (isLoading) {
         return (
-            <div className={`flex items-center justify-center h-full bg-gray-900 ${className}`}>
+            <div className={`text-viewer-panel flex items-center justify-center h-full bg-gray-900 ${className}`}>
                 <div className="text-gray-400 animate-pulse">{t('preview.common.loading')}</div>
             </div>
         );
     }
 
     return (
-        <div className={`flex flex-col h-full bg-gray-900 ${className}`}>
+        <div className={`text-viewer-panel flex flex-col h-full bg-gray-900 ${className}`}>
             {/* Primary Toolbar */}
             <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
                 <div className="flex items-center gap-2">
@@ -494,7 +495,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
             {/* Content area */}
             {renderMode && isMD ? (
                 /* Markdown rendered preview */
-                <div className="flex-1 overflow-auto p-6 prose prose-invert max-w-none">
+                <div className="flex-1 overflow-auto p-6 prose dark:prose-invert max-w-none">
                     <MarkdownRenderer content={content} />
                 </div>
             ) : renderMode && isHTML ? (

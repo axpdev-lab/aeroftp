@@ -1,0 +1,84 @@
+/*
+ * TextViewer: light-theme overrides + wider scrollbar (wishlist #347).
+ *
+ * The text preview hardcodes dark Tailwind grays with no `dark:` variants, so it
+ * stayed dark even on the Light theme. Mirror the AISettingsPanel approach:
+ * remap the grays to light values only when the app is NOT in a dark theme
+ * (`:root:not(.dark)`), scoped to `.text-viewer-panel` so nothing else is
+ * affected. Dark and custom (tokyo/cyber/...) themes keep the dark rendering.
+ * The markdown `prose-invert` case is handled in the component via
+ * `prose dark:prose-invert`.
+ */
+
+/* Root card itself (carries bg-gray-900 on the same element, so a descendant
+   selector cannot reach it). */
+:root:not(.dark) .text-viewer-panel {
+  background-color: #ffffff !important;
+  color: #1f2937 !important;
+}
+
+/* Backgrounds */
+:root:not(.dark) .text-viewer-panel .bg-gray-900 {
+  background-color: #ffffff !important;
+}
+:root:not(.dark) .text-viewer-panel .bg-gray-950\/50 {
+  background-color: #f3f4f6 !important;
+}
+:root:not(.dark) .text-viewer-panel .bg-gray-800 {
+  background-color: #f9fafb !important;
+}
+:root:not(.dark) .text-viewer-panel .bg-gray-800\/50 {
+  background-color: rgba(249, 250, 251, 0.5) !important;
+}
+:root:not(.dark) .text-viewer-panel .bg-gray-800\/60 {
+  background-color: rgba(249, 250, 251, 0.6) !important;
+}
+:root:not(.dark) .text-viewer-panel .bg-gray-800\/80 {
+  background-color: rgba(249, 250, 251, 0.8) !important;
+}
+:root:not(.dark) .text-viewer-panel .hover\:bg-gray-700:hover {
+  background-color: #e5e7eb !important;
+}
+
+/* Text */
+:root:not(.dark) .text-viewer-panel .text-gray-200 {
+  color: #1f2937 !important;
+}
+:root:not(.dark) .text-viewer-panel .text-gray-300 {
+  color: #374151 !important;
+}
+:root:not(.dark) .text-viewer-panel .text-gray-400 {
+  color: #4b5563 !important;
+}
+:root:not(.dark) .text-viewer-panel .text-gray-500 {
+  color: #6b7280 !important;
+}
+:root:not(.dark) .text-viewer-panel .text-gray-600 {
+  color: #6b7280 !important;
+}
+:root:not(.dark) .text-viewer-panel .hover\:text-white:hover {
+  color: #111827 !important;
+}
+:root:not(.dark) .text-viewer-panel .hover\:text-gray-300:hover {
+  color: #374151 !important;
+}
+
+/* Borders */
+:root:not(.dark) .text-viewer-panel .border-gray-700 {
+  border-color: #e5e7eb !important;
+}
+:root:not(.dark) .text-viewer-panel .border-gray-700\/50 {
+  border-color: rgba(229, 231, 235, 0.5) !important;
+}
+
+/*
+ * Wider scrollbar (#347): the global preview scrollbar is 6px, too thin to grab.
+ * Widen it only inside the preview so the rest of the app keeps its slim bars.
+ */
+.text-viewer-panel ::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+.text-viewer-panel {
+  scrollbar-width: auto;
+}

@@ -153,7 +153,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="AI Model Editor">
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            <div className="relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
+            <div className="ai-settings-panel relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Cpu size={20} className="text-purple-400" />
                     {isNew ? t('ai.settings.addModel') : t('ai.settings.editModel')}
@@ -1884,7 +1884,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             aria-modal="true"
                             aria-label="Available Models"
                         >
-                            <div className="bg-gray-800 rounded-lg border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                            <div className="ai-settings-panel bg-gray-800 rounded-lg border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                                     <div className="flex items-center gap-2">
                                         <List size={16} className="text-indigo-400" />
