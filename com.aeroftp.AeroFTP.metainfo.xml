@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.1.1" date="2026-07-01">
+      <description>
+        <p>Transparent Crypt Overlays, AeroShare Privacy Controls and 7z Encrypted Headers. A consolidation release built on the v4.1.0 feedback. Encrypted-overlay profiles (native AeroCrypt and rclone-crypt) now stay encrypted end to end through one transparent decorator wired at every provider chokepoint (CLI, cross-profile, AeroAgent, MCP, GUI, AeroCloud background sync, the selective-sync folder tree), so no surface can bypass the overlay and write plaintext into the encrypted store; the decorator is fail-closed, refusing a bound-but-locked vault rather than downgrading to raw. A Resume action continues interrupted transfers.</p>
+        <p>AeroShare gains the two deferred P2P privacy controls: an anti-flood gate (per-sender mute, an optional friends-only allowlist, a sliding-window rate limit) and a public-DHT opt-out (a new none discovery mode with a guarded AFID rotation). 7z can create archives with encrypted headers to hide filenames, Kilo Gateway joins the native AeroAgent providers, the benchmark gains group and all selection, and a broad triage batch closes the confirmed bugs reported against v4.1.0 (Filen S3 unicode rename, OpenDrive upload, benchmark cleanup, the CLI FTPS TLS crash and more). 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.1.0" date="2026-06-28">
       <description>
         <p>AeroShare Peer-to-Peer (Beta Preview), the AeroAgent Coding Loop and Per-User Groups. The headline is AeroShare, a Beta preview of direct, end-to-end-encrypted device-to-device transfer with no server in the middle: send a file or a folder straight to another person over a peer-to-peer channel (iroh 1.0 with Mainline-DHT discovery and federated relays), always-on at launch with a Discover tile, a titlebar +friend button, a draggable hub and a status-bar receiver indicator. Each sender gets their own Inbox and an address book; the standing receive loop is opt-in.</p>
