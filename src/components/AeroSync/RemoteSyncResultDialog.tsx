@@ -25,6 +25,9 @@ import {
     AlertTriangle,
     Zap,
 } from 'lucide-react';
+import { Download } from 'lucide-react';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { formatSize } from '../../utils/formatters';
@@ -70,6 +73,30 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
 
     const hasErrors = report.errors.length > 0;
     const grouped = groupErrorsByKind(report.errors);
+
+    // Total items acted on this run: files (up/down) + deletions + folders
+    // created. This reconciles the receipt with the compare's difference count
+    // (e.g. "9 files + 2 folders" surfaces as 11, matching "DIFFERENCES: 11").
+    // Skipped/verify/retry are not distinct items, so they are excluded.
+    const totalItems =
+        report.uploaded + report.downloaded + report.deleted + report.dirsCreated;
+
+    // Export the full run report as JSON (consistent with the compare's export
+    // and the AeroVault report export). Silent on cancel / write error.
+    const handleExportJson = async (): Promise<void> => {
+        try {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filePath = await save({
+                defaultPath: `aerosync-report-${ts}.json`,
+                filters: [{ name: 'JSON', extensions: ['json'] }],
+            });
+            if (filePath) {
+                await writeTextFile(filePath, JSON.stringify(report, null, 2));
+            }
+        } catch {
+            /* dialog cancelled or write error */
+        }
+    };
 
     // GAP-10: a local-local run copies between the two panels, so frame the
     // counts as "copied to the right / left panel" instead of upload/download.
@@ -145,6 +172,12 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
                             {hasErrors
                                 ? t('syncPanel.reportPartial')
                                 : t('syncPanel.reportSuccess')}
+                            {totalItems > 0 && (
+                                <span className="opacity-80">
+                                    {' · '}
+                                    {totalItems} {t('browser.items')}
+                                </span>
+                            )}
                         </span>
                     </div>
 
@@ -259,7 +292,15 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
                     )}
                 </div>
 
-                <div className="flex justify-end px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex justify-between items-center px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                        type="button"
+                        onClick={handleExportJson}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                        <Download size={14} />
+                        {t('syncPanel.exportJSON') || 'Export JSON'}
+                    </button>
                     <button
                         type="button"
                         onClick={onClose}
