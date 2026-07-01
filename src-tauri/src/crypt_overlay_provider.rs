@@ -347,15 +347,29 @@ fn encode_plain_target(
 /// verbatim. Used to render `pwd` and rebuild listing paths in the plaintext
 /// domain.
 fn decode_path(keys: &OverlayKeys, encrypted_path: &str) -> String {
+    decode_entry_path(keys, encrypted_path, true)
+}
+
+/// Decrypt an on-wire entry path for display, decoding the leaf with its real
+/// file/dir kind. This differs from [`decode_path`] only for rclone
+/// `filename_encryption=off`, where file leaves carry the configured suffix
+/// (usually `.bin`) and directory leaves do not.
+fn decode_entry_path(keys: &OverlayKeys, encrypted_path: &str, leaf_is_dir: bool) -> String {
     if encrypted_path.is_empty() || encrypted_path == "." || encrypted_path == "/" {
         return encrypted_path.to_string();
     }
     let absolute = encrypted_path.starts_with('/');
-    let parts: Vec<String> = encrypted_path
+    let components: Vec<&str> = encrypted_path
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
-        .map(|part| {
-            keys.decode_name(part, true)
+        .collect();
+    let last = components.len().saturating_sub(1);
+    let parts: Vec<String> = components
+        .iter()
+        .enumerate()
+        .map(|(idx, part)| {
+            let is_dir = if idx == last { leaf_is_dir } else { true };
+            keys.decode_name(part, is_dir)
                 .unwrap_or_else(|| part.to_string())
         })
         .collect();
@@ -599,7 +613,7 @@ impl StorageProvider for CryptOverlayProvider {
             let Some(plain_name) = self.keys.decode_name(&entry.name, entry.is_dir) else {
                 continue;
             };
-            let plain_path = decode_path(&self.keys, &entry.path);
+            let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
             let size = if entry.is_dir {
                 0
             } else {
@@ -647,7 +661,10 @@ impl StorageProvider for CryptOverlayProvider {
             uuid::Uuid::new_v4()
         ));
         let temp_str = temp_path.to_string_lossy().to_string();
-        self.inner.download(&enc, &temp_str, on_progress).await?;
+        if let Err(e) = self.inner.download(&enc, &temp_str, on_progress).await {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(e);
+        }
         let ciphertext = tokio::fs::read(&temp_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -742,7 +759,7 @@ impl StorageProvider for CryptOverlayProvider {
             .keys
             .decode_name(&entry.name, entry.is_dir)
             .unwrap_or(entry.name);
-        let plain_path = decode_path(&self.keys, &entry.path);
+        let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
         let size = if entry.is_dir {
             0
         } else {
@@ -863,9 +880,14 @@ impl StorageProvider for CryptOverlayProvider {
             uuid::Uuid::new_v4()
         ));
         let temp_str = temp_path.to_string_lossy().to_string();
-        self.inner
+        if let Err(e) = self
+            .inner
             .download_version(&enc, version_id, &temp_str)
-            .await?;
+            .await
+        {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(e);
+        }
         let ciphertext = tokio::fs::read(&temp_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -992,6 +1014,14 @@ pub async fn wrap_provider_with_overlay_if_bound(
     let keys = unlock_overlay_keys_encrypting(&mut *inner, params, password, salt, false).await?;
     let provider = CryptOverlayProvider::new(inner, keys, &params.remote_scope);
     Ok(Box::new(provider))
+}
+
+/// True when a provider slot is already the plaintext crypt-overlay decorator.
+///
+/// Compare/reconcile code uses this to avoid unlocking and normalizing a second
+/// time after the CLI/MCP provider resolver has already wrapped the transport.
+pub fn is_crypt_overlay_provider(provider: &mut dyn StorageProvider) -> bool {
+    provider.as_any_mut().is::<CryptOverlayProvider>()
 }
 
 /// Resolve a saved profile's `aeroCryptOverlay` binding (+ its per-profile vault
@@ -1542,6 +1572,23 @@ mod tests {
         let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
         let enc = encode_plain_target(&keys, "", "dir/sub/file.txt", false).unwrap();
         assert_eq!(enc, "dir/sub/file.txt.bin");
+    }
+
+    #[test]
+    fn decode_entry_path_strips_rclone_off_suffix_for_file_leaf() {
+        let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
+
+        assert_eq!(
+            decode_entry_path(&keys, "/dir/sub/file.txt.bin", false),
+            "/dir/sub/file.txt"
+        );
+        assert_eq!(decode_entry_path(&keys, "/dir/sub", true), "/dir/sub");
+        // pwd/current-directory rendering still decodes every component as a
+        // directory, so it must not strip a suffix-looking directory name.
+        assert_eq!(
+            decode_path(&keys, "/dir/sub/file.txt.bin"),
+            "/dir/sub/file.txt.bin"
+        );
     }
 
     #[test]

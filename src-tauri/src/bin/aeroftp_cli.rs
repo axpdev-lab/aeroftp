@@ -46964,15 +46964,20 @@ async fn cmd_check(
     // When the profile carries a crypt overlay, unlock the compare keys before
     // the scan so the remote tree is decrypted (names + rclone sizes) to match
     // the plaintext local tree. Fail closed if the overlay cannot be unlocked.
-    let crypt_keys =
+    let provider_is_crypt_overlay =
+        ftp_client_gui_lib::crypt_overlay_provider::is_crypt_overlay_provider(provider.as_mut());
+    let crypt_keys = if provider_is_crypt_overlay {
+        None
+    } else {
         match cli_unlock_crypt_compare_keys(provider.as_mut(), remote_path, cli, format).await {
             Ok(keys) => keys,
             Err(code) => {
                 let _ = provider.disconnect().await;
                 return code;
             }
-        };
-    let crypt_active = crypt_keys.is_some();
+        }
+    };
+    let crypt_active = crypt_keys.is_some() || provider_is_crypt_overlay;
     let scan_opts = ScanOptions {
         compute_checksum: checksum && !crypt_active,
         disable_recursive_fastpath: crypt_active,
@@ -47541,15 +47546,20 @@ async fn cmd_reconcile(
     // Unlock the profile's crypt overlay (if any) before scanning so the remote
     // tree is decrypted to match the plaintext local tree. Fail closed when the
     // overlay cannot be unlocked, instead of reporting every file as drift.
-    let crypt_keys =
+    let provider_is_crypt_overlay =
+        ftp_client_gui_lib::crypt_overlay_provider::is_crypt_overlay_provider(provider.as_mut());
+    let crypt_keys = if provider_is_crypt_overlay {
+        None
+    } else {
         match cli_unlock_crypt_compare_keys(provider.as_mut(), remote_path, cli, format).await {
             Ok(keys) => keys,
             Err(code) => {
                 let _ = provider.disconnect().await;
                 return code;
             }
-        };
-    let crypt_active = crypt_keys.is_some();
+        }
+    };
+    let crypt_active = crypt_keys.is_some() || provider_is_crypt_overlay;
 
     use ftp_client_gui_lib::sync_core::{compare_trees, ScanOptions};
     let scan_opts = ScanOptions {

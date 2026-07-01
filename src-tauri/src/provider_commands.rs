@@ -38,6 +38,11 @@ use crate::util::AbortOnDrop;
 /// Set during folder download/upload to prevent AeroCloud interference.
 pub static TRANSFER_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+fn is_plain_github_provider(provider: &mut dyn StorageProvider) -> bool {
+    provider.provider_type() == ProviderType::GitHub
+        && !crate::crypt_overlay_provider::is_crypt_overlay_provider(provider)
+}
+
 /// RAII guard that clears `TRANSFER_IN_PROGRESS` on drop. Covers normal
 /// returns AND panic-unwind: without this, a panic in the folder transfer
 /// pipeline left the watcher suppressed forever until app restart.
@@ -3032,7 +3037,7 @@ async fn provider_upload_folder_inner(
             .as_mut()
             .ok_or("Not connected to any provider")?;
 
-        if provider.provider_type() == ProviderType::GitHub {
+        if is_plain_github_provider(provider.as_mut()) {
             let github = provider
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -3178,7 +3183,7 @@ async fn provider_upload_folder_inner(
             .as_mut()
             .ok_or("Not connected to any provider")?;
 
-        let mkdir_result = if provider.provider_type() == ProviderType::GitHub {
+        let mkdir_result = if is_plain_github_provider(provider.as_mut()) {
             let github = provider
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -3641,7 +3646,7 @@ pub async fn provider_upload_file(
     // crypt-bound upload always falls through to a full re-encrypt (fail-safe),
     // and guard_no_raw_crypt_write above already blocks an unwrapped crypt store.
     if resume.unwrap_or(false)
-        && provider.provider_type() != ProviderType::GitHub
+        && !is_plain_github_provider(provider.as_mut())
         && provider.supports_resume_upload_append()
     {
         let remote_size = provider.size(&remote_path).await.unwrap_or(0);
@@ -3736,7 +3741,7 @@ pub async fn provider_upload_file(
     // graph engine. GitHub keeps its dedicated commit-based upload (a
     // different API shape, not the plain leaf). The shaped runner handles
     // both the single-`UploadFile` core and the multipart fan-out shape.
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         let provider_arc = Arc::clone(&state.provider);
         // Issue #233: acquire the in-flight guard before releasing the
         // mutex, so the swap or disconnect path waits for the DAG leaf
@@ -3772,7 +3777,7 @@ pub async fn provider_upload_file(
     let ul_cancel = state.cancel_flag.clone();
     let result = {
         let work = async {
-            if provider.provider_type() == ProviderType::GitHub {
+            if is_plain_github_provider(provider.as_mut()) {
                 let github = provider
                     .as_any_mut()
                     .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -3884,7 +3889,7 @@ pub async fn provider_mkdir(
     crate::restricted_chars::validate_path(provider.provider_type(), &path)
         .map_err(|e| e.to_string())?;
 
-    if provider.provider_type() == ProviderType::GitHub {
+    if is_plain_github_provider(provider.as_mut()) {
         let github = provider
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -3922,7 +3927,7 @@ pub async fn provider_delete_file(
 
     info!("Deleting file: {}", path);
 
-    if provider.provider_type() == ProviderType::GitHub {
+    if is_plain_github_provider(provider.as_mut()) {
         let github = provider
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -3984,7 +3989,7 @@ pub async fn provider_delete_dir(
         );
     }
 
-    if provider.provider_type() == ProviderType::GitHub {
+    if is_plain_github_provider(provider.as_mut()) {
         // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
         let github = provider
             .as_any_mut()
@@ -8459,7 +8464,7 @@ pub async fn github_list_branches(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -8482,7 +8487,7 @@ pub async fn github_get_info(state: State<'_, ProviderState>) -> Result<serde_js
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9023,7 +9028,7 @@ pub async fn github_create_pr(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9340,7 +9345,7 @@ pub async fn github_list_releases(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9383,7 +9388,7 @@ pub async fn github_list_release_assets(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9429,7 +9434,7 @@ pub async fn github_create_release(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9491,7 +9496,7 @@ pub async fn github_get_pages(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9515,7 +9520,7 @@ pub async fn github_list_pages_builds(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9539,7 +9544,7 @@ pub async fn github_trigger_pages_build(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9567,7 +9572,7 @@ pub async fn github_update_pages(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9595,7 +9600,7 @@ pub async fn github_pages_health(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9623,7 +9628,7 @@ pub async fn github_upload_release_asset(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9655,7 +9660,7 @@ pub async fn github_delete_release(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9684,7 +9689,7 @@ pub async fn github_delete_release_asset(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9714,7 +9719,7 @@ pub async fn github_download_release_asset(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9744,7 +9749,7 @@ pub async fn github_get_release(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9802,7 +9807,7 @@ pub async fn github_batch_commit(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
 
@@ -9852,7 +9857,7 @@ pub async fn github_batch_upload(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9898,7 +9903,7 @@ pub async fn github_batch_delete(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -9984,7 +9989,7 @@ pub async fn github_check_local_sync(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Ok(serde_json::json!({"is_local_repo": false}));
     }
     let github = provider
@@ -10104,7 +10109,7 @@ pub async fn github_push_local(
         let provider = provider_guard
             .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
-        if provider.provider_type() == ProviderType::GitHub {
+        if is_plain_github_provider(provider.as_mut()) {
             let github = provider
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -10152,7 +10157,7 @@ pub async fn github_list_actions_runs(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -10177,7 +10182,7 @@ pub async fn github_rerun_workflow(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -10201,7 +10206,7 @@ pub async fn github_rerun_failed_jobs(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider
@@ -10225,7 +10230,7 @@ pub async fn github_cancel_workflow(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    if provider.provider_type() != ProviderType::GitHub {
+    if !is_plain_github_provider(provider.as_mut()) {
         return Err("This operation is only available for GitHub".to_string());
     }
     let github = provider

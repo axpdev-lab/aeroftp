@@ -1134,11 +1134,15 @@ pub async fn execute_tool(
                 Ok(arc) => {
                     let mut p = arc.lock().await;
                     let supports_remote_checksum = p.supports_checksum();
+                    let provider_is_crypt_overlay =
+                        crate::crypt_overlay_provider::is_crypt_overlay_provider(p.as_mut());
                     // Unlock the overlay keys (rclone-crypt from password+salt,
                     // aerocrypt by downloading the remote config) while holding
-                    // the provider lock, before the remote scan.
+                    // the provider lock, before the remote scan. If the MCP
+                    // pool has already wrapped this provider, it lists plaintext
+                    // names/sizes and must not be unlocked or normalized again.
                     let crypt_keys = match &overlay_secrets {
-                        Some((params, password, salt)) => {
+                        Some((params, password, salt)) if !provider_is_crypt_overlay => {
                             match crate::crypt_compare::unlock_overlay_keys(
                                 p.as_mut(),
                                 params,
@@ -1159,6 +1163,7 @@ pub async fn execute_tool(
                                 }
                             }
                         }
+                        Some(_) => None,
                         None => None,
                     };
                     let locals = scan_local_tree(&local_dir, &opts);

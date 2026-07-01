@@ -101,6 +101,11 @@ pub fn provider_segmented_effective_count(file_size: u64, requested: u32) -> usi
     }
 }
 
+fn is_plain_github_provider(provider: &mut dyn StorageProvider) -> bool {
+    provider.provider_type() == ProviderType::GitHub
+        && !crate::crypt_overlay_provider::is_crypt_overlay_provider(provider)
+}
+
 /// Eligibility probe for the segmented download path. Returns
 /// `Some(N)` (the final segment count after pool cap + provider
 /// capability) when the segmented path can be attempted, or `None`
@@ -1071,19 +1076,28 @@ impl ProviderUploadExecutor {
             .timeout_seconds
             .max(size_secs + self.runtime_settings.timeout_seconds);
 
-        if provider.provider_type() == ProviderType::GitHub {
+        if is_plain_github_provider(provider) {
             let github = provider
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-            return match tokio::time::timeout(
-                Duration::from_secs(eff_timeout),
-                github.upload_file(&local_path, &remote_path, commit_message.as_deref()),
-            )
-            .await
-            {
-                Ok(result) => result.map_err(|e| e.to_string()),
-                Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
+            let upload = async {
+                match tokio::time::timeout(
+                    Duration::from_secs(eff_timeout),
+                    github.upload_file(&local_path, &remote_path, commit_message.as_deref()),
+                )
+                .await
+                {
+                    Ok(result) => result.map_err(|e| e.to_string()),
+                    Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
+                }
+            };
+            return tokio::select! {
+                biased;
+                _ = self.cancel_token.cancelled() => {
+                    Err("Transfer cancelled by user".to_string())
+                }
+                result = upload => result,
             };
         }
 

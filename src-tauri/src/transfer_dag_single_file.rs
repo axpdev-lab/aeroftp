@@ -71,6 +71,7 @@
 //!   [`DagObserver`] maps onto the GUI "complete" event.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::io::SeekFrom;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -94,6 +95,29 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 /// The connected-provider handle shared between the GUI command state and the
 /// spawned DAG node tasks. `Option` because a session may be disconnected.
 pub type SharedProvider = Arc<Mutex<Option<Box<dyn StorageProvider>>>>;
+
+fn cancelled_transfer_error() -> ProviderError {
+    ProviderError::TransferFailed("Transfer cancelled by user".to_string())
+}
+
+async fn race_cancel<T, F>(
+    cancel_token: &Option<CancellationToken>,
+    fut: F,
+) -> Result<T, ProviderError>
+where
+    F: Future<Output = Result<T, ProviderError>>,
+{
+    match cancel_token {
+        Some(tok) => {
+            tokio::select! {
+                biased;
+                _ = tok.cancelled() => Err(cancelled_transfer_error()),
+                result = fut => result,
+            }
+        }
+        None => fut.await,
+    }
+}
 
 /// Per-transfer multipart orchestration context, shared across every
 /// `UploadPart` runner invocation and the terminal `CommitTemp` finalize /
@@ -319,15 +343,16 @@ pub async fn execute_single_file_dag(
                                         ProviderError::NotConnected,
                                     );
                                 };
-                                match p
-                                    .begin_multipart_upload(
+                                let begin = async {
+                                    p.begin_multipart_upload(
                                         &remote,
                                         ctx.total_size,
                                         Some(&ctx.content_type),
                                         Some(&local),
                                     )
                                     .await
-                                {
+                                };
+                                match race_cancel(&cancel_token, begin).await {
                                     Ok(handle) => {
                                         *handle_guard = Some(handle);
                                     }
@@ -342,7 +367,9 @@ pub async fn execute_single_file_dag(
                         //    without panicking on an exact multiple.
                         let offset = (part_number as u64 - 1) * ctx.part_size;
                         let len = ctx.part_size.min(ctx.total_size.saturating_sub(offset));
-                        let data = match read_chunk(&local, offset, len).await {
+                        let data = match race_cancel(&cancel_token, read_chunk(&local, offset, len))
+                            .await
+                        {
                             Ok(buf) => buf,
                             Err(e) => return record_failure(&first_error, e),
                         };
@@ -363,13 +390,19 @@ pub async fn execute_single_file_dag(
                             clone_multipart_worker(p.as_mut())
                         };
                         let upload_result = if let Some(mut worker) = cloned_worker {
-                            worker.upload_part(&handle, part_number, data).await
+                            race_cancel(&cancel_token, async {
+                                worker.upload_part(&handle, part_number, data).await
+                            })
+                            .await
                         } else {
                             let mut guard = provider.lock().await;
                             let Some(p) = guard.as_mut() else {
                                 return record_failure(&first_error, ProviderError::NotConnected);
                             };
-                            p.upload_part(&handle, part_number, data).await
+                            race_cancel(&cancel_token, async {
+                                p.upload_part(&handle, part_number, data).await
+                            })
+                            .await
                         };
                         match upload_result {
                             Ok(receipt) => {
@@ -436,7 +469,10 @@ pub async fn execute_single_file_dag(
                                             ProviderError::NotConnected,
                                         );
                                     };
-                                    p.complete_multipart_upload(handle, parts).await
+                                    race_cancel(&cancel_token, async {
+                                        p.complete_multipart_upload(handle, parts).await
+                                    })
+                                    .await
                                 };
                                 match result {
                                     Ok(()) => {
@@ -712,6 +748,36 @@ mod tests {
     struct SlowMockProvider {
         download_completed: Arc<StdMutex<bool>>,
         upload_completed: Arc<StdMutex<bool>>,
+        multipart_completed: Arc<StdMutex<bool>>,
+        multipart_aborted: Arc<StdMutex<bool>>,
+        multipart_part_started: Arc<AtomicU64>,
+    }
+
+    impl SlowMockProvider {
+        fn new(
+            download_completed: Arc<StdMutex<bool>>,
+            upload_completed: Arc<StdMutex<bool>>,
+        ) -> Self {
+            Self {
+                download_completed,
+                upload_completed,
+                multipart_completed: Arc::new(StdMutex::new(false)),
+                multipart_aborted: Arc::new(StdMutex::new(false)),
+                multipart_part_started: Arc::new(AtomicU64::new(0)),
+            }
+        }
+
+        fn with_multipart_state(
+            mut self,
+            completed: Arc<StdMutex<bool>>,
+            aborted: Arc<StdMutex<bool>>,
+            part_started: Arc<AtomicU64>,
+        ) -> Self {
+            self.multipart_completed = completed;
+            self.multipart_aborted = aborted;
+            self.multipart_part_started = part_started;
+            self
+        }
     }
 
     #[async_trait::async_trait]
@@ -783,6 +849,46 @@ mod tests {
             *self.upload_completed.lock().unwrap() = true;
             Ok(())
         }
+        async fn begin_multipart_upload(
+            &mut self,
+            remote_path: &str,
+            _total_size: u64,
+            _content_type: Option<&str>,
+            _local_source_path: Option<&str>,
+        ) -> Result<MultipartHandle, ProviderError> {
+            Ok(MultipartHandle {
+                upload_id: "mock-upload".to_string(),
+                remote_path: remote_path.to_string(),
+            })
+        }
+        async fn upload_part(
+            &mut self,
+            _handle: &MultipartHandle,
+            part_number: u32,
+            _data: Vec<u8>,
+        ) -> Result<UploadedPart, ProviderError> {
+            self.multipart_part_started.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            Ok(UploadedPart {
+                part_number,
+                etag: format!("etag-{part_number}"),
+            })
+        }
+        async fn complete_multipart_upload(
+            &mut self,
+            _handle: MultipartHandle,
+            _parts: Vec<UploadedPart>,
+        ) -> Result<(), ProviderError> {
+            *self.multipart_completed.lock().unwrap() = true;
+            Ok(())
+        }
+        async fn abort_multipart_upload(
+            &mut self,
+            _handle: MultipartHandle,
+        ) -> Result<(), ProviderError> {
+            *self.multipart_aborted.lock().unwrap() = true;
+            Ok(())
+        }
         async fn mkdir(&mut self, _p: &str) -> Result<(), ProviderError> {
             Ok(())
         }
@@ -822,10 +928,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let local = dir.path().join("out.bin");
         let completed = Arc::new(StdMutex::new(false));
-        let mock = SlowMockProvider {
-            download_completed: Arc::clone(&completed),
-            upload_completed: Arc::new(StdMutex::new(false)),
-        };
+        let mock = SlowMockProvider::new(Arc::clone(&completed), Arc::new(StdMutex::new(false)));
         let arc: SharedProvider = Arc::new(Mutex::new(Some(
             Box::new(mock) as Box<dyn crate::providers::StorageProvider>
         )));
@@ -878,10 +981,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let local = dir.path().join("out.bin");
         let completed = Arc::new(StdMutex::new(false));
-        let mock = SlowMockProvider {
-            download_completed: Arc::clone(&completed),
-            upload_completed: Arc::new(StdMutex::new(false)),
-        };
+        let mock = SlowMockProvider::new(Arc::clone(&completed), Arc::new(StdMutex::new(false)));
         let arc: SharedProvider = Arc::new(Mutex::new(Some(
             Box::new(mock) as Box<dyn crate::providers::StorageProvider>
         )));
@@ -910,6 +1010,80 @@ mod tests {
             "the download should run to completion"
         );
         assert!(local.exists(), "the output file should be finalized");
+    }
+
+    #[tokio::test]
+    async fn cancel_token_aborts_in_flight_multipart_upload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source");
+
+        let multipart_completed = Arc::new(StdMutex::new(false));
+        let multipart_aborted = Arc::new(StdMutex::new(false));
+        let part_started = Arc::new(AtomicU64::new(0));
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::clone(&multipart_completed),
+            Arc::clone(&multipart_aborted),
+            Arc::clone(&part_started),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+        let report = Arc::new(AtomicU64::new(20));
+        let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+
+        let token = CancellationToken::new();
+        let canceller = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            canceller.cancel();
+        });
+
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            observer,
+            report,
+            20,
+            Some(token),
+        )
+        .await;
+
+        assert!(res.is_err(), "a cancelled multipart upload must fail");
+        let msg = res.unwrap_err().to_string().to_lowercase();
+        assert!(
+            msg.contains("cancel"),
+            "error should mention cancellation, got: {msg}"
+        );
+        assert!(
+            part_started.load(Ordering::SeqCst) >= 1,
+            "at least one upload part should have been in flight"
+        );
+        assert!(
+            !*multipart_completed.lock().unwrap(),
+            "cancelled multipart upload must not be completed"
+        );
+        assert!(
+            *multipart_aborted.lock().unwrap(),
+            "cancelled multipart upload must abort the provider session"
+        );
     }
 
     #[tokio::test]

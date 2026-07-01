@@ -688,6 +688,23 @@ impl PeerRuntime {
         }
     }
 
+    /// Stop every live published share. Used by identity rotation: a rotated
+    /// AFID must not leave old tickets served by long-lived publish tasks.
+    pub async fn stop_all_shares(&self) -> Vec<String> {
+        let removed: Vec<(String, ShareHandle)> = {
+            let mut shares = self.shares.write().await;
+            shares.drain().collect()
+        };
+        let mut stopped = Vec::with_capacity(removed.len());
+        for (namespace, handle) in removed {
+            handle.cancel.cancel();
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle.task).await;
+            tracing::info!("AeroShare: share {namespace} stopped serving");
+            stopped.push(namespace);
+        }
+        stopped
+    }
+
     // ------------------------------------------------------------------
     // One-shot "Send file to user" receive side (the Ricezione toggle).
     // ------------------------------------------------------------------
@@ -1377,5 +1394,31 @@ mod tests {
             publish_store_slug(Path::new("/tmp/x")),
             "x-6cc122ddf274426c"
         );
+    }
+
+    #[tokio::test]
+    async fn stop_all_shares_cancels_and_clears_every_share() {
+        let runtime = PeerRuntime::default();
+        for namespace in ["ns-a", "ns-b"] {
+            let cancel = CancellationToken::new();
+            let task_cancel = cancel.clone();
+            let task = tokio::spawn(async move {
+                task_cancel.cancelled().await;
+            });
+            runtime.shares.write().await.insert(
+                namespace.to_string(),
+                ShareHandle {
+                    cancel,
+                    task,
+                    dir: PathBuf::from(format!("/tmp/aeroshare-{namespace}")),
+                    ticket: format!("ticket-{namespace}"),
+                },
+            );
+        }
+
+        let mut stopped = runtime.stop_all_shares().await;
+        stopped.sort();
+        assert_eq!(stopped, vec!["ns-a".to_string(), "ns-b".to_string()]);
+        assert!(runtime.live_share_namespaces().await.is_empty());
     }
 }

@@ -98,6 +98,10 @@ fn runner_part_size(total_size: u64) -> u64 {
     GDRIVE_MULTIPART_PART_SIZE
 }
 
+fn is_drive_folder(file: &DriveFile) -> bool {
+    file.mime_type == "application/vnd.google-apps.folder"
+}
+
 /// Google Drive file metadata from API
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1731,11 +1735,10 @@ impl StorageProvider for GoogleDriveProvider {
         // check the HTTP status and would surface a deserialize error) must not
         // fail the create, which historically went straight to the POST, so on
         // any lookup error we fall through and let the create proceed.
-        if matches!(
-            self.find_by_name(folder_name, &parent_id).await,
-            Ok(Some(_))
-        ) {
-            return Err(ProviderError::AlreadyExists(path.to_string()));
+        if let Ok(Some(existing)) = self.find_by_name(folder_name, &parent_id).await {
+            if is_drive_folder(&existing) {
+                return Err(ProviderError::AlreadyExists(path.to_string()));
+            }
         }
 
         let metadata = serde_json::json!({
@@ -3073,6 +3076,35 @@ mod tests {
         assert_eq!(entry.path, "/Photos");
         assert_eq!(entry.size, 0);
         assert_eq!(entry.metadata.get("id").unwrap(), "folder-1");
+    }
+
+    #[test]
+    fn is_drive_folder_only_accepts_folder_mime_type() {
+        let folder = make_file(
+            "folder-1",
+            "aeroftp-bench",
+            "application/vnd.google-apps.folder",
+            None,
+            false,
+        );
+        let file = make_file(
+            "file-1",
+            "aeroftp-bench",
+            "application/octet-stream",
+            Some("42"),
+            false,
+        );
+        let doc = make_file(
+            "doc-1",
+            "aeroftp-bench",
+            "application/vnd.google-apps.document",
+            None,
+            false,
+        );
+
+        assert!(is_drive_folder(&folder));
+        assert!(!is_drive_folder(&file));
+        assert!(!is_drive_folder(&doc));
     }
 
     #[test]

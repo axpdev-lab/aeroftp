@@ -569,6 +569,12 @@ fn default_inbox_root() -> Result<std::path::PathBuf, String> {
         .ok_or_else(|| "could not resolve the home directory for the AeroShare inbox".to_string())
 }
 
+fn apply_active_discovery_pref(app: &AppHandle) {
+    if let Ok(mode) = crate::user_partitions::gui_peer_discovery_mode(app) {
+        crate::peer::set_discovery_pref(&mode);
+    }
+}
+
 /// The absolute AeroShare inbox root (`~/AeroShare Inbox`) as a string, so the FE
 /// can open it in the OS file manager (via `open_in_file_manager`) without
 /// guessing the path. Creates the directory if absent so "Open inbox folder"
@@ -611,6 +617,7 @@ pub async fn peer_send_file(
         .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
     let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
         .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    apply_active_discovery_pref(&app);
 
     // Live progress: stream byte ticks to the FE on `peer://send-status` so the
     // Send dialog can render a bar. Throttled to integer-percent changes so a
@@ -688,6 +695,7 @@ pub async fn peer_send_knock(
         .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
     let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
         .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    apply_active_discovery_pref(&app);
 
     peer_runtime
         .send_knock(&recipient, &identity_secret, code, params.in_reply_to)
@@ -728,6 +736,7 @@ pub async fn peer_send_action(
         .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
     let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
         .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    apply_active_discovery_pref(&app);
 
     peer_runtime
         .send_action(
@@ -821,6 +830,7 @@ pub async fn peer_friends_presence(
         .ok_or_else(|| "could not initialize the P2P identity".to_string())?;
     let (_uid, identity_secret) = crate::user_partitions::gui_peer_identity_load_secret(&app)?
         .ok_or_else(|| "P2P identity missing right after creation".to_string())?;
+    apply_active_discovery_pref(&app);
     crate::peer::probe_presence(
         &identity_secret,
         &params.afids,
@@ -930,6 +940,13 @@ pub async fn peer_identity_rotate(
     let was_receiving = peer_runtime.is_receiving().await;
     if was_receiving {
         peer_runtime.stop_receiver(&app).await;
+    }
+    let stopped_shares = peer_runtime.stop_all_shares().await;
+    if !stopped_shares.is_empty() {
+        tracing::info!(
+            count = stopped_shares.len(),
+            "AeroShare: stopped live shares before identity rotation"
+        );
     }
     let new_afid = crate::user_partitions::gui_peer_identity_rotate(&app)?;
     if was_receiving {

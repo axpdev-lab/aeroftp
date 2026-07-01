@@ -1796,6 +1796,27 @@ mod tests {
     }
 
     #[test]
+    fn shaped_upload_with_single_chunk_slot_chains_upload_parts() {
+        // OpenDrive-style backends require in-order chunks. When the provider
+        // caps chunk parallelism at 1, each UploadPart must depend on the
+        // previous part, not merely compete for one semaphore permit.
+        let mut caps = caps_multipart(1024 * 1024);
+        caps.max_chunk_slots = Some(1);
+
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 3 * 1024 * 1024);
+        let nodes = built.dag.nodes();
+
+        assert_eq!(built.profile.upload_parts, 3);
+        assert_eq!(built.profile.max_chunk_slots, 1);
+        assert_eq!(built.transfer.len(), 3);
+        assert_eq!(nodes[built.transfer[0]].depends_on, vec![built.acquire]);
+        assert_eq!(nodes[built.transfer[1]].depends_on, vec![built.transfer[0]]);
+        assert_eq!(nodes[built.transfer[2]].depends_on, vec![built.transfer[1]]);
+        assert_eq!(nodes[built.verify].depends_on, built.transfer);
+    }
+
+    #[test]
     fn shaped_upload_grows_chunk_when_parts_clamp_to_cover_the_tail() {
         // A file larger than MAX_MULTIPART_PARTS * chunk_hint would otherwise
         // clamp upload_parts and leave the tail unscheduled (the runner reads
