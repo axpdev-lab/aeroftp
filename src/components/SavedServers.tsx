@@ -21,6 +21,8 @@ import {
     storeSavedServerProfiles,
 } from '../utils/serverProfileStore';
 import { maskCredential } from '../utils/maskCredential';
+import { getStorageDedupKey } from '../utils/storageDedup';
+import { useActivityLog } from '../hooks/useActivityLog';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
 import { AlertDialog } from './Dialogs';
@@ -115,6 +117,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     onOpenExportImport,
 }) => {
     const t = useTranslation();
+    const { log: logActivity } = useActivityLog();
     const [servers, setServers] = useState<ServerProfile[]>([]);
 
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
@@ -332,6 +335,22 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         const updated = [...servers, cloned];
         setServers(updated);
         saveServers(updated);
+        // Trace the duplicate action with the same two entries as an
+        // overlapping edit: a "potential duplicate" warning (the copy shares the
+        // source's endpoint+username) then a confirmation.
+        const dedupKey = getStorageDedupKey(cloned);
+        logActivity(
+            'PROFILE_DUPLICATE',
+            `Duplicate profile detected: "${cloned.name}" overlaps with "${server.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
+        logActivity(
+            'PROFILE_SAVE',
+            `Profile duplicated: "${server.name}" → "${cloned.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
         // Warn (instead of silently producing a half-broken copy) when the
         // original was expected to carry a credential but none could be copied,
         // e.g. the secret is only in another machine's keyring. The edit modal

@@ -14,6 +14,8 @@ import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { getStorageDedupKey } from '../../utils/storageDedup';
+import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { isConnectCancelledError } from '../../utils/connectCancel';
@@ -338,6 +340,7 @@ export function MyServersPanel({
     onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
+    const { log: logActivity } = useActivityLog();
     // Start with an empty list: the partition-aware reconcile effect below
     // populates `servers` from the active user's vault on mount and on every
     // `lastUpdate` bump. We no longer seed from the shared localStorage
@@ -1274,7 +1277,23 @@ export function MyServersPanel({
         const updated = [dup, ...servers];
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
-    }, [servers]);
+        // Log the same two entries as an edit that overlaps an existing profile,
+        // so the duplicate action is traceable: a "potential duplicate" warning
+        // (the copy shares the source's endpoint+username) then a confirmation.
+        const dedupKey = getStorageDedupKey(dup);
+        logActivity(
+            'PROFILE_DUPLICATE',
+            `Duplicate profile detected: "${dup.name}" overlaps with "${server.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
+        logActivity(
+            'PROFILE_SAVE',
+            `Profile duplicated: "${server.name}" → "${dup.name}"`,
+            'success',
+            `dedupKey=${dedupKey}`,
+        );
+    }, [servers, logActivity]);
 
     const handleDelete = useCallback((server: ServerProfile) => {
         setDeleteTarget(server);
