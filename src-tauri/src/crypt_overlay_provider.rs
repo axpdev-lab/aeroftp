@@ -230,6 +230,23 @@ impl OverlayKeys {
         }
     }
 
+    /// Whether [`decrypted_size`](Self::decrypted_size) returns the EXACT
+    /// plaintext size (true) rather than falling back to the on-wire ciphertext
+    /// length (false). Mirrors the `decrypted_size` arms: rclone-crypt and
+    /// AeroCrypt v3 map deterministically; legacy AeroCrypt v1/v2 defer. Surfaced
+    /// through [`StorageProvider::reports_exact_size`] so sync compare drops the
+    /// size check for a deferred-size overlay instead of churning.
+    fn size_is_exact(&self) -> bool {
+        match self {
+            Self::Rclone(_) => true,
+            Self::AeroCrypt {
+                config: OverlayConfig::V3 { .. },
+                ..
+            } => true,
+            Self::AeroCrypt { .. } => false,
+        }
+    }
+
     /// Whether a listing entry name is an overlay sentinel that must never be
     /// surfaced as a decrypted file (config file, rclone dirIV markers).
     fn is_sentinel(&self, name: &str) -> bool {
@@ -892,6 +909,14 @@ impl StorageProvider for CryptOverlayProvider {
         false
     }
 
+    fn reports_exact_size(&self) -> bool {
+        // rclone / AeroCrypt v3 map the ciphertext size to the exact plaintext
+        // size; legacy AeroCrypt v1/v2 defer (return ciphertext length). Tell the
+        // sync so it drops size comparison for the deferred case instead of
+        // re-syncing every file every cycle.
+        self.keys.size_is_exact()
+    }
+
     fn supports_checksum(&self) -> bool {
         false
     }
@@ -1304,6 +1329,15 @@ mod tests {
         OverlayKeys::AeroCrypt { master_key, config }
     }
 
+    /// A legacy read-only AeroCrypt v2 overlay. Only the config variant matters
+    /// for `size_is_exact` (v2 defers the size map), so the key is a stub.
+    fn aerocrypt_v2_keys() -> OverlayKeys {
+        OverlayKeys::AeroCrypt {
+            master_key: [0u8; KEY_SIZE],
+            config: OverlayConfig::V2 { salt: [0u8; 32] },
+        }
+    }
+
     fn both_kinds() -> Vec<(&'static str, OverlayKeys)> {
         vec![
             (
@@ -1458,6 +1492,17 @@ mod tests {
         // AeroCrypt v3 now maps too (53 header + 28 per-block overhead): a single
         // partial block of ciphertext length 12_345 -> 12_345 - 53 - 28 plaintext.
         assert_eq!(aero.decrypted_size(12_345), 12_345 - 53 - 28);
+    }
+
+    #[test]
+    fn size_is_exact_true_except_legacy_aerocrypt() {
+        // rclone-crypt and AeroCrypt v3 map the ciphertext size to the exact
+        // plaintext size, so sync keeps comparing size. Legacy AeroCrypt v1/v2
+        // defer (return ciphertext length), so `reports_exact_size` is false and
+        // sync drops the size check rather than re-syncing every file every cycle.
+        assert!(rclone_keys(FilenameEncryption::Standard, true, ".bin").size_is_exact());
+        assert!(aerocrypt_keys().size_is_exact());
+        assert!(!aerocrypt_v2_keys().size_is_exact());
     }
 
     #[test]
@@ -1929,6 +1974,66 @@ mod tests {
         // back.
         let res = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "").await;
         assert!(res.is_err(), "missing config must fail closed");
+    }
+
+    #[tokio::test]
+    async fn factory_aerocrypt_fails_closed_on_wrong_password() {
+        // T4.3 locked-vault gate: the config EXISTS but the supplied password is
+        // wrong (the vault is effectively locked). The aerocrypt config MAC verify
+        // must reject it, so the wrap factory returns Err and the raw provider is
+        // NEVER handed back. This is the fail-closed guarantee every wrap-based
+        // surface (background sync, CLI/agent, MCP, cross-profile) inherits.
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        };
+        // Bootstrap a real v3 config under the CORRECT password.
+        let mut mem = MemProvider::new();
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "correct-pw", "", true)
+            .await
+            .expect("bootstrap v3 config");
+
+        // Wrapping with the WRONG password must fail closed against that config.
+        let inner: Box<dyn StorageProvider> = Box::new(mem);
+        let res = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "wrong-pw", "").await;
+        assert!(
+            res.is_err(),
+            "a wrong password on an existing aerocrypt config must fail closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn factory_aerocrypt_wraps_after_bootstrap_never_raw() {
+        // T4.3 never-raw anchor (aerocrypt success arm): a crypt-bound aerocrypt
+        // profile with the correct password resolves to the CryptOverlayProvider,
+        // so every path/content is mapped/encrypted - never the raw inner. The
+        // rclone success arm is `factory_wraps_rclone_binding`; the fail arms are
+        // the two `factory_aerocrypt_fails_closed_*` tests.
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+        };
+        let mut mem = MemProvider::new();
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", true)
+            .await
+            .expect("bootstrap v3 config");
+        let inner: Box<dyn StorageProvider> = Box::new(mem);
+        let mut wrapped = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "")
+            .await
+            .expect("correct password must wrap");
+        assert!(
+            wrapped
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .is_some(),
+            "a bound aerocrypt profile must resolve to the crypt decorator, never the raw inner"
+        );
     }
 
     #[tokio::test]

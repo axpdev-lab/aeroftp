@@ -387,10 +387,16 @@ impl CloudService {
         // Enable checksum comparison when provider supplies content hashes (e.g. FileLu)
         let has_checksums = remote_files.values().any(|f| f.checksum.is_some());
 
-        // Build comparison
+        // Build comparison. Skip size comparison when the provider does NOT
+        // report an exact logical size (a deferred-size crypt overlay, e.g.
+        // legacy AeroCrypt v1/v2): the local plaintext size never equals the
+        // on-wire ciphertext size, so comparing them would flag every unchanged
+        // file as different and re-sync it every cycle. Such a provider is
+        // compared on timestamp + the AEAD tag. rclone-crypt / AeroCrypt v3 and
+        // every non-crypt provider report exact sizes and keep the size check.
         let options = CompareOptions {
             compare_timestamp: true,
-            compare_size: true,
+            compare_size: provider.reports_exact_size(),
             compare_checksum: has_checksums,
             exclude_patterns: config.exclude_patterns.clone(),
             direction: CompareDirection::Bidirectional,
