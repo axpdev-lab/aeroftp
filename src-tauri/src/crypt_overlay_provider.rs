@@ -40,10 +40,12 @@
 //!    not) and for rclone `directory_name_encryption = false` (directory names
 //!    pass through cleartext). For rclone `standard`/`obfuscate` and for
 //!    AeroCrypt (AES-256-SIV), `is_dir` does not change the encoding.
-//! 4. **Decrypted size.** `stat`/`size` return the DECRYPTED size where it is
-//!    deterministic: rclone-crypt has an exact ciphertext->plaintext size map;
-//!    AeroCrypt defers (returns the on-wire ciphertext length) until the
-//!    container size decoder lands. Mirrors [`crate::crypt_compare`].
+//! 4. **Decrypted size.** `stat`/`size` return the DECRYPTED size via a
+//!    deterministic ciphertext->plaintext size map for both kinds: rclone-crypt
+//!    via [`crate::crypt_compare::rclone_decrypted_size`], AeroCrypt v3 via
+//!    [`overlay::v3_decrypted_size`] (fixed header + per-block nonce/tag). Legacy
+//!    AeroCrypt v1/v2 overlays are read-only and keep the deferred behaviour
+//!    (on-wire ciphertext length). Mirrors [`crate::crypt_compare`].
 //! 5. **Fail-closed.** If a profile carries a crypt binding but the keys cannot
 //!    be unlocked (wrong password, locked vault, unreadable config), the wrap
 //!    factory returns an error and the operation is refused. The raw provider is
@@ -211,12 +213,19 @@ impl OverlayKeys {
 
     /// Map an on-wire (ciphertext) file size back to the plaintext size.
     ///
-    /// rclone-crypt has a deterministic overhead map; AeroCrypt defers and
-    /// returns the input unchanged (the AEAD tag is the integrity guarantee,
-    /// size-policy compares may re-flag until the container decoder lands).
+    /// Both kinds now have a deterministic overhead map: rclone-crypt via
+    /// [`rclone_decrypted_size`], AeroCrypt v3 via [`overlay::v3_decrypted_size`]
+    /// (fixed header + per-block nonce/tag). Legacy AeroCrypt v1/v2 overlays are
+    /// read-only and keep the deferred behaviour (return the ciphertext length),
+    /// since their container header differs and the v3 decoder does not apply.
     fn decrypted_size(&self, size: u64) -> u64 {
         match self {
             Self::Rclone(_) => rclone_decrypted_size(size),
+            Self::AeroCrypt {
+                config: OverlayConfig::V3 { .. },
+                ..
+            } => overlay::v3_decrypted_size(size),
+            // Legacy v1/v2 overlays are read-only; keep the deferred behaviour.
             Self::AeroCrypt { .. } => size,
         }
     }
@@ -652,6 +661,19 @@ impl StorageProvider for CryptOverlayProvider {
             .await
             .map_err(ProviderError::IoError)?;
         let temp_path = stage_ciphertext_temp(&self.keys, &plaintext).await?;
+        // Propagate the SOURCE file's mtime onto the ciphertext temp. The inner
+        // provider's upload stamps the remote object from the file it uploads
+        // (SFTP `set_metadata`, FTP `MFMT`), which here is the temp, not the
+        // caller's `local_path`. Without this the remote encrypted object gets
+        // the temp's creation time ("now") and AeroSync never converges on a
+        // crypt overlay (the remote always looks just-modified). Best-effort:
+        // failure to read/stamp only degrades to the previous behaviour.
+        if let Ok(meta) = tokio::fs::metadata(local_path).await {
+            if let Ok(src_mtime) = meta.modified() {
+                let ft = filetime::FileTime::from_system_time(src_mtime);
+                let _ = filetime::set_file_mtime(&temp_path, ft);
+            }
+        }
         let enc = match self.map(remote_path, false) {
             Ok(p) => p,
             Err(e) => {
@@ -1369,28 +1391,33 @@ mod tests {
     // ── Decrypted size mapping ───────────────────────────────────────────────
 
     #[test]
-    fn decrypted_size_rclone_maps_aerocrypt_passes_through() {
+    fn decrypted_size_maps_both_kinds() {
         let rclone = rclone_keys(FilenameEncryption::Standard, true, ".bin");
         let aero = aerocrypt_keys();
         // Header-only ciphertext -> 0 bytes plaintext for rclone.
         assert_eq!(rclone.decrypted_size(32), 0);
         // 32 header + (100 + 16 tag) -> 100 plaintext.
         assert_eq!(rclone.decrypted_size(32 + 100 + 16), 100);
-        // AeroCrypt defers: returns the input.
-        assert_eq!(aero.decrypted_size(12_345), 12_345);
+        // AeroCrypt v3 now maps too (53 header + 28 per-block overhead): a single
+        // partial block of ciphertext length 12_345 -> 12_345 - 53 - 28 plaintext.
+        assert_eq!(aero.decrypted_size(12_345), 12_345 - 53 - 28);
     }
 
     #[test]
-    fn decrypted_size_matches_real_rclone_ciphertext() {
-        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
-        for size in [1usize, 100, 65_536, 65_537, 200_000] {
-            let plaintext = vec![7u8; size];
-            let ct = keys.encrypt_content(&plaintext).unwrap();
-            assert_eq!(
-                keys.decrypted_size(ct.len() as u64),
-                size as u64,
-                "size map for {size}"
-            );
+    fn decrypted_size_matches_real_ciphertext_both_kinds() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            aerocrypt_keys(),
+        ] {
+            for size in [0usize, 1, 100, 65_536, 65_537, 200_000] {
+                let plaintext = vec![7u8; size];
+                let ct = keys.encrypt_content(&plaintext).unwrap();
+                assert_eq!(
+                    keys.decrypted_size(ct.len() as u64),
+                    size as u64,
+                    "size map for {size}"
+                );
+            }
         }
     }
 
@@ -1682,12 +1709,13 @@ mod tests {
             .unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].name, "hello.txt");
-        // rclone maps to the exact plaintext size; AeroCrypt defers (reports the
-        // ciphertext length), so only the lower bound holds for both kinds here.
-        // Exact rclone size mapping is covered by `decrypted_size_*` tests.
-        assert!(
-            listed[0].size >= payload.len() as u64,
-            "decrypted size lower bound"
+        // Both kinds now map to the EXACT decrypted size (rclone via its overhead
+        // map, AeroCrypt v3 via the container decoder). Exact per-length mapping is
+        // pinned by the `decrypted_size_*` tests and `v3_decrypted_size_*`.
+        assert_eq!(
+            listed[0].size,
+            payload.len() as u64,
+            "decrypted size is exact"
         );
 
         let got = provider.download_to_bytes(&remote_plain).await.unwrap();
