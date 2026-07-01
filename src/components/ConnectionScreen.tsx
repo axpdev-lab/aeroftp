@@ -27,6 +27,7 @@ import { TotpLivePreview } from './TotpLivePreview';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
+import { safePickerStartDir } from '../utils/safePickerDir';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -174,7 +175,9 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
 
     const browseLocalFolder = async () => {
         try {
-            const selected = await open({ directory: true, multiple: false, title: t('connection.fourshared.selectLocalFolder') });
+            // Sanitize the starting dir so a stale local path cannot crash the
+            // native folder chooser (Fix G).
+            const selected = await open({ directory: true, multiple: false, defaultPath: await safePickerStartDir(localPath), title: t('connection.fourshared.selectLocalFolder') });
             if (selected && typeof selected === 'string') {
                 setLocalPath(selected);
                 onLocalPathChange?.(selected);
@@ -1876,7 +1879,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const handleBrowseLocalDir = async () => {
         try {
-            const selected = await open({ directory: true, multiple: false, title: t('browser.local') });
+            // Seed the chooser at the current local dir when it exists, or the
+            // nearest existing ancestor: an imported/stale path must never reach
+            // the native dialog (Fix G).
+            const selected = await open({ directory: true, multiple: false, defaultPath: await safePickerStartDir(quickConnectDirs.localDir), title: t('browser.local') });
             if (selected && typeof selected === 'string') {
                 onQuickConnectDirsChange({ ...quickConnectDirs, localDir: selected });
             }

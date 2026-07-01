@@ -176,6 +176,7 @@ import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErro
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './utils/connectCancel';
+import { safePickerStartDir } from './utils/safePickerDir';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -7419,10 +7420,12 @@ interface UpdateVerificationInfo {
   const chooseEndpointLocalFolder = useCallback(async (panelId: 'local' | 'local2') => {
     try {
       const current = panelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
+      // Sanitize the starting dir: a stale/imported local path that no longer
+      // exists here would crash the native GTK chooser (Fix G).
       const selected = await open({
         directory: true,
         multiple: false,
-        defaultPath: current || undefined,
+        defaultPath: await safePickerStartDir(current),
         title: panelId === 'local2' ? 'Choose right panel folder' : 'Choose left panel folder',
       });
       if (typeof selected !== 'string') return;

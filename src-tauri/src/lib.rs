@@ -7285,6 +7285,106 @@ async fn open_local_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve a directory that is SAFE to hand to a native folder picker as its
+/// starting location.
+///
+/// A profile's stored local path is machine-relative: after importing a profile
+/// from another machine (or deleting the folder, or a manual typo), that path may
+/// not exist here. Passing a non-existent `defaultPath` to the GTK file chooser
+/// crashes the app (heap corruption), same class of bug as the tray "open
+/// AeroCloud folder" link on an inactive mount. Fix it at the point of use: never
+/// let a path that does not exist reach the native dialog.
+///
+/// If `path` exists and is a directory it is returned unchanged; otherwise we
+/// walk up to the nearest existing ancestor directory so the picker opens near
+/// where the user intended. Returns `None` when nothing valid is found (e.g. a
+/// foreign absolute path whose whole chain is absent), so the caller omits
+/// `defaultPath` and the picker opens at the OS default location.
+#[tauri::command]
+fn safe_picker_start_dir(path: Option<String>) -> Option<String> {
+    let raw = path?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut current = std::path::Path::new(trimmed);
+    loop {
+        if current.is_dir() {
+            return Some(current.to_string_lossy().into_owned());
+        }
+        match current.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => current = parent,
+            _ => return None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod safe_picker_start_dir_tests {
+    use super::safe_picker_start_dir;
+
+    #[test]
+    fn none_and_empty_yield_none() {
+        assert_eq!(safe_picker_start_dir(None), None);
+        assert_eq!(safe_picker_start_dir(Some(String::new())), None);
+        assert_eq!(safe_picker_start_dir(Some("   ".to_string())), None);
+    }
+
+    #[test]
+    fn existing_directory_is_returned_unchanged() {
+        let dir = std::env::temp_dir();
+        let got = safe_picker_start_dir(Some(dir.to_string_lossy().into_owned()));
+        assert_eq!(got, Some(dir.to_string_lossy().into_owned()));
+    }
+
+    #[test]
+    fn nonexistent_child_walks_up_to_existing_ancestor() {
+        // A stale local path from an imported profile: the leaf does not exist
+        // but an ancestor does. The picker must open at the ancestor, never at
+        // the missing leaf (which would crash the native dialog).
+        let base = std::env::temp_dir();
+        let stale = base
+            .join("aeroftp-does-not-exist-xyz")
+            .join("nested-missing");
+        let got = safe_picker_start_dir(Some(stale.to_string_lossy().into_owned()));
+        assert_eq!(got, Some(base.to_string_lossy().into_owned()));
+    }
+
+    #[test]
+    fn windows_style_path_on_unix_has_no_ancestor_and_yields_none() {
+        // On a Unix host, backslashes are not separators, so an imported Windows
+        // local path is one opaque component with no existing ancestor: the
+        // caller omits defaultPath and the picker opens at the OS default.
+        #[cfg(unix)]
+        {
+            let got =
+                safe_picker_start_dir(Some(r"C:\Users\other\Downloads\AeroFTP".to_string()));
+            assert_eq!(got, None);
+        }
+    }
+
+    #[test]
+    fn result_is_always_none_or_an_existing_directory() {
+        // The safety invariant the whole fix rests on: whatever we return is
+        // never a non-existent path, so the native folder chooser can never be
+        // handed a missing directory (the crash condition).
+        for candidate in [
+            "",
+            "   ",
+            "/aeroftp-nonexistent-root-abc/sub/leaf",
+            r"C:\Windows\Imported\Path",
+            "relative/does/not/exist",
+        ] {
+            if let Some(dir) = safe_picker_start_dir(Some(candidate.to_string())) {
+                assert!(
+                    std::path::Path::new(&dir).is_dir(),
+                    "returned start dir {dir:?} for input {candidate:?} must exist",
+                );
+            }
+        }
+    }
+}
+
 // ============ File Operations Commands ============
 
 /// Delete a remote file or folder with detailed event emission for each deleted item.
@@ -17396,6 +17496,7 @@ pub fn run() {
             get_local_files,
             open_in_file_manager,
             open_local_file,
+            safe_picker_start_dir,
             delete_remote_file,
             rename_remote_file,
             create_remote_folder,
