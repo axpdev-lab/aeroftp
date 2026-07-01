@@ -1806,6 +1806,20 @@ enum Commands {
         /// interactive terminal.
         #[arg(long)]
         tui: bool,
+        /// Benchmark the members of one or more groups (the My Servers group
+        /// chips). Repeatable and comma-aware: `--group A --group B` or
+        /// `--group A,B`. Without -i/--tui every member of the named groups is
+        /// benchmarked; with -i/--tui the picker is restricted to those members.
+        /// Group membership is the same `config_server_groups` blob the GUI uses.
+        #[arg(long, value_name = "GROUP")]
+        group: Vec<String>,
+        /// Benchmark every saved profile (Ehud #277): the opt-in "all available"
+        /// selection, so you never have to list them with --compare or tick them
+        /// with -i/--tui. Combine with --group to run all members of those groups,
+        /// or with -i/--tui to pre-tick the whole list. Profiles that fail to
+        /// connect are reported as skipped, not fatal.
+        #[arg(long)]
+        all: bool,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -6813,6 +6827,25 @@ fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
             .progress_chars("━╸─"),
     );
     pb.set_message(filename.to_string());
+    pb
+}
+
+/// Count-based progress bar for the many-small-files benchmark loops (issue
+/// #277 #14): the per-file upload/download runs were a long blind wait with no
+/// feedback. Shows a live bar with position, percentage and ETA. Hidden when
+/// `show` is false (quiet / JSON output) or the terminal has no color/TTY.
+fn many_files_progress_bar(label: &str, total: u64, show: bool) -> ProgressBar {
+    if !show || !use_color() {
+        return ProgressBar::hidden();
+    }
+    let pb = ProgressBar::new(total);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg}  [{bar:40.cyan/blue}] {pos}/{len}  {percent}%  ETA {eta}")
+            .unwrap()
+            .progress_chars("━╸─"),
+    );
+    pb.set_message(label.to_string());
     pb
 }
 
@@ -35959,6 +35992,8 @@ async fn run_many_files_workload(
     let mut up_fatal = 0u32;
     let mut uploaded = 0u32;
     let up_start = Instant::now();
+    let progress_show = !cli.quiet && matches!(format, OutputFormat::Text);
+    let up_pb = many_files_progress_bar("upload-all", mf.file_count as u64, progress_show);
     for i in 0..mf.file_count {
         if total_start.elapsed().as_secs() > deadline_secs {
             out.errors
@@ -35981,6 +36016,7 @@ async fn run_many_files_workload(
                 uploaded += 1;
                 out.bytes_transferred += size;
                 out.runs += 1;
+                up_pb.inc(1);
             }
             Err(e) => {
                 up_fatal += 1;
@@ -35990,6 +36026,7 @@ async fn run_many_files_workload(
             }
         }
     }
+    up_pb.finish_and_clear();
     if uploaded > 0 {
         let secs = up_start.elapsed().as_secs_f64().max(1e-6);
         out.results.push(many_files_result(
@@ -36088,6 +36125,7 @@ async fn run_many_files_workload(
         let mut dn_mbps: Vec<f64> = Vec::new();
         let mut dn_fatal = 0u32;
         let dn_start = Instant::now();
+        let dn_pb = many_files_progress_bar("download-all", uploaded as u64, progress_show);
         for i in 0..uploaded {
             if total_start.elapsed().as_secs() > deadline_secs {
                 out.errors
@@ -36105,6 +36143,7 @@ async fn run_many_files_workload(
                     dn_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
                     out.bytes_transferred += size;
                     out.runs += 1;
+                    dn_pb.inc(1);
                 }
                 Err(e) => {
                     dn_fatal += 1;
@@ -36113,6 +36152,7 @@ async fn run_many_files_workload(
                 }
             }
         }
+        dn_pb.finish_and_clear();
         if !dn_ms.is_empty() {
             let secs = dn_start.elapsed().as_secs_f64().max(1e-6);
             out.results.push(many_files_result(
@@ -37553,6 +37593,8 @@ fn print_benchmark_table(
 #[allow(clippy::too_many_arguments)]
 async fn cmd_benchmark_compare(
     compare: Option<&str>,
+    groups: Option<&str>,
+    all: bool,
     interactive: bool,
     tui: bool,
     level: BenchmarkLevel,
@@ -37588,15 +37630,54 @@ async fn cmd_benchmark_compare(
         return 5;
     }
 
-    // Resolve which profiles to run from one of three sources: the full-screen
-    // checklist (--tui), the inline name/index prompt (-i), or the --compare
-    // comma list. --tui wins if both flags are passed.
+    // --group (Ehud #277): restrict the candidate set to members of the named
+    // group(s) before selection. Comma-aware (the CLI joins a repeated --group
+    // with commas), case-insensitive on the group name, membership read from the
+    // same `config_server_groups` blob the GUI uses. When -i/--tui is also given
+    // the picker only lists these members; otherwise every member is benchmarked.
+    let group_pool: Option<Vec<usize>> = match groups {
+        Some(g) => {
+            let wanted: Vec<String> = g
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let server_groups = load_server_groups(&store);
+            let pool: Vec<usize> = profiles
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| {
+                    let pid = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    group_names_for_profile(&server_groups, pid)
+                        .iter()
+                        .any(|n| wanted.contains(&n.to_lowercase()))
+                })
+                .map(|(i, _)| i)
+                .collect();
+            if pool.is_empty() {
+                print_error(
+                    format,
+                    &format!("no saved profiles are members of group(s): {}", g),
+                    5,
+                );
+                return 5;
+            }
+            Some(pool)
+        }
+        None => None,
+    };
+
+    // Resolve which profiles to run from one of these sources: the full-screen
+    // checklist (--tui), the inline name/index prompt (-i), the --compare comma
+    // list, or (when only --group is given) every member of the group pool.
+    // --tui wins if several flags are passed. When --group is set, the two
+    // interactive pickers are restricted to the group pool.
     let mut idxs: Vec<usize> = if tui {
         if !std::io::stdin().is_terminal() {
             print_error(format, "benchmark --tui needs an interactive terminal", 5);
             return 5;
         }
-        match benchmark_pick_profiles(&profiles) {
+        match benchmark_pick_in_pool(&profiles, group_pool.as_deref(), benchmark_pick_profiles) {
             Ok(v) => v,
             Err(e) => {
                 print_error(format, &format!("selection error: {}", e), 5);
@@ -37608,14 +37689,18 @@ async fn cmd_benchmark_compare(
             print_error(format, "benchmark -i needs an interactive terminal", 5);
             return 5;
         }
-        match benchmark_pick_profiles_inline(&profiles) {
+        match benchmark_pick_in_pool(
+            &profiles,
+            group_pool.as_deref(),
+            benchmark_pick_profiles_inline,
+        ) {
             Ok(v) => v,
             Err(e) => {
                 print_error(format, &format!("selection error: {}", e), 5);
                 return 5;
             }
         }
-    } else {
+    } else if compare.is_some() {
         let raw = compare.unwrap_or("");
         let mut out = Vec::new();
         for sel in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
@@ -37628,6 +37713,14 @@ async fn cmd_benchmark_compare(
             }
         }
         out
+    } else if let Some(pool) = &group_pool {
+        // --group without an interactive picker: benchmark every member.
+        pool.clone()
+    } else if all {
+        // --all without a group or picker (Ehud #277): every saved profile.
+        (0..profiles.len()).collect()
+    } else {
+        Vec::new()
     };
 
     // Dedupe while preserving order.
@@ -37643,17 +37736,41 @@ async fn cmd_benchmark_compare(
         eprintln!("note: comparing a single profile; pick 2 or more for a side-by-side.");
     }
 
+    // Profile-type labels for the comparison table (issue #277 #15), keyed by the
+    // same profile name used as the report label. The service identity (provider
+    // id, e.g. pcloud / mega / s3) disambiguates multi-protocol profiles.
+    let type_by_name: std::collections::HashMap<String, String> = idxs
+        .iter()
+        .map(|&i| {
+            let name = profiles[i]
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed")
+                .to_string();
+            let ptype = profiles[i]
+                .get("providerId")
+                .and_then(|v| v.as_str())
+                .or_else(|| profiles[i].get("provider_id").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .to_string();
+            (name, ptype)
+        })
+        .collect();
+
     let sink: std::cell::RefCell<Vec<(String, BenchmarkReport)>> =
         std::cell::RefCell::new(Vec::new());
     let mut failed: Vec<String> = Vec::new();
     let mut worst = 0i32;
 
-    // IP fairness check (issue #368 #1): one snapshot spanning the whole sweep.
-    // The reporter's VPN switched country mid-run, silently invalidating every
-    // profile measured after the change. Capturing the public IP once before
-    // the first profile and once after the last lets us flag the entire
-    // comparison as not comparable. Best-effort: a None snapshot disables it.
+    // IP fairness check (issue #368 #1). The reporter's VPN switched country
+    // mid-run, silently invalidating every profile measured after the change.
+    // We snapshot the public IP before the first profile and after each profile
+    // (issue #277 #16): a start-vs-end-only compare misses a change that reverts
+    // before the sweep ends, so any per-profile IP that differs from the start
+    // flags the whole comparison as not comparable. Best-effort: a None snapshot
+    // disables it.
     let sweep_start_ip = benchmark_public_ip().await;
+    let mut ip_changed_midrun = false;
 
     let total_profiles = idxs.len();
     for (pos, &i) in idxs.iter().enumerate() {
@@ -37699,13 +37816,22 @@ async fn cmd_benchmark_compare(
             failed.push(name);
         }
         worst = worst.max(code);
+        // Per-profile IP snapshot (issue #277 #16): catch a mid-run change even
+        // when it reverts before the sweep ends.
+        if let (Some(start), Some(cur)) = (&sweep_start_ip, benchmark_public_ip().await) {
+            if start != &cur {
+                ip_changed_midrun = true;
+            }
+        }
     }
 
-    // Close the sweep-wide IP fairness check (issue #368 #1).
-    let ip_changed = match (&sweep_start_ip, benchmark_public_ip().await) {
-        (Some(start), Some(end)) => start != &end,
-        _ => false,
-    };
+    // Close the sweep-wide IP fairness check (issue #368 #1 + #277 #16): flag if
+    // the end IP differs OR any per-profile snapshot drifted from the start.
+    let ip_changed = ip_changed_midrun
+        || match (&sweep_start_ip, benchmark_public_ip().await) {
+            (Some(start), Some(end)) => start != &end,
+            _ => false,
+        };
 
     let entries = sink.into_inner();
 
@@ -37740,7 +37866,7 @@ async fn cmd_benchmark_compare(
                     );
                     print_benchmark_text_report(report);
                 }
-                print_benchmark_comparison(&entries, use_color());
+                print_benchmark_comparison(&entries, &type_by_name, use_color());
                 if !failed.is_empty() {
                     println!();
                     println!("Skipped (failed to benchmark): {}", failed.join(", "));
@@ -37765,10 +37891,25 @@ async fn cmd_benchmark_compare(
 /// Render the cross-profile comparison: one row per profile, columns per
 /// operation. Many-small-files ops compare files/s, single-file ops compare
 /// Mbps. Both headlined "higher is better".
-fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: bool) {
+fn print_benchmark_comparison(
+    entries: &[(String, BenchmarkReport)],
+    types: &std::collections::HashMap<String, String>,
+    color_on: bool,
+) {
     if entries.len() < 2 {
         return;
     }
+    // Profile-type cell (issue #277 #15): the service identity (provider id,
+    // e.g. pcloud / mega / s3) that disambiguates multi-protocol profiles where
+    // the transport-level "protocol" column alone is ambiguous. Falls back to a
+    // dash when unknown.
+    let type_of = |name: &str| -> String {
+        types
+            .get(name)
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .unwrap_or_else(|| "-".to_string())
+    };
 
     let many_ops = [
         "upload-all",
@@ -37781,14 +37922,14 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
         .iter()
         .any(|(_, r)| r.results.iter().any(|x| x.files_per_second.is_some()));
     if has_many {
-        let mut headers: Vec<&str> = vec!["profile", "protocol"];
+        let mut headers: Vec<&str> = vec!["profile", "type", "protocol"];
         headers.extend_from_slice(&many_ops);
-        let mut aligns = vec![true, true];
+        let mut aligns = vec![true, true, true];
         aligns.extend(many_ops.iter().map(|_| false));
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
-                let mut row = vec![name.clone(), benchmark_report_protocol(r)];
+                let mut row = vec![name.clone(), type_of(name), benchmark_report_protocol(r)];
                 for op in many_ops {
                     let cell = r
                         .results
@@ -37819,8 +37960,14 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
             .any(|x| x.files_per_second.is_none() && x.throughput_mbps.is_some())
     });
     if has_single {
-        let headers = ["profile", "protocol", "upload Mbps", "download Mbps"];
-        let aligns = [true, true, false, false];
+        let headers = [
+            "profile",
+            "type",
+            "protocol",
+            "upload Mbps",
+            "download Mbps",
+        ];
+        let aligns = [true, true, true, false, false];
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|(name, r)| {
@@ -37834,6 +37981,7 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
                 };
                 vec![
                     name.clone(),
+                    type_of(name),
                     benchmark_report_protocol(r),
                     cell(single_ops[0]),
                     cell(single_ops[1]),
@@ -37856,6 +38004,26 @@ fn print_benchmark_comparison(entries: &[(String, BenchmarkReport)], color_on: b
 /// numbers and resolve each token via `resolve_profile_selector`. Empty input
 /// (or EOF) cancels. Re-prompts a few times when a token cannot be resolved.
 /// Multi-word profile names should be selected by their index number.
+/// Run one of the benchmark profile pickers over an optional group-restricted
+/// pool. With no pool the picker sees every saved profile; with a pool it sees
+/// only those members and the returned selections are mapped back to indices
+/// into the full `profiles` slice (Ehud #277 `--group`).
+fn benchmark_pick_in_pool(
+    profiles: &[serde_json::Value],
+    pool: Option<&[usize]>,
+    pick: fn(&[serde_json::Value]) -> std::io::Result<Vec<usize>>,
+) -> std::io::Result<Vec<usize>> {
+    match pool {
+        None => pick(profiles),
+        Some(pool) => {
+            let subset: Vec<serde_json::Value> =
+                pool.iter().map(|&i| profiles[i].clone()).collect();
+            let picked = pick(&subset)?;
+            Ok(picked.into_iter().map(|s| pool[s]).collect())
+        }
+    }
+}
+
 fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
     use std::io::Write;
 
@@ -54404,10 +54572,19 @@ async fn main() {
             compare,
             interactive,
             tui,
+            group,
+            all,
         } => {
-            if *interactive || *tui || compare.is_some() {
+            let groups_arg = if group.is_empty() {
+                None
+            } else {
+                Some(group.join(","))
+            };
+            if *interactive || *tui || compare.is_some() || groups_arg.is_some() || *all {
                 cmd_benchmark_compare(
                     compare.as_deref(),
+                    groups_arg.as_deref(),
+                    *all,
                     *interactive,
                     *tui,
                     *level,
