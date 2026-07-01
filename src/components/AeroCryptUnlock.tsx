@@ -15,9 +15,8 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Lock, Unlock, Loader2, X, Folder, FolderUp, Upload, FileText } from 'lucide-react';
+import { Lock, Unlock, Loader2, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { open, save } from '@tauri-apps/plugin-dialog';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
@@ -39,23 +38,6 @@ interface AeroCryptVaultInfo {
     config_json: string;
 }
 
-interface AeroCryptBrowserEntry {
-    name: string;
-    path: string;
-    is_dir: boolean;
-    size: number;
-    modified: string | null;
-    permissions: string | null;
-    decrypted_name: string;
-    decrypt_ok: boolean;
-}
-
-interface AeroCryptBrowserListResponse {
-    current_path: string;
-    display_current_path: string;
-    files: AeroCryptBrowserEntry[];
-}
-
 export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnlocked, onLocked, activeVaultId }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
@@ -66,10 +48,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
     const [error, setError] = useState<string | null>(null);
     const [vaultInfo, setVaultInfo] = useState<AeroCryptVaultInfo | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-
-    const [browserPath, setBrowserPath] = useState('.');
-    const [browserFiles, setBrowserFiles] = useState<AeroCryptBrowserEntry[]>([]);
-    const [browserLoading, setBrowserLoading] = useState(false);
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
 
     useEffect(() => {
@@ -116,8 +94,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
             });
             setPassword('');
             setSuccess(t('aerocryptNative.unlocked'));
-            setBrowserPath('.');
-            setBrowserFiles([]);
         } catch (e) {
             setError(String(e));
         } finally {
@@ -144,8 +120,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
             setConfirmPassword('');
             setCreateSubpath('');
             setSuccess(t('aerocryptNative.initialised'));
-            setBrowserPath('.');
-            setBrowserFiles([]);
         } catch (e) {
             setError(String(e));
         } finally {
@@ -162,85 +136,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
         }
         clearSensitiveState();
         onLocked?.();
-    };
-
-    const loadBrowser = useCallback(async (targetPath?: string) => {
-        const currentVault = vaultInfoRef.current;
-        if (!currentVault) return;
-
-        setBrowserLoading(true);
-        setError(null);
-        try {
-            const result = await invoke<AeroCryptBrowserListResponse>('aerocrypt_provider_list', {
-                vaultId: currentVault.vault_id,
-                path: targetPath ?? null,
-            });
-            const sorted = [...result.files].sort((a, b) => {
-                if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-                return a.decrypted_name.localeCompare(b.decrypted_name);
-            });
-            setBrowserPath(result.display_current_path || result.current_path);
-            setBrowserFiles(sorted);
-        } catch (e) {
-            setError(String(e));
-        } finally {
-            setBrowserLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (vaultInfo) {
-            void loadBrowser('.');
-        }
-    }, [vaultInfo, loadBrowser]);
-
-    const handleDownloadRemoteFile = async (entry: AeroCryptBrowserEntry) => {
-        const currentVault = vaultInfoRef.current;
-        if (!currentVault || entry.is_dir) return;
-
-        const outputPath = await save({ defaultPath: entry.decrypted_name || 'decrypted_file' });
-        if (!outputPath) return;
-
-        setLoading(true);
-        setError(null);
-        try {
-            await invoke<string>('aerocrypt_provider_download_file', {
-                vaultId: currentVault.vault_id,
-                remoteEncryptedPath: entry.path,
-                outputPath,
-            });
-            setSuccess(t('aerocryptNative.fileDecryptedTo', { path: outputPath }));
-        } catch (e) {
-            setError(String(e));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleUploadToCurrentDir = async () => {
-        const currentVault = vaultInfoRef.current;
-        if (!currentVault) return;
-
-        const inputPath = await open({ multiple: false });
-        if (!inputPath || Array.isArray(inputPath)) return;
-
-        const localName = inputPath.split(/[\\/]/).pop() || 'upload.bin';
-
-        setLoading(true);
-        setError(null);
-        try {
-            const remotePath = await invoke<string>('aerocrypt_provider_upload_file', {
-                vaultId: currentVault.vault_id,
-                localPlaintextPath: inputPath,
-                remotePlainName: localName,
-            });
-            setSuccess(t('aerocryptNative.encryptedUploadCompleted', { path: remotePath }));
-            await loadBrowser('.');
-        } catch (e) {
-            setError(String(e));
-        } finally {
-            setLoading(false);
-        }
     };
 
     return (
@@ -387,69 +282,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({ onClose, onUnl
                                 <span className="ml-auto text-[11px] text-gray-500 dark:text-gray-400">
                                     {t('aerocryptNative.versionLabel', { version: vaultInfo.version })}
                                 </span>
-                            </div>
-
-                            <div className="border border-gray-200 dark:border-gray-700 rounded p-3 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                                        <Folder className="w-4 h-4" />
-                                        {t('aerocryptNative.remoteBrowser')}
-                                    </h3>
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            onClick={() => void handleUploadToCurrentDir()}
-                                            disabled={loading || browserLoading}
-                                            className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
-                                        >
-                                            <span className="inline-flex items-center gap-1"><Upload className="w-3 h-3" /> {t('aerocryptNative.upload')}</span>
-                                        </button>
-                                        <button
-                                            onClick={() => void loadBrowser('..')}
-                                            disabled={browserLoading}
-                                            className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
-                                        >
-                                            <span className="inline-flex items-center gap-1"><FolderUp className="w-3 h-3" /> {t('aerocryptNative.up')}</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="text-xs text-gray-600 dark:text-gray-400 break-all">
-                                    {t('aerocryptNative.path', { path: browserPath })}
-                                </div>
-
-                                <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded">
-                                    {browserLoading ? (
-                                        <div className="p-3 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                                            <Loader2 className="w-4 h-4 animate-spin" /> {t('aerocryptNative.loading')}
-                                        </div>
-                                    ) : browserFiles.length === 0 ? (
-                                        <div className="p-3 text-sm text-gray-600 dark:text-gray-400">{t('aerocryptNative.emptyFolder')}</div>
-                                    ) : (
-                                        browserFiles.map((entry) => (
-                                            <div key={entry.path} className="flex items-center gap-2 px-2 py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
-                                                {entry.is_dir ? <Folder className="w-4 h-4 text-blue-500" /> : <FileText className="w-4 h-4 text-gray-400" />}
-                                                <button
-                                                    onClick={() => entry.is_dir ? void loadBrowser(entry.path) : void handleDownloadRemoteFile(entry)}
-                                                    className="flex-1 min-w-0 text-left text-sm text-gray-900 dark:text-white hover:underline"
-                                                    title={entry.name}
-                                                >
-                                                    <span className="truncate block">{entry.decrypted_name || entry.name}</span>
-                                                    {!entry.decrypt_ok && (
-                                                        <span className="text-[11px] text-amber-600 dark:text-amber-300">{t('aerocryptNative.nameNotDecrypted')}</span>
-                                                    )}
-                                                </button>
-                                                {!entry.is_dir && (
-                                                    <button
-                                                        onClick={() => void handleDownloadRemoteFile(entry)}
-                                                        className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-                                                    >
-                                                        {t('aerocryptNative.download')}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
                             </div>
 
                             <button
