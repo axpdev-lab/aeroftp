@@ -7357,8 +7357,7 @@ mod safe_picker_start_dir_tests {
         // caller omits defaultPath and the picker opens at the OS default.
         #[cfg(unix)]
         {
-            let got =
-                safe_picker_start_dir(Some(r"C:\Users\other\Downloads\AeroFTP".to_string()));
+            let got = safe_picker_start_dir(Some(r"C:\Users\other\Downloads\AeroFTP".to_string()));
             assert_eq!(got, None);
         }
     }
@@ -10327,6 +10326,17 @@ async fn detect_provider_favicon(
     state: State<'_, provider_commands::ProviderState>,
     search_paths: Vec<String>,
 ) -> Result<Option<String>, String> {
+    // Safety net for Fix H: never probe a crypt-overlay session for a web
+    // favicon. An encrypted store has no web project, so the reads only waste
+    // I/O and flood the remote log; the frontend already skips crypt sessions,
+    // this guards any other caller and the wrapped-provider path.
+    if state
+        .active_crypt_overlay
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Ok(None);
+    }
+
     let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
         let mut provider_lock = state.provider.lock().await;
         let provider: &mut Box<dyn providers::StorageProvider> = provider_lock
