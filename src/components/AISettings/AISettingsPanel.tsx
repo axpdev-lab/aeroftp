@@ -20,6 +20,7 @@ import { PluginBrowser } from './PluginBrowser';
 import { applyRegistryDefaults, lookupModelSpec } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
 import { createTauriListener } from '../../hooks/useTauriListener';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface AISettingsPanelProps {
     isOpen: boolean;
@@ -98,6 +99,7 @@ interface ModelEditModalProps {
 
 const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNew, onSave, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [formData, setFormData] = useState({
         name: model?.name || '',
         displayName: model?.displayName || '',
@@ -153,8 +155,8 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="AI Model Editor">
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            <div className="ai-settings-panel relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
+                <h3 {...modalDrag.dragHandleProps} className="text-lg font-semibold mb-4 flex items-center gap-2 cursor-grab active:cursor-grabbing select-none">
                     <Cpu size={20} className="text-purple-400" />
                     {isNew ? t('ai.settings.addModel') : t('ai.settings.editModel')}
                 </h3>
@@ -237,6 +239,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
 };
 
 export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClose }) => {
+    const modalDrag = useDraggableModal();
     const [settings, setSettings] = useState<AISettings>(getDefaultAISettings());
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
@@ -740,9 +743,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-4">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-            <div className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+            <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
+                {/* Header (drag handle: move the modal like the other draggable modals) */}
+                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-6 py-4 border-b border-gray-700 cursor-grab active:cursor-grabbing select-none">
                     <div className="flex items-center gap-3">
                         <Cpu className="text-purple-400" size={24} />
                         <h2 className="text-xl font-semibold">{t('ai.settings.title')}</h2>

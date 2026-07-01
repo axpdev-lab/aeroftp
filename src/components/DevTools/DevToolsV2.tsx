@@ -235,6 +235,10 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const isLightTheme = appTheme === 'light';
     const theme = useMemo(() => {
         switch (appTheme) {
+            // 'ice' is a light (frost) theme with no `.dark` class, so it must use
+            // the light palette instead of falling through to the dark default,
+            // which left the whole AeroTools panel dark under Ice.
+            case 'ice':
             case 'light': return {
                 panel: 'bg-gray-50 text-gray-900',
                 toolbar: 'bg-gray-100 border-gray-300',

@@ -537,6 +537,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     // Theme-aware classes (light/dark/tokyo/cyber)
     const ct = useMemo(() => {
         switch (appTheme) {
+            // 'ice' is a light (frost) theme with no `.dark` class: use the light
+            // palette so the AeroAgent chat is not dark under Ice (was falling
+            // through to the dark default).
+            case 'ice':
             case 'light': return {
                 bg: 'bg-white', bgSecondary: 'bg-gray-100', bgSecondaryHalf: 'bg-gray-100/50',
                 bgSecondaryHover: 'hover:bg-gray-200', bgHalf: 'bg-gray-50/80',

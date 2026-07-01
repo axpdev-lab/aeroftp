@@ -108,6 +108,10 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
 
     const styles = useMemo(() => {
         switch (appTheme) {
+            // 'ice' is a light (frost) theme with no `.dark` class: use the light
+            // palette so the AeroAgent header band and its buttons are readable
+            // under Ice (was falling through to the grey dark default).
+            case 'ice':
             case 'light': return {
                 headerBg: 'bg-gray-100/50 border-gray-300',
                 textLabel: 'text-gray-700',
