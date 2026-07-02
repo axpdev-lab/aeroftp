@@ -1817,8 +1817,8 @@ enum Commands {
         /// selection, so you never have to list them with --compare or tick them
         /// with -i/--tui. Combine with --group to run all members of those groups,
         /// or with -i/--tui to pre-tick the whole list. Profiles that fail to
-        /// connect are reported as skipped, not fatal.
-        #[arg(long)]
+        /// connect are reported as skipped, not fatal. Alias: --all-protocols.
+        #[arg(long, visible_alias = "all-protocols")]
         all: bool,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
