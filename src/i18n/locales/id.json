@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Enkripsi nama berkas",
             "encryptFileNamesHint": "Sembunyikan juga nama berkas, bukan hanya isinya. Kata sandi kemudian diperlukan bahkan untuk menampilkan daftar isi arsip.",
             "fastest": "Tercepat",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[id]"
         },
         "batchRename": {
             "title": "Ganti Nama Batch",

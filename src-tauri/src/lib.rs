@@ -8181,6 +8181,88 @@ async fn compress_tar_impl(
     ))
 }
 
+#[tauri::command]
+async fn compress_single(
+    input_path: String,
+    output_path: String,
+    format: String,
+    compression_level: Option<i64>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    compress_single_impl(
+        input_path,
+        output_path,
+        format,
+        compression_level,
+        Some(app),
+    )
+    .await
+}
+
+/// Compress a SINGLE file into a standalone gzip/xz/bzip2 stream (no tar wrapper).
+///
+/// gz/xz/bz2 are single-stream codecs: the container holds exactly one member and
+/// carries no file name or directory structure, so this rejects folders and only
+/// ever receives one input. The GUI restricts the picker to a lone file and the
+/// CLI rejects multi-path invocations; this guard is the backend backstop.
+async fn compress_single_impl(
+    input_path: String,
+    output_path: String,
+    format: String,
+    compression_level: Option<i64>,
+    app: Option<tauri::AppHandle>,
+) -> Result<String, String> {
+    use std::fs::File;
+    use std::path::Path;
+
+    let src = Path::new(&input_path);
+    if !src.is_file() {
+        return Err("gzip/xz/bzip2 compress a single file only (not a folder)".to_string());
+    }
+
+    // Byte-true progress denominator: the source file size (what we read through).
+    let total_bytes = std::fs::metadata(src).map(|m| m.len()).unwrap_or(0);
+    let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
+        app,
+        crate::archive_progress::phase::COMPRESSING,
+        total_bytes,
+    );
+
+    // Atomic temp; renamed into place on success (Drop cleans it up on any error).
+    let temp = ArchiveTempFile::new(&output_path);
+    let out = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
+    let infile = File::open(src).map_err(|e| format!("Failed to open input: {}", e))?;
+    // Count bytes as the encoder pulls them through the source (uncompressed payload).
+    let mut reader = crate::archive_progress::ProgressReader::new(infile, &mut progress);
+
+    // Preset 0-9, default 5 (7-Zip "Normal"), matching the tar family. gzip/xz honor
+    // the whole 0-9 range; bzip2 has no level 0, so it floors at 1.
+    let level = compression_level.unwrap_or(5).clamp(0, 9) as u32;
+
+    match format.as_str() {
+        "gz" => {
+            let mut enc = flate2::write::GzEncoder::new(out, flate2::Compression::new(level));
+            std::io::copy(&mut reader, &mut enc).map_err(|e| format!("gzip: {}", e))?;
+            enc.finish().map_err(|e| format!("gzip finish: {}", e))?;
+        }
+        "xz" => {
+            let mut enc = xz2::write::XzEncoder::new(out, level);
+            std::io::copy(&mut reader, &mut enc).map_err(|e| format!("xz: {}", e))?;
+            enc.finish().map_err(|e| format!("xz finish: {}", e))?;
+        }
+        "bz2" => {
+            let mut enc = bzip2::write::BzEncoder::new(out, bzip2::Compression::new(level.max(1)));
+            std::io::copy(&mut reader, &mut enc).map_err(|e| format!("bzip2: {}", e))?;
+            enc.finish().map_err(|e| format!("bzip2 finish: {}", e))?;
+        }
+        other => return Err(format!("Unsupported standalone format: {}", other)),
+    }
+
+    temp.commit(&output_path)?;
+    progress.finish();
+    Ok(output_path)
+}
+
 /// Build a tar-stream reader for `archive_path`. An explicit `kind`
 /// ("tar" | "tar.gz" | "tar.xz" | "tar.bz2") forces the decompression filter;
 /// otherwise it is sniffed from the file extension. This lets the CLI honor an
@@ -15114,6 +15196,18 @@ pub async fn compress_tar_core(
         .map(|_| out)
 }
 
+/// Headless standalone gzip/xz/bzip2 compression for the CLI / AI-tool path.
+/// Returns the output path on success (the impl already returns it), so the
+/// caller can stat it for the reported output size.
+pub async fn compress_single_core(
+    input_path: String,
+    output_path: String,
+    format: String,
+    compression_level: Option<i64>,
+) -> Result<String, String> {
+    compress_single_impl(input_path, output_path, format, compression_level, None).await
+}
+
 pub async fn extract_tar_core(
     archive_path: String,
     output_dir: String,
@@ -16398,6 +16492,7 @@ pub fn run() {
             extract_rar,
             is_rar_encrypted,
             compress_tar,
+            compress_single,
             extract_tar,
             extract_probe,
             resolve_unique_extract_dir,
@@ -17897,6 +17992,93 @@ mod sevenz_mhe_tests {
             size_default, size_normal,
             "unset level must default to 5 (Normal): default = {size_default} B, \
              level 5 = {size_normal} B"
+        );
+    }
+}
+
+#[cfg(test)]
+mod standalone_stream_tests {
+    use super::compress_single_core;
+    use std::io::Read;
+
+    // gz/xz/bz2 as standalone single-file streams: each must shrink a
+    // compressible payload and round-trip back to the exact original bytes. If
+    // any codec were miswired (wrong encoder, truncated finish, dropped level)
+    // the byte comparison fails loudly.
+    #[tokio::test]
+    async fn standalone_gz_xz_bz2_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        // Highly compressible (a repeated line), so `output < input` is a real
+        // signal that compression actually happened for every codec.
+        let original = "AeroFTP standalone stream test payload.\n"
+            .repeat(4096)
+            .into_bytes();
+        let src = dir.path().join("payload.txt");
+        std::fs::write(&src, &original).unwrap();
+        let src = src.to_string_lossy().to_string();
+
+        for (fmt, ext) in [("gz", "gz"), ("xz", "xz"), ("bz2", "bz2")] {
+            let out = dir
+                .path()
+                .join(format!("payload.{ext}"))
+                .to_string_lossy()
+                .to_string();
+            let returned = compress_single_core(src.clone(), out.clone(), fmt.to_string(), Some(5))
+                .await
+                .unwrap_or_else(|e| panic!("compress {fmt}: {e}"));
+            assert_eq!(returned, out, "{fmt}: core must return the output path");
+
+            let compressed = std::fs::read(&out).unwrap();
+            assert!(
+                compressed.len() < original.len(),
+                "{fmt}: compressed ({}) not smaller than input ({})",
+                compressed.len(),
+                original.len()
+            );
+
+            // Decompress with the matching decoder and compare byte-for-byte.
+            let mut restored = Vec::new();
+            match fmt {
+                "gz" => {
+                    flate2::read::GzDecoder::new(&compressed[..])
+                        .read_to_end(&mut restored)
+                        .unwrap();
+                }
+                "xz" => {
+                    xz2::read::XzDecoder::new(&compressed[..])
+                        .read_to_end(&mut restored)
+                        .unwrap();
+                }
+                "bz2" => {
+                    bzip2::read::BzDecoder::new(&compressed[..])
+                        .read_to_end(&mut restored)
+                        .unwrap();
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(restored, original, "{fmt}: round-trip mismatch");
+        }
+    }
+
+    // A folder has no single-stream representation: the backend must refuse it
+    // rather than silently produce an empty or garbage archive.
+    #[tokio::test]
+    async fn standalone_rejects_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("adir");
+        std::fs::create_dir(&sub).unwrap();
+        let out = dir.path().join("adir.gz").to_string_lossy().to_string();
+        let err = compress_single_core(
+            sub.to_string_lossy().to_string(),
+            out,
+            "gz".to_string(),
+            Some(5),
+        )
+        .await
+        .expect_err("a directory must be rejected");
+        assert!(
+            err.contains("single file"),
+            "unexpected rejection message: {err}"
         );
     }
 }

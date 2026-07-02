@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Mã hóa tên tệp",
             "encryptFileNamesHint": "Ẩn cả tên tệp, không chỉ nội dung của chúng. Khi đó cần mật khẩu ngay cả để liệt kê nội dung kho lưu trữ.",
             "fastest": "Nhanh nhất",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[vi]"
         },
         "batchRename": {
             "title": "Đổi tên hàng loạt",

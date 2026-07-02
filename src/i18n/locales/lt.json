@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Šifruoti failų pavadinimus",
             "encryptFileNamesHint": "Paslepia ir failų pavadinimus, ne tik jų turinį. Tuomet slaptažodžio prireiks net archyvo turiniui peržiūrėti.",
             "fastest": "Greičiausias",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[lt]"
         },
         "batchRename": {
             "title": "Masinis pervadinimas",

@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Bestandsnamen versleutelen",
             "encryptFileNamesHint": "Verbergt ook de bestandsnamen, niet alleen de inhoud. Het wachtwoord is dan zelfs nodig om het archief weer te geven.",
             "fastest": "Snelste",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[nl]"
         },
         "batchRename": {
             "title": "Batch hernoemen",

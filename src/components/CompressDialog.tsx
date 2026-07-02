@@ -18,7 +18,7 @@ import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import './CompressDialog.css';
 
-type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2';
+type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2' | 'gz' | 'xz' | 'bz2';
 
 export interface CompressOptions {
     archiveName: string;
@@ -62,7 +62,16 @@ const FORMAT_OPTIONS: FormatOption[] = [
     { value: 'tar.gz', label: 'TAR.GZ', supportsPassword: false, algorithm: 'Gzip', description: 'Gzip' },
     { value: 'tar.xz', label: 'TAR.XZ', supportsPassword: false, algorithm: 'XZ/LZMA2', description: 'XZ · Best ratio' },
     { value: 'tar.bz2', label: 'TAR.BZ2', supportsPassword: false, algorithm: 'Bzip2', description: 'Bzip2' },
+    // Standalone single-stream codecs: one file, no tar wrapper (disabled unless
+    // exactly one non-folder file is selected, enforced in the card render).
+    { value: 'gz', label: 'GZ', supportsPassword: false, algorithm: 'Gzip', description: 'Gzip · single file' },
+    { value: 'xz', label: 'XZ', supportsPassword: false, algorithm: 'XZ/LZMA2', description: 'XZ · single file' },
+    { value: 'bz2', label: 'BZ2', supportsPassword: false, algorithm: 'Bzip2', description: 'Bzip2 · single file' },
 ];
+
+/** Standalone single-stream codecs: valid only for exactly one non-folder file. */
+const STANDALONE_FORMATS: readonly CompressFormat[] = ['gz', 'xz', 'bz2'];
+const isStandaloneFormat = (f: CompressFormat): boolean => STANDALONE_FORMATS.includes(f);
 
 interface LevelOption { value: number; labelKey: string; fallback: string }
 
@@ -88,6 +97,10 @@ const LEVEL_OPTIONS: Record<string, LevelOption[]> = {
     'tar.xz': SEVENZIP_LEVELS.filter(l => l.value !== 0),
     // bzip2 has no level 0; the backend clamps to 1-9.
     'tar.bz2': SEVENZIP_LEVELS.filter(l => l.value !== 0),
+    // Standalone single-stream codecs mirror their tar.* counterparts (no store).
+    gz: SEVENZIP_LEVELS.filter(l => l.value !== 0),
+    xz: SEVENZIP_LEVELS.filter(l => l.value !== 0),
+    bz2: SEVENZIP_LEVELS.filter(l => l.value !== 0),
 };
 
 // Map a UI format + level onto the backend canary codec. The backend then
@@ -100,6 +113,9 @@ function formatToCodec(format: CompressFormat, level: number): { codec: string; 
         case 'tar.gz': return { codec: 'gzip', level };
         case 'tar.xz': return { codec: 'xz', level };
         case 'tar.bz2': return { codec: 'bzip2', level };
+        case 'gz': return { codec: 'gzip', level };
+        case 'xz': return { codec: 'xz', level };
+        case 'bz2': return { codec: 'bzip2', level };
         default: return { codec: 'store', level: 0 };
     }
 }
@@ -247,6 +263,11 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const folderCount = files.filter(f => f.isDir).length;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
 
+    // Standalone gz/xz/bz2 hold exactly one file (single stream, no tar wrapper),
+    // so they are offered only for a lone non-folder selection; otherwise their
+    // cards are disabled with a "single file only" hint.
+    const standaloneBlocked = files.length !== 1 || !!files[0]?.isDir;
+
     // Real (canary) compression-size estimate: recomputed, debounced, whenever
     // the input, format or level changes. The backend compresses a bounded
     // sample with the actual codec and extrapolates, so this reflects measured
@@ -276,7 +297,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
 
     const fullOutputPath = useMemo(() => {
         const ext = getExtension(format);
-        const name = archiveName.replace(/\.(zip|7z|tar|tar\.gz|tar\.xz|tar\.bz2|tgz|txz|tbz2)$/i, '');
+        const name = archiveName.replace(/\.(zip|7z|tar|tar\.gz|tar\.xz|tar\.bz2|tgz|txz|tbz2|gz|xz|bz2)$/i, '');
         return `${outputDir}/${name}${ext}`;
     }, [archiveName, format, outputDir]);
 
@@ -303,7 +324,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
         setCompressing(true);
         try {
             const res = await onConfirm({
-                archiveName: archiveName.replace(/\.(zip|7z|tar|tar\.gz|tar\.xz|tar\.bz2|tgz|txz|tbz2)$/i, ''),
+                archiveName: archiveName.replace(/\.(zip|7z|tar|tar\.gz|tar\.xz|tar\.bz2|tgz|txz|tbz2|gz|xz|bz2)$/i, ''),
                 format,
                 compressionLevel,
                 password: formatInfo.supportsPassword && password ? password : null,
@@ -416,12 +437,17 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                             {t('compress.format') || 'Format'}
                         </label>
                         <div className="grid grid-cols-3 gap-2">
-                            {FORMAT_OPTIONS.map(opt => (
+                            {FORMAT_OPTIONS.map(opt => {
+                                // A standalone codec needs exactly one file: block its card
+                                // (with a hint) whenever the selection isn't a lone file.
+                                const blocked = isStandaloneFormat(opt.value) && standaloneBlocked;
+                                return (
                                 <button
                                     key={opt.value}
                                     onClick={() => handleFormatChange(opt.value)}
-                                    disabled={compressing}
-                                    className={`compress-format-card ${format === opt.value ? 'active' : ''} rounded-lg px-3 py-2.5 text-left transition-all`}
+                                    disabled={compressing || blocked}
+                                    title={blocked ? (t('compress.singleFileOnly') || 'Single file only') : undefined}
+                                    className={`compress-format-card ${format === opt.value ? 'active' : ''} ${blocked ? 'blocked' : ''} rounded-lg px-3 py-2.5 text-left transition-all`}
                                 >
                                     <div className="flex items-center gap-1.5">
                                         <span className="text-sm font-semibold">{opt.label}</span>
@@ -431,7 +457,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                         {opt.description}
                                     </div>
                                 </button>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 

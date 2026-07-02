@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Шифруј називе датотека",
             "encryptFileNamesHint": "Скрива и називе датотека, не само њихов садржај. Лозинка је тада потребна чак и за приказ садржаја архиве.",
             "fastest": "Najbrže",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[sr]"
         },
         "batchRename": {
             "title": "Grupno preimenovanje",

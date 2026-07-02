@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Dosya adlarını şifrele",
             "encryptFileNamesHint": "Yalnızca içeriği değil, dosya adlarını da gizler. O zaman arşivi listelemek için bile parola gerekir.",
             "fastest": "En hızlı",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[tr]"
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",

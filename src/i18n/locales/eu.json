@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Zifratu fitxategi-izenak",
             "encryptFileNamesHint": "Fitxategien izenak ere ezkutatzen ditu, ez edukia soilik. Orduan pasahitza beharko da artxiboa zerrendatzeko ere.",
             "fastest": "Azkarrena",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[eu]"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

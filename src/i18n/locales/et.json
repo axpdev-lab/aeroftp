@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Krüpti failinimed",
             "encryptFileNamesHint": "Peidab ka failinimed, mitte ainult nende sisu. Siis on parool vajalik isegi arhiivi sisu vaatamiseks.",
             "fastest": "Kiireim",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[et]"
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",

@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Sulitkan nama fail",
             "encryptFileNamesHint": "Sembunyikan juga nama fail, bukan hanya kandungannya. Kata laluan kemudian diperlukan walaupun untuk menyenaraikan kandungan arkib.",
             "fastest": "Terpantas",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[ms]"
         },
         "batchRename": {
             "title": "Nama Semula Kelompok",

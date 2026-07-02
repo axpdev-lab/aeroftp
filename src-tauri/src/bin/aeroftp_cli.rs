@@ -746,8 +746,11 @@ enum OutputFormat {
 
 /// Archive container formats exposed by `aeroftp compress` / `aeroftp extract`.
 /// These map onto the same encoders the GUI ships: `zip` (deflate, optional
-/// AES-256), `7z` (LZMA2, optional AES-256), and the `tar` family with
-/// gzip/xz/bzip2 filters. `rar` is extract-only (no Rust RAR encoder exists).
+/// AES-256), `7z` (LZMA2, optional AES-256), the `tar` family with gzip/xz/bzip2
+/// filters, and the standalone single-stream codecs `gz` / `xz` / `bz2` (one
+/// file, no tar wrapper). `rar` is extract-only (no Rust RAR encoder exists);
+/// the standalone `gz`/`xz`/`bz2` are compress-only here (use gunzip/unxz/bunzip2
+/// or the tar.* variants to unpack).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 enum ArchiveFormat {
     #[value(name = "zip")]
@@ -762,6 +765,12 @@ enum ArchiveFormat {
     TarXz,
     #[value(name = "tar.bz2", alias = "tbz2")]
     TarBz2,
+    #[value(name = "gz", alias = "gzip")]
+    Gz,
+    #[value(name = "xz")]
+    Xz,
+    #[value(name = "bz2", alias = "bzip2")]
+    Bz2,
     #[value(name = "rar")]
     Rar,
 }
@@ -786,8 +795,32 @@ impl ArchiveFormat {
             ArchiveFormat::TarGz => "tar.gz",
             ArchiveFormat::TarXz => "tar.xz",
             ArchiveFormat::TarBz2 => "tar.bz2",
+            ArchiveFormat::Gz => "gz",
+            ArchiveFormat::Xz => "xz",
+            ArchiveFormat::Bz2 => "bz2",
             ArchiveFormat::Rar => "rar",
         }
+    }
+
+    /// The `format` string understood by `compress_single_core` for the
+    /// standalone single-stream codecs. Non-standalone formats are unreachable
+    /// here (the compress dispatch only calls this on Gz/Xz/Bz2).
+    fn single_kind(self) -> &'static str {
+        match self {
+            ArchiveFormat::Gz => "gz",
+            ArchiveFormat::Xz => "xz",
+            ArchiveFormat::Bz2 => "bz2",
+            _ => "gz",
+        }
+    }
+
+    /// True for the standalone single-stream codecs (gz, xz, bz2): one file, no
+    /// tar wrapper, no directory structure.
+    fn is_standalone(self) -> bool {
+        matches!(
+            self,
+            ArchiveFormat::Gz | ArchiveFormat::Xz | ArchiveFormat::Bz2
+        )
     }
 
     /// True when the format carries an AES-256 password (zip, 7z).
@@ -808,6 +841,11 @@ impl ArchiveFormat {
             (".tbz2", ArchiveFormat::TarBz2),
             (".tbz", ArchiveFormat::TarBz2),
             (".tar", ArchiveFormat::Tar),
+            // Standalone single-stream codecs. Listed AFTER the tar.* / t?z
+            // entries so a longest match wins (foo.tar.gz -> TarGz, not Gz).
+            (".gz", ArchiveFormat::Gz),
+            (".xz", ArchiveFormat::Xz),
+            (".bz2", ArchiveFormat::Bz2),
             (".zip", ArchiveFormat::Zip),
             (".7z", ArchiveFormat::SevenZ),
             (".rar", ArchiveFormat::Rar),
@@ -2917,10 +2955,12 @@ enum Commands {
         #[command(subcommand)]
         command: CorrectCommands,
     },
-    /// Compress files/folders into an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2).
+    /// Compress files/folders into an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, gz, xz, bz2).
     ///
     /// The format is inferred from the output extension unless `--archive-format` is given.
     /// `zip` and `7z` accept an AES-256 `--password`; the tar family is unencrypted.
+    /// The standalone `gz` / `xz` / `bz2` compress exactly ONE file (single-stream, no
+    /// tar wrapper): pass a single file, or use tar.gz/tar.xz/tar.bz2 to bundle many.
     /// Local-only, no connection. Honors `--json` for scriptable output.
     Compress {
         /// Output archive path (format inferred from its extension unless --format)
@@ -6005,7 +6045,7 @@ async fn cmd_compress(
             print_error(
                 format,
                 &format!(
-                    "cannot infer archive format from '{output}': pass --archive-format zip|7z|tar|tar.gz|tar.xz|tar.bz2"
+                    "cannot infer archive format from '{output}': pass --archive-format zip|7z|tar|tar.gz|tar.xz|tar.bz2|gz|xz|bz2"
                 ),
                 5,
             );
@@ -6074,6 +6114,26 @@ async fn cmd_compress(
                 paths_vec,
                 out_string,
                 fmt.tar_kind().to_string(),
+                level,
+            )
+            .await
+        }
+        ArchiveFormat::Gz | ArchiveFormat::Xz | ArchiveFormat::Bz2 => {
+            // Single-stream codecs hold exactly one file; reject multi-path (and
+            // a folder, which the core also refuses) with an actionable pointer
+            // to the tar.* variants that DO bundle many inputs.
+            if paths_vec.len() != 1 {
+                print_error(
+                    format,
+                    "gz/xz/bz2 compress a single file; use tar.gz/tar.xz/tar.bz2 to bundle multiple files or a folder",
+                    5,
+                );
+                return 5;
+            }
+            ftp_client_gui_lib::compress_single_core(
+                paths_vec[0].clone(),
+                out_string,
+                fmt.single_kind().to_string(),
                 level,
             )
             .await
@@ -6149,6 +6209,18 @@ async fn cmd_extract(
             return 5;
         }
     };
+    // Standalone gz/xz/bz2 are compress-only here: a single-stream file has no
+    // internal listing to browse and no directory structure to restore. Point the
+    // user at the standard tools / tar.* variants (exit 7 = unsupported operation,
+    // mirroring the RAR-create rejection on the compress side).
+    if fmt.is_standalone() {
+        print_error(
+            format,
+            "extracting standalone gz/xz/bz2 is not supported yet; decompress with gunzip/unxz/bunzip2, or use the tar.gz/tar.xz/tar.bz2 variants",
+            7,
+        );
+        return 7;
+    }
     warn_archive_password_visibility(password, cli.quiet);
 
     // Resolve relative paths against the CWD; the archive core requires absolute paths.
@@ -6227,6 +6299,9 @@ async fn cmd_extract(
                 subfolder,
             )
             .await
+        }
+        ArchiveFormat::Gz | ArchiveFormat::Xz | ArchiveFormat::Bz2 => {
+            unreachable!("standalone gz/xz/bz2 extract rejected above")
         }
     };
     match result {
@@ -56972,6 +57047,59 @@ mod tests {
         // No phase-2 entry -> falls back to the preview verbatim (flag false).
         assert_eq!(out[1]["id"], json!("b"));
         assert_eq!(out[1]["hasStoredAeroCryptPassword"], json!(false));
+    }
+
+    #[test]
+    fn infer_from_path_standalone_and_longest_match() {
+        // Standalone single-stream extensions resolve to the new codecs.
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.gz"),
+            Some(ArchiveFormat::Gz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.xz"),
+            Some(ArchiveFormat::Xz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.bz2"),
+            Some(ArchiveFormat::Bz2)
+        );
+        // Longest match wins: a tar.* / t?z name must NEVER collapse to the bare
+        // codec (foo.tar.gz is a tarball, not a lone gzip stream).
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.tar.gz"),
+            Some(ArchiveFormat::TarGz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.tgz"),
+            Some(ArchiveFormat::TarGz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.tar.xz"),
+            Some(ArchiveFormat::TarXz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.txz"),
+            Some(ArchiveFormat::TarXz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.tar.bz2"),
+            Some(ArchiveFormat::TarBz2)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("a.tbz2"),
+            Some(ArchiveFormat::TarBz2)
+        );
+        // Case-insensitive, and a dotted stem must not fool the standalone match.
+        assert_eq!(
+            ArchiveFormat::infer_from_path("My.Archive.GZ"),
+            Some(ArchiveFormat::Gz)
+        );
+        assert_eq!(
+            ArchiveFormat::infer_from_path("data.7z"),
+            Some(ArchiveFormat::SevenZ)
+        );
+        assert_eq!(ArchiveFormat::infer_from_path("noext"), None);
     }
 
     #[test]

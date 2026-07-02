@@ -1107,6 +1107,7 @@
             "normal": "Normal",
             "password": "Password (optional, AES-256)",
             "passwordHint": "Leave empty for no encryption",
+            "singleFileOnly": "Single file only",
             "encryptFileNames": "Encrypt file names",
             "encryptFileNamesHint": "Hide the file names too, not just their contents. The password is then required even to list the archive.",
             "store": "Store (no compression)",

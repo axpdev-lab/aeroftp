@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Šifrovať názvy súborov",
             "encryptFileNamesHint": "Skryje aj názvy súborov, nielen ich obsah. Heslo potom bude potrebné aj na zobrazenie obsahu archívu.",
             "fastest": "Najrýchlejší",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[sk]"
         },
         "batchRename": {
             "title": "Hromadne premenovanie",

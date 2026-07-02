@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Fájlnevek titkosítása",
             "encryptFileNamesHint": "Elrejti a fájlneveket is, nem csak a tartalmukat. Ekkor a jelszó az archívum tartalmának listázásához is szükséges.",
             "fastest": "Leggyorsabb",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[hu]"
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

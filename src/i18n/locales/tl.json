@@ -2966,7 +2966,8 @@
             "encryptFileNames": "I-encrypt ang mga pangalan ng file",
             "encryptFileNamesHint": "Itago rin ang mga pangalan ng file, hindi lang ang nilalaman ng mga ito. Kakailanganin ang password kahit para lang ilista ang archive.",
             "fastest": "Pinakamabilis",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[tl]"
         },
         "batchRename": {
             "title": "Batch Rename",

@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Xifra els noms dels fitxers",
             "encryptFileNamesHint": "Amaga també els noms dels fitxers, no només el seu contingut. Aleshores caldrà la contrasenya fins i tot per llistar l'arxiu.",
             "fastest": "Més ràpid",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[ca]"
         },
         "batchRename": {
             "title": "Reanomenament massiu",

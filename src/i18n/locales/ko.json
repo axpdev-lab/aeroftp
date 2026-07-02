@@ -2966,7 +2966,8 @@
             "encryptFileNames": "파일 이름 암호화",
             "encryptFileNamesHint": "내용뿐만 아니라 파일 이름도 숨깁니다. 그러면 보관 파일의 목록을 보는 데에도 비밀번호가 필요합니다.",
             "fastest": "가장 빠름",
-            "ultra": "울트라"
+            "ultra": "울트라",
+            "singleFileOnly": "[ko]"
         },
         "batchRename": {
             "title": "일괄 이름 변경",

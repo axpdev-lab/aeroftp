@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Simba majina ya faili",
             "encryptFileNamesHint": "Huficha pia majina ya faili, si maudhui yake tu. Kisha nenosiri litahitajika hata kuorodhesha yaliyomo kwenye kumbukumbu.",
             "fastest": "Haraka zaidi",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[sw]"
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",

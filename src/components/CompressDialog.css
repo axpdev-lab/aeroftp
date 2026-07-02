@@ -95,3 +95,15 @@ html.cyber .compress-dialog {
     box-shadow: 0 0 0 1px var(--compress-card-active-border);
 }
 
+/* A standalone format card that the current selection can't use (needs a single
+   file): dimmed and non-interactive, no hover affordance. */
+.compress-format-card.blocked {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.compress-format-card.blocked:hover {
+    border-color: var(--compress-card-border);
+    background: var(--compress-card-bg);
+}
+

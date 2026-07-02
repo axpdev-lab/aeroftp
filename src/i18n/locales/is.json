@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Dulkóða skráarnöfn",
             "encryptFileNamesHint": "Felur einnig skráarnöfnin, ekki bara innihald þeirra. Þá þarf lykilorðið jafnvel til að sýna innihald safnsins.",
             "fastest": "Hraðast",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[is]"
         },
         "batchRename": {
             "title": "Hópendurnefning",

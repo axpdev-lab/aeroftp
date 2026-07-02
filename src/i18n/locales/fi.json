@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Salaa tiedostonimet",
             "encryptFileNamesHint": "Piilottaa myös tiedostonimet, ei vain niiden sisällön. Tällöin salasana vaaditaan jopa arkiston sisällön luettelointiin.",
             "fastest": "Nopein",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[fi]"
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",

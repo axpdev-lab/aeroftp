@@ -2931,7 +2931,8 @@
             "encryptFileNames": "ファイル名を暗号化",
             "encryptFileNamesHint": "内容だけでなくファイル名も隠します。その場合、アーカイブの一覧表示にもパスワードが必要になります。",
             "fastest": "最速",
-            "ultra": "ウルトラ"
+            "ultra": "ウルトラ",
+            "singleFileOnly": "[ja]"
         },
         "batchRename": {
             "title": "一括リネーム",

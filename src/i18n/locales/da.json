@@ -2966,7 +2966,8 @@
             "encryptFileNames": "Krypter filnavne",
             "encryptFileNamesHint": "Skjuler også filnavnene, ikke kun deres indhold. Adgangskoden kræves så selv for at vise arkivets indhold.",
             "fastest": "Hurtigst",
-            "ultra": "Ultra"
+            "ultra": "Ultra",
+            "singleFileOnly": "[da]"
         },
         "batchRename": {
             "title": "Masseomdøbning",
