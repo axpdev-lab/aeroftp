@@ -37,6 +37,12 @@
 # Reviewed: 2026-06-29 (added RUSTSEC-2026-0190, n0-error downcast_mut unsoundness freshly
 #           published to the advisory DB, transitive via iroh 1.0; unsoundness not a vuln,
 #           pinned by iroh with no in-tree upgrade, AeroFTP never calls downcast_mut.)
+# Reviewed: 2026-07-02 (RUSTSEC-2026-0194 + RUSTSEC-2026-0195 quick-xml DoS freshly
+#           published: BUMPED the direct dep quick-xml 0.40 -> 0.41 to patch the real
+#           runtime path (WebDAV/S3/Azure/STS response parsing, the only surface fed
+#           untrusted remote XML). Ignored the two IDs for the two remaining
+#           Tauri-transitive instances (winrt-notification 0.37.5, plist 0.39.4), which
+#           parse app-owned XML only, awaiting a Tauri stack bump.)
 
 [advisories]
 ignore = [
@@ -273,6 +279,36 @@ ignore = [
     # `Display` strings on the P2P path. Same accepted-advisory posture as the two
     # iroh unmaintained ignores above; revisit when iroh ships a fixed n0-error.
     "RUSTSEC-2026-0190",  # n0-error downcast_mut unsoundness (iroh 1.0 transitive, not reachable)
+
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0194 + RUSTSEC-2026-0195 - quick-xml DoS (< 0.41.0)
+    # ----------------------------------------------------------------
+    # Two DoS advisories freshly published 2026-06-29 against quick-xml < 0.41.0:
+    #   0194 quadratic run time checking a start tag for duplicate attribute names,
+    #   0195 unbounded namespace-declaration allocation in `NsReader` (memory
+    #   exhaustion). Both require attacker-controlled XML fed to the parser to bite.
+    #
+    # The reachable attack surface in AeroFTP is the runtime XML parser: WebDAV,
+    # S3, Azure and STS responses arrive from a possibly-hostile server. That path
+    # is our DIRECT dependency, now bumped to the patched quick-xml 0.41.0
+    # (src-tauri/Cargo.toml:109). The real surface is fixed.
+    #
+    # The two instances that remain are Tauri-stack transitive and never parse
+    # untrusted remote XML, so they are ignored pending an upstream bump:
+    #
+    #   quick-xml 0.37.5 <- tauri-winrt-notification <- notify-rust <-
+    #     tauri-plugin-notification <- aeroftp
+    #   Windows toast notifications. It parses AeroFTP's OWN toast-template XML
+    #   (title/body we build), not remote input, and only on Windows.
+    #
+    #   quick-xml 0.39.4 <- plist <- tauri-utils <- tauri(-runtime-wry / codegen)
+    #   Info.plist / bundle-metadata parsing at build time and on macOS. It parses
+    #   app-owned plist files, not remote input.
+    #
+    # Neither can be bumped without a Tauri-stack release (same posture as the other
+    # Tauri-transitive ignores above). Revisit when Tauri bumps notify-rust / plist.
+    "RUSTSEC-2026-0194",  # quick-xml duplicate-attr quadratic DoS (runtime path patched to 0.41; rest Tauri-transitive, app-owned XML)
+    "RUSTSEC-2026-0195",  # quick-xml NsReader memory-exhaustion DoS (runtime path patched to 0.41; rest Tauri-transitive, app-owned XML)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
