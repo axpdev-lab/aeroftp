@@ -563,6 +563,29 @@ async fn stage_ciphertext_temp(
     Ok(temp_path)
 }
 
+/// Best-effort creation of the encrypted parent directory chain for `enc_path`,
+/// shallow to deep. Errors are ignored: a parent that already exists is the
+/// common case, and any real failure surfaces on the caller's retried upload.
+/// Gives strict WebDAV/OpenDrive providers the parent collection a PUT needs when
+/// the crypt folder was created outside the overlay, mirroring rclone's implicit
+/// mkdir before Put (#385).
+async fn ensure_parent_dirs(inner: &mut Box<dyn StorageProvider>, enc_path: &str) {
+    let absolute = enc_path.starts_with('/');
+    let comps: Vec<&str> = enc_path.split('/').filter(|c| !c.is_empty()).collect();
+    if comps.len() <= 1 {
+        // Leaf at the root (or a bare name resolved against cwd): no parent to make.
+        return;
+    }
+    let mut acc = String::new();
+    for c in &comps[..comps.len() - 1] {
+        if absolute || !acc.is_empty() {
+            acc.push('/');
+        }
+        acc.push_str(c);
+        let _ = inner.mkdir(&acc).await;
+    }
+}
+
 #[async_trait]
 impl StorageProvider for CryptOverlayProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -715,10 +738,26 @@ impl StorageProvider for CryptOverlayProvider {
                 return Err(e);
             }
         };
-        let result = self
+        let mut result = self
             .inner
             .upload(&temp_path.to_string_lossy(), &enc, on_progress)
             .await;
+        // #385: strict WebDAV/OpenDrive providers PUT-fail with "Path not found"
+        // when the encrypted parent collection does not exist (e.g. the crypt
+        // folder was created while the overlay was off, so only its plaintext name
+        // exists on the remote). Ensure the encrypted parent chain and retry once,
+        // mirroring rclone's implicit mkdir before Put. Gated to path-missing errors
+        // so an auth/quota failure never leaves stray encrypted directories behind.
+        if matches!(
+            result,
+            Err(ProviderError::NotFound(_)) | Err(ProviderError::InvalidPath(_))
+        ) {
+            ensure_parent_dirs(&mut self.inner, &enc).await;
+            result = self
+                .inner
+                .upload(&temp_path.to_string_lossy(), &enc, None)
+                .await;
+        }
         let _ = tokio::fs::remove_file(&temp_path).await;
         result
     }
