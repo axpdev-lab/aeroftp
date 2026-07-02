@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Paslepia ir failų pavadinimus, ne tik jų turinį. Tuomet slaptažodžio prireiks net archyvo turiniui peržiūrėti.",
             "fastest": "Greičiausias",
             "ultra": "Ultra",
-            "singleFileOnly": "[lt]"
+            "singleFileOnly": "[lt]",
+            "advanced": "Išplėstiniai",
+            "method": "Metodas",
+            "dictionary": "Žodyno dydis",
+            "threads": "Gijos",
+            "auto": "Automatinis",
+            "solid": "Vientisas blokas",
+            "solidHint": "Geresnis santykis daugeliui mažų failų, lėtesnis atsitiktinis išskleidimas."
         },
         "batchRename": {
             "title": "Masinis pervadinimas",

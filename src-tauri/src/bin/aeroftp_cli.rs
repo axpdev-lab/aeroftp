@@ -857,6 +857,32 @@ impl ArchiveFormat {
     }
 }
 
+/// 7z content-compression method for `compress --method` (7z only). LZMA2 is the
+/// default; all four are decodable by the extractor. Maps onto the backend's
+/// `SevenZAdvanced.method` string.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum SevenZMethod {
+    #[value(name = "lzma2")]
+    Lzma2,
+    #[value(name = "lzma")]
+    Lzma,
+    #[value(name = "ppmd")]
+    Ppmd,
+    #[value(name = "bzip2")]
+    Bzip2,
+}
+
+impl SevenZMethod {
+    fn as_backend_str(self) -> &'static str {
+        match self {
+            SevenZMethod::Lzma2 => "lzma2",
+            SevenZMethod::Lzma => "lzma",
+            SevenZMethod::Ppmd => "ppmd",
+            SevenZMethod::Bzip2 => "bzip2",
+        }
+    }
+}
+
 /// KE-A5: Transfer ordering key for batch operations.
 ///
 /// The values follow rclone's `--order-by` shape: a key plus an
@@ -2961,6 +2987,8 @@ enum Commands {
     /// `zip` and `7z` accept an AES-256 `--password`; the tar family is unencrypted.
     /// The standalone `gz` / `xz` / `bz2` compress exactly ONE file (single-stream, no
     /// tar wrapper): pass a single file, or use tar.gz/tar.xz/tar.bz2 to bundle many.
+    /// 7z exposes advanced knobs: `--method` (lzma2/lzma/ppmd/bzip2), `--dictionary`,
+    /// `--threads` (LZMA2), and `--solid`; all are ignored for the other formats.
     /// Local-only, no connection. Honors `--json` for scriptable output.
     Compress {
         /// Output archive path (format inferred from its extension unless --format)
@@ -2985,6 +3013,23 @@ enum Commands {
         /// Requires --password and is ignored for other formats. Off by default.
         #[arg(long = "encrypt-names")]
         encrypt_names: bool,
+        /// 7z only: content compression method (default lzma2). lzma is the
+        /// classic single-stream LZMA; ppmd suits text; bzip2 is block sorting.
+        /// All are readable by the extractor. Ignored for other formats.
+        #[arg(long = "method", value_enum)]
+        method: Option<SevenZMethod>,
+        /// 7z LZMA2 only: dictionary size in bytes (encoder clamps to 4096..=4 GiB),
+        /// e.g. 16777216 for 16 MiB. Ignored for other methods/formats.
+        #[arg(long = "dictionary")]
+        dictionary: Option<u64>,
+        /// 7z only: pack every file into one solid block (better ratio on many
+        /// small files, slower random extraction). Off by default.
+        #[arg(long = "solid")]
+        solid: bool,
+        /// 7z LZMA2 only: compression thread count (1 = single-threaded).
+        /// Ignored for other methods/formats.
+        #[arg(long = "threads")]
+        threads: Option<u32>,
     },
     /// Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, rar).
     ///
@@ -6036,6 +6081,7 @@ async fn cmd_compress(
     level: Option<i64>,
     password: &Option<String>,
     encrypt_names: bool,
+    advanced: Option<ftp_client_gui_lib::SevenZAdvanced>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -6103,6 +6149,7 @@ async fn cmd_compress(
                 password.clone(),
                 level,
                 Some(encrypt_names),
+                advanced,
             )
             .await
         }
@@ -54805,7 +54852,18 @@ async fn main() {
             level,
             password,
             encrypt_names,
+            method,
+            dictionary,
+            solid,
+            threads,
         } => {
+            // 7z Advanced knobs (ignored for other formats by the backend/dispatch).
+            let advanced = ftp_client_gui_lib::SevenZAdvanced {
+                method: (*method).map(|m| m.as_backend_str().to_string()),
+                dictionary_size: *dictionary,
+                solid: Some(*solid),
+                threads: *threads,
+            };
             cmd_compress(
                 output,
                 paths,
@@ -54813,6 +54871,7 @@ async fn main() {
                 *level,
                 password,
                 *encrypt_names,
+                Some(advanced),
                 &cli,
                 format,
             )

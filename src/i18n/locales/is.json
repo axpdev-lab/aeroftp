@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Felur einnig skráarnöfnin, ekki bara innihald þeirra. Þá þarf lykilorðið jafnvel til að sýna innihald safnsins.",
             "fastest": "Hraðast",
             "ultra": "Ultra",
-            "singleFileOnly": "[is]"
+            "singleFileOnly": "[is]",
+            "advanced": "Ítarlegt",
+            "method": "Aðferð",
+            "dictionary": "Stærð orðabókar",
+            "threads": "Þræðir",
+            "auto": "Sjálfvirkt",
+            "solid": "Heildstæð blokk",
+            "solidHint": "Betra hlutfall fyrir margar litlar skrár, hægari handahófskennd útdráttur."
         },
         "batchRename": {
             "title": "Hópendurnefning",

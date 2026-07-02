@@ -7745,7 +7745,26 @@ async fn extract_archive(
     Ok(actual_output)
 }
 
-/// Compress files/folders into a 7z archive (LZMA2 compression)
+/// Advanced 7z encoder knobs, all optional (unset keeps the current LZMA2
+/// defaults). Surfaced by the CompressDialog "Advanced" section and the CLI
+/// `compress` flags. `dictionary_size` and `threads` apply to LZMA2 only; the
+/// other methods are driven by the level alone.
+#[derive(Debug, Default, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SevenZAdvanced {
+    /// Content method: "lzma2" (default) | "lzma" | "ppmd" | "bzip2".
+    pub method: Option<String>,
+    /// LZMA2 dictionary size in bytes (the encoder clamps it to 4096..=4 GiB).
+    pub dictionary_size: Option<u64>,
+    /// Pack every file into one solid block: better ratio on many small files,
+    /// slower random extraction. Off by default.
+    pub solid: Option<bool>,
+    /// LZMA2 multi-thread compression thread count (1 = single-threaded).
+    pub threads: Option<u32>,
+}
+
+/// Compress files/folders into a 7z archive (LZMA2 by default; the method and
+/// other codec knobs come from the optional `advanced` options).
 #[tauri::command]
 async fn compress_7z(
     paths: Vec<String>,
@@ -7753,6 +7772,7 @@ async fn compress_7z(
     password: Option<String>,
     compression_level: Option<i64>,
     encrypt_header: Option<bool>,
+    advanced: Option<SevenZAdvanced>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     compress_7z_impl(
@@ -7761,6 +7781,7 @@ async fn compress_7z(
         password,
         compression_level,
         encrypt_header,
+        advanced,
         Some(app),
     )
     .await
@@ -7772,6 +7793,7 @@ async fn compress_7z_impl(
     password: Option<String>,
     compression_level: Option<i64>,
     encrypt_header: Option<bool>,
+    advanced: Option<SevenZAdvanced>,
     app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
     use sevenz_rust2::*;
@@ -7839,20 +7861,49 @@ async fn compress_7z_impl(
     let mut sz = ArchiveWriter::new(output_file)
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
-    // Map the caller's preset onto the LZMA2 content method. The dialog's
-    // preset buttons send the 7-Zip canonical levels (Fastest=1, Fast=3,
-    // Normal=5, Maximum=7, Ultra=9) and the CLI passes 0-9 directly; unset
-    // defaults to 5 (7-Zip's "Normal"). Lzma2Options::from_level clamps to
-    // its valid 0-9 range internally. Without this the level was silently
-    // dropped and every 7z used the library default preset.
+    // Map the caller's preset (0-9, unset = 5 = 7-Zip "Normal") onto the chosen
+    // content method. The dialog's preset buttons send the canonical 7-Zip
+    // levels (Fastest=1, Fast=3, Normal=5, Maximum=7, Ultra=9) and the CLI
+    // passes 0-9 directly; every from_level clamps to its valid range.
     let level = compression_level.unwrap_or(5).clamp(0, 9) as u32;
-    let lzma2 = encoder_options::Lzma2Options::from_level(level);
+    let adv = advanced.unwrap_or_default();
+
+    // Build the content method. LZMA2 (default) additionally honors the
+    // dictionary-size and thread knobs; LZMA, PPMd and BZip2 are driven by the
+    // level alone (the crate maps it to their internal parameters). All four
+    // are decodable by our extract path (verified against sevenz-rust2 0.21.1
+    // add_decoder: ID_LZMA, ID_LZMA2, ID_PPMD, ID_BZIP2), so we never create an
+    // archive we cannot reopen. Word size is not exposed by the crate's public
+    // API in 0.21.1, so it is intentionally not offered.
+    let content: EncoderConfiguration = match adv.method.as_deref() {
+        None | Some("lzma2") => {
+            let mut o = match adv.threads.filter(|t| *t > 1) {
+                Some(t) => encoder_options::Lzma2Options::from_level_mt(level, t, 0),
+                None => encoder_options::Lzma2Options::from_level(level),
+            };
+            if let Some(d) = adv.dictionary_size {
+                o.set_dictionary_size(d.min(u32::MAX as u64) as u32);
+            }
+            o.into()
+        }
+        Some("lzma") => EncoderConfiguration::new(EncoderMethod::LZMA).with_options(
+            encoder_options::EncoderOptions::Lzma(encoder_options::LzmaOptions::from_level(level)),
+        ),
+        Some("ppmd") => encoder_options::PpmdOptions::from_level(level).into(),
+        Some("bzip2") => encoder_options::Bzip2Options::from_level(level).into(),
+        Some(other) => {
+            return Err(format!(
+                "unknown 7z method '{}': use lzma2, lzma, ppmd or bzip2",
+                other
+            ));
+        }
+    };
 
     // Set compression and optional AES-256 encryption.
     if let Some(ref pwd) = secret_password {
         let aes_options =
             encoder_options::AesEncoderOptions::new(Password::from(pwd.expose_secret()));
-        sz.set_content_methods(vec![aes_options.into(), lzma2.into()]);
+        sz.set_content_methods(vec![aes_options.into(), content]);
         // -mhe: header (filename) encryption is opt-in, exactly like 7-Zip's
         // "Encrypt file names" checkbox that sits under the password. Off keeps
         // the classic behaviour (content encrypted, names readable); on hides
@@ -7861,25 +7912,52 @@ async fn compress_7z_impl(
         // we set it explicitly from the caller's choice in both directions.
         sz.set_encrypt_header(encrypt_header.unwrap_or(false));
     } else {
-        sz.set_content_methods(vec![lzma2.into()]);
+        sz.set_content_methods(vec![content]);
         // No password: nothing to encrypt, so leave the header in the clear (an
         // encrypted header without a key is meaningless and would only break
         // plain listing).
         sz.set_encrypt_header(false);
     }
 
-    // Add files to archive
-    for (archive_name, full_path) in &entries {
-        let source_path = Path::new(full_path);
-        let entry = ArchiveEntry::from_path(source_path, archive_name.clone());
+    // Add files to the archive. Solid packs every file into a single stream
+    // (better ratio, slower random extract); non-solid keeps one pack per file.
+    if adv.solid.unwrap_or(false) {
+        // push_archive_entries takes every entry reader at once and reads them
+        // sequentially on this thread, so the readers can share one progress
+        // counter through Rc<RefCell> (only one borrow is ever live) and the bar
+        // stays byte-true without a background thread.
+        let progress_rc = std::rc::Rc::new(std::cell::RefCell::new(progress));
+        let mut zentries = Vec::with_capacity(entries.len());
+        let mut readers = Vec::with_capacity(entries.len());
+        for (archive_name, full_path) in &entries {
+            let source_path = Path::new(full_path);
+            let file = File::open(source_path)
+                .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
+            zentries.push(ArchiveEntry::from_path(source_path, archive_name.clone()));
+            readers.push(SourceReader::new(
+                crate::archive_progress::RcProgressReader::new(file, progress_rc.clone()),
+            ));
+        }
+        sz.push_archive_entries(zentries, readers)
+            .map_err(|e| format!("Failed to add files (solid): {}", e))?;
+        // Every reader was consumed by push_archive_entries, so this Rc is the
+        // last reference: recover the progress to finish it below.
+        progress = std::rc::Rc::try_unwrap(progress_rc)
+            .map_err(|_| "internal: solid progress still referenced".to_string())?
+            .into_inner();
+    } else {
+        for (archive_name, full_path) in &entries {
+            let source_path = Path::new(full_path);
+            let entry = ArchiveEntry::from_path(source_path, archive_name.clone());
 
-        // Open the source and count bytes as the 7z writer pulls them through.
-        let file = File::open(source_path)
-            .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
-        let reader = crate::archive_progress::ProgressReader::new(file, &mut progress);
+            // Open the source and count bytes as the 7z writer pulls them through.
+            let file = File::open(source_path)
+                .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
+            let reader = crate::archive_progress::ProgressReader::new(file, &mut progress);
 
-        sz.push_archive_entry(entry, Some(reader))
-            .map_err(|e| format!("Failed to add file '{}': {}", archive_name, e))?;
+            sz.push_archive_entry(entry, Some(reader))
+                .map_err(|e| format!("Failed to add file '{}': {}", archive_name, e))?;
+        }
     }
 
     // finish() consumes the writer and drops the inner file handle, so the
@@ -15232,6 +15310,7 @@ pub async fn compress_7z_core(
     password: Option<String>,
     compression_level: Option<i64>,
     encrypt_header: Option<bool>,
+    advanced: Option<SevenZAdvanced>,
 ) -> Result<String, String> {
     compress_7z_impl(
         paths,
@@ -15239,6 +15318,7 @@ pub async fn compress_7z_core(
         password,
         compression_level,
         encrypt_header,
+        advanced,
         None,
     )
     .await
@@ -17970,6 +18050,7 @@ mod sevenz_mhe_tests {
             Some("pw-correct-horse".to_string()),
             None,
             Some(true), // opt in to header (filename) encryption
+            None,       // default (LZMA2) advanced options
         )
         .await
         .expect("compress 7z with password");
@@ -18038,7 +18119,7 @@ mod sevenz_mhe_tests {
             let src = src.to_string_lossy().to_string();
             let out = dir.path().join(name).to_string_lossy().to_string();
             async move {
-                compress_7z_core(vec![src], out.clone(), None, level, None)
+                compress_7z_core(vec![src], out.clone(), None, level, None, None)
                     .await
                     .expect("compress 7z");
                 std::fs::metadata(&out).unwrap().len()
@@ -18152,6 +18233,96 @@ mod standalone_stream_tests {
         assert!(
             err.contains("single file"),
             "unexpected rejection message: {err}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sevenz_advanced_tests {
+    use super::{compress_7z_core, extract_7z_core, SevenZAdvanced};
+
+    // Every advanced method (and the solid option) must both COMPRESS and
+    // EXTRACT: we only ship a create path for methods our reader can reopen.
+    // This packs two known files with each method, extracts them, and compares
+    // the bytes. If a method were createable but not decodable (or the solid
+    // pack were miswired) the round-trip fails loudly.
+    #[tokio::test]
+    async fn every_method_and_solid_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two files, so the solid case actually packs a multi-file block.
+        let a = "AeroFTP 7z advanced payload A.\n".repeat(2048).into_bytes();
+        let b = "AeroFTP 7z advanced payload B.\n".repeat(2048).into_bytes();
+        let src_a = dir.path().join("a.txt");
+        let src_b = dir.path().join("b.txt");
+        std::fs::write(&src_a, &a).unwrap();
+        std::fs::write(&src_b, &b).unwrap();
+        let inputs = vec![
+            src_a.to_string_lossy().to_string(),
+            src_b.to_string_lossy().to_string(),
+        ];
+
+        // (method, solid). LZMA2 is covered both non-solid and solid.
+        let cases = [
+            ("lzma2", false),
+            ("lzma", false),
+            ("ppmd", false),
+            ("bzip2", false),
+            ("lzma2", true),
+        ];
+        for (i, (method, solid)) in cases.iter().enumerate() {
+            let out = dir
+                .path()
+                .join(format!("adv{i}.7z"))
+                .to_string_lossy()
+                .to_string();
+            let adv = SevenZAdvanced {
+                method: Some((*method).to_string()),
+                solid: Some(*solid),
+                ..Default::default()
+            };
+            compress_7z_core(inputs.clone(), out.clone(), None, Some(5), None, Some(adv))
+                .await
+                .unwrap_or_else(|e| panic!("compress {method} solid={solid}: {e}"));
+
+            let outdir = dir.path().join(format!("x{i}"));
+            extract_7z_core(out, outdir.to_string_lossy().to_string(), None, false)
+                .await
+                .unwrap_or_else(|e| panic!("extract {method} solid={solid}: {e}"));
+
+            let ra = std::fs::read(outdir.join("a.txt"))
+                .unwrap_or_else(|_| panic!("{method} solid={solid}: a.txt missing"));
+            let rb = std::fs::read(outdir.join("b.txt"))
+                .unwrap_or_else(|_| panic!("{method} solid={solid}: b.txt missing"));
+            assert_eq!(ra, a, "{method} solid={solid}: a.txt round-trip mismatch");
+            assert_eq!(rb, b, "{method} solid={solid}: b.txt round-trip mismatch");
+        }
+    }
+
+    // An unknown method must be rejected, not silently downgraded to the default
+    // codec (which would hide a caller bug and mislabel the archive).
+    #[tokio::test]
+    async fn unknown_method_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("f.txt");
+        std::fs::write(&src, b"hello").unwrap();
+        let out = dir.path().join("bad.7z").to_string_lossy().to_string();
+        let adv = SevenZAdvanced {
+            method: Some("brotli".to_string()),
+            ..Default::default()
+        };
+        let err = compress_7z_core(
+            vec![src.to_string_lossy().to_string()],
+            out,
+            None,
+            Some(5),
+            None,
+            Some(adv),
+        )
+        .await
+        .expect_err("unknown method must be rejected");
+        assert!(
+            err.contains("unknown 7z method"),
+            "unexpected error message: {err}"
         );
     }
 }

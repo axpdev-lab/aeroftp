@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Amaga també els noms dels fitxers, no només el seu contingut. Aleshores caldrà la contrasenya fins i tot per llistar l'arxiu.",
             "fastest": "Més ràpid",
             "ultra": "Ultra",
-            "singleFileOnly": "[ca]"
+            "singleFileOnly": "[ca]",
+            "advanced": "Avançat",
+            "method": "Mètode",
+            "dictionary": "Mida del diccionari",
+            "threads": "Fils",
+            "auto": "Automàtic",
+            "solid": "Bloc sòlid",
+            "solidHint": "Millor ràtio amb molts fitxers petits, extracció aleatòria més lenta."
         },
         "batchRename": {
             "title": "Reanomenament massiu",

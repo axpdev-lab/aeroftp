@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Skriva i nazive datoteka, ne samo njihov sadržaj. Lozinka je tada potrebna čak i za prikaz sadržaja arhive.",
             "fastest": "Najbrže",
             "ultra": "Ultra",
-            "singleFileOnly": "[hr]"
+            "singleFileOnly": "[hr]",
+            "advanced": "Napredno",
+            "method": "Metoda",
+            "dictionary": "Veličina rječnika",
+            "threads": "Dretve",
+            "auto": "Auto",
+            "solid": "Čvrsti blok",
+            "solidHint": "Bolji omjer za mnogo malih datoteka, sporije nasumično izdvajanje."
         },
         "batchRename": {
             "title": "Grupno preimenovanje",

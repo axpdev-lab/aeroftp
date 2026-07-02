@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Döljer även filnamnen, inte bara deras innehåll. Lösenordet krävs då även för att visa arkivets innehåll.",
             "fastest": "Snabbast",
             "ultra": "Ultra",
-            "singleFileOnly": "[sv]"
+            "singleFileOnly": "[sv]",
+            "advanced": "Avancerat",
+            "method": "Metod",
+            "dictionary": "Ordboksstorlek",
+            "threads": "Trådar",
+            "auto": "Auto",
+            "solid": "Solitt block",
+            "solidHint": "Bättre förhållande för många små filer, långsammare slumpvis extrahering."
         },
         "batchRename": {
             "title": "Massnamnsändring",

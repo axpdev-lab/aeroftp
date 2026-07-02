@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Ascunde și numele fișierelor, nu doar conținutul lor. Atunci parola este necesară chiar și pentru a lista arhiva.",
             "fastest": "Cel mai rapid",
             "ultra": "Ultra",
-            "singleFileOnly": "[ro]"
+            "singleFileOnly": "[ro]",
+            "advanced": "Avansat",
+            "method": "Metodă",
+            "dictionary": "Dimensiune dicționar",
+            "threads": "Fire",
+            "auto": "Auto",
+            "solid": "Bloc solid",
+            "solidHint": "Raport mai bun pentru multe fișiere mici, extragere aleatorie mai lentă."
         },
         "batchRename": {
             "title": "Redenumire în masă",

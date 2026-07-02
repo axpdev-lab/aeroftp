@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Sembunyikan juga nama fail, bukan hanya kandungannya. Kata laluan kemudian diperlukan walaupun untuk menyenaraikan kandungan arkib.",
             "fastest": "Terpantas",
             "ultra": "Ultra",
-            "singleFileOnly": "[ms]"
+            "singleFileOnly": "[ms]",
+            "advanced": "Lanjutan",
+            "method": "Kaedah",
+            "dictionary": "Saiz kamus",
+            "threads": "Bebenang",
+            "auto": "Auto",
+            "solid": "Blok padu",
+            "solidHint": "Nisbah lebih baik untuk banyak fail kecil, pengekstrakan rawak lebih perlahan."
         },
         "batchRename": {
             "title": "Nama Semula Kelompok",

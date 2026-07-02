@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Verbirgt auch die Dateinamen, nicht nur deren Inhalt. Das Passwort wird dann sogar zum Auflisten des Archivs benötigt.",
             "fastest": "Schnellste",
             "ultra": "Ultra",
-            "singleFileOnly": "[de]"
+            "singleFileOnly": "[de]",
+            "advanced": "Erweitert",
+            "method": "Methode",
+            "dictionary": "Wörterbuchgröße",
+            "threads": "Threads",
+            "auto": "Auto",
+            "solid": "Solider Block",
+            "solidHint": "Besseres Verhältnis bei vielen kleinen Dateien, langsamere wahlfreie Extraktion."
         },
         "batchRename": {
             "title": "Stapelumbenennung",

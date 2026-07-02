@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Skrije tudi imena datotek, ne le njihove vsebine. Geslo je nato potrebno celo za prikaz vsebine arhiva.",
             "fastest": "Najhitrejše",
             "ultra": "Ultra",
-            "singleFileOnly": "[sl]"
+            "singleFileOnly": "[sl]",
+            "advanced": "Napredno",
+            "method": "Metoda",
+            "dictionary": "Velikost slovarja",
+            "threads": "Niti",
+            "auto": "Samodejno",
+            "solid": "Strnjeni blok",
+            "solidHint": "Boljše razmerje pri mnogo majhnih datotekah, počasnejše naključno razširjanje."
         },
         "batchRename": {
             "title": "Skupinsko preimenovanje",

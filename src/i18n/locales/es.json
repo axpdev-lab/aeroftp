@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Oculta también los nombres de los archivos, no solo su contenido. Entonces se necesitará la contraseña incluso para listar el archivo.",
             "fastest": "Más rápido",
             "ultra": "Ultra",
-            "singleFileOnly": "[es]"
+            "singleFileOnly": "[es]",
+            "advanced": "Avanzado",
+            "method": "Método",
+            "dictionary": "Tamaño del diccionario",
+            "threads": "Hilos",
+            "auto": "Auto",
+            "solid": "Bloque sólido",
+            "solidHint": "Mejor ratio con muchos archivos pequeños, extracción aleatoria más lenta."
         },
         "batchRename": {
             "title": "Renombrado masivo",

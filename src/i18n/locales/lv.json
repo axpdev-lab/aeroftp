@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Paslēpj arī failu nosaukumus, ne tikai to saturu. Tad parole būs nepieciešama pat arhīva satura uzskaitīšanai.",
             "fastest": "Ātrākais",
             "ultra": "Ultra",
-            "singleFileOnly": "[lv]"
+            "singleFileOnly": "[lv]",
+            "advanced": "Papildu",
+            "method": "Metode",
+            "dictionary": "Vārdnīcas izmērs",
+            "threads": "Pavedieni",
+            "auto": "Automātiski",
+            "solid": "Ciets bloks",
+            "solidHint": "Labāka attiecība daudziem maziem failiem, lēnāka nejauša izvilkšana."
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",

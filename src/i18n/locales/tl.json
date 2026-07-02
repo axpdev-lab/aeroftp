@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Itago rin ang mga pangalan ng file, hindi lang ang nilalaman ng mga ito. Kakailanganin ang password kahit para lang ilista ang archive.",
             "fastest": "Pinakamabilis",
             "ultra": "Ultra",
-            "singleFileOnly": "[tl]"
+            "singleFileOnly": "[tl]",
+            "advanced": "Advanced",
+            "method": "Paraan",
+            "dictionary": "Laki ng diksyunaryo",
+            "threads": "Threads",
+            "auto": "Auto",
+            "solid": "Solidong bloke",
+            "solidHint": "Mas magandang ratio para sa maraming maliliit na file, mas mabagal na random na extraction."
         },
         "batchRename": {
             "title": "Batch Rename",

@@ -2932,7 +2932,14 @@
             "encryptFileNamesHint": "内容だけでなくファイル名も隠します。その場合、アーカイブの一覧表示にもパスワードが必要になります。",
             "fastest": "最速",
             "ultra": "ウルトラ",
-            "singleFileOnly": "[ja]"
+            "singleFileOnly": "[ja]",
+            "advanced": "詳細設定",
+            "method": "メソッド",
+            "dictionary": "辞書サイズ",
+            "threads": "スレッド",
+            "auto": "自動",
+            "solid": "ソリッドブロック",
+            "solidHint": "多数の小さなファイルで圧縮率が向上しますが、ランダム展開は遅くなります。"
         },
         "batchRename": {
             "title": "一括リネーム",

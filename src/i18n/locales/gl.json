@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Agocha tamén os nomes dos ficheiros, non só o seu contido. Entón necesítase o contrasinal mesmo para listar o arquivo.",
             "fastest": "Máis rápido",
             "ultra": "Ultra",
-            "singleFileOnly": "[gl]"
+            "singleFileOnly": "[gl]",
+            "advanced": "Avanzado",
+            "method": "Método",
+            "dictionary": "Tamaño do dicionario",
+            "threads": "Fíos",
+            "auto": "Automático",
+            "solid": "Bloque sólido",
+            "solidHint": "Mellor ratio con moitos ficheiros pequenos, extracción aleatoria máis lenta."
         },
         "batchRename": {
             "title": "Renomear por lotes",

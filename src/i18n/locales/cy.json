@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Cuddio enwau'r ffeiliau hefyd, nid dim ond eu cynnwys. Yna bydd angen y cyfrinair hyd yn oed i restru'r archif.",
             "fastest": "Cyflymaf",
             "ultra": "Ultra",
-            "singleFileOnly": "[cy]"
+            "singleFileOnly": "[cy]",
+            "advanced": "Uwch",
+            "method": "Dull",
+            "dictionary": "Maint y geiriadur",
+            "threads": "Edafedd",
+            "auto": "Auto",
+            "solid": "Bloc solet",
+            "solidHint": "Cymhareb well ar gyfer llawer o ffeiliau bach, echdynnu ar hap arafach."
         },
         "batchRename": {
             "title": "Ailenwi Swp",

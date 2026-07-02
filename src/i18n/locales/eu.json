@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Fitxategien izenak ere ezkutatzen ditu, ez edukia soilik. Orduan pasahitza beharko da artxiboa zerrendatzeko ere.",
             "fastest": "Azkarrena",
             "ultra": "Ultra",
-            "singleFileOnly": "[eu]"
+            "singleFileOnly": "[eu]",
+            "advanced": "Aurreratua",
+            "method": "Metodoa",
+            "dictionary": "Hiztegiaren tamaina",
+            "threads": "Hariak",
+            "auto": "Auto",
+            "solid": "Bloke trinkoa",
+            "solidHint": "Ratio hobea fitxategi txiki askorekin, ausazko erauzketa motelagoa."
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

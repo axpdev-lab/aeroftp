@@ -20,6 +20,21 @@ import './CompressDialog.css';
 
 type CompressFormat = 'zip' | '7z' | 'tar' | 'tar.gz' | 'tar.xz' | 'tar.bz2' | 'gz' | 'xz' | 'bz2';
 
+/** 7z content-compression method. LZMA2 is the default; all are readable back. */
+type SevenZMethod = 'lzma2' | 'lzma' | 'ppmd' | 'bzip2';
+
+/** 7z-only Advanced encoder options (camelCase matches the backend SevenZAdvanced).
+ *  dictionarySize and threads apply to LZMA2 only. */
+export interface SevenZAdvancedOptions {
+    method: SevenZMethod;
+    /** LZMA2 dictionary size in bytes; omit for the encoder default. */
+    dictionarySize?: number;
+    /** Pack all files into one solid block (better ratio, slower random extract). */
+    solid: boolean;
+    /** LZMA2 compression threads; omit for single-threaded. */
+    threads?: number;
+}
+
 export interface CompressOptions {
     archiveName: string;
     format: CompressFormat;
@@ -28,6 +43,9 @@ export interface CompressOptions {
     /** 7z only: also encrypt the archive header so filenames are hidden (-mhe).
      *  Meaningful only with a password; null/false keeps names readable. */
     encryptFileNames: boolean;
+    /** 7z only: Advanced encoder knobs (method, dictionary, solid, threads).
+     *  Undefined for every other format. */
+    advanced?: SevenZAdvancedOptions;
 }
 
 /** Real byte totals reported back by the parent after a successful compression,
@@ -72,6 +90,31 @@ const FORMAT_OPTIONS: FormatOption[] = [
 /** Standalone single-stream codecs: valid only for exactly one non-folder file. */
 const STANDALONE_FORMATS: readonly CompressFormat[] = ['gz', 'xz', 'bz2'];
 const isStandaloneFormat = (f: CompressFormat): boolean => STANDALONE_FORMATS.includes(f);
+
+/** 7z Advanced: selectable content methods (labels are technical, not translated). */
+const SEVENZ_METHODS: { value: SevenZMethod; label: string }[] = [
+    { value: 'lzma2', label: 'LZMA2' },
+    { value: 'lzma', label: 'LZMA' },
+    { value: 'ppmd', label: 'PPMd' },
+    { value: 'bzip2', label: 'BZip2' },
+];
+
+/** 7z Advanced (LZMA2): dictionary-size choices in bytes; undefined = encoder default. */
+const DICTIONARY_OPTIONS: { value: number | undefined; label: string }[] = [
+    { value: undefined, label: '' }, // labelled from i18n "auto" at render time
+    { value: 1024 * 1024, label: '1 MiB' },
+    { value: 4 * 1024 * 1024, label: '4 MiB' },
+    { value: 16 * 1024 * 1024, label: '16 MiB' },
+    { value: 64 * 1024 * 1024, label: '64 MiB' },
+];
+
+/** 7z Advanced (LZMA2): thread-count choices; undefined = single-threaded. */
+const THREAD_OPTIONS: { value: number | undefined; label: string }[] = [
+    { value: undefined, label: '' }, // labelled from i18n "auto" at render time
+    { value: 2, label: '2' },
+    { value: 4, label: '4' },
+    { value: 8, label: '8' },
+];
 
 interface LevelOption { value: number; labelKey: string; fallback: string }
 
@@ -239,6 +282,13 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     // a password; reset whenever those preconditions drop so it can't silently
     // ride along on a zip or an unencrypted archive.
     const [encryptFileNames, setEncryptFileNames] = useState(false);
+    // 7z Advanced (collapsed by default): content method + LZMA2 dictionary/threads
+    // + solid block. Only sent for 7z; solid is off by default (Q5).
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [advMethod, setAdvMethod] = useState<SevenZMethod>('lzma2');
+    const [advDictionary, setAdvDictionary] = useState<number | undefined>(undefined);
+    const [advThreads, setAdvThreads] = useState<number | undefined>(undefined);
+    const [advSolid, setAdvSolid] = useState(false);
     const [compressing, setCompressing] = useState(false);
     const [showFileList, setShowFileList] = useState(false);
     // Measured result of a finished compression; drives the completion stats panel.
@@ -330,6 +380,13 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                 password: formatInfo.supportsPassword && password ? password : null,
                 // Only a 7z with an actual password can hide filenames.
                 encryptFileNames: format === '7z' && !!password && encryptFileNames,
+                // Advanced knobs are 7z only; dictionary/threads apply to LZMA2.
+                advanced: format === '7z' ? {
+                    method: advMethod,
+                    dictionarySize: advMethod === 'lzma2' ? advDictionary : undefined,
+                    solid: advSolid,
+                    threads: advMethod === 'lzma2' ? advThreads : undefined,
+                } : undefined,
             });
             // On success the parent returns the real byte totals: switch to the
             // completion stats view. A 0 output means the size could not be read,
@@ -488,6 +545,108 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                         exact={estimate?.exact ?? false}
                                         loading={estimateLoading && !estimate}
                                     />
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── 7z Advanced (collapsed, 7z only) ──────────── */}
+                    {format === '7z' && (
+                        <div className="rounded-lg" style={{ background: 'var(--compress-bg-deep)', border: '1px solid var(--compress-border)' }}>
+                            <button
+                                type="button"
+                                onClick={() => setShowAdvanced(v => !v)}
+                                disabled={compressing}
+                                className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium"
+                                style={{ color: 'var(--compress-text-secondary)' }}
+                            >
+                                <span className="flex-1 text-left">{t('compress.advanced') || 'Advanced'}</span>
+                                {showAdvanced
+                                    ? <ChevronUp size={14} style={{ color: 'var(--compress-text-muted)' }} />
+                                    : <ChevronDown size={14} style={{ color: 'var(--compress-text-muted)' }} />}
+                            </button>
+                            {showAdvanced && (
+                                <div className="border-t px-3.5 py-3 flex flex-col gap-3" style={{ borderColor: 'var(--compress-border)' }}>
+                                    {/* Content method */}
+                                    <div>
+                                        <label className="text-[10px] font-medium block mb-1" style={{ color: 'var(--compress-text-muted)' }}>
+                                            {t('compress.method') || 'Method'}
+                                        </label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {SEVENZ_METHODS.map(m => (
+                                                <button
+                                                    key={m.value}
+                                                    onClick={() => setAdvMethod(m.value)}
+                                                    disabled={compressing}
+                                                    className={`compress-format-card ${advMethod === m.value ? 'active' : ''} rounded-lg px-3 py-1.5 text-xs transition-all`}
+                                                >
+                                                    {m.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Dictionary size + threads (LZMA2 only) */}
+                                    {advMethod === 'lzma2' && (
+                                        <div className="flex gap-3">
+                                            <div className="flex-1">
+                                                <label className="text-[10px] font-medium block mb-1" style={{ color: 'var(--compress-text-muted)' }}>
+                                                    {t('compress.dictionary') || 'Dictionary size'}
+                                                </label>
+                                                <select
+                                                    value={advDictionary ?? ''}
+                                                    disabled={compressing}
+                                                    onChange={e => setAdvDictionary(e.target.value === '' ? undefined : Number(e.target.value))}
+                                                    className="w-full rounded-lg px-2 py-1.5 text-xs outline-none"
+                                                    style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                                                >
+                                                    {DICTIONARY_OPTIONS.map(o => (
+                                                        <option key={o.label || 'auto'} value={o.value ?? ''}>
+                                                            {o.value === undefined ? (t('compress.auto') || 'Auto') : o.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="text-[10px] font-medium block mb-1" style={{ color: 'var(--compress-text-muted)' }}>
+                                                    {t('compress.threads') || 'Threads'}
+                                                </label>
+                                                <select
+                                                    value={advThreads ?? ''}
+                                                    disabled={compressing}
+                                                    onChange={e => setAdvThreads(e.target.value === '' ? undefined : Number(e.target.value))}
+                                                    className="w-full rounded-lg px-2 py-1.5 text-xs outline-none"
+                                                    style={{ background: 'var(--compress-input-bg)', border: '1px solid var(--compress-input-border)', color: 'var(--compress-text)' }}
+                                                >
+                                                    {THREAD_OPTIONS.map(o => (
+                                                        <option key={o.label || 'auto'} value={o.value ?? ''}>
+                                                            {o.value === undefined ? (t('compress.auto') || 'Auto') : o.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Solid block (off by default) */}
+                                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={advSolid}
+                                            disabled={compressing}
+                                            onChange={e => setAdvSolid(e.target.checked)}
+                                            className="mt-0.5"
+                                            style={{ accentColor: 'var(--compress-accent)' }}
+                                        />
+                                        <span>
+                                            <span className="text-xs font-medium block" style={{ color: 'var(--compress-text-secondary)' }}>
+                                                {t('compress.solid') || 'Solid block'}
+                                            </span>
+                                            <span className="text-[10px] block" style={{ color: 'var(--compress-text-muted)' }}>
+                                                {t('compress.solidHint') || 'Better ratio for many small files, slower random extraction'}
+                                            </span>
+                                        </span>
+                                    </label>
                                 </div>
                             )}
                         </div>

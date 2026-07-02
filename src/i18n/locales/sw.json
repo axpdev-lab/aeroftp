@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Huficha pia majina ya faili, si maudhui yake tu. Kisha nenosiri litahitajika hata kuorodhesha yaliyomo kwenye kumbukumbu.",
             "fastest": "Haraka zaidi",
             "ultra": "Ultra",
-            "singleFileOnly": "[sw]"
+            "singleFileOnly": "[sw]",
+            "advanced": "Za kina",
+            "method": "Mbinu",
+            "dictionary": "Ukubwa wa kamusi",
+            "threads": "Nyuzi",
+            "auto": "Otomatiki",
+            "solid": "Kizuizi imara",
+            "solidHint": "Uwiano bora kwa faili nyingi ndogo, uchambuzi nasibu wa polepole zaidi."
         },
         "batchRename": {
             "title": "Badilisha Majina kwa Kundi",

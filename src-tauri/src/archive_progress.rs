@@ -221,6 +221,31 @@ impl<R: Read> Read for ProgressReader<'_, R> {
     }
 }
 
+/// Like [`ProgressReader`] but shares the `ArchiveProgress` through an
+/// `Rc<RefCell<_>>`, so several readers can count into the same progress at
+/// once. Used by the solid 7z path, where the writer is handed every entry
+/// reader up front and reads them sequentially on one thread: only one borrow
+/// is ever live, so the shared cell never double-borrows and the bar stays
+/// byte-true without a background emitter thread.
+pub struct RcProgressReader<R: Read> {
+    inner: R,
+    progress: std::rc::Rc<std::cell::RefCell<ArchiveProgress>>,
+}
+
+impl<R: Read> RcProgressReader<R> {
+    pub fn new(inner: R, progress: std::rc::Rc<std::cell::RefCell<ArchiveProgress>>) -> Self {
+        Self { inner, progress }
+    }
+}
+
+impl<R: Read> Read for RcProgressReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.progress.borrow_mut().add(n as u64);
+        Ok(n)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

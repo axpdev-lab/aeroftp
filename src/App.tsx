@@ -14214,7 +14214,7 @@ interface UpdateVerificationInfo {
                 if (opts.format === 'zip') {
                   await invoke<string>('compress_files', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel });
                 } else if (opts.format === '7z') {
-                  await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel, encryptHeader: opts.encryptFileNames });
+                  await invoke<string>('compress_7z', { paths, outputPath, password: opts.password, compressionLevel: opts.compressionLevel, encryptHeader: opts.encryptFileNames, advanced: opts.advanced ?? null });
                 } else if (opts.format === 'gz' || opts.format === 'xz' || opts.format === 'bz2') {
                   // Standalone single-stream codecs: exactly one input file (the dialog
                   // only enables these for a lone non-folder selection), no tar wrapper.

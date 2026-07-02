@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Yalnızca içeriği değil, dosya adlarını da gizler. O zaman arşivi listelemek için bile parola gerekir.",
             "fastest": "En hızlı",
             "ultra": "Ultra",
-            "singleFileOnly": "[tr]"
+            "singleFileOnly": "[tr]",
+            "advanced": "Gelişmiş",
+            "method": "Yöntem",
+            "dictionary": "Sözlük boyutu",
+            "threads": "İş parçacıkları",
+            "auto": "Otomatik",
+            "solid": "Katı blok",
+            "solidHint": "Çok sayıda küçük dosyada daha iyi oran, daha yavaş rastgele çıkarma."
         },
         "batchRename": {
             "title": "Toplu Yeniden Adlandırma",

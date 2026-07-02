@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "不仅加密文件内容，还会隐藏文件名。届时即便列出压缩包内容也需要密码。",
             "fastest": "最快",
             "ultra": "极限",
-            "singleFileOnly": "[zh]"
+            "singleFileOnly": "[zh]",
+            "advanced": "高级",
+            "method": "方法",
+            "dictionary": "字典大小",
+            "threads": "线程",
+            "auto": "自动",
+            "solid": "固实块",
+            "solidHint": "对大量小文件压缩率更高，随机解压更慢。"
         },
         "batchRename": {
             "title": "批量重命名",

@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Elrejti a fájlneveket is, nem csak a tartalmukat. Ekkor a jelszó az archívum tartalmának listázásához is szükséges.",
             "fastest": "Leggyorsabb",
             "ultra": "Ultra",
-            "singleFileOnly": "[hu]"
+            "singleFileOnly": "[hu]",
+            "advanced": "Speciális",
+            "method": "Módszer",
+            "dictionary": "Szótár mérete",
+            "threads": "Szálak",
+            "auto": "Automatikus",
+            "solid": "Tömör blokk",
+            "solidHint": "Jobb arány sok kis fájlnál, lassabb véletlenszerű kibontás."
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

@@ -111,6 +111,7 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
                 password,
                 compression_level,
                 None,
+                None, // AI tool uses the default LZMA2 options (no advanced knobs yet)
             )
             .await
         }

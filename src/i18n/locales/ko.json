@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "내용뿐만 아니라 파일 이름도 숨깁니다. 그러면 보관 파일의 목록을 보는 데에도 비밀번호가 필요합니다.",
             "fastest": "가장 빠름",
             "ultra": "울트라",
-            "singleFileOnly": "[ko]"
+            "singleFileOnly": "[ko]",
+            "advanced": "고급",
+            "method": "방식",
+            "dictionary": "사전 크기",
+            "threads": "스레드",
+            "auto": "자동",
+            "solid": "솔리드 블록",
+            "solidHint": "작은 파일이 많을 때 압축률이 좋아지지만 임의 추출은 느려집니다."
         },
         "batchRename": {
             "title": "일괄 이름 변경",

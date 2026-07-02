@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Oculta também os nomes dos ficheiros, não apenas o seu conteúdo. A palavra-passe passa a ser necessária mesmo para listar o arquivo.",
             "fastest": "Mais rápido",
             "ultra": "Ultra",
-            "singleFileOnly": "[pt]"
+            "singleFileOnly": "[pt]",
+            "advanced": "Avançado",
+            "method": "Método",
+            "dictionary": "Tamanho do dicionário",
+            "threads": "Threads",
+            "auto": "Auto",
+            "solid": "Bloco sólido",
+            "solidHint": "Melhor taxa com muitos arquivos pequenos, extração aleatória mais lenta."
         },
         "batchRename": {
             "title": "Renomeação em Lote",

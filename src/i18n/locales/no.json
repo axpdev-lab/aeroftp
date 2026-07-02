@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Skjuler også filnavnene, ikke bare innholdet. Passordet kreves da selv for å vise innholdet i arkivet.",
             "fastest": "Raskest",
             "ultra": "Ultra",
-            "singleFileOnly": "[no]"
+            "singleFileOnly": "[no]",
+            "advanced": "Avansert",
+            "method": "Metode",
+            "dictionary": "Ordbokstørrelse",
+            "threads": "Tråder",
+            "auto": "Auto",
+            "solid": "Solid blokk",
+            "solidHint": "Bedre forhold for mange små filer, tregere vilkårlig utpakking."
         },
         "batchRename": {
             "title": "Masseomdøping",

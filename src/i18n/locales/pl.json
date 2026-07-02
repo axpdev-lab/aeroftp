@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Ukrywa także nazwy plików, nie tylko ich zawartość. Hasło będzie wtedy potrzebne nawet do wyświetlenia zawartości archiwum.",
             "fastest": "Najszybszy",
             "ultra": "Ultra",
-            "singleFileOnly": "[pl]"
+            "singleFileOnly": "[pl]",
+            "advanced": "Zaawansowane",
+            "method": "Metoda",
+            "dictionary": "Rozmiar słownika",
+            "threads": "Wątki",
+            "auto": "Auto",
+            "solid": "Blok lity",
+            "solidHint": "Lepszy współczynnik przy wielu małych plikach, wolniejsze wyodrębnianie losowe."
         },
         "batchRename": {
             "title": "Zbiorcza zmiana nazw",

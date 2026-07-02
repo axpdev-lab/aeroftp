@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Verbergt ook de bestandsnamen, niet alleen de inhoud. Het wachtwoord is dan zelfs nodig om het archief weer te geven.",
             "fastest": "Snelste",
             "ultra": "Ultra",
-            "singleFileOnly": "[nl]"
+            "singleFileOnly": "[nl]",
+            "advanced": "Geavanceerd",
+            "method": "Methode",
+            "dictionary": "Woordenboekgrootte",
+            "threads": "Threads",
+            "auto": "Auto",
+            "solid": "Solide blok",
+            "solidHint": "Betere ratio bij veel kleine bestanden, langzamere willekeurige extractie."
         },
         "batchRename": {
             "title": "Batch hernoemen",

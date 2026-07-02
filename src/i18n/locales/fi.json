@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Piilottaa myös tiedostonimet, ei vain niiden sisällön. Tällöin salasana vaaditaan jopa arkiston sisällön luettelointiin.",
             "fastest": "Nopein",
             "ultra": "Ultra",
-            "singleFileOnly": "[fi]"
+            "singleFileOnly": "[fi]",
+            "advanced": "Lisäasetukset",
+            "method": "Menetelmä",
+            "dictionary": "Sanakirjan koko",
+            "threads": "Säikeet",
+            "auto": "Automaattinen",
+            "solid": "Kiinteä lohko",
+            "solidHint": "Parempi suhde monille pienille tiedostoille, hitaampi satunnainen purku."
         },
         "batchRename": {
             "title": "Joukkouudelleennimeäminen",

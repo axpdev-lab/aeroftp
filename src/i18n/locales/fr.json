@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Masque aussi les noms des fichiers, pas seulement leur contenu. Le mot de passe est alors requis même pour lister l'archive.",
             "fastest": "Le plus rapide",
             "ultra": "Ultra",
-            "singleFileOnly": "[fr]"
+            "singleFileOnly": "[fr]",
+            "advanced": "Avancé",
+            "method": "Méthode",
+            "dictionary": "Taille du dictionnaire",
+            "threads": "Threads",
+            "auto": "Auto",
+            "solid": "Bloc solide",
+            "solidHint": "Meilleur taux avec beaucoup de petits fichiers, extraction aléatoire plus lente."
         },
         "batchRename": {
             "title": "Renommage par lot",

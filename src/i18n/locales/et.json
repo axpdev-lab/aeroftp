@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Peidab ka failinimed, mitte ainult nende sisu. Siis on parool vajalik isegi arhiivi sisu vaatamiseks.",
             "fastest": "Kiireim",
             "ultra": "Ultra",
-            "singleFileOnly": "[et]"
+            "singleFileOnly": "[et]",
+            "advanced": "Täpsemalt",
+            "method": "Meetod",
+            "dictionary": "Sõnastiku suurus",
+            "threads": "Lõimed",
+            "auto": "Automaatne",
+            "solid": "Terviklik plokk",
+            "solidHint": "Parem suhe paljude väikeste failide puhul, aeglasem juhuslik ekstraktimine."
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",

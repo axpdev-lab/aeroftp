@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Sembunyikan juga nama berkas, bukan hanya isinya. Kata sandi kemudian diperlukan bahkan untuk menampilkan daftar isi arsip.",
             "fastest": "Tercepat",
             "ultra": "Ultra",
-            "singleFileOnly": "[id]"
+            "singleFileOnly": "[id]",
+            "advanced": "Lanjutan",
+            "method": "Metode",
+            "dictionary": "Ukuran kamus",
+            "threads": "Utas",
+            "auto": "Otomatis",
+            "solid": "Blok solid",
+            "solidHint": "Rasio lebih baik untuk banyak berkas kecil, ekstraksi acak lebih lambat."
         },
         "batchRename": {
             "title": "Ganti Nama Batch",

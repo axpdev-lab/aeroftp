@@ -2967,7 +2967,14 @@
             "encryptFileNamesHint": "Skryje i názvy souborů, nejen jejich obsah. Heslo pak bude potřeba i k zobrazení obsahu archivu.",
             "fastest": "Nejrychlejší",
             "ultra": "Ultra",
-            "singleFileOnly": "[cs]"
+            "singleFileOnly": "[cs]",
+            "advanced": "Pokročilé",
+            "method": "Metoda",
+            "dictionary": "Velikost slovníku",
+            "threads": "Vlákna",
+            "auto": "Auto",
+            "solid": "Plný blok",
+            "solidHint": "Lepší poměr u mnoha malých souborů, pomalejší náhodná extrakce."
         },
         "batchRename": {
             "title": "Hromadne prejmenovani",
