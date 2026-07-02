@@ -14,6 +14,8 @@ import { useDraggableModal } from '../hooks/useDraggableModal';
  * Behavior:
  * - Auto-focuses the input on mount and selects all digits.
  * - Esc closes (treated as Cancel).
+ * - Auto-submits the moment the 6th digit lands (typed or pasted), the way
+ *   authenticator/OTP flows do; the Connect button and Enter stay as fallbacks.
  * - Enter submits when 6 digits are typed.
  * - Provider logo + display name are surfaced so the user knows which
  *   account they are authenticating against (multi-profile setups).
@@ -54,6 +56,7 @@ export function TwoFactorPromptDialog({
     const modalDrag = useDraggableModal();
     const [code, setCode] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
+    const prevLoading = useRef(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -65,6 +68,18 @@ export function TwoFactorPromptDialog({
             }, 50);
         }
     }, [isOpen]);
+
+    // When an attempt finishes (loading true -> false) but the modal is still
+    // open, the code was wrong (a success closes the modal). Clear the field and
+    // refocus so the next 6 digits auto-submit cleanly instead of the user having
+    // to erase the stale wrong code first.
+    useEffect(() => {
+        if (prevLoading.current && !loading && isOpen) {
+            setCode('');
+            setTimeout(() => inputRef.current?.focus(), 0);
+        }
+        prevLoading.current = loading;
+    }, [loading, isOpen]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -148,6 +163,11 @@ export function TwoFactorPromptDialog({
                         onChange={(e) => {
                             const cleaned = e.target.value.replace(/\D/g, '').slice(0, 6);
                             setCode(cleaned);
+                            // Auto-submit once the 6th digit lands (typed or pasted),
+                            // the way authenticator/OTP flows do: no Connect click
+                            // needed. Guarded on !loading so an in-flight retry is
+                            // never double-fired. Button and Enter remain fallbacks.
+                            if (cleaned.length === 6 && !loading) onSubmit(cleaned);
                         }}
                         onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
                         disabled={loading}
