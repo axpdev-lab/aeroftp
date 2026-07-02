@@ -37,6 +37,26 @@ fn filelu_log(msg: &str) {
     info!("[FILELU] {}", msg);
 }
 
+/// Redact the FileLu API key from any text that may embed it. The key travels
+/// as a `key=` query parameter, and `reqwest::Error`'s `Display` appends
+/// `for url (...)` including the full query string, so the value must be
+/// scrubbed before it can reach a `ProviderError` message or a log line.
+fn redact_key(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(idx) = rest.find("key=") {
+        let (head, tail) = rest.split_at(idx + "key=".len());
+        out.push_str(head);
+        out.push_str("***");
+        let end = tail
+            .find(['&', ')', ' ', '"', '\n', '\r', '\t'])
+            .unwrap_or(tail.len());
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 // ─── API Response Types ──────────────────────────────────────────────────
 
 /// Generic API response wrapper used by FileLu for all endpoints
@@ -403,14 +423,20 @@ impl FileLuProvider {
     }
 
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
-        let request = self
-            .client
-            .get(url)
-            .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build GET failed: {}", e)))?;
+        let request = self.client.get(url).build().map_err(|e| {
+            ProviderError::ConnectionFailed(format!(
+                "Build GET failed: {}",
+                redact_key(&e.to_string())
+            ))
+        })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("GET failed: {}", e)))
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!(
+                    "GET failed: {}",
+                    redact_key(&e.to_string())
+                ))
+            })
     }
 
     #[allow(dead_code)]
@@ -428,20 +454,32 @@ impl FileLuProvider {
             )
             .body(body)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build POST failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!(
+                    "Build POST failed: {}",
+                    redact_key(&e.to_string())
+                ))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("POST failed: {}", e)))
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!(
+                    "POST failed: {}",
+                    redact_key(&e.to_string())
+                ))
+            })
     }
 
     async fn parse_api<T: for<'de> serde::Deserialize<'de>>(
         resp: reqwest::Response,
     ) -> Result<T, ProviderError> {
         let status = resp.status();
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+        let text = resp.text().await.map_err(|e| {
+            ProviderError::NetworkError(format!(
+                "Failed to read response: {}",
+                redact_key(&e.to_string())
+            ))
+        })?;
 
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
@@ -499,10 +537,12 @@ impl FileLuProvider {
 
     async fn ensure_api_ok(resp: reqwest::Response) -> Result<(), ProviderError> {
         let status = resp.status();
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
+        let text = resp.text().await.map_err(|e| {
+            ProviderError::NetworkError(format!(
+                "Failed to read response: {}",
+                redact_key(&e.to_string())
+            ))
+        })?;
 
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
@@ -1028,10 +1068,12 @@ impl FileLuProvider {
         let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&url).await?;
         let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::NetworkError(format!("clone_file read failed: {}", e)))?;
+        let body = resp.text().await.map_err(|e| {
+            ProviderError::NetworkError(format!(
+                "clone_file read failed: {}",
+                redact_key(&e.to_string())
+            ))
+        })?;
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
                 "HTTP {}: {}",
@@ -1223,7 +1265,10 @@ impl FileLuProvider {
         let resp = self.get_with_retry(&url).await?;
         // Response is an array: [{"file_code":"..."}]
         let text = resp.text().await.map_err(|e| {
-            ProviderError::NetworkError(format!("remote_url_upload read failed: {}", e))
+            ProviderError::NetworkError(format!(
+                "remote_url_upload read failed: {}",
+                redact_key(&e.to_string())
+            ))
         })?;
         #[derive(Deserialize)]
         struct RemoteUploadEntry {
@@ -1365,7 +1410,10 @@ impl StorageProvider for FileLuProvider {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| {
-                ProviderError::TransferFailed(format!("Download chunk error: {}", e))
+                ProviderError::TransferFailed(format!(
+                    "Download chunk error: {}",
+                    redact_key(&e.to_string())
+                ))
             })?;
             atomic
                 .write_all(&chunk)
@@ -1431,10 +1479,12 @@ impl StorageProvider for FileLuProvider {
             }
         }
 
-        resp.bytes()
-            .await
-            .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))
+        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+            ProviderError::TransferFailed(format!(
+                "Download failed: {}",
+                redact_key(&e.to_string())
+            ))
+        })
     }
 
     async fn upload(
@@ -1480,7 +1530,10 @@ impl StorageProvider for FileLuProvider {
         let server_url = self.api_url_with("upload/server", &[("fld_id", &fld_id.to_string())]);
         let resp = self.get_with_retry(&server_url).await?;
         let text = resp.text().await.map_err(|e| {
-            ProviderError::NetworkError(format!("Failed to read upload server response: {}", e))
+            ProviderError::NetworkError(format!(
+                "Failed to read upload server response: {}",
+                redact_key(&e.to_string())
+            ))
         })?;
         let server_info: UploadServerResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
@@ -1524,7 +1577,12 @@ impl StorageProvider for FileLuProvider {
         let part = multipart::Part::stream_with_length(body, total_size)
             .file_name(filename.clone())
             .mime_str("application/octet-stream")
-            .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!(
+                    "Multipart error: {}",
+                    redact_key(&e.to_string())
+                ))
+            })?;
 
         let form = multipart::Form::new()
             .text("sess_id", sess_id)
@@ -1538,12 +1596,20 @@ impl StorageProvider for FileLuProvider {
             .multipart(form)
             .build()
             .map_err(|e| {
-                ProviderError::TransferFailed(format!("Build upload request failed: {}", e))
+                ProviderError::TransferFailed(format!(
+                    "Build upload request failed: {}",
+                    redact_key(&e.to_string())
+                ))
             })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!(
+                    "Upload failed: {}",
+                    redact_key(&e.to_string())
+                ))
+            })?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1554,7 +1620,10 @@ impl StorageProvider for FileLuProvider {
         }
 
         let upload_body = resp.text().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to read upload response: {}", e))
+            ProviderError::TransferFailed(format!(
+                "Failed to read upload response: {}",
+                redact_key(&e.to_string())
+            ))
         })?;
         let upload_results: Vec<UploadResultEntry> =
             serde_json::from_str(&upload_body).map_err(|e| {
@@ -2049,10 +2118,12 @@ impl StorageProvider for FileLuProvider {
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&clone_url).await?;
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Clone response parse error: {}", e)))?;
+        let body: serde_json::Value = resp.json().await.map_err(|e| {
+            ProviderError::ParseError(format!(
+                "Clone response parse error: {}",
+                redact_key(&e.to_string())
+            ))
+        })?;
 
         // Step 2: Move the clone to the destination folder if needed
         let norm_to = self.resolve_path(to);

@@ -13749,11 +13749,33 @@ async fn edit_fetch_remote(
         .unwrap_or("file");
     let tmp = std::env::temp_dir().join(format!("aeroftp-edit-{}-{}", tui_temp_token(), name));
     let tmp_str = tmp.to_string_lossy().into_owned();
+    // Pre-create the scratch file 0o600 so the downloaded remote plaintext is
+    // never briefly world-readable during the edit session (the provider would
+    // otherwise create it with the default umask, typically 0o644).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&tmp)
+            .map_err(|err| format!("download failed: {}", err))?;
+    }
     let provider = session.provider_mut();
     provider
         .download(&resolved, &tmp_str, None)
         .await
         .map_err(|err| format!("download failed: {}", err))?;
+    // Re-assert 0o600 in case the provider truncated and recreated the file with
+    // the default umask.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
     Ok((resolved, tmp_str))
 }
 
@@ -26447,18 +26469,25 @@ mod serve_sftp {
             let user = user.to_string();
             let password = password.to_string();
             async move {
+                use subtle::ConstantTimeEq;
                 Ok(match expected {
-                    Some(credentials)
-                        if credentials.username == user && credentials.password == password =>
-                    {
-                        Auth::Accept
+                    Some(credentials) => {
+                        // Compare both fields in constant time (mirrors the HTTP
+                        // path's request_is_authorized) so a timing side-channel
+                        // cannot recover the serve credentials byte by byte.
+                        let user_ok = credentials.username.as_bytes().ct_eq(user.as_bytes());
+                        let pass_ok = credentials.password.as_bytes().ct_eq(password.as_bytes());
+                        if (user_ok & pass_ok).into() {
+                            Auth::Accept
+                        } else {
+                            Auth::Reject {
+                                proceed_with_methods: Some(russh::MethodSet::from(
+                                    &[russh::MethodKind::Password][..],
+                                )),
+                                partial_success: false,
+                            }
+                        }
                     }
-                    Some(_) => Auth::Reject {
-                        proceed_with_methods: Some(russh::MethodSet::from(
-                            &[russh::MethodKind::Password][..],
-                        )),
-                        partial_success: false,
-                    },
                     None => Auth::Accept,
                 })
             }

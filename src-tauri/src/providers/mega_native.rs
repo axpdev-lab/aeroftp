@@ -425,11 +425,30 @@ where
         .map_err(|err| ProviderError::ParseError(format!("Invalid MEGA response payload: {err}")))
 }
 
+/// Mask the value of any `sid=` query parameter to `***`. reqwest::Error's
+/// Display embeds the request URL (which carries the live MEGA session token as
+/// `?sid=...`) for connect/TLS/reset failures, so the token must be redacted
+/// before the error is surfaced.
+fn redact_sid(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(pos) = rest.find("sid=") {
+        out.push_str(&rest[..pos + 4]);
+        let after = &rest[pos + 4..];
+        let end = after.find(['&', ' ', '"', ')', ',']).unwrap_or(after.len());
+        out.push_str("***");
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn map_reqwest_error(err: reqwest::Error) -> ProviderError {
     if err.is_timeout() {
         ProviderError::Timeout
     } else {
-        ProviderError::NetworkError(format!("MEGA API request failed: {err}"))
+        let detail = redact_sid(&err.to_string());
+        ProviderError::NetworkError(format!("MEGA API request failed: {detail}"))
     }
 }
 

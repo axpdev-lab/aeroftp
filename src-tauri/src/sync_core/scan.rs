@@ -144,6 +144,19 @@ fn adapt_fastpath_entries(
                 return None;
             }
         };
+        // SEC: same traversal guard as the BFS path. A flat listing whose object
+        // key resolves to a `..`-bearing relative path must not reach the
+        // download sink; drop the single offending entry rather than the whole
+        // fast-path (the rest of the listing is still usable).
+        if let Err(reason) = crate::sync::validate_relative_path(&rel) {
+            tracing::warn!(
+                "[scan_remote_tree] fast-path skipping entry {} under {}: {}",
+                entry.path,
+                root,
+                reason
+            );
+            continue;
+        }
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
             continue;
         }
@@ -306,6 +319,22 @@ pub async fn scan_remote_tree(
                     } else {
                         format!("{}/{}", rel_prefix, entry.name)
                     };
+                    // SEC: the entry name is provider-controlled. A malicious or
+                    // MITM'd listing entry named `..` (or `../../etc/...`) would
+                    // otherwise let a Download/Both sync write outside the local
+                    // target root. Reject any traversing name before it becomes a
+                    // rel_path (skipping a bad dir also prevents it poisoning the
+                    // rel_prefix of its children). Mirrors the legacy comparison
+                    // engine's validate_relative_path guard.
+                    if let Err(reason) = crate::sync::validate_relative_path(&entry_rel) {
+                        tracing::warn!(
+                            "[scan_remote_tree] skipping remote entry {:?} under {}: {}",
+                            entry.name,
+                            abs_dir,
+                            reason
+                        );
+                        continue;
+                    }
                     if entry.is_dir {
                         queue.push((entry.path.clone(), entry_rel, current_depth + 1));
                         continue;
