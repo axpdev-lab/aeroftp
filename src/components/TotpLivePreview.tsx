@@ -9,6 +9,11 @@ interface TotpLivePreviewProps {
   /** Raw base32 secret as typed in the "TOTP Secret (saved)" field. */
   secret: string;
   t: (key: string, params?: Record<string, string | number>) => string;
+  /**
+   * Render without the default top margin, for placing the preview inline on
+   * the same row as the "2FA Secret" label instead of below its input (#369).
+   */
+  inline?: boolean;
 }
 
 interface TotpPreview {
@@ -25,7 +30,7 @@ interface TotpPreview {
  * Deliberately string-free (icon + digits + countdown only) so it adds no
  * new i18n keys; only the already-translated `common.failed` is reused.
  */
-export const TotpLivePreview: React.FC<TotpLivePreviewProps> = ({ secret, t }) => {
+export const TotpLivePreview: React.FC<TotpLivePreviewProps> = ({ secret, t, inline }) => {
   const [code, setCode] = useState<string | null>(null);
   const [remaining, setRemaining] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -113,7 +118,7 @@ export const TotpLivePreview: React.FC<TotpLivePreviewProps> = ({ secret, t }) =
 
   if (failed) {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+      <div className={`${inline ? '' : 'mt-1.5'} flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400`}>
         <KeyRound size={13} />
         <span>{t('common.failed')}</span>
       </div>
@@ -126,7 +131,7 @@ export const TotpLivePreview: React.FC<TotpLivePreviewProps> = ({ secret, t }) =
   const pct = Math.max(0, Math.min(100, (remaining / 30) * 100));
 
   return (
-    <div className="mt-1.5 flex items-center gap-2 text-xs">
+    <div className={`${inline ? '' : 'mt-1.5'} flex items-center gap-2 text-xs`}>
       <KeyRound size={13} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
       <button
         type="button"

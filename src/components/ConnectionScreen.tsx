@@ -4619,8 +4619,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
                                                 })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                placeholder={t('connection.twoFactorOptional')}
+                                                className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                placeholder="000000"
                                                 maxLength={6}
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
@@ -4628,7 +4628,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.totpSecret')}</label>
+                                            <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.75rem]">
+                                                <label className="block text-sm font-medium">{t('connection.totpSecret')}</label>
+                                                <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} inline />
+                                            </div>
                                             <div className="relative">
                                                 <input
                                                     type={showTotpSecret ? 'text' : 'password'}
@@ -4647,7 +4650,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
-                                            <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
                                         </div>
 
                                         <div>
@@ -5030,8 +5032,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
                                                 })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                placeholder={t('connection.twoFactorOptional')}
+                                                className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                placeholder="000000"
                                                 maxLength={6}
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
@@ -5039,7 +5041,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.totpSecret')}</label>
+                                            <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.75rem]">
+                                                <label className="block text-sm font-medium">{t('connection.totpSecret')}</label>
+                                                <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} inline />
+                                            </div>
                                             <div className="relative">
                                                 <input
                                                     type={showTotpSecret ? 'text' : 'password'}
@@ -5058,7 +5063,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
-                                            <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
                                         </div>
 
                                         <div className="space-y-2">
