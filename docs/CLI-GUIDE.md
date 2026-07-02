@@ -1250,7 +1250,7 @@ aeroftp-cli extract backup.zip ./restored
 aeroftp-cli extract secret.7z ./out -p "secret"
 ```
 
-Local-only archive operations (no connection). Supported formats: `zip`, `7z`, `tar`, `tar.gz` (alias `tgz`), `tar.xz` (alias `txz`), `tar.bz2` (alias `tbz2`), and `rar` (extract only). The format is inferred from the file extension unless `--archive-format` is given. Only `zip` and `7z` accept an AES-256 `--password`; the tar family is unencrypted. `--level`/`-l` (0-9, default 6; 0 = store) applies to zip, 7z, and the tar.gz/tar.xz/tar.bz2 families; for 7z it maps onto the LZMA2 preset. `extract` honors `--subfolder` to unpack into a directory named after the archive.
+Local-only archive operations (no connection). Supported formats: `zip`, `7z`, `tar`, `tar.gz` (alias `tgz`), `tar.xz` (alias `txz`), `tar.bz2` (alias `tbz2`), and `rar` (extract only). The format is inferred from the file extension unless `--archive-format` is given. Only `zip` and `7z` accept an AES-256 `--password`; the tar family is unencrypted. `--level`/`-l` (0-9, default 5 = 7-Zip "Normal"; 0 = store) applies to zip, 7z, and the tar.gz/tar.xz/tar.bz2 families; for 7z it maps onto the LZMA2 preset. The 7-Zip canonical presets are 1 Fastest, 3 Fast, 5 Normal, 7 Maximum, 9 Ultra. `extract` honors `--subfolder` to unpack into a directory named after the archive.
 
 > **ZIP store-if-larger**: when deflate would not shrink a given file (already-compressed payloads such as JPEG, MP4, or zip), `compress` stores that ZIP entry uncompressed instead of inflating it. This is a per-entry decision inside the ZIP container and does not change the framing of the tar.gz / tar.xz / tar.bz2 formats.
 

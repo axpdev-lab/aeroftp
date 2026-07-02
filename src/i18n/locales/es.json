@@ -2964,7 +2964,9 @@
             "estimateExact": "exacto",
             "estimateApprox": "estimación",
             "encryptFileNames": "Cifrar los nombres de archivo",
-            "encryptFileNamesHint": "Oculta también los nombres de los archivos, no solo su contenido. Entonces se necesitará la contraseña incluso para listar el archivo."
+            "encryptFileNamesHint": "Oculta también los nombres de los archivos, no solo su contenido. Entonces se necesitará la contraseña incluso para listar el archivo.",
+            "fastest": "Más rápido",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Renombrado masivo",

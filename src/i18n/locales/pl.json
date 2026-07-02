@@ -2964,7 +2964,9 @@
             "estimateExact": "dokładnie",
             "estimateApprox": "szacunek",
             "encryptFileNames": "Szyfruj nazwy plików",
-            "encryptFileNamesHint": "Ukrywa także nazwy plików, nie tylko ich zawartość. Hasło będzie wtedy potrzebne nawet do wyświetlenia zawartości archiwum."
+            "encryptFileNamesHint": "Ukrywa także nazwy plików, nie tylko ich zawartość. Hasło będzie wtedy potrzebne nawet do wyświetlenia zawartości archiwum.",
+            "fastest": "Najszybszy",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Zbiorcza zmiana nazw",

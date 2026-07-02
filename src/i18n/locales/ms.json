@@ -2964,7 +2964,9 @@
             "estimateExact": "tepat",
             "estimateApprox": "anggaran",
             "encryptFileNames": "Sulitkan nama fail",
-            "encryptFileNamesHint": "Sembunyikan juga nama fail, bukan hanya kandungannya. Kata laluan kemudian diperlukan walaupun untuk menyenaraikan kandungan arkib."
+            "encryptFileNamesHint": "Sembunyikan juga nama fail, bukan hanya kandungannya. Kata laluan kemudian diperlukan walaupun untuk menyenaraikan kandungan arkib.",
+            "fastest": "Terpantas",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Nama Semula Kelompok",

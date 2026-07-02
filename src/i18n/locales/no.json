@@ -2964,7 +2964,9 @@
             "estimateExact": "nøyaktig",
             "estimateApprox": "anslag",
             "encryptFileNames": "Krypter filnavn",
-            "encryptFileNamesHint": "Skjuler også filnavnene, ikke bare innholdet. Passordet kreves da selv for å vise innholdet i arkivet."
+            "encryptFileNamesHint": "Skjuler også filnavnene, ikke bare innholdet. Passordet kreves da selv for å vise innholdet i arkivet.",
+            "fastest": "Raskest",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Masseomdøping",

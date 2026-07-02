@@ -2964,7 +2964,9 @@
             "estimateExact": "exacto",
             "estimateApprox": "estimación",
             "encryptFileNames": "Cifrar os nomes dos ficheiros",
-            "encryptFileNamesHint": "Agocha tamén os nomes dos ficheiros, non só o seu contido. Entón necesítase o contrasinal mesmo para listar o arquivo."
+            "encryptFileNamesHint": "Agocha tamén os nomes dos ficheiros, non só o seu contido. Entón necesítase o contrasinal mesmo para listar o arquivo.",
+            "fastest": "Máis rápido",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Renomear por lotes",

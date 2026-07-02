@@ -2964,7 +2964,9 @@
             "estimateExact": "exact",
             "estimateApprox": "estimare",
             "encryptFileNames": "Criptează numele fișierelor",
-            "encryptFileNamesHint": "Ascunde și numele fișierelor, nu doar conținutul lor. Atunci parola este necesară chiar și pentru a lista arhiva."
+            "encryptFileNamesHint": "Ascunde și numele fișierelor, nu doar conținutul lor. Atunci parola este necesară chiar și pentru a lista arhiva.",
+            "fastest": "Cel mai rapid",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Redenumire în masă",

@@ -2964,7 +2964,9 @@
             "estimateExact": "exact",
             "estimateApprox": "estimation",
             "encryptFileNames": "Chiffrer les noms de fichiers",
-            "encryptFileNamesHint": "Masque aussi les noms des fichiers, pas seulement leur contenu. Le mot de passe est alors requis même pour lister l'archive."
+            "encryptFileNamesHint": "Masque aussi les noms des fichiers, pas seulement leur contenu. Le mot de passe est alors requis même pour lister l'archive.",
+            "fastest": "Le plus rapide",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Renommage par lot",

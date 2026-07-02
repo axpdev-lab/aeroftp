@@ -2964,7 +2964,9 @@
             "estimateExact": "exakt",
             "estimateApprox": "uppskattning",
             "encryptFileNames": "Kryptera filnamn",
-            "encryptFileNamesHint": "Döljer även filnamnen, inte bara deras innehåll. Lösenordet krävs då även för att visa arkivets innehåll."
+            "encryptFileNamesHint": "Döljer även filnamnen, inte bara deras innehåll. Lösenordet krävs då även för att visa arkivets innehåll.",
+            "fastest": "Snabbast",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Massnamnsändring",

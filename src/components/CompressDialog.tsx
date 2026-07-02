@@ -66,34 +66,28 @@ const FORMAT_OPTIONS: FormatOption[] = [
 
 interface LevelOption { value: number; labelKey: string; fallback: string }
 
+// 7-Zip canonical preset mapping, shared by every compressible format. Each
+// codec maps the raw value onto its own range in the backend (gzip 0-9,
+// bzip2 clamped to 1-9, deflate 0-9, LZMA2 via Lzma2Options::from_level).
+const SEVENZIP_LEVELS: LevelOption[] = [
+    { value: 0, labelKey: 'compress.store', fallback: 'Store (no compression)' },
+    { value: 1, labelKey: 'compress.fastest', fallback: 'Fastest' },
+    { value: 3, labelKey: 'compress.fast', fallback: 'Fast' },
+    { value: 5, labelKey: 'compress.normal', fallback: 'Normal' },
+    { value: 7, labelKey: 'compress.maximum', fallback: 'Maximum' },
+    { value: 9, labelKey: 'compress.ultra', fallback: 'Ultra' },
+];
+
 const LEVEL_OPTIONS: Record<string, LevelOption[]> = {
-    zip: [
-        { value: 0, labelKey: 'compress.store', fallback: 'Store (no compression)' },
-        { value: 1, labelKey: 'compress.fast', fallback: 'Fast' },
-        { value: 6, labelKey: 'compress.normal', fallback: 'Normal' },
-        { value: 9, labelKey: 'compress.maximum', fallback: 'Maximum' },
-    ],
-    '7z': [
-        { value: 1, labelKey: 'compress.fast', fallback: 'Fast' },
-        { value: 6, labelKey: 'compress.normal', fallback: 'Normal' },
-        { value: 9, labelKey: 'compress.maximum', fallback: 'Maximum' },
-    ],
+    zip: SEVENZIP_LEVELS,
+    // 7z LZMA2 has no real "store" mode; from_level(0) still compresses.
+    '7z': SEVENZIP_LEVELS.filter(l => l.value !== 0),
     tar: [],
-    'tar.gz': [
-        { value: 1, labelKey: 'compress.fast', fallback: 'Fast' },
-        { value: 6, labelKey: 'compress.normal', fallback: 'Normal' },
-        { value: 9, labelKey: 'compress.maximum', fallback: 'Maximum' },
-    ],
-    'tar.xz': [
-        { value: 1, labelKey: 'compress.fast', fallback: 'Fast' },
-        { value: 6, labelKey: 'compress.normal', fallback: 'Normal' },
-        { value: 9, labelKey: 'compress.maximum', fallback: 'Maximum' },
-    ],
-    'tar.bz2': [
-        { value: 1, labelKey: 'compress.fast', fallback: 'Fast' },
-        { value: 6, labelKey: 'compress.normal', fallback: 'Normal' },
-        { value: 9, labelKey: 'compress.maximum', fallback: 'Maximum' },
-    ],
+    // gzip/xz level 0 means no compression: pointless for a tar wrapper.
+    'tar.gz': SEVENZIP_LEVELS.filter(l => l.value !== 0),
+    'tar.xz': SEVENZIP_LEVELS.filter(l => l.value !== 0),
+    // bzip2 has no level 0; the backend clamps to 1-9.
+    'tar.bz2': SEVENZIP_LEVELS.filter(l => l.value !== 0),
 };
 
 // Map a UI format + level onto the backend canary codec. The backend then
@@ -221,7 +215,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const modalDrag = useDraggableModal();
     const [format, setFormat] = useState<CompressFormat>('zip');
     const [archiveName, setArchiveName] = useState(defaultName);
-    const [compressionLevel, setCompressionLevel] = useState(6);
+    const [compressionLevel, setCompressionLevel] = useState(5);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -291,8 +285,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
         const newLevels = LEVEL_OPTIONS[newFormat] || [];
         const hasCurrentLevel = newLevels.some(l => l.value === compressionLevel);
         if (!hasCurrentLevel && newLevels.length > 0) {
-            const normal = newLevels.find(l => l.value === 6);
-            setCompressionLevel(normal ? 6 : newLevels[0].value);
+            const normal = newLevels.find(l => l.value === 5);
+            setCompressionLevel(normal ? 5 : newLevels[0].value);
         }
         if (!FORMAT_OPTIONS.find(f => f.value === newFormat)?.supportsPassword) {
             setPassword('');
@@ -447,7 +441,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                             <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
                                 {t('compress.level') || 'Compression Level'}
                             </label>
-                            <div className="flex gap-1.5">
+                            <div className="flex flex-wrap gap-1.5">
                                 {levels.map(lvl => (
                                     <button
                                         key={lvl.value}

@@ -2964,7 +2964,9 @@
             "estimateExact": "pontos",
             "estimateApprox": "becslés",
             "encryptFileNames": "Fájlnevek titkosítása",
-            "encryptFileNamesHint": "Elrejti a fájlneveket is, nem csak a tartalmukat. Ekkor a jelszó az archívum tartalmának listázásához is szükséges."
+            "encryptFileNamesHint": "Elrejti a fájlneveket is, nem csak a tartalmukat. Ekkor a jelszó az archívum tartalmának listázásához is szükséges.",
+            "fastest": "Leggyorsabb",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Csoportos átnevezés",

@@ -2964,7 +2964,9 @@
             "estimateExact": "natančno",
             "estimateApprox": "ocena",
             "encryptFileNames": "Šifriraj imena datotek",
-            "encryptFileNamesHint": "Skrije tudi imena datotek, ne le njihove vsebine. Geslo je nato potrebno celo za prikaz vsebine arhiva."
+            "encryptFileNamesHint": "Skrije tudi imena datotek, ne le njihove vsebine. Geslo je nato potrebno celo za prikaz vsebine arhiva.",
+            "fastest": "Najhitrejše",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Skupinsko preimenovanje",

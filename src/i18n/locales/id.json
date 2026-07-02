@@ -2964,7 +2964,9 @@
             "estimateExact": "tepat",
             "estimateApprox": "perkiraan",
             "encryptFileNames": "Enkripsi nama berkas",
-            "encryptFileNamesHint": "Sembunyikan juga nama berkas, bukan hanya isinya. Kata sandi kemudian diperlukan bahkan untuk menampilkan daftar isi arsip."
+            "encryptFileNamesHint": "Sembunyikan juga nama berkas, bukan hanya isinya. Kata sandi kemudian diperlukan bahkan untuk menampilkan daftar isi arsip.",
+            "fastest": "Tercepat",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Ganti Nama Batch",

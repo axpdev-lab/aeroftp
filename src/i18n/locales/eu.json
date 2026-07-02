@@ -2964,7 +2964,9 @@
             "estimateExact": "zehatza",
             "estimateApprox": "zenbatespena",
             "encryptFileNames": "Zifratu fitxategi-izenak",
-            "encryptFileNamesHint": "Fitxategien izenak ere ezkutatzen ditu, ez edukia soilik. Orduan pasahitza beharko da artxiboa zerrendatzeko ere."
+            "encryptFileNamesHint": "Fitxategien izenak ere ezkutatzen ditu, ez edukia soilik. Orduan pasahitza beharko da artxiboa zerrendatzeko ere.",
+            "fastest": "Azkarrena",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Lote berrizendatzea",

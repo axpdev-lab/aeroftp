@@ -3302,6 +3302,8 @@
             "folders": "cartelle",
             "store": "Archivia (senza compressione)",
             "fast": "Veloce",
+            "fastest": "Velocissima",
+            "ultra": "Ultra",
             "balanced": "Bilanciata",
             "normal": "Normale",
             "maximum": "Massimo",

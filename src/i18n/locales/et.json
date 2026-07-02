@@ -2964,7 +2964,9 @@
             "estimateExact": "täpne",
             "estimateApprox": "hinnang",
             "encryptFileNames": "Krüpti failinimed",
-            "encryptFileNamesHint": "Peidab ka failinimed, mitte ainult nende sisu. Siis on parool vajalik isegi arhiivi sisu vaatamiseks."
+            "encryptFileNamesHint": "Peidab ka failinimed, mitte ainult nende sisu. Siis on parool vajalik isegi arhiivi sisu vaatamiseks.",
+            "fastest": "Kiireim",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Hulgiümbernimetamine",

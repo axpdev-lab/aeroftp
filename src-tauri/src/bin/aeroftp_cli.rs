@@ -2931,8 +2931,9 @@ enum Commands {
         /// Archive format override (default: infer from the output extension)
         #[arg(long = "archive-format", value_enum)]
         archive_format: Option<ArchiveFormat>,
-        /// Compression level 0-9 (zip, 7z, tar.gz, tar.xz, tar.bz2; default 6; 0 =
-        /// store for zip). For 7z it maps onto the LZMA2 preset.
+        /// Compression level 0-9 (zip, 7z, tar.gz, tar.xz, tar.bz2; default 5 =
+        /// 7-Zip "Normal"; 0 = store for zip). 7-Zip presets: 1 Fastest, 3 Fast,
+        /// 5 Normal, 7 Maximum, 9 Ultra. For 7z it maps onto the LZMA2 preset.
         #[arg(long, short = 'l')]
         level: Option<i64>,
         /// AES-256 password for zip / 7z (explicit intent to encrypt). For an ambient

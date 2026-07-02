@@ -2964,7 +2964,9 @@
             "estimateExact": "exacte",
             "estimateApprox": "estimació",
             "encryptFileNames": "Xifra els noms dels fitxers",
-            "encryptFileNamesHint": "Amaga també els noms dels fitxers, no només el seu contingut. Aleshores caldrà la contrasenya fins i tot per llistar l'arxiu."
+            "encryptFileNamesHint": "Amaga també els noms dels fitxers, no només el seu contingut. Aleshores caldrà la contrasenya fins i tot per llistar l'arxiu.",
+            "fastest": "Més ràpid",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Reanomenament massiu",

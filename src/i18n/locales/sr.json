@@ -2964,7 +2964,9 @@
             "estimateExact": "тачно",
             "estimateApprox": "процена",
             "encryptFileNames": "Шифруј називе датотека",
-            "encryptFileNamesHint": "Скрива и називе датотека, не само њихов садржај. Лозинка је тада потребна чак и за приказ садржаја архиве."
+            "encryptFileNamesHint": "Скрива и називе датотека, не само њихов садржај. Лозинка је тада потребна чак и за приказ садржаја архиве.",
+            "fastest": "Najbrže",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Grupno preimenovanje",

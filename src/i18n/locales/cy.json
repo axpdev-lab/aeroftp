@@ -2964,7 +2964,9 @@
             "estimateExact": "union",
             "estimateApprox": "amcangyfrif",
             "encryptFileNames": "Amgryptio enwau ffeiliau",
-            "encryptFileNamesHint": "Cuddio enwau'r ffeiliau hefyd, nid dim ond eu cynnwys. Yna bydd angen y cyfrinair hyd yn oed i restru'r archif."
+            "encryptFileNamesHint": "Cuddio enwau'r ffeiliau hefyd, nid dim ond eu cynnwys. Yna bydd angen y cyfrinair hyd yn oed i restru'r archif.",
+            "fastest": "Cyflymaf",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Ailenwi Swp",

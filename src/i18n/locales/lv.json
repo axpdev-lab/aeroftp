@@ -2964,7 +2964,9 @@
             "estimateExact": "precīzs",
             "estimateApprox": "aplēse",
             "encryptFileNames": "Šifrēt failu nosaukumus",
-            "encryptFileNamesHint": "Paslēpj arī failu nosaukumus, ne tikai to saturu. Tad parole būs nepieciešama pat arhīva satura uzskaitīšanai."
+            "encryptFileNamesHint": "Paslēpj arī failu nosaukumus, ne tikai to saturu. Tad parole būs nepieciešama pat arhīva satura uzskaitīšanai.",
+            "fastest": "Ātrākais",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Masveida pārdēvēšana",

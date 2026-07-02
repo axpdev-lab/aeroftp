@@ -2964,7 +2964,9 @@
             "estimateExact": "přesné",
             "estimateApprox": "odhad",
             "encryptFileNames": "Šifrovat názvy souborů",
-            "encryptFileNamesHint": "Skryje i názvy souborů, nejen jejich obsah. Heslo pak bude potřeba i k zobrazení obsahu archivu."
+            "encryptFileNamesHint": "Skryje i názvy souborů, nejen jejich obsah. Heslo pak bude potřeba i k zobrazení obsahu archivu.",
+            "fastest": "Nejrychlejší",
+            "ultra": "Ultra"
         },
         "batchRename": {
             "title": "Hromadne prejmenovani",

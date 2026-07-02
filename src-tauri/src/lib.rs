@@ -7499,7 +7499,7 @@ async fn compress_files_impl(
         File::create(temp.path()).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
-    let level = compression_level.unwrap_or(6);
+    let level = compression_level.unwrap_or(5);
     // Level 0 means "store" (no deflate). The zip crate rejects a numeric
     // compression_level on the Stored method, so only attach the level when
     // we are actually deflating.
@@ -7767,11 +7767,12 @@ async fn compress_7z_impl(
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
     // Map the caller's preset onto the LZMA2 content method. The dialog's
-    // Fast/Normal/Maximum buttons send 1/6/9 and the CLI passes 0-9 directly;
-    // unset defaults to 6 (7-Zip's "Normal"). Lzma2Options::from_level clamps to
+    // preset buttons send the 7-Zip canonical levels (Fastest=1, Fast=3,
+    // Normal=5, Maximum=7, Ultra=9) and the CLI passes 0-9 directly; unset
+    // defaults to 5 (7-Zip's "Normal"). Lzma2Options::from_level clamps to
     // its valid 0-9 range internally. Without this the level was silently
     // dropped and every 7z used the library default preset.
-    let level = compression_level.unwrap_or(6).clamp(0, 9) as u32;
+    let level = compression_level.unwrap_or(5).clamp(0, 9) as u32;
     let lzma2 = encoder_options::Lzma2Options::from_level(level);
 
     // Set compression and optional AES-256 encryption.
@@ -8125,7 +8126,7 @@ async fn compress_tar_impl(
         "tar.gz" => {
             let gz = flate2::write::GzEncoder::new(
                 file,
-                flate2::Compression::new(compression_level.unwrap_or(6) as u32),
+                flate2::Compression::new(compression_level.unwrap_or(5) as u32),
             );
             let mut archive = tar::Builder::new(gz);
             for (abs_path, rel_path) in &entries {
@@ -8138,7 +8139,7 @@ async fn compress_tar_impl(
                 .map_err(|e| format!("Failed to finish gz: {}", e))?;
         }
         "tar.xz" => {
-            let xz = xz2::write::XzEncoder::new(file, compression_level.unwrap_or(6) as u32);
+            let xz = xz2::write::XzEncoder::new(file, compression_level.unwrap_or(5) as u32);
             let mut archive = tar::Builder::new(xz);
             for (abs_path, rel_path) in &entries {
                 tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
@@ -8154,7 +8155,7 @@ async fn compress_tar_impl(
             // clamp so a caller passing 0 gets the lightest real level instead of a panic.
             let bz = bzip2::write::BzEncoder::new(
                 file,
-                bzip2::Compression::new((compression_level.unwrap_or(6) as u32).clamp(1, 9)),
+                bzip2::Compression::new((compression_level.unwrap_or(5) as u32).clamp(1, 9)),
             );
             let mut archive = tar::Builder::new(bz);
             for (abs_path, rel_path) in &entries {
@@ -17865,19 +17866,19 @@ mod sevenz_mhe_tests {
         let src = dir.path().join("payload.bin");
         std::fs::write(&src, &data).unwrap();
 
-        let compress_at = |level: i64, name: &str| {
+        let compress_at = |level: Option<i64>, name: &str| {
             let src = src.to_string_lossy().to_string();
             let out = dir.path().join(name).to_string_lossy().to_string();
             async move {
-                compress_7z_core(vec![src], out.clone(), None, Some(level), None)
+                compress_7z_core(vec![src], out.clone(), None, level, None)
                     .await
                     .expect("compress 7z");
                 std::fs::metadata(&out).unwrap().len()
             }
         };
 
-        let size_fast = compress_at(1, "lvl1.7z").await;
-        let size_max = compress_at(9, "lvl9.7z").await;
+        let size_fast = compress_at(Some(1), "lvl1.7z").await;
+        let size_max = compress_at(Some(9), "lvl9.7z").await;
 
         // Level 9 must beat level 1 by a clear margin (the long-range dedup
         // roughly halves the output). The margin makes the test fail loudly if
@@ -17886,6 +17887,16 @@ mod sevenz_mhe_tests {
             size_max + size_max / 5 < size_fast,
             "compression level was not honoured: level 1 = {size_fast} B, \
              level 9 = {size_max} B (expected level 9 clearly smaller)"
+        );
+
+        // An unset level must land on the 7-Zip "Normal" preset (5), byte for
+        // byte: the T1c preset buttons rely on 5 being the real default.
+        let size_default = compress_at(None, "default.7z").await;
+        let size_normal = compress_at(Some(5), "lvl5.7z").await;
+        assert_eq!(
+            size_default, size_normal,
+            "unset level must default to 5 (Normal): default = {size_default} B, \
+             level 5 = {size_normal} B"
         );
     }
 }
