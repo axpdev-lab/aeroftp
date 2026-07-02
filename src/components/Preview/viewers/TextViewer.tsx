@@ -167,6 +167,26 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     // whole line, drag across the numbers to extend, the way IDE gutters work.
     const preRef = useRef<HTMLPreElement>(null);
     const gutterDragAnchor = useRef<number | null>(null);
+    const gutterRef = useRef<HTMLDivElement>(null);
+    // Map a viewport Y to a gutter line index, clamped to the first/last line.
+    // Uses the gutter cells' own rects so it stays correct with padding and
+    // wrapped lines, and works even when the pointer drifts horizontally out of
+    // the gutter column mid-drag (the case where onMouseEnter stopped firing).
+    const lineFromClientY = useCallback((clientY: number): number => {
+        const el = gutterRef.current;
+        const kids = el?.children;
+        if (!kids || kids.length === 0) return 0;
+        const first = kids[0].getBoundingClientRect();
+        if (clientY <= first.top) return 0;
+        const lastIdx = kids.length - 1;
+        const last = kids[lastIdx].getBoundingClientRect();
+        if (clientY >= last.bottom) return lastIdx;
+        for (let i = 0; i < kids.length; i++) {
+            const r = kids[i].getBoundingClientRect();
+            if (clientY >= r.top && clientY < r.bottom) return i;
+        }
+        return lastIdx;
+    }, []);
     const lineStartOffsets = useMemo(() => {
         const offs = [0];
         for (let i = 0; i < content.length; i++) {
@@ -214,10 +234,24 @@ export const TextViewer: React.FC<TextViewerProps> = ({
         }
     }, [content, lineStartOffsets]);
     useEffect(() => {
+        // Extend the gutter selection from a window-level mousemove so a drag keeps
+        // tracking in both directions even when the pointer leaves the narrow
+        // gutter column (the per-cell onMouseEnter missed this, "especially going
+        // down", Ehud #347). preventDefault suppresses the competing native text
+        // selection while our whole-line range wins each frame.
+        const move = (e: MouseEvent) => {
+            if (gutterDragAnchor.current === null) return;
+            e.preventDefault();
+            selectLineRange(gutterDragAnchor.current, lineFromClientY(e.clientY));
+        };
         const clear = () => { gutterDragAnchor.current = null; };
+        window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', clear);
-        return () => window.removeEventListener('mouseup', clear);
-    }, []);
+        return () => {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', clear);
+        };
+    }, [selectLineRange, lineFromClientY]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasEyeDropper = typeof (window as any).EyeDropper === 'function';
 
@@ -588,13 +622,12 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                     )}
                     <div className="flex min-h-full">
                         {/* Line numbers (click/drag to select whole lines, #17) */}
-                        <div className="flex-shrink-0 select-none text-right pr-4 pl-4 py-4 text-gray-600 bg-gray-800/50 border-r border-gray-700">
+                        <div ref={gutterRef} className="flex-shrink-0 select-none text-right pr-4 pl-4 py-4 text-gray-600 bg-gray-800/50 border-r border-gray-700">
                             {content.split('\n').map((_, i) => (
                                 <div
                                     key={i}
                                     className="leading-6 cursor-pointer hover:text-gray-300 transition-colors"
                                     onMouseDown={(e) => { e.preventDefault(); gutterDragAnchor.current = i; selectLineRange(i, i); }}
-                                    onMouseEnter={() => { if (gutterDragAnchor.current !== null) selectLineRange(gutterDragAnchor.current, i); }}
                                 >{i + 1}</div>
                             ))}
                         </div>

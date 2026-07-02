@@ -87,6 +87,19 @@ export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.Depende
 
             const handler = configRef.current[combo];
             if (handler) {
+                // Let the browser perform a native copy/cut when the user has an
+                // active text selection (e.g. text selected in the file Preview via
+                // the line-number gutter). Otherwise the global file-manager
+                // Ctrl+C/Ctrl+X would preventDefault and swallow the copy, so only
+                // the right-click menu worked (Ehud, discussion #347). Selecting
+                // files does not create a DOM text selection, so file copy/cut is
+                // unaffected.
+                if (combo === 'Ctrl+C' || combo === 'Ctrl+X') {
+                    const sel = window.getSelection();
+                    if (sel && !sel.isCollapsed && sel.toString().length > 0) {
+                        return;
+                    }
+                }
                 event.preventDefault();
                 handler(event);
             }
