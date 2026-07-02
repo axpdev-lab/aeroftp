@@ -6297,6 +6297,29 @@ interface UpdateVerificationInfo {
       if (overlaySessionId) {
         try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
       }
+      // #386: tear down any active transparent crypt overlay (AeroCrypt /
+      // rclone-crypt) on the red Disconnect too. Unlike closeSession and
+      // switchSession, this path never did, so the stale frontend vault id and the
+      // reload/in-flight refs survived the disconnect. On the next connect the
+      // phase-1/phase-2 auto-unlock guards (see the effects at ~4602 and ~4665)
+      // short-circuited on the old vault id: the decrypted reload never ran, so
+      // "decrypting" stayed on forever and the overlay button was stuck. Lock the
+      // backend keys, unwrap the provider, and reset the frontend overlay state and
+      // refs so a reconnect starts clean.
+      if (aeroCryptVaultId) {
+        try { await invoke('aerocrypt_lock', { vaultId: aeroCryptVaultId }); } catch { }
+      }
+      if (rcloneCryptVaultId) {
+        try { await invoke('rclone_crypt_lock', { vaultId: rcloneCryptVaultId }); } catch { }
+      }
+      await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
+      setAeroCryptVaultId(null);
+      setRcloneCryptVaultId(null);
+      setCryptOverlayOwner(null);
+      setPendingOverlayUnlock(null);
+      setOverlayDecrypting(false);
+      overlayReloadedVaultRef.current = null;
+      overlayUnlockInFlightRef.current = false;
       await invoke('disconnect_ftp');
       setIsConnected(false);
       setActivePanel('local');
