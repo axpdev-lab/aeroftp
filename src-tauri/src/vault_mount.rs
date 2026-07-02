@@ -104,7 +104,13 @@ fn set_private(p: &std::path::Path) {
 /// (an empty dir from a previous, already-dead mount).
 #[cfg(target_os = "linux")]
 fn make_mountpoint(key: &str) -> Result<PathBuf, String> {
-    let dir = mount_base_dir()?.join(sanitize(key));
+    use sha2::{Digest, Sha256};
+    // Append a short hash of the FULL key so two distinct keys that sanitize to
+    // the same prefix cannot collide onto one mountpoint (which would make
+    // `is_mounted` report one vault's live mount as another's).
+    let digest = hex::encode(Sha256::digest(key.as_bytes()));
+    let name = format!("{}_{}", sanitize(key), &digest[..12]);
+    let dir = mount_base_dir()?.join(name);
     if dir.exists() {
         // Only remove if empty (never clobber a live mount's contents).
         let _ = std::fs::remove_dir(&dir);

@@ -112,7 +112,16 @@ pub fn validate_local_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-const DENIED_HOME_DIRS: &[&str] = &[".ssh", ".gnupg", ".aws", ".config/aeroftp"];
+const DENIED_HOME_DIRS: &[&str] = &[
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".kube",
+    ".config/gcloud",
+    ".docker",
+    ".config/aeroftp",
+    ".vault-token",
+];
 
 /// Validate a server query string.
 pub fn validate_server_query(query: &str) -> Result<(), String> {

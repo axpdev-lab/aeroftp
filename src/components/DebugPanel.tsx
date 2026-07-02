@@ -38,6 +38,18 @@ const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
     // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
     { pattern: /\b((?:ftps?|sftp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
+    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***"
+    {
+        pattern:
+            /("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|refresh_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*"/gi,
+        replacement: '$1"***REDACTED***"',
+    },
+    // Secret fields in key=value / key: value form
+    {
+        pattern:
+            /(\b(?:password|passwd|pwd|secret|secret_key|api_key|passphrase|private_key|client_secret|token)\s*[:=]\s*)[^\s,;'"<>]+/gi,
+        replacement: '$1***REDACTED***',
+    },
     // Email addresses
     { pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***' },
     // IPv4 addresses, but keep loopback / unspecified for local-debug clarity

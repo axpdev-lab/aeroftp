@@ -2215,6 +2215,15 @@ pub(crate) async fn perform_download(
             reason: "dry-run".to_string(),
         };
     }
+    // SEC (defense in depth): scan_remote_tree already rejects traversing
+    // remote names, but validate again at the actual write sink so no present
+    // or future producer can route a `..`-bearing rel_path into a local write
+    // outside the sync target root.
+    if let Err(reason) = validate_relative_path(transfer.rel) {
+        return FileOutcome::Failed {
+            error: format!("unsafe relative path rejected: {}", reason),
+        };
+    }
     let remote_path = join_clean_remote(remote_root, transfer.rel);
     let local_path = join_clean(local_root, transfer.rel);
     if let Some(parent) = Path::new(&local_path).parent() {

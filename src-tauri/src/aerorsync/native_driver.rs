@@ -1455,6 +1455,22 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 head.count
             )));
         }
+        // Reject an implausible block count before allocating: a file
+        // cannot yield more than ceil(max_file_size / block_length)
+        // signature blocks, so a peer-declared count above that bound is
+        // malformed and must not be trusted for sizing.
+        const MAX_PLAUSIBLE_FILE_SIZE: u64 = 1 << 44; // 16 TiB
+        let max_plausible_blocks = if head.block_length > 0 {
+            MAX_PLAUSIBLE_FILE_SIZE.div_ceil(head.block_length as u64)
+        } else {
+            0
+        };
+        if head.count as u64 > max_plausible_blocks {
+            return Err(AerorsyncError::invalid_frame(format!(
+                "server sum_head.count {} exceeds plausible maximum {} for block_length {}",
+                head.count, max_plausible_blocks, head.block_length
+            )));
+        }
         self.phase = AerorsyncSessionPhase::SumBlocksReceiving;
         let blocks = self
             .read_signature_blocks(head.count as usize, head.checksum_length as usize, bridge)
@@ -1551,7 +1567,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<Vec<SumBlock>, AerorsyncError> {
         let mut buf: Vec<u8> = std::mem::take(&mut self.sig_residual_after_header);
-        let mut out = Vec::with_capacity(count);
+        // Do not eagerly reserve the peer-declared `count` (it is bounded
+        // upstream but can still be large): cap the initial reservation
+        // and let the read loop grow the vector incrementally.
+        let mut out = Vec::with_capacity(count.min(4096));
         while out.len() < count {
             self.check_cancel("read_signature_blocks")?;
             let block_wire_size = 4 + strong_len;

@@ -1737,15 +1737,22 @@ impl StorageProvider for AzureProvider {
         let signed_version = API_VERSION;
         let signed_protocol = "https";
 
-        // StringToSign for Service SAS (Blob)
+        // StringToSign for Service SAS (Blob), API version 2024-11-04. The field
+        // order after canonicalizedResource is fixed by the Azure Service SAS
+        // spec: signedIdentifier, signedIP, signedProtocol, signedVersion,
+        // signedResource, signedSnapshotTime, signedEncryptionScope, then the
+        // five response-header overrides (rscc/rscd/rsce/rscl/rsct). We set
+        // signedResource = "b" and leave the rest empty; the emitted token below
+        // MUST declare exactly the same set (sp, st, se, spr, sv, sr=b, no sip,
+        // no si), or the server recomputes a different HMAC and returns 403.
         let string_to_sign = format!(
-            "{}\n{}\n{}\n{}\n\n{}\n{}\n\n\n\n\n\n",
+            "{}\n{}\n{}\n{}\n\n\n{}\n{}\nb\n\n\n\n\n\n\n",
             signed_permissions,
             signed_start,
             signed_expiry,
             canonicalized_resource,
-            signed_version,
             signed_protocol,
+            signed_version,
         );
 
         let key_bytes = BASE64

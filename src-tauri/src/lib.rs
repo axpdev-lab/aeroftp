@@ -2366,7 +2366,6 @@ fn validate_update_path(path: &str) -> Result<(), String> {
     let canonical = std::path::Path::new(path)
         .canonicalize()
         .map_err(|e| format!("Invalid update path: {}", e))?;
-    let canonical_str = canonical.to_string_lossy();
 
     let allowed_dirs: Vec<std::path::PathBuf> = vec![
         dirs::download_dir().unwrap_or_default(),
@@ -2377,16 +2376,17 @@ fn validate_update_path(path: &str) -> Result<(), String> {
         updates_staging_dir(),
     ];
 
+    // Component-aware containment: `Path::starts_with` compares whole path
+    // components, so a sibling directory that merely shares a string prefix
+    // (e.g. `/tmproot` vs `/tmp`) is correctly rejected, unlike a raw string
+    // `starts_with`.
     let in_allowed = allowed_dirs.iter().any(|dir| {
         if dir.as_os_str().is_empty() {
             return false;
         }
-        if let Ok(canon_dir) = dir.canonicalize() {
-            let canon_dir_str = canon_dir.to_string_lossy();
-            let canon_dir_ref: &str = canon_dir_str.as_ref();
-            canonical_str.starts_with(canon_dir_ref)
-        } else {
-            false
+        match dir.canonicalize() {
+            Ok(canon_dir) => canonical.starts_with(&canon_dir),
+            Err(_) => false,
         }
     });
 
@@ -2401,6 +2401,60 @@ fn sha256_file_hex(path: &Path) -> Result<String, String> {
         .map_err(|error| format!("Failed to read file for SHA-256: {}", error))?;
     let digest = Sha256::digest(&bytes);
     Ok(format!("{:x}", digest))
+}
+
+/// Registry of update artifacts this process has itself downloaded AND
+/// Sigstore-verified, keyed by canonical path with the verified SHA-256.
+///
+/// The privileged install commands (`install_deb_update` / `install_rpm_update`
+/// / `install_appimage_update`) re-accept a caller-supplied `downloaded_path`,
+/// so a compromised webview could otherwise steer them at an arbitrary
+/// attacker-staged file (confused deputy: pkexec install as root, or overwrite
+/// of the running executable). Installs are gated on membership here plus an
+/// on-disk digest match, so a privileged install can only ever run against
+/// bytes this process just verified, never a path the caller merely asserts.
+fn verified_update_registry(
+) -> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, String>> {
+    static REGISTRY: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<PathBuf, String>>,
+    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    &REGISTRY
+}
+
+fn record_verified_update(path: &Path, sha256_hex: String) {
+    if let Ok(canonical) = path.canonicalize() {
+        if let Ok(mut registry) = verified_update_registry().lock() {
+            registry.insert(canonical, sha256_hex);
+        }
+    }
+}
+
+/// Fail closed unless `downloaded_path` is an artifact this process downloaded
+/// and Sigstore-verified, and its bytes are still identical to what was
+/// verified. Returns the verified SHA-256 (hex) so callers can hand the helper
+/// the verified digest rather than a fresh self-computed one.
+fn ensure_update_artifact_verified(downloaded_path: &str) -> Result<String, String> {
+    let canonical = Path::new(downloaded_path)
+        .canonicalize()
+        .map_err(|error| format!("Invalid update path: {}", error))?;
+    let expected_hex = verified_update_registry()
+        .lock()
+        .map_err(|_| "Update verification registry unavailable".to_string())?
+        .get(&canonical)
+        .cloned();
+    let Some(expected_hex) = expected_hex else {
+        return Err(
+            "Refusing to install: this artifact was not downloaded and verified by AeroFTP in this session".to_string(),
+        );
+    };
+    let actual_hex = sha256_file_hex(&canonical)?;
+    if actual_hex != expected_hex {
+        return Err(
+            "Refusing to install: the update artifact changed on disk after verification"
+                .to_string(),
+        );
+    }
+    Ok(expected_hex)
 }
 
 /// Download an update file with progress events
@@ -2457,6 +2511,13 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
 
     validate_update_path(destination.to_string_lossy().as_ref())?;
     emit_update_download_progress(&app, &asset.asset_name, 1, 1, Instant::now(), true);
+
+    // Record the just-verified artifact so the privileged install commands can
+    // fail closed against a caller-supplied path (see verified_update_registry).
+    // Hash with sha256_file_hex so the recorded digest matches exactly what the
+    // install-time re-check computes.
+    let recorded_digest = sha256_file_hex(&destination)?;
+    record_verified_update(&destination, recorded_digest);
 
     let _ = tokio::fs::remove_file(&bundle_path).await;
 
@@ -2600,6 +2661,10 @@ async fn install_appimage_update(
     verification_mode: String,
 ) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
+    // Fail closed: only install an artifact this process downloaded and verified,
+    // with bytes unchanged since verification. Neutralizes a confused-deputy
+    // install of an attacker-staged AppImage over the running executable.
+    ensure_update_artifact_verified(&downloaded_path)?;
 
     let downloaded = PathBuf::from(&downloaded_path);
     if !downloaded.exists() {
@@ -2700,7 +2765,11 @@ async fn install_deb_update(
         return Err("Secure update helper not found; aborting privileged install".to_string());
     }
 
-    let package_hash = sha256_file_hex(Path::new(&downloaded_path))?;
+    // Fail closed AND derive the helper's hash from the verified artifact: only
+    // install bytes this process downloaded and Sigstore-verified, and pass the
+    // verified digest to pkexec (not a fresh self-computed hash that proves
+    // nothing about authenticity).
+    let package_hash = ensure_update_artifact_verified(&downloaded_path)?;
     let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
@@ -2744,7 +2813,11 @@ async fn install_rpm_update(
         return Err("Secure update helper not found; aborting privileged install".to_string());
     }
 
-    let package_hash = sha256_file_hex(Path::new(&downloaded_path))?;
+    // Fail closed AND derive the helper's hash from the verified artifact: only
+    // install bytes this process downloaded and Sigstore-verified, and pass the
+    // verified digest to pkexec (not a fresh self-computed hash that proves
+    // nothing about authenticity).
+    let package_hash = ensure_update_artifact_verified(&downloaded_path)?;
     let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)

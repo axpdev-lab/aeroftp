@@ -620,6 +620,21 @@ impl OpenDriveProvider {
         format!("{}/{}", self.api_base, path.trim_start_matches('/'))
     }
 
+    /// Redact the live `session_id` from an arbitrary string before it reaches
+    /// an error message or log. OpenDrive carries the session both as a query
+    /// value (`?session_id=...`) and as a raw URL path segment (e.g.
+    /// `file/info.json/{session_id}`), and reqwest's error `Display` echoes the
+    /// full request URL on transport failures, so an unfiltered `e.to_string()`
+    /// would leak the session token. Redacting by the literal value covers both
+    /// encodings at once. Guard the empty case: `str::replace("", ...)` would
+    /// otherwise splice the placeholder between every character.
+    fn redact_session(&self, s: &str) -> String {
+        if self.session_id.is_empty() {
+            return s.to_string();
+        }
+        s.replace(&self.session_id, "***")
+    }
+
     fn resolve_path(&self, path: &str) -> Result<String, ProviderError> {
         if path.is_empty() || path == "." {
             return Ok(self.current_path.clone());
@@ -671,7 +686,7 @@ impl OpenDriveProvider {
             .get(url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -679,7 +694,7 @@ impl OpenDriveProvider {
 
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_err(|e| ProviderError::ParseError(self.redact_session(&e.to_string())))
     }
 
     async fn post_form<T: for<'de> Deserialize<'de>>(
@@ -705,7 +720,7 @@ impl OpenDriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -713,7 +728,7 @@ impl OpenDriveProvider {
 
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_err(|e| ProviderError::ParseError(self.redact_session(&e.to_string())))
     }
 
     async fn post_form_unit(
@@ -739,7 +754,7 @@ impl OpenDriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -853,8 +868,9 @@ impl OpenDriveProvider {
     }
 
     async fn file_info(&self, file_id: &str) -> Result<FileInfoResponse, ProviderError> {
-        let mut url = reqwest::Url::parse(&self.endpoint(&format!("file/info.json/{}", file_id)))
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        let mut url =
+            reqwest::Url::parse(&self.endpoint(&format!("file/info.json/{}", file_id)))
+                .map_err(|e| ProviderError::InvalidConfig(self.redact_session(&e.to_string())))?;
         url.query_pairs_mut()
             .append_pair("session_id", &self.session_id);
         self.get_json(url.as_str()).await
@@ -1025,7 +1041,7 @@ impl OpenDriveProvider {
             "upload/upload_file_chunk2.json/{}/{}",
             self.session_id, file_id
         )))
-        .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        .map_err(|e| ProviderError::InvalidConfig(self.redact_session(&e.to_string())))?;
 
         url.query_pairs_mut()
             .append_pair("temp_location", temp_location)
@@ -1040,7 +1056,7 @@ impl OpenDriveProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1098,7 +1114,7 @@ impl OpenDriveProvider {
             .delete(self.endpoint(relative_path))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1483,16 +1499,15 @@ impl StorageProvider for OpenDriveProvider {
                     let mut url = reqwest::Url::parse(
                         &this.endpoint(&format!("download/file.json/{}", file_id)),
                     )
-                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                    .map_err(|e| {
+                        ProviderError::InvalidConfig(this.redact_session(&e.to_string()))
+                    })?;
                     url.query_pairs_mut()
                         .append_pair("session_id", &this.session_id);
 
-                    let resp = this
-                        .client
-                        .get(url)
-                        .send()
-                        .await
-                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let resp = this.client.get(url).send().await.map_err(|e| {
+                        ProviderError::TransferFailed(this.redact_session(&e.to_string()))
+                    })?;
 
                     if !resp.status().is_success() {
                         return Err(this.parse_error(resp).await);
@@ -1513,7 +1528,8 @@ impl StorageProvider for OpenDriveProvider {
         let mut downloaded = 0_u64;
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk
+                .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1549,7 +1565,9 @@ impl StorageProvider for OpenDriveProvider {
                     let mut url = reqwest::Url::parse(
                         &this.endpoint(&format!("download/file.json/{}", file_id)),
                     )
-                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                    .map_err(|e| {
+                        ProviderError::InvalidConfig(this.redact_session(&e.to_string()))
+                    })?;
                     url.query_pairs_mut()
                         .append_pair("session_id", &this.session_id);
                     Ok::<String, ProviderError>(url.to_string())
@@ -1582,16 +1600,15 @@ impl StorageProvider for OpenDriveProvider {
                     let mut url = reqwest::Url::parse(
                         &this.endpoint(&format!("download/file.json/{}", file_id)),
                     )
-                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                    .map_err(|e| {
+                        ProviderError::InvalidConfig(this.redact_session(&e.to_string()))
+                    })?;
                     url.query_pairs_mut()
                         .append_pair("session_id", &this.session_id);
 
-                    let resp = this
-                        .client
-                        .get(url)
-                        .send()
-                        .await
-                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let resp = this.client.get(url).send().await.map_err(|e| {
+                        ProviderError::TransferFailed(this.redact_session(&e.to_string()))
+                    })?;
 
                     if !resp.status().is_success() {
                         return Err(this.parse_error(resp).await);
@@ -2198,7 +2215,7 @@ impl StorageProvider for OpenDriveProvider {
             .get(&thumb_url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -2207,7 +2224,7 @@ impl StorageProvider for OpenDriveProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
 
         Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
     }
@@ -2401,7 +2418,7 @@ impl StorageProvider for OpenDriveProvider {
             "upload/upload_file_chunk2.json/{}/{}",
             self.session_id, meta.file_id
         )))
-        .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        .map_err(|e| ProviderError::InvalidConfig(self.redact_session(&e.to_string())))?;
         url.query_pairs_mut()
             .append_pair("temp_location", &meta.temp_location)
             .append_pair("chunk_offset", &chunk_offset)
@@ -2414,7 +2431,7 @@ impl StorageProvider for OpenDriveProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);

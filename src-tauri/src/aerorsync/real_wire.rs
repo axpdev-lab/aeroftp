@@ -1290,13 +1290,19 @@ pub fn is_symlink_mode(mode: u32) -> bool {
 /// accepting UTF-8 is a strict superset that tolerates the occasional
 /// non-ASCII filename without a silent replacement.
 fn read_utf8_slice(buf: &[u8], offset: usize, len: usize) -> Result<String, RealWireError> {
-    if offset + len > buf.len() {
+    let end = offset
+        .checked_add(len)
+        .ok_or(RealWireError::InvalidNameLen {
+            declared: len,
+            available: buf.len().saturating_sub(offset),
+        })?;
+    if end > buf.len() {
         return Err(RealWireError::InvalidNameLen {
             declared: len,
             available: buf.len().saturating_sub(offset),
         });
     }
-    match std::str::from_utf8(&buf[offset..offset + len]) {
+    match std::str::from_utf8(&buf[offset..end]) {
         Ok(s) => Ok(s.to_string()),
         Err(e) => Err(RealWireError::NonUtf8Name {
             offset: offset + e.valid_up_to(),
@@ -1557,6 +1563,12 @@ pub fn decode_file_list_entry(
     let symlink_target = if is_symlink_mode(mode) {
         let (len, consumed) = decode_varint(&buf[cursor..])?;
         cursor += consumed;
+        if len < 0 {
+            return Err(RealWireError::InvalidNameLen {
+                declared: 0,
+                available: 0,
+            });
+        }
         let len = len as usize;
         let s = read_utf8_slice(buf, cursor, len)?;
         cursor += len;
@@ -5350,6 +5362,45 @@ mod tests {
         opts.preserve_uid = false;
         opts.preserve_gid = false;
         assert_flist_entry_round_trip(entry, &opts);
+    }
+
+    #[test]
+    fn negative_symlink_target_len_errors_not_panics() {
+        // A malicious/MITM server can send a negative varint for the
+        // symlink-target length. Without a negativity guard the `as usize`
+        // cast wraps to a huge value and overflows the slice read. The
+        // decoder must reject it with a typed error, never panic.
+        let entry = FileListEntry {
+            flags: XMIT_TOP_DIR,
+            path: "e.lnk".to_string(),
+            size: 0,
+            mtime: 0,
+            mtime_nsec: None,
+            mode: S_IFLNK | 0o777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some(String::new()),
+        };
+        let mut opts = frozen_oracle_options_for_test(None);
+        opts.always_checksum = false;
+        opts.csum_len = 0;
+        opts.preserve_uid = false;
+        opts.preserve_gid = false;
+
+        // With checksum disabled and an empty target, the trailing bytes
+        // are exactly the symlink-target varint (varint(0) == 0x00).
+        // Replace it with a negative varint to hit the vulnerable branch.
+        let mut buf = encode_file_list_entry(&entry, &opts);
+        assert_eq!(buf.pop(), Some(0x00), "expected trailing symlink varint(0)");
+        buf.extend_from_slice(&encode_varint(-1));
+
+        match decode_file_list_entry(&buf, &opts) {
+            Err(RealWireError::InvalidNameLen { .. }) => {}
+            other => panic!("expected InvalidNameLen error, got {other:?}"),
+        }
     }
 
     #[test]

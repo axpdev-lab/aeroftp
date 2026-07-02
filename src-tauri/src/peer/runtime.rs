@@ -1035,9 +1035,12 @@ fn rate_allow(
         return true;
     }
     let mut map = state.lock().unwrap_or_else(|e| e.into_inner());
-    let bucket = map.entry(sender_afid.to_string()).or_default();
     let window_start = now.saturating_sub(60_000);
-    bucket.retain(|&t| t >= window_start);
+    map.retain(|_, ts| {
+        ts.retain(|&t| t >= window_start);
+        !ts.is_empty()
+    });
+    let bucket = map.entry(sender_afid.to_string()).or_default();
     if bucket.len() as u32 >= limit {
         return false;
     }

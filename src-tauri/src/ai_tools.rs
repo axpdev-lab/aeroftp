@@ -1395,8 +1395,8 @@ const SHELL_MAX_OUTPUT_BYTES: usize = 512 * 1024;
 static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> =
     std::sync::LazyLock::new(|| {
         [
-            r"^\s*rm\s+(-[a-zA-Z]*)?.*\s+/\s*$", // rm -rf /
-            r"^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+/\s*$",
+            r"^\s*rm\s+(-[a-zA-Z]*)?.*\s+/\*?(\s|$)", // rm targeting / or /*
+            r"^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+/\*?(\s|$)",
             r"^\s*mkfs\b",                             // mkfs (format disk)
             r"^\s*dd\s+.*of=/dev/",                    // dd to device
             r"^\s*shutdown\b",                         // shutdown
@@ -1404,7 +1404,7 @@ static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> =
             r"^\s*halt\b",                             // halt
             r"^\s*init\s+[06]\b",                      // init 0/6
             r"^\s*:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:", // fork bomb
-            r"^\s*>\s*/dev/sd[a-z]",                   // overwrite disk
+            r">\s*/dev/sd[a-z]",                       // overwrite disk (redirection anywhere)
             r"^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+/",    // chmod 777 /
             r"^\s*chown\s+.*\s+/\s*$",                 // chown /
             // L19: belt+suspenders: also caught by meta-char filter, but explicit is better
@@ -1472,10 +1472,12 @@ pub async fn shell_execute(
 
     // Defense-in-depth: reject shell meta-characters that enable denylist bypass
     // (pipes, subshells, backticks, semicolons, eval chains, base64 decode, etc.)
-    let meta_chars = ['|', ';', '`', '$', '&', '(', ')', '{', '}', '\n', '\r'];
+    let meta_chars = [
+        '|', ';', '`', '$', '&', '(', ')', '{', '}', '\n', '\r', '>', '<', '*', '?', '~',
+    ];
     if meta_chars.iter().any(|c| command.contains(*c)) {
         return Err(
-            "Command contains shell meta-characters (|;&`$(){}\\n\\r). Use simple commands only."
+            "Command contains shell meta-characters (|;&`$(){}<>*?~\\n\\r). Use simple commands only."
                 .to_string(),
         );
     }
