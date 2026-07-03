@@ -8414,6 +8414,110 @@ async fn compress_single_impl(
     Ok(output_path)
 }
 
+/// The decompressed member name for a standalone codec file: the archive's own
+/// name with only the trailing codec extension removed (`report.txt.gz` ->
+/// `report.txt`, `data.xz` -> `data`). A single-stream container carries no file
+/// name, so this reconstructs it from the archive name. `file_name`-derived and
+/// suffix-stripped, so the result is always a single path component (no traversal).
+/// Falls back to a safe name when the archive is literally just the extension.
+fn single_stream_member_name(archive_name: &str, codec: &str) -> String {
+    let ext = match codec {
+        "gz" => ".gz",
+        "xz" => ".xz",
+        "bz2" => ".bz2",
+        _ => "",
+    };
+    let lower = archive_name.to_ascii_lowercase();
+    if !ext.is_empty() && lower.ends_with(ext) {
+        let stem = &archive_name[..archive_name.len() - ext.len()];
+        if !stem.is_empty() {
+            return stem.to_string();
+        }
+    }
+    // Forced codec on a name without that extension, or an empty stem: never emit
+    // an empty filename.
+    let base = archive_name.trim_end_matches('.');
+    if base.is_empty() {
+        "extracted".to_string()
+    } else {
+        format!("{}.out", base)
+    }
+}
+
+/// Decode a standalone single-stream codec file (gz/xz/bz2 with no tar wrapper)
+/// back to its lone member. `kind` forces the codec ("gz" | "xz" | "bz2"); when
+/// None it is sniffed from the extension, so the CLI's `--archive-format` stays
+/// authoritative on extract exactly like the tar lane. `create_subfolder` nests
+/// the output under a per-archive stem folder (matching the other extractors).
+/// Returns the destination directory. These files are never encrypted.
+async fn extract_single_impl(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+    kind: Option<String>,
+) -> Result<String, String> {
+    use std::fs::File;
+    use std::path::Path;
+
+    let codec = match kind {
+        Some(k) => k,
+        None => {
+            let lower = archive_path.to_ascii_lowercase();
+            if lower.ends_with(".gz") {
+                "gz".to_string()
+            } else if lower.ends_with(".xz") {
+                "xz".to_string()
+            } else if lower.ends_with(".bz2") {
+                "bz2".to_string()
+            } else {
+                return Err(format!(
+                    "Unrecognized single-stream format: {}",
+                    archive_path
+                ));
+            }
+        }
+    };
+
+    let archive_name = Path::new(&archive_path)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let member_name = single_stream_member_name(&archive_name, &codec);
+
+    let dest_dir = if create_subfolder {
+        Path::new(&output_dir).join(archive_extract_stem(&archive_name))
+    } else {
+        Path::new(&output_dir).to_path_buf()
+    };
+    std::fs::create_dir_all(&dest_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    let out_path = dest_dir.join(&member_name);
+
+    let infile = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let mut reader: Box<dyn std::io::Read> = match codec.as_str() {
+        "gz" => Box::new(flate2::read::GzDecoder::new(infile)),
+        "xz" => Box::new(xz2::read::XzDecoder::new(infile)),
+        "bz2" => Box::new(bzip2::read::BzDecoder::new(infile)),
+        other => return Err(format!("Unrecognized single-stream format: {}", other)),
+    };
+    let mut outfile =
+        File::create(&out_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+    std::io::copy(&mut reader, &mut outfile).map_err(|e| format!("Failed to decompress: {}", e))?;
+
+    Ok(dest_dir.to_string_lossy().to_string())
+}
+
+/// Extract a standalone single-stream codec file (gz/xz/bz2, no tar wrapper) back
+/// to its lone member. Codec sniffed from the extension; never encrypted.
+#[tauri::command]
+async fn extract_single(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    extract_single_impl(archive_path, output_dir, create_subfolder, None).await
+}
+
 /// Build a tar-stream reader for `archive_path`. An explicit `kind`
 /// ("tar" | "tar.gz" | "tar.xz" | "tar.bz2") forces the decompression filter;
 /// otherwise it is sniffed from the file extension. This lets the CLI honor an
@@ -8655,7 +8759,7 @@ async fn is_rar_encrypted(archive_path: String) -> Result<bool, String> {
 /// which extractor to drive and whether to prompt for a password.
 #[derive(serde::Serialize)]
 struct ExtractProbe {
-    /// "zip" | "sevenz" | "rar" | "tar" | "aerozip" | "aerovault_v2" | "aerovault_v3"
+    /// "zip" | "sevenz" | "rar" | "tar" | "single" | "aerozip" | "aerovault_v2" | "aerovault_v3"
     kind: String,
     /// True when extraction needs a password (encrypted general archive, or any
     /// non-plaintext aero container). `.aerozip` plaintext is always false.
@@ -8801,6 +8905,16 @@ async fn extract_probe(path: String) -> Result<ExtractProbe, String> {
     {
         return Ok(ExtractProbe {
             kind: "tar".to_string(),
+            encrypted: false,
+            archive_bytes,
+        });
+    }
+    // Standalone single-stream codecs (no tar wrapper). Checked AFTER the tar
+    // family so `.tar.gz` / `.tgz` etc. stay `tar`; a bare `.gz`/`.xz`/`.bz2`
+    // reaching here is a lone-member file. Never encrypted.
+    if lower.ends_with(".gz") || lower.ends_with(".xz") || lower.ends_with(".bz2") {
+        return Ok(ExtractProbe {
+            kind: "single".to_string(),
             encrypted: false,
             archive_bytes,
         });
@@ -15369,6 +15483,28 @@ pub async fn extract_tar_core(
     extract_tar(archive_path, output_dir, create_subfolder).await
 }
 
+/// Headless standalone gz/xz/bz2 extraction for the AI-tool path (codec sniffed
+/// from the extension), mirroring `extract_tar_core`.
+pub async fn extract_single_core(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+) -> Result<String, String> {
+    extract_single_impl(archive_path, output_dir, create_subfolder, None).await
+}
+
+/// As `extract_single_core`, but the codec is forced by `kind` ("gz" | "xz" |
+/// "bz2") instead of sniffed, so the CLI's `--archive-format` is authoritative on
+/// extract exactly like `extract_tar_as_core`.
+pub async fn extract_single_as_core(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+    kind: String,
+) -> Result<String, String> {
+    extract_single_impl(archive_path, output_dir, create_subfolder, Some(kind)).await
+}
+
 pub async fn extract_rar_core(
     archive_path: String,
     output_dir: String,
@@ -16647,6 +16783,7 @@ pub fn run() {
             compress_tar,
             compress_single,
             extract_tar,
+            extract_single,
             extract_probe,
             resolve_unique_extract_dir,
             ftp_read_file_base64,
@@ -18152,7 +18289,7 @@ mod sevenz_mhe_tests {
 
 #[cfg(test)]
 mod standalone_stream_tests {
-    use super::compress_single_core;
+    use super::{compress_single_core, extract_single_as_core, extract_single_core};
     use std::io::Read;
 
     // gz/xz/bz2 as standalone single-file streams: each must shrink a
@@ -18212,6 +18349,132 @@ mod standalone_stream_tests {
             }
             assert_eq!(restored, original, "{fmt}: round-trip mismatch");
         }
+    }
+
+    // Full create -> extract round-trip THROUGH the real extract path
+    // (`extract_single_core`, the code that backs the GUI/CLI/AI): a file
+    // compressed by AeroFTP must re-open to the exact original bytes. This closes
+    // the create-without-open asymmetry this change fixes.
+    #[tokio::test]
+    async fn standalone_extract_core_roundtrips_to_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = "single-stream extract round-trip\n"
+            .repeat(2048)
+            .into_bytes();
+        let src = dir.path().join("doc.txt");
+        std::fs::write(&src, &original).unwrap();
+        let src = src.to_string_lossy().to_string();
+
+        for (fmt, ext) in [("gz", "gz"), ("xz", "xz"), ("bz2", "bz2")] {
+            let archive = dir
+                .path()
+                .join(format!("doc.txt.{ext}"))
+                .to_string_lossy()
+                .to_string();
+            compress_single_core(src.clone(), archive.clone(), fmt.to_string(), Some(5))
+                .await
+                .unwrap_or_else(|e| panic!("compress {fmt}: {e}"));
+
+            let outdir = dir.path().join(format!("out_{ext}"));
+            std::fs::create_dir_all(&outdir).unwrap();
+            let returned =
+                extract_single_core(archive.clone(), outdir.to_string_lossy().to_string(), false)
+                    .await
+                    .unwrap_or_else(|e| panic!("extract {fmt}: {e}"));
+            assert_eq!(
+                returned,
+                outdir.to_string_lossy(),
+                "{fmt}: returns the destination dir"
+            );
+
+            // Member name = archive name minus only the codec extension: "doc.txt".
+            let restored = std::fs::read(outdir.join("doc.txt"))
+                .unwrap_or_else(|e| panic!("{fmt}: member doc.txt missing: {e}"));
+            assert_eq!(restored, original, "{fmt}: extract round-trip mismatch");
+        }
+    }
+
+    // A forced `--archive-format` codec must be honored even when the file name's
+    // extension does not match, mirroring the tar lane's `extract_*_as_core`.
+    #[tokio::test]
+    async fn standalone_extract_as_core_honors_forced_codec() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = b"forced codec payload".to_vec();
+        let src = dir.path().join("f.txt");
+        std::fs::write(&src, &original).unwrap();
+        // Compress as gz but give it a neutral name the sniffer will not match.
+        let archive = dir.path().join("blob.bin").to_string_lossy().to_string();
+        compress_single_core(
+            src.to_string_lossy().to_string(),
+            archive.clone(),
+            "gz".to_string(),
+            Some(5),
+        )
+        .await
+        .unwrap();
+        let outdir = dir.path().join("out");
+        std::fs::create_dir_all(&outdir).unwrap();
+        extract_single_as_core(
+            archive,
+            outdir.to_string_lossy().to_string(),
+            false,
+            "gz".to_string(),
+        )
+        .await
+        .unwrap();
+        // No codec extension on the name -> safe fallback member "blob.bin.out".
+        let restored = std::fs::read(outdir.join("blob.bin.out")).unwrap();
+        assert_eq!(restored, original);
+    }
+
+    // The reconstructed member name strips ONLY the trailing codec extension, so
+    // `report.txt.gz` restores as `report.txt` (not `report`), and a name without
+    // the codec extension never yields an empty file.
+    #[test]
+    fn member_name_strips_only_the_codec_extension() {
+        use super::single_stream_member_name;
+        assert_eq!(
+            single_stream_member_name("report.txt.gz", "gz"),
+            "report.txt"
+        );
+        assert_eq!(single_stream_member_name("data.xz", "xz"), "data");
+        assert_eq!(
+            single_stream_member_name("archive.tar.bz2", "bz2"),
+            "archive.tar"
+        );
+        assert_eq!(single_stream_member_name("blob.bin", "gz"), "blob.bin.out");
+    }
+
+    // The probe classifies a bare gz/xz/bz2 as `single` but keeps `.tar.gz` on the
+    // tar lane (ordering guard: tar is matched before the standalone codecs).
+    #[tokio::test]
+    async fn probe_classifies_single_but_keeps_tar_gz_on_tar_lane() {
+        use super::extract_probe;
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let gz = dir.path().join("x.gz");
+        {
+            let mut e = flate2::write::GzEncoder::new(
+                std::fs::File::create(&gz).unwrap(),
+                flate2::Compression::new(1),
+            );
+            e.write_all(b"hi").unwrap();
+            e.finish().unwrap();
+        }
+        let p = extract_probe(gz.to_string_lossy().to_string())
+            .await
+            .unwrap();
+        assert_eq!(p.kind.as_str(), "single");
+        assert!(!p.encrypted);
+
+        // A `.tar.gz` NAME must stay on the tar lane (bytes need not be a real tar
+        // for the probe, which classifies by extension for the general formats).
+        let targz = dir.path().join("y.tar.gz");
+        std::fs::copy(&gz, &targz).unwrap();
+        let p2 = extract_probe(targz.to_string_lossy().to_string())
+            .await
+            .unwrap();
+        assert_eq!(p2.kind.as_str(), "tar");
     }
 
     // A folder has no single-stream representation: the backend must refuse it

@@ -179,6 +179,10 @@ pub async fn archive_decompress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
         || lower.ends_with(".tar.xz")
     {
         crate::extract_tar_core(archive_path.clone(), output_dir.clone(), create_subfolder).await
+    } else if lower.ends_with(".gz") || lower.ends_with(".xz") || lower.ends_with(".bz2") {
+        // Standalone single-stream codecs (no tar wrapper); checked after the tar
+        // family so `.tar.gz` etc. stay on the tar lane.
+        crate::extract_single_core(archive_path.clone(), output_dir.clone(), create_subfolder).await
     } else {
         Err(format!("Unsupported archive format: {}", archive_path))
     };

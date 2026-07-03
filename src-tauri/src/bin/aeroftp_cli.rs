@@ -814,15 +814,6 @@ impl ArchiveFormat {
         }
     }
 
-    /// True for the standalone single-stream codecs (gz, xz, bz2): one file, no
-    /// tar wrapper, no directory structure.
-    fn is_standalone(self) -> bool {
-        matches!(
-            self,
-            ArchiveFormat::Gz | ArchiveFormat::Xz | ArchiveFormat::Bz2
-        )
-    }
-
     /// True when the format carries an AES-256 password (zip, 7z).
     fn supports_password(self) -> bool {
         matches!(self, ArchiveFormat::Zip | ArchiveFormat::SevenZ)
@@ -3031,7 +3022,7 @@ enum Commands {
         #[arg(long = "threads")]
         threads: Option<u32>,
     },
-    /// Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, rar).
+    /// Extract an archive (zip, 7z, tar, tar.gz, tar.xz, tar.bz2, gz, xz, bz2, rar).
     ///
     /// The format is inferred from the archive extension unless `--archive-format` is given.
     /// `--password` unlocks encrypted zip / 7z (also AEROFTP_ARCHIVE_PASSWORD).
@@ -6249,25 +6240,13 @@ async fn cmd_extract(
             print_error(
                 format,
                 &format!(
-                    "cannot infer archive format from '{archive}': pass --archive-format zip|7z|tar|tar.gz|tar.xz|tar.bz2|rar"
+                    "cannot infer archive format from '{archive}': pass --archive-format zip|7z|tar|tar.gz|tar.xz|tar.bz2|gz|xz|bz2|rar"
                 ),
                 5,
             );
             return 5;
         }
     };
-    // Standalone gz/xz/bz2 are compress-only here: a single-stream file has no
-    // internal listing to browse and no directory structure to restore. Point the
-    // user at the standard tools / tar.* variants (exit 7 = unsupported operation,
-    // mirroring the RAR-create rejection on the compress side).
-    if fmt.is_standalone() {
-        print_error(
-            format,
-            "extracting standalone gz/xz/bz2 is not supported yet; decompress with gunzip/unxz/bunzip2, or use the tar.gz/tar.xz/tar.bz2 variants",
-            7,
-        );
-        return 7;
-    }
     warn_archive_password_visibility(password, cli.quiet);
 
     // Resolve relative paths against the CWD; the archive core requires absolute paths.
@@ -6348,7 +6327,13 @@ async fn cmd_extract(
             .await
         }
         ArchiveFormat::Gz | ArchiveFormat::Xz | ArchiveFormat::Bz2 => {
-            unreachable!("standalone gz/xz/bz2 extract rejected above")
+            ftp_client_gui_lib::extract_single_as_core(
+                archive_string,
+                outdir_string,
+                subfolder,
+                fmt.single_kind().to_string(),
+            )
+            .await
         }
     };
     match result {

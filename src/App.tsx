@@ -12384,7 +12384,10 @@ interface UpdateVerificationInfo {
     const is7zArchive = !file.is_dir && /\.(7z)$/i.test(file.name);
     const isRarArchive = !file.is_dir && /\.(rar)$/i.test(file.name);
     const isTarArchive = !file.is_dir && /\.(tar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2)$/i.test(file.name);
-    const isArchive = isZipArchive || is7zArchive || isRarArchive || isTarArchive;
+    // Standalone gz/xz/bz2 (one member, no listing): extractable but not browseable.
+    // Excludes the tar.* variants, which isTarArchive already claims.
+    const isSingleArchive = !file.is_dir && /\.(gz|xz|bz2)$/i.test(file.name) && !isTarArchive;
+    const isArchive = isZipArchive || is7zArchive || isRarArchive || isTarArchive || isSingleArchive;
 
     if (isArchive && count === 1) {
       const doExtract = async (createSubfolder: boolean) => {
@@ -12431,7 +12434,7 @@ interface UpdateVerificationInfo {
           notify.info(t('contextMenu.extracting'), file.name);
           const logId = activityLog.log('INFO', `Extracting ${file.name}${createSubfolder ? ` → ${dest}` : ''}...`, 'running');
           const toastOpts = { filename: file.name, archiveBytes: file.size };
-          const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : 'zip';
+          const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : isSingleArchive ? 'single' : 'zip';
           const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: currentLocalPath, createSubfolder, password: null, toastOpts });
           activityLog.updateEntry(logId, { status: 'success', message: `Extracted ${file.name}${createSubfolder ? ` → ${dest}` : ''}`, details: formatExtractDetails(file.size ?? 0, extractedTotal) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
@@ -12461,25 +12464,28 @@ interface UpdateVerificationInfo {
         ],
       });
 
-      // Browse Archive option
-      const archType: import('./types').ArchiveType = isZipArchive ? 'zip' : is7zArchive ? '7z' : isRarArchive ? 'rar' : 'tar';
-      items.push({
-        label: t('contextMenu.browseArchive') || 'Browse Archive',
-        icon: <Search size={14} />,
-        action: async () => {
-          let encrypted = false;
-          try {
-            encrypted = is7zArchive
-              ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
-              : isZipArchive
-                ? await invoke<boolean>('is_zip_encrypted', { archivePath: file.path })
-                : isRarArchive
-                  ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
-                  : false;
-          } catch { /* ignore */ }
-          setArchiveBrowserState({ path: file.path, type: archType, encrypted });
-        },
-      });
+      // Browse Archive option. Standalone gz/xz/bz2 have a single member and no
+      // internal listing, so they are extract-only (no browse entry).
+      if (!isSingleArchive) {
+        const archType: import('./types').ArchiveType = isZipArchive ? 'zip' : is7zArchive ? '7z' : isRarArchive ? 'rar' : 'tar';
+        items.push({
+          label: t('contextMenu.browseArchive') || 'Browse Archive',
+          icon: <Search size={14} />,
+          action: async () => {
+            let encrypted = false;
+            try {
+              encrypted = is7zArchive
+                ? await invoke<boolean>('is_7z_encrypted', { archivePath: file.path })
+                : isZipArchive
+                  ? await invoke<boolean>('is_zip_encrypted', { archivePath: file.path })
+                  : isRarArchive
+                    ? await invoke<boolean>('is_rar_encrypted', { archivePath: file.path })
+                    : false;
+            } catch { /* ignore */ }
+            setArchiveBrowserState({ path: file.path, type: archType, encrypted });
+          },
+        });
+      }
     }
 
     // Add Share Link option if AeroCloud is active with public_url_base configured

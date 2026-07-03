@@ -51,6 +51,19 @@ describe('inferGeneralKind (general archive routing)', () => {
         expect(inferGeneralKind('a.tbz2')).toBe('tar');
     });
 
+    it('maps standalone single-stream codecs to single', () => {
+        expect(inferGeneralKind('a.gz')).toBe('single');
+        expect(inferGeneralKind('a.xz')).toBe('single');
+        expect(inferGeneralKind('a.bz2')).toBe('single');
+        expect(inferGeneralKind('report.txt.gz')).toBe('single');
+    });
+
+    it('keeps tar.* on the tar lane, not single (checked before gz/xz/bz2)', () => {
+        expect(inferGeneralKind('a.tar.gz')).toBe('tar');
+        expect(inferGeneralKind('a.tar.bz2')).toBe('tar');
+        expect(inferGeneralKind('a.tar.xz')).toBe('tar');
+    });
+
     it('returns null for non-general (aero / unknown) names', () => {
         expect(inferGeneralKind('a.aerovault')).toBeNull();
         expect(inferGeneralKind('a.aerozip')).toBeNull();

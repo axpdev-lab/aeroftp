@@ -19,12 +19,14 @@ export type ArchiveKind =
     | 'sevenz'
     | 'rar'
     | 'tar'
+    | 'single'
     | 'aerozip'
     | 'aerovault_v2'
     | 'aerovault_v3';
 
-/** General (non-aero) archive kinds, which share the `extract_*` command shape. */
-export type GeneralArchiveKind = 'zip' | 'sevenz' | 'rar' | 'tar';
+/** General (non-aero) archive kinds, which share the `extract_*` command shape.
+ *  `single` is a standalone gz/xz/bz2 codec file (one member, no listing). */
+export type GeneralArchiveKind = 'zip' | 'sevenz' | 'rar' | 'tar' | 'single';
 
 export interface ExtractProbe {
     kind: ArchiveKind;
@@ -72,6 +74,9 @@ export function inferGeneralKind(fileName: string): GeneralArchiveKind | null {
     if (/\.7z$/i.test(fileName)) return 'sevenz';
     if (/\.rar$/i.test(fileName)) return 'rar';
     if (/\.(tar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2)$/i.test(fileName)) return 'tar';
+    // Checked after tar so `.tar.gz` etc. stay 'tar'; a bare gz/xz/bz2 is a
+    // standalone single-stream codec file.
+    if (/\.(gz|xz|bz2)$/i.test(fileName)) return 'single';
     return null;
 }
 
@@ -162,6 +167,15 @@ export async function dispatchGeneralExtract(params: {
         case 'tar': {
             const { extractedTotal } = await runExtractWithToast<string>(
                 'extract_tar',
+                { archivePath, outputDir, createSubfolder },
+                toastOpts,
+            );
+            return { extractedTotal };
+        }
+        case 'single': {
+            // Standalone gz/xz/bz2: one member, never encrypted, no password.
+            const { extractedTotal } = await runExtractWithToast<string>(
+                'extract_single',
                 { archivePath, outputDir, createSubfolder },
                 toastOpts,
             );
