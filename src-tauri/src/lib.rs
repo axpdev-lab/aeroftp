@@ -8591,6 +8591,9 @@ fn tar_unpack(
     use std::fs::File;
     let mut ar = tar::Archive::new(reader);
 
+    // Skipped-link notes so an unsafe (or unsupported) link is never dropped silently.
+    let mut link_reports: Vec<String> = Vec::new();
+
     // C5: Iterate entries manually with path traversal validation
     // instead of using unpack() which extracts blindly
     for entry_result in ar
@@ -8612,9 +8615,76 @@ fn tar_unpack(
 
         let out_path = final_output.join(&entry_path);
 
-        if entry.header().entry_type().is_dir() {
+        let et = entry.header().entry_type();
+        if et.is_dir() {
             std::fs::create_dir_all(&out_path)
                 .map_err(|e| format!("Failed to create directory '{}': {}", entry_path, e))?;
+        } else if et.is_symlink() || et.is_hard_link() {
+            // Symlink / hardlink entries carry a target path, not file bytes. The
+            // pre-existing code blindly ran File::create + io::copy, which silently
+            // turned every link into an empty regular file (silent-drop bug). Recreate
+            // in-root links faithfully; skip + report any link whose target could escape
+            // the extraction root (absolute, drive-letter or any ".." component), and
+            // never materialize an unsafe link.
+            let link_kind = if et.is_symlink() {
+                "symlink"
+            } else {
+                "hardlink"
+            };
+            let target = match entry
+                .link_name()
+                .map_err(|e| format!("Failed to read link target for '{}': {}", entry_path, e))?
+            {
+                Some(t) => t,
+                None => {
+                    link_reports.push(format!(
+                        "skipped ({} without target): {}",
+                        link_kind, entry_path
+                    ));
+                    continue;
+                }
+            };
+            let tstr = target.to_string_lossy();
+
+            // SECURITY: validate the target with the SAME guard used for entry paths,
+            // so an absolute target or any ".." component is rejected. Conservative:
+            // a legit in-root relative target that starts with ".." is also skipped.
+            if !is_safe_archive_entry(&tstr) {
+                link_reports.push(format!(
+                    "skipped (unsafe link target): {} -> {}",
+                    entry_path, tstr
+                ));
+                continue;
+            }
+
+            // Ensure parent directory exists (mirror the regular-file branch).
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create parent dir for '{}': {}", entry_path, e)
+                })?;
+            }
+
+            #[cfg(unix)]
+            {
+                if et.is_symlink() {
+                    std::os::unix::fs::symlink(&*target, &out_path)
+                        .map_err(|e| format!("Failed to create symlink '{}': {}", entry_path, e))?;
+                } else {
+                    // Hardlink target is an in-root path relative to the extraction root.
+                    std::fs::hard_link(final_output.join(&*target), &out_path).map_err(|e| {
+                        format!("Failed to create hardlink '{}': {}", entry_path, e)
+                    })?;
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                // No portable symlink/hardlink creation guarantee off Unix: skip + report
+                // rather than fail the whole extraction.
+                link_reports.push(format!(
+                    "skipped ({} unsupported on this platform): {} -> {}",
+                    link_kind, entry_path, tstr
+                ));
+            }
         } else {
             // Ensure parent directory exists
             if let Some(parent) = out_path.parent() {
@@ -8628,6 +8698,17 @@ fn tar_unpack(
             std::io::copy(&mut entry, &mut outfile)
                 .map_err(|e| format!("Failed to extract '{}': {}", entry_path, e))?;
         }
+    }
+
+    if !link_reports.is_empty() {
+        for note in &link_reports {
+            eprintln!("tar_unpack: {}", note);
+        }
+        return Ok(format!(
+            "{}\n{}",
+            final_output.to_string_lossy(),
+            link_reports.join("\n")
+        ));
     }
 
     Ok(final_output.to_string_lossy().to_string())
@@ -18654,6 +18735,83 @@ mod standalone_stream_tests {
         assert!(
             err.contains("single file"),
             "unexpected rejection message: {err}"
+        );
+    }
+
+    // tar link safety: a benign in-root symlink must be recreated faithfully, while
+    // a malicious symlink whose target escapes the extraction root (`../../.../etc/passwd`)
+    // must be skipped and NEVER materialize a file outside the root. Guards against the
+    // silent-drop bug (links became empty regular files) AND path-traversal via link target.
+    #[cfg(unix)]
+    #[test]
+    fn tar_unpack_recreates_safe_symlink_and_skips_escaping_target() {
+        use super::tar_unpack;
+
+        let dir = tempfile::tempdir().unwrap();
+        let tar_path = dir.path().join("links.tar");
+
+        // Build a tar with: a real file, a benign in-root symlink to it, and an
+        // out-of-root escaping symlink.
+        {
+            let file = std::fs::File::create(&tar_path).unwrap();
+            let mut builder = tar::Builder::new(file);
+
+            // Regular file "subdir/file.txt".
+            let payload = b"hello from inside the root";
+            let mut fh = tar::Header::new_gnu();
+            fh.set_size(payload.len() as u64);
+            fh.set_mode(0o644);
+            fh.set_entry_type(tar::EntryType::Regular);
+            fh.set_cksum();
+            builder
+                .append_data(&mut fh, "subdir/file.txt", &payload[..])
+                .unwrap();
+
+            // Benign symlink "link" -> "subdir/file.txt" (in-root, must be recreated).
+            let mut sh = tar::Header::new_gnu();
+            sh.set_entry_type(tar::EntryType::Symlink);
+            sh.set_size(0);
+            sh.set_cksum();
+            builder
+                .append_link(&mut sh, "link", "subdir/file.txt")
+                .unwrap();
+
+            // Malicious symlink "evil" -> "../../../../etc/passwd" (must be skipped).
+            let mut eh = tar::Header::new_gnu();
+            eh.set_entry_type(tar::EntryType::Symlink);
+            eh.set_size(0);
+            eh.set_cksum();
+            builder
+                .append_link(&mut eh, "evil", "../../../../etc/passwd")
+                .unwrap();
+
+            builder.finish().unwrap();
+        }
+
+        let out = dir.path().join("extracted");
+        std::fs::create_dir_all(&out).unwrap();
+        let reader: Box<dyn std::io::Read> = Box::new(std::fs::File::open(&tar_path).unwrap());
+        let report = tar_unpack(reader, &out).unwrap();
+
+        // Benign symlink was recreated and resolves to the in-root file's bytes.
+        let link_meta =
+            std::fs::symlink_metadata(out.join("link")).expect("benign symlink must be created");
+        assert!(
+            link_meta.file_type().is_symlink(),
+            "benign entry must be a symlink, not a regular file (silent-drop bug)"
+        );
+        let via_link = std::fs::read(out.join("link")).unwrap();
+        assert_eq!(via_link, b"hello from inside the root");
+
+        // Malicious symlink was NOT created inside the root...
+        assert!(
+            std::fs::symlink_metadata(out.join("evil")).is_err(),
+            "escaping symlink must not be materialized"
+        );
+        // ...and the report surfaces the skip (not silent).
+        assert!(
+            report.contains("skipped (unsafe link target)") && report.contains("evil"),
+            "skip must be reported, got: {report}"
         );
     }
 }
