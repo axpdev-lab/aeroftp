@@ -27,7 +27,7 @@ function checkShellDenylist() {
     'DENIED_COMMAND_PATTERNS',
     'pub async fn shell_execute(',
     '"Command blocked: potentially destructive system command"',
-    '^\\s*rm\\s+(-[a-zA-Z]*)?.*\\s+/\\s*$',
+    '^\\s*rm\\s+(-[a-zA-Z]*)?.*\\s+/\\*?(\\s|$)',
     '^\\s*mkfs\\b',
     '^\\s*dd\\s+.*of=/dev/',
     '^\\s*shutdown\\b',
@@ -60,8 +60,8 @@ function checkShellDenylist() {
 
   // Self-test: verify regex patterns block known-bad commands
   const deniedPatterns = [
-    /^\s*rm\s+(-[a-zA-Z]*)?.*\s+\/\s*$/,
-    /^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+\/\s*$/,
+    /^\s*rm\s+(-[a-zA-Z]*)?.*\s+\/\*?(\s|$)/,
+    /^\s*rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?-[a-zA-Z]*r.*\s+\/\*?(\s|$)/,
     /^\s*mkfs\b/,
     /^\s*dd\s+.*of=\/dev\//,
     /^\s*shutdown\b/,
