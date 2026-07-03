@@ -8757,7 +8757,7 @@ async fn is_rar_encrypted(archive_path: String) -> Result<bool, String> {
 
 /// One-shot probe result handed to the dedicated extract window so it knows
 /// which extractor to drive and whether to prompt for a password.
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct ExtractProbe {
     /// "zip" | "sevenz" | "rar" | "tar" | "single" | "aerozip" | "aerovault_v2" | "aerovault_v3"
     kind: String,
@@ -8838,6 +8838,40 @@ async fn resolve_unique_extract_dir(
     Ok(dir.to_string_lossy().to_string())
 }
 
+/// Recognize a multi-volume / split-archive *part* by its (lowercased) file name
+/// so the probe can reject it with a specific message instead of the generic
+/// "Unsupported archive type". Covers the split-volume naming produced by 7-Zip
+/// and WinZip/WinRAR, all of which end in a numeric part index:
+///   - 7-Zip / generic split:   `foo.7z.001`, `foo.zip.001`  (`.<ext>.NNN`)
+///   - WinZip split ZIP:        `foo.z01`, `foo.z02`         (`.zNN`)
+///   - old-style RAR volumes:   `foo.r00`, `foo.r01`         (`.rNN`)
+///
+/// New-style `.partN.rar` is deliberately NOT matched (it ends in a letter, never
+/// a digit): the unrar backend follows the co-located `.partN.rar` (and old-style
+/// `.rNN`) volumes automatically when the FIRST volume is opened, so a real
+/// multi-part RAR set extracts correctly through the normal `.rar` lane. We only
+/// intercept the part names that (a) are never a valid extraction entry point and
+/// (b) fall to the generic error today. Pure: unit-tested.
+fn is_multivolume_part(lower: &str) -> bool {
+    // Split trailing run of ASCII digits; every split scheme ends in a part index.
+    let head = lower.trim_end_matches(|c: char| c.is_ascii_digit());
+    let digits = lower.len() - head.len();
+    if digits == 0 {
+        return false;
+    }
+    // `foo.7z.001` / `foo.zip.001`: an inner archive extension then a numeric part.
+    if head.ends_with(".7z.") || head.ends_with(".zip.") {
+        return true;
+    }
+    // `foo.z01` (split ZIP) / `foo.r00` (old-style RAR): a single letter then >= 2
+    // digits. Requiring the `.z`/`.r` prefix keeps `.zip`, `.rar`, `.gz`, `.xz`
+    // (no trailing digits, filtered above) and `.bz2` (only one digit) off this lane.
+    if digits >= 2 && (head.ends_with(".z") || head.ends_with(".r")) {
+        return true;
+    }
+    false
+}
+
 /// Probe an archive/vault path for the dedicated extract window. Aero containers
 /// are detected by content magic first (the extension is cosmetic for them), so
 /// an encrypted `.aerozip` is correctly routed to the v3 vault extractor.
@@ -8871,6 +8905,17 @@ async fn extract_probe(path: String) -> Result<ExtractProbe, String> {
 
     // General formats by extension; encryption sniffed per format.
     let lower = path.to_ascii_lowercase();
+    // Reject split/multi-volume PARTS up front, with a specific message instead of
+    // the generic error below. Checked before the `.zip`/`.7z`/`.rar` branches
+    // because a part like `foo.7z.001` does not end with `.7z`; `.partN.rar` is
+    // intentionally excluded (unrar follows those volumes on the normal `.rar` lane).
+    if is_multivolume_part(&lower) {
+        return Err(
+            "multi-volume (split) archives are not supported: rejoin the \
+                    volumes with 7-Zip/WinRAR into a single archive, then extract"
+                .to_string(),
+        );
+    }
     if lower.ends_with(".zip") {
         let encrypted = is_zip_encrypted(path.clone()).await?;
         return Ok(ExtractProbe {
@@ -18475,6 +18520,119 @@ mod standalone_stream_tests {
             .await
             .unwrap();
         assert_eq!(p2.kind.as_str(), "tar");
+    }
+
+    // The multi-volume classifier must fire for every split-PART naming scheme
+    // that ends in a numeric index (each falls to the generic error today), while
+    // leaving whole archives untouched. `.partN.rar` is the load-bearing
+    // exclusion: the unrar backend follows those volumes on the normal `.rar`
+    // lane, so intercepting them would REGRESS working multi-part RAR. Pure, so it
+    // can enumerate many names without touching the file system.
+    #[test]
+    fn is_multivolume_part_matches_split_parts_only() {
+        use super::is_multivolume_part;
+        // Split PARTS -> recognized (7-Zip/generic `.<ext>.NNN`, split ZIP `.zNN`,
+        // old-style RAR `.rNN`).
+        for name in [
+            "foo.7z.001",
+            "backup.7z.123",
+            "photos.zip.001",
+            "data.z01",
+            "data.z09",
+            "movie.r00",
+            "movie.r15",
+            "/tmp/some.dir/archive.7z.002",
+        ] {
+            assert!(
+                is_multivolume_part(name),
+                "expected split part to be detected: {name}"
+            );
+        }
+        // Whole archives and non-parts -> left alone. `.partN.rar` MUST NOT match.
+        for name in [
+            "foo.7z",
+            "foo.zip",
+            "foo.rar",
+            "movie.part1.rar",
+            "movie.part01.rar",
+            "movie.part001.rar",
+            "clip.gz",
+            "clip.xz",
+            "clip.bz2",
+            "backup.tar.gz",
+            "weird.z",  // no digits
+            "weird.z1", // only one digit; split ZIP is `.zNN`
+            "blob.001", // bare numeric, unknown container -> stay on generic error
+        ] {
+            assert!(
+                !is_multivolume_part(name),
+                "expected non-part to be left alone: {name}"
+            );
+        }
+    }
+
+    // End to end through `extract_probe`: a real split PART is rejected with the
+    // specific multi-volume message (never classified single/tar/zip), while a
+    // real whole `.zip` and `.7z` still probe their kind (the early reject must
+    // not swallow ordinary archives).
+    #[tokio::test]
+    async fn probe_rejects_multivolume_parts_but_keeps_real_archives() {
+        use super::{compress_7z_core, extract_probe};
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+
+        // Split parts: contents are irrelevant, they are rejected before any sniff.
+        for part in ["set.7z.001", "set.z01"] {
+            let p = dir.path().join(part);
+            std::fs::write(&p, b"not a real archive, only a volume part").unwrap();
+            let err = extract_probe(p.to_string_lossy().to_string())
+                .await
+                .expect_err("a split volume part must be rejected");
+            // Also pins the exact wording: the source string is line-continued, so
+            // this proves the `\`-join collapsed to a single space ("the volumes").
+            assert!(
+                err.contains("multi-volume")
+                    && err.contains("rejoin the volumes with 7-Zip/WinRAR"),
+                "unexpected message for {part}: {err}"
+            );
+        }
+
+        // A real single-part ZIP still probes as "zip".
+        let zip_path = dir.path().join("whole.zip");
+        {
+            use zip::write::SimpleFileOptions;
+            let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+            zw.start_file(
+                "a.txt",
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
+            )
+            .unwrap();
+            zw.write_all(b"hello").unwrap();
+            zw.finish().unwrap();
+        }
+        let pz = extract_probe(zip_path.to_string_lossy().to_string())
+            .await
+            .unwrap();
+        assert_eq!(pz.kind.as_str(), "zip");
+
+        // A real single-part 7z still probes as "sevenz".
+        let src = dir.path().join("payload.txt");
+        std::fs::write(&src, b"payload for a whole 7z archive").unwrap();
+        let sevenz_path = dir.path().join("whole.7z");
+        compress_7z_core(
+            vec![src.to_string_lossy().to_string()],
+            sevenz_path.to_string_lossy().to_string(),
+            None,
+            Some(1),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let p7 = extract_probe(sevenz_path.to_string_lossy().to_string())
+            .await
+            .unwrap();
+        assert_eq!(p7.kind.as_str(), "sevenz");
     }
 
     // A folder has no single-stream representation: the backend must refuse it
