@@ -15565,9 +15565,18 @@ fn section_is_help(lower: &str) -> bool {
     matches!(lower, "h" | "help" | "?")
 }
 
-/// Shared F5-style refresh vocabulary (discussion #266).
+/// Shared F5-style refresh vocabulary: clear the screen and reprint the table
+/// (discussion #266). `clear` is deliberately NOT here: Ehud asked that it be a
+/// plain screen wipe with no reprint (the universal terminal `clear`), while
+/// `cls` and `.` do the clear-and-reprint refresh. See `section_is_clear`.
 fn section_is_refresh(lower: &str) -> bool {
-    matches!(lower, "refresh" | "clear" | ".")
+    matches!(lower, "refresh" | "cls" | ".")
+}
+
+/// Plain-clear vocabulary (discussion #266): wipe the screen only, without the
+/// table reprint that `refresh`/`cls`/`.` perform.
+fn section_is_clear(lower: &str) -> bool {
+    lower == "clear"
 }
 
 /// Clear the screen + scrollback and home the cursor for an interactive `-i`
@@ -15709,7 +15718,8 @@ fn print_groups_help() {
     eprintln!("  x <group> <p...>  remove profile(s) from a group");
     eprintln!("  d <N|name>        delete a group (the member servers are kept)");
     eprintln!("  # <N|name> <pos>  move a group to position <pos> (re-index, persisted)");
-    eprintln!("  refresh / .       reload + reprint the table");
+    eprintln!("  cls / . / refresh reload + reprint the table");
+    eprintln!("  clear             wipe the screen only (no reprint)");
     eprintln!("  h / help / ?      show this help");
     eprintln!("  0/q               quit");
     eprintln!();
@@ -15782,6 +15792,9 @@ enum SectionPending {
     Tombstones { stones: Vec<(usize, Vec<String>)> },
     /// A re-index move, zero-based source and destination.
     Reorder { src: usize, dst: usize },
+    /// A plain `clear` (discussion #266): the screen was already wiped, so the
+    /// loop skips the table reprint this iteration and shows only the prompt.
+    PlainClear,
 }
 
 /// Data columns (sans the leading `#`) the `groups -i` re-index/delete summary
@@ -15834,11 +15847,12 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                     )
                 );
             }
+            Some(SectionPending::PlainClear) => {}
             None => eprintln!("{}", format_groups_table(&groups)),
         }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
-            "Interactive: n [name] new group  \u{00b7}  r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+            "Interactive: n [name] new group  \u{00b7}  r/c/d <N|name>  \u{00b7}  a/x <group> <profile N|name ...> add/remove members  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] members  \u{00b7}  cls/. reprint  \u{00b7}  clear wipe  \u{00b7}  h help  \u{00b7}  0/q quit"
         );
 
         let line = match section_prompt_line("groups> ") {
@@ -15868,6 +15882,13 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             // Wipe the screen so the reloaded table at the top of the loop is the
             // only thing on screen, matching `profiles -i` (#341/#311).
             section_clear_screen();
+            continue;
+        }
+        if section_is_clear(&lower) {
+            // Plain `clear` (#266): wipe the screen and suppress the table
+            // reprint on the next iteration, leaving only the prompt.
+            section_clear_screen();
+            pending = Some(SectionPending::PlainClear);
             continue;
         }
 
@@ -16416,7 +16437,8 @@ fn print_users_help() {
     );
     eprintln!("  # <N|name> <pos>  move a user to position <pos> (re-index, persisted)");
     eprintln!("  t / tree          users -> their servers (with group tags)");
-    eprintln!("  refresh / .       reload + reprint the table");
+    eprintln!("  cls / . / refresh reload + reprint the table");
+    eprintln!("  clear             wipe the screen only (no reprint)");
     eprintln!("  h / help / ?      show this help");
     eprintln!("  0/q               quit");
     eprintln!();
@@ -16578,6 +16600,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
                     )
                 );
             }
+            Some(SectionPending::PlainClear) => {}
             None => eprintln!(
                 "{}",
                 format_users_table(&users, marker, &prof_counts, active_groups)
@@ -16585,7 +16608,7 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
         }
         eprintln!("\nActions: {}", render_section_actions(&verbs));
         eprintln!(
-            "Interactive: n [name] new user  \u{00b7}  r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  refresh/.  \u{00b7}  h help  \u{00b7}  0/q quit"
+            "Interactive: n [name] new user  \u{00b7}  r/c/d/f <N|name>  \u{00b7}  # <N|name> <pos> reorder  \u{00b7}  l [N|name ...] servers  \u{00b7}  t tree  \u{00b7}  cls/. reprint  \u{00b7}  clear wipe  \u{00b7}  h help  \u{00b7}  0/q quit"
         );
 
         let line = match section_prompt_line("users> ") {
@@ -16615,6 +16638,13 @@ fn interactive_users_loop(cli: &Cli, store: &CredentialStore) -> i32 {
             // Wipe the screen so the reloaded table at the top of the loop is the
             // only thing on screen, matching `profiles -i` (#341/#311).
             section_clear_screen();
+            continue;
+        }
+        if section_is_clear(&lower) {
+            // Plain `clear` (#266): wipe the screen and suppress the table
+            // reprint on the next iteration, leaving only the prompt.
+            section_clear_screen();
+            pending = Some(SectionPending::PlainClear);
             continue;
         }
 
@@ -17172,7 +17202,7 @@ fn interactive_profiles_loop(
             // profile-table column order; the syntax line below keeps the
             // selector/target details.
             eprintln!(
-                "\nActions: {}\nInteractive: n [query] new profile  ·  l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit",
+                "\nActions: {}\nInteractive: n [query] new profile  ·  l/t/d/f/c/r/e <N|name> [N|name ...]  ·  g <sel> <group> add/remove (·  g rename <old> <new>  ·  g delete <group>)  ·  # <sel> <N> reorder  ·  u switch user  ·  tui inline action menu  ·  cls/. reload table  ·  clear wipe screen  ·  legacy 1l/l1 still works  ·  0/q = quit",
                 render_section_actions(&profiles_section_verbs(fav_marker))
             );
             eprint!("profiles> ");
@@ -17227,9 +17257,8 @@ fn interactive_profiles_loop(
                 "  tui / nav       inline action menu: pick an action (single key or arrows + Enter), then type the target"
             );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
-            eprintln!(
-                "  refresh / .     clear screen + reprint table (reloads from vault; 'clear' also works)"
-            );
+            eprintln!("  cls / . / refresh clear screen + reprint table (reloads from vault)");
+            eprintln!("  clear             wipe the screen only (no reprint)");
             eprintln!("  h / help / ?    show this help");
             eprintln!("  0/q             quit");
             eprintln!();
@@ -17245,6 +17274,13 @@ fn interactive_profiles_loop(
         // re-reads the vault and picks up changes made in another session.
         if section_is_refresh(&lower) {
             refresh_profiles_view(overrides);
+            continue;
+        }
+        if section_is_clear(&lower) {
+            // Plain `clear` (#266): wipe the screen without reprinting. This loop
+            // only paints the table on an explicit refresh, so a bare clear
+            // leaves a clean screen with just the action prompt below.
+            section_clear_screen();
             continue;
         }
 
@@ -57353,9 +57389,14 @@ mod tests {
         for h in ["h", "help", "?"] {
             assert!(section_is_help(h), "{h} should open help");
         }
-        for r in ["refresh", "clear", "."] {
+        for r in ["refresh", "cls", "."] {
             assert!(section_is_refresh(r), "{r} should refresh");
         }
+        // `clear` is a plain screen wipe (discussion #266), not a reprint: it is
+        // recognised by section_is_clear and is deliberately NOT a refresh.
+        assert!(section_is_clear("clear"), "clear should plain-clear");
+        assert!(!section_is_refresh("clear"), "clear should not refresh");
+        assert!(!section_is_clear("cls"), "cls should not plain-clear");
         // Disjoint: a refresh keyword is not a quit keyword, and vice versa.
         assert!(!section_is_quit("refresh"));
         assert!(!section_is_refresh("q"));
