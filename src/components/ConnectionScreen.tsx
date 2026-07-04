@@ -4450,8 +4450,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
                                                 })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                placeholder={t('connection.twoFactorOptional')}
+                                                className="w-32 px-4 py-2.5 text-center tracking-[0.3em] font-mono bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="000000"
                                                 maxLength={6}
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
