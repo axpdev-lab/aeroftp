@@ -18817,6 +18817,120 @@ mod standalone_stream_tests {
 }
 
 #[cfg(test)]
+mod zip_compression_method_tests {
+    // TASK-2 interoperability guard. A `.zip` whose members use a non-Deflate
+    // compression method (BZip2 / LZMA / Deflate64 / Zstd / Xz) must OPEN in
+    // AeroFTP and yield the exact inner bytes. The `zip` crate was previously
+    // built with only `deflate` + `aes-crypto`, so such members failed to open
+    // with "unsupported compression"; TASK-2 enables these READ codecs (the
+    // write path is unchanged: AeroFTP still emits Store/Deflate + AES, which
+    // every native archiver opens). Each test asserts BOTH the member's declared
+    // method and its exact bytes, so dropping a feature reds loudly.
+    //
+    // Two fixture strategies, chosen by the crate WRITER's capability (verified
+    // against zip 8.6.0 write.rs):
+    //  * BZip2 / Zstd / Xz -> the writer can emit them, so the fixture is built
+    //    in-test (write member with method X, reopen, assert). No mainstream
+    //    native archiver puts Zstd/Xz *inside* a .zip, so a round-trip is the
+    //    only practical fixture for those.
+    //  * LZMA / Deflate64 -> the writer refuses them ("Compressing X is not
+    //    supported"), so we open a committed fixture produced by an external
+    //    archiver (interop proof, direction native -> AeroFTP).
+    use std::io::{Cursor, Read, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipArchive, ZipWriter};
+
+    // Write a single-member .zip in memory with the crate's own writer using the
+    // given method; returns the raw archive bytes.
+    fn write_member_zip(method: CompressionMethod, name: &str, payload: &[u8]) -> Vec<u8> {
+        let mut zw = ZipWriter::new(Cursor::new(Vec::new()));
+        let opts = SimpleFileOptions::default().compression_method(method);
+        zw.start_file(name, opts)
+            .unwrap_or_else(|e| panic!("start_file {method:?}: {e}"));
+        zw.write_all(payload)
+            .unwrap_or_else(|e| panic!("write {method:?}: {e}"));
+        zw.finish()
+            .unwrap_or_else(|e| panic!("finish {method:?}: {e}"))
+            .into_inner()
+    }
+
+    // Open a .zip and read one member: returns its declared method and bytes.
+    // This is the exact read path behind AeroFTP's extract code; if the codec
+    // feature is missing, `by_name`/read fails here instead of returning bytes.
+    fn open_member(zip_bytes: &[u8], name: &str) -> (CompressionMethod, Vec<u8>) {
+        let mut archive = ZipArchive::new(Cursor::new(zip_bytes.to_vec()))
+            .unwrap_or_else(|e| panic!("open: {e}"));
+        let mut f = archive
+            .by_name(name)
+            .unwrap_or_else(|e| panic!("member {name}: {e}"));
+        let method = f.compression();
+        let mut out = Vec::new();
+        f.read_to_end(&mut out)
+            .unwrap_or_else(|e| panic!("read {name}: {e}"));
+        (method, out)
+    }
+
+    #[test]
+    fn opens_bzip2_member_and_reads_exact_bytes() {
+        let payload = b"AeroFTP zip bzip2 read-path payload line.\n".repeat(96);
+        let zip = write_member_zip(CompressionMethod::Bzip2, "payload.txt", &payload);
+        let (method, got) = open_member(&zip, "payload.txt");
+        assert_eq!(method, CompressionMethod::Bzip2, "member must report Bzip2");
+        assert_eq!(got, payload, "bzip2 member bytes must round-trip exactly");
+    }
+
+    #[test]
+    fn opens_zstd_member_and_reads_exact_bytes() {
+        let payload = b"AeroFTP zip zstd read-path payload line.\n".repeat(96);
+        let zip = write_member_zip(CompressionMethod::Zstd, "payload.txt", &payload);
+        let (method, got) = open_member(&zip, "payload.txt");
+        assert_eq!(method, CompressionMethod::Zstd, "member must report Zstd");
+        assert_eq!(got, payload, "zstd member bytes must round-trip exactly");
+    }
+
+    #[test]
+    fn opens_xz_member_and_reads_exact_bytes() {
+        let payload = b"AeroFTP zip xz read-path payload line.\n".repeat(96);
+        let zip = write_member_zip(CompressionMethod::Xz, "payload.txt", &payload);
+        let (method, got) = open_member(&zip, "payload.txt");
+        assert_eq!(method, CompressionMethod::Xz, "member must report Xz");
+        assert_eq!(got, payload, "xz member bytes must round-trip exactly");
+    }
+
+    // LZMA cannot be emitted by the crate's writer, so this is a real .zip made
+    // externally (Python `zipfile.ZIP_LZMA`, method 14). Opening it exercises the
+    // interop direction native -> AeroFTP for the LZMA codec.
+    #[test]
+    fn opens_lzma_member_from_native_fixture() {
+        let zip = include_bytes!("../tests/fixtures/zip-methods/lzma.zip");
+        let (method, got) = open_member(zip, "payload.txt");
+        assert_eq!(
+            method,
+            CompressionMethod::Lzma,
+            "fixture member must report Lzma"
+        );
+        let expected = b"AeroFTP zip-method fixture: lzma read-path.\n".repeat(64);
+        assert_eq!(got, expected, "lzma fixture bytes must decode exactly");
+    }
+
+    // Deflate64 also cannot be emitted by the crate's writer. This fixture is a
+    // real .zip produced by 7-Zip 23.01 (`7z a -tzip -mm=Deflate64`), method 9:
+    // a genuine native -> AeroFTP interop case for the Deflate64 codec.
+    #[test]
+    fn opens_deflate64_member_from_native_fixture() {
+        let zip = include_bytes!("../tests/fixtures/zip-methods/deflate64.zip");
+        let (method, got) = open_member(zip, "payload.txt");
+        assert_eq!(
+            method,
+            CompressionMethod::Deflate64,
+            "fixture member must report Deflate64"
+        );
+        let expected = b"AeroFTP zip-method fixture: deflate64 read-path.\n".repeat(64);
+        assert_eq!(got, expected, "deflate64 fixture bytes must decode exactly");
+    }
+}
+
+#[cfg(test)]
 mod sevenz_advanced_tests {
     use super::{compress_7z_core, extract_7z_core, SevenZAdvanced};
 
